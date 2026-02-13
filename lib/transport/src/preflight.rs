@@ -340,8 +340,10 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
             return Err(ResourceError::CreateFailed(
                 resource_id.clone(),
                 format!(
-                    "cargo clippy failed after fix (exit {})\n{}",
-                    verify_result.exit_code, verify_result.stderr
+                    "cargo clippy failed after fix (exit {})\n{}\n{}",
+                    verify_result.exit_code,
+                    verify_result.stdout,
+                    verify_result.stderr
                 ),
             ));
         }
@@ -382,13 +384,26 @@ fn run_cargo_command_with_env(
     if response.success() {
         Ok(())
     } else {
+        // Include both stdout and stderr — cargo test writes test failure
+        // details (which tests failed, panic messages) to stdout, while
+        // stderr only gets the terse "error: test failed" line.
+        let mut detail = String::new();
+        if !response.stdout.is_empty() {
+            detail.push_str(&response.stdout);
+        }
+        if !response.stderr.is_empty() {
+            if !detail.is_empty() {
+                detail.push('\n');
+            }
+            detail.push_str(&response.stderr);
+        }
         Err(ResourceError::CreateFailed(
             resource_id.clone(),
             format!(
                 "command failed (exit {}): {}\n{}",
                 response.exit_code,
                 cmd.to_shell(),
-                response.stderr
+                detail
             ),
         ))
     }
