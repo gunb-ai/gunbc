@@ -22,6 +22,7 @@ pub enum StepModeSubcommand {
 }
 
 /// Parsed step-mode CLI command.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedStepModeArgs {
     /// The resolved subcommand.
     pub subcommand: StepModeSubcommand,
