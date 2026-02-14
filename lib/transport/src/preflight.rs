@@ -78,7 +78,7 @@ pub fn ensure_lint_upsert_with_ci(
 
     println!("preflight: lint-upsert ({})", state);
 
-    if let Err(e) = run_lint_upsert(resource.resource_id(), ci.as_mut().map(|c| &mut **c)) {
+    if let Err(e) = run_lint_upsert(resource.resource_id(), ci.as_deref_mut()) {
         let msg = format!("preflight: lint-upsert failed: {}", e);
         if let Some(ref mut c) = ci {
             c.error(&msg, None);
