@@ -6,8 +6,8 @@
 #![deny(dead_code)]
 use gunbc_dag::build_bootstrap_graph;
 use gunbc_exec::{
-    execute_and_display, execute_and_display_with_result, BoundaryMocks, ExecutionMode,
-    TerminalProfile,
+    execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
+    BoundaryMocks, ExecutionMode, TerminalProfile,
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
@@ -258,22 +258,33 @@ fn main() {
                         if ok_count == 1 { "" } else { "s" }
                     );
                 } else {
-                    eprintln!("bootstrap --mode=verify: drift detected");
+                    let mut body = String::new();
                     for path in &drifted {
-                        eprintln!("  DRIFT  {}", path);
+                        body.push_str(&format!("DRIFT  {path}\n"));
                     }
                     if ok_count > 0 {
-                        eprintln!(
-                            "  ({} file{} ok)",
+                        body.push_str(&format!(
+                            "({} file{} ok)",
                             ok_count,
                             if ok_count == 1 { "" } else { "s" }
-                        );
+                        ));
                     }
+                    print_attention(
+                        &profile,
+                        AttentionLevel::Error,
+                        "bootstrap --mode=verify: drift detected",
+                        body.trim_end(),
+                    );
                     process::exit(1);
                 }
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                print_attention(
+                    &profile,
+                    AttentionLevel::Error,
+                    "bootstrap --mode=verify failed",
+                    &e.to_string(),
+                );
                 process::exit(1);
             }
         }

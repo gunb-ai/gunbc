@@ -38,7 +38,7 @@ pub fn build_frame(
             ));
         }
         RenderMode::Standard | RenderMode::Dynamic => {
-            lines.push(build_dag_header(progress, tier, symbol_set));
+            lines.push(build_dag_header(progress, spinner_frame, tier, symbol_set));
             lines.extend(build_standard_lines(progress, layout, symbol_set, tier));
             lines.extend(build_legend_lines(progress, layout, symbol_set, tier));
             if let Some(footer) = build_footer_line(progress, symbol_set, tier) {
@@ -58,7 +58,12 @@ pub fn build_frame(
 // ---------------------------------------------------------------------------
 
 /// Build the DAG header line (e.g., "◐ Running: lint [1.2s]").
-fn build_dag_header(progress: &DagProgress, tier: Tier, symbol_set: &'static SymbolSet) -> Line {
+fn build_dag_header(
+    progress: &DagProgress,
+    spinner_frame: &str,
+    tier: Tier,
+    symbol_set: &'static SymbolSet,
+) -> Line {
     let elapsed = format_duration(progress.elapsed());
     match &progress.phase {
         DagPhase::NotStarted => Line::new(vec![
@@ -72,8 +77,19 @@ fn build_dag_header(progress: &DagProgress, tier: Tier, symbol_set: &'static Sym
                 .get(current_node)
                 .map(|s| s.as_str())
                 .unwrap_or(&current_node.0);
+            let icon = if spinner_frame.is_empty() {
+                symbol_span(SymbolId::DagRunning, symbol_set, tier)
+            } else {
+                Span::styled(
+                    spinner_frame.to_string(),
+                    SpanStyle {
+                        color: Some(SemanticColor::Active),
+                        ..Default::default()
+                    },
+                )
+            };
             Line::new(vec![
-                symbol_span(SymbolId::DagRunning, symbol_set, tier),
+                icon,
                 Span::plain(format!(" Running: {} [{}]", label, elapsed)),
             ])
         }

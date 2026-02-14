@@ -60,8 +60,9 @@ pub mod tcp;
 pub mod tool;
 
 pub use ci::{
-    detect_provider, is_ci, AnnotationLevel, CiProvider, FileLocation, GitHubActionsProvider,
-    GitLabCiProvider, GitLabRunner, PlainTextProvider, Runner, WorkflowCommand,
+    detect_provider, detect_provider_strict, is_ci, AnnotationLevel, CiProvider, FileLocation,
+    GitHubActionsProvider, GitLabCiProvider, GitLabRunner, PlainTextProvider, Runner,
+    WorkflowCommand,
 };
 pub use cli::{
     build_cli_ensure,

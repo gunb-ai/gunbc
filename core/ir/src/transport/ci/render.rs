@@ -299,9 +299,15 @@ pub struct CacheConfig {
 
 impl CacheConfig {
     /// Create a Rust/Cargo cache config.
+    ///
+    /// The key includes `github.sha` so every run saves a new cache entry
+    /// (required for incremental builds — `actions/cache` skips saving on
+    /// exact key hit). Restore keys fall back to the closest Cargo.lock match,
+    /// then any OS match. GitHub's 10 GB LRU eviction handles cleanup.
     pub fn rust() -> Self {
         Self {
-            key: "cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}".to_string(),
+            key: "cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.sha }}"
+                .to_string(),
             paths: vec![
                 "~/.cargo/bin/".to_string(),
                 "~/.cargo/registry/index/".to_string(),
@@ -309,7 +315,10 @@ impl CacheConfig {
                 "~/.cargo/git/db/".to_string(),
                 "target/".to_string(),
             ],
-            restore_keys: vec!["cargo-${{ runner.os }}-".to_string()],
+            restore_keys: vec![
+                "cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-".to_string(),
+                "cargo-${{ runner.os }}-".to_string(),
+            ],
         }
     }
 }

@@ -34,7 +34,8 @@
 //! ```
 
 use gunbc_ir::transport::ci::{
-    detect_provider, AnnotationLevel, CiProvider, FileLocation, WorkflowCommand,
+    detect_provider, detect_provider_strict, AnnotationLevel, CiProvider, FileLocation,
+    WorkflowCommand,
 };
 use std::collections::HashMap;
 use std::io::{self, Write};
@@ -68,7 +69,10 @@ impl CiContext {
     /// Auto-detect CI environment and create context.
     pub fn detect() -> Self {
         let env: HashMap<String, String> = std::env::vars().collect();
-        Self::new(detect_provider(&env))
+        let provider = detect_provider_strict(&env).unwrap_or_else(|err| {
+            panic!("strict CI provider detection failed: {err}");
+        });
+        Self::new(provider)
     }
 
     /// Create a disabled context (for testing or when CI output is unwanted).
@@ -127,6 +131,12 @@ impl CiContext {
         if !self.enabled {
             return;
         }
+        assert!(
+            self.provider.supports(&cmd),
+            "CI provider '{}' does not support workflow command {:?} in strict mode",
+            self.provider.id(),
+            cmd
+        );
         let formatted = self.provider.format(&cmd);
         writeln!(self.writer, "{}", formatted).ok();
     }
@@ -259,7 +269,7 @@ impl std::fmt::Debug for CiContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::transport::ci::PlainTextProvider;
+    use gunbc_ir::transport::ci::{GitLabCiProvider, PlainTextProvider};
     use std::sync::{Arc, Mutex};
 
     /// Capture output for testing.
@@ -377,5 +387,12 @@ mod tests {
         assert_eq!(ctx.current_path(), "a");
         ctx.start_group("b", false);
         assert_eq!(ctx.current_path(), "a/b");
+    }
+
+    #[test]
+    #[should_panic(expected = "does not support workflow command")]
+    fn test_ci_context_strict_rejects_unsupported_commands() {
+        let mut ctx = CiContext::new(Box::new(GitLabCiProvider::new()));
+        ctx.error("unsupported in strict mode", None);
     }
 }

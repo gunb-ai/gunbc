@@ -119,39 +119,38 @@ fn cmd_commit(dry_run: bool) {
     println!("\n[2/3] Building binaries...");
     if !dry_run {
         match run_cargo_build(&io) {
-            Ok(()) => println!("  cargo build --release: success"),
+            Ok(()) => println!("  cargo build: success"),
             Err(e) => {
                 eprintln!("Cargo build failed: {}", e);
                 std::process::exit(1);
             }
         }
     } else {
-        println!("  (dry-run: would run cargo build --release)");
+        println!("  (dry-run: would run cargo build)");
     }
 
     // Step 3: Setup bin directory (cross-platform)
     println!("\n[3/3] Setting up bin directory...");
     if !dry_run {
         match setup_bin_directory(&io) {
-            Ok(()) => println!("  bin -> target/release (symlink or copy)"),
+            Ok(()) => println!("  bin -> target/debug (symlink or copy)"),
             Err(e) => {
                 eprintln!("Warning: Could not setup bin directory: {}", e);
-                eprintln!("         Binaries are available at target/release/");
+                eprintln!("         Binaries are available at target/debug/");
                 // Non-fatal - binaries are still built
             }
         }
     } else {
-        println!("  (dry-run: would setup bin -> target/release)");
+        println!("  (dry-run: would setup bin -> target/debug)");
     }
 
-    println!("\nCommit complete. Binaries available at ./bin/ or ./target/release/");
+    println!("\nCommit complete. Binaries available at ./bin/ or ./target/debug/");
 }
 
-/// Run cargo build --release via the transport boundary.
+/// Run cargo build via the transport boundary.
 fn run_cargo_build(io: &dyn ResourceIo) -> Result<(), ResourceError> {
-    let cmd = gunbc_ir::cargo::CargoCommand::new(gunbc_ir::cargo::Subcommand::Build).release();
+    let cmd = gunbc_ir::cargo::CargoCommand::new(gunbc_ir::cargo::Subcommand::Build);
     let full_args = cmd.to_args();
-    // full_args = ["cargo", "build", "--release"]
     io.command_output(&full_args[0], &full_args[1..])
         .map(|_| ())
 }
@@ -159,7 +158,7 @@ fn run_cargo_build(io: &dyn ResourceIo) -> Result<(), ResourceError> {
 /// Setup bin directory - symlink on Unix, marker on Windows.
 fn setup_bin_directory(io: &dyn ResourceIo) -> Result<(), ResourceError> {
     let bin_path = Path::new("bin");
-    let target_path = Path::new("target/release");
+    let target_path = Path::new("target/debug");
 
     // Remove existing bin directory/symlink/file
     remove_path(io, bin_path)?;
@@ -188,7 +187,7 @@ fn setup_bin_link(
     bin_path: &Path,
     _target_path: &Path,
 ) -> Result<(), ResourceError> {
-    let marker_content = "Binaries are in target/release/\n";
+    let marker_content = "Binaries are in target/debug/\n";
     let marker_path = bin_path.join(".location");
     io.write_file(&marker_path, marker_content.as_bytes())?;
     Ok(())
@@ -441,18 +440,19 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     }
 
     yaml.push_str(&format!(
-        "      - name: Run CI Pipeline\n        run: {} --release\n",
+        "      - name: Run CI Pipeline\n        run: {}\n",
         config.tool.command(),
     ));
 
-    if !config.secrets_env.is_empty() {
-        yaml.push_str("        env:\n");
-        for secret in &config.secrets_env {
-            yaml.push_str(&format!(
-                "          {}: ${{{{ secrets.{} }}}}\n",
-                secret, secret
-            ));
-        }
+    // Step-level env: CARGO_INCREMENTAL overrides dtolnay/rust-toolchain's
+    // CARGO_INCREMENTAL=0 (set via $GITHUB_ENV). Step-level env takes precedence.
+    yaml.push_str("        env:\n");
+    yaml.push_str("          CARGO_INCREMENTAL: \"1\"\n");
+    for secret in &config.secrets_env {
+        yaml.push_str(&format!(
+            "          {}: ${{{{ secrets.{} }}}}\n",
+            secret, secret
+        ));
     }
 
     yaml
@@ -476,7 +476,7 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
     );
 
     yaml.push_str(&format!(
-        "{}:\n  stage: ci\n  script:\n    - {} --release\n",
+        "{}:\n  stage: ci\n  script:\n    - {}\n",
         config.workflow_name,
         config.tool.command(),
     ));

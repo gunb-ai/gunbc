@@ -68,37 +68,36 @@ map keys. Value typing is still not enforced.
 
 ---
 
-## 4. Verify target falls back to ensure target
+## ~~4. Verify target falls back to ensure target~~ RESOLVED (2026-02-14)
 
 **Where**: `gunbc-dag/src/makegen/registry.rs`
 
-**What happens**: `ExecMode::Verify` uses `verify_target` when present, else
-falls back to `ensure_target`.
+**What changed**:
+- `ResourceTargetMap` now requires an explicit `verify_target` for every entry
+  (no implicit `Option` fallback).
+- Makefile meta-target rendering now fails fast if any `ResourceNeed` cannot
+  be resolved to a concrete target (no silent dependency skips).
 
-**Why it's a hack**: Verify mode can mutate state, contradicting the expected
-"check-only" semantics. Callers may not realize the fallback is happening.
-
-**Suggested fix**: Require explicit verify targets for resources referenced in
-verify workflows or make the fallback opt-in via a flag.
+**Result**: verify dependency selection is explicit and deterministic; fallback
+behavior is removed from the resource mapping path.
 
 ---
 
-## 5. CI provider detection and unsupported commands degrade silently
+## ~~5. CI provider detection and unsupported commands degrade silently~~ RESOLVED (2026-02-14)
 
 **Where**: `core/ir/src/transport/ci/provider.rs`,
 `core/ir/src/transport/ci/providers/gitlab.rs`,
 `core/ir/src/transport/ci/command.rs`
 
-**What happens**: Provider detection falls back to plain text when no CI
-environment is detected. GitLab renders unsupported commands as colored text
-instead of native annotations/outputs.
+**What changed**:
+- Added strict detection path (`detect_provider_strict`) that errors when a CI
+  environment is detected but no supported provider marker is present.
+- `CiContext::detect()` now uses strict detection.
+- `CiContext::emit()` now enforces `provider.supports(cmd)` and panics on
+  unsupported commands instead of emitting degraded fallback output.
 
-**Why it's a hack**: CI features (annotations, outputs, summaries) can silently
-degrade with no signal, hiding configuration mistakes or unsupported providers.
-
-**Suggested fix**: Add a "strict CI" mode or explicit provider selection that
-errors on unknown providers or unsupported commands. Expose `supports()` checks
-in render paths.
+**Result**: CI command emission is strict-by-default in executor paths, with
+explicit failure on unknown providers or unsupported commands.
 
 ---
 

@@ -4,7 +4,7 @@
 
 #![deny(dead_code)]
 use gunbc_dag::{build_docgen_graph, DOCGEN_READ_TARGETS};
-use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile};
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
@@ -49,10 +49,8 @@ fn main() {
         ExecutionMode::Real
     };
 
-    if let Err(e) = execute_with_mode(&dag, mode) {
-        eprintln!("Execution failed: {}", e);
-        process::exit(1);
-    }
+    let profile = TerminalProfile::detect();
+    execute_and_display(&dag, mode, &profile, None, None);
 }
 
 fn build_dry_run_mocks() -> BoundaryMocks {

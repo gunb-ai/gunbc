@@ -81,18 +81,38 @@ pub trait CiProvider: Send + Sync {
 /// println!("Running on: {}", provider.name());
 /// ```
 pub fn detect_provider(env: &HashMap<String, String>) -> Box<dyn CiProvider> {
+    detect_provider_strict(env).unwrap_or_else(|_| Box::new(super::providers::PlainTextProvider))
+}
+
+/// Detect the current CI provider with strict CI semantics.
+///
+/// Behavior:
+/// - GitHub Actions env present → GitHub Actions provider
+/// - GitLab CI env present → GitLab provider
+/// - Any CI env present but unknown provider → error
+/// - Non-CI/local env → Plain text provider
+pub fn detect_provider_strict(
+    env: &HashMap<String, String>,
+) -> Result<Box<dyn CiProvider>, String> {
     // Check for GitHub Actions
     if env.contains_key("GITHUB_ACTIONS") {
-        return Box::new(super::providers::GitHubActionsProvider);
+        return Ok(Box::new(super::providers::GitHubActionsProvider));
     }
 
     // Check for GitLab CI
     if env.contains_key("GITLAB_CI") {
-        return Box::new(super::providers::GitLabCiProvider::new());
+        return Ok(Box::new(super::providers::GitLabCiProvider::new()));
     }
 
-    // Fallback to plain text
-    Box::new(super::providers::PlainTextProvider)
+    if is_ci(env) {
+        return Err(
+            "CI environment detected, but no supported provider marker found \
+             (expected one of: GITHUB_ACTIONS, GITLAB_CI)"
+                .to_string(),
+        );
+    }
+
+    Ok(Box::new(super::providers::PlainTextProvider))
 }
 
 /// Check if running in any CI environment.
@@ -116,5 +136,24 @@ mod tests {
         let env = HashMap::new();
         let provider = detect_provider(&env);
         assert!(!provider.id().is_empty());
+    }
+
+    #[test]
+    fn test_detect_provider_strict_unknown_ci_errors() {
+        let mut env = HashMap::new();
+        env.insert("CI".to_string(), "true".to_string());
+        let result = detect_provider_strict(&env);
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("unknown CI provider should error"),
+        };
+        assert!(err.contains("supported provider marker"));
+    }
+
+    #[test]
+    fn test_detect_provider_strict_local_is_plain() {
+        let env = HashMap::new();
+        let provider = detect_provider_strict(&env).expect("local env should resolve");
+        assert_eq!(provider.id(), "plain");
     }
 }

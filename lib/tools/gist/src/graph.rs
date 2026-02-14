@@ -17,7 +17,7 @@ use gunbc_exec::{
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::transport::gist::GistRequest;
-use gunbc_ir::transport::{ShellRequest, TransportResponse};
+use gunbc_ir::transport::{FileOp, FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::{
     add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
     WorkflowSignature,
@@ -107,10 +107,10 @@ pub enum GistGraphOp {
     // Single-file operations (used by LoopBuilder in snapshot mode)
     // ========================================================================
     /// Prepare single file read request (PURE - no I/O)
-    /// Takes filename and repo_path, outputs shell command to read one file
+    /// Takes filename and repo_path, outputs file read request for one file
     PrepareReadFile,
     /// Parse single file read response (PURE - no I/O)
-    /// Takes shell response, outputs filename and content
+    /// Takes file response, outputs filename and content
     ParseReadFile,
     /// Collect file results into a map (PURE - no I/O)
     /// Takes list of (filename, content) pairs, outputs Map
@@ -326,7 +326,7 @@ fn execute_parse_read_files(
 /// - repo_path: base path
 ///
 /// Outputs:
-/// - request: TransportRequest (shell command to read one file)
+/// - request: TransportRequest (file read request for one file)
 /// - filename: pass through for correlation
 fn execute_prepare_read_file(
     inputs: HashMap<String, Value>,
@@ -334,11 +334,12 @@ fn execute_prepare_read_file(
     let filename = require_str(&inputs, "filename")?;
     let repo_path = optional_str_strict(&inputs, "repo_path")?.unwrap_or(".");
 
-    let mut req = ShellRequest::new("cat").arg(filename);
-    if repo_path != "." {
-        req = req.cwd(repo_path);
-    }
-    let request = req.into_transport_request();
+    let path = if repo_path == "." {
+        filename.to_string()
+    } else {
+        format!("{repo_path}/{filename}")
+    };
+    let request = TransportRequest::File(FileRequest::read(path));
 
     OutputMap::new()
         .request("request", request)
@@ -353,28 +354,41 @@ fn execute_prepare_read_file(
 /// LoopBuilder. Each iteration parses one file's content.
 ///
 /// Inputs:
-/// - response: TransportResponse from cat command
+/// - response: TransportResponse from file read
 /// - filename: the filename (for correlation)
 ///
 /// Outputs:
 /// - filename: the original filename
-/// - content: the file content
+/// - result: the file content
 fn execute_parse_read_file(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) = propagate_skipped(&inputs, "response", &["filename", "content"]) {
+    if let Some(result) = propagate_skipped(&inputs, "response", &["filename", "result"]) {
         return result;
     }
     let response = require_response(&inputs, "response")?;
     let filename = require_str(&inputs, "filename")?;
+    let file = response.require_file()?;
 
-    let shell = response.require_shell()?;
-    let content = if shell.success() {
-        shell.stdout.clone()
-    } else {
-        // Return empty content on failure
-        String::new()
-    };
+    if file.operation != FileOp::Read {
+        return Err(ExecError::new(format!(
+            "expected file read response for '{}', got {:?}",
+            filename, file.operation
+        )));
+    }
+    if !file.success {
+        let err = file.error.as_deref().unwrap_or("unknown file read error");
+        return Err(ExecError::new(format!(
+            "failed to read '{}': {}",
+            filename, err
+        )));
+    }
+    let content = file.content.clone().ok_or_else(|| {
+        ExecError::new(format!(
+            "missing file content in read response for '{}'",
+            filename
+        ))
+    })?;
 
     OutputMap::new()
         .str("filename", filename)
@@ -1177,9 +1191,7 @@ impl Mockable for GistGraphOp {
             GistGraphOp::PrepareReadFile => OutputMap::new()
                 .request(
                     "request",
-                    ShellRequest::new("cat")
-                        .arg("src/main.rs")
-                        .into_transport_request(),
+                    TransportRequest::File(FileRequest::read("src/main.rs")),
                 )
                 .str("filename", "src/main.rs")
                 .bool("skip", false)

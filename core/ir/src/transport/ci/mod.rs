@@ -63,7 +63,7 @@ pub mod runner;
 
 // Re-exports for convenience
 pub use command::{AnnotationLevel, FileLocation, WorkflowCommand};
-pub use provider::{detect_provider, is_ci, CiProvider};
+pub use provider::{detect_provider, detect_provider_strict, is_ci, CiProvider};
 pub use providers::{GitHubActionsProvider, GitLabCiProvider, PlainTextProvider};
 pub use render::{
     dag_to_shared_steps, yaml_block, CacheConfig, CheckoutConfig, CiRenderer, RenderConfig,

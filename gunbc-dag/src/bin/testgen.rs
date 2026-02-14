@@ -13,8 +13,8 @@
 use gunbc_dag::testgen_dag::graph::build_testgen_graph;
 use gunbc_dag::testgen_resource_def;
 use gunbc_exec::{
-    execute_and_display, execute_and_display_with_result, BoundaryMocks, ExecutionMode,
-    TerminalProfile,
+    execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
+    BoundaryMocks, ExecutionMode, TerminalProfile,
 };
 use gunbc_ir::resource::{
     update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
@@ -253,16 +253,27 @@ fn main() {
                 println!("check complete: {} ok, {} stale", ok_count, stale.len());
 
                 if !stale.is_empty() {
-                    println!();
-                    println!("Generated tests are out of date. Run `make testgen` to regenerate:");
+                    let mut body = String::new();
+                    body.push_str("Run `make testgen` to regenerate:\n");
                     for path in &stale {
-                        println!("  {}", path);
+                        body.push_str(&format!("  {path}\n"));
                     }
+                    print_attention(
+                        &profile,
+                        AttentionLevel::Error,
+                        "testgen --mode=verify: generated tests are out of date",
+                        body.trim_end(),
+                    );
                     process::exit(1);
                 }
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                print_attention(
+                    &profile,
+                    AttentionLevel::Error,
+                    "testgen --mode=verify failed",
+                    &e.to_string(),
+                );
                 process::exit(1);
             }
         }

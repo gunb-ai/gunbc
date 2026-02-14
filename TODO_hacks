@@ -211,6 +211,12 @@ Files:
   - lib/tools/gist/src/graph.rs (`execute_prepare_read_files`, ~line 150)
   - lib/tools/gist/src/graph.rs (`execute_parse_read_files`, ~line 207)
 
+**Update (2026-02-14)**: Snapshot-mode runtime reads now use per-file native
+`TransportRequest::File(FileRequest::read(...))` in the active LoopBuilder
+path (`execute_prepare_read_file` / `execute_parse_read_file`), and parse now
+fails on read errors instead of returning empty content. The legacy batch
+helpers above still exist but are no longer the active snapshot execution path.
+
 ### ~~Codegen exists check: `sh -c` with `&&`-joined `test -f` commands~~ FIXED (2026-02-14)
 
 `execute_prepare_codegen_exists` now uses a native file transport glob request

@@ -209,7 +209,6 @@ fn execute_prepare_codegen_command(
 
     let inv = WorkspaceBinary::Codegen.invocation();
     let cmd = CargoCommand::new(Subcommand::Run(inv))
-        .release()
         .args(BinaryArgs::codegen(CodegenSubcommand::Codegen));
     let request = TransportRequest::Shell(cmd.to_shell_request());
 

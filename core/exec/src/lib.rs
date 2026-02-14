@@ -46,7 +46,8 @@ pub mod topo;
 
 pub use ci_context::CiContext;
 pub use display::{
-    execute_and_display, execute_and_display_with_result, print_value, DisplayResult,
+    execute_and_display, execute_and_display_with_result, print_attention, print_value,
+    AttentionLevel, DisplayResult,
 };
 pub use env::{single_output as env_single_output, EnvNode};
 pub use error::{ExecError, IntoExecResult, ResultExt};

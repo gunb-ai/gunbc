@@ -6,8 +6,8 @@
 use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::build_makegen_graph;
 use gunbc_exec::{
-    execute_and_display, execute_and_display_with_result, BoundaryMocks, ExecutionMode,
-    TerminalProfile,
+    execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
+    BoundaryMocks, ExecutionMode, TerminalProfile,
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
@@ -186,8 +186,12 @@ fn main() {
                 if fresh {
                     println!("makegen --mode=verify: 1 file up to date");
                 } else {
-                    eprintln!("makegen --mode=verify: drift detected");
-                    eprintln!("  DRIFT  {}", path);
+                    print_attention(
+                        &profile,
+                        AttentionLevel::Error,
+                        "makegen --mode=verify: drift detected",
+                        &format!("DRIFT  {path}"),
+                    );
                     // Try to show a diff between on-disk content and newly rendered output.
                     let expected = log
                         .entries
@@ -207,10 +211,12 @@ fn main() {
                         });
 
                     if let (Some(old), Some(new)) = (actual, expected) {
-                        eprintln!("\n--- Drift diff (expected vs disk) ---");
+                        eprintln!();
+                        eprintln!("--- Drift diff (expected vs disk) ---");
                         eprintln!("{}", format_diff(old, new));
                     } else {
-                        eprintln!("\n(no diff available: missing expected or actual content)");
+                        eprintln!();
+                        eprintln!("(no diff available: missing expected or actual content)");
                     }
 
                     let fix_cmd = if path == "Makefile" {
@@ -221,12 +227,19 @@ fn main() {
                             path
                         )
                     };
-                    eprintln!("\nTo fix:\n  {}", fix_cmd);
+                    eprintln!();
+                    eprintln!("To fix:");
+                    eprintln!("  {}", fix_cmd);
                     process::exit(1);
                 }
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
+                print_attention(
+                    &profile,
+                    AttentionLevel::Error,
+                    "makegen --mode=verify failed",
+                    &e.to_string(),
+                );
                 process::exit(1);
             }
         }

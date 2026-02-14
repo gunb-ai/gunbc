@@ -196,7 +196,7 @@ impl<'a> GitignoreRenderer<'a> {
     /// Render the complete .gitignore with header.
     pub fn render(&self) -> String {
         let regenerate_cmd =
-            CargoCommand::new(Subcommand::Run(WorkspaceBinary::Bootstrap.invocation())).release();
+            CargoCommand::new(Subcommand::Run(WorkspaceBinary::Bootstrap.invocation()));
         let header = FileHeader {
             generator_name: "gunbc-bootstrap".into(),
             regenerate_command: regenerate_cmd.to_shell().into(),

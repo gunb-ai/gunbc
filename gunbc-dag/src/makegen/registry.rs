@@ -143,103 +143,83 @@ impl BuildConfig {
             use_dag_entrypoints: false,
             warnings: w,
             ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                .release()
                 .args(BinaryArgs::codegen(CodegenSubcommand::Codegen))
                 .warnings(w)),
-            codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone()))
-                .release()
-                .warnings(w)),
+            codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone())).warnings(w)),
             daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                .release()
                 .args(BinaryArgs::codegen(CodegenSubcommand::Daggen))
                 .warnings(w)),
             build: c(CargoCommand::new(Subcommand::Build)
                 .all_targets()
-                .release()
                 .warnings(w)),
-            test: c(CargoCommand::new(Subcommand::Test).release().warnings(w)),
+            test: c(CargoCommand::new(Subcommand::Test).warnings(w)),
             lint: c(CargoCommand::new(Subcommand::Clippy)
                 .all_targets()
-                .release()
                 .warnings(w)),
             lint_fix: c(CargoCommand::new(Subcommand::Clippy)
                 .fix()
                 .workspace()
                 .allow_dirty()
                 .allow_staged()
-                .release()
                 .warnings(w)),
             fmt: c(CargoCommand::new(Subcommand::Fmt)),
             fmt_check: c(CargoCommand::new(Subcommand::Fmt).check()),
             check: c(CargoCommand::new(Subcommand::Check)
                 .all_targets()
-                .release()
                 .warnings(w)),
             ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                .release()
                 .args(BinaryArgs::codegen(CodegenSubcommand::Cigen))
                 .warnings(w)),
             testgen: c(
                 CargoCommand::new(Subcommand::Run(WorkspaceBinary::Testgen.invocation()))
-                    .release()
                     .warnings(w),
             ),
             bootstrap: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Bootstrap.invocation(),
             ))
-            .release()
             .warnings(w)),
             pragma: c(
                 CargoCommand::new(Subcommand::Run(WorkspaceBinary::Pragma.invocation()))
-                    .release()
                     .warnings(w),
             ),
             testgen_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Testgen.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             makegen_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Makegen.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             bootstrap_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Bootstrap.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             pragma_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Pragma.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             testgen_ensure: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Testgen.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Ensure))
             .warnings(w)),
             makegen_ensure: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Makegen.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Ensure))
             .warnings(w)),
             bootstrap_ensure: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Bootstrap.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Ensure))
             .warnings(w)),
             pragma_ensure: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Pragma.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Ensure))
             .warnings(w)),
         }
@@ -253,9 +233,7 @@ impl BuildConfig {
         let mut config = Self::cargo();
         let build_inv = WorkspaceBinary::Build.invocation();
         let entry = BuildCommand::Cargo(
-            CargoCommand::new(Subcommand::Run(build_inv))
-                .release()
-                .warnings(config.warnings),
+            CargoCommand::new(Subcommand::Run(build_inv)).warnings(config.warnings),
         );
 
         config.build = entry.clone();
@@ -281,14 +259,10 @@ impl BuildConfig {
             use_dag_entrypoints: false,
             warnings: w,
             ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                .release()
                 .args(BinaryArgs::codegen(CodegenSubcommand::Codegen))
                 .warnings(w)),
-            codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone()))
-                .release()
-                .warnings(w)),
+            codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone())).warnings(w)),
             daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                .release()
                 .args(BinaryArgs::codegen(CodegenSubcommand::Daggen))
                 .warnings(w)),
             // Buck2-native commands
@@ -307,71 +281,59 @@ impl BuildConfig {
             fmt_check: c(CargoCommand::new(Subcommand::Fmt).check()),
             check: sh(&["buck2", "build", "//..."]),
             ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                .release()
                 .args(BinaryArgs::codegen(CodegenSubcommand::Cigen))
                 .warnings(w)),
             // testgen uses cargo (no buck2 equivalent yet)
             testgen: c(
                 CargoCommand::new(Subcommand::Run(WorkspaceBinary::Testgen.invocation()))
-                    .release()
                     .warnings(w),
             ),
             bootstrap: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Bootstrap.invocation(),
             ))
-            .release()
             .warnings(w)),
             pragma: c(
                 CargoCommand::new(Subcommand::Run(WorkspaceBinary::Pragma.invocation()))
-                    .release()
                     .warnings(w),
             ),
             testgen_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Testgen.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             makegen_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Makegen.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             bootstrap_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Bootstrap.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             pragma_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Pragma.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             testgen_ensure: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Testgen.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Ensure))
             .warnings(w)),
             makegen_ensure: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Makegen.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Ensure))
             .warnings(w)),
             bootstrap_ensure: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Bootstrap.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Ensure))
             .warnings(w)),
             pragma_ensure: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Pragma.invocation(),
             ))
-            .release()
             .args(BinaryArgs::with_mode(ExecMode::Ensure))
             .warnings(w)),
         }
@@ -778,25 +740,22 @@ pub struct ResourceTargetMap {
 struct ResourceTargetEntry {
     id: ResourceId,
     ensure_target: String,
-    /// Verify target. None means same as ensure (always ensure).
-    verify_target: Option<String>,
+    /// Verify target. Always explicit (no implicit fallback behavior).
+    verify_target: String,
 }
 
 impl ResourceTargetMap {
     /// Resolve a ResourceId + mode to a Make target name.
     ///
     /// - `Ensure` → ensure_target
-    /// - `Verify` → verify_target (fallback to ensure_target if None)
+    /// - `Verify` → verify_target
     pub fn resolve(&self, id: &ResourceId, mode: ExecMode) -> Option<&str> {
         self.entries
             .iter()
             .find(|e| e.id == *id)
             .map(|e| match mode {
                 ExecMode::Ensure => e.ensure_target.as_str(),
-                ExecMode::Verify => e
-                    .verify_target
-                    .as_deref()
-                    .unwrap_or(e.ensure_target.as_str()),
+                ExecMode::Verify => e.verify_target.as_str(),
             })
     }
 
@@ -817,27 +776,29 @@ impl ResourceTargetMap {
                 ResourceTargetEntry {
                     id: ResourceId::build("generated_cli"),
                     ensure_target: "ensure-codegen".to_string(),
-                    verify_target: None, // always ensure
+                    // Explicitly ensure-only in verify workflows (no check target exists yet).
+                    verify_target: "ensure-codegen".to_string(),
                 },
                 ResourceTargetEntry {
                     id: ResourceId::build("generated_tests"),
                     ensure_target: "testgen".to_string(),
-                    verify_target: Some("testgen-check".to_string()),
+                    verify_target: "testgen-check".to_string(),
                 },
                 ResourceTargetEntry {
                     id: ResourceId::build("pragma_config"),
                     ensure_target: "pragma".to_string(),
-                    verify_target: Some("pragma-check".to_string()),
+                    verify_target: "pragma-check".to_string(),
                 },
                 ResourceTargetEntry {
                     id: ResourceId::build("compiled_code"),
                     ensure_target: compiled_code_target.to_string(),
-                    verify_target: None, // always ensure
+                    // Explicitly ensure-only in verify workflows (no check target exists yet).
+                    verify_target: compiled_code_target.to_string(),
                 },
                 ResourceTargetEntry {
                     id: ResourceId::build("verified_artifacts"),
                     ensure_target: "verify-fix".to_string(),
-                    verify_target: Some("verify".to_string()),
+                    verify_target: "verify".to_string(),
                 },
             ],
         }
@@ -1465,7 +1426,6 @@ mod tests {
         let config = BuildConfig::cargo();
         let map = ResourceTargetMap::default_map(&config);
 
-        // Has verify target → use it
         assert_eq!(
             map.resolve(&ResourceId::build("generated_tests"), ExecMode::Verify),
             Some("testgen-check")
@@ -1474,7 +1434,6 @@ mod tests {
             map.resolve(&ResourceId::build("pragma_config"), ExecMode::Verify),
             Some("pragma-check")
         );
-        // No verify target → fallback to ensure
         assert_eq!(
             map.resolve(&ResourceId::build("generated_cli"), ExecMode::Verify),
             Some("ensure-codegen")

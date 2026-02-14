@@ -10,14 +10,14 @@
 //! ```text
 //! TerminalProfile::detect() →
 //!   is_ci             → execute_with_mode_and_ci_and_inputs → grouped CI logs
-//!   supports_progress → lower → layout → snapshot → execute → animated replay
+//!   supports_progress → lower → layout → snapshot → execute → live rendering
 //!   fallback          → execute_with_mode_and_inputs → print log entries
 //! ```
 
 use crate::frame_build::build_frame;
 use crate::frame_write::FrameWriter;
 use crate::intercept::BoundaryMocks;
-use crate::progress::{DagPhase, DagProgress, DagSnapshot, OutputSummary, ProgressObserver};
+use crate::progress::{DagProgress, DagSnapshot, OutputSummary, ProgressObserver};
 use crate::render::{Animation, RenderMode};
 use crate::terminal::TerminalProfile;
 use crate::{
@@ -31,11 +31,26 @@ use gunbc_ir::{detect_boundaries, Dag, NodeId, Value};
 use std::collections::HashMap;
 use std::io;
 use std::process;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const ANSI_RED: &str = "\x1b[31m";
+const ANSI_YELLOW: &str = "\x1b[33m";
+const ANSI_BLUE: &str = "\x1b[34m";
 const ANSI_RESET: &str = "\x1b[0m";
+const PROGRESS_TICK: Duration = Duration::from_millis(100);
+
+/// High-signal attention levels for user-facing terminal messaging.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttentionLevel {
+    Info,
+    Warning,
+    Error,
+}
 
 /// Result from display-aware DAG execution.
 #[derive(Debug, Clone)]
@@ -71,11 +86,22 @@ pub fn execute_and_display<T: Executable + Clone + Send>(
     match execute_and_display_with_result(dag, mode, profile, success_port, input_mocks) {
         Ok(result) => {
             if result.should_fail {
+                print_attention(
+                    profile,
+                    AttentionLevel::Error,
+                    "Execution failed",
+                    "A required success check returned false.",
+                );
                 process::exit(1);
             }
         }
         Err(e) => {
-            print_error_attention(profile, "Execution failed", &e.to_string());
+            print_attention(
+                profile,
+                AttentionLevel::Error,
+                "Execution failed",
+                &e.to_string(),
+            );
             process::exit(1);
         }
     }
@@ -143,7 +169,7 @@ fn run_with_ci<T: Executable + Clone + Send>(
     })
 }
 
-/// Progress-display execution: live DAG visualization with animated replay.
+/// Progress-display execution: live DAG visualization driven by observer events.
 fn run_with_progress<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
@@ -168,134 +194,89 @@ fn run_with_progress<T: Executable + Clone + Send>(
     // Compute layout from profile viewport
     let layout = compute_layout(&topo_order, &flat.dag.edges, &labels, &profile.viewport);
 
-    // Save levels before handing layout to renderer (for parallel animation)
-    let levels = layout.levels.clone();
-
-    // Create progress tracker and execute (instant)
     let snapshot = DagSnapshot::from_dag(&flat.dag, &topo_order, &boundaries);
-    let mut progress = DagProgress::new(snapshot.clone());
-    let result = execute_with_progress_and_mode_and_inputs(dag, mode, &mut progress, input_mocks);
+    let progress_state = Arc::new(Mutex::new(DagProgress::new(snapshot)));
+    let stop_render = Arc::new(AtomicBool::new(false));
 
-    // Capture actual final state per node (for failure detection)
-    let final_states: HashMap<NodeId, NodeState> = progress
-        .nodes
+    // Render live frames on a background thread while execution runs.
+    let progress_for_render = Arc::clone(&progress_state);
+    let stop_for_render = Arc::clone(&stop_render);
+    let layout_for_render = layout.clone();
+    let profile_for_render = profile.clone();
+    let render_handle = thread::spawn(move || {
+        let spinner_frames: Vec<String> = [
+            SymbolId::Spinner0,
+            SymbolId::Spinner1,
+            SymbolId::Spinner2,
+            SymbolId::Spinner3,
+        ]
         .iter()
-        .map(|(id, np)| (id.clone(), np.state))
+        .map(|id| {
+            STANDARD
+                .resolve_tier(*id, profile_for_render.tier)
+                .to_string()
+        })
         .collect();
-    let final_phase = progress.phase.clone();
-
-    // Animated replay: create a fresh visual progress and step through
-    let mut visual = DagProgress::new(snapshot.clone());
-    visual.on_dag_start(&snapshot);
-
-    // Set up spinner and frame writer directly
-    let spinner_frames: Vec<String> = [
-        SymbolId::Spinner0,
-        SymbolId::Spinner1,
-        SymbolId::Spinner2,
-        SymbolId::Spinner3,
-    ]
-    .iter()
-    .map(|id| STANDARD.resolve_tier(*id, profile.tier).to_string())
-    .collect();
-    let mut spinner = Animation::cycle(spinner_frames, Duration::from_millis(150));
-
-    let mut writer = FrameWriter::new(
-        profile.supports_color,
-        profile.tier,
-        &STANDARD,
-        profile.is_tty,
-    );
-    let mut stdout = io::stdout();
-
-    let render = |visual: &DagProgress,
-                  spinner: &Animation,
-                  layout: &gunbc_ir::layout::DagLayout,
-                  writer: &mut FrameWriter,
-                  stdout: &mut io::Stdout| {
-        let frame = build_frame(
-            visual,
-            layout,
-            RenderMode::Standard,
-            spinner.frame(),
-            profile.tier,
+        let mut spinner = Animation::cycle(spinner_frames, Duration::from_millis(150));
+        let mut writer = FrameWriter::new(
+            profile_for_render.supports_color,
+            profile_for_render.tier,
             &STANDARD,
+            profile_for_render.is_tty,
         );
-        let _ = writer.write_frame(&frame, stdout);
-    };
+        let mut stdout = io::stdout();
+        let mut last_tick = Instant::now();
 
-    // Animation timing: minimum 1 second total, 2 frames per level (start + complete)
-    // Execution already ran at full speed — this is purely visual replay.
-    const MIN_ANIMATION_MS: u64 = 1000;
-    let num_levels = levels.len();
-    let total_frames = (num_levels * 2).max(1) as u64;
-    let frame_ms = (MIN_ANIMATION_MS / total_frames).max(50);
-    let frame_delay = Duration::from_millis(frame_ms);
+        loop {
+            let now = Instant::now();
+            spinner.tick(now.saturating_duration_since(last_tick));
+            last_tick = now;
 
-    // Render initial state (all pending)
-    render(&visual, &spinner, &layout, &mut writer, &mut stdout);
+            let progress = {
+                let guard = progress_for_render
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                guard.clone()
+            };
+            render_progress_frame(
+                &progress,
+                &layout_for_render,
+                &spinner,
+                &mut writer,
+                &mut stdout,
+                &profile_for_render,
+            );
 
-    let empty_summary = || OutputSummary {
-        fields: vec![],
-        elapsed: Duration::from_millis(frame_ms),
-    };
-
-    // Animate by level: parallel nodes in each level start and complete together
-    for level in &levels {
-        // Start all nodes in this level simultaneously
-        for node_id in level {
-            visual.on_node_start(node_id);
-        }
-        spinner.tick(frame_delay);
-        render(&visual, &spinner, &layout, &mut writer, &mut stdout);
-        thread::sleep(frame_delay);
-
-        // Complete all nodes in this level simultaneously
-        for node_id in level {
-            let final_state = final_states
-                .get(node_id)
-                .copied()
-                .unwrap_or(NodeState::Pending);
-
-            match final_state {
-                NodeState::Failed => {
-                    visual.on_node_failed(node_id, "failed");
-                }
-                NodeState::Skipped => {
-                    visual.on_node_skipped(node_id);
-                }
-                NodeState::Intercepted => {
-                    visual.on_node_intercepted(node_id, empty_summary());
-                }
-                _ => {
-                    visual.on_node_complete(node_id, empty_summary());
-                }
+            if stop_for_render.load(Ordering::Relaxed) {
+                break;
             }
+            thread::sleep(PROGRESS_TICK);
         }
-        spinner.tick(frame_delay);
-        render(&visual, &spinner, &layout, &mut writer, &mut stdout);
-        thread::sleep(frame_delay);
+    });
+
+    let mut observer = SharedProgressObserver::new(Arc::clone(&progress_state));
+    let log_result =
+        execute_with_progress_and_mode_and_inputs(dag, mode, &mut observer, input_mocks);
+
+    stop_render.store(true, Ordering::Relaxed);
+    if render_handle.join().is_err() {
+        return Err(ExecError::new("progress renderer thread panicked"));
     }
 
-    // Final frame: set actual elapsed and phase
-    match &final_phase {
-        DagPhase::Completed { elapsed } => {
-            visual.on_dag_complete(*elapsed);
-        }
-        DagPhase::Failed { .. } => {
-            // Phase already set by on_node_failed
-        }
-        _ => {
-            visual.on_dag_complete(Duration::ZERO);
-        }
-    }
-    render(&visual, &spinner, &layout, &mut writer, &mut stdout);
+    let log = log_result?;
 
-    // Check execution result and exit code
-    let log = result?;
+    let final_progress = {
+        let guard = progress_state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard.clone()
+    };
 
     // Check final node states for hard failures
-    let mut should_fail = final_states.values().any(|s| *s == NodeState::Failed);
+    let mut should_fail = final_progress
+        .nodes
+        .values()
+        .any(|np| np.state == NodeState::Failed);
     should_fail = should_fail || success_port_failed(&log, success_port);
 
     // Surface boundary outputs after progress render so users see
@@ -303,6 +284,77 @@ fn run_with_progress<T: Executable + Clone + Send>(
     print_boundary_outputs(&log, &boundaries);
 
     Ok(DisplayResult { log, should_fail })
+}
+
+#[derive(Clone)]
+struct SharedProgressObserver {
+    progress: Arc<Mutex<DagProgress>>,
+}
+
+impl SharedProgressObserver {
+    fn new(progress: Arc<Mutex<DagProgress>>) -> Self {
+        Self { progress }
+    }
+
+    fn with_progress<F>(&self, update: F)
+    where
+        F: FnOnce(&mut DagProgress),
+    {
+        let mut guard = self
+            .progress
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        update(&mut guard);
+    }
+}
+
+impl ProgressObserver for SharedProgressObserver {
+    fn on_dag_start(&mut self, snapshot: &DagSnapshot) {
+        self.with_progress(|progress| progress.on_dag_start(snapshot));
+    }
+
+    fn on_node_start(&mut self, node_id: &NodeId) {
+        self.with_progress(|progress| progress.on_node_start(node_id));
+    }
+
+    fn on_node_complete(&mut self, node_id: &NodeId, summary: OutputSummary) {
+        self.with_progress(|progress| progress.on_node_complete(node_id, summary));
+    }
+
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+        self.with_progress(|progress| progress.on_node_failed(node_id, error));
+    }
+
+    fn on_node_skipped(&mut self, node_id: &NodeId) {
+        self.with_progress(|progress| progress.on_node_skipped(node_id));
+    }
+
+    fn on_node_intercepted(&mut self, node_id: &NodeId, summary: OutputSummary) {
+        self.with_progress(|progress| progress.on_node_intercepted(node_id, summary));
+    }
+
+    fn on_dag_complete(&mut self, elapsed: Duration) {
+        self.with_progress(|progress| progress.on_dag_complete(elapsed));
+    }
+}
+
+fn render_progress_frame(
+    progress: &DagProgress,
+    layout: &gunbc_ir::layout::DagLayout,
+    spinner: &Animation,
+    writer: &mut FrameWriter,
+    stdout: &mut io::Stdout,
+    profile: &TerminalProfile,
+) {
+    let frame = build_frame(
+        progress,
+        layout,
+        RenderMode::Standard,
+        spinner.frame(),
+        profile.tier,
+        &STANDARD,
+    );
+    let _ = writer.write_frame(&frame, stdout);
 }
 
 /// Print a single output value in the standard format.
@@ -367,27 +419,33 @@ fn success_port_failed(log: &crate::ExecutionLog, success_port: Option<&str>) ->
         .any(|entry| matches!(entry.outputs.get(port), Some(Value::Bool(false))))
 }
 
-/// Print a high-signal error block.
+/// Print a high-signal attention block.
 ///
-/// TTY with color uses a red boxed section. Non-TTY uses a compact plain fallback.
-fn print_error_attention(profile: &TerminalProfile, title: &str, body: &str) {
+/// TTY with color uses a boxed section keyed by severity color.
+/// Non-TTY uses a compact plain fallback.
+pub fn print_attention(profile: &TerminalProfile, level: AttentionLevel, title: &str, body: &str) {
+    let (label, color) = match level {
+        AttentionLevel::Info => ("INFO", ANSI_BLUE),
+        AttentionLevel::Warning => ("WARNING", ANSI_YELLOW),
+        AttentionLevel::Error => ("ERROR", ANSI_RED),
+    };
     let lines: Vec<&str> = body.lines().collect();
     if profile.is_tty && profile.supports_color {
         eprintln!();
-        eprintln!("  {ANSI_RED}┌─ {title}{ANSI_RESET}");
+        eprintln!("  {color}┌─ [{label}] {title}{ANSI_RESET}");
         if lines.is_empty() {
-            eprintln!("  {ANSI_RED}│{ANSI_RESET} ");
+            eprintln!("  {color}│{ANSI_RESET} ");
         } else {
             for line in &lines {
-                eprintln!("  {ANSI_RED}│{ANSI_RESET} {line}");
+                eprintln!("  {color}│{ANSI_RESET} {line}");
             }
         }
-        eprintln!("  {ANSI_RED}└─{ANSI_RESET}");
+        eprintln!("  {color}└─{ANSI_RESET}");
         return;
     }
 
     eprintln!();
-    eprintln!("ERROR: {title}");
+    eprintln!("{label}: {title}");
     if lines.is_empty() {
         eprintln!("  (no details)");
         return;
