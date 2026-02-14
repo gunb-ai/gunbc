@@ -58,7 +58,8 @@ pub use gunbc_lib_markdown::MarkdownOp;
     binary = "gist",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
     has_invocation,
-    returns_result
+    returns_result,
+    needs_tool_deps
 )]
 pub fn gist_snapshot_tool() {}
 
@@ -74,7 +75,8 @@ pub fn gist_snapshot_tool() {}
     binary = "gist-diff",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff","make_var":"BASE"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
     has_invocation,
-    returns_result
+    returns_result,
+    needs_tool_deps
 )]
 pub fn gist_diff_tool() {}
 
@@ -90,7 +92,8 @@ pub fn gist_diff_tool() {}
     binary = "gist-recent",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
     has_invocation,
-    returns_result
+    returns_result,
+    needs_tool_deps
 )]
 pub fn gist_recent_tool() {}
 

@@ -506,6 +506,9 @@ pub struct ToolInfo {
     /// Whether this tool needs a generated CLI entrypoint (codegen dependency).
     /// False for hand-written binaries (ci, pragma, build-all).
     pub needs_generated_cli: bool,
+    /// Whether this tool needs external tool dependencies (e.g., gcloud, gh).
+    /// When true, the Makefile target depends on `ensure-tool-deps`.
+    pub needs_tool_deps: bool,
 }
 
 /// An extra target that combines the main tool with additional commands.
@@ -536,6 +539,7 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: true,
+            needs_tool_deps: false,
         }
     }
 
@@ -557,6 +561,7 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: true,
+            needs_tool_deps: false,
         }
     }
 
@@ -580,6 +585,7 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: true,
+            needs_tool_deps: false,
         }
     }
 
@@ -593,6 +599,7 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: true,
+            needs_tool_deps: false,
         }
     }
 
@@ -622,6 +629,7 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: true,
+            needs_tool_deps: false,
         }
     }
 
@@ -640,6 +648,7 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: def.meta.tool_name == "makegen",
             needs_generated_cli: true,
+            needs_tool_deps: def.needs_tool_deps,
         };
 
         // Convert entrypoints that have make_var set
@@ -1251,6 +1260,7 @@ impl ToolRegistry {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: false,
+            needs_tool_deps: false,
         });
 
         registry

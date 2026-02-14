@@ -589,6 +589,29 @@ pub static CLIPPY: ToolDef = ToolDef {
     depends_on: &["cargo"],
 };
 
+/// Google Cloud SDK (`gcloud` CLI).
+///
+/// Required for GCP authentication (ADC) and cloud operations.
+/// On macOS, installed via `brew install google-cloud-sdk` (Homebrew cask).
+/// On Linux, installed via `apt-get install google-cloud-cli`.
+/// Pre-installed on GitHub Actions runners.
+pub static GCLOUD: ToolDef = ToolDef {
+    id: "gcloud",
+    command: "gcloud",
+    verify: "gcloud --version",
+    install_options: &[
+        InstallOption {
+            via: "brew",
+            inputs: InstallInputs::packages(&["google-cloud-sdk"]),
+        },
+        InstallOption {
+            via: "apt",
+            inputs: InstallInputs::packages(&["google-cloud-cli"]),
+        },
+    ],
+    depends_on: &[],
+};
+
 /// Rustfmt formatter (Rust component).
 ///
 /// For runtime tool acquisition, use `transport::cli::RUSTFMT` with `.requires()`.
@@ -672,6 +695,7 @@ pub fn default_tool_registry() -> ToolRegistry {
     registry.register(&CLIPPY);
     registry.register(&RUSTFMT);
     registry.register(&GH_TOOL);
+    registry.register(&GCLOUD);
     registry
 }
 
@@ -966,5 +990,21 @@ mod tests {
         assert!(super::is_satisfiable(&super::CARGO, &available, &registry).is_ok());
         assert!(super::is_satisfiable(&super::CLIPPY, &available, &registry).is_ok());
         assert!(super::is_satisfiable(&super::RUSTFMT, &available, &registry).is_ok());
+    }
+
+    #[test]
+    fn test_gcloud_satisfiable_on_brew() {
+        let registry = super::default_tool_registry();
+        let available: HashSet<&str> = ["brew"].into_iter().collect();
+
+        assert!(super::is_satisfiable(&super::GCLOUD, &available, &registry).is_ok());
+    }
+
+    #[test]
+    fn test_gcloud_satisfiable_on_apt() {
+        let registry = super::default_tool_registry();
+        let available: HashSet<&str> = ["apt"].into_iter().collect();
+
+        assert!(super::is_satisfiable(&super::GCLOUD, &available, &registry).is_ok());
     }
 }

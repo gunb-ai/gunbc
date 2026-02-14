@@ -183,32 +183,78 @@ fn build_phony_line(registry: &ToolRegistry) -> String {
     phony
 }
 
+/// Wrap a shell command with progress display.
+///
+/// The generated shell:
+/// 1. Prints a progress indicator (e.g., "⟳ Building release binaries...")
+/// 2. Runs the command, capturing stdout+stderr to a temp file
+/// 3. On success: overwrites the line with a success indicator
+/// 4. On failure: overwrites the line with a failure indicator, dumps the captured output
+///
+/// This prevents raw `cargo build` "Compiling ..." noise from polluting
+/// tool target output. The progress indicator uses inline ANSI escapes
+/// that degrade gracefully on non-TTY (just prints the text).
+fn wrap_with_progress(label: &str, cmd: &str) -> String {
+    // Use \r to overwrite the progress line in-place on TTY.
+    // Non-TTY just sees both lines sequentially (harmless).
+    format!(
+        r#"@_BUILD_LOG=$$(mktemp) && printf '  \033[1;36m⟳ {label}...\033[0m' && if {cmd} >$$_BUILD_LOG 2>&1; then printf '\r  \033[1;32m✓ {label}    \033[0m\n'; else printf '\r  \033[1;31m✗ {label} failed\033[0m\n'; cat $$_BUILD_LOG; rm -f $$_BUILD_LOG; exit 1; fi; rm -f $$_BUILD_LOG"#,
+        label = label,
+        cmd = cmd,
+    )
+}
+
 /// Build core targets as structured blocks.
 fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     let mut blocks = Vec::new();
 
-    // preflight-fix
+    // preflight-fix (output captured behind progress indicator)
     blocks.push(StructuredBlock::Target(Target {
         name: "preflight-fix".into(),
         deps: vec![],
-        body: vec!["@cargo fix --workspace --all-targets --allow-dirty --allow-staged".into()],
+        body: vec![wrap_with_progress(
+            "Preflight fix",
+            "cargo fix --workspace --all-targets --allow-dirty --allow-staged",
+        )
+        .into()],
         comment: Some("Preflight: auto-fix rustc warnings before running generators".into()),
     }));
 
-    // ensure-codegen
+    // ensure-codegen (output captured behind progress indicator)
+    let codegen_cmd = config.ensure_codegen_shell();
+    let codegen_cmd_inner = codegen_cmd.strip_prefix('@').unwrap_or(&codegen_cmd);
     blocks.push(StructuredBlock::Target(Target {
         name: "ensure-codegen".into(),
         deps: vec![],
-        body: vec![config.ensure_codegen_shell().into()],
+        body: vec![wrap_with_progress("Ensuring codegen", codegen_cmd_inner).into()],
         comment: Some("Ensure CLI entrypoints exist (bootstrap-safe)".into()),
     }));
 
-    // build-release-bins
+    // build-release-bins (output captured behind progress indicator)
     blocks.push(StructuredBlock::Target(Target {
         name: "build-release-bins".into(),
         deps: vec!["ensure-codegen".into()],
-        body: vec!["@RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins".into()],
+        body: vec![wrap_with_progress(
+            "Building release binaries",
+            "RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins",
+        )
+        .into()],
         comment: Some("Build workspace binaries once for direct tool execution".into()),
+    }));
+
+    // ensure-tool-deps: verify external tool dependencies are available
+    // Uses the compiled deps binary to check and install missing tools.
+    blocks.push(StructuredBlock::Target(Target {
+        name: "ensure-tool-deps".into(),
+        deps: vec!["build-release-bins".into()],
+        body: vec![wrap_with_progress(
+            "Checking tool dependencies",
+            "target/release/gunbc-deps",
+        )
+        .into()],
+        comment: Some(
+            "Ensure external tool dependencies (gh, gcloud, etc.) are available".into(),
+        ),
     }));
 
     // lint-upsert
@@ -664,6 +710,11 @@ fn tool_target_deps(tool: &ToolInfo, config: &BuildConfig) -> Vec<Cow<'static, s
             deps.push(Cow::Borrowed("preflight-fix"));
         }
         deps.push(Cow::Borrowed("build-release-bins"));
+        // Tools that need external dependencies (e.g., gist needs gcloud/gh)
+        // get ensure-tool-deps to check/install missing tools before execution.
+        if tool.needs_tool_deps {
+            deps.push(Cow::Borrowed("ensure-tool-deps"));
+        }
         deps
     } else if tool.short_name == "pragma" {
         vec!["preflight-fix".into()]

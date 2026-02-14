@@ -24,6 +24,9 @@ pub struct ToolDef {
     /// When set, the tool gets a Makefile target automatically.
     /// When None, the tool has no runnable binary (e.g., library-only or not wired up yet).
     pub invocation: Option<cargo::CargoInvocation>,
+    /// Whether this tool needs external tool dependencies (e.g., gcloud, gh).
+    /// Propagated to Makefile generation as an `ensure-tool-deps` dependency.
+    pub needs_tool_deps: bool,
 }
 
 /// Configuration for test generation.
@@ -166,6 +169,7 @@ impl ToolDef {
             custom_import: None,
             outputs: vec![],
             invocation: None,
+            needs_tool_deps: false,
         }
     }
 
@@ -222,6 +226,12 @@ impl ToolDef {
         self.meta.mock_spec_call = Some(call.to_string());
         self
     }
+
+    /// Mark that this tool needs external tool dependencies.
+    pub fn with_tool_deps(mut self) -> Self {
+        self.needs_tool_deps = true;
+        self
+    }
 }
 
 // ============================================================================
@@ -272,6 +282,10 @@ pub fn derive_tool_defs() -> Vec<ToolDef> {
                     _ => cargo::CargoInvocation::standalone(binary_component),
                 };
                 tool = tool.invocation(invocation);
+            }
+
+            if reg.needs_tool_deps {
+                tool = tool.with_tool_deps();
             }
 
             tool

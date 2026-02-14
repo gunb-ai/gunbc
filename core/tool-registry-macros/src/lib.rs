@@ -24,6 +24,7 @@ use syn::{parse_macro_input, AttributeArgs, ItemFn, Lit, Meta, NestedMeta};
 /// - `has_invocation` — Tool has a runnable binary (generates CargoInvocation)
 /// - `returns_result` — Graph builder returns `Result<Dag, BuilderError>`
 /// - `enable_step_mode` — Generate step subcommand for CI
+/// - `needs_tool_deps` — Tool requires external tool dependencies (e.g., gcloud, gh)
 /// - `skip` — Skip registration (emit function only, no inventory submit)
 ///
 /// # Example
@@ -61,6 +62,7 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut has_invocation = false;
     let mut returns_result = false;
     let mut enable_step_mode = false;
+    let mut needs_tool_deps = false;
     let mut skip = false;
 
     for arg in args {
@@ -195,6 +197,7 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
                         "has_invocation" => has_invocation = true,
                         "returns_result" => returns_result = true,
                         "enable_step_mode" => enable_step_mode = true,
+                        "needs_tool_deps" => needs_tool_deps = true,
                         "skip" => skip = true,
                         _ => {
                             return syn::Error::new_spanned(path, "unknown tool_target flag")
@@ -228,6 +231,7 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
             || has_invocation
             || returns_result
             || enable_step_mode
+            || needs_tool_deps
         {
             return syn::Error::new_spanned(
                 &input_fn.sig.ident,
@@ -340,6 +344,7 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
                 package: #package_tokens,
                 binary: #binary_tokens,
                 has_invocation: #has_invocation,
+                needs_tool_deps: #needs_tool_deps,
             }
         }
     };

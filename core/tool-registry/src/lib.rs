@@ -69,6 +69,9 @@ pub struct ToolRegistration {
     /// Whether this tool has a runnable binary (generates a CargoInvocation).
     /// When false, the tool is library-only or a sub-DAG component.
     pub has_invocation: bool,
+    /// Whether this tool needs external tool dependencies (e.g., gcloud, gh).
+    /// When true, the generated Makefile target depends on `ensure-tool-deps`.
+    pub needs_tool_deps: bool,
 }
 
 impl ToolRegistration {

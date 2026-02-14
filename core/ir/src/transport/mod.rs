@@ -143,6 +143,7 @@ pub use tool::{
     // Tools
     CLIPPY,
     DEBIAN,
+    GCLOUD,
     GIT,
     LINUX,
     MACOS,
