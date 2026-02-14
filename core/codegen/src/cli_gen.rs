@@ -771,23 +771,22 @@ fn build_step_main_fn() -> FnDef {
     let body_code = "\
 let args: Vec<String> = env::args().collect();\n\
 \n\
-// Parse subcommand\n\
-let subcommand = args.get(1).map(|s| s.as_str());\n\
-\n\
-match subcommand {\n\
-    Some(\"run\") => run_full_dag(&args[2..]),\n\
-    Some(\"step\") => run_single_step(&args[2..]),\n\
-    Some(\"list-steps\") => list_dag_steps(),\n\
-    Some(\"-h\") | Some(\"--help\") | Some(\"help\") => print_help(),\n\
-    Some(\"-n\") | Some(\"--dry-run\") => run_full_dag(&args[1..]),  // backwards compat\n\
-    Some(arg) if arg.starts_with('-') => run_full_dag(&args[1..]),  // flags go to run\n\
-    None => run_full_dag(&[]),\n\
-    Some(other) => {\n\
-        eprintln!(\"Unknown subcommand: {}\", other);\n\
+let parsed = match gunbc_cli::parse_step_mode(&args) {\n\
+    Ok(parsed) => parsed,\n\
+    Err(e) => {\n\
+        eprintln!(\"error: {}\", e);\n\
         print_help();\n\
         process::exit(1);\n\
     }\n\
-}"
+};\n\
+\n\
+match parsed.subcommand {\n\
+    gunbc_cli::StepModeSubcommand::Run => run_full_dag(&parsed.args),\n\
+    gunbc_cli::StepModeSubcommand::Step => run_single_step(&parsed.args),\n\
+    gunbc_cli::StepModeSubcommand::ListSteps => list_dag_steps(),\n\
+    gunbc_cli::StepModeSubcommand::Help => print_help(),\n\
+}\n\
+"
     .to_string();
 
     FnDef {
@@ -1228,6 +1227,8 @@ mod tests {
         assert!(code.contains("fn load_step_inputs_from_env("));
         assert!(code.contains("fn emit_step_outputs("));
         assert!(code.contains("fn print_help()"));
+        assert!(code.contains("gunbc_cli::parse_step_mode"));
+        assert!(code.contains("gunbc_cli::StepModeSubcommand::Run"));
         assert!(code.contains("execute_single_node"));
         assert!(code.contains("print_value"));
     }
