@@ -25,7 +25,9 @@ fn public_zero_arg_graph_builders_are_resource_registered() {
 
     let mut missing = Vec::new();
     for (builder_fn, crate_dir, source_loc) in builders {
-        let covered = registered.iter().any(|(_, registered_fn)| registered_fn == &builder_fn);
+        let covered = registered
+            .iter()
+            .any(|(_, registered_fn)| registered_fn == &builder_fn);
         if !covered {
             missing.push(format!(
                 "{}: builder '{}' (crate {}) is not covered by non-skip #[resource_test_target]",
@@ -60,8 +62,7 @@ fn runtime_registry_contains_non_skip_resource_annotations() {
     let _: fn() -> gunbc_test::MockSpec = gunbc_dag::ci::graph_mock::ci_mock_spec;
     let _: fn() -> gunbc_test::MockSpec = gunbc_dag::makegen::graph_mock::makegen_mock_spec;
     let _: fn() -> gunbc_test::MockSpec = gunbc_dag::pragma::graph_mock::pragma_mock_spec;
-    let _: fn() -> gunbc_test::MockSpec =
-        gunbc_dag::testgen_dag::graph_mock::testgen_dag_mock_spec;
+    let _: fn() -> gunbc_test::MockSpec = gunbc_dag::testgen_dag::graph_mock::testgen_dag_mock_spec;
     let _: fn() -> gunbc_test::MockSpec =
         gunbc_dag::credential_lifecycle::github_credential_lifecycle_mock_spec;
     let _ = gunbc_dag::build_build_graph();

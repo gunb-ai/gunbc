@@ -59,37 +59,70 @@ pub fn ensure_lint_upsert_with_ci(
 
     let mut manifest = load_manifest_default(&io)
         .map_err(|e| format!("preflight: manifest load failed: {}", e))?;
-
-    let state = resource.check_state(&manifest, &io);
-    if state.is_fresh() {
-        if let Some(ref mut c) = ci {
-            c.end_group();
+    let updated = match ensure_lint_upsert_manifest_state(&io, &mut manifest, &resource, |id| {
+        run_lint_upsert(id, ci.as_deref_mut())
+    }) {
+        Ok(updated) => updated,
+        Err(msg) => {
+            if let Some(ref mut c) = ci {
+                c.error(&msg, None);
+                c.end_group();
+            }
+            return Err(msg);
         }
-        return Ok(());
+    };
+
+    if updated {
+        save_manifest_default(&io, &manifest).map_err(|e| {
+            let msg = format!("preflight: manifest save failed: {}", e);
+            if let Some(ref mut c) = ci {
+                c.error(&msg, None);
+                c.end_group();
+            }
+            msg
+        })?;
+    }
+
+    if let Some(ref mut c) = ci {
+        c.end_group();
+    }
+
+    Ok(())
+}
+
+fn ensure_lint_upsert_manifest_state<F>(
+    io: &dyn ResourceIo,
+    manifest: &mut ResourceManifest,
+    resource: &LintResource,
+    mut lint_runner: F,
+) -> Result<bool, String>
+where
+    F: FnMut(&ResourceId) -> Result<(), ResourceError>,
+{
+    let state = resource.check_state(manifest, io);
+    if state.is_fresh() {
+        return Ok(false);
     }
     if state.is_error() {
-        let msg = format!("preflight: lint state error: {}", state);
-        if let Some(ref mut c) = ci {
-            c.error(&msg, None);
-            c.end_group();
-        }
-        return Err(msg);
+        return Err(format!("preflight: lint state error: {}", state));
     }
 
     println!("preflight: lint-upsert ({})", state);
+    lint_runner(resource.resource_id())
+        .map_err(|e| format!("preflight: lint-upsert failed: {}", e))?;
 
-    if let Err(e) = run_lint_upsert(resource.resource_id(), ci.as_deref_mut()) {
-        let msg = format!("preflight: lint-upsert failed: {}", e);
-        if let Some(ref mut c) = ci {
-            c.error(&msg, None);
-            c.end_group();
-        }
-        return Err(msg);
-    }
+    upsert_lint_manifest_entry(io, manifest, resource)?;
+    Ok(true)
+}
 
-    let files = list_tracked_files(&io)
+fn upsert_lint_manifest_entry(
+    io: &dyn ResourceIo,
+    manifest: &mut ResourceManifest,
+    resource: &LintResource,
+) -> Result<(), String> {
+    let files = list_tracked_files(io)
         .map_err(|e| format!("preflight: failed to list tracked files: {}", e))?;
-    let key = compute_lint_key(&io, &files)
+    let key = compute_lint_key(io, &files)
         .map_err(|e| format!("preflight: failed to compute lint key: {}", e))?;
     let file_list: Vec<String> = files
         .iter()
@@ -99,21 +132,6 @@ pub fn ensure_lint_upsert_with_ci(
         resource.resource_id().clone(),
         ManifestEntry::new(key, file_list.len()).with_input_files(file_list),
     );
-
-    save_manifest_default(&io, &manifest)
-        .map_err(|e| {
-            let msg = format!("preflight: manifest save failed: {}", e);
-            if let Some(ref mut c) = ci {
-                c.error(&msg, None);
-                c.end_group();
-            }
-            msg
-        })?;
-
-    if let Some(ref mut c) = ci {
-        c.end_group();
-    }
-
     Ok(())
 }
 
@@ -522,15 +540,13 @@ fn run_cargo_command_response_with_env(
     let still_running = Arc::new(AtomicBool::new(true));
     let heartbeat_running = Arc::clone(&still_running);
     let heartbeat_start = std::time::Instant::now();
-    let heartbeat = thread::spawn(move || {
-        loop {
-            thread::sleep(HEARTBEAT_INTERVAL);
-            if !heartbeat_running.load(Ordering::Relaxed) {
-                break;
-            }
-            eprint!(" {:.0}s", heartbeat_start.elapsed().as_secs_f64());
-            let _ = std::io::Write::flush(&mut std::io::stderr());
+    let heartbeat = thread::spawn(move || loop {
+        thread::sleep(HEARTBEAT_INTERVAL);
+        if !heartbeat_running.load(Ordering::Relaxed) {
+            break;
         }
+        eprint!(" {:.0}s", heartbeat_start.elapsed().as_secs_f64());
+        let _ = std::io::Write::flush(&mut std::io::stderr());
     });
 
     let response = execute_request(&TransportRequest::Shell(request))
@@ -557,5 +573,235 @@ fn millis_to_system_time(millis: i64) -> SystemTime {
         UNIX_EPOCH + Duration::from_millis(millis as u64)
     } else {
         UNIX_EPOCH
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+    use std::collections::HashMap;
+    use std::io;
+    use std::path::{Path, PathBuf};
+
+    #[derive(Default)]
+    struct FakeIo {
+        files: HashMap<PathBuf, Vec<u8>>,
+        mtimes: HashMap<PathBuf, SystemTime>,
+        command_outputs: HashMap<(String, Vec<String>), Vec<u8>>,
+    }
+
+    impl FakeIo {
+        fn insert_file(&mut self, path: &str, contents: &[u8], mtime: SystemTime) {
+            let path = PathBuf::from(path);
+            self.files.insert(path.clone(), contents.to_vec());
+            self.mtimes.insert(path, mtime);
+        }
+
+        fn insert_command_output(&mut self, command: &str, args: &[String], output: &[u8]) {
+            self.command_outputs
+                .insert((command.to_string(), args.to_vec()), output.to_vec());
+        }
+    }
+
+    impl ResourceIo for FakeIo {
+        fn read_file(&self, path: &Path) -> Result<Vec<u8>, ResourceError> {
+            self.files.get(path).cloned().ok_or_else(|| {
+                ResourceError::Io(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("missing file: {}", path.display()),
+                ))
+            })
+        }
+
+        fn write_file(&self, path: &Path, _contents: &[u8]) -> Result<(), ResourceError> {
+            Err(ResourceError::Io(io::Error::other(format!(
+                "unexpected write_file call for {}",
+                path.display()
+            ))))
+        }
+
+        fn file_exists(&self, path: &Path) -> Result<bool, ResourceError> {
+            Ok(self.files.contains_key(path))
+        }
+
+        fn glob_paths(&self, _pattern: &str) -> Result<Vec<PathBuf>, ResourceError> {
+            Ok(Vec::new())
+        }
+
+        fn command_output(&self, command: &str, args: &[String]) -> Result<Vec<u8>, ResourceError> {
+            self.command_outputs
+                .get(&(command.to_string(), args.to_vec()))
+                .cloned()
+                .ok_or_else(|| {
+                    ResourceError::Io(io::Error::other(format!(
+                        "unexpected command: {} {:?}",
+                        command, args
+                    )))
+                })
+        }
+
+        fn file_mtime(&self, path: &Path) -> Result<SystemTime, ResourceError> {
+            self.mtimes.get(path).copied().ok_or_else(|| {
+                ResourceError::Io(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("missing mtime: {}", path.display()),
+                ))
+            })
+        }
+    }
+
+    fn string_args(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|part| (*part).to_string()).collect()
+    }
+
+    fn tracked_files_args(repo_root: &str) -> Vec<String> {
+        vec![
+            "-C".to_string(),
+            repo_root.to_string(),
+            "ls-files".to_string(),
+            "-z".to_string(),
+            "--".to_string(),
+            "**/*.rs".to_string(),
+            "**/Cargo.toml".to_string(),
+            "Cargo.lock".to_string(),
+            "clippy.toml".to_string(),
+            "rustfmt.toml".to_string(),
+            "rust-toolchain".to_string(),
+            "rust-toolchain.toml".to_string(),
+            "deny.toml".to_string(),
+            ".cargo/config".to_string(),
+            ".cargo/config.toml".to_string(),
+        ]
+    }
+
+    fn configured_fake_io() -> FakeIo {
+        let mut io = FakeIo::default();
+        io.insert_command_output(
+            "git",
+            &string_args(&["rev-parse", "--show-toplevel"]),
+            b"/repo\n",
+        );
+        io.insert_command_output(
+            "git",
+            &tracked_files_args("/repo"),
+            b"src/main.rs\0Cargo.toml\0",
+        );
+        io.insert_command_output("rustc", &string_args(&["--version"]), b"rustc 1.90.0\n");
+        io.insert_command_output(
+            "cargo",
+            &string_args(&["clippy", "--version"]),
+            b"clippy 1.90.0\n",
+        );
+        let old_mtime = UNIX_EPOCH + Duration::from_millis(5_000);
+        io.insert_file("/repo/src/main.rs", b"fn main() {}\n", old_mtime);
+        io.insert_file(
+            "/repo/Cargo.toml",
+            b"[package]\nname = \"demo\"\n",
+            old_mtime,
+        );
+        io
+    }
+
+    #[test]
+    fn ensure_manifest_state_missing_runs_and_records_manifest_entry() {
+        let io = configured_fake_io();
+        let resource = LintResource::new();
+        let mut manifest = ResourceManifest::new();
+        let calls = Cell::new(0usize);
+
+        let updated = ensure_lint_upsert_manifest_state(&io, &mut manifest, &resource, |_| {
+            calls.set(calls.get() + 1);
+            Ok(())
+        })
+        .expect("missing state should be upserted");
+
+        assert!(updated);
+        assert_eq!(calls.get(), 1, "lint upsert runner should run once");
+
+        let entry = manifest
+            .get(resource.resource_id())
+            .expect("manifest entry should be written");
+        assert_eq!(entry.input_file_count, 2);
+        assert_eq!(
+            entry
+                .input_files
+                .as_ref()
+                .expect("input files should be stored"),
+            &vec![
+                "/repo/Cargo.toml".to_string(),
+                "/repo/src/main.rs".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn ensure_manifest_state_fresh_does_not_run_or_mutate_manifest() {
+        let io = configured_fake_io();
+        let resource = LintResource::new();
+        let files = list_tracked_files(&io).expect("tracked file list");
+        let key = compute_lint_key(&io, &files).expect("compute key");
+        let file_list: Vec<String> = files
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect();
+
+        let mut manifest = ResourceManifest::new();
+        manifest.insert(
+            resource.resource_id().clone(),
+            ManifestEntry::new(key.clone(), file_list.len())
+                .with_input_files(file_list)
+                .with_timestamp(10_000),
+        );
+        let calls = Cell::new(0usize);
+
+        let updated = ensure_lint_upsert_manifest_state(&io, &mut manifest, &resource, |_| {
+            calls.set(calls.get() + 1);
+            Ok(())
+        })
+        .expect("fresh state should succeed");
+
+        assert!(!updated);
+        assert_eq!(calls.get(), 0, "lint upsert runner should not run");
+        assert_eq!(
+            manifest
+                .get(resource.resource_id())
+                .expect("entry remains")
+                .key,
+            key
+        );
+    }
+
+    #[test]
+    fn ensure_manifest_state_runner_failure_does_not_write_manifest_entry() {
+        let io = configured_fake_io();
+        let resource = LintResource::new();
+        let resource_id = resource.resource_id().clone();
+        let mut manifest = ResourceManifest::new();
+        let calls = Cell::new(0usize);
+
+        let err = ensure_lint_upsert_manifest_state(&io, &mut manifest, &resource, |_| {
+            calls.set(calls.get() + 1);
+            Err(ResourceError::CreateFailed(
+                resource_id.clone(),
+                "simulated failure".to_string(),
+            ))
+        })
+        .expect_err("runner failure should bubble up");
+
+        assert_eq!(
+            calls.get(),
+            1,
+            "lint upsert runner should still be attempted"
+        );
+        assert!(
+            err.contains("preflight: lint-upsert failed:"),
+            "error should include preflight context, got: {}",
+            err
+        );
+        assert!(
+            manifest.get(resource.resource_id()).is_none(),
+            "failed run should not write manifest entry"
+        );
     }
 }

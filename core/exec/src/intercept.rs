@@ -51,7 +51,10 @@ impl BoundaryMock {
     /// sequence panics (call count exceeded). For static mocks that always
     /// return the same value, use `BoundaryMock::new()` instead.
     pub fn with_sequence(sequence: Vec<Value>) -> Self {
-        assert!(!sequence.is_empty(), "sequence must not be empty; use BoundaryMock::new() for static mocks");
+        assert!(
+            !sequence.is_empty(),
+            "sequence must not be empty; use BoundaryMock::new() for static mocks"
+        );
         Self {
             value: sequence.last().unwrap().clone(),
             sequence,
@@ -208,9 +211,10 @@ mod tests {
 
     #[test]
     fn test_sequence_returns_in_order() {
-        let mock = BoundaryMock::with_sequence(
-            vec![Value::Str("first".into()), Value::Str("second".into())],
-        );
+        let mock = BoundaryMock::with_sequence(vec![
+            Value::Str("first".into()),
+            Value::Str("second".into()),
+        ]);
 
         assert_eq!(mock.next_value(), Value::Str("first".into()));
         assert_eq!(mock.next_value(), Value::Str("second".into()));
@@ -219,9 +223,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "sequence exhausted")]
     fn test_sequence_exhausted_panics() {
-        let mock = BoundaryMock::with_sequence(
-            vec![Value::Str("first".into())],
-        );
+        let mock = BoundaryMock::with_sequence(vec![Value::Str("first".into())]);
 
         assert_eq!(mock.next_value(), Value::Str("first".into()));
         mock.next_value(); // should panic
@@ -229,9 +231,8 @@ mod tests {
 
     #[test]
     fn test_sequence_call_count() {
-        let mock = BoundaryMock::with_sequence(
-            vec![Value::Str("a".into()), Value::Str("b".into())],
-        );
+        let mock =
+            BoundaryMock::with_sequence(vec![Value::Str("a".into()), Value::Str("b".into())]);
 
         assert_eq!(mock.call_count(), 0);
         mock.next_value();
@@ -242,9 +243,7 @@ mod tests {
 
     #[test]
     fn test_sequence_exhaustion_detected_via_status() {
-        let mock = BoundaryMock::with_sequence(
-            vec![Value::Str("first".into())],
-        );
+        let mock = BoundaryMock::with_sequence(vec![Value::Str("first".into())]);
 
         let (value, exhausted) = mock.next_value_with_status();
         assert_eq!(value, Value::Str("first".into()));

@@ -235,11 +235,7 @@ pub fn validate_resource_wiring<T>(dag: &Dag<T>) -> Vec<UnwiredResource> {
 /// Returns unwired resources found at any nesting level.
 pub fn validate_resource_wiring_recursive<T>(dag: &Dag<T>) -> Vec<UnwiredResource> {
     let mut unwired = Vec::new();
-    validate_resource_wiring_recursive_impl(
-        dag,
-        &std::collections::HashSet::new(),
-        &mut unwired,
-    );
+    validate_resource_wiring_recursive_impl(dag, &std::collections::HashSet::new(), &mut unwired);
     unwired
 }
 

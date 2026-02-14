@@ -122,7 +122,12 @@ impl<T> Dag<T> {
                 // Link parent node to subgraph
                 let parent_node_id = format!("{}_{}", subgraph_id, node.id.0.replace('-', "_"));
                 let child_subgraph_id = subdag_name.replace(['-', ' ', ':'], "_");
-                writeln!(out, "{}    {} -.-> {}", indent, parent_node_id, child_subgraph_id).unwrap();
+                writeln!(
+                    out,
+                    "{}    {} -.-> {}",
+                    indent, parent_node_id, child_subgraph_id
+                )
+                .unwrap();
             }
         }
 

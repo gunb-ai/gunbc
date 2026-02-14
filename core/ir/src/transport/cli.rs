@@ -1168,7 +1168,11 @@ mod tests {
             "res:tool:clippy",
             AccessMode::Read
         ));
-        assert!(has_resource_input(execute_install, "res:pkg", AccessMode::Write));
+        assert!(has_resource_input(
+            execute_install,
+            "res:pkg",
+            AccessMode::Write
+        ));
         assert!(has_resource_input(
             execute_resolve,
             "res:target",
@@ -1218,9 +1222,21 @@ mod tests {
         let execute_install = find_node(&dag, "execute_install");
         let execute_resolve = find_node(&dag, "execute_resolve");
 
-        assert!(has_resource_input(execute_install, "res:tool:gh", AccessMode::Write));
-        assert!(has_resource_input(execute_resolve, "res:tool:gh", AccessMode::Read));
-        assert!(!has_resource_input(execute_install, "res:pkg", AccessMode::Write));
+        assert!(has_resource_input(
+            execute_install,
+            "res:tool:gh",
+            AccessMode::Write
+        ));
+        assert!(has_resource_input(
+            execute_resolve,
+            "res:tool:gh",
+            AccessMode::Read
+        ));
+        assert!(!has_resource_input(
+            execute_install,
+            "res:pkg",
+            AccessMode::Write
+        ));
         assert!(!has_resource_input(
             execute_resolve,
             "res:target",

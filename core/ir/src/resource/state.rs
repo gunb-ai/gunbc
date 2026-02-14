@@ -129,12 +129,8 @@ impl ExecMode {
     /// Use this instead of `parse()` when unknown modes should be a hard error
     /// (e.g. in CI, where a warning-and-proceed can silently run the wrong mode).
     pub fn parse_strict(s: &str) -> Result<Self, String> {
-        Self::parse(s).ok_or_else(|| {
-            format!(
-                "unknown mode '{}' (valid: verify, check, ensure, fix)",
-                s
-            )
-        })
+        Self::parse(s)
+            .ok_or_else(|| format!("unknown mode '{}' (valid: verify, check, ensure, fix)", s))
     }
 }
 
@@ -221,11 +217,9 @@ mod tests {
         assert_eq!(ExecMode::parse_strict("ensure"), Ok(ExecMode::Ensure));
         assert_eq!(ExecMode::parse_strict("fix"), Ok(ExecMode::Ensure));
         assert!(ExecMode::parse_strict("unknown").is_err());
-        assert!(
-            ExecMode::parse_strict("unknown")
-                .unwrap_err()
-                .contains("unknown mode")
-        );
+        assert!(ExecMode::parse_strict("unknown")
+            .unwrap_err()
+            .contains("unknown mode"));
     }
 
     #[test]

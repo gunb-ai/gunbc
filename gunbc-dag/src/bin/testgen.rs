@@ -17,7 +17,6 @@ use gunbc_exec::{
     execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
     BoundaryMocks, ExecutionMode,
 };
-use std::io::IsTerminal;
 use gunbc_ir::resource::{
     update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
     ResourceDef, ResourceError, ResourceIo, ResourceManifest,
@@ -26,6 +25,7 @@ use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
 use gunbc_lib_transport::TransportIo;
+use std::io::IsTerminal;
 // Force-link crates that register testgen targets.
 use gunbc_deps as _;
 use gunbc_gist as _;

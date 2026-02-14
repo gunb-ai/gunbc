@@ -6,10 +6,10 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::{build_docgen_graph, DOCGEN_READ_TARGETS};
 use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode};
-use std::io::IsTerminal;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
+use std::io::IsTerminal;
 use std::process;
 
 const AB_DOC_PATH: &str = "docs/ab-writing-workflows.md";

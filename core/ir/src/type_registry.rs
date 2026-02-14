@@ -677,17 +677,14 @@ mod tests {
         );
 
         let map_type = TypeId::from("Map<String,Int>");
+        assert_eq!(registry.base_type_name(&map_type), Some("Int".to_string()));
         assert_eq!(
-            registry.base_type_name(&map_type),
-            Some("Int".to_string())
+            registry.infer_cardinality(&map_type),
+            Some(Cardinality::ONE)
         );
-        assert_eq!(registry.infer_cardinality(&map_type), Some(Cardinality::ONE));
 
         let nested = TypeId::from("Optional<Map<String, Optional<Int>>>");
-        assert_eq!(
-            registry.base_type_name(&nested),
-            Some("Int".to_string())
-        );
+        assert_eq!(registry.base_type_name(&nested), Some("Int".to_string()));
         assert_eq!(
             registry.infer_cardinality(&nested),
             Some(Cardinality::ZERO_OR_ONE)

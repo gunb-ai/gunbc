@@ -122,25 +122,21 @@ impl BinaryArgs {
                             flag: "--mode".to_string(),
                         });
                     }
-                    resource_mode = Some(
-                        ExecMode::parse_strict(&argv[i]).map_err(|_| {
-                            ParseError::InvalidValue {
-                                flag: "--mode".to_string(),
-                                value: argv[i].clone(),
-                            }
-                        })?,
-                    );
+                    resource_mode = Some(ExecMode::parse_strict(&argv[i]).map_err(|_| {
+                        ParseError::InvalidValue {
+                            flag: "--mode".to_string(),
+                            value: argv[i].clone(),
+                        }
+                    })?);
                 }
                 _ if self.enable_mode && arg.starts_with("--mode=") => {
                     let mode_str = arg.trim_start_matches("--mode=");
-                    resource_mode = Some(
-                        ExecMode::parse_strict(mode_str).map_err(|_| {
-                            ParseError::InvalidValue {
-                                flag: "--mode".to_string(),
-                                value: mode_str.to_string(),
-                            }
-                        })?,
-                    );
+                    resource_mode = Some(ExecMode::parse_strict(mode_str).map_err(|_| {
+                        ParseError::InvalidValue {
+                            flag: "--mode".to_string(),
+                            value: mode_str.to_string(),
+                        }
+                    })?);
                 }
                 _ => {
                     // Check string params
@@ -151,9 +147,7 @@ impl BinaryArgs {
                         if arg == &long || short_match.as_deref() == Some(arg.as_str()) {
                             i += 1;
                             if i >= argv.len() {
-                                return Err(ParseError::MissingValue {
-                                    flag: arg.clone(),
-                                });
+                                return Err(ParseError::MissingValue { flag: arg.clone() });
                             }
                             string_values.insert(param.name.clone(), argv[i].clone());
                             matched = true;
@@ -161,9 +155,7 @@ impl BinaryArgs {
                         }
                     }
                     if !matched && arg.starts_with('-') {
-                        return Err(ParseError::UnknownFlag {
-                            flag: arg.clone(),
-                        });
+                        return Err(ParseError::UnknownFlag { flag: arg.clone() });
                     }
                 }
             }
@@ -215,9 +207,7 @@ mod tests {
 
     #[test]
     fn test_simple_dry_run() {
-        let parsed = BinaryArgs::new()
-            .parse(&argv(&["prog", "-n"]))
-            .unwrap();
+        let parsed = BinaryArgs::new().parse(&argv(&["prog", "-n"])).unwrap();
         assert!(parsed.dry_run);
         assert!(!parsed.help);
     }
@@ -232,18 +222,14 @@ mod tests {
 
     #[test]
     fn test_simple_help() {
-        let parsed = BinaryArgs::new()
-            .parse(&argv(&["prog", "--help"]))
-            .unwrap();
+        let parsed = BinaryArgs::new().parse(&argv(&["prog", "--help"])).unwrap();
         assert!(parsed.help);
         assert!(!parsed.dry_run);
     }
 
     #[test]
     fn test_simple_help_short() {
-        let parsed = BinaryArgs::new()
-            .parse(&argv(&["prog", "-h"]))
-            .unwrap();
+        let parsed = BinaryArgs::new().parse(&argv(&["prog", "-h"])).unwrap();
         assert!(parsed.help);
     }
 

@@ -95,11 +95,7 @@ pub fn execute_and_display<T: Executable + Clone + Send>(
             }
         }
         Err(e) => {
-            print_attention(
-                AttentionLevel::Error,
-                "Execution failed",
-                &e.to_string(),
-            );
+            print_attention(AttentionLevel::Error, "Execution failed", &e.to_string());
             process::exit(1);
         }
     }
@@ -152,8 +148,7 @@ fn run_plain<T: Executable + Clone + Send>(
             primary: &mut status_observer,
             secondary: &mut ci_observer,
         };
-        let log =
-            execute_with_progress_and_mode_and_inputs(dag, mode, &mut composed, input_mocks)?;
+        let log = execute_with_progress_and_mode_and_inputs(dag, mode, &mut composed, input_mocks)?;
 
         // Mask secrets before printing any outputs.
         // GitHub Actions masks are retroactive within a step, so masking

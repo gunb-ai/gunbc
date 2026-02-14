@@ -22,8 +22,8 @@ use gunbc_ir::render_ir::{PlainText, StructuredBlock, StructuredRenderer};
 use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::transport::{ShellRequest, TransportRequest};
 use gunbc_ir::PlainStructuredRenderer;
-use gunbc_ir::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::Value;
+use gunbc_ir::{CargoCommand, Subcommand, Warnings};
 use gunbc_testgen_registry::iter_dag_specs;
 use std::collections::HashMap;
 
@@ -669,9 +669,8 @@ fn execute_prepare_guardrail_check(
             .ok();
     }
 
-    let request = TransportRequest::Shell(
-        ShellRequest::new("bash").args(["-lc", GUARDRAIL_CHECK_COMMAND]),
-    );
+    let request =
+        TransportRequest::Shell(ShellRequest::new("bash").args(["-lc", GUARDRAIL_CHECK_COMMAND]));
 
     OutputMap::new()
         .request("request", request)

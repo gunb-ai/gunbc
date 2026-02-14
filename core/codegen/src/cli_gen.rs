@@ -208,8 +208,7 @@ impl CliEntrypoint {
                     .as_str()
                     .expect("port_name required")
                     .to_string();
-                let type_id =
-                    ParamType::from(entry["type_id"].as_str().expect("type_id required"));
+                let type_id = ParamType::from(entry["type_id"].as_str().expect("type_id required"));
                 let cardinality = match entry.get("cardinality").and_then(|v| v.as_str()) {
                     Some("ZERO_OR_MORE") => Cardinality::ZERO_OR_MORE,
                     Some("ONE_OR_MORE") => Cardinality::ONE_OR_MORE,

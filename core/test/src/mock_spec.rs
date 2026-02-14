@@ -176,7 +176,10 @@ impl MockSpec {
         port: impl Into<String>,
         sequence: Vec<Value>,
     ) -> Self {
-        assert!(!sequence.is_empty(), "sequence must not be empty; use boundary() for static mocks");
+        assert!(
+            !sequence.is_empty(),
+            "sequence must not be empty; use boundary() for static mocks"
+        );
         self.boundary_mocks.push(BoundaryMock {
             node: node.into(),
             port: port.into(),

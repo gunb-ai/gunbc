@@ -506,7 +506,9 @@ pub fn derive_resource_accesses<T>(
             if let Some(res_name) = port.name.0.strip_prefix("res:") {
                 let resource_id = ResourceId::new(normalize_resource_id(res_name));
                 match port.resource_access {
-                    Some(mode) => accesses.push(ResourceAccess::new(node.id.clone(), resource_id, mode)),
+                    Some(mode) => {
+                        accesses.push(ResourceAccess::new(node.id.clone(), resource_id, mode))
+                    }
                     None => errors.push(ResourceAccessError {
                         node_id: node.id.clone(),
                         port_name: port.name.0.clone(),

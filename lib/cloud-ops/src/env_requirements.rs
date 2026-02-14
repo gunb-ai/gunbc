@@ -7,10 +7,7 @@ use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind};
 /// GitHub Actions exports undefined secrets as empty strings, so plain
 /// `env::var(k).is_ok()` would treat those as "present".
 fn env_is_present(key: &str) -> bool {
-    std::env::var(key)
-        .ok()
-        .filter(|v| !v.is_empty())
-        .is_some()
+    std::env::var(key).ok().filter(|v| !v.is_empty()).is_some()
 }
 
 #[derive(Debug, Clone, Copy)]

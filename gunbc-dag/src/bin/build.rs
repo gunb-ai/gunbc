@@ -7,10 +7,10 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::build::build_build_graph;
 use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode};
-use std::io::IsTerminal;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
+use std::io::IsTerminal;
 use std::process;
 
 fn main() {

@@ -24,13 +24,13 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::build_ci_graph_with_mode;
 use gunbc_exec::{execute_and_display, BoundaryMocks, CiContext, ExecutionMode};
-use std::io::IsTerminal;
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use gunbc_ir::CODEGEN_STAMP_PATH;
 use gunbc_lib_transport::preflight::ensure_lint_upsert_with_ci;
 use gunbc_primitives::filename;
+use std::io::IsTerminal;
 use std::process;
 
 fn main() {

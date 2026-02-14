@@ -39,7 +39,12 @@ fn prepare_outputs(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, Box<dyn std::error::Error>> {
     let dag = build_ci_graph_with_mode(ExecMode::Ensure)?;
-    Ok(execute_single_node(&dag, node, inputs, ExecutionMode::Real)?)
+    Ok(execute_single_node(
+        &dag,
+        node,
+        inputs,
+        ExecutionMode::Real,
+    )?)
 }
 
 #[test]
@@ -72,13 +77,11 @@ fn ci_test_stage_skips_when_build_fails() {
 
     assert_eq!(outputs.get("skip").and_then(|v| v.as_bool()), Some(true));
     assert!(!outputs.contains_key("request"));
-    assert!(
-        outputs
-            .get("skip_reason")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .contains("build failure")
-    );
+    assert!(outputs
+        .get("skip_reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .contains("build failure"));
 }
 
 #[test]
@@ -91,7 +94,10 @@ fn ci_guardrail_stage_runs_disallowed_methods_and_resource_purity_checks() {
 
     assert_eq!(shell.command, "bash");
     assert_eq!(shell.args.first().map(String::as_str), Some("-lc"));
-    let command = shell.args.get(1).expect("bash -lc command should be present");
+    let command = shell
+        .args
+        .get(1)
+        .expect("bash -lc command should be present");
     assert!(command.contains("tools/check-disallowed-methods.sh"));
     assert!(command.contains("cargo test -p gunbc-dag --test resource_purity_checks"));
 }
@@ -106,13 +112,11 @@ fn ci_guardrail_stage_skips_when_upstream_fails() {
 
     assert_eq!(outputs.get("skip").and_then(|v| v.as_bool()), Some(true));
     assert!(!outputs.contains_key("request"));
-    assert!(
-        outputs
-            .get("skip_reason")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .contains("testgen failure")
-    );
+    assert!(outputs
+        .get("skip_reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .contains("testgen failure"));
 }
 
 #[test]
@@ -159,11 +163,9 @@ fn ci_verify_stage_skips_when_prep_fails() {
 
     assert_eq!(outputs.get("skip").and_then(|v| v.as_bool()), Some(true));
     assert!(!outputs.contains_key("request"));
-    assert!(
-        outputs
-            .get("skip_reason")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .contains("codegen failure")
-    );
+    assert!(outputs
+        .get("skip_reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .contains("codegen failure"));
 }

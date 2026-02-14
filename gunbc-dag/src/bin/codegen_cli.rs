@@ -38,8 +38,8 @@ use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
 use gunbc_lib_transport::TransportIo;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Write;
 use std::env;
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
@@ -418,12 +418,7 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     if let Some(checkout) = &config.checkout {
         yaml.push_str("      - name: Checkout\n        uses: actions/checkout@v4\n");
         if let Some(depth) = checkout.fetch_depth {
-            write!(
-                yaml,
-                "        with:\n          fetch-depth: {}\n",
-                depth
-            )
-            .unwrap();
+            write!(yaml, "        with:\n          fetch-depth: {}\n", depth).unwrap();
         }
         yaml.push('\n');
     }
@@ -456,12 +451,7 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     yaml.push_str("        env:\n");
     yaml.push_str("          CARGO_INCREMENTAL: \"1\"\n");
     for secret in &config.secrets_env {
-        writeln!(
-            yaml,
-            "          {}: ${{{{ secrets.{} }}}}",
-            secret, secret
-        )
-        .unwrap();
+        writeln!(yaml, "          {}: ${{{{ secrets.{} }}}}", secret, secret).unwrap();
     }
 
     yaml

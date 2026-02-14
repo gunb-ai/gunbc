@@ -10,12 +10,12 @@ use gunbc_exec::{
     execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
     BoundaryMocks, ExecutionMode,
 };
-use std::io::IsTerminal;
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
 use std::fmt::Write;
+use std::io::IsTerminal;
 use std::process;
 
 fn main() {

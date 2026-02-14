@@ -226,9 +226,7 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
                         }
                     }
                 } else if arg.starts_with('-') {
-                    return Err(ParseError::UnknownFlag {
-                        flag: arg.clone(),
-                    });
+                    return Err(ParseError::UnknownFlag { flag: arg.clone() });
                 }
             }
         }
