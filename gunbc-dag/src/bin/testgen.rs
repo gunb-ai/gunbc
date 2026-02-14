@@ -94,7 +94,10 @@ fn main() {
                 print_help();
                 return;
             }
-            _ => {}
+            other => {
+                eprintln!("error: unknown flag '{}'", other);
+                process::exit(1);
+            }
         }
         i += 1;
     }

@@ -235,35 +235,38 @@ pub fn validate_resource_wiring<T>(dag: &Dag<T>) -> Vec<UnwiredResource> {
 /// Returns unwired resources found at any nesting level.
 pub fn validate_resource_wiring_recursive<T>(dag: &Dag<T>) -> Vec<UnwiredResource> {
     let mut unwired = Vec::new();
-    validate_resource_wiring_recursive_impl(dag, &mut unwired);
+    validate_resource_wiring_recursive_impl(
+        dag,
+        &std::collections::HashSet::new(),
+        &mut unwired,
+    );
     unwired
 }
 
-fn validate_resource_wiring_recursive_impl<T>(dag: &Dag<T>, unwired: &mut Vec<UnwiredResource>) {
-    // Check top-level unwired resources
-    unwired.extend(validate_resource_wiring(dag));
+fn validate_resource_wiring_recursive_impl<T>(
+    dag: &Dag<T>,
+    inherited_resources: &std::collections::HashSet<String>,
+    unwired: &mut Vec<UnwiredResource>,
+) {
+    // Check unwired resources at this level, but suppress ports that are
+    // already exposed by ancestor SubDag inputs.
+    unwired.extend(
+        validate_resource_wiring(dag)
+            .into_iter()
+            .filter(|u| !inherited_resources.contains(&u.port.0)),
+    );
 
-    // Recurse into SubDag nodes, but skip inner entrypoints that are already
-    // exposed on the parent node (auto-inference bubbles them up, so they'll
-    // be caught at the outer level — reporting them again is a duplicate).
+    // Recurse into SubDag nodes, carrying forward any resource inputs
+    // exposed on the SubDag wrapper.
     for node in &dag.nodes {
         if let NodeBody::SubDag(ref inner) = node.body {
-            let parent_ports: std::collections::HashSet<&str> =
-                node.inputs.iter().map(|p| p.name.0.as_str()).collect();
-
-            // Only report inner unwired resources NOT already on the parent
-            let inner_unwired: Vec<UnwiredResource> = validate_resource_wiring(inner)
-                .into_iter()
-                .filter(|u| !parent_ports.contains(u.port.0.as_str()))
-                .collect();
-            unwired.extend(inner_unwired);
-
-            // Recurse into deeper SubDag nodes within this inner DAG
-            for inner_node in &inner.nodes {
-                if let NodeBody::SubDag(ref deeper) = inner_node.body {
-                    validate_resource_wiring_recursive_impl(deeper, unwired);
+            let mut next_inherited = inherited_resources.clone();
+            for port in &node.inputs {
+                if port.name.0.starts_with("res:") {
+                    next_inherited.insert(port.name.0.clone());
                 }
             }
+            validate_resource_wiring_recursive_impl(inner, &next_inherited, unwired);
         }
     }
 }
@@ -895,6 +898,34 @@ mod tests {
         // res:fs is already exposed via auto-inference on the parent, so it's
         // deduplicated to avoid double-reporting.
         assert_eq!(unwired.len(), 1);
+        assert_eq!(unwired[0].port.0, "res:fs");
+    }
+
+    #[test]
+    fn test_recursive_resource_wiring_deep_nested_subdag_dedupes_ancestor_resource() {
+        // Deepest DAG has a boundary-style node requiring res:fs.
+        let mut deepest: Dag<()> = Dag::new();
+        deepest.add_node(Node::opaque(
+            "execute",
+            vec![
+                port("request", "TransportRequest"),
+                resource("fs", "FilesystemHandle", AccessMode::Read),
+            ],
+            vec![port("response", "TransportResponse")],
+            (),
+        ));
+
+        // Middle DAG wraps deepest as "body" and leaves res:fs as entrypoint.
+        let mut middle: Dag<()> = Dag::new();
+        middle.add_node(Node::subdag("body", deepest));
+
+        // Top DAG wraps middle. Auto-inference bubbles res:fs up to wrapper.
+        let mut top: Dag<()> = Dag::new();
+        top.add_node(Node::subdag("wrapper", middle));
+
+        let unwired = validate_resource_wiring_recursive(&top);
+        // Only the outermost wrapper res:fs should be reported once.
+        assert_eq!(unwired.len(), 1, "unexpected unwired: {:?}", unwired);
         assert_eq!(unwired[0].port.0, "res:fs");
     }
 

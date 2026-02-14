@@ -83,7 +83,6 @@ impl Executable for GitHubCredentialGraphOp {
 
 /// Build a minimal GitHub credential lifecycle graph.
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "github-credential-graph",
     builder = "build_github_credential_graph()"
 )]

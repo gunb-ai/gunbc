@@ -17,7 +17,6 @@ fn mock_net_handle() -> Value {
 
 /// Mock spec for GCP GitHub Actions WIF + Secret Manager.
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "gcp-wif-secret-github",
     builder = "crate::graph::build_gcp_secret_manager_credential_graph_github()"
 )]
@@ -300,7 +299,6 @@ pub fn gcp_local_mock_spec() -> MockSpec {
 
 /// Mock spec for GCP GitHub Actions WIF + Secret Manager upsert.
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "gcp-wif-secret-upsert-github",
     builder = "crate::graph::build_gcp_secret_manager_upsert_graph_github()"
 )]

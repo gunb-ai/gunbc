@@ -65,7 +65,6 @@ pub fn build_cloud_secret_manager_credential_graph_from_config(
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "cloud-secret-credential-gcp-github",
     builder = "build_cloud_secret_manager_credential_graph_gcp_github()"
 )]
@@ -74,7 +73,6 @@ pub fn build_cloud_secret_manager_credential_graph_gcp_github() -> Dag<CloudSecr
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "cloud-secret-credential-gcp-metadata",
     builder = "build_cloud_secret_manager_credential_graph_gcp_metadata()"
 )]
@@ -84,7 +82,6 @@ pub fn build_cloud_secret_manager_credential_graph_gcp_metadata() -> Dag<CloudSe
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "cloud-secret-credential-gcp-local",
     builder = "build_cloud_secret_manager_credential_graph_gcp_local()"
 )]
@@ -93,7 +90,6 @@ pub fn build_cloud_secret_manager_credential_graph_gcp_local() -> Dag<CloudSecre
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "cloud-secret-credential-aws-stub",
     builder = "build_cloud_secret_manager_credential_graph_aws_stub()"
 )]
@@ -102,7 +98,6 @@ pub fn build_cloud_secret_manager_credential_graph_aws_stub() -> Dag<CloudSecret
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "cloud-secret-credential-azure-stub",
     builder = "build_cloud_secret_manager_credential_graph_azure_stub()"
 )]
@@ -128,7 +123,6 @@ pub fn build_cloud_secret_manager_upsert_graph_from_config(
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "cloud-secret-upsert-gcp-github",
     builder = "build_cloud_secret_manager_upsert_graph_gcp_github()"
 )]
@@ -137,7 +131,6 @@ pub fn build_cloud_secret_manager_upsert_graph_gcp_github() -> Dag<CloudSecretMa
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "cloud-secret-upsert-gcp-metadata",
     builder = "build_cloud_secret_manager_upsert_graph_gcp_metadata()"
 )]
@@ -146,7 +139,6 @@ pub fn build_cloud_secret_manager_upsert_graph_gcp_metadata() -> Dag<CloudSecret
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "cloud-secret-upsert-gcp-local",
     builder = "build_cloud_secret_manager_upsert_graph_gcp_local()"
 )]
@@ -155,7 +147,6 @@ pub fn build_cloud_secret_manager_upsert_graph_gcp_local() -> Dag<CloudSecretMan
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "cloud-secret-upsert-aws-stub",
     builder = "build_cloud_secret_manager_upsert_graph_aws_stub()"
 )]
@@ -164,7 +155,6 @@ pub fn build_cloud_secret_manager_upsert_graph_aws_stub() -> Dag<CloudSecretMana
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "cloud-secret-upsert-azure-stub",
     builder = "build_cloud_secret_manager_upsert_graph_azure_stub()"
 )]

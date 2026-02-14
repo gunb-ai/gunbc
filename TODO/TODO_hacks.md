@@ -62,23 +62,30 @@ wrapper-derived cardinalities but fails loudly if it occurs.
 
 ---
 
-## 3. Map<K,V> resolves to identity; key/value types not enforced
+## ~~3. Map<K,V> resolves to identity; key/value types not enforced~~ RESOLVED (2026-02-13)
 
-**Where**: `core/ir/src/type_registry.rs`, `core/ir/src/value.rs`
+**Where**: `core/ir/src/type_registry.rs`, `core/ir/src/type_lib.rs`,
+`core/ir/src/contract.rs`, `core/ir/src/type_op.rs`
 
-**What happens**: `Map<K,V>` parses and resolves to an identity DAG when not
-explicitly registered. Key/value types are only syntax-checked, and runtime
-`Value::Map` uses `BTreeMap<String, Value>` with no enforcement of `K`/`V`.
+**What changed**:
+- Added `WrapperKind::Map` to the type system (`type_op.rs`).
+- Created `type_lib::map(value_type)` using the SubDag pattern (same as
+  `list()`, `optional()`, etc.) — value type DAG is included as a SubDag
+  node and validated per-element.
+- `type_registry.rs` now resolves `Map<K,V>` through `type_lib::map(value_dag)`
+  instead of `type_lib::identity()`. Both `TypeExpr::Map` and
+  `TypeExpr::Wrapper(WrapperKind::Map, ...)` resolve correctly.
+- `contract.rs` handles `WrapperKind::Map` uniformly: cardinality is `ONE`,
+  witness generation covers count=0 (empty map), count=1 (single entry),
+  and count>1 (multi-entry map with keyed witnesses).
+- `TypeContract::from_type_dag()` recurses into Map SubDags to extract the
+  inner base type.
+- All 6 `WrapperKind` variants are now handled exhaustively in every match
+  across the codebase (cardinality, witness generation, registry resolution,
+  rendering).
 
-**Why it's a hack**: The type expression conveys more structure than the
-runtime enforces. Invalid or non-string keys can slip through silently.
-
-**Suggested fix**: Enforce `K == String`, add a map type DAG that validates
-value types, and reject/diagnose unknown `Map<...>` types. (Related to the
-Map under-specification note in `TODO_hacks`.)
-
-**Update (2026-02-07)**: Type expression validation now rejects non-`String`
-map keys. Value typing is still not enforced.
+**Result**: Map typing is now uniform with all other container types. Value
+types are enforced through the SubDag validation chain.
 
 ---
 
@@ -367,21 +374,25 @@ actual error automatically.
 
 ---
 
-## 19. Unknown CLI flags are silently ignored
+## ~~19. Unknown CLI flags are silently ignored~~ RESOLVED (2026-02-13)
 
-**Where**: `core/cli/src/lib.rs` (line 164, 216), all `gunbc-dag/src/bin/*.rs`
+**Where**: `core/cli/src/lib.rs`, all `gunbc-dag/src/bin/*.rs`
 
-**What happens**: The schema-driven parser and all manual CLI parsers use a
-`_ => {}` catch-all for unrecognized flags. Typos like `--extensinos` become
-silent no-ops.
+**What changed**:
+- Added `ParseError::UnknownFlag` variant to the schema-driven parser.
+  Any arg starting with `-` that doesn't match a known flag now returns
+  `ParseError::UnknownFlag { flag }`. Generated CLIs inherit this via
+  `gunbc_cli::parse()`.
+- All 8 manual binary parsers (codegen, makegen, testgen, bootstrap,
+  pragma, build, docgen, ci) now error on unknown flags instead of
+  silently ignoring them.
+- `ci.rs` uses a declarative style (`args.iter().any()`), so unknown-flag
+  checking was added as an explicit post-parse validation loop.
+- Entrypoint port-name matching loops (`match port_name.0.as_str()`)
+  in makegen/testgen/bootstrap/pragma are NOT flag parsing and remain
+  unchanged — they correctly skip unknown entrypoint ports.
 
-**Why it's a hack**: Silent flag ignoring is the #1 cause of "why isn't my
-flag working?" confusion, especially in CI where output is hard to inspect.
-
-**Suggested fix**: Add a strict mode (especially for CI) that errors on unknown
-flags, keeping permissive behavior as a compatibility option.
-
-**Added**: 2026-02-13 (reconciliation)
+**Result**: Unknown flags are now a hard error everywhere. No escape hatches.
 
 ---
 

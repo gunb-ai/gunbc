@@ -30,7 +30,6 @@ fn mock_credential() -> Value {
 
 /// Mock spec for AWS Secrets Manager stub graph.
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "aws-secrets-stub",
     builder = "crate::graph::build_aws_secrets_manager_credential_graph()"
 )]

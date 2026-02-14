@@ -129,6 +129,8 @@ pub enum ParseError {
     MissingValue { flag: String },
     /// An integer flag received a non-integer value.
     InvalidInt { flag: String, value: String },
+    /// An unrecognized flag was provided.
+    UnknownFlag { flag: String },
 }
 
 impl std::fmt::Display for ParseError {
@@ -147,6 +149,9 @@ impl std::fmt::Display for ParseError {
             ParseError::InvalidInt { flag, value } => {
                 write!(f, "flag '{}' expects an integer, got '{}'", flag, value)
             }
+            ParseError::UnknownFlag { flag } => {
+                write!(f, "unknown flag '{}'", flag)
+            }
         }
     }
 }
@@ -161,7 +166,7 @@ impl std::error::Error for ParseError {}
 /// - Repeatable (`cardinality.allows_many()`): push to `Value::List`
 /// - Defaults applied for missing optional params
 /// - `--dry-run` / `-n` and `--help` / `-h` are built-in
-/// - Unknown flags are silently ignored (matches generated behavior)
+/// - Unknown flags return `ParseError::UnknownFlag`
 ///
 /// `argv` should include the program name at index 0 (it is skipped).
 pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseError> {
@@ -212,8 +217,11 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
                             scalars.insert(idx, Some(argv[i].clone()));
                         }
                     }
+                } else if arg.starts_with('-') {
+                    return Err(ParseError::UnknownFlag {
+                        flag: arg.clone(),
+                    });
                 }
-                // Unknown flags silently ignored
             }
         }
         i += 1;
@@ -390,14 +398,19 @@ mod tests {
     }
 
     #[test]
-    fn test_unknown_flags_ignored() {
+    fn test_unknown_flags_error() {
         let schema = vec![CliParam::new("repo_path", "String")];
         let result = parse(
             &argv(&["prog", "--unknown", "val", "--repo-path", "my-repo"]),
             &schema,
-        )
-        .unwrap();
-        assert_eq!(result.values["repo_path"], Value::Str("my-repo".into()));
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            ParseError::UnknownFlag {
+                flag: "--unknown".to_string()
+            }
+        );
     }
 
     #[test]

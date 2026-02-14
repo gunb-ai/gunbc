@@ -16,7 +16,6 @@ use gunbc_test::{InputConstraint, MockSpec, OutputMatcher};
 /// The check response indicates tool exists, so install is skipped.
 /// The resolve response returns a successful run result.
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "clippy",
     builder = "crate::build_clippy_graph_lint_all()"
 )]

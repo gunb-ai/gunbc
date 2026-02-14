@@ -52,8 +52,7 @@ pub use display::{
 pub use env::{single_output as env_single_output, EnvNode};
 pub use error::{ExecError, IntoExecResult, ResultExt};
 pub use execute::{
-    execute, execute_single_node, execute_with_all, execute_with_ci, execute_with_mode,
-    execute_with_mode_and_ci, execute_with_mode_and_ci_and_inputs, execute_with_mode_and_inputs,
+    execute, execute_single_node, execute_with_mode, execute_with_mode_and_inputs,
     execute_with_progress, execute_with_progress_and_mode,
     execute_with_progress_and_mode_and_inputs, ExecutionLog, ExecutionMode, LogEntry,
 };
@@ -68,8 +67,9 @@ pub use helpers::{
 pub use intercept::{BoundaryMock, BoundaryMocks};
 pub use lower::{lower, LoopInfo, LowerError, LowerResult};
 pub use progress::{
-    DagPhase, DagProgress, DagSnapshot, EdgeProgress, EdgeState, FieldKind, FieldSummary,
-    NodeProgress, NodeState, OutputSummary, ProgressEvent, ProgressObserver, RecordingObserver,
+    ComposedObserver, DagPhase, DagProgress, DagSnapshot, EdgeProgress, EdgeState, FieldKind,
+    FieldSummary, NodeProgress, NodeState, OutputSummary, ProgressEvent, ProgressObserver,
+    RecordingObserver,
 };
 pub use render::{Animation, AnimationMode, RenderMode};
 pub use terminal::{Shell, TerminalProfile};

@@ -27,7 +27,7 @@ use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use gunbc_ir::CODEGEN_STAMP_PATH;
-use gunbc_lib_transport::preflight::ensure_lint_upsert;
+use gunbc_lib_transport::preflight::ensure_lint_upsert_with_ci;
 use gunbc_primitives::filename;
 use std::env;
 use std::process;
@@ -45,7 +45,24 @@ fn main() {
         return;
     }
 
-    if let Err(err) = ensure_lint_upsert() {
+    // Reject unknown flags
+    for arg in args.iter().skip(1) {
+        if arg.starts_with('-')
+            && !matches!(
+                arg.as_str(),
+                "-n" | "--dry-run" | "-h" | "--help"
+            )
+            && !arg.starts_with("--mode=")
+            && arg != "--mode"
+        {
+            eprintln!("error: unknown flag '{}'", arg);
+            process::exit(1);
+        }
+    }
+
+    let mut ci_preflight = CiContext::detect();
+    if let Err(err) = ensure_lint_upsert_with_ci(Some(&mut ci_preflight)) {
+        ci_preflight.error(&format!("preflight failed: {}", err), None);
         eprintln!("preflight failed: {}", err);
         process::exit(1);
     }

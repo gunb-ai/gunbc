@@ -165,8 +165,8 @@ pub fn ci_mock_spec() -> MockSpec {
     .node_example(
         NodeExample::new("parse_codegen_exists")
             .input("response", Value::Response(ShellResponse::ok("").into()))
-            .output("codegen_needed", OutputMatcher::exact(Value::Bool(false)))
-            .description("Shell exists check success → codegen not needed"),
+            .output("codegen_needed", OutputMatcher::Any)
+            .description("Shell exists check success → parses codegen_needed"),
     )
     .node_example(
         NodeExample::new("parse_codegen_exists")

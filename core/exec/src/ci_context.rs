@@ -33,12 +33,16 @@
 //! ci.error("Test failed", Some(("src/lib.rs", 42)));
 //! ```
 
+use crate::execute::LogEntry;
+use crate::progress::{DagSnapshot, OutputSummary, ProgressObserver};
 use gunbc_ir::transport::ci::{
     detect_provider, detect_provider_strict, AnnotationLevel, CiProvider, FileLocation,
     WorkflowCommand,
 };
+use gunbc_ir::{NodeId, Value};
 use std::collections::HashMap;
 use std::io::{self, Write};
+use std::time::Duration;
 
 /// Runtime CI context for DAG execution.
 ///
@@ -253,6 +257,66 @@ impl CiContext {
         let result = f(self);
         self.end_group();
         result
+    }
+}
+
+impl ProgressObserver for CiContext {
+    fn on_dag_start(&mut self, _snapshot: &DagSnapshot) {
+        // No-op: CiContext doesn't need the snapshot
+    }
+
+    fn on_node_start(&mut self, node_id: &NodeId) {
+        if node_id.0 != "report" {
+            self.start_group(&node_id.0, false);
+        }
+    }
+
+    fn on_node_complete(&mut self, node_id: &NodeId, _summary: OutputSummary) {
+        if node_id.0 != "report" {
+            self.end_group();
+        }
+    }
+
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+        self.error(&format!("Node '{}' failed: {}", node_id.0, error), None);
+        if node_id.0 != "report" {
+            self.end_group();
+        }
+    }
+
+    fn on_node_skipped(&mut self, _node_id: &NodeId) {
+        // No-op: no group was opened for skipped nodes
+    }
+
+    fn on_node_intercepted(&mut self, node_id: &NodeId, _summary: OutputSummary) {
+        if node_id.0 != "report" {
+            self.end_group();
+        }
+    }
+
+    fn on_dag_complete(&mut self, _elapsed: Duration) {
+        // No-op: CiContext doesn't need DAG completion events
+    }
+
+    fn on_secret_output(&mut self, _node_id: &NodeId, secret_value: &str) {
+        self.mask(secret_value);
+    }
+
+    fn on_failure_diagnostics(&mut self, _node_id: &NodeId, inputs: &HashMap<String, Value>) {
+        println!("  inputs at failure:");
+        for (port, value) in inputs {
+            crate::display::print_value(port, value);
+        }
+    }
+
+    fn on_boundary_output(&mut self, _node_id: &NodeId, entry: &LogEntry) {
+        for (port, value) in &entry.outputs {
+            crate::display::print_value(port, value);
+        }
+    }
+
+    fn requires_sequential(&self) -> bool {
+        true
     }
 }
 

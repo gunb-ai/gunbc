@@ -1,28 +1,27 @@
 //! Shared execute-and-display logic for all CLI tools.
 //!
-//! Encapsulates the two display paths — progress visualization and classic
-//! text output — in a single generic function. All CLI tools (handwritten
-//! and code-generated) call [`execute_and_display`] instead of duplicating
-//! the progress/classic branching logic.
+//! Encapsulates the two display paths in a single generic function. All CLI
+//! tools (handwritten and code-generated) call [`execute_and_display`] instead
+//! of duplicating the display branching logic.
 //!
 //! # Architecture
 //!
 //! ```text
 //! TerminalProfile::detect() →
-//!   is_ci             → execute_with_mode_and_ci_and_inputs → grouped CI logs
-//!   supports_progress → lower → layout → snapshot → execute → live rendering
-//!   non_tty           → observer-driven status lines + final summary
-//!   fallback          → execute_with_mode_and_inputs → classic log entries
+//!   supports_progress → live DAG animation via SharedProgressObserver
+//!   else              → observer-driven status lines + boundary outputs
+//!                       (CI environments compose CiGroupObserver for workflow annotations)
 //! ```
 
 use crate::frame_build::{build_frame, format_duration};
 use crate::frame_write::FrameWriter;
 use crate::intercept::BoundaryMocks;
-use crate::progress::{DagProgress, DagSnapshot, OutputSummary, ProgressObserver};
+use crate::progress::{
+    ComposedObserver, DagProgress, DagSnapshot, OutputSummary, ProgressObserver,
+};
 use crate::render::{Animation, RenderMode};
 use crate::terminal::TerminalProfile;
 use crate::{
-    execute_with_mode_and_ci_and_inputs, execute_with_mode_and_inputs,
     execute_with_progress_and_mode_and_inputs, lower, topo_sort, ExecError, Executable,
     ExecutionMode, NodeState,
 };
@@ -119,79 +118,98 @@ pub fn execute_and_display_with_result<T: Executable + Clone + Send>(
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<DisplayResult, ExecError> {
-    if profile.is_ci {
-        run_with_ci(dag, mode, success_port, input_mocks)
-    } else if profile.supports_progress {
+    if profile.supports_progress {
         run_with_progress(dag, mode, profile, success_port, input_mocks)
-    } else if !profile.is_tty {
-        run_non_tty_summary(dag, mode, success_port, input_mocks)
     } else {
-        run_classic(dag, mode, success_port, input_mocks)
+        run_plain(dag, mode, profile, success_port, input_mocks)
     }
 }
 
-/// Classic execution: plain text log output.
-fn run_classic<T: Executable + Clone + Send>(
+/// Plain execution: observer-driven status lines + boundary outputs.
+///
+/// Unified path for all non-interactive environments. When in CI, composes
+/// the status observer with a `CiContext` observer for workflow commands
+/// (groups, error annotations, secret masking).
+fn run_plain<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
-    success_port: Option<&str>,
-    input_mocks: Option<&BoundaryMocks>,
-) -> Result<DisplayResult, ExecError> {
-    let log = execute_with_mode_and_inputs(dag, mode, input_mocks)?;
-
-    for entry in &log.entries {
-        let marker = if entry.was_intercepted {
-            " [DRY-RUN]"
-        } else {
-            ""
-        };
-        println!("[{}]{}", entry.node_id, marker);
-
-        for (port, value) in &entry.outputs {
-            print_value(port, value);
-        }
-    }
-
-    Ok(DisplayResult {
-        should_fail: success_port_failed(&log, success_port),
-        log,
-    })
-}
-
-/// CI execution: provider-aware grouped output via [`crate::CiContext`].
-fn run_with_ci<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    success_port: Option<&str>,
-    input_mocks: Option<&BoundaryMocks>,
-) -> Result<DisplayResult, ExecError> {
-    let mut ci = crate::CiContext::detect();
-    let log = execute_with_mode_and_ci_and_inputs(dag, mode, &mut ci, input_mocks)?;
-    Ok(DisplayResult {
-        should_fail: success_port_failed(&log, success_port),
-        log,
-    })
-}
-
-/// Non-TTY execution: concise progress/status lines instead of per-node dumps.
-fn run_non_tty_summary<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
+    profile: &TerminalProfile,
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<DisplayResult, ExecError> {
     let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {}", e)))?;
     let boundaries = detect_boundaries(&flat.dag);
 
-    let mut observer = NonTtyProgressObserver::default();
-    let log = execute_with_progress_and_mode_and_inputs(dag, mode, &mut observer, input_mocks)?;
+    let mut status_observer = NonTtyProgressObserver::default();
+
+    let log = if profile.is_ci {
+        // CI groups require sequential execution (groups must nest properly).
+        // The parallel executor already respects GUNBC_EXEC_MAX_CONCURRENCY.
+        let _guard = CiConcurrencyGuard::new();
+
+        let mut ci_observer = crate::CiContext::detect();
+        let mut composed = ComposedObserver {
+            primary: &mut status_observer,
+            secondary: &mut ci_observer,
+        };
+        let log =
+            execute_with_progress_and_mode_and_inputs(dag, mode, &mut composed, input_mocks)?;
+
+        // Mask secrets before printing any outputs.
+        // GitHub Actions masks are retroactive within a step, so masking
+        // after execution but before boundary output printing is safe.
+        mask_secrets_in_log(&mut ci_observer, &log);
+
+        log
+    } else {
+        execute_with_progress_and_mode_and_inputs(dag, mode, &mut status_observer, input_mocks)?
+    };
 
     print_boundary_outputs(&log, &boundaries);
 
     Ok(DisplayResult {
-        should_fail: observer.failed_count() > 0 || success_port_failed(&log, success_port),
+        should_fail: status_observer.failed_count() > 0 || success_port_failed(&log, success_port),
         log,
     })
+}
+
+/// Mask secret values from an execution log via CI workflow commands.
+///
+/// Iterates through all log entries and emits `::add-mask::` for each
+/// secret value so CI runners redact them from all subsequent output.
+fn mask_secrets_in_log(ci: &mut crate::CiContext, log: &crate::ExecutionLog) {
+    for entry in &log.entries {
+        for value in entry.outputs.values() {
+            if let Value::Secret(s) = value {
+                ci.mask(s.expose());
+            }
+        }
+    }
+}
+
+/// RAII guard that sets `GUNBC_EXEC_MAX_CONCURRENCY=1` for CI sequential execution.
+///
+/// CI groups require sequential execution (groups must nest properly).
+/// Restores the previous value (or removes the var) on drop.
+struct CiConcurrencyGuard {
+    previous: Option<String>,
+}
+
+impl CiConcurrencyGuard {
+    fn new() -> Self {
+        let previous = std::env::var("GUNBC_EXEC_MAX_CONCURRENCY").ok();
+        std::env::set_var("GUNBC_EXEC_MAX_CONCURRENCY", "1");
+        Self { previous }
+    }
+}
+
+impl Drop for CiConcurrencyGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(val) => std::env::set_var("GUNBC_EXEC_MAX_CONCURRENCY", val),
+            None => std::env::remove_var("GUNBC_EXEC_MAX_CONCURRENCY"),
+        }
+    }
 }
 
 /// Progress-display execution: live DAG visualization driven by observer events.
@@ -446,7 +464,15 @@ impl ProgressObserver for NonTtyProgressObserver {
 
     fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
         self.set_state(node_id, NonTtyNodeState::Failed);
-        eprintln!("✗ {}: {}", self.label_for(node_id), error);
+        let label = self.label_for(node_id).to_string();
+        eprintln!("✗ {}: {}", label, error);
+        // Print boxed failure detail so failures are visually prominent
+        eprintln!();
+        eprintln!("  ┌─ [ERROR] {}", label);
+        for line in error.lines() {
+            eprintln!("  │ {}", line);
+        }
+        eprintln!("  └─");
     }
 
     fn on_node_skipped(&mut self, node_id: &NodeId) {

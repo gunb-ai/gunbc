@@ -264,72 +264,6 @@ pub fn execute_with_mode_and_inputs<T: Executable + Clone + Send>(
         &boundaries,
         &effective_mode,
         None,
-        None,
-        effective_mocks,
-        &lowered.loops,
-    )
-}
-
-/// Execute a DAG with CI context for workflow command emission.
-///
-/// When a CI context is provided, each node execution is wrapped in
-/// collapsible groups, and errors/warnings are emitted as annotations.
-/// The CI context auto-detects the provider (GitHub Actions, GitLab CI, etc.).
-///
-/// # Example
-///
-/// ```ignore
-/// use gunbc_exec::{execute_with_ci, CiContext};
-///
-/// let mut ci = CiContext::detect();
-/// let log = execute_with_ci(&dag, &mut ci)?;
-/// ```
-pub fn execute_with_ci<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    ci: &mut crate::CiContext,
-) -> Result<ExecutionLog, ExecError> {
-    execute_with_mode_and_ci(dag, ExecutionMode::Real, ci)
-}
-
-/// Execute a DAG with both execution mode and CI context.
-pub fn execute_with_mode_and_ci<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    ci: &mut crate::CiContext,
-) -> Result<ExecutionLog, ExecError> {
-    execute_with_mode_and_ci_and_inputs(dag, mode, ci, None)
-}
-
-/// Execute a DAG with execution mode, CI context, and optional input mocks.
-///
-/// Input mocks are injected into entrypoint ports after lowering/remapping,
-/// matching the behavior of [`execute_with_mode_and_inputs`].
-pub fn execute_with_mode_and_ci_and_inputs<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    ci: &mut crate::CiContext,
-    input_mocks: Option<&BoundaryMocks>,
-) -> Result<ExecutionLog, ExecError> {
-    // Lower sub-DAGs first
-    let lowered = lower(dag).exec_context("lowering failed")?;
-
-    // Remap input mock keys from original SubDag IDs to lowered inner IDs
-    let remapped_mocks = input_mocks.map(|mocks| remap_input_mocks(mocks, &lowered.input_remaps));
-    let effective_mocks = remapped_mocks.as_ref().or(input_mocks);
-
-    // Remap DryRun/Simulate mode input mocks too
-    let effective_mode = remap_mode_inputs(mode, &lowered.input_remaps);
-
-    // Detect boundaries
-    let boundaries = detect_boundaries(&lowered.dag);
-
-    // Execute the flat DAG with CI context
-    execute_flat(
-        &lowered.dag,
-        &boundaries,
-        &effective_mode,
-        Some(ci),
-        None,
         effective_mocks,
         &lowered.loops,
     )
@@ -368,7 +302,6 @@ pub fn execute_with_progress_and_mode<T: Executable + Clone + Send>(
         &lowered.dag,
         &boundaries,
         &mode,
-        None,
         Some(observer),
         None,
         &lowered.loops,
@@ -391,29 +324,8 @@ pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone + Send>(
         &lowered.dag,
         &boundaries,
         &effective_mode,
-        None,
         Some(observer),
         effective_mocks,
-        &lowered.loops,
-    )
-}
-
-/// Execute a DAG with execution mode, CI context, and progress observer.
-pub fn execute_with_all<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    ci: &mut crate::CiContext,
-    observer: &mut dyn ProgressObserver,
-) -> Result<ExecutionLog, ExecError> {
-    let lowered = lower(dag).exec_context("lowering failed")?;
-    let boundaries = detect_boundaries(&lowered.dag);
-    execute_flat(
-        &lowered.dag,
-        &boundaries,
-        &mode,
-        Some(ci),
-        Some(observer),
-        None,
         &lowered.loops,
     )
 }
@@ -519,12 +431,11 @@ pub fn simulate<T: Executable + Clone + Send>(
     // Get topological order
     let order = topo_sort(&lowered.dag);
 
-    // Execute with simulation tracking (no CI context in simulation)
+    // Execute with simulation tracking
     let log = execute_flat(
         &lowered.dag,
         &boundaries,
         &ExecutionMode::Simulate(config.clone()),
-        None,
         None,
         None,
         &lowered.loops,
@@ -610,29 +521,43 @@ fn remap_mode_inputs(
 }
 
 /// Execute a flat (fully lowered) DAG.
+///
+/// When the observer requires sequential execution (e.g. `CiContext` for proper
+/// group nesting), routes to [`execute_flat_sequential`]. Otherwise uses the
+/// parallel executor.
 fn execute_flat<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     boundaries: &BoundaryInfo,
     mode: &ExecutionMode,
-    ci: Option<&mut crate::CiContext>,
     observer: Option<&mut dyn ProgressObserver>,
     input_mocks: Option<&BoundaryMocks>,
     loops: &[LoopInfo<T>],
 ) -> Result<ExecutionLog, ExecError> {
-    if ci.is_none() {
-        return execute_flat_parallel(dag, boundaries, mode, observer, input_mocks, loops);
+    let sequential = observer.as_ref().is_some_and(|o| o.requires_sequential());
+    if sequential {
+        execute_flat_sequential(
+            dag,
+            boundaries,
+            mode,
+            observer.unwrap(),
+            input_mocks,
+            loops,
+        )
+    } else {
+        execute_flat_parallel(dag, boundaries, mode, observer, input_mocks, loops)
     }
-
-    execute_flat_sequential(dag, boundaries, mode, ci, observer, input_mocks, loops)
 }
 
-/// Execute a flat DAG sequentially.
+/// Execute a flat DAG sequentially with a unified observer.
+///
+/// Used when the observer requires sequential execution (e.g. `CiContext`
+/// needs proper group nesting). All CI-specific behaviors (groups, annotations,
+/// secret masking, boundary output) are handled through the observer trait.
 fn execute_flat_sequential<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     boundaries: &BoundaryInfo,
     mode: &ExecutionMode,
-    ci: Option<&mut crate::CiContext>,
-    observer: Option<&mut dyn ProgressObserver>,
+    observer: &mut dyn ProgressObserver,
     input_mocks: Option<&BoundaryMocks>,
     loops: &[LoopInfo<T>],
 ) -> Result<ExecutionLog, ExecError> {
@@ -653,16 +578,10 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             .push(edge);
     }
 
-    // Wrap CI context and observer in cells for mutable access in the loop
-    let mut ci_ctx = ci;
-    let mut obs = observer;
-
     // Build snapshot and fire on_dag_start
     let dag_start = Instant::now();
-    if let Some(ref mut o) = obs {
-        let snapshot = DagSnapshot::from_dag(dag, &order, boundaries);
-        o.on_dag_start(&snapshot);
-    }
+    let snapshot = DagSnapshot::from_dag(dag, &order, boundaries);
+    observer.on_dag_start(&snapshot);
 
     for node_id in &order {
         let node = node_map
@@ -670,16 +589,10 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
 
         // Gather inputs from upstream edges (cardinality-aware).
-        // Tool handles flow through edges like any other value.
-        //
-        // List ports (cardinality allows_many) collect fan-in values into
-        // Value::List in canonical edge order. Scalar ports take a single
-        // value (fan-in is rejected at build time).
         let mut inputs: HashMap<String, Value> = HashMap::new();
         let mut fan_in: HashMap<String, Vec<Value>> = HashMap::new();
         let mut scalar_sources: HashMap<String, String> = HashMap::new();
 
-        // Build a lookup for list-typed input ports and their cardinalities
         let list_ports: HashMap<&str, Cardinality> = node
             .inputs
             .iter()
@@ -727,8 +640,6 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         }
 
         // Inject input mocks for dangling input ports (DAG entry points).
-        // Optional input mocks can be provided directly (real mode) or via
-        // DryRun/Simulate boundary mocks.
         let mut inject_inputs = |mocks: &BoundaryMocks| {
             for port in &node.inputs {
                 if !inputs.contains_key(&port.name.0) {
@@ -739,7 +650,6 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             }
         };
 
-        // Prefer explicit input mocks if provided.
         if let Some(mocks) = input_mocks {
             inject_inputs(mocks);
         }
@@ -754,7 +664,6 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         }
 
         // Default list inputs to empty when allowed and still missing.
-        // This makes list-typed ports explicit even with zero fan-in.
         for port in &node.inputs {
             if port.cardinality.is_list()
                 && port.cardinality.allows_empty()
@@ -765,13 +674,11 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         }
 
         // Check guards BEFORE emitting on_node_start — skipped nodes never
-        // enter the "running" state. This prevents misleading transitions in
-        // observers and avoids flicker in progress displays.
+        // enter the "running" state.
         let skip = should_skip_node(node, &inputs);
 
-        // CI group and use_group are tracked at the loop iteration level
-        // because end_group must be called after outputs are logged.
-        let use_group = !skip && node_id.0 != "report";
+        // Track node timing for summary computation (set in the else branch).
+        let mut node_elapsed = Duration::ZERO;
 
         let (outputs, was_intercepted) = if skip {
             // Node is skipped — all outputs become Skipped
@@ -780,45 +687,14 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                 .iter()
                 .map(|p| (p.name.0.clone(), Value::Skipped))
                 .collect();
-            if let Some(ref mut o) = obs {
-                o.on_node_skipped(node_id);
-            }
+            observer.on_node_skipped(node_id);
             (outputs, false)
         } else {
-            // Start CI group for this node (skip for "report" so it's not collapsed)
-            if use_group {
-                if let Some(ref mut ci) = ci_ctx {
-                    ci.start_group(&node_id.0, false);
-                }
-            }
-
-            // Notify observer that node is starting (only for nodes that will execute)
+            // Notify observer that node is starting (CiContext opens CI group here)
             let node_start = Instant::now();
-            if let Some(ref mut o) = obs {
-                o.on_node_start(node_id);
-            }
+            observer.on_node_start(node_id);
 
-            // Check if this is a transport execution node (consumes TransportRequest),
-            // a tool environment node (emits ToolHandle), or a tool consumer node
-            // (consumes ToolHandle). These are intercepted in dry-run/simulate mode
-            // because they perform I/O or would try to use mock tool paths.
-            let is_transport_executor = is_transport_execution_node(node);
-            let is_tool_env = is_tool_env_node(node);
-            let is_resource_env = is_resource_env_node(node);
-            let is_tool_consumer = consumes_tool_handle(node);
-            let has_full_mock = match mode {
-                ExecutionMode::DryRun(ref m) => has_full_mock_for_node(node, m),
-                ExecutionMode::Simulate(ref config) => {
-                    has_full_mock_for_node(node, &config.boundary_mocks)
-                }
-                _ => false,
-            };
-            let should_intercept = (is_transport_executor
-                || is_tool_env
-                || is_resource_env
-                || is_tool_consumer
-                || has_full_mock)
-                && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
+            let should_intercept = should_intercept_for_mode(node, mode);
 
             if should_intercept {
                 // Intercept: use mock values for boundary outputs
@@ -829,40 +705,25 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                 };
 
                 let outputs = mock_intercept_outputs(node, mocks)?;
-                if let Some(ref mut o) = obs {
-                    let summary = OutputSummary::from_outputs(&outputs, node_start.elapsed());
-                    o.on_node_intercepted(node_id, summary);
-                }
+                node_elapsed = node_start.elapsed();
                 (outputs, true)
             } else {
                 // Execute normally
                 match &node.body {
                     NodeBody::Opaque(op) => {
+                        // Snapshot inputs for failure diagnostics
+                        let saved_inputs = inputs.clone();
                         match op.execute(inputs) {
                             Ok(outputs) => {
-                                if let Some(ref mut o) = obs {
-                                    let summary =
-                                        OutputSummary::from_outputs(&outputs, node_start.elapsed());
-                                    o.on_node_complete(node_id, summary);
-                                }
+                                node_elapsed = node_start.elapsed();
                                 (outputs, false)
                             }
                             Err(e) => {
-                                // Notify observer of failure
-                                if let Some(ref mut o) = obs {
-                                    o.on_node_failed(node_id, &e.to_string());
-                                }
-                                // Emit CI error annotation if context available
-                                if let Some(ref mut ci) = ci_ctx {
-                                    ci.error(&format!("Node '{}' failed: {}", node_id.0, e), None);
-                                    if use_group {
-                                        ci.end_group(); // Close the group before returning error
-                                    }
-                                }
-                                // Notify observer of DAG completion (with failure)
-                                if let Some(ref mut o) = obs {
-                                    o.on_dag_complete(dag_start.elapsed());
-                                }
+                                // Failure diagnostics and error annotation happen inside
+                                // the CI group, then the group is closed by on_node_failed.
+                                observer.on_failure_diagnostics(node_id, &saved_inputs);
+                                observer.on_node_failed(node_id, &e.to_string());
+                                observer.on_dag_complete(dag_start.elapsed());
                                 return Err(e);
                             }
                         }
@@ -872,29 +733,19 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                             "node '{}' is a SubDag — DAG must be lowered before execution",
                             node_id.0
                         );
-                        if let Some(ref mut o) = obs {
-                            o.on_node_failed(node_id, &err_msg);
-                            o.on_dag_complete(dag_start.elapsed());
-                        }
-                        if let Some(ref mut ci) = ci_ctx {
-                            ci.error(&err_msg, None);
-                            if use_group {
-                                ci.end_group();
-                            }
-                        }
+                        observer.on_node_failed(node_id, &err_msg);
+                        observer.on_dag_complete(dag_start.elapsed());
                         return Err(ExecError::new(err_msg));
                     }
                 }
             }
         };
 
-        // Mask any secret values in CI context so that CI runners
-        // (GitHub Actions, GitLab CI) redact them from all output.
-        if let Some(ref mut ci) = ci_ctx {
-            for value in outputs.values() {
-                if let Value::Secret(s) = value {
-                    ci.mask(s.expose());
-                }
+        // Mask any secret values so CI runners redact them from all output.
+        // This happens inside the CI group (before on_node_complete closes it).
+        for value in outputs.values() {
+            if let Value::Secret(s) = value {
+                observer.on_secret_output(node_id, s.expose());
             }
         }
 
@@ -905,17 +756,22 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             was_intercepted,
         };
 
-        // Print node outputs inside the CI group so they appear in the
-        // collapsible section, not after all groups have closed.
-        if ci_ctx.is_some() {
-            print_log_entry(&entry);
+        // Boundary output via observer (appears inside CI group).
+        if boundaries.is_boundary_node(node_id) {
+            observer.on_boundary_output(node_id, &entry);
         }
         entries.push(entry);
 
-        // End CI group for this node (skip for "report" since we didn't start one)
-        if use_group {
-            if let Some(ref mut ci) = ci_ctx {
-                ci.end_group();
+        // Close the CI group by notifying completion/interception.
+        // This is deferred from the execution block above so that secret
+        // masking and boundary output appear inside the CI group.
+        if !skip {
+            let summary =
+                OutputSummary::from_outputs(&node_outputs[&node_id.0], node_elapsed);
+            if was_intercepted {
+                observer.on_node_intercepted(node_id, summary);
+            } else {
+                observer.on_node_complete(node_id, summary);
             }
         }
 
@@ -924,17 +780,11 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         if let Some(loop_info) = loops.iter().find(|l| l.unpack_id == *node_id) {
             let body_entries = execute_loop_body(loop_info, &node_outputs, mode)?;
 
-            // Collect body result values to replace unpack's element output.
             let results: Vec<Value> = body_entries
                 .iter()
-                .filter_map(|e| {
-                    // The last node in each iteration's body produces "result".
-                    e.outputs.get("result").cloned()
-                })
+                .filter_map(|e| e.outputs.get("result").cloned())
                 .collect();
 
-            // Replace the element port output with body results so
-            // the unpack→pack edge carries transformed values to pack.
             if let Some(unpack_out) = node_outputs.get_mut(&loop_info.unpack_id.0) {
                 unpack_out.insert(loop_info.element_port.clone(), Value::List(results));
             }
@@ -944,9 +794,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
     }
 
     // Notify observer of successful DAG completion
-    if let Some(ref mut o) = obs {
-        o.on_dag_complete(dag_start.elapsed());
-    }
+    observer.on_dag_complete(dag_start.elapsed());
 
     Ok(ExecutionLog { entries })
 }
@@ -1446,7 +1294,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
 /// transport nodes without requiring graph_mock to reference their IDs
 /// (which aren't visible at the outer DAG level).
 fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> BoundaryMocks {
-    use gunbc_ir::transport::{ShellResponse, TransportResponse};
+    use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 
     let mut augmented = existing.clone();
     for node in &body_dag.nodes {
@@ -1454,8 +1302,23 @@ fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> B
             // Only add default mocks for outputs that don't already have one
             for port in &node.outputs {
                 if !existing.has_mock(&node.id, &port.name) {
-                    let default_response =
-                        Value::Response(TransportResponse::Shell(ShellResponse::ok("")));
+                    // Choose a type-appropriate default based on resource inputs:
+                    // nodes with FilesystemHandle inputs are file transports.
+                    let is_file_transport = node.inputs.iter().any(|p| {
+                        p.type_id.0 == "FilesystemHandle"
+                    });
+                    let default_response = if is_file_transport {
+                        Value::Response(TransportResponse::File(FileResponse {
+                            path: String::new(),
+                            operation: FileOp::Read,
+                            success: true,
+                            content: Some(String::new()),
+                            exists: None,
+                            error: None,
+                        }))
+                    } else {
+                        Value::Response(TransportResponse::Shell(ShellResponse::ok("")))
+                    };
                     augmented.set_value(&node.id.0, &port.name.0, default_response);
                 }
             }
@@ -1551,7 +1414,6 @@ fn execute_loop_body<T: Executable + Clone + Send>(
             &body_boundaries,
             &body_mode,
             None,
-            None,
             Some(&iter_mocks),
             &lowered_body.loops,
         )?;
@@ -1568,19 +1430,6 @@ fn execute_loop_body<T: Executable + Clone + Send>(
     }
 
     Ok(all_entries)
-}
-
-/// Print a log entry's outputs to stdout.
-///
-/// Used inside CI groups so that node outputs appear within the
-/// collapsible section rather than in a flat summary after all groups.
-///
-/// Secret values are always redacted — they print as `***` regardless
-/// of context. This is the last line of defense against credential leaks.
-fn print_log_entry(entry: &LogEntry) {
-    for (port, value) in &entry.outputs {
-        crate::display::print_value(port, value);
-    }
 }
 
 /// Check whether a node should be skipped based on guard predicates.

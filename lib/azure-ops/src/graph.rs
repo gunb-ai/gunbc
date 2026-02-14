@@ -45,6 +45,10 @@ pub fn build_azure_key_vault_credential_graph() -> Dag<AzureKeyVaultGraphOp> {
 }
 
 /// Placeholder DAG for Azure Key Vault secret upsert.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "azure-keyvault-upsert-stub",
+    builder = "build_azure_key_vault_upsert_graph()"
+)]
 pub fn build_azure_key_vault_upsert_graph() -> Dag<AzureKeyVaultGraphOp> {
     let mut builder: DagBuilder<AzureKeyVaultGraphOp> = DagBuilder::new();
 

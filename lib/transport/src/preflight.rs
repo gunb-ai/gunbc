@@ -12,12 +12,17 @@ use crate::ops::execute_request;
 use crate::TransportIo;
 use gunbc_ir::cargo::{CargoCommand, CargoInvocation, Subcommand, Warnings};
 use gunbc_ir::resource::{
-    load_manifest_default, save_manifest_default, ContentHash, ExecMode, ManagedResource,
-    ManifestEntry, ResourceDef, ResourceError, ResourceIo, ResourceManifest, ResourceState,
+    load_manifest_default, save_manifest_default, ContentHash, ManagedResource, ManifestEntry,
+    ResourceDef, ResourceError, ResourceIo, ResourceManifest, ResourceState,
 };
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::ResourceId;
 use std::path::{Path, PathBuf};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Binaries that should never trigger preflight (they ARE preflight tools).
@@ -31,32 +36,70 @@ const PREFLIGHT_SKIP_BINARIES: &[&str] = &[
 
 /// Ensure lint is fresh (run lint-upsert if stale/missing).
 pub fn ensure_lint_upsert() -> Result<(), String> {
+    ensure_lint_upsert_with_ci(None)
+}
+
+/// Ensure lint is fresh with optional CI context for structured output.
+///
+/// When a `CiContext` is provided, preflight wraps the entire operation
+/// in a collapsible CI group and emits `::error::` annotations on failure.
+pub fn ensure_lint_upsert_with_ci(
+    mut ci: Option<&mut gunbc_exec::CiContext>,
+) -> Result<(), String> {
     if should_skip_preflight() {
         return Ok(());
+    }
+
+    if let Some(ref mut c) = ci {
+        c.start_group("preflight", false);
     }
 
     let io = TransportIo::new();
     let resource = LintResource::new();
 
-    let mut manifest = load_manifest_default(&io)
+    let manifest = load_manifest_default(&io)
         .map_err(|e| format!("preflight: manifest load failed: {}", e))?;
 
     let state = resource.check_state(&manifest, &io);
     if state.is_fresh() {
+        if let Some(ref mut c) = ci {
+            c.end_group();
+        }
         return Ok(());
     }
     if state.is_error() {
-        return Err(format!("preflight: lint state error: {}", state));
+        let msg = format!("preflight: lint state error: {}", state);
+        if let Some(ref mut c) = ci {
+            c.error(&msg, None);
+            c.end_group();
+        }
+        return Err(msg);
     }
 
     println!("preflight: lint-upsert ({})", state);
 
-    resource
-        .acquire(ExecMode::Ensure, &mut manifest, &io)
-        .map_err(|e| format!("preflight: lint-upsert failed: {}", e))?;
+    if let Err(e) = run_lint_upsert(resource.resource_id()) {
+        let msg = format!("preflight: lint-upsert failed: {}", e);
+        if let Some(ref mut c) = ci {
+            c.error(&msg, None);
+            c.end_group();
+        }
+        return Err(msg);
+    }
 
     save_manifest_default(&io, &manifest)
-        .map_err(|e| format!("preflight: manifest save failed: {}", e))?;
+        .map_err(|e| {
+            let msg = format!("preflight: manifest save failed: {}", e);
+            if let Some(ref mut c) = ci {
+                c.error(&msg, None);
+                c.end_group();
+            }
+            msg
+        })?;
+
+    if let Some(ref mut c) = ci {
+        c.end_group();
+    }
 
     Ok(())
 }
@@ -424,14 +467,35 @@ fn run_cargo_command_response_with_env(
     // Preflight steps compile + run cargo binaries; in CI with cold caches
     // this can take well over 5 minutes. Use FermiCost::L (30 min).
     const PREFLIGHT_TIMEOUT_MS: u64 = 1_800_000; // FermiCost::L = 30 min
+    const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
     let mut request = cmd.to_shell_request().timeout(PREFLIGHT_TIMEOUT_MS);
     for (k, v) in extra_env {
         request = request.env(*k, *v);
     }
 
+    // Long-running commands (especially test/clippy) can look frozen in
+    // non-interactive logs. Emit coarse elapsed heartbeats while the command runs.
+    let still_running = Arc::new(AtomicBool::new(true));
+    let heartbeat_running = Arc::clone(&still_running);
+    let heartbeat_start = std::time::Instant::now();
+    let heartbeat = thread::spawn(move || {
+        loop {
+            thread::sleep(HEARTBEAT_INTERVAL);
+            if !heartbeat_running.load(Ordering::Relaxed) {
+                break;
+            }
+            eprint!(" {:.0}s", heartbeat_start.elapsed().as_secs_f64());
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+        }
+    });
+
     let response = execute_request(&TransportRequest::Shell(request))
-        .map_err(|e| ResourceError::CreateFailed(resource_id.clone(), e.to_string()))?;
+        .map_err(|e| ResourceError::CreateFailed(resource_id.clone(), e.to_string()));
+
+    still_running.store(false, Ordering::Relaxed);
+    let _ = heartbeat.join();
+    let response = response?;
 
     match response {
         TransportResponse::Shell(shell) => Ok(shell),

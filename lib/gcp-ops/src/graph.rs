@@ -478,6 +478,10 @@ pub fn build_gcp_secret_manager_credential_graph_metadata() -> Dag<GcpSecretMana
     build_gcp_secret_manager_credential_graph(GcpRuntimeKind::GcpMetadata)
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "gcp-wif-secret-local",
+    builder = "build_gcp_secret_manager_credential_graph_local()"
+)]
 pub fn build_gcp_secret_manager_credential_graph_local() -> Dag<GcpSecretManagerGraphOp> {
     build_gcp_secret_manager_credential_graph(GcpRuntimeKind::LocalDev)
 }
@@ -1022,6 +1026,10 @@ pub fn build_gcp_secret_manager_upsert_graph_metadata() -> Dag<GcpSecretManagerG
     build_gcp_secret_manager_upsert_graph(GcpRuntimeKind::GcpMetadata)
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "gcp-wif-secret-upsert-local",
+    builder = "build_gcp_secret_manager_upsert_graph_local()"
+)]
 pub fn build_gcp_secret_manager_upsert_graph_local() -> Dag<GcpSecretManagerGraphOp> {
     build_gcp_secret_manager_upsert_graph(GcpRuntimeKind::LocalDev)
 }

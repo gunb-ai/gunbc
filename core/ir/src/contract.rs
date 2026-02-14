@@ -171,6 +171,13 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
                 match &wrapper {
                     Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(witnesses),
                     Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::set(witnesses),
+                    Some(WrapperKind::Map) => {
+                        let mut map = std::collections::BTreeMap::new();
+                        for (i, w) in witnesses.into_iter().enumerate() {
+                            map.insert(format!("key_{}", i), w);
+                        }
+                        Value::Map(map)
+                    }
                     _ => {
                         return Err(WitnessError::InvalidCardinality {
                             base: base.clone(),

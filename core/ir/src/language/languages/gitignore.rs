@@ -96,7 +96,7 @@ pub fn render_gitignore_with_sections(sections: &[(String, Vec<String>)]) -> Str
         if !content.is_empty() {
             content.push_str("\n\n");
         }
-        write!(content, "# {}\n", section_name).unwrap();
+        writeln!(content, "# {}", section_name).unwrap();
         for pattern in patterns {
             content.push_str(pattern);
             content.push('\n');

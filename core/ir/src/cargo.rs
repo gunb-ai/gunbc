@@ -397,6 +397,8 @@ pub struct CargoCommand {
     pub with_check: bool,
     /// Enable `--lib` (test only library unit tests).
     pub with_lib: bool,
+    /// Enable `--no-run` (compile tests without executing them).
+    pub with_no_run: bool,
     /// Typed binary arguments (only for `Subcommand::Run`).
     ///
     /// These are passed after `--` to the compiled binary. Use typed
@@ -419,6 +421,7 @@ impl CargoCommand {
             with_allow_staged: false,
             with_check: false,
             with_lib: false,
+            with_no_run: false,
             binary_args: BinaryArgs::None,
         }
     }
@@ -474,6 +477,12 @@ impl CargoCommand {
     /// Enable `--lib` (test only library unit tests).
     pub fn lib_only(mut self) -> Self {
         self.with_lib = true;
+        self
+    }
+
+    /// Enable `--no-run` (for `cargo test` compile-only mode).
+    pub fn no_run(mut self) -> Self {
+        self.with_no_run = true;
         self
     }
 
@@ -537,6 +546,9 @@ impl CargoCommand {
         }
         if self.with_lib {
             args.push("--lib".to_string());
+        }
+        if self.with_no_run {
+            args.push("--no-run".to_string());
         }
 
         // Build trailing args:
@@ -696,6 +708,18 @@ mod tests {
         let cmd = CargoCommand::new(Subcommand::Test).warnings(Warnings::Deny);
         // Test doesn't add trailing args for warnings - uses env instead
         assert_eq!(cmd.to_args(), vec!["cargo", "test"]);
+        assert_eq!(
+            cmd.env(),
+            vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_cargo_test_no_run_deny_warnings() {
+        let cmd = CargoCommand::new(Subcommand::Test)
+            .no_run()
+            .warnings(Warnings::Deny);
+        assert_eq!(cmd.to_args(), vec!["cargo", "test", "--no-run"]);
         assert_eq!(
             cmd.env(),
             vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())]

@@ -496,7 +496,6 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
 
 /// Mock spec for snapshot mode (default gist).
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "gist-snapshot",
     builder = "crate::build_gist_graph(crate::GistMode::Snapshot, vec![], false).unwrap()"
 )]
@@ -515,7 +514,6 @@ pub fn gist_snapshot_mock_spec() -> MockSpec {
 
 /// Mock spec for diff mode (gist-diff).
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "gist-diff",
     builder = r#"crate::build_gist_graph(crate::GistMode::Diff { base_ref: "main".to_string() }, vec![], false).unwrap()"#
 )]
@@ -536,7 +534,6 @@ pub fn gist_diff_mock_spec() -> MockSpec {
 
 /// Mock spec for recent mode (gist-recent).
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "gist-recent",
     builder = "crate::build_gist_graph(crate::GistMode::Recent, vec![], false).unwrap()"
 )]

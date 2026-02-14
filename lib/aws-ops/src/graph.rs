@@ -48,6 +48,10 @@ pub fn build_aws_secrets_manager_credential_graph() -> Dag<AwsSecretManagerGraph
 }
 
 /// Placeholder DAG for AWS Secrets Manager secret upsert.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "aws-secrets-upsert-stub",
+    builder = "build_aws_secrets_manager_upsert_graph()"
+)]
 pub fn build_aws_secrets_manager_upsert_graph() -> Dag<AwsSecretManagerGraphOp> {
     let mut builder: DagBuilder<AwsSecretManagerGraphOp> = DagBuilder::new();
 

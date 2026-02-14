@@ -48,6 +48,23 @@ pub trait ProgressObserver: Send {
 
     /// Called when DAG execution completes (success or after failure).
     fn on_dag_complete(&mut self, elapsed: Duration);
+
+    /// Called when a node produces a secret value that should be masked in CI output.
+    fn on_secret_output(&mut self, _node_id: &NodeId, _secret_value: &str) {}
+
+    /// Called when a node fails, providing the inputs snapshot for diagnostics.
+    fn on_failure_diagnostics(&mut self, _node_id: &NodeId, _inputs: &HashMap<String, Value>) {}
+
+    /// Called when a boundary node produces output that should be displayed.
+    fn on_boundary_output(&mut self, _node_id: &NodeId, _entry: &crate::execute::LogEntry) {}
+
+    /// Whether this observer requires sequential (non-parallel) execution.
+    ///
+    /// Returns `true` for observers like `CiContext` that emit nested group
+    /// commands requiring proper sequential ordering.
+    fn requires_sequential(&self) -> bool {
+        false
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -447,6 +464,79 @@ impl ProgressObserver for DagProgress {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// ComposedObserver — fan-out to two observers
+// ---------------------------------------------------------------------------
+
+/// Adapter that fans out observer callbacks to two observers.
+///
+/// Enables composing e.g. `NonTtyProgressObserver` with `CiContext`
+/// without changing the executor — the executor sees a single observer.
+pub struct ComposedObserver<'a, 'b> {
+    pub primary: &'a mut dyn ProgressObserver,
+    pub secondary: &'b mut dyn ProgressObserver,
+}
+
+impl ProgressObserver for ComposedObserver<'_, '_> {
+    fn on_dag_start(&mut self, snapshot: &DagSnapshot) {
+        self.primary.on_dag_start(snapshot);
+        self.secondary.on_dag_start(snapshot);
+    }
+
+    fn on_node_start(&mut self, node_id: &NodeId) {
+        self.primary.on_node_start(node_id);
+        self.secondary.on_node_start(node_id);
+    }
+
+    fn on_node_complete(&mut self, node_id: &NodeId, summary: OutputSummary) {
+        self.primary.on_node_complete(node_id, summary.clone());
+        self.secondary.on_node_complete(node_id, summary);
+    }
+
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+        self.primary.on_node_failed(node_id, error);
+        self.secondary.on_node_failed(node_id, error);
+    }
+
+    fn on_node_skipped(&mut self, node_id: &NodeId) {
+        self.primary.on_node_skipped(node_id);
+        self.secondary.on_node_skipped(node_id);
+    }
+
+    fn on_node_intercepted(&mut self, node_id: &NodeId, summary: OutputSummary) {
+        self.primary.on_node_intercepted(node_id, summary.clone());
+        self.secondary.on_node_intercepted(node_id, summary);
+    }
+
+    fn on_dag_complete(&mut self, elapsed: Duration) {
+        self.primary.on_dag_complete(elapsed);
+        self.secondary.on_dag_complete(elapsed);
+    }
+
+    fn on_secret_output(&mut self, node_id: &NodeId, secret_value: &str) {
+        self.primary.on_secret_output(node_id, secret_value);
+        self.secondary.on_secret_output(node_id, secret_value);
+    }
+
+    fn on_failure_diagnostics(&mut self, node_id: &NodeId, inputs: &HashMap<String, Value>) {
+        self.primary.on_failure_diagnostics(node_id, inputs);
+        self.secondary.on_failure_diagnostics(node_id, inputs);
+    }
+
+    fn on_boundary_output(&mut self, node_id: &NodeId, entry: &crate::execute::LogEntry) {
+        self.primary.on_boundary_output(node_id, entry);
+        self.secondary.on_boundary_output(node_id, entry);
+    }
+
+    fn requires_sequential(&self) -> bool {
+        self.primary.requires_sequential() || self.secondary.requires_sequential()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RecordingObserver — test helper
+// ---------------------------------------------------------------------------
 
 /// A recording observer that collects events into a Vec for testing.
 #[derive(Debug, Default)]

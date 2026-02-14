@@ -648,16 +648,16 @@ oidc_exchange -> access_token -> secret_fetch -> parse -> credential
 
 - [ ] Extend this doc with a dependency diagram for each workflow (ASCII or graph description).
 - [ ] Build a consolidated workflow model proposal (single source of truth for Makefile + CI + CLI).
-- [ ] Identify all `cargo` invocations across workflows and propose a single-build + multi-run strategy.
+- [x] Identify all `cargo` invocations across workflows and propose a single-build + multi-run strategy. _(2026-02-14: inventory + strategy below; CI Build stage switched to `cargo test --no-run` and acceptance-verified in `gunbc-dag/tests/workflow_acceptance.rs`.)_
 - [ ] Design a parallel executor plan (ready-queue, worker pool, resource conflict checks).
 - [ ] Propose fast-path freshness detection (git HEAD/dirty state) to avoid per-file stat loops.
 - [ ] Decide which workflows should be merged/retired (e.g., `ensure-codegen` vs preflight vs codegen DAG).
 - [ ] Draft an implementation roadmap: phase 1 (audit + metrics), phase 2 (consolidate), phase 3 (parallel runtime).
 - [ ] Add a “resource declaration gap” audit for each DAG (which nodes need `res:*` annotations).
-- [ ] Add purity enforcement tests (derive_resource_accesses + detect_resource_conflicts).
-- [ ] Ensure every DAG builder is registered (testgen registry) so purity tests cover the entire codebase.
-- [ ] Add clippy guardrails to forbid direct I/O in pure crates (only transport/boundary crates allowed).
-- [ ] Add `#[resource_test_target]` registry + test runner for codebase-wide purity checks.
+- [x] Add purity enforcement tests (derive_resource_accesses + detect_resource_conflicts). _(2026-02-14: registry-wide test runner active in `gunbc-dag/tests/resource_purity_checks.rs`.)_
+- [x] Ensure every DAG builder is registered (testgen registry) so purity tests cover the entire codebase. _(2026-02-14: added source-level coverage gate in `gunbc-dag/tests/resource_registry_coverage.rs`; removed `resource_test_target(skip)` from canonical workflow builders and registered missing local/upsert variants.)_
+- [x] Add clippy guardrails to forbid direct I/O in pure crates (only transport/boundary crates allowed). _(2026-02-14: enforced via root `clippy.toml` disallowed-methods policy.)_
+- [x] Add `#[resource_test_target]` registry + test runner for codebase-wide purity checks. _(2026-02-14: registry implemented + CI guardrail now runs `resource_purity_checks`.)_
 - [ ] Add optional runtime file guard for `res:file:*` during tests.
 - [ ] Draft a sandbox + durability/replay RFC (record/replay transport I/O, deterministic tests).
 
@@ -681,12 +681,59 @@ oidc_exchange -> access_token -> secret_fetch -> parse -> credential
   - `derive_resource_accesses()`
   - `detect_resource_conflicts()`
   - `validate_resource_wiring_recursive()`
-- [ ] Wire into CI (fast, deterministic). _(Blocked 2026-02-14: current registry-wide resource purity checks fail on existing conflicts/unwired ports.)_
+- [x] Wire into CI (fast, deterministic). _(2026-02-14: added `gunbc-dag/tests/resource_purity_checks.rs` and wired guardrail command to run `cargo test -p gunbc-dag --test resource_purity_checks` alongside `tools/check-disallowed-methods.sh`.)_
 
 **Phase D: Workflow consolidation + parallelism (next)**
 - [ ] Consolidate Makefile + CI + CLI to a single canonical workflow registry.
 - [ ] Add ready-queue executor with resource conflict gating (parallelism).
 - [ ] Add fast-path freshness check to skip full scans on clean repos.
+
+## Acceptance Criteria (Current Workflow)
+
+Target workflow states and verification gates:
+
+1. CI build/test command contract
+   - Build stage compiles test artifacts with `cargo test --no-run` (no standalone `cargo build` pass).
+   - Test stage runs `cargo test` (execution stage).
+   - Verify with: `cargo test -p gunbc-dag --test workflow_acceptance ci_build_stage_compiles_tests_without_running_them ci_test_stage_runs_tests_after_build`
+   - Failure-state verify: `cargo test -p gunbc-dag --test workflow_acceptance ci_test_stage_skips_when_build_fails`
+
+2. CI guardrail/purity contract
+   - Guardrail stage runs both disallowed-method checks and registry-wide resource purity checks.
+   - Verify with: `cargo test -p gunbc-dag --test workflow_acceptance ci_guardrail_stage_runs_disallowed_methods_and_resource_purity_checks`
+   - Failure-state verify: `cargo test -p gunbc-dag --test workflow_acceptance ci_guardrail_stage_skips_when_upstream_fails`
+   - Verify end-to-end with: `cargo test -p gunbc-dag guardrail_check`
+
+3. CI verify-mode contract
+   - Verify sub-stages (`makegen`, `bootstrap`, `testgen`, `pragma`) run with `--mode=verify`.
+   - Verify with: `cargo test -p gunbc-dag --test workflow_acceptance ci_verify_stage_uses_verify_mode_commands`
+   - Failure-state verify: `cargo test -p gunbc-dag --test workflow_acceptance ci_verify_stage_skips_when_prep_fails`
+
+4. Resource purity always-on
+   - Registry-wide purity test remains green and CI-callable.
+   - Verify with: `cargo test -p gunbc-dag --test resource_purity_checks`
+
+5. Builder registration coverage
+   - Every public zero-arg `build_*graph*` builder is covered by non-skip `#[resource_test_target]` registration.
+   - Verify with: `cargo test -p gunbc-dag --test resource_registry_coverage`
+
+## Cargo Inventory + Strategy (2026-02-14)
+
+Current CI command inventory (from `gunbc-dag` CI prepare nodes):
+
+1. Build stage: `cargo test --no-run` (compile test artifacts once)
+2. Test stage: `cargo test` (execute tests)
+3. Lint stage: `cargo clippy --all-targets -- -D warnings`
+4. Verify stages: `cargo run -p gunbc-dag --bin gunbc-{makegen|bootstrap|testgen|pragma} -- --mode=verify`
+5. Guardrail stage: `tools/check-disallowed-methods.sh` plus `cargo test -p gunbc-dag --test resource_purity_checks`
+
+Single-build + multi-run strategy target:
+
+1. Keep Build as compile-only (`cargo test --no-run`) to avoid a separate `cargo build` pass.
+2. Keep Test as execution-only (`cargo test`), reusing artifacts from Build where possible.
+3. Keep Lint independent (different analysis pipeline), but treat as non-blocking to test artifact reuse decisions.
+4. Keep Verify as command-level freshness checks (`--mode=verify`) rather than full rebuilds.
+5. Keep Guardrail purity check explicit until/unless test-stage gating guarantees deterministic execution order for purity assertions.
 
 ## Deferred: Full Sandbox + Durability (Roadmap)
 

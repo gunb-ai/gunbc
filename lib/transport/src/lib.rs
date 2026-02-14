@@ -44,7 +44,7 @@ pub mod test_backend;
 // execute_transport and execute_request are internal - not exported
 pub use backend::{TransportBackend, TransportBackendGuard};
 pub use ops::TransportOps;
-pub use preflight::ensure_lint_upsert;
+pub use preflight::{ensure_lint_upsert, ensure_lint_upsert_with_ci};
 pub use resource_io::TransportIo;
 
 #[cfg(test)]

@@ -56,7 +56,6 @@ packages = ["ripgrep"]
 /// (parse_manifest.*, generate_scripts.*, parse_execute_result.*) are
 /// computed during DryRun execution, not mocked.
 #[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
     name = "deps",
     builder = "crate::graph::build_deps_graph().unwrap()"
 )]

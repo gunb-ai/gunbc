@@ -22,6 +22,7 @@ use gunbc_ir::render_ir::{PlainText, StructuredBlock, StructuredRenderer};
 use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::transport::{ShellRequest, TransportRequest};
 use gunbc_ir::PlainStructuredRenderer;
+use gunbc_ir::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::Value;
 use gunbc_testgen_registry::iter_dag_specs;
 use std::collections::HashMap;
@@ -419,8 +420,12 @@ fn execute_prepare_build_command(
             .ok();
     }
 
-    let config = BuildConfig::cargo();
-    let request = TransportRequest::Shell(config.build.to_shell_request());
+    // Compile test artifacts once up front so the later `cargo test` stage
+    // can run without a separate dev-profile build pass.
+    let compile_only_test_build = CargoCommand::new(Subcommand::Test)
+        .no_run()
+        .warnings(Warnings::Deny);
+    let request = TransportRequest::Shell(compile_only_test_build.to_shell_request());
 
     OutputMap::new()
         .request("request", request)
@@ -641,6 +646,8 @@ fn execute_parse_clippy_lint_result(
 // Guardrails Stage - Pure Operations
 // ============================================================================
 
+const GUARDRAIL_CHECK_COMMAND: &str = "tools/check-disallowed-methods.sh && cargo test -p gunbc-dag --test resource_purity_checks --quiet";
+
 /// Prepare the disallowed-methods check (pure).
 fn execute_prepare_guardrail_check(
     inputs: HashMap<String, Value>,
@@ -663,7 +670,7 @@ fn execute_prepare_guardrail_check(
     }
 
     let request = TransportRequest::Shell(
-        ShellRequest::new("bash").args(["-lc", "tools/check-disallowed-methods.sh"]),
+        ShellRequest::new("bash").args(["-lc", GUARDRAIL_CHECK_COMMAND]),
     );
 
     OutputMap::new()
@@ -1225,8 +1232,10 @@ impl Mockable for CIOp {
                 .str("pragma_stderr", "")
                 .build(),
             CIOp::PrepareBuildCommand => {
-                let config = BuildConfig::cargo();
-                let request = TransportRequest::Shell(config.build.to_shell_request());
+                let compile_only_test_build = CargoCommand::new(Subcommand::Test)
+                    .no_run()
+                    .warnings(Warnings::Deny);
+                let request = TransportRequest::Shell(compile_only_test_build.to_shell_request());
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)
@@ -1254,7 +1263,7 @@ impl Mockable for CIOp {
                 .build(),
             CIOp::PrepareGuardrailCheck => {
                 let request = TransportRequest::Shell(
-                    ShellRequest::new("bash").args(["-lc", "tools/check-disallowed-methods.sh"]),
+                    ShellRequest::new("bash").args(["-lc", GUARDRAIL_CHECK_COMMAND]),
                 );
                 OutputMap::new()
                     .request("request", request)
@@ -1342,7 +1351,7 @@ impl Mockable for CIOp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
+    use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportRequest};
 
     #[test]
     fn test_parse_deps_exists_true() {
@@ -1403,6 +1412,19 @@ mod tests {
         let result = execute_prepare_build_command(inputs).unwrap();
         assert_eq!(result.get("skip").and_then(|v| v.as_bool()), Some(false));
         assert!(result.contains_key("request"));
+
+        let request = result
+            .get("request")
+            .and_then(|v| v.as_request())
+            .expect("request should be a TransportRequest");
+        match request {
+            TransportRequest::Shell(shell) => {
+                assert_eq!(shell.command, "cargo");
+                assert_eq!(shell.args, vec!["test".to_string(), "--no-run".to_string()]);
+                assert_eq!(shell.env.get("RUSTFLAGS"), Some(&"-D warnings".to_string()));
+            }
+            other => panic!("expected shell request, got {other:?}"),
+        }
     }
 
     #[test]
