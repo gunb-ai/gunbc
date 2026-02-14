@@ -437,6 +437,7 @@ mod tests {
             outputs: vec![port("success", "Bool")],
             body: NodeBody::Opaque(DummyOp),
             examples: Vec::new(),
+            log_detail: None,
         });
         dag.add_node(Node {
             id: "test".into(),
@@ -444,6 +445,7 @@ mod tests {
             outputs: vec![port("success", "Bool")],
             body: NodeBody::Opaque(DummyOp),
             examples: Vec::new(),
+            log_detail: None,
         });
         dag.add_node(Node {
             id: "lint".into(),
@@ -451,6 +453,7 @@ mod tests {
             outputs: vec![port("success", "Bool")],
             body: NodeBody::Opaque(DummyOp),
             examples: Vec::new(),
+            log_detail: None,
         });
         dag.add_edge(edge("build", "success", "test", "build_success"));
         dag.add_edge(edge("build", "success", "lint", "build_success"));

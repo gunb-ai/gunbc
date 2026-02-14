@@ -189,45 +189,6 @@ pub fn execute_and_display<T: Executable + Clone + Send>(
     }
 }
 
-/// Execute preflight and then execute/display a DAG with a unified terminal surface.
-///
-/// `preflight` is passed a [`PreflightObserver`] to report progress.
-pub fn execute_and_display_with_preflight<T, F>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    animated: bool,
-    success_port: Option<&str>,
-    input_mocks: Option<&BoundaryMocks>,
-    mut preflight: F,
-) where
-    T: Executable + Clone + Send,
-    F: FnMut(Option<&mut dyn PreflightObserver>) -> Result<(), String>,
-{
-    match execute_and_display_with_preflight_result(
-        dag,
-        mode,
-        animated,
-        success_port,
-        input_mocks,
-        &mut preflight,
-    ) {
-        Ok(result) => {
-            if result.should_fail {
-                print_attention(
-                    AttentionLevel::Error,
-                    "Execution failed",
-                    "A required success check returned false.",
-                );
-                process::exit(1);
-            }
-        }
-        Err(e) => {
-            print_attention(AttentionLevel::Error, "Execution failed", &e.to_string());
-            process::exit(1);
-        }
-    }
-}
-
 /// Detect terminal capabilities and print a preamble box.
 ///
 /// Returns `(animated, tier, use_color)` for use by callers that need
@@ -237,54 +198,6 @@ pub fn print_preamble_auto(preamble: &Preamble) -> bool {
     let animated = profile.is_tty && !is_ci_environment();
     print_preamble(preamble, profile.tier, profile.supports_color);
     animated
-}
-
-/// Result-returning variant of [`execute_and_display_with_preflight`].
-pub fn execute_and_display_with_preflight_result<T, F>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    animated: bool,
-    success_port: Option<&str>,
-    input_mocks: Option<&BoundaryMocks>,
-    preflight: &mut F,
-) -> Result<DisplayResult, ExecError>
-where
-    T: Executable + Clone + Send,
-    F: FnMut(Option<&mut dyn PreflightObserver>) -> Result<(), String>,
-{
-    let preflight_lines = run_preflight_with_display(animated, preflight)?;
-
-    execute_and_display_with_result_seeded(
-        dag,
-        mode,
-        animated,
-        success_port,
-        input_mocks,
-        preflight_lines,
-    )
-}
-
-/// Run preflight using the same terminal display surface used by DAG execution.
-///
-/// Returns the number of lines the final preflight frame occupies on screen
-/// (0 for non-animated paths) so the next display phase can overwrite seamlessly.
-pub fn run_preflight_with_display<F>(animated: bool, preflight: &mut F) -> Result<usize, ExecError>
-where
-    F: FnMut(Option<&mut dyn PreflightObserver>) -> Result<(), String>,
-{
-    if animated {
-        run_preflight_with_progress(|observer| preflight(Some(observer)))
-    } else if is_ci_environment() {
-        let mut ci = crate::CiContext::detect();
-        preflight(Some(&mut ci))
-            .map(|()| 0)
-            .map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
-    } else {
-        let mut status = PreflightStatusObserver;
-        preflight(Some(&mut status))
-            .map(|()| 0)
-            .map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
-    }
 }
 
 /// Execute a DAG through the shared display path and return execution results.
@@ -297,131 +210,11 @@ pub fn execute_and_display_with_result<T: Executable + Clone + Send>(
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<DisplayResult, ExecError> {
-    execute_and_display_with_result_seeded(dag, mode, animated, success_port, input_mocks, 0)
-}
-
-/// Like [`execute_and_display_with_result`] but seeds the render writer with a
-/// previous frame line count so the first frame overwrites the previous display
-/// (used for seamless preflight → DAG transitions).
-fn execute_and_display_with_result_seeded<T: Executable + Clone + Send>(
-    dag: &Dag<T>,
-    mode: ExecutionMode,
-    animated: bool,
-    success_port: Option<&str>,
-    input_mocks: Option<&BoundaryMocks>,
-    seed_lines: usize,
-) -> Result<DisplayResult, ExecError> {
     if animated {
-        run_with_progress(dag, mode, success_port, input_mocks, seed_lines)
+        run_with_progress(dag, mode, success_port, input_mocks)
     } else {
         run_plain(dag, mode, success_port, input_mocks)
     }
-}
-
-/// Returns the final-frame line count so the next display phase can overwrite seamlessly.
-fn run_preflight_with_progress<F>(mut preflight: F) -> Result<usize, ExecError>
-where
-    F: FnMut(&mut dyn PreflightObserver) -> Result<(), String>,
-{
-    let display_start = Instant::now();
-    let profile = TerminalProfile::detect();
-
-    let progress_state = Arc::new(Mutex::new(DagProgress::new(initial_preflight_snapshot())));
-    let stop_render = Arc::new(AtomicBool::new(false));
-
-    let progress_for_render = Arc::clone(&progress_state);
-    let stop_for_render = Arc::clone(&stop_render);
-    let profile_for_render = profile.clone();
-    let render_handle: thread::JoinHandle<usize> = thread::spawn(move || {
-        let _cursor_guard = crate::frame_write::CursorGuard::new(profile_for_render.is_tty);
-        let spinner_frames = resolve_spinner_frames(profile_for_render.tier);
-        let mut spinner = Animation::cycle(spinner_frames, PROGRESS_TICK);
-        let mut writer = FrameWriter::new(
-            profile_for_render.supports_color,
-            profile_for_render.tier,
-            &STANDARD,
-            profile_for_render.is_tty,
-        );
-        let mut stderr = io::stderr();
-        let mut last_tick = Instant::now();
-
-        loop {
-            let now = Instant::now();
-            spinner.tick(now.saturating_duration_since(last_tick));
-            last_tick = now;
-
-            let progress = {
-                let guard = progress_for_render
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                guard.clone()
-            };
-
-            // Skip rendering until the DAG is actually running — avoids
-            // flashing a useless "DAG pending" frame.
-            if matches!(progress.phase, DagPhase::NotStarted) {
-                if stop_for_render.load(Ordering::Relaxed) {
-                    break;
-                }
-                thread::sleep(PROGRESS_TICK);
-                continue;
-            }
-
-            let layout = compute_layout(
-                &progress.snapshot.topo_order,
-                &progress.snapshot.edges,
-                &progress.snapshot.labels,
-                &profile_for_render.viewport,
-            );
-            render_progress_frame(
-                &progress,
-                &layout,
-                &spinner,
-                &mut writer,
-                &mut stderr,
-                &profile_for_render,
-            );
-
-            if stop_for_render.load(Ordering::Relaxed) {
-                break;
-            }
-            thread::sleep(PROGRESS_TICK);
-        }
-        writer.last_frame_lines()
-    });
-
-    let mut observer = SharedPreflightObserver::new(Arc::clone(&progress_state));
-    let preflight_result = preflight(&mut observer);
-
-    // Anti-flicker: if preflight was very fast, wait so the final frame is visible
-    let elapsed_display = display_start.elapsed();
-    if elapsed_display < MIN_DISPLAY_DURATION {
-        thread::sleep(MIN_DISPLAY_DURATION - elapsed_display);
-    }
-
-    stop_render.store(true, Ordering::Relaxed);
-    let last_lines = render_handle.join().unwrap_or(0);
-
-    // Render a clean final frame with static icons (no spinner),
-    // seeded with the last animated frame's line count for seamless overwrite.
-    let final_progress = {
-        let guard = progress_state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard.clone()
-    };
-    let final_layout = compute_layout(
-        &final_progress.snapshot.topo_order,
-        &final_progress.snapshot.edges,
-        &final_progress.snapshot.labels,
-        &profile.viewport,
-    );
-    let final_lines =
-        render_final_static_frame_seeded(&final_progress, &final_layout, &profile, last_lines);
-
-    preflight_result
-        .map(|()| final_lines)
-        .map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
 }
 
 /// Plain execution: observer-driven status lines + boundary outputs.
@@ -518,15 +311,11 @@ impl Drop for CiConcurrencyGuard {
 }
 
 /// Progress-display execution: live DAG visualization driven by observer events.
-///
-/// `seed_lines` seeds the render writer so the first frame overwrites the
-/// previous display (e.g., the preflight's final frame).
 fn run_with_progress<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
-    seed_lines: usize,
 ) -> Result<DisplayResult, ExecError> {
     let display_start = Instant::now();
     let profile = TerminalProfile::detect();
@@ -570,9 +359,6 @@ fn run_with_progress<T: Executable + Clone + Send>(
             &STANDARD,
             profile_for_render.is_tty,
         );
-        // Seed with the previous display phase's line count so the first
-        // frame overwrites it (e.g., preflight → DAG transition).
-        writer.seed_last_frame_lines(seed_lines);
         let mut stderr = io::stderr();
         let mut last_tick = Instant::now();
 
@@ -677,69 +463,6 @@ impl SharedProgressObserver {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         update(&mut guard);
-    }
-}
-
-#[derive(Clone)]
-struct SharedPreflightObserver {
-    progress: Arc<Mutex<DagProgress>>,
-    started: bool,
-    initialized_steps: bool,
-    total_steps: usize,
-    current_step: Option<usize>,
-}
-
-impl SharedPreflightObserver {
-    fn new(progress: Arc<Mutex<DagProgress>>) -> Self {
-        Self {
-            progress,
-            started: false,
-            initialized_steps: false,
-            total_steps: 0,
-            current_step: None,
-        }
-    }
-
-    fn with_progress<F>(&self, update: F)
-    where
-        F: FnOnce(&mut DagProgress),
-    {
-        let mut guard = self
-            .progress
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        update(&mut guard);
-    }
-
-    fn ensure_started(&mut self) {
-        if self.started {
-            return;
-        }
-        self.with_progress(|progress| {
-            let snapshot = progress.snapshot.clone();
-            progress.on_dag_start(&snapshot);
-            progress.on_node_start(&NodeId::from("preflight_check"));
-        });
-        self.started = true;
-    }
-
-    fn ensure_initialized_steps(&mut self, total: usize) {
-        if self.initialized_steps && self.total_steps == total {
-            return;
-        }
-        let snapshot = preflight_snapshot(total);
-        self.with_progress(|progress| {
-            *progress = DagProgress::new(snapshot.clone());
-            progress.on_dag_start(&snapshot);
-        });
-        self.initialized_steps = true;
-        self.total_steps = total;
-        self.current_step = None;
-        self.started = true;
-    }
-
-    fn step_node_id(step: usize) -> NodeId {
-        NodeId::from(format!("preflight_step_{}", step))
     }
 }
 
@@ -1070,56 +793,6 @@ fn render_progress_frame(
     let _ = writer.write_frame(&frame, sink);
 }
 
-fn initial_preflight_snapshot() -> DagSnapshot {
-    let node_id = NodeId::from("preflight_check");
-    DagSnapshot {
-        node_ids: vec![node_id.clone()],
-        edges: Vec::new(),
-        topo_order: vec![node_id.clone()],
-        boundary_nodes: Vec::new(),
-        labels: HashMap::from([(node_id.clone(), "preflight".to_string())]),
-        groups: vec![StageGroup {
-            name: "preflight".to_string(),
-            node_ids: vec![node_id],
-        }],
-    }
-}
-
-fn preflight_snapshot(total_steps: usize) -> DagSnapshot {
-    let mut node_ids = Vec::new();
-    let mut edges = Vec::new();
-    let mut labels = HashMap::new();
-
-    for step in 1..=total_steps {
-        let id = SharedPreflightObserver::step_node_id(step);
-        labels.insert(id.clone(), format!("step {}", step));
-        if step > 1 {
-            let prev = SharedPreflightObserver::step_node_id(step - 1);
-            edges.push(gunbc_ir::Edge::new(
-                prev.0.clone(),
-                "out",
-                id.0.clone(),
-                "in",
-            ));
-        }
-        node_ids.push(id);
-    }
-
-    let groups = vec![StageGroup {
-        name: "preflight".to_string(),
-        node_ids: node_ids.clone(),
-    }];
-
-    DagSnapshot {
-        topo_order: node_ids.clone(),
-        node_ids,
-        edges,
-        boundary_nodes: Vec::new(),
-        labels,
-        groups,
-    }
-}
-
 /// Print a single output value in the standard format.
 ///
 /// Uses `Value::display_redacted_truncated()` as the single chokepoint
@@ -1254,117 +927,6 @@ pub fn print_attention(level: AttentionLevel, title: &str, body: &str) {
     }
     for line in &lines {
         eprintln!("  {line}");
-    }
-}
-
-// ---------------------------------------------------------------------------
-// PreflightObserver
-// ---------------------------------------------------------------------------
-
-/// Trait for receiving preflight execution events.
-///
-/// Abstracts the output of preflight operations (lint-upsert, codegen, etc.)
-/// so they can emit structured output in CI, status lines in non-TTY, or
-/// nothing at all in library usage.
-pub trait PreflightObserver: Send {
-    /// Called when preflight begins.
-    fn on_preflight_start(&mut self, name: &str);
-
-    /// Called when a preflight step begins.
-    fn on_preflight_step(&mut self, step: usize, total: usize, label: &str);
-
-    /// Called when a preflight step completes successfully.
-    fn on_preflight_step_complete(&mut self, label: &str, elapsed: Duration);
-
-    /// Called when all preflight steps complete.
-    fn on_preflight_complete(&mut self, name: &str, elapsed: Duration);
-
-    /// Called when preflight fails.
-    fn on_preflight_error(&mut self, name: &str, error: &str);
-}
-
-/// Status-line preflight observer for non-interactive environments.
-///
-/// Emits `→ step...` / `✓ step [0.5s]` style status lines to stderr.
-pub struct PreflightStatusObserver;
-
-impl PreflightObserver for PreflightStatusObserver {
-    fn on_preflight_start(&mut self, name: &str) {
-        eprintln!("--- {} ---", name);
-    }
-
-    fn on_preflight_step(&mut self, step: usize, total: usize, label: &str) {
-        eprint!("  [{}/{}] {}...", step, total, label);
-        let _ = std::io::Write::flush(&mut std::io::stderr());
-    }
-
-    fn on_preflight_step_complete(&mut self, _label: &str, elapsed: Duration) {
-        eprintln!(" {:.1}s", elapsed.as_secs_f64());
-    }
-
-    fn on_preflight_complete(&mut self, name: &str, elapsed: Duration) {
-        eprintln!("✓ {} [{:.1}s]", name, elapsed.as_secs_f64());
-    }
-
-    fn on_preflight_error(&mut self, name: &str, error: &str) {
-        let first_line = error.lines().next().unwrap_or(error);
-        eprintln!("✗ {}: {}", name, first_line);
-    }
-}
-
-impl PreflightObserver for SharedPreflightObserver {
-    fn on_preflight_start(&mut self, _name: &str) {
-        self.ensure_started();
-    }
-
-    fn on_preflight_step(&mut self, step: usize, total: usize, label: &str) {
-        self.ensure_initialized_steps(total);
-        let node_id = Self::step_node_id(step);
-        self.with_progress(|progress| {
-            if let Some(existing_label) = progress.snapshot.labels.get_mut(&node_id) {
-                *existing_label = label.to_string();
-            }
-            progress.on_node_start(&node_id);
-        });
-        self.current_step = Some(step);
-    }
-
-    fn on_preflight_step_complete(&mut self, _label: &str, elapsed: Duration) {
-        let step = self.current_step.unwrap_or(1);
-        let node_id = Self::step_node_id(step);
-        self.with_progress(|progress| {
-            progress.on_node_complete(
-                &node_id,
-                OutputSummary {
-                    fields: Vec::new(),
-                    elapsed,
-                },
-            );
-        });
-    }
-
-    fn on_preflight_complete(&mut self, _name: &str, elapsed: Duration) {
-        // Fresh-state preflight can complete without explicit steps.
-        if !self.initialized_steps {
-            self.with_progress(|progress| {
-                progress.on_node_complete(
-                    &NodeId::from("preflight_check"),
-                    OutputSummary {
-                        fields: Vec::new(),
-                        elapsed,
-                    },
-                );
-            });
-        }
-        self.with_progress(|progress| progress.on_dag_complete(elapsed));
-    }
-
-    fn on_preflight_error(&mut self, _name: &str, error: &str) {
-        let node_id = match self.current_step {
-            Some(step) => Self::step_node_id(step),
-            None => NodeId::from("preflight_check"),
-        };
-        self.with_progress(|progress| progress.on_node_failed(&node_id, error));
     }
 }
 

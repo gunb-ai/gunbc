@@ -31,5 +31,6 @@ where
             NodeBody::SubDag(dag) => NodeBody::SubDag(convert_dag(dag, f)),
         },
         examples: node.examples,
+        log_detail: node.log_detail,
     }
 }

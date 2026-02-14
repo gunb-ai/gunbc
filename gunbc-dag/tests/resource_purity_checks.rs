@@ -9,9 +9,10 @@
 use gunbc_ir::{
     derive_resource_accesses, detect_resource_conflicts, validate_resource_wiring_recursive,
 };
+use gunbc_ir::resource::ResourceIo;
+use gunbc_lib_transport::TransportIo;
 use gunbc_testgen_registry::iter_resource_tests;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 // Force-link crates with `#[resource_test_target]` registrations used by CI/tooling.
 use gunbc_clippy as _;
@@ -100,44 +101,26 @@ fn resource_purity_registry_wide() {
     );
 }
 
-fn collect_rust_sources(root: &Path, out: &mut Vec<PathBuf>) {
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let entries = match fs::read_dir(&dir) {
-            Ok(entries) => entries,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let skip = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .map(|n| matches!(n, ".git" | "target"))
-                    .unwrap_or(false);
-                if !skip {
-                    stack.push(path);
-                }
-                continue;
-            }
-            if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
-                out.push(path);
-            }
-        }
-    }
-}
-
 #[test]
 fn resource_ids_have_no_legacy_aliases() {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("gunbc-dag should live under repo root");
+    let io = TransportIo::new();
 
     let mut files = Vec::new();
     for root in ["core", "gunbc-dag", "lib"] {
-        collect_rust_sources(&repo_root.join(root), &mut files);
+        let pattern = format!("{}/{}/**/*.rs", repo_root.display(), root);
+        let Ok(paths) = io.glob_paths(&pattern) else {
+            continue;
+        };
+        files.extend(paths.into_iter().filter(|path| {
+            let path_str = path.to_string_lossy();
+            !path_str.contains("/target/") && !path_str.contains("/buck-out/")
+        }));
     }
     files.sort();
+    files.dedup();
 
     let banned = vec![
         format!("res:{}", "fs"),
@@ -167,7 +150,10 @@ fn resource_ids_have_no_legacy_aliases() {
 
     let mut hits = Vec::new();
     for path in files {
-        let Ok(content) = fs::read_to_string(&path) else {
+        let Ok(bytes) = io.read_file(&path) else {
+            continue;
+        };
+        let Ok(content) = String::from_utf8(bytes) else {
             continue;
         };
         for (idx, line) in content.lines().enumerate() {

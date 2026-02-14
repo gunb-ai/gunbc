@@ -320,32 +320,6 @@ impl ProgressObserver for CiContext {
     }
 }
 
-impl crate::display::PreflightObserver for CiContext {
-    fn on_preflight_start(&mut self, name: &str) {
-        self.start_group(name, false);
-    }
-
-    fn on_preflight_step(&mut self, step: usize, total: usize, label: &str) {
-        self.start_group(label, true);
-        eprint!("  [{}/{}] {}...", step, total, label);
-        let _ = std::io::Write::flush(&mut std::io::stderr());
-    }
-
-    fn on_preflight_step_complete(&mut self, _label: &str, elapsed: Duration) {
-        eprintln!(" {:.1}s", elapsed.as_secs_f64());
-        self.end_group();
-    }
-
-    fn on_preflight_complete(&mut self, _name: &str, _elapsed: Duration) {
-        self.end_group();
-    }
-
-    fn on_preflight_error(&mut self, _name: &str, error: &str) {
-        self.error(error, None);
-        self.end_group();
-    }
-}
-
 impl std::fmt::Debug for CiContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CiContext")

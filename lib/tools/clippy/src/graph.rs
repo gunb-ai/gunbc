@@ -107,6 +107,7 @@ pub fn build_clippy_graph(args: &[&str]) -> Dag<ClippyGraphOp> {
                 NodeBody::SubDag(_) => panic!("unexpected nested SubDag in clippy upsert"),
             },
             examples: n.examples,
+            log_detail: n.log_detail,
         })
         .collect();
 

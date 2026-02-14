@@ -135,9 +135,6 @@ pub enum GistGraphOp {
     // ========================================================================
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
-
-    /// Lint freshness verification — blocks downstream until source is verified.
-    LintCheck,
 }
 
 impl From<PatternOp> for GistGraphOp {
@@ -177,8 +174,6 @@ impl Executable for GistGraphOp {
             // Transport boundary
             GistGraphOp::Transport(op) => op.execute(inputs),
 
-            // Lint freshness check
-            GistGraphOp::LintCheck => gunbc_lib_transport::execute_lint_check(inputs),
         }
     }
 }
@@ -1125,15 +1120,6 @@ fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<GistGraphOp> {
     dag.map_ops(&mut GistGraphOp::Cloud)
 }
 
-/// Inject a lint guard node into the graph as a blocking dependency.
-///
-/// This adds a `lint_check` node that must complete before any original
-/// root node can start, making the dependency on source freshness explicit
-/// in the graph structure.
-pub fn wire_lint_guard(dag: &mut Dag<GistGraphOp>) {
-    gunbc_exec::inject_lint_guard(dag, GistGraphOp::LintCheck);
-}
-
 // Mockable implementation for test generation
 use gunbc_test::Mockable;
 
@@ -1297,8 +1283,6 @@ impl Mockable for GistGraphOp {
                 )
                 .build(),
 
-            // Lint freshness check
-            GistGraphOp::LintCheck => OutputMap::new().bool("done", true).build(),
         }
     }
 }

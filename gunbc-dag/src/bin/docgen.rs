@@ -6,12 +6,11 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::{build_docgen_graph, DOCGEN_READ_TARGETS};
 use gunbc_exec::{
-    execute_and_display_with_preflight, print_attention, AttentionLevel, BoundaryMocks,
+    compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
     ExecutionMode,
 };
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use std::io::IsTerminal;
 use std::process;
 
@@ -40,9 +39,9 @@ fn main() {
     };
 
     let animated = std::io::stdout().is_terminal();
-    execute_and_display_with_preflight(&dag, mode, animated, None, None, |observer| {
-        ensure_lint_upsert_with_observer(observer)
-    });
+    let steps = gunbc_lib_transport::check_and_plan_freshness();
+    let dag = compose_with_freshness(dag, steps);
+    execute_and_display(&dag, mode, animated, None, None);
 }
 
 fn build_dry_run_mocks() -> BoundaryMocks {

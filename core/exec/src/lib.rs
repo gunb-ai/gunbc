@@ -36,6 +36,7 @@ pub mod error;
 pub mod execute;
 pub mod frame_build;
 pub mod frame_write;
+pub mod freshness;
 pub mod helpers;
 pub mod intercept;
 pub mod lint_guard;
@@ -49,11 +50,8 @@ pub mod topo;
 pub use box_draw::{error_box, info_box, preamble_box, BoxStyle, TermBox};
 pub use ci_context::CiContext;
 pub use display::{
-    execute_and_display, execute_and_display_with_preflight,
-    execute_and_display_with_preflight_result, execute_and_display_with_result, print_attention,
-    print_error_boxes, print_preamble, print_preamble_auto, print_value,
-    run_preflight_with_display, AttentionLevel, DisplayResult, Preamble, PreflightObserver,
-    PreflightStatusObserver,
+    execute_and_display, execute_and_display_with_result, print_attention, print_error_boxes,
+    print_preamble, print_preamble_auto, print_value, AttentionLevel, DisplayResult, Preamble,
 };
 pub use env::{single_output as env_single_output, EnvNode};
 pub use error::{ExecError, IntoExecResult, ResultExt};
@@ -61,9 +59,9 @@ pub use execute::{
     execute, execute_single_node, execute_with_mode, execute_with_mode_and_inputs,
     execute_with_mode_and_inputs_and_detail, execute_with_progress, execute_with_progress_and_mode,
     execute_with_progress_and_mode_and_detail, execute_with_progress_and_mode_and_inputs,
-    execute_with_progress_and_mode_and_inputs_and_detail, ExecutionLog, ExecutionMode,
-    LogDetailLevel, LogEntry,
+    execute_with_progress_and_mode_and_inputs_and_detail, ExecutionLog, ExecutionMode, LogEntry,
 };
+pub use freshness::{compose_with_freshness, FreshnessStep, WithFreshness};
 pub use helpers::{
     optional_bool, optional_bool_strict, optional_int, optional_int_strict, optional_json,
     optional_json_strict, optional_map_str_str, optional_map_str_str_strict,
@@ -83,6 +81,7 @@ pub use progress::{
 pub use render::{Animation, AnimationMode, RenderMode};
 pub use topo::topo_sort;
 
+pub use gunbc_ir::LogDetailLevel;
 use gunbc_ir::Value;
 use std::collections::HashMap;
 use std::fmt;

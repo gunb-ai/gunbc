@@ -14,7 +14,7 @@ use gunbc_cli::BinaryArgs;
 use gunbc_dag::testgen_dag::graph::build_testgen_graph;
 use gunbc_dag::testgen_resource_def;
 use gunbc_exec::{
-    execute_and_display_with_preflight, execute_and_display_with_preflight_result, print_attention,
+    execute_and_display, execute_and_display_with_result, print_attention,
     AttentionLevel, BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::{
@@ -23,7 +23,6 @@ use gunbc_ir::resource::{
 };
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
-use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use gunbc_lib_transport::TransportIo;
 use std::io::IsTerminal;
 // Force-link crates that register testgen targets.
@@ -178,13 +177,12 @@ fn main() {
 
     if resource_mode == ExecMode::Verify {
         // Check mode: execute through shared display path and inspect log outputs.
-        match execute_and_display_with_preflight_result(
+        match execute_and_display_with_result(
             &dag,
             mode,
             animated,
             None,
             Some(&input_mocks),
-            &mut |observer| ensure_lint_upsert_with_observer(observer),
         ) {
             Ok(result) => {
                 let log = result.log;
@@ -246,13 +244,12 @@ fn main() {
         println!();
 
         // Execute and display (progress or classic based on terminal)
-        execute_and_display_with_preflight(
+        execute_and_display(
             &dag,
             mode,
             animated,
             None,
             Some(&input_mocks),
-            |observer| ensure_lint_upsert_with_observer(observer),
         );
 
         // Update manifest after successful generation (not in DAG - post-execution step)

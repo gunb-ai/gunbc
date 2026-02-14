@@ -24,14 +24,13 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::build_ci_graph_with_mode;
 use gunbc_exec::{
-    execute_and_display_with_preflight, print_attention, AttentionLevel, BoundaryMocks, CiContext,
-    ExecutionMode,
+    compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
+    CiContext, ExecutionMode,
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use gunbc_ir::CODEGEN_STAMP_PATH;
-use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use gunbc_primitives::{filename, FsEnv};
 use std::io::IsTerminal;
 use std::process;
@@ -186,14 +185,9 @@ fn main() {
     // Shared execution/display path: CI grouping, local progress, and classic mode
     // are selected internally based on the animated flag and CI environment.
     let animated = std::io::stdout().is_terminal();
-    execute_and_display_with_preflight(
-        &dag,
-        mode,
-        animated,
-        Some("overall_success"),
-        None,
-        |observer| ensure_lint_upsert_with_observer(observer),
-    );
+    let steps = gunbc_lib_transport::check_and_plan_freshness();
+    let dag = compose_with_freshness(dag, steps);
+    execute_and_display(&dag, mode, animated, Some("overall_success"), None);
 }
 
 fn print_help() {

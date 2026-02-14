@@ -476,8 +476,8 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
 mod tests {
     use super::*;
     use gunbc_test::{guard_test, FermiCost, TestClass};
-    use std::net::TcpListener;
     use std::env::temp_dir;
+    use std::net::TcpListener;
     use std::path::{Path, PathBuf};
     use std::thread;
 
@@ -511,16 +511,20 @@ mod tests {
     }
 
     fn guard_network(name: &str) -> bool {
-        guard_test(name, TestClass::Integration, FermiCost::S, &["network"], &[])
+        guard_test(
+            name,
+            TestClass::Integration,
+            FermiCost::S,
+            &["network"],
+            &[],
+        )
     }
 
     fn bind_loopback_listener(test_name: &str) -> Option<TcpListener> {
         match TcpListener::bind("127.0.0.1:0") {
             Ok(listener) => Some(listener),
             Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
-                eprintln!(
-                    "[guard] skipping {test_name}: loopback bind not permitted ({err})"
-                );
+                eprintln!("[guard] skipping {test_name}: loopback bind not permitted ({err})");
                 None
             }
             Err(err) => panic!("bind loopback listener: {err}"),
@@ -532,10 +536,7 @@ mod tests {
         response: String,
     ) -> Option<(u16, thread::JoinHandle<()>)> {
         let listener = bind_loopback_listener(test_name)?;
-        let port = listener
-            .local_addr()
-            .expect("listener local addr")
-            .port();
+        let port = listener.local_addr().expect("listener local addr").port();
 
         let handle = thread::spawn(move || {
             let (mut stream, _addr) = listener.accept().expect("accept client connection");
@@ -1129,14 +1130,12 @@ mod tests {
             return;
         }
 
-        let Some(listener) = bind_loopback_listener(stringify!(test_execute_transport_tcp_dispatch))
+        let Some(listener) =
+            bind_loopback_listener(stringify!(test_execute_transport_tcp_dispatch))
         else {
             return;
         };
-        let port = listener
-            .local_addr()
-            .expect("listener local addr")
-            .port();
+        let port = listener.local_addr().expect("listener local addr").port();
 
         let handle = thread::spawn(move || {
             let (mut stream, _addr) = listener.accept().expect("accept client");

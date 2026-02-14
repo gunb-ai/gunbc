@@ -3,6 +3,7 @@
 use crate::boundary::detect_boundaries;
 use crate::dag::{Dag, Guard, Port};
 use crate::entrypoint::detect_entrypoints;
+use crate::log_detail::LogDetailLevel;
 use crate::types::{Cardinality, NodeId, PortName};
 use crate::Value;
 use serde::{Deserialize, Serialize};
@@ -36,6 +37,12 @@ pub struct Node<T> {
     /// `execute_single_node` with the given inputs and verify the outputs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub examples: Vec<NodeIoExample>,
+    /// Optional execution log detail override for this node/composition.
+    ///
+    /// For SubDag nodes, this acts as a compositional default for all lowered
+    /// descendants unless overridden more specifically by nested nodes/ports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_detail: Option<LogDetailLevel>,
 }
 
 impl<T> Node<T> {
@@ -47,6 +54,7 @@ impl<T> Node<T> {
             outputs,
             body: NodeBody::Opaque(op),
             examples: Vec::new(),
+            log_detail: None,
         }
     }
 
@@ -114,6 +122,7 @@ impl<T> Node<T> {
             outputs,
             body: NodeBody::SubDag(dag),
             examples: Vec::new(),
+            log_detail: None,
         }
     }
 
@@ -157,6 +166,32 @@ impl<T> Node<T> {
             expected_outputs,
             description: Some(description.into()),
         });
+        self
+    }
+
+    /// Set an execution log detail override for this node.
+    pub fn with_log_detail(mut self, log_detail: LogDetailLevel) -> Self {
+        self.log_detail = Some(log_detail);
+        self
+    }
+
+    /// Set an execution log detail override for a specific input port.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no input port with the given name exists.
+    pub fn with_input_log_detail(
+        mut self,
+        port: impl Into<PortName>,
+        log_detail: LogDetailLevel,
+    ) -> Self {
+        let port_name: PortName = port.into();
+        let input = self
+            .inputs
+            .iter_mut()
+            .find(|p| p.name == port_name)
+            .unwrap_or_else(|| panic!("no input port '{}' on node '{}'", port_name, self.id));
+        input.log_detail = Some(log_detail);
         self
     }
 
@@ -210,6 +245,7 @@ impl<T> Node<T> {
             outputs: self.outputs,
             body,
             examples: self.examples,
+            log_detail: self.log_detail,
         }
     }
 

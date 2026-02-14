@@ -503,15 +503,12 @@ report) and thread it through both header and section generation.
 
 **Where**: `core/codegen/src/testgen/codegen.rs`
 
-**What remains**: seed safety policy is encoded as a string whitelist in
-testgen rather than in IR type metadata.
-
-**Risk**: new/refined types can drift unless both IR and testgen are updated.
-
-**Suggested fix**: move seed policy classification into IR type model and query
-it from testgen.
+**Status (2026-02-14)**: RESOLVED. Seed placeholder policy now lives in IR
+(`core/ir/src/types.rs`: `SeedPlaceholderPolicy`,
+`seed_placeholder_policy_for_type_id`) and testgen queries that API.
 
 **Added**: 2026-02-14 (reconciliation)
+**Resolved**: 2026-02-14
 
 ---
 
@@ -519,28 +516,46 @@ it from testgen.
 
 **Where**: workflow env wiring + testgen metadata (`live_required*`)
 
-**What remains**: required secret lists can drift between CI/workflow config
-and runtime/test metadata.
-
-**Risk**: false skips or false confidence in live paths.
-
-**Suggested fix**: central required-secret accessor + generated CI env exports
-from test metadata.
+**Status (2026-02-14)**: RESOLVED. CI secret env wiring now derives from
+`DagSpec` metadata (`live_required` + `live_required_any_of`) via
+`ci_live_test_secrets()` in `gunbc-dag/src/ci/graph.rs`, with GitHub
+auto-provided env vars filtered out.
 
 **Added**: 2026-02-14 (reconciliation)
+**Resolved**: 2026-02-14
 
 ---
 
-## 28. Execution logs still omit node inputs
+## ~~28. Execution logs still omit node inputs~~ RESOLVED (2026-02-14)
 
 **Where**: `core/exec/src/execute.rs` (`LogEntry`)
 
-**What remains**: logs store outputs only; tests/tooling cannot directly assert
-actual received inputs/coercions.
-
-**Risk**: coercion/shape regressions can hide behind non-crash checks.
-
-**Suggested fix**: add opt-in input recording mode for `LogEntry` (at least in
-test execution paths).
+**What changed**:
+- `LogEntry` captures optional inputs (`inputs: Option<HashMap<String, Value>>`).
+- Execution defaults now use `LogDetailLevel::IncludeInputs`.
+- Composition-level overrides are modeled in IR (`root < subdag < node < input-port`).
 
 **Added**: 2026-02-14 (reconciliation)
+**Resolved**: 2026-02-14
+
+---
+
+## ~~29. Log detail policy does not yet support composition-level inheritance/override~~ RESOLVED (2026-02-14)
+
+**Where**:
+- IR metadata (`core/ir/src/node.rs`, `core/ir/src/dag.rs`, `core/ir/src/log_detail.rs`)
+- Lowering inheritance (`core/exec/src/lower.rs`)
+- Runtime capture resolution (`core/exec/src/execute.rs`)
+
+**What changed**:
+- `LogDetailLevel` is now defined centrally in IR.
+- `Node` and `Port` support optional `log_detail` overrides.
+- Lowering now propagates subdag composition defaults to lowered descendants.
+- Runtime capture resolves effective policy through the hierarchy:
+  `root execution setting < subdag composition < node < input-port`.
+
+**Result**: log capture policy is now a modeled compositional property instead
+of a single global runtime toggle.
+
+**Added**: 2026-02-14
+**Resolved**: 2026-02-14

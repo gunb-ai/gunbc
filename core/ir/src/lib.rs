@@ -58,6 +58,7 @@ pub mod entrypoint;
 pub mod git;
 pub mod language;
 pub mod layout;
+pub mod log_detail;
 pub mod makefile_render;
 pub mod node;
 pub mod patterns;
@@ -107,6 +108,7 @@ pub use layout::{
     compute_layout, compute_levels, ConnectorCell, DagLayout, EdgeLayout, EdgeOrientation,
     NodeLayout, OverflowState, OverflowStrategy, Viewport, ViewportUnit,
 };
+pub use log_detail::LogDetailLevel;
 pub use makefile_render::MakefileStructuredRenderer;
 pub use node::{Node, NodeBody, NodeIoExample};
 pub use patterns::{

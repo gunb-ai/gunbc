@@ -515,6 +515,7 @@ mod tests {
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
+            log_detail: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -546,6 +547,7 @@ mod tests {
             outputs: vec![port("result", "String")], // "result" != "output"
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
+            log_detail: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -577,6 +579,7 @@ mod tests {
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
+            log_detail: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -610,6 +613,7 @@ mod tests {
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
+            log_detail: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -722,6 +726,7 @@ mod tests {
             outputs: vec![port("out", "String")],
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
+            log_detail: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -766,6 +771,7 @@ mod tests {
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
+            log_detail: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -797,6 +803,7 @@ mod tests {
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
+            log_detail: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -835,6 +842,7 @@ mod tests {
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
+            log_detail: None,
         };
 
         let mut dag: Dag<()> = Dag::new();

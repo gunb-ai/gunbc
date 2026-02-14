@@ -2,6 +2,7 @@
 
 use std::fmt::Write;
 
+use crate::log_detail::LogDetailLevel;
 use crate::node::Node;
 use crate::resource::AccessMode;
 use crate::type_op::TypeOp;
@@ -237,6 +238,12 @@ pub struct Port {
     /// Resource access mode for `res:*` ports (used by resource accounting)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource_access: Option<AccessMode>,
+    /// Optional execution log detail override for this input port.
+    ///
+    /// When set, this takes precedence over node/subdag/root defaults for
+    /// deciding whether this port's value is captured in execution logs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_detail: Option<LogDetailLevel>,
 }
 
 impl Port {
@@ -249,6 +256,7 @@ impl Port {
             cardinality: Cardinality::ONE,
             guard: None,
             resource_access: None,
+            log_detail: None,
         }
     }
 
@@ -264,6 +272,7 @@ impl Port {
             cardinality,
             guard: None,
             resource_access: None,
+            log_detail: None,
         }
     }
 
@@ -287,6 +296,7 @@ impl Port {
             cardinality: Cardinality::ONE,
             guard: None,
             resource_access: Some(mode),
+            log_detail: None,
         }
     }
 
@@ -320,6 +330,12 @@ impl Port {
         Self::with_cardinality(name, "Unit", Cardinality::ZERO)
     }
 
+    /// Set an execution log detail override for this port.
+    pub fn with_log_detail(mut self, log_detail: LogDetailLevel) -> Self {
+        self.log_detail = Some(log_detail);
+        self
+    }
+
     /// Create a port with an equality guard (internal use only).
     ///
     /// This is used internally for testing guarded ports.
@@ -336,6 +352,7 @@ impl Port {
             cardinality: Cardinality::ONE,
             guard: Some(Guard::Eq(expected)),
             resource_access: None,
+            log_detail: None,
         }
     }
 
@@ -355,6 +372,7 @@ impl Port {
             cardinality,
             guard: Some(guard),
             resource_access: None,
+            log_detail: None,
         }
     }
 
@@ -491,6 +509,7 @@ pub mod build {
             cardinality: Cardinality::ONE,
             guard: Some(Guard::Eq(expected)),
             resource_access: None,
+            log_detail: None,
         }
     }
 

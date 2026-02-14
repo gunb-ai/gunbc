@@ -5,8 +5,7 @@
 //! models WHY downstream nodes must wait — they depend on `lint_check.done`
 //! via their `_lint_guard` input port.
 
-use gunbc_ir::node::Node;
-use gunbc_ir::{Dag, Edge, NodeId, Port};
+use gunbc_ir::{Dag, Edge, Node, NodeId, Port};
 use std::collections::HashSet;
 
 /// Inject a lint guard node into a DAG as a blocking dependency.
@@ -51,7 +50,11 @@ pub fn inject_lint_guard<T>(dag: &mut Dag<T>, lint_op: T) {
 
     // Wire edges from lint_check.done to each root._lint_guard.
     for root_id in &roots {
-        dag.edges
-            .push(Edge::new("lint_check", "done", &root_id.0, "_lint_guard"));
+        dag.edges.push(Edge::new(
+            "lint_check",
+            "done",
+            root_id.0.as_str(),
+            "_lint_guard",
+        ));
     }
 }

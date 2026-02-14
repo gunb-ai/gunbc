@@ -26,7 +26,6 @@ use gunbc_codegen::{
     all_cleanable_outputs, derive_tool_defs, generate_cli_with_import, FileWriter,
 };
 use gunbc_dag::WorkspaceBinary;
-use gunbc_exec::run_preflight_with_display;
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default,
     update_resource_manifest, FreshnessOptions, ManagedResource, ManifestEntry, ManifestFreshness,
@@ -36,12 +35,10 @@ use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
 use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
-use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use gunbc_lib_transport::TransportIo;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::Write;
-use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
@@ -85,12 +82,17 @@ fn main() {
         return;
     }
 
-    let animated = std::io::stdout().is_terminal();
-    if let Err(err) = run_preflight_with_display(animated, &mut |observer| {
-        ensure_lint_upsert_with_observer(observer)
-    }) {
-        eprintln!("{}", err);
-        std::process::exit(1);
+    if let Some(steps) = gunbc_lib_transport::check_and_plan_freshness() {
+        for step in steps {
+            let status = std::process::Command::new(&step.command[0])
+                .args(&step.command[1..])
+                .env("GUNBC_FRESHNESS_ACTIVE", "1")
+                .status();
+            if !status.map(|s| s.success()).unwrap_or(false) {
+                eprintln!("freshness step '{}' failed", step.id);
+                std::process::exit(1);
+            }
+        }
     }
 
     match command {

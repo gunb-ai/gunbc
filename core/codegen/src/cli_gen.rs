@@ -285,6 +285,7 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
 
     // gunbc_exec imports
     let mut exec_items = vec![
+        "compose_with_freshness".to_string(),
         "execute_and_display".to_string(),
         "BoundaryMocks".to_string(),
         "ExecutionMode".to_string(),
@@ -307,10 +308,10 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
         }),
     ];
 
-    // Tool crate lint guard import (each tool crate exports wire_lint_guard)
+    // Freshness policy import (runtime freshness check)
     items.push(Item::Use(Import {
-        path: vec![crate_module.clone()],
-        items: vec!["wire_lint_guard".to_string()],
+        path: vec!["gunbc_lib_transport".to_string()],
+        items: vec!["check_and_plan_freshness".to_string()],
     }));
 
     // Tool-specific import
@@ -646,9 +647,10 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          \n\
          // Parse arguments\n\
          {arg_parsing}\n\
-         // Build the graph and inject lint guard as a blocking dependency\n\
-         let mut dag = {graph_builder_call};\n\
-         wire_lint_guard(&mut dag);\n\
+         // Build the graph and compose with freshness checks\n\
+         let dag = {graph_builder_call};\n\
+         let steps = check_and_plan_freshness();\n\
+         let dag = compose_with_freshness(dag, steps);\n\
          \n\
          {input_mocks}\n\
          // Set up execution mode\n\
@@ -813,9 +815,10 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          args.extend_from_slice(raw_args);\n\
          \n\
          {arg_parsing}\n\
-         // Build the graph and inject lint guard as a blocking dependency\n\
-         let mut dag = {graph_builder_call};\n\
-         wire_lint_guard(&mut dag);\n\
+         // Build the graph and compose with freshness checks\n\
+         let dag = {graph_builder_call};\n\
+         let steps = check_and_plan_freshness();\n\
+         let dag = compose_with_freshness(dag, steps);\n\
          \n\
          {input_mocks}\n\
          // Set up execution mode\n\
@@ -875,10 +878,18 @@ fn build_run_single_step_fn(tool: &ToolMeta) -> FnDef {
              }}\n\
          }}\n\
          \n\
-         // Lint guard (auto-fix if stale)\n\
-         if let Err(err) = gunbc_lib_transport::ensure_lint_upsert() {{\n\
-             eprintln!(\"lint check failed: {{}}\", err);\n\
-             process::exit(1);\n\
+         // Freshness check (auto-fix if stale)\n\
+         if let Some(steps) = check_and_plan_freshness() {{\n\
+             for step in steps {{\n\
+                 let status = std::process::Command::new(&step.command[0])\n\
+                     .args(&step.command[1..])\n\
+                     .env(\"GUNBC_FRESHNESS_ACTIVE\", \"1\")\n\
+                     .status();\n\
+                 if !status.map(|s| s.success()).unwrap_or(false) {{\n\
+                     eprintln!(\"freshness step '{{}}' failed\", step.id);\n\
+                     process::exit(1);\n\
+                 }}\n\
+             }}\n\
          }}\n\
          \n\
          // Build the graph\n\

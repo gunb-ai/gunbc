@@ -7,12 +7,11 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::build::build_build_graph;
 use gunbc_exec::{
-    execute_and_display_with_preflight, print_attention, AttentionLevel, BoundaryMocks,
+    compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
     ExecutionMode,
 };
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use std::io::IsTerminal;
 use std::process;
 
@@ -61,13 +60,14 @@ fn main() {
 
     // Execute and display (progress or classic based on terminal)
     let animated = std::io::stdout().is_terminal();
-    execute_and_display_with_preflight(
+    let steps = gunbc_lib_transport::check_and_plan_freshness();
+    let dag = compose_with_freshness(dag, steps);
+    execute_and_display(
         &dag,
         mode,
         animated,
         Some("overall_success"),
         None,
-        |observer| ensure_lint_upsert_with_observer(observer),
     );
 }
 

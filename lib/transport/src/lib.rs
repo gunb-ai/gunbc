@@ -35,6 +35,7 @@
 pub mod backend;
 pub mod cli;
 pub mod executor;
+pub mod freshness_policy;
 pub mod lint_guard;
 pub mod ops;
 pub mod preflight;
@@ -44,11 +45,10 @@ pub mod test_backend;
 // STRUCTURAL ENFORCEMENT: TransportOps + transport-layer CLI helpers only
 // execute_transport and execute_request are internal - not exported
 pub use backend::{TransportBackend, TransportBackendGuard};
-pub use ops::TransportOps;
-pub use preflight::{
-    ensure_lint_upsert, ensure_lint_upsert_with_ci, ensure_lint_upsert_with_observer,
-};
+pub use freshness_policy::{check_and_plan_freshness, update_freshness_manifest};
 pub use lint_guard::execute_lint_check;
+pub use ops::TransportOps;
+pub use preflight::ensure_lint_upsert;
 pub use resource_io::TransportIo;
 
 #[cfg(test)]

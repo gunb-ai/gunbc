@@ -37,7 +37,8 @@ use crate::Executable;
 use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
     canonical_edge_order, detect_boundaries, detect_entrypoints, AccessMode, BoundaryInfo,
-    Cardinality, Dag, Node, NodeBody, NodeId, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
+    Cardinality, Dag, LogDetailLevel, Node, NodeBody, NodeId, Value, RESOURCE_FILE,
+    RESOURCE_FILE_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -55,26 +56,6 @@ pub enum ExecutionMode {
     DryRun(BoundaryMocks),
     /// Simulate execution with timing and resource tracking
     Simulate(SimConfig),
-}
-
-/// Execution log detail level.
-///
-/// This controls what information is stored in each [`LogEntry`]. Higher-level
-/// compositions can default to a lighter level and opt into richer capture
-/// where needed (for example, test/verify runs).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LogDetailLevel {
-    /// Record node outputs and interception state only.
-    #[default]
-    Basic,
-    /// Record both node outputs and effective node inputs.
-    IncludeInputs,
-}
-
-impl LogDetailLevel {
-    fn includes_inputs(self) -> bool {
-        matches!(self, Self::IncludeInputs)
-    }
 }
 
 /// Configuration for simulation mode.
@@ -267,7 +248,7 @@ pub fn execute_with_mode_and_inputs<T: Executable + Clone + Send>(
     mode: ExecutionMode,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<ExecutionLog, ExecError> {
-    execute_with_mode_and_inputs_and_detail(dag, mode, input_mocks, LogDetailLevel::Basic)
+    execute_with_mode_and_inputs_and_detail(dag, mode, input_mocks, LogDetailLevel::IncludeInputs)
 }
 
 /// Execute a DAG with the specified execution mode, optional input mocks,
@@ -330,7 +311,7 @@ pub fn execute_with_progress_and_mode<T: Executable + Clone + Send>(
     mode: ExecutionMode,
     observer: &mut dyn ProgressObserver,
 ) -> Result<ExecutionLog, ExecError> {
-    execute_with_progress_and_mode_and_detail(dag, mode, observer, LogDetailLevel::Basic)
+    execute_with_progress_and_mode_and_detail(dag, mode, observer, LogDetailLevel::IncludeInputs)
 }
 
 /// Execute a DAG with execution mode, progress observer, and explicit log detail.
@@ -365,7 +346,7 @@ pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone + Send>(
         mode,
         observer,
         input_mocks,
-        LogDetailLevel::Basic,
+        LogDetailLevel::IncludeInputs,
     )
 }
 
@@ -508,7 +489,7 @@ pub fn simulate<T: Executable + Clone + Send>(
         None,
         None,
         &lowered.loops,
-        LogDetailLevel::Basic,
+        LogDetailLevel::IncludeInputs,
     )?;
 
     // Compute simulation metrics
@@ -755,6 +736,9 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             }
         }
 
+        // Capture the final input map for execution logs before ownership can move.
+        let captured_inputs = capture_log_inputs_for_node(node, &inputs, log_detail);
+
         // Check guards BEFORE emitting on_node_start — skipped nodes never
         // enter the "running" state.
         let skip = should_skip_node(node, &inputs);
@@ -842,7 +826,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         node_outputs.insert(node_id.0.clone(), outputs.clone());
         let entry = LogEntry {
             node_id: node_id.0.clone(),
-            inputs: log_detail.includes_inputs().then(|| inputs.clone()),
+            inputs: captured_inputs,
             outputs,
             was_intercepted,
         };
@@ -1201,6 +1185,37 @@ fn build_node_inputs<T>(
     Ok(inputs)
 }
 
+fn capture_log_inputs_for_node<T>(
+    node: &Node<T>,
+    inputs: &HashMap<String, Value>,
+    root_log_detail: LogDetailLevel,
+) -> Option<HashMap<String, Value>> {
+    let node_log_detail = node.log_detail.unwrap_or(root_log_detail);
+
+    if node.inputs.is_empty() {
+        return node_log_detail
+            .includes_inputs()
+            .then(|| HashMap::<String, Value>::new());
+    }
+
+    let mut captured = HashMap::new();
+    for port in &node.inputs {
+        let port_log_detail = port.log_detail.unwrap_or(node_log_detail);
+        if !port_log_detail.includes_inputs() {
+            continue;
+        }
+        if let Some(value) = inputs.get(&port.name.0) {
+            captured.insert(port.name.0.clone(), value.clone());
+        }
+    }
+
+    if captured.is_empty() {
+        None
+    } else {
+        Some(captured)
+    }
+}
+
 struct ParallelSchedulerState<'a, T> {
     // Immutable lookup tables
     node_index: HashMap<NodeId, usize>,
@@ -1404,6 +1419,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                 )?;
 
                 if should_skip_node(node, &inputs) {
+                    let captured_inputs = capture_log_inputs_for_node(node, &inputs, log_detail);
                     let outputs: HashMap<String, Value> = node
                         .outputs
                         .iter()
@@ -1414,7 +1430,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                     }
                     finalize_node_parallel(
                         &node_id,
-                        log_detail.includes_inputs().then(|| inputs.clone()),
+                        captured_inputs,
                         outputs,
                         false,
                         mode,
@@ -1430,6 +1446,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                 }
 
                 if should_intercept_for_mode(node, mode) {
+                    let captured_inputs = capture_log_inputs_for_node(node, &inputs, log_detail);
                     let mocks = match mode {
                         ExecutionMode::DryRun(mocks) => mocks,
                         ExecutionMode::Simulate(config) => &config.boundary_mocks,
@@ -1450,7 +1467,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                     }
                     finalize_node_parallel(
                         &node_id,
-                        log_detail.includes_inputs().then(|| inputs.clone()),
+                        captured_inputs,
                         outputs,
                         true,
                         mode,
@@ -1465,7 +1482,8 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         let op = op.clone();
                         let node_id_clone = node_id.clone();
                         let tx = tx.clone();
-                        let captured_inputs = log_detail.includes_inputs().then(|| inputs.clone());
+                        let captured_inputs =
+                            capture_log_inputs_for_node(node, &inputs, log_detail);
                         scope.spawn(move || {
                             let result = op.execute(inputs);
                             let _ = tx.send(NodeExecutionResult {
@@ -3020,6 +3038,110 @@ mod tests {
             log.entries[0].outputs.get("out"),
             Some(&Value::Str("hello".into()))
         );
+    }
+
+    #[test]
+    fn test_log_detail_node_override_captures_inputs() {
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(
+            Node::opaque(
+                "echo",
+                vec![port("data", "String")],
+                vec![port("data", "String")],
+                TestOp::echo(),
+            )
+            .with_log_detail(LogDetailLevel::IncludeInputs),
+        );
+
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input("echo", "data", Value::Str("captured".into()));
+
+        let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+        let entry = log.get("echo").expect("echo entry must exist");
+
+        let inputs = entry.inputs.as_ref().expect("inputs should be captured");
+        assert_eq!(inputs.get("data"), Some(&Value::Str("captured".into())));
+    }
+
+    #[test]
+    fn test_log_detail_input_port_override_include_only() {
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(
+            Node::opaque(
+                "echo",
+                vec![port("x", "String"), port("y", "String")],
+                vec![port("x", "String"), port("y", "String")],
+                TestOp::echo(),
+            )
+            .with_log_detail(LogDetailLevel::Basic)
+            .with_input_log_detail("x", LogDetailLevel::IncludeInputs),
+        );
+
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input("echo", "x", Value::Str("xv".into()));
+        mocks.set_input("echo", "y", Value::Str("yv".into()));
+
+        let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+        let entry = log.get("echo").expect("echo entry must exist");
+        let inputs = entry.inputs.as_ref().expect("x should be captured");
+        assert_eq!(inputs.len(), 1);
+        assert_eq!(inputs.get("x"), Some(&Value::Str("xv".into())));
+        assert!(!inputs.contains_key("y"));
+    }
+
+    #[test]
+    fn test_log_detail_input_port_override_can_suppress_node_default() {
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(
+            Node::opaque(
+                "echo",
+                vec![port("public", "String"), port("secret", "String")],
+                vec![port("public", "String"), port("secret", "String")],
+                TestOp::echo(),
+            )
+            .with_log_detail(LogDetailLevel::IncludeInputs)
+            .with_input_log_detail("secret", LogDetailLevel::Basic),
+        );
+
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input("echo", "public", Value::Str("p".into()));
+        mocks.set_input("echo", "secret", Value::Str("s".into()));
+
+        let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+        let entry = log.get("echo").expect("echo entry must exist");
+        let inputs = entry
+            .inputs
+            .as_ref()
+            .expect("public should still be captured");
+        assert_eq!(inputs.get("public"), Some(&Value::Str("p".into())));
+        assert!(!inputs.contains_key("secret"));
+    }
+
+    #[test]
+    fn test_log_detail_subdag_override_inherits_to_inner_nodes() {
+        let mut inner: Dag<TestOp> = Dag::new();
+        inner.add_node(Node::opaque(
+            "inner",
+            vec![port("data", "String")],
+            vec![port("data", "String")],
+            TestOp::echo(),
+        ));
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::subdag("wrapper", inner).with_log_detail(LogDetailLevel::IncludeInputs));
+
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input("wrapper", "data", Value::Str("v".into()));
+
+        let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+        let entry = log
+            .get("wrapper/inner")
+            .expect("lowered inner node entry must exist");
+        let inputs = entry
+            .inputs
+            .as_ref()
+            .expect("subdag log detail should propagate to inner node");
+        assert_eq!(inputs.get("data"), Some(&Value::Str("v".into())));
     }
 
     #[test]

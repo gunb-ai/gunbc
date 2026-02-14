@@ -5,7 +5,8 @@
 //! The executor iterates the body once per element at runtime.
 
 use gunbc_ir::{
-    detect_boundaries, detect_entrypoints, Dag, Edge, Node, NodeBody, NodeId, PortName,
+    detect_boundaries, detect_entrypoints, Dag, Edge, LogDetailLevel, Node, NodeBody, NodeId,
+    PortName,
 };
 use std::collections::HashMap;
 use thiserror::Error;
@@ -199,23 +200,38 @@ struct LoopPatternInfo<T> {
 /// - Edges FROM the SubDag parent are rewired from inner boundary nodes (by port name)
 /// - A single parent input may fan out to multiple inner entrypoints with the same name
 pub fn lower<T: Clone>(dag: &Dag<T>) -> Result<LowerResult<T>, LowerError> {
+    lower_with_log_detail(dag, None)
+}
+
+fn lower_with_log_detail<T: Clone>(
+    dag: &Dag<T>,
+    inherited_log_detail: Option<LogDetailLevel>,
+) -> Result<LowerResult<T>, LowerError> {
     let mut result = Dag::new();
     let mut subdag_mappings: HashMap<NodeId, SubDagMapping> = HashMap::new();
     let mut loops = Vec::new();
 
     // First pass: collect nodes and build SubDag mappings
     for node in &dag.nodes {
+        let effective_node_log_detail = node.log_detail.or(inherited_log_detail);
         match &node.body {
             NodeBody::Opaque(_) => {
                 // Opaque nodes pass through unchanged
-                result.add_node(node.clone());
+                let mut lowered_node = node.clone();
+                lowered_node.log_detail = effective_node_log_detail;
+                result.add_node(lowered_node);
             }
             NodeBody::SubDag(subdag) => {
                 // Check for loop pattern before recursing
                 if let Some(loop_info) = detect_loop_pattern(subdag) {
                     // Loop pattern detected: flatten unpack+pack but keep body as template
-                    let (loop_result, mapping) =
-                        lower_loop_subdag(node, subdag, &loop_info, &node.id.0)?;
+                    let (loop_result, mapping) = lower_loop_subdag(
+                        node,
+                        subdag,
+                        &loop_info,
+                        &node.id.0,
+                        effective_node_log_detail,
+                    )?;
                     subdag_mappings.insert(node.id.clone(), mapping);
 
                     // Add unpack and pack nodes (prefixed)
@@ -230,7 +246,7 @@ pub fn lower<T: Clone>(dag: &Dag<T>) -> Result<LowerResult<T>, LowerError> {
                     loops.extend(loop_result.loops);
                 } else {
                     // Regular SubDag: recursively lower
-                    let lowered_sub = lower(subdag)?;
+                    let lowered_sub = lower_with_log_detail(subdag, effective_node_log_detail)?;
 
                     // Build mapping before we modify the lowered_sub
                     let mapping = build_subdag_mapping(node, &lowered_sub.dag, &node.id.0)?;
@@ -245,6 +261,7 @@ pub fn lower<T: Clone>(dag: &Dag<T>) -> Result<LowerResult<T>, LowerError> {
                             outputs: sub_node.outputs.clone(),
                             body: sub_node.body.clone(),
                             examples: sub_node.examples.clone(),
+                            log_detail: sub_node.log_detail,
                         };
                         result.add_node(prefixed_node);
                     }
@@ -360,6 +377,34 @@ pub fn lower<T: Clone>(dag: &Dag<T>) -> Result<LowerResult<T>, LowerError> {
     })
 }
 
+fn apply_log_detail_context<T: Clone>(
+    dag: &Dag<T>,
+    inherited_log_detail: Option<LogDetailLevel>,
+) -> Dag<T> {
+    let mut contextual = Dag::new();
+    for node in &dag.nodes {
+        let effective_node_log_detail = node.log_detail.or(inherited_log_detail);
+        let body = match &node.body {
+            NodeBody::Opaque(op) => NodeBody::Opaque(op.clone()),
+            NodeBody::SubDag(inner) => {
+                NodeBody::SubDag(apply_log_detail_context(inner, effective_node_log_detail))
+            }
+        };
+        contextual.add_node(Node {
+            id: node.id.clone(),
+            inputs: node.inputs.clone(),
+            outputs: node.outputs.clone(),
+            body,
+            examples: node.examples.clone(),
+            log_detail: effective_node_log_detail,
+        });
+    }
+    for edge in &dag.edges {
+        contextual.add_edge(edge.clone());
+    }
+    contextual
+}
+
 /// Lower a loop SubDag: flatten unpack+pack, preserve body as template.
 ///
 /// Returns a LowerResult containing only the unpack and pack nodes (prefixed)
@@ -369,6 +414,7 @@ fn lower_loop_subdag<T: Clone>(
     inner_dag: &Dag<T>,
     loop_pattern: &LoopPatternInfo<T>,
     parent_prefix: &str,
+    inherited_log_detail: Option<LogDetailLevel>,
 ) -> Result<(LowerResult<T>, SubDagMapping), LowerError> {
     let unpack = inner_dag.nodes.iter().find(|n| n.id.0 == "unpack").unwrap();
     let pack = inner_dag.nodes.iter().find(|n| n.id.0 == "pack").unwrap();
@@ -383,6 +429,7 @@ fn lower_loop_subdag<T: Clone>(
         outputs: unpack.outputs.clone(),
         body: unpack.body.clone(),
         examples: unpack.examples.clone(),
+        log_detail: unpack.log_detail.or(inherited_log_detail),
     };
     let prefixed_pack = Node {
         id: pack_id.clone(),
@@ -390,6 +437,7 @@ fn lower_loop_subdag<T: Clone>(
         outputs: pack.outputs.clone(),
         body: pack.body.clone(),
         examples: pack.examples.clone(),
+        log_detail: pack.log_detail.or(inherited_log_detail),
     };
 
     let mut flat_dag = Dag::new();
@@ -465,7 +513,7 @@ fn lower_loop_subdag<T: Clone>(
         unpack_id: unpack_id.clone(),
         pack_id: pack_id.clone(),
         element_port: loop_pattern.element_port.clone(),
-        body_dag: loop_pattern.body_dag.clone(),
+        body_dag: apply_log_detail_context(&loop_pattern.body_dag, inherited_log_detail),
         extra_input_ports,
     };
 
@@ -583,6 +631,29 @@ mod tests {
         assert_eq!(result.dag.nodes.len(), 1);
         assert_eq!(result.dag.nodes[0].id.0, "wrapper/inner");
         assert!(result.loops.is_empty());
+    }
+
+    #[test]
+    fn test_lower_subdag_inherits_log_detail_from_parent() {
+        let mut subdag: Dag<()> = Dag::new();
+        subdag.add_node(Node::opaque(
+            "inner",
+            vec![port("in", "S")],
+            vec![port("out", "S")],
+            (),
+        ));
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(
+            Node::subdag("wrapper", subdag).with_log_detail(LogDetailLevel::IncludeInputs),
+        );
+
+        let result = lower(&dag).unwrap();
+        assert_eq!(result.dag.nodes.len(), 1);
+        assert_eq!(
+            result.dag.nodes[0].log_detail,
+            Some(LogDetailLevel::IncludeInputs)
+        );
     }
 
     #[test]

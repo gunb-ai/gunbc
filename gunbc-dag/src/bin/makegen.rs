@@ -7,13 +7,12 @@ use gunbc_cli::BinaryArgs;
 use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::build_makegen_graph;
 use gunbc_exec::{
-    execute_and_display_with_preflight, execute_and_display_with_preflight_result, print_attention,
+    compose_with_freshness, execute_and_display, execute_and_display_with_result, print_attention,
     AttentionLevel, BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
-use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use std::io::IsTerminal;
 use std::process;
 
@@ -116,16 +115,11 @@ fn main() {
 
     let animated = std::io::stdout().is_terminal();
 
+    let steps = gunbc_lib_transport::check_and_plan_freshness();
+    let dag = compose_with_freshness(dag, steps);
     if resource_mode == ExecMode::Verify {
         // Check mode: execute through shared display path and inspect log outputs.
-        match execute_and_display_with_preflight_result(
-            &dag,
-            mode,
-            animated,
-            None,
-            Some(&input_mocks),
-            &mut |observer| ensure_lint_upsert_with_observer(observer),
-        ) {
+        match execute_and_display_with_result(&dag, mode, animated, None, Some(&input_mocks)) {
             Ok(result) => {
                 let log = result.log;
                 // Scan log for compare_*_content.fresh
@@ -205,14 +199,7 @@ fn main() {
         println!();
 
         // Execute and display (progress or classic based on terminal)
-        execute_and_display_with_preflight(
-            &dag,
-            mode,
-            animated,
-            None,
-            Some(&input_mocks),
-            |observer| ensure_lint_upsert_with_observer(observer),
-        );
+        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
     }
 }
 

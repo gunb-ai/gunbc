@@ -51,9 +51,7 @@ pub use codegen::{
     build_codegen_graph, build_codegen_graph_with_mode, codegen_signature, CodegenGraphOp,
     CodegenOp,
 };
-pub use docgen::{
-    build_docgen_graph, DocgenGraphOp, DocgenOp, DocgenReadTarget, DOCGEN_READ_TARGETS,
-};
+pub use docgen::{build_docgen_graph, DocgenGraphOp, DocgenOp, DocgenReadTarget, DOCGEN_READ_TARGETS};
 pub use file_ops_graph::FileOpsGraph;
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
 pub use makegen::{
