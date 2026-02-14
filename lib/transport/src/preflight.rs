@@ -124,7 +124,8 @@ where
         return Err(format!("preflight: lint state error: {}", state));
     }
 
-    println!("preflight: lint-upsert ({})", state);
+    // Status communicated through the observer pattern (on_preflight_start/complete).
+    // No stdout print here — it would break the stderr cursor-up overwrite mechanism.
     lint_runner(resource.resource_id())
         .map_err(|e| format!("preflight: lint-upsert failed: {}", e))?;
 

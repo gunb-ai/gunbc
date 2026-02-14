@@ -56,7 +56,7 @@ pub fn bootstrap_mock_spec() -> MockSpec {
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "bootstrap")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         // Transport: execute_scan_workspace (workspace scan)
         .transport_response(
@@ -207,14 +207,14 @@ pub fn bootstrap_mock_spec() -> MockSpec {
             })),
         )
         // Resources: file locks for both outputs
-        .resource_lock("fs:Makefile")
-        .resource_lock("fs:.gitignore")
+        .resource_lock("file:Makefile")
+        .resource_lock("file:.gitignore")
         // Expected outputs: verified after DryRun execution
         .expected_output("parse_scan_result", "crate_count", Value::Int(2))
         // Node I/O examples: verify pure node behavior
         .node_example(
             NodeExample::new("fs_env")
-                .output("fs:write", OutputMatcher::Any)
+                .output("file:write", OutputMatcher::Any)
                 .description("Provides filesystem handle for bootstrap writes"),
         )
         .node_example(
@@ -276,7 +276,7 @@ pub fn bootstrap_mock_spec_makefile_only() -> MockSpec {
     let dag = build_bootstrap_graph().expect("bootstrap graph should build");
 
     extract_mock_requirements(&dag, "bootstrap")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         .transport_response(
             "execute_scan_workspace",
@@ -383,7 +383,7 @@ pub fn bootstrap_mock_spec_makefile_only() -> MockSpec {
             "check_mode",
             Value::Bool(false),
         )
-        .resource_lock("fs:Makefile")
+        .resource_lock("file:Makefile")
 }
 
 /// Mock spec for testing file system failure on Makefile.
@@ -392,7 +392,7 @@ pub fn bootstrap_mock_spec_makefile_fails() -> MockSpec {
     let dag = build_bootstrap_graph().expect("bootstrap graph should build");
 
     extract_mock_requirements(&dag, "bootstrap")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         .transport_response(
             "execute_scan_workspace",
@@ -499,8 +499,8 @@ pub fn bootstrap_mock_spec_makefile_fails() -> MockSpec {
             "check_mode",
             Value::Bool(false),
         )
-        .resource_lock_fails("fs:Makefile", "Permission denied: Makefile is read-only")
-        .resource_lock("fs:.gitignore")
+        .resource_lock_fails("file:Makefile", "Permission denied: Makefile is read-only")
+        .resource_lock("file:.gitignore")
 }
 
 /// Mock spec for testing complete write failure.
@@ -509,7 +509,7 @@ pub fn bootstrap_mock_spec_all_fail() -> MockSpec {
     let dag = build_bootstrap_graph().expect("bootstrap graph should build");
 
     extract_mock_requirements(&dag, "bootstrap")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         .transport_response(
             "execute_scan_workspace",
@@ -612,6 +612,6 @@ pub fn bootstrap_mock_spec_all_fail() -> MockSpec {
             "check_mode",
             Value::Bool(false),
         )
-        .resource_lock_fails("fs:Makefile", "Permission denied")
-        .resource_lock_fails("fs:.gitignore", "Permission denied")
+        .resource_lock_fails("file:Makefile", "Permission denied")
+        .resource_lock_fails("file:.gitignore", "Permission denied")
 }

@@ -89,6 +89,25 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub use gunbc_infra::ResourceId;
 
+/// Canonical resource port prefix.
+pub const RESOURCE_PORT_PREFIX: &str = "res:";
+/// Canonical coarse file resource port.
+pub const RESOURCE_FILE: &str = "res:file";
+/// Canonical file resource port prefix.
+pub const RESOURCE_FILE_PREFIX: &str = "res:file:";
+/// Canonical coarse network API resource port.
+pub const RESOURCE_API_NETWORK: &str = "res:api:network";
+/// Canonical repository resource port.
+pub const RESOURCE_REPO: &str = "res:repo";
+/// Canonical coarse target resource port.
+pub const RESOURCE_TARGET: &str = "res:target";
+/// Canonical environment output port for read filesystem handles.
+pub const FILE_HANDLE_READ_PORT: &str = "file:read";
+/// Canonical environment output port for write filesystem handles.
+pub const FILE_HANDLE_WRITE_PORT: &str = "file:write";
+/// Canonical environment output port for network handles.
+pub const API_NETWORK_HANDLE_PORT: &str = "api:network";
+
 /// How a resource is accessed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AccessMode {
@@ -118,48 +137,52 @@ impl AccessMode {
 
 /// Normalize resource IDs to a canonical naming scheme.
 ///
-/// This is intentionally applied at resource-accounting boundaries so existing
-/// DAG port names remain backward-compatible while conflict detection converges
-/// on one vocabulary.
+/// This is intentionally applied at resource-accounting boundaries so all
+/// consumers reason over the same canonical vocabulary.
 ///
 /// Canonical forms:
-/// - `file` / `file:<path>` (legacy alias: `fs`, `fs:<path>`)
+/// - `file` / `file:<path>`
 /// - `tool:<id>`
-/// - `api:<provider>` (legacy alias: `net`, `net:<provider>`)
-/// - `repo` (legacy alias: `repo_path`)
-/// - `target` / `target:<name>` (legacy aliases: `pkg`, `pkg:<name>`, `cargo:<name>`)
+/// - `api:<provider>`
+/// - `repo`
+/// - `target` / `target:<name>`
 pub fn normalize_resource_id(id: &str) -> String {
-    let raw = id.strip_prefix("res:").unwrap_or(id);
+    id.strip_prefix(RESOURCE_PORT_PREFIX).unwrap_or(id).to_string()
+}
 
-    if raw == "fs" {
-        return "file".to_string();
-    }
-    if let Some(path) = raw.strip_prefix("fs:") {
-        return format!("file:{path}");
-    }
+/// Build a canonical `res:*` port from any canonical resource id.
+pub fn resource_port(id: &str) -> String {
+    format!("{RESOURCE_PORT_PREFIX}{}", normalize_resource_id(id))
+}
 
-    if raw == "net" {
-        return "api:network".to_string();
+/// Build a canonical file resource port (`res:file` or `res:file:<path>`).
+pub fn resource_file_port(path: &str) -> String {
+    let path = path.trim();
+    if path.is_empty() {
+        RESOURCE_FILE.to_string()
+    } else {
+        format!("{RESOURCE_FILE_PREFIX}{path}")
     }
-    if let Some(provider) = raw.strip_prefix("net:") {
-        return format!("api:{provider}");
-    }
+}
 
-    if raw == "pkg" {
-        return "target".to_string();
+/// Build a canonical API resource port (`res:api:<provider>`).
+pub fn resource_api_port(provider: &str) -> String {
+    let provider = provider.trim();
+    if provider.is_empty() {
+        RESOURCE_API_NETWORK.to_string()
+    } else {
+        resource_port(&format!("api:{provider}"))
     }
-    if let Some(name) = raw.strip_prefix("pkg:") {
-        return format!("target:{name}");
-    }
-    if let Some(name) = raw.strip_prefix("cargo:") {
-        return format!("target:{name}");
-    }
+}
 
-    if raw == "repo_path" {
-        return "repo".to_string();
+/// Build a canonical target resource port (`res:target` or `res:target:<name>`).
+pub fn resource_target_port(name: &str) -> String {
+    let name = name.trim();
+    if name.is_empty() {
+        RESOURCE_TARGET.to_string()
+    } else {
+        resource_port(&format!("target:{name}"))
     }
-
-    raw.to_string()
 }
 
 /// Resource kind: capability vs observation.
@@ -724,22 +747,37 @@ mod tests {
 
     #[test]
     fn test_port_resource_write_mode() {
-        let port = Port::resource("fs", "FilesystemHandle", AccessMode::Write);
-        assert_eq!(port.name.0, "res:fs");
+        let port = Port::resource("file", "FilesystemHandle", AccessMode::Write);
+        assert_eq!(port.name.0, "res:file");
         assert_eq!(port.resource_access, Some(AccessMode::Write));
     }
 
     #[test]
-    fn test_normalize_resource_id_aliases() {
-        assert_eq!(normalize_resource_id("res:fs"), "file");
-        assert_eq!(normalize_resource_id("fs:Makefile"), "file:Makefile");
-        assert_eq!(normalize_resource_id("res:net"), "api:network");
-        assert_eq!(normalize_resource_id("net:gcp"), "api:gcp");
-        assert_eq!(normalize_resource_id("res:pkg"), "target");
-        assert_eq!(normalize_resource_id("pkg:manager"), "target:manager");
-        assert_eq!(normalize_resource_id("cargo:build"), "target:build");
-        assert_eq!(normalize_resource_id("res:repo_path"), "repo");
+    fn test_normalize_resource_id_canonical_only() {
+        assert_eq!(normalize_resource_id("res:file"), "file");
+        assert_eq!(normalize_resource_id("res:file:Makefile"), "file:Makefile");
+        assert_eq!(normalize_resource_id("res:api:network"), "api:network");
+        assert_eq!(normalize_resource_id("res:api:gcp"), "api:gcp");
+        assert_eq!(normalize_resource_id("res:target"), "target");
+        assert_eq!(normalize_resource_id("res:target:manager"), "target:manager");
+        assert_eq!(normalize_resource_id("res:target:build"), "target:build");
+        assert_eq!(normalize_resource_id("res:repo"), "repo");
         assert_eq!(normalize_resource_id("res:tool:clippy"), "tool:clippy");
+    }
+
+    #[test]
+    fn test_resource_port_builders() {
+        assert_eq!(resource_port("file:Makefile"), "res:file:Makefile");
+        assert_eq!(resource_port("res:api:gcp"), "res:api:gcp");
+
+        assert_eq!(resource_file_port(""), "res:file");
+        assert_eq!(resource_file_port("deps.toml"), "res:file:deps.toml");
+
+        assert_eq!(resource_api_port(""), "res:api:network");
+        assert_eq!(resource_api_port("github"), "res:api:github");
+
+        assert_eq!(resource_target_port(""), "res:target");
+        assert_eq!(resource_target_port("build"), "res:target:build");
     }
 
     #[test]
@@ -764,7 +802,7 @@ mod tests {
         ));
         dag.add_node(Node::opaque(
             "node_b",
-            vec![Port::resource("fs", "FilesystemHandle", AccessMode::Write)],
+            vec![Port::resource("file", "FilesystemHandle", AccessMode::Write)],
             vec![],
             "op_b".to_string(),
         ));
@@ -824,13 +862,13 @@ mod tests {
         let mut dag: Dag<String> = Dag::new();
         dag.add_node(Node::opaque(
             "a",
-            vec![Port::resource("fs", "FilesystemHandle", AccessMode::Write)],
+            vec![Port::resource("file", "FilesystemHandle", AccessMode::Write)],
             vec![],
             "op_a".to_string(),
         ));
         dag.add_node(Node::opaque(
             "b",
-            vec![Port::resource("fs", "FilesystemHandle", AccessMode::Write)],
+            vec![Port::resource("file", "FilesystemHandle", AccessMode::Write)],
             vec![],
             "op_b".to_string(),
         ));
@@ -866,7 +904,7 @@ mod tests {
         let mut inner: Dag<()> = Dag::new();
         inner.add_node(Node::opaque(
             "worker",
-            vec![Port::resource("fs", "FilesystemHandle", AccessMode::Write)],
+            vec![Port::resource("file", "FilesystemHandle", AccessMode::Write)],
             vec![Port::scalar("result", "String")],
             (),
         ));
@@ -876,8 +914,8 @@ mod tests {
         let res_port = subdag_node
             .inputs
             .iter()
-            .find(|p| p.name.0 == "res:fs")
-            .expect("res:fs should be inferred");
+            .find(|p| p.name.0 == "res:file")
+            .expect("res:file should be inferred");
         assert_eq!(
             res_port.resource_access,
             Some(AccessMode::Write),

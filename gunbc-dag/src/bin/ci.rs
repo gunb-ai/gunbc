@@ -32,7 +32,7 @@ use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use gunbc_ir::CODEGEN_STAMP_PATH;
 use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
-use gunbc_primitives::filename;
+use gunbc_primitives::{filename, FsEnv};
 use std::io::IsTerminal;
 use std::process;
 
@@ -70,7 +70,7 @@ fn main() {
 
         // Resource environment: filesystem handle used by transport executors.
         let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        mocks.set_value("fs_env", "fs:write", fs.into());
+        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
 
         // Transport execution nodes need properly-typed Response mocks.
         // The default mock is Value::Str("<DRY-RUN>"), but downstream parse

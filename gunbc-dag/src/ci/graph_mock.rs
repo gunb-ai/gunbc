@@ -79,15 +79,15 @@ pub fn ci_mock_spec() -> MockSpec {
     )
     .build_unchecked()
     // Resources
-    .resource_lock("cargo:build")
-    .resource_lock("cargo:test")
-    .resource_lock("cargo:clippy")
+    .resource_lock("target:build")
+    .resource_lock("target:test")
+    .resource_lock("target:clippy")
     // Expected outputs: verified after DryRun execution
     .expected_output("report", "overall_success", Value::Bool(true))
     // Node I/O examples: verify pure node behavior
     .node_example(
         NodeExample::new("fs_env")
-            .output("fs:write", OutputMatcher::Any)
+            .output("file:write", OutputMatcher::Any)
             .description("Provides filesystem handle for CI stages"),
     )
     .node_example(
@@ -654,9 +654,9 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
         false,
     )
     .build_unchecked()
-    .resource_lock("cargo:build")
-    .resource_lock("cargo:test")
-    .resource_lock("cargo:clippy")
+    .resource_lock("target:build")
+    .resource_lock("target:test")
+    .resource_lock("target:clippy")
 }
 
 /// Mock spec for testing build failure.
@@ -800,7 +800,7 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
         true,
     )
     .build_unchecked()
-    .resource_lock("cargo:build")
+    .resource_lock("target:build")
 }
 
 /// Mock spec for testing prep/codegen failure.
@@ -1065,9 +1065,9 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
         false,
     )
     .build_unchecked()
-    .resource_lock("cargo:build")
-    .resource_lock("cargo:test")
-    .resource_lock("cargo:clippy")
+    .resource_lock("target:build")
+    .resource_lock("target:test")
+    .resource_lock("target:clippy")
 }
 
 /// Mock spec with build lock contention.
@@ -1084,7 +1084,7 @@ pub fn ci_mock_spec_build_contended() -> MockSpec {
         false,
     )
     .build_unchecked()
-    .resource_lock_fails("cargo:build", "Another cargo build is in progress")
+    .resource_lock_fails("target:build", "Another cargo build is in progress")
 }
 
 const CLIPPY_STDOUT_OK: &str = "Checking gunbc v0.1.0\n    Finished dev";
@@ -1138,7 +1138,7 @@ fn add_clippy_lint_mocks(
 /// clippy_lint mocks are added after build since it's self-acquiring and
 /// not detected as a boundary by the typed extractor.
 fn with_ci_typed_mocks(reqs: gunbc_test::MockRequirements) -> gunbc_test::MockRequirements {
-    reqs.boundary("fs_env", "fs:write", mock_fs_handle())
+    reqs.boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         // Transport: execute_deps_exists (check deps.toml)
         .transport_response(

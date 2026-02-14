@@ -42,7 +42,7 @@ pub fn pragma_mock_spec() -> MockSpec {
     let dag = build_pragma_graph().expect("pragma graph should build");
 
     extract_mock_requirements(&dag, "pragma")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         // Transport: execute_read_clippy
         .transport_response(
@@ -253,13 +253,13 @@ pub fn pragma_mock_spec() -> MockSpec {
             })),
         )
         // Resources: file locks for all outputs
-        .resource_lock("fs:clippy.toml")
-        .resource_lock("fs:tools/disallowed-methods-allowlist.txt")
-        .resource_lock("fs:tools/pragma-lint-policy.txt")
+        .resource_lock("file:clippy.toml")
+        .resource_lock("file:tools/disallowed-methods-allowlist.txt")
+        .resource_lock("file:tools/pragma-lint-policy.txt")
         // Node I/O examples
         .node_example(
             NodeExample::new("fs_env")
-                .output("fs:write", OutputMatcher::Any)
+                .output("file:write", OutputMatcher::Any)
                 .description("Provides filesystem handle for pragma writes"),
         )
         .node_example(

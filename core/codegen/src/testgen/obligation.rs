@@ -1240,7 +1240,7 @@ mod tests {
         dag.add_node(Node::opaque(
             "fs_env",
             vec![],
-            vec![Port::resource("fs", "FilesystemHandle", AccessMode::Read)],
+            vec![Port::resource("file", "FilesystemHandle", AccessMode::Read)],
             (),
         ));
         dag.add_node(Node::opaque(
@@ -1253,7 +1253,7 @@ mod tests {
             "execute",
             vec![
                 Port::scalar("request", "TransportRequest"),
-                Port::resource("fs", "FilesystemHandle", AccessMode::Read),
+                Port::resource("file", "FilesystemHandle", AccessMode::Read),
             ],
             vec![Port::scalar("response", "TransportResponse")],
             (),
@@ -1265,7 +1265,7 @@ mod tests {
             (),
         ));
         dag.add_edge(edge("prepare", "request", "execute", "request"));
-        dag.add_edge(edge("fs_env", "res:fs", "execute", "res:fs"));
+        dag.add_edge(edge("fs_env", "res:file", "execute", "res:file"));
         dag.add_edge(edge("execute", "response", "parse", "response"));
 
         let obligations = collect_obligations(&dag, None, None);

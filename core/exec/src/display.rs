@@ -18,7 +18,8 @@ use crate::frame_build::{build_frame, format_duration};
 use crate::frame_write::FrameWriter;
 use crate::intercept::BoundaryMocks;
 use crate::progress::{
-    ComposedObserver, DagProgress, DagSnapshot, OutputSummary, ProgressObserver, StageGroup,
+    ComposedObserver, DagPhase, DagProgress, DagSnapshot, OutputSummary, ProgressObserver,
+    StageGroup,
 };
 use crate::render::{Animation, RenderMode};
 use crate::terminal::TerminalProfile;
@@ -88,6 +89,8 @@ pub struct Preamble {
     pub title: String,
     /// Short description of what this tool does.
     pub description: String,
+    /// Additional body lines rendered inside the box (e.g., args like "repo_path: .").
+    pub body_lines: Vec<String>,
 }
 
 impl Preamble {
@@ -96,6 +99,20 @@ impl Preamble {
         Self {
             title: title.into(),
             description: description.into(),
+            body_lines: Vec::new(),
+        }
+    }
+
+    /// Create a preamble with body lines (args displayed inside the box).
+    pub fn with_body(
+        title: impl Into<String>,
+        description: impl Into<String>,
+        body_lines: Vec<String>,
+    ) -> Self {
+        Self {
+            title: title.into(),
+            description: description.into(),
+            body_lines,
         }
     }
 }
@@ -110,11 +127,18 @@ pub fn print_preamble(preamble: &Preamble, tier: Tier, use_color: bool) {
     }
     let b = box_draw::preamble_box(&preamble.title, tier, use_color);
     let mut stderr = io::stderr();
-    if preamble.description.is_empty() {
-        let _ = b.render(&mut stderr, &[]);
-    } else {
-        let _ = b.render(&mut stderr, &[&preamble.description]);
+
+    // Collect all lines: description first, then body_lines (args).
+    let mut lines: Vec<String> = Vec::new();
+    if !preamble.description.is_empty() {
+        lines.push(preamble.description.clone());
     }
+    for line in &preamble.body_lines {
+        lines.push(format!("  {}", line));
+    }
+
+    let refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+    let _ = b.render(&mut stderr, &refs);
 }
 
 /// Result from display-aware DAG execution.
@@ -332,6 +356,16 @@ where
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 guard.clone()
             };
+
+            // Skip rendering until the DAG is actually running — avoids
+            // flashing a useless "DAG pending" frame.
+            if matches!(progress.phase, DagPhase::NotStarted) {
+                if stop_for_render.load(Ordering::Relaxed) {
+                    break;
+                }
+                thread::sleep(PROGRESS_TICK);
+                continue;
+            }
 
             let layout = compute_layout(
                 &progress.snapshot.topo_order,
@@ -553,6 +587,17 @@ fn run_with_progress<T: Executable + Clone + Send>(
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 guard.clone()
             };
+
+            // Skip rendering until the DAG is actually running — avoids
+            // flashing a useless "DAG pending" frame.
+            if matches!(progress.phase, DagPhase::NotStarted) {
+                if stop_for_render.load(Ordering::Relaxed) {
+                    break;
+                }
+                thread::sleep(PROGRESS_TICK);
+                continue;
+            }
+
             render_progress_frame(
                 &progress,
                 &layout_for_render,

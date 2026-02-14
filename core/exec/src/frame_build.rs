@@ -72,17 +72,8 @@ fn build_dag_header(
 ) -> Line {
     let elapsed = format_duration(progress.elapsed());
     match &progress.phase {
-        DagPhase::NotStarted => Line::new(vec![
-            symbol_span(SymbolId::DagNotStarted, symbol_set, tier),
-            Span::plain(" DAG pending"),
-        ]),
-        DagPhase::Running { current_node } => {
-            let label = progress
-                .snapshot
-                .labels
-                .get(current_node)
-                .map(|s| s.as_str())
-                .unwrap_or(&current_node.0);
+        DagPhase::NotStarted => Line::new(vec![Span::plain("")]),
+        DagPhase::Running { .. } => {
             let icon = if spinner_frame.is_empty() {
                 symbol_span(SymbolId::DagRunning, symbol_set, tier)
             } else {
@@ -96,7 +87,7 @@ fn build_dag_header(
             };
             Line::new(vec![
                 icon,
-                Span::plain(format!(" Running: {} [{}]", label, elapsed)),
+                Span::plain(format!(" Running [{}]", elapsed)),
             ])
         }
         DagPhase::Completed { elapsed: e } => {
@@ -180,7 +171,7 @@ fn build_compact_line(
         .count();
 
     let status_span = match &progress.phase {
-        DagPhase::NotStarted => symbol_span(SymbolId::DagNotStarted, symbol_set, tier),
+        DagPhase::NotStarted => Span::plain(""),
         DagPhase::Running { .. } => Span::plain(spinner_frame.to_string()),
         DagPhase::Completed { .. } => symbol_span(SymbolId::DagCompleted, symbol_set, tier),
         DagPhase::Failed { .. } => symbol_span(SymbolId::DagFailed, symbol_set, tier),
@@ -380,9 +371,16 @@ fn build_grouped_stage_panel(
         // - Pending:   dim ○,   dim name
         let (icon, icon_color, name_color) = if gp.is_failed() {
             ("\u{2718}".to_string(), SemanticColor::Error, None) // ✘, red icon, default name
-        } else if gp.running > 0 && !is_final {
+        } else if is_final {
+            // Final static frame: checkmark only if truly done, otherwise pending circle.
+            if gp.is_done() {
+                ("\u{2714}".to_string(), SemanticColor::Success, Some(SemanticColor::Dim))
+            } else {
+                ("\u{25CB}".to_string(), SemanticColor::Dim, Some(SemanticColor::Dim))
+            }
+        } else if gp.running > 0 {
             (spinner_frame.to_string(), SemanticColor::Active, None) // spinner, orange, default name
-        } else if gp.running > 0 || gp.is_done() {
+        } else if gp.is_done() {
             ("\u{2714}".to_string(), SemanticColor::Success, Some(SemanticColor::Dim)) // ✔, green, dim name
         } else {
             ("\u{25CB}".to_string(), SemanticColor::Dim, Some(SemanticColor::Dim)) // ○, dim, dim name
@@ -977,12 +975,17 @@ mod tests {
             "Standard mode should have at least header + legend, got {}",
             frame.lines.len()
         );
-        // First line is the header
-        let header: String = frame.lines[0].spans.iter().map(|s| &s.text[..]).collect();
+        // First line is the header — for NotStarted phase it's a blank line
+        // (no "DAG pending" noise). Verify the frame structure is intact.
+        let all_text: String = frame
+            .lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.text.as_str()))
+            .collect();
         assert!(
-            header.contains("DAG pending") || header.contains("Running"),
-            "Header should describe DAG state: {}",
-            header
+            !all_text.contains("DAG pending"),
+            "NotStarted should not produce 'DAG pending', got: {}",
+            all_text
         );
     }
 

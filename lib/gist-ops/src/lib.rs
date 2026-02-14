@@ -53,7 +53,7 @@ impl Executable for GistOps {
                 let _required_scopes = optional_str_list_strict(&inputs, "required_scopes")?;
 
                 // Acquire system resources at the DAG boundary (not inline)
-                let fs = require_filesystem_handle(&inputs, "res:fs")?;
+                let fs = require_filesystem_handle(&inputs, "res:file")?;
                 let now = require_timestamp(&inputs, "res:clock")?;
 
                 // Explicit priority: local branch > remote branch > "snapshot".
@@ -423,7 +423,7 @@ mod tests {
         inputs.insert("markdown".to_string(), Value::Str("# Test".to_string()));
         let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
         let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
-        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:file".to_string(), fs.into());
         inputs.insert("res:clock".to_string(), ts.into());
 
         let op = GistOps::PrepareRequest { public: false };
@@ -455,7 +455,7 @@ mod tests {
         );
         let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
         let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
-        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:file".to_string(), fs.into());
         inputs.insert("res:clock".to_string(), ts.into());
 
         let op = GistOps::PrepareRequest { public: false };
@@ -489,7 +489,7 @@ mod tests {
         inputs.insert("remote_branch".to_string(), Value::Str("main".to_string()));
         let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
         let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
-        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:file".to_string(), fs.into());
         inputs.insert("res:clock".to_string(), ts.into());
 
         let op = GistOps::PrepareRequest { public: false };
@@ -525,7 +525,7 @@ mod tests {
         inputs.insert("remote_branch".to_string(), Value::Str("main".to_string()));
         let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
         let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
-        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:file".to_string(), fs.into());
         inputs.insert("res:clock".to_string(), ts.into());
 
         let op = GistOps::PrepareRequest { public: false };
@@ -781,7 +781,7 @@ mod tests {
         );
         let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
         let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
-        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:file".to_string(), fs.into());
         inputs.insert("res:clock".to_string(), ts.into());
 
         let op = GistOps::PrepareRequest { public: false };
@@ -822,7 +822,7 @@ mod tests {
         // No base_ref — snapshot/diff mode
         let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
         let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
-        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:file".to_string(), fs.into());
         inputs.insert("res:clock".to_string(), ts.into());
 
         let op = GistOps::PrepareRequest { public: false };

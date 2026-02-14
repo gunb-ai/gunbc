@@ -118,8 +118,8 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     // Extract typed requirements from DAG structure
     let mut reqs = extract_mock_requirements(&dag, "gist")
         // Environment: filesystem + clock
-        .boundary("fs_env", "fs:write", mock_fs_handle())
-        .expect("fs:write mock should match type")
+        .boundary("fs_env", "file:write", mock_fs_handle())
+        .expect("file:write mock should match type")
         .boundary("clock_env", "clock", mock_clock())
         .expect("clock mock should match type")
         .boundary("cloud_env", "config", mock_cloud_config())
@@ -268,7 +268,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     spec = spec
         .node_example(
             NodeExample::new("fs_env")
-                .output("fs:write", OutputMatcher::Any)
+                .output("file:write", OutputMatcher::Any)
                 .description("Provides filesystem handle for gist filename generation"),
         )
         .node_example(
@@ -331,7 +331,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
             NodeExample::new("prepare_gist_request")
                 .input("markdown", Value::Str("# Example".into()))
                 .input("branch", Value::Str("main".into()))
-                .input("res:fs", mock_fs_handle())
+                .input("res:file", mock_fs_handle())
                 .input("res:clock", mock_clock())
                 .output("request", OutputMatcher::IsRequest)
                 .description("Builds gist creation request from markdown"),
@@ -555,7 +555,7 @@ pub fn gist_recent_mock_spec() -> MockSpec {
 /// Use this when testing tools that acquire file locks before reading.
 #[gunbc_testgen_registry_macros::testgen_target(skip)]
 pub fn gist_mock_spec_with_fs_lock() -> MockSpec {
-    gist_mock_spec(&GistMode::Snapshot).resource_lock("fs:read")
+    gist_mock_spec(&GistMode::Snapshot).resource_lock("file:read")
 }
 
 /// Mock spec for testing lease expiration scenarios.

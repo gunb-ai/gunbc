@@ -1211,6 +1211,7 @@ impl OutputMatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    const NET_PORT: &str = gunbc_ir::API_NETWORK_HANDLE_PORT;
 
     #[test]
     fn test_mock_spec_builder() {
@@ -1240,7 +1241,7 @@ mod tests {
         let child = MockSpec::new("child")
             .boundary(
                 "net_env",
-                "net",
+                NET_PORT,
                 Value::Map(std::collections::BTreeMap::new()),
             )
             .transport_mock("execute", "response", Value::Str("ok".into()))
@@ -1251,7 +1252,7 @@ mod tests {
             .include_prefixed_runtime_mocks("cloud_credential/gcp_wif_secret", &child);
 
         assert!(parent
-            .get_boundary_mock("cloud_credential/gcp_wif_secret/net_env", "net")
+            .get_boundary_mock("cloud_credential/gcp_wif_secret/net_env", NET_PORT)
             .is_some());
         assert!(parent
             .get_transport_mock("cloud_credential/gcp_wif_secret/execute", "response")
@@ -1545,13 +1546,13 @@ mod tests {
     #[test]
     fn test_resource_mock_id_aliases_normalize_to_canonical() {
         let spec = MockSpec::new("test")
-            .resource_lock("fs:Makefile")
-            .resource_lock("pkg:manager");
+            .resource_lock("file:Makefile")
+            .resource_lock("target:manager");
 
         // Legacy and canonical IDs should both resolve.
-        assert!(spec.get_resource("fs:Makefile").is_some());
         assert!(spec.get_resource("file:Makefile").is_some());
-        assert!(spec.get_resource("pkg:manager").is_some());
+        assert!(spec.get_resource("file:Makefile").is_some());
+        assert!(spec.get_resource("target:manager").is_some());
         assert!(spec.get_resource("target:manager").is_some());
     }
 
@@ -1618,13 +1619,13 @@ mod tests {
     #[test]
     fn test_to_boundary_mocks_combines_all_mock_types() {
         let spec = MockSpec::new("combined")
-            .boundary("env", "net", Value::Str("net-mock".into()))
+            .boundary("env", NET_PORT, Value::Str("net-mock".into()))
             .transport_mock("exec", "resp", Value::Int(42))
             .input_mock("entry", "arg", Value::Bool(false));
 
         let bm = spec.to_boundary_mocks();
         assert_eq!(
-            get_output_value(&bm, "env", "net"),
+            get_output_value(&bm, "env", NET_PORT),
             Some(Value::Str("net-mock".into()))
         );
         assert_eq!(get_output_value(&bm, "exec", "resp"), Some(Value::Int(42)));
@@ -1664,12 +1665,12 @@ mod tests {
     #[test]
     fn test_to_dry_run_mocks_excludes_input_mocks() {
         let spec = MockSpec::new("test")
-            .boundary("env", "net", Value::Str("mock".into()))
+            .boundary("env", NET_PORT, Value::Str("mock".into()))
             .input_mock("entry", "arg", Value::Bool(true));
 
         let dry = spec.to_dry_run_mocks();
         assert_eq!(
-            get_output_value(&dry, "env", "net"),
+            get_output_value(&dry, "env", NET_PORT),
             Some(Value::Str("mock".into())),
             "boundary mock should be in dry run mocks"
         );
@@ -1682,7 +1683,7 @@ mod tests {
     #[test]
     fn test_to_boundary_mocks_vs_to_dry_run_mocks_difference() {
         let spec = MockSpec::new("diff")
-            .boundary("env", "net", Value::Str("mock".into()))
+            .boundary("env", NET_PORT, Value::Str("mock".into()))
             .transport_mock("exec", "resp", Value::Int(1))
             .input_mock("entry", "arg", Value::Bool(true));
 
@@ -1691,8 +1692,8 @@ mod tests {
 
         // Both should have boundary and transport mocks
         assert_eq!(
-            get_output_value(&boundary, "env", "net"),
-            get_output_value(&dry_run, "env", "net")
+            get_output_value(&boundary, "env", NET_PORT),
+            get_output_value(&dry_run, "env", NET_PORT)
         );
         assert_eq!(
             get_output_value(&boundary, "exec", "resp"),

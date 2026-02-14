@@ -70,11 +70,11 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port("fs:write", "FilesystemHandle")],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
         CodegenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
-    let fs_resource = resource("fs", "FilesystemHandle", AccessMode::Write);
+    let fs_resource = resource("file", "FilesystemHandle", AccessMode::Write);
 
     // ========================================================================
     // Exists check stage
@@ -115,7 +115,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
             vec![
                 optional("request", "TransportRequest"),
                 port("skip", "Bool"),
-                resource("fs", "FilesystemHandle", AccessMode::Write),
+                resource("file", "FilesystemHandle", AccessMode::Write),
             ],
             vec![
                 optional("response", "TransportResponse"),
@@ -166,7 +166,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
             vec![
                 optional("request", "TransportRequest"),
                 port("skip", "Bool"),
-                resource("fs", "FilesystemHandle", AccessMode::Write),
+                resource("file", "FilesystemHandle", AccessMode::Write),
             ],
             vec![
                 optional("response", "TransportResponse"),
@@ -220,13 +220,13 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
 
     // Resource wiring
     builder.add_edge(
-        fs_env.out("fs:write"),
-        codegen_exists.execute.in_port("res:fs"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        codegen_exists.execute.in_port("res:file"),
     )?;
-    builder.add_edge(fs_env.out("fs:write"), execute_codegen.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), execute_codegen.in_port("res:file"))?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        execute_stamp_write.in_port("res:fs"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        execute_stamp_write.in_port("res:file"),
     )?;
 
     Ok(builder.build())

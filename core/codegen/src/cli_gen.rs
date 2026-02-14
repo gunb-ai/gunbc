@@ -475,52 +475,48 @@ fn generate_mock_setup(mock_spec_call: &Option<String>) -> String {
     )
 }
 
-/// Generate print-inputs statements.
-fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
-    let mut code = String::new();
+/// Generate a `Vec<String>` expression that collects input args for the preamble body.
+fn generate_preamble_body_lines(entrypoints: &[CliEntrypoint]) -> String {
+    let mut items = Vec::new();
     for ep in entrypoints {
         if ep.is_repeatable() {
-            writeln!(
-                code,
-                "eprintln!(\"  {}: {{:?}}\", {});",
+            items.push(format!(
+                "format!(\"{}: {{:?}}\", {})",
                 ep.port_name,
                 ep.var_name()
-            )
-            .unwrap();
+            ));
         } else {
             match ep.type_id {
                 ParamType::Bool => {
-                    writeln!(
-                        code,
-                        "eprintln!(\"  {}: {{}}\", {});",
+                    items.push(format!(
+                        "format!(\"{}: {{}}\", {})",
                         ep.port_name,
                         ep.var_name()
-                    )
-                    .unwrap();
+                    ));
                 }
                 _ => {
                     if ep.default_value.is_some() {
-                        writeln!(
-                            code,
-                            "eprintln!(\"  {}: {{}}\", {});",
+                        items.push(format!(
+                            "format!(\"{}: {{}}\", {})",
                             ep.port_name,
                             ep.var_name()
-                        )
-                        .unwrap();
+                        ));
                     } else {
-                        writeln!(
-                            code,
-                            "eprintln!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));",
+                        items.push(format!(
+                            "format!(\"{}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"))",
                             ep.port_name,
                             ep.var_name()
-                        )
-                        .unwrap();
+                        ));
                     }
                 }
             }
         }
     }
-    code
+    if items.is_empty() {
+        "Vec::new()".to_string()
+    } else {
+        format!("vec![{}]", items.join(", "))
+    }
 }
 
 /// Generate the input_mocks block using `cli_inputs` from parse result.
@@ -628,7 +624,7 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
     let graph_builder_call = generate_graph_builder_call(tool);
     let input_mocks = generate_input_mocks(entrypoints);
     let dry_run_block = generate_dry_run_block(tool);
-    let print_inputs = generate_print_inputs(entrypoints);
+    let body_lines_expr = generate_preamble_body_lines(entrypoints);
     let success_port_arg = generate_success_port_arg(tool);
 
     let body_code = format!(
@@ -643,12 +639,11 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          // Set up execution mode\n\
          {dry_run_block}\n\
          \n\
-         // Print preamble box and detect terminal capabilities\n\
-         let preamble = Preamble::new(\"{tool_name}\", \"{tool_description}\");\n\
+         // Build preamble with args inside the box\n\
+         let mut body_lines = {body_lines_expr};\n\
+         body_lines.push(format!(\"mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }}));\n\
+         let preamble = Preamble::with_body(\"{tool_name}\", \"{tool_description}\", body_lines);\n\
          let animated = print_preamble_auto(&preamble);\n\
-         {print_inputs}\
-         eprintln!(\"  mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }});\n\
-         eprintln!();\n\
          \n\
          // Execute preflight + DAG in one display surface\n\
          execute_and_display_with_preflight(&dag, mode, animated, {success_port_arg}, Some(&input_mocks), |observer| ensure_lint_upsert_with_observer(observer));",
@@ -656,9 +651,9 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
         dry_run_block = dry_run_block,
+        body_lines_expr = body_lines_expr,
         tool_name = tool.tool_name,
         tool_description = tool.description.replace('"', "\\\""),
-        print_inputs = print_inputs,
         success_port_arg = success_port_arg,
     );
 
@@ -794,7 +789,7 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
     let graph_builder_call = generate_graph_builder_call(tool);
     let input_mocks = generate_input_mocks(entrypoints);
     let dry_run_block = generate_dry_run_block(tool);
-    let print_inputs = generate_print_inputs(entrypoints);
+    let body_lines_expr = generate_preamble_body_lines(entrypoints);
     let success_port_arg = generate_success_port_arg(tool);
 
     let body_code = format!(
@@ -810,12 +805,11 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          // Set up execution mode\n\
          {dry_run_block}\n\
          \n\
-         // Print preamble box and detect terminal capabilities\n\
-         let preamble = Preamble::new(\"{tool_name}\", \"{tool_description}\");\n\
+         // Build preamble with args inside the box\n\
+         let mut body_lines = {body_lines_expr};\n\
+         body_lines.push(format!(\"mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }}));\n\
+         let preamble = Preamble::with_body(\"{tool_name}\", \"{tool_description}\", body_lines);\n\
          let animated = print_preamble_auto(&preamble);\n\
-         {print_inputs}\
-         eprintln!(\"  mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }});\n\
-         eprintln!();\n\
          \n\
          // Execute preflight + DAG in one display surface\n\
          execute_and_display_with_preflight(&dag, mode, animated, {success_port_arg}, Some(&input_mocks), |observer| ensure_lint_upsert_with_observer(observer));",
@@ -823,9 +817,9 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
         dry_run_block = dry_run_block,
+        body_lines_expr = body_lines_expr,
         tool_name = tool.tool_name,
         tool_description = tool.description.replace('"', "\\\""),
-        print_inputs = print_inputs,
         success_port_arg = success_port_arg,
     );
 

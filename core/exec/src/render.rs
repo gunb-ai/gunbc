@@ -205,10 +205,11 @@ mod tests {
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
         let output = render_to_string(&progress, &layout);
-        assert!(!output.is_empty());
+        // NotStarted phase produces a blank header (no "DAG pending" noise).
+        // Verify the frame renders without errors.
         assert!(
-            output.contains("DAG pending"),
-            "Pending state should contain header, got:\n{}",
+            !output.contains("DAG pending"),
+            "NotStarted should not produce 'DAG pending' header, got:\n{}",
             output
         );
     }

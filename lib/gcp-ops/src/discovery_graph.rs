@@ -17,7 +17,7 @@ use crate::discovery_ops::GcpDiscoveryOps;
 use crate::graph::GcpSecretManagerGraphOp;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::build::{port, resource, AccessMode};
-use gunbc_ir::{Dag, Edge, Node, Value};
+use gunbc_ir::{Dag, Edge, Node, Value, RESOURCE_API_NETWORK};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::NetEnv;
 use std::collections::HashMap;
@@ -65,7 +65,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
     dag.add_node(Node::opaque(
         "net_env",
         vec![],
-        vec![port("net", "NetworkHandle")],
+        vec![port(NetEnv::PORT, "NetworkHandle")],
         GcpDiscoveryGraphOp::NetEnv(NetEnv),
     ));
 
@@ -92,7 +92,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
@@ -123,9 +123,9 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
     ));
     dag.add_edge(Edge::new(
         "net_env",
-        "net",
+        NetEnv::PORT,
         "execute_list_projects",
-        "res:net",
+        RESOURCE_API_NETWORK,
     ));
     dag.add_edge(Edge::new(
         "execute_list_projects",
@@ -146,7 +146,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
@@ -177,9 +177,9 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
     ));
     dag.add_edge(Edge::new(
         "net_env",
-        "net",
+        NetEnv::PORT,
         "execute_list_wif_pools",
-        "res:net",
+        RESOURCE_API_NETWORK,
     ));
     dag.add_edge(Edge::new(
         "execute_list_wif_pools",
@@ -200,7 +200,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
@@ -229,7 +229,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         "execute_list_sa",
         "skip",
     ));
-    dag.add_edge(Edge::new("net_env", "net", "execute_list_sa", "res:net"));
+    dag.add_edge(Edge::new("net_env", NetEnv::PORT, "execute_list_sa", RESOURCE_API_NETWORK));
     dag.add_edge(Edge::new(
         "execute_list_sa",
         "response",
@@ -249,7 +249,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
@@ -280,9 +280,9 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
     ));
     dag.add_edge(Edge::new(
         "net_env",
-        "net",
+        NetEnv::PORT,
         "execute_list_secrets",
-        "res:net",
+        RESOURCE_API_NETWORK,
     ));
     dag.add_edge(Edge::new(
         "execute_list_secrets",
@@ -303,7 +303,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
@@ -334,9 +334,9 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
     ));
     dag.add_edge(Edge::new(
         "net_env",
-        "net",
+        NetEnv::PORT,
         "execute_list_buckets",
-        "res:net",
+        RESOURCE_API_NETWORK,
     ));
     dag.add_edge(Edge::new(
         "execute_list_buckets",
@@ -357,7 +357,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
@@ -391,9 +391,9 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
     ));
     dag.add_edge(Edge::new(
         "net_env",
-        "net",
+        NetEnv::PORT,
         "execute_get_iam_policy",
-        "res:net",
+        RESOURCE_API_NETWORK,
     ));
     dag.add_edge(Edge::new(
         "execute_get_iam_policy",

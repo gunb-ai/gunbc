@@ -146,7 +146,7 @@ fn add_docgen_read_triplet(
         builder,
         target.name,
         vec![],
-        vec![resource("fs", "FilesystemHandle", AccessMode::Read)],
+        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![port("content", "String")],
         DocgenGraphOp::Docgen(DocgenOp::PrepareFileRead {
             path: target.path.to_string(),
@@ -159,7 +159,7 @@ fn add_docgen_read_triplet(
         None,
     )?;
 
-    builder.add_edge(fs_env.out("fs:write"), triplet.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), triplet.execute.in_port("res:file"))?;
 
     Ok(triplet.parse)
 }
@@ -178,7 +178,7 @@ pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port("fs:write", "FilesystemHandle")],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
         DocgenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -222,12 +222,12 @@ pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
     }
 
     let doc_read = resource(
-        "fs:docs/ab-writing-workflows.md",
+        "file:docs/ab-writing-workflows.md",
         "FilesystemHandle",
         AccessMode::Read,
     );
     let doc_write = resource(
-        "fs:docs/ab-writing-workflows.md",
+        "file:docs/ab-writing-workflows.md",
         "FilesystemHandle",
         AccessMode::Write,
     );
@@ -254,16 +254,16 @@ pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
     )?;
 
     builder.add_edge(
-        fs_env.out("fs:write"),
+        fs_env.out(FsEnv::WRITE_PORT),
         chain_ab_doc
             .execute_read
-            .in_port("res:fs:docs/ab-writing-workflows.md"),
+            .in_port("res:file:docs/ab-writing-workflows.md"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
+        fs_env.out(FsEnv::WRITE_PORT),
         chain_ab_doc
             .execute_write
-            .in_port("res:fs:docs/ab-writing-workflows.md"),
+            .in_port("res:file:docs/ab-writing-workflows.md"),
     )?;
 
     Ok(builder.build())

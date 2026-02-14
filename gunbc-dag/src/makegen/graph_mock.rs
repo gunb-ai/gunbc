@@ -60,7 +60,7 @@ pub fn makegen_mock_spec() -> MockSpec {
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "makegen")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         // Transport: execute_read (file read) - mock the read response
         .transport_response(
@@ -140,7 +140,7 @@ pub fn makegen_mock_spec() -> MockSpec {
         .expects_input("path", InputConstraint::Any)
         .expects_input("check_mode", InputConstraint::Any)
         // Resource: file write lock
-        .resource_lock("fs:Makefile")
+        .resource_lock("file:Makefile")
         // Expected outputs for verification
         .expected_output(
             "load_registry",
@@ -154,7 +154,7 @@ pub fn makegen_mock_spec() -> MockSpec {
         // Node I/O examples: verify pure node behavior
         .node_example(
             NodeExample::new("fs_env")
-                .output("fs:write", OutputMatcher::Any)
+                .output("file:write", OutputMatcher::Any)
                 .description("Provides filesystem handle for Makefile writes"),
         )
         .node_example(
@@ -183,7 +183,7 @@ pub fn makegen_mock_spec_no_change() -> MockSpec {
     let dag = build_makegen_graph().expect("makegen graph should build");
 
     extract_mock_requirements(&dag, "makegen")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         .transport_response(
             "execute_read_makegen",
@@ -254,7 +254,7 @@ pub fn makegen_mock_spec_fs_fails() -> MockSpec {
     let dag = build_makegen_graph().expect("makegen graph should build");
 
     extract_mock_requirements(&dag, "makegen")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         .transport_response(
             "execute_read_makegen",
@@ -304,7 +304,7 @@ pub fn makegen_mock_spec_fs_fails() -> MockSpec {
         .input_mock("compare_makegen_content", "check_mode", Value::Bool(false))
         .expects_input("path", InputConstraint::Any)
         .expects_input("check_mode", InputConstraint::Any)
-        .resource_lock_fails("fs:Makefile", "Permission denied: Makefile is read-only")
+        .resource_lock_fails("file:Makefile", "Permission denied: Makefile is read-only")
 }
 
 /// Generate mock Makefile content.

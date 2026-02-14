@@ -29,7 +29,7 @@ pub fn testgen_dag_mock_spec() -> MockSpec {
     let dag = build_testgen_graph_for_test().expect("testgen graph should build");
 
     let mut reqs = extract_mock_requirements(&dag, "testgen-dag")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type");
 
     for name in &["mock-alpha", "mock-beta"] {
@@ -115,7 +115,7 @@ pub fn testgen_dag_mock_spec() -> MockSpec {
                     error: None,
                 })),
             )
-            .resource_lock(format!("fs:{}/generated_tests.rs", name.replace('-', "_")));
+            .resource_lock(format!("file:{}/generated_tests.rs", name.replace('-', "_")));
     }
 
     // Probe-observer: transport terminals need chain-safe observers
@@ -130,7 +130,7 @@ pub fn testgen_dag_mock_spec() -> MockSpec {
     spec = spec
         .node_example(
             NodeExample::new("fs_env")
-                .output("fs:write", OutputMatcher::Any)
+                .output("file:write", OutputMatcher::Any)
                 .description("Provides filesystem handle for generated test writes"),
         )
         .node_example(

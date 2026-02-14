@@ -73,7 +73,7 @@ pub fn deps_mock_spec() -> MockSpec {
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "deps")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         // Resource: platform environment
         .boundary("platform_env", "platform", Platform::Linux)
@@ -146,11 +146,11 @@ pub fn deps_mock_spec() -> MockSpec {
             Value::Str("deps.toml".into()),
         )
         // Resource: package manager lock
-        .resource_lock("pkg:manager")
+        .resource_lock("target:manager")
         // Node I/O examples
         .node_example(
             NodeExample::new("fs_env")
-                .output("fs:write", OutputMatcher::Any)
+                .output("file:write", OutputMatcher::Any)
                 .description("Provides filesystem handle for deps operations"),
         )
         .node_example(
@@ -261,7 +261,7 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "deps")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         // Resource: platform environment
         .boundary("platform_env", "platform", Platform::Linux)
@@ -298,5 +298,5 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
             "manifest_path",
             Value::Str("deps.toml".into()),
         )
-        .resource_lock_fails("pkg:manager", "Package manager locked by another process")
+        .resource_lock_fails("target:manager", "Package manager locked by another process")
 }

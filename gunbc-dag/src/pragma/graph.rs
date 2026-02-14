@@ -92,7 +92,7 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port("fs:write", "FilesystemHandle")],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
         PragmaGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -104,8 +104,8 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         PragmaGraphOp::Domain(PragmaOp::RenderClippy),
     ))?;
 
-    let clippy_read = resource("fs:clippy.toml", "FilesystemHandle", AccessMode::Read);
-    let clippy_write = resource("fs:clippy.toml", "FilesystemHandle", AccessMode::Write);
+    let clippy_read = resource("file:clippy.toml", "FilesystemHandle", AccessMode::Read);
+    let clippy_write = resource("file:clippy.toml", "FilesystemHandle", AccessMode::Write);
     let clippy_chain = add_content_upsert_chain(
         &mut builder,
         "clippy",
@@ -128,12 +128,12 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
     ))?;
 
     let allowlist_read = resource(
-        "fs:tools/disallowed-methods-allowlist.txt",
+        "file:tools/disallowed-methods-allowlist.txt",
         "FilesystemHandle",
         AccessMode::Read,
     );
     let allowlist_write = resource(
-        "fs:tools/disallowed-methods-allowlist.txt",
+        "file:tools/disallowed-methods-allowlist.txt",
         "FilesystemHandle",
         AccessMode::Write,
     );
@@ -159,12 +159,12 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
     ))?;
 
     let policy_read = resource(
-        "fs:tools/pragma-lint-policy.txt",
+        "file:tools/pragma-lint-policy.txt",
         "FilesystemHandle",
         AccessMode::Read,
     );
     let policy_write = resource(
-        "fs:tools/pragma-lint-policy.txt",
+        "file:tools/pragma-lint-policy.txt",
         "FilesystemHandle",
         AccessMode::Write,
     );
@@ -183,36 +183,36 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
 
     // Resource wiring
     builder.add_edge(
-        fs_env.out("fs:write"),
-        clippy_chain.execute_read.in_port("res:fs:clippy.toml"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        clippy_chain.execute_read.in_port("res:file:clippy.toml"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        clippy_chain.execute_write.in_port("res:fs:clippy.toml"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        clippy_chain.execute_write.in_port("res:file:clippy.toml"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
+        fs_env.out(FsEnv::WRITE_PORT),
         allowlist_chain
             .execute_read
-            .in_port("res:fs:tools/disallowed-methods-allowlist.txt"),
+            .in_port("res:file:tools/disallowed-methods-allowlist.txt"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
+        fs_env.out(FsEnv::WRITE_PORT),
         allowlist_chain
             .execute_write
-            .in_port("res:fs:tools/disallowed-methods-allowlist.txt"),
+            .in_port("res:file:tools/disallowed-methods-allowlist.txt"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
+        fs_env.out(FsEnv::WRITE_PORT),
         policy_chain
             .execute_read
-            .in_port("res:fs:tools/pragma-lint-policy.txt"),
+            .in_port("res:file:tools/pragma-lint-policy.txt"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
+        fs_env.out(FsEnv::WRITE_PORT),
         policy_chain
             .execute_write
-            .in_port("res:fs:tools/pragma-lint-policy.txt"),
+            .in_port("res:file:tools/pragma-lint-policy.txt"),
     )?;
 
     Ok(builder.build())

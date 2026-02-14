@@ -75,7 +75,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port("fs:write", "FilesystemHandle")],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
         MakegenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -109,8 +109,8 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     )?;
 
     // Content upsert chain
-    let makefile_read = resource("fs:Makefile", "FilesystemHandle", AccessMode::Read);
-    let makefile_write = resource("fs:Makefile", "FilesystemHandle", AccessMode::Write);
+    let makefile_read = resource("file:Makefile", "FilesystemHandle", AccessMode::Read);
+    let makefile_write = resource("file:Makefile", "FilesystemHandle", AccessMode::Write);
     let makegen_chain = add_content_upsert_chain(
         &mut builder,
         "makegen",
@@ -125,12 +125,12 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     )?;
 
     builder.add_edge(
-        fs_env.out("fs:write"),
-        makegen_chain.execute_read.in_port("res:fs:Makefile"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        makegen_chain.execute_read.in_port("res:file:Makefile"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        makegen_chain.execute_write.in_port("res:fs:Makefile"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        makegen_chain.execute_write.in_port("res:file:Makefile"),
     )?;
 
     Ok(builder.build())

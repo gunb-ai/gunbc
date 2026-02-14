@@ -3,7 +3,9 @@
 use crate::filename::{FilesystemHandle, Scope};
 use crate::network::NetworkHandle;
 use gunbc_exec::{env_single_output, EnvNode, ExecError};
-use gunbc_ir::{Timestamp, Value};
+use gunbc_ir::{
+    Timestamp, Value, API_NETWORK_HANDLE_PORT, FILE_HANDLE_READ_PORT, FILE_HANDLE_WRITE_PORT,
+};
 use std::collections::HashMap;
 
 /// Filesystem environment — acquires a FilesystemHandle.
@@ -13,14 +15,17 @@ pub struct FsEnv {
 }
 
 impl FsEnv {
+    pub const READ_PORT: &'static str = FILE_HANDLE_READ_PORT;
+    pub const WRITE_PORT: &'static str = FILE_HANDLE_WRITE_PORT;
+
     pub fn new(scope: Scope) -> Self {
         Self { scope }
     }
 
     pub fn output_port(&self) -> &'static str {
         match self.scope {
-            Scope::Read => "fs:read",
-            Scope::Write => "fs:write",
+            Scope::Read => Self::READ_PORT,
+            Scope::Write => Self::WRITE_PORT,
         }
     }
 
@@ -89,8 +94,10 @@ impl EnvNode for ClockEnv {
 pub struct NetEnv;
 
 impl NetEnv {
+    pub const PORT: &'static str = API_NETWORK_HANDLE_PORT;
+
     pub fn output_port(&self) -> &'static str {
-        "net"
+        Self::PORT
     }
 
     /// Mock outputs for DryRun/testgen.

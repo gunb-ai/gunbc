@@ -37,7 +37,7 @@ use crate::Executable;
 use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
     canonical_edge_order, detect_boundaries, detect_entrypoints, AccessMode, BoundaryInfo,
-    Cardinality, Dag, Node, NodeBody, NodeId, Value,
+    Cardinality, Dag, Node, NodeBody, NodeId, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -890,14 +890,11 @@ fn write_file_pattern_for_port_name(
         return None;
     }
 
-    if port_name == "res:file" || port_name == "res:fs" {
+    if port_name == RESOURCE_FILE {
         return Some("*");
     }
 
-    if let Some(pattern) = port_name.strip_prefix("res:file:") {
-        return Some(if pattern.is_empty() { "*" } else { pattern });
-    }
-    if let Some(pattern) = port_name.strip_prefix("res:fs:") {
+    if let Some(pattern) = port_name.strip_prefix(RESOURCE_FILE_PREFIX) {
         return Some(if pattern.is_empty() { "*" } else { pattern });
     }
 
@@ -972,7 +969,7 @@ fn enforce_runtime_file_guard<T>(
         return Err(ExecError::new(format!(
             "runtime file guard: node '{}' emitted file {:?} on '{}' without matching write \
              resource input (declared write inputs: {}). declare `res:file:{}` or `res:file:*` \
-             (legacy `res:fs`) with AccessMode::Write/Exclusive",
+             with AccessMode::Write/Exclusive",
             node.id.0, op, path, declared_text, path
         )));
     }
@@ -2418,16 +2415,16 @@ mod tests {
     }
 
     #[test]
-    fn runtime_file_guard_allows_wildcard_and_legacy_fs() {
+    fn runtime_file_guard_allows_wildcard_and_coarse_file() {
         let wildcard_node = Node::opaque(
             "wildcard_writer",
             vec![resource("file:*", "FilesystemHandle", AccessMode::Write)],
             vec![port("response", "TransportResponse")],
             TestOp::echo(),
         );
-        let legacy_node = Node::opaque(
-            "legacy_writer",
-            vec![resource("fs", "FilesystemHandle", AccessMode::Write)],
+        let coarse_node = Node::opaque(
+            "coarse_writer",
+            vec![resource("file", "FilesystemHandle", AccessMode::Write)],
             vec![port("response", "TransportResponse")],
             TestOp::echo(),
         );
@@ -2440,8 +2437,8 @@ mod tests {
 
         enforce_runtime_file_guard(&wildcard_node, &outputs, true)
             .expect("wildcard res:file:* should allow writes");
-        enforce_runtime_file_guard(&legacy_node, &outputs, true)
-            .expect("legacy res:fs should allow writes");
+        enforce_runtime_file_guard(&coarse_node, &outputs, true)
+            .expect("coarse res:file should allow writes");
     }
 
     #[test]

@@ -62,7 +62,7 @@ fn mock_remote_branches(mocks: &mut BoundaryMocks, remote_output: &str) {
 
 fn mock_env(mocks: &mut BoundaryMocks) {
     let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-    mocks.set_value("fs_env", "fs:write", fs.into());
+    mocks.set_value("fs_env", "file:write", fs.into());
     let clock = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
     mocks.set_value("clock_env", "clock", clock.into());
 

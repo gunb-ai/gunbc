@@ -68,11 +68,11 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port("fs:write", "FilesystemHandle")],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
         BuildGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
-    let fs_resource = resource("fs", "FilesystemHandle", AccessMode::Write);
+    let fs_resource = resource("file", "FilesystemHandle", AccessMode::Write);
 
     // ========================================================================
     // Build Stage
@@ -200,9 +200,9 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
     )?;
 
     // Resource wiring
-    builder.add_edge(fs_env.out("fs:write"), build.execute.in_port("res:fs"))?;
-    builder.add_edge(fs_env.out("fs:write"), test.execute.in_port("res:fs"))?;
-    builder.add_edge(fs_env.out("fs:write"), clippy.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), build.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), test.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), clippy.execute.in_port("res:file"))?;
 
     Ok(builder.build())
 }

@@ -52,7 +52,7 @@ pub struct LoopInfo<T> {
     /// The body template DAG (not lowered — will be lowered per iteration).
     pub body_dag: Dag<T>,
     /// Additional input port names that flow from outside the loop into
-    /// the body (e.g., `repo_path`, `res:fs`). These are wired as extra
+    /// the body (e.g., `repo_path`, `res:file`). These are wired as extra
     /// entrypoints in the body DAG that share a port name with unpack inputs.
     pub extra_input_ports: Vec<String>,
 }

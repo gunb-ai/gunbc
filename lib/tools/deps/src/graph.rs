@@ -96,7 +96,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port("fs:write", "FilesystemHandle")],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
         DepsGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -111,7 +111,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         "parse_manifest",
         vec![port("manifest_path", "String")],
         vec![resource(
-            "fs:deps.toml",
+            "file:deps.toml",
             "FilesystemHandle",
             AccessMode::Read,
         )],
@@ -162,7 +162,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         "execute_installs",
         "parse_execute_result",
         vec![scalar("install_script", "String")],
-        vec![resource("fs", "FilesystemHandle", AccessMode::Write)],
+        vec![resource("file", "FilesystemHandle", AccessMode::Write)],
         vec![scalar("script", "String")],
         vec![
             scalar("executed", "Bool"),
@@ -199,12 +199,12 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     )?;
 
     builder.add_edge(
-        fs_env.out("fs:write"),
-        load_manifest.execute.in_port("res:fs:deps.toml"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        load_manifest.execute.in_port("res:file:deps.toml"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        execute_installs.execute.in_port("res:fs"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        execute_installs.execute.in_port("res:file"),
     )?;
 
     let dag = builder.build();
@@ -256,7 +256,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port("fs:write", "FilesystemHandle")],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
         DepsGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -306,7 +306,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             vec![
                 port("request", "TransportRequest"),
                 port("skip", "Bool"),
-                resource("fs:deps.toml", "FilesystemHandle", AccessMode::Write),
+                resource("file:deps.toml", "FilesystemHandle", AccessMode::Write),
             ],
             vec![
                 port("response", "TransportResponse"),
@@ -336,8 +336,8 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     builder.add_edge(prepare_write.out("skip"), execute_transport.in_port("skip"))?;
 
     builder.add_edge(
-        fs_env.out("fs:write"),
-        execute_transport.in_port("res:fs:deps.toml"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        execute_transport.in_port("res:file:deps.toml"),
     )?;
 
     let dag = builder.build();

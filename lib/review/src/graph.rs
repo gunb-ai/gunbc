@@ -261,7 +261,7 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
         .add_root_node(Node::opaque(
             "fs_env",
             vec![],
-            vec![port("fs:write", "FilesystemHandle")],
+            vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
             ReviewGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
         ))
         .expect("fs_env node");
@@ -298,7 +298,7 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
                 vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
-                    resource("fs", "FilesystemHandle", AccessMode::Read),
+                    resource("file", "FilesystemHandle", AccessMode::Read),
                 ],
                 vec![port("response", "TransportResponse")],
                 ReviewGraphOp::Transport(TransportOps::Execute),
@@ -447,8 +447,8 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
         .add_edge(prepare_blob.out("skip"), execute_blob.in_port("skip"))
         .expect("prepare_blob.skip -> execute_blob.skip");
     builder
-        .add_edge(fs_env.out("fs:write"), execute_blob.in_port("res:fs"))
-        .expect("fs_env -> execute_blob.res:fs");
+        .add_edge(fs_env.out(FsEnv::WRITE_PORT), execute_blob.in_port("res:file"))
+        .expect("fs_env -> execute_blob.res:file");
     builder
         .add_edge(execute_blob.out("response"), parse_blob.in_port("response"))
         .expect("execute_blob.response -> parse_blob.response");
@@ -720,7 +720,7 @@ pub fn build_diff_review_graph_with_cloud_config(
         .add_root_node(Node::opaque(
             "fs_env",
             vec![],
-            vec![port("fs:write", "FilesystemHandle")],
+            vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
             ReviewGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
         ))
         .expect("fs_env node");
@@ -763,7 +763,7 @@ pub fn build_diff_review_graph_with_cloud_config(
             optional("base_ref", "OptionalString"),
             port("repo_path", "String"),
         ],
-        vec![resource("fs", "FilesystemHandle", AccessMode::Read)],
+        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![],
         vec![port("diff_files", "Map"), port("stats", "String")],
         ReviewGraphOp::Git(GitOps::PrepareDiff {
@@ -938,10 +938,10 @@ pub fn build_diff_review_graph_with_cloud_config(
         .expect("parse_diff.diff_files -> format_artifact.diff_files");
     builder
         .add_edge(
-            fs_env.out("fs:write"),
-            diff_triplet.execute.in_port("res:fs"),
+            fs_env.out(FsEnv::WRITE_PORT),
+            diff_triplet.execute.in_port("res:file"),
         )
-        .expect("fs_env -> execute_diff.res:fs");
+        .expect("fs_env -> execute_diff.res:file");
 
     // Artifact → review prompt + LLM content
     builder

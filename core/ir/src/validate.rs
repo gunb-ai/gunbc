@@ -878,7 +878,7 @@ mod tests {
             "worker",
             vec![
                 port("data", "String"),
-                resource("fs", "FilesystemHandle", AccessMode::Read),
+                resource("file", "FilesystemHandle", AccessMode::Read),
             ],
             vec![port("result", "String")],
             (),
@@ -887,42 +887,42 @@ mod tests {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::subdag("wrapper", inner));
 
-        // The SubDag auto-infers the res:fs port, so wrapper has it as input.
-        // That means wrapper's res:fs is an entrypoint on the outer DAG.
+        // The SubDag auto-infers the res:file port, so wrapper has it as input.
+        // That means wrapper's res:file is an entrypoint on the outer DAG.
         let unwired = validate_resource_wiring_recursive(&dag);
         // Only the outer-level entrypoint should be reported — the inner DAG's
-        // res:fs is already exposed via auto-inference on the parent, so it's
+        // res:file is already exposed via auto-inference on the parent, so it's
         // deduplicated to avoid double-reporting.
         assert_eq!(unwired.len(), 1);
-        assert_eq!(unwired[0].port.0, "res:fs");
+        assert_eq!(unwired[0].port.0, "res:file");
     }
 
     #[test]
     fn test_recursive_resource_wiring_deep_nested_subdag_dedupes_ancestor_resource() {
-        // Deepest DAG has a boundary-style node requiring res:fs.
+        // Deepest DAG has a boundary-style node requiring res:file.
         let mut deepest: Dag<()> = Dag::new();
         deepest.add_node(Node::opaque(
             "execute",
             vec![
                 port("request", "TransportRequest"),
-                resource("fs", "FilesystemHandle", AccessMode::Read),
+                resource("file", "FilesystemHandle", AccessMode::Read),
             ],
             vec![port("response", "TransportResponse")],
             (),
         ));
 
-        // Middle DAG wraps deepest as "body" and leaves res:fs as entrypoint.
+        // Middle DAG wraps deepest as "body" and leaves res:file as entrypoint.
         let mut middle: Dag<()> = Dag::new();
         middle.add_node(Node::subdag("body", deepest));
 
-        // Top DAG wraps middle. Auto-inference bubbles res:fs up to wrapper.
+        // Top DAG wraps middle. Auto-inference bubbles res:file up to wrapper.
         let mut top: Dag<()> = Dag::new();
         top.add_node(Node::subdag("wrapper", middle));
 
         let unwired = validate_resource_wiring_recursive(&top);
-        // Only the outermost wrapper res:fs should be reported once.
+        // Only the outermost wrapper res:file should be reported once.
         assert_eq!(unwired.len(), 1, "unexpected unwired: {:?}", unwired);
-        assert_eq!(unwired[0].port.0, "res:fs");
+        assert_eq!(unwired[0].port.0, "res:file");
     }
 
     #[test]

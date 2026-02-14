@@ -648,7 +648,7 @@ impl std::error::Error for FilesystemHandleParseError {}
 
 impl Resource for FilesystemHandle {
     fn resource_id(&self) -> ResourceId {
-        ResourceId::new(format!("fs:{}", self.scope.as_str()))
+        ResourceId::new(format!("file:{}", self.scope.as_str()))
     }
 
     fn access_mode(&self) -> AccessMode {

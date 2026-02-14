@@ -3,7 +3,7 @@
 use crate::ops::{GcpOps, GcpRuntimeKind};
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::build::{list, optional, port, resource, AccessMode};
-use gunbc_ir::{Dag, DagBuilder, Edge, Node, NodeRef, Value};
+use gunbc_ir::{Dag, DagBuilder, Edge, Node, NodeRef, Value, RESOURCE_API_NETWORK};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::NetEnv;
 use std::collections::HashMap;
@@ -52,7 +52,7 @@ pub fn build_gcp_secret_manager_credential_graph(
         .add_root_node(Node::opaque(
             "net_env",
             vec![],
-            vec![port("net", "NetworkHandle")],
+            vec![port(NetEnv::PORT, "NetworkHandle")],
             GcpSecretManagerGraphOp::NetEnv(NetEnv),
         ))
         .expect("net_env");
@@ -86,7 +86,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                                 vec![
                                     port("request", "TransportRequest"),
                                     port("skip", "Bool"),
-                                    resource("net", "NetworkHandle", AccessMode::Read),
+                                    resource("api:network", "NetworkHandle", AccessMode::Read),
                                 ],
                                 vec![port("response", "TransportResponse")],
                                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -114,8 +114,8 @@ pub fn build_gcp_secret_manager_credential_graph(
                         .add_edge(prepare.out("skip"), execute.in_port("skip"))
                         .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
                     builder
-                        .add_edge(net_env.out("net"), execute.in_port("res:net"))
-                        .expect("net_env -> execute_github_oidc.res:net");
+                        .add_edge(net_env.out(NetEnv::PORT), execute.in_port(RESOURCE_API_NETWORK))
+                        .expect("net_env -> execute_github_oidc.res:api:network");
                     builder
                         .add_edge(execute.out("response"), parse.in_port("response"))
                         .expect("execute_github_oidc.response -> parse_github_oidc.response");
@@ -139,7 +139,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                                 vec![
                                     port("request", "TransportRequest"),
                                     port("skip", "Bool"),
-                                    resource("net", "NetworkHandle", AccessMode::Read),
+                                    resource("api:network", "NetworkHandle", AccessMode::Read),
                                 ],
                                 vec![port("response", "TransportResponse")],
                                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -167,8 +167,8 @@ pub fn build_gcp_secret_manager_credential_graph(
                         .add_edge(prepare.out("skip"), execute.in_port("skip"))
                         .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
                     builder
-                        .add_edge(net_env.out("net"), execute.in_port("res:net"))
-                        .expect("net_env -> execute_metadata_oidc.res:net");
+                        .add_edge(net_env.out(NetEnv::PORT), execute.in_port(RESOURCE_API_NETWORK))
+                        .expect("net_env -> execute_metadata_oidc.res:api:network");
                     builder
                         .add_edge(execute.out("response"), parse.in_port("response"))
                         .expect("execute_metadata_oidc.response -> parse_metadata_oidc.response");
@@ -198,7 +198,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                         vec![
                             port("request", "TransportRequest"),
                             port("skip", "Bool"),
-                            resource("net", "NetworkHandle", AccessMode::Read),
+                            resource("api:network", "NetworkHandle", AccessMode::Read),
                         ],
                         vec![port("response", "TransportResponse")],
                         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -232,8 +232,8 @@ pub fn build_gcp_secret_manager_credential_graph(
                 .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
                 .expect("prepare_sts.skip -> execute_sts.skip");
             builder
-                .add_edge(net_env.out("net"), execute_sts.in_port("res:net"))
-                .expect("net_env -> execute_sts.res:net");
+                .add_edge(net_env.out(NetEnv::PORT), execute_sts.in_port(RESOURCE_API_NETWORK))
+                .expect("net_env -> execute_sts.res:api:network");
             builder
                 .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
                 .expect("execute_sts.response -> parse_sts.response");
@@ -296,7 +296,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
-                    resource("net", "NetworkHandle", AccessMode::Read),
+                    resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -345,8 +345,8 @@ pub fn build_gcp_secret_manager_credential_graph(
         )
         .expect("prepare_impersonate.skip -> execute_impersonate.skip");
     builder
-        .add_edge(net_env.out("net"), execute_impersonate.in_port("res:net"))
-        .expect("net_env -> execute_impersonate.res:net");
+        .add_edge(net_env.out(NetEnv::PORT), execute_impersonate.in_port(RESOURCE_API_NETWORK))
+        .expect("net_env -> execute_impersonate.res:api:network");
     builder
         .add_edge(
             execute_impersonate.out("response"),
@@ -388,7 +388,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
-                    resource("net", "NetworkHandle", AccessMode::Read),
+                    resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -425,8 +425,8 @@ pub fn build_gcp_secret_manager_credential_graph(
         .add_edge(prepare_secret.out("skip"), execute_secret.in_port("skip"))
         .expect("prepare_secret.skip -> execute_secret.skip");
     builder
-        .add_edge(net_env.out("net"), execute_secret.in_port("res:net"))
-        .expect("net_env -> execute_secret_access.res:net");
+        .add_edge(net_env.out(NetEnv::PORT), execute_secret.in_port(RESOURCE_API_NETWORK))
+        .expect("net_env -> execute_secret_access.res:api:network");
     builder
         .add_edge(
             execute_secret.out("response"),
@@ -510,7 +510,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_root_node(Node::opaque(
             "net_env",
             vec![],
-            vec![port("net", "NetworkHandle")],
+            vec![port(NetEnv::PORT, "NetworkHandle")],
             GcpSecretManagerGraphOp::NetEnv(NetEnv),
         ))
         .expect("net_env");
@@ -544,7 +544,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                                 vec![
                                     port("request", "TransportRequest"),
                                     port("skip", "Bool"),
-                                    resource("net", "NetworkHandle", AccessMode::Read),
+                                    resource("api:network", "NetworkHandle", AccessMode::Read),
                                 ],
                                 vec![port("response", "TransportResponse")],
                                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -572,8 +572,8 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         .add_edge(prepare.out("skip"), execute.in_port("skip"))
                         .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
                     builder
-                        .add_edge(net_env.out("net"), execute.in_port("res:net"))
-                        .expect("net_env -> execute_github_oidc.res:net");
+                        .add_edge(net_env.out(NetEnv::PORT), execute.in_port(RESOURCE_API_NETWORK))
+                        .expect("net_env -> execute_github_oidc.res:api:network");
                     builder
                         .add_edge(execute.out("response"), parse.in_port("response"))
                         .expect("execute_github_oidc.response -> parse_github_oidc.response");
@@ -597,7 +597,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                                 vec![
                                     port("request", "TransportRequest"),
                                     port("skip", "Bool"),
-                                    resource("net", "NetworkHandle", AccessMode::Read),
+                                    resource("api:network", "NetworkHandle", AccessMode::Read),
                                 ],
                                 vec![port("response", "TransportResponse")],
                                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -625,8 +625,8 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         .add_edge(prepare.out("skip"), execute.in_port("skip"))
                         .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
                     builder
-                        .add_edge(net_env.out("net"), execute.in_port("res:net"))
-                        .expect("net_env -> execute_metadata_oidc.res:net");
+                        .add_edge(net_env.out(NetEnv::PORT), execute.in_port(RESOURCE_API_NETWORK))
+                        .expect("net_env -> execute_metadata_oidc.res:api:network");
                     builder
                         .add_edge(execute.out("response"), parse.in_port("response"))
                         .expect("execute_metadata_oidc.response -> parse_metadata_oidc.response");
@@ -656,7 +656,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         vec![
                             port("request", "TransportRequest"),
                             port("skip", "Bool"),
-                            resource("net", "NetworkHandle", AccessMode::Read),
+                            resource("api:network", "NetworkHandle", AccessMode::Read),
                         ],
                         vec![port("response", "TransportResponse")],
                         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -690,8 +690,8 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
                 .expect("prepare_sts.skip -> execute_sts.skip");
             builder
-                .add_edge(net_env.out("net"), execute_sts.in_port("res:net"))
-                .expect("net_env -> execute_sts.res:net");
+                .add_edge(net_env.out(NetEnv::PORT), execute_sts.in_port(RESOURCE_API_NETWORK))
+                .expect("net_env -> execute_sts.res:api:network");
             builder
                 .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
                 .expect("execute_sts.response -> parse_sts.response");
@@ -754,7 +754,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
-                    resource("net", "NetworkHandle", AccessMode::Read),
+                    resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -803,8 +803,8 @@ pub fn build_gcp_secret_manager_upsert_graph(
         )
         .expect("prepare_impersonate.skip -> execute_impersonate.skip");
     builder
-        .add_edge(net_env.out("net"), execute_impersonate.in_port("res:net"))
-        .expect("net_env -> execute_impersonate.res:net");
+        .add_edge(net_env.out(NetEnv::PORT), execute_impersonate.in_port(RESOURCE_API_NETWORK))
+        .expect("net_env -> execute_impersonate.res:api:network");
     builder
         .add_edge(
             execute_impersonate.out("response"),
@@ -845,7 +845,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
-                    resource("net", "NetworkHandle", AccessMode::Read),
+                    resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -879,8 +879,8 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_edge(prepare_get.out("skip"), execute_get.in_port("skip"))
         .expect("prepare_secret_get.skip -> execute_secret_get.skip");
     builder
-        .add_edge(net_env.out("net"), execute_get.in_port("res:net"))
-        .expect("net_env -> execute_secret_get.res:net");
+        .add_edge(net_env.out(NetEnv::PORT), execute_get.in_port(RESOURCE_API_NETWORK))
+        .expect("net_env -> execute_secret_get.res:api:network");
     builder
         .add_edge(execute_get.out("response"), parse_get.in_port("response"))
         .expect("execute_secret_get.response -> parse_secret_get.response");
@@ -909,7 +909,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
-                    resource("net", "NetworkHandle", AccessMode::Read),
+                    resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![port("response", "TransportResponse"), port("skip", "Bool")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -937,8 +937,8 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_edge(prepare_create.out("skip"), execute_create.in_port("skip"))
         .expect("prepare_secret_create.skip -> execute_secret_create.skip");
     builder
-        .add_edge(net_env.out("net"), execute_create.in_port("res:net"))
-        .expect("net_env -> execute_secret_create.res:net");
+        .add_edge(net_env.out(NetEnv::PORT), execute_create.in_port(RESOURCE_API_NETWORK))
+        .expect("net_env -> execute_secret_create.res:api:network");
 
     let prepare_add = builder
         .add_node_after(
@@ -965,7 +965,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
-                    resource("net", "NetworkHandle", AccessMode::Read),
+                    resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -1005,8 +1005,8 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_edge(prepare_add.out("skip"), execute_add.in_port("skip"))
         .expect("prepare_secret_add_version.skip -> execute_secret_add_version.skip");
     builder
-        .add_edge(net_env.out("net"), execute_add.in_port("res:net"))
-        .expect("net_env -> execute_secret_add_version.res:net");
+        .add_edge(net_env.out(NetEnv::PORT), execute_add.in_port(RESOURCE_API_NETWORK))
+        .expect("net_env -> execute_secret_add_version.res:api:network");
     builder
         .add_edge(execute_add.out("response"), parse_add.in_port("response"))
         .expect("execute_secret_add_version.response -> parse_secret_add_version.response");
@@ -1097,7 +1097,7 @@ fn add_ensure_iam_nodes(
                 vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
-                    resource("net", "NetworkHandle", AccessMode::Read),
+                    resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -1132,7 +1132,7 @@ fn add_ensure_iam_nodes(
                 vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
-                    resource("net", "NetworkHandle", AccessMode::Read),
+                    resource("api:network", "NetworkHandle", AccessMode::Read),
                 ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -1168,8 +1168,8 @@ fn add_ensure_iam_nodes(
         )
         .expect("prepare_ensure_iam.skip -> execute_get_iam.skip");
     builder
-        .add_edge(net_env.out("net"), execute_get_iam.in_port("res:net"))
-        .expect("net_env -> execute_get_iam.res:net");
+        .add_edge(net_env.out(NetEnv::PORT), execute_get_iam.in_port(RESOURCE_API_NETWORK))
+        .expect("net_env -> execute_get_iam.res:api:network");
 
     // Wire: execute_get_iam -> check_iam_binding
     builder
@@ -1200,8 +1200,8 @@ fn add_ensure_iam_nodes(
         .add_edge(check_iam.out("skip"), execute_set_iam.in_port("skip"))
         .expect("check_iam_binding.skip -> execute_set_iam.skip");
     builder
-        .add_edge(net_env.out("net"), execute_set_iam.in_port("res:net"))
-        .expect("net_env -> execute_set_iam.res:net");
+        .add_edge(net_env.out(NetEnv::PORT), execute_set_iam.in_port(RESOURCE_API_NETWORK))
+        .expect("net_env -> execute_set_iam.res:api:network");
 
     // Wire: execute_set_iam -> parse_set_iam
     builder
@@ -1256,7 +1256,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     dag.add_node(Node::opaque(
         "net_env",
         vec![],
-        vec![port("net", "NetworkHandle")],
+        vec![port(NetEnv::PORT, "NetworkHandle")],
         GcpSecretManagerGraphOp::NetEnv(NetEnv),
     ));
 
@@ -1276,7 +1276,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -1297,7 +1297,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "request",
     ));
     dag.add_edge(Edge::new("prepare_check", "skip", "execute_check", "skip"));
-    dag.add_edge(Edge::new("net_env", "net", "execute_check", "res:net"));
+    dag.add_edge(Edge::new("net_env", NetEnv::PORT, "execute_check", RESOURCE_API_NETWORK));
     dag.add_edge(Edge::new(
         "execute_check",
         "response",
@@ -1322,7 +1322,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -1358,7 +1358,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -1395,7 +1395,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "execute_read_adc",
         "skip",
     ));
-    dag.add_edge(Edge::new("net_env", "net", "execute_read_adc", "res:net"));
+    dag.add_edge(Edge::new("net_env", NetEnv::PORT, "execute_read_adc", RESOURCE_API_NETWORK));
     dag.add_edge(Edge::new(
         "execute_read_adc",
         "response",
@@ -1434,7 +1434,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "execute_oauth2",
         "skip",
     ));
-    dag.add_edge(Edge::new("net_env", "net", "execute_oauth2", "res:net"));
+    dag.add_edge(Edge::new("net_env", NetEnv::PORT, "execute_oauth2", RESOURCE_API_NETWORK));
     dag.add_edge(Edge::new(
         "execute_oauth2",
         "response",
@@ -1460,7 +1460,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -1494,9 +1494,9 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     ));
     dag.add_edge(Edge::new(
         "net_env",
-        "net",
+        NetEnv::PORT,
         "execute_gcloud_auth",
-        "res:net",
+        RESOURCE_API_NETWORK,
     ));
     dag.add_edge(Edge::new(
         "execute_gcloud_auth",
@@ -1519,7 +1519,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -1555,7 +1555,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "execute_reread_adc",
         "skip",
     ));
-    dag.add_edge(Edge::new("net_env", "net", "execute_reread_adc", "res:net"));
+    dag.add_edge(Edge::new("net_env", NetEnv::PORT, "execute_reread_adc", RESOURCE_API_NETWORK));
     dag.add_edge(Edge::new(
         "execute_reread_adc",
         "response",
@@ -1580,7 +1580,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip", "Bool"),
-            resource("net", "NetworkHandle", AccessMode::Read),
+            resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
@@ -1629,9 +1629,9 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     ));
     dag.add_edge(Edge::new(
         "net_env",
-        "net",
+        NetEnv::PORT,
         "execute_retry_oauth2",
-        "res:net",
+        RESOURCE_API_NETWORK,
     ));
     dag.add_edge(Edge::new(
         "execute_retry_oauth2",

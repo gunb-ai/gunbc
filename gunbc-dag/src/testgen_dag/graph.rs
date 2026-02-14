@@ -33,7 +33,7 @@ pub fn build_testgen_graph(
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port("fs:write", "FilesystemHandle")],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
         TestgenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -86,7 +86,7 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port("fs:write", "FilesystemHandle")],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
         TestgenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -125,8 +125,8 @@ fn add_upsert_chain(
         generate_op,
     ))?;
 
-    let read_res = resource("fs", "FilesystemHandle", AccessMode::Read);
-    let write_res = resource("fs", "FilesystemHandle", AccessMode::Write);
+    let read_res = resource("file", "FilesystemHandle", AccessMode::Read);
+    let write_res = resource("file", "FilesystemHandle", AccessMode::Write);
     let chain = add_content_upsert_chain(
         builder,
         name,
@@ -140,10 +140,10 @@ fn add_upsert_chain(
         TestgenGraphOp::Transport(TransportOps::Execute),
     )?;
 
-    builder.add_edge(fs_env.out("fs:write"), chain.execute_read.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), chain.execute_read.in_port("res:file"))?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        chain.execute_write.in_port("res:fs"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        chain.execute_write.in_port("res:file"),
     )?;
 
     Ok(())

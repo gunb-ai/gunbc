@@ -85,7 +85,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port("fs:write", "FilesystemHandle")],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
         BootstrapGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -106,7 +106,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
             vec![
                 port("request", "TransportRequest"),
                 port("skip", "Bool"),
-                resource("fs", "FilesystemHandle", AccessMode::Read),
+                resource("file", "FilesystemHandle", AccessMode::Read),
             ],
             vec![port("response", "TransportResponse")],
             BootstrapGraphOp::Transport(TransportOps::Execute),
@@ -156,8 +156,8 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         generate_makefile.in_port("crate_names"),
     )?;
 
-    let makefile_read = resource("fs:Makefile", "FilesystemHandle", AccessMode::Read);
-    let makefile_write = resource("fs:Makefile", "FilesystemHandle", AccessMode::Write);
+    let makefile_read = resource("file:Makefile", "FilesystemHandle", AccessMode::Read);
+    let makefile_write = resource("file:Makefile", "FilesystemHandle", AccessMode::Write);
     let makefile_chain = add_content_upsert_chain(
         &mut builder,
         "makefile",
@@ -190,8 +190,8 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         generate_gitignore.in_port("crate_names"),
     )?;
 
-    let gitignore_read = resource("fs:.gitignore", "FilesystemHandle", AccessMode::Read);
-    let gitignore_write = resource("fs:.gitignore", "FilesystemHandle", AccessMode::Write);
+    let gitignore_read = resource("file:.gitignore", "FilesystemHandle", AccessMode::Read);
+    let gitignore_write = resource("file:.gitignore", "FilesystemHandle", AccessMode::Write);
     let gitignore_chain = add_content_upsert_chain(
         &mut builder,
         "gitignore",
@@ -206,22 +206,22 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     )?;
 
     // Resource wiring
-    builder.add_edge(fs_env.out("fs:write"), execute_scan.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), execute_scan.in_port("res:file"))?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        makefile_chain.execute_read.in_port("res:fs:Makefile"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        makefile_chain.execute_read.in_port("res:file:Makefile"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        makefile_chain.execute_write.in_port("res:fs:Makefile"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        makefile_chain.execute_write.in_port("res:file:Makefile"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        gitignore_chain.execute_read.in_port("res:fs:.gitignore"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        gitignore_chain.execute_read.in_port("res:file:.gitignore"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        gitignore_chain.execute_write.in_port("res:fs:.gitignore"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        gitignore_chain.execute_write.in_port("res:file:.gitignore"),
     )?;
 
     Ok(builder.build())

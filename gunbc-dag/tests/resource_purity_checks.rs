@@ -10,6 +10,8 @@ use gunbc_ir::{
     derive_resource_accesses, detect_resource_conflicts, validate_resource_wiring_recursive,
 };
 use gunbc_testgen_registry::iter_resource_tests;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 // Force-link crates with `#[resource_test_target]` registrations used by CI/tooling.
 use gunbc_clippy as _;
@@ -95,5 +97,96 @@ fn resource_purity_registry_wide() {
         failures.is_empty(),
         "registry-wide resource purity checks failed:\n{}",
         failures.join("\n")
+    );
+}
+
+fn collect_rust_sources(root: &Path, out: &mut Vec<PathBuf>) {
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let skip = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| matches!(n, ".git" | "target"))
+                    .unwrap_or(false);
+                if !skip {
+                    stack.push(path);
+                }
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                out.push(path);
+            }
+        }
+    }
+}
+
+#[test]
+fn resource_ids_have_no_legacy_aliases() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("gunbc-dag should live under repo root");
+
+    let mut files = Vec::new();
+    for root in ["core", "gunbc-dag", "lib"] {
+        collect_rust_sources(&repo_root.join(root), &mut files);
+    }
+    files.sort();
+
+    let banned = vec![
+        format!("res:{}", "fs"),
+        format!("res:{}", "net"),
+        format!("res:{}", "pkg"),
+        format!("res:{}_path", "repo"),
+        format!("{}:{}", "fs", "read"),
+        format!("{}:{}", "fs", "write"),
+        format!("resource(\"{}\"", "fs"),
+        format!("resource(\"{}\"", "net"),
+        format!("resource(\"{}\"", "pkg"),
+        format!("resource_lock(\"{}:", "fs"),
+        format!("resource_lock(\"{}:", "net"),
+        format!("resource_lock(\"{}:", "pkg"),
+        format!("resource_lock(\"{}:", "cargo"),
+        format!("resource_lock_fails(\"{}:", "fs"),
+        format!("resource_lock_fails(\"{}:", "net"),
+        format!("resource_lock_fails(\"{}:", "pkg"),
+        format!("resource_lock_fails(\"{}:", "cargo"),
+        format!("port(\"{}\", \"{}\")", "net", "NetworkHandle"),
+        format!("out(\"{}\")", "net"),
+        format!("boundary(\"{}\", \"{}\"", "net_env", "net"),
+        format!("set_value(\"{}\", \"{}\"", "net_env", "net"),
+    ];
+
+    let mut hits = Vec::new();
+    for path in files {
+        let Ok(content) = fs::read_to_string(&path) else {
+            continue;
+        };
+        for (idx, line) in content.lines().enumerate() {
+            for pat in &banned {
+                if line.contains(pat) {
+                    let rel = path.strip_prefix(repo_root).unwrap_or(&path);
+                    hits.push(format!(
+                        "{}:{}: legacy resource alias '{}': {}",
+                        rel.display(),
+                        idx + 1,
+                        pat,
+                        line.trim()
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        hits.is_empty(),
+        "legacy resource alias forms are forbidden; migrate to canonical resource ids now:\n{}",
+        hits.join("\n")
     );
 }

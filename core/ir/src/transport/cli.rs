@@ -736,7 +736,7 @@ fn build_cli_tool_subdag(
         tool_res_port_write.clone(),
     ];
     if needs_pkg {
-        install_execute_inputs.push(Port::resource("pkg", "Unit", AccessMode::Write));
+        install_execute_inputs.push(Port::resource("target", "Unit", AccessMode::Write));
     }
 
     dag.add_node(Node::opaque(
@@ -892,7 +892,7 @@ fn build_cli_tool_subdag(
             "resource_gate",
             "pkg",
             "execute_install",
-            "res:pkg",
+            "res:target",
         ));
     }
     if needs_target {
@@ -1170,7 +1170,7 @@ mod tests {
         ));
         assert!(has_resource_input(
             execute_install,
-            "res:pkg",
+            "res:target",
             AccessMode::Write
         ));
         assert!(has_resource_input(
@@ -1205,7 +1205,7 @@ mod tests {
             "resource_gate",
             "pkg",
             "execute_install",
-            "res:pkg"
+            "res:target"
         ));
         assert!(has_edge(
             &dag,
@@ -1234,7 +1234,7 @@ mod tests {
         ));
         assert!(!has_resource_input(
             execute_install,
-            "res:pkg",
+            "res:target",
             AccessMode::Write
         ));
         assert!(!has_resource_input(
@@ -1247,7 +1247,7 @@ mod tests {
             "resource_gate",
             "pkg",
             "execute_install",
-            "res:pkg"
+            "res:target"
         ));
         assert!(!has_edge(
             &dag,

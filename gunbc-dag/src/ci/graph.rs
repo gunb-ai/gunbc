@@ -199,7 +199,7 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
 pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    let fs_resource = resource("fs", "FilesystemHandle", AccessMode::Write);
+    let fs_resource = resource("file", "FilesystemHandle", AccessMode::Write);
 
     let cloud_env_status = builder.add_root_node(Node::opaque(
         "cloud_env_status",
@@ -790,31 +790,31 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
 
     // Resource wiring (filesystem handle for transport nodes)
     builder.add_edge(
-        fs_env.out("fs:write"),
-        _deps_exists.execute.in_port("res:fs"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        _deps_exists.execute.in_port("res:file"),
     )?;
-    builder.add_edge(fs_env.out("fs:write"), bootstrap.execute.in_port("res:fs"))?;
-    builder.add_edge(fs_env.out("fs:write"), pragma.execute.in_port("res:fs"))?;
-    builder.add_edge(fs_env.out("fs:write"), testgen.execute.in_port("res:fs"))?;
-    builder.add_edge(fs_env.out("fs:write"), build.execute.in_port("res:fs"))?;
-    builder.add_edge(fs_env.out("fs:write"), test.execute.in_port("res:fs"))?;
-    builder.add_edge(fs_env.out("fs:write"), lint.execute.in_port("res:fs"))?;
-    builder.add_edge(fs_env.out("fs:write"), guardrail.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), bootstrap.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), pragma.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), testgen.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), build.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), test.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), lint.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), guardrail.execute.in_port("res:file"))?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        verify_makegen.execute.in_port("res:fs"),
-    )?;
-    builder.add_edge(
-        fs_env.out("fs:write"),
-        verify_bootstrap.execute.in_port("res:fs"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        verify_makegen.execute.in_port("res:file"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        verify_testgen.execute.in_port("res:fs"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        verify_bootstrap.execute.in_port("res:file"),
     )?;
     builder.add_edge(
-        fs_env.out("fs:write"),
-        verify_pragma.execute.in_port("res:fs"),
+        fs_env.out(FsEnv::WRITE_PORT),
+        verify_testgen.execute.in_port("res:file"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        verify_pragma.execute.in_port("res:file"),
     )?;
 
     Ok(builder.build())

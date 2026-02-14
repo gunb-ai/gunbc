@@ -128,7 +128,10 @@ pub use render_ir::{
 pub use resource::{
     derive_resource_accesses, detect_resource_conflicts, normalize_resource_id, AccessMode,
     Resource, ResourceAccess, ResourceAccessError, ResourceConflict, ResourceId, ResourceKind,
-    Timestamp,
+    Timestamp, API_NETWORK_HANDLE_PORT, FILE_HANDLE_READ_PORT, FILE_HANDLE_WRITE_PORT,
+    RESOURCE_API_NETWORK, RESOURCE_FILE, RESOURCE_FILE_PREFIX, RESOURCE_PORT_PREFIX,
+    RESOURCE_REPO, RESOURCE_TARGET, resource_api_port, resource_file_port, resource_port,
+    resource_target_port,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};

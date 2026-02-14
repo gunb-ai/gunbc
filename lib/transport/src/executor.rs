@@ -476,7 +476,6 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
 mod tests {
     use super::*;
     use gunbc_test::{guard_test, FermiCost, TestClass};
-    use std::io::{Read as _, Write as _};
     use std::net::TcpListener;
     use std::env::temp_dir;
     use std::path::{Path, PathBuf};
@@ -515,8 +514,24 @@ mod tests {
         guard_test(name, TestClass::Integration, FermiCost::S, &["network"], &[])
     }
 
-    fn spawn_single_connection_server(response: String) -> (u16, thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback listener");
+    fn bind_loopback_listener(test_name: &str) -> Option<TcpListener> {
+        match TcpListener::bind("127.0.0.1:0") {
+            Ok(listener) => Some(listener),
+            Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
+                eprintln!(
+                    "[guard] skipping {test_name}: loopback bind not permitted ({err})"
+                );
+                None
+            }
+            Err(err) => panic!("bind loopback listener: {err}"),
+        }
+    }
+
+    fn spawn_single_connection_server(
+        test_name: &str,
+        response: String,
+    ) -> Option<(u16, thread::JoinHandle<()>)> {
+        let listener = bind_loopback_listener(test_name)?;
         let port = listener
             .local_addr()
             .expect("listener local addr")
@@ -534,7 +549,7 @@ mod tests {
                 .expect("write server response");
         });
 
-        (port, handle)
+        Some((port, handle))
     }
 
     // ========================================================================
@@ -1055,10 +1070,12 @@ mod tests {
             return;
         }
 
-        let (port, handle) = spawn_single_connection_server(
-            "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
-                .to_string(),
-        );
+        let Some((port, handle)) = spawn_single_connection_server(
+            stringify!(test_execute_transport_http_dispatch),
+            "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_string(),
+        ) else {
+            return;
+        };
 
         let request = TransportRequest::Http(
             HttpRequest::get(format!("http://127.0.0.1:{port}/health")).timeout(1000),
@@ -1082,10 +1099,13 @@ mod tests {
             return;
         }
 
-        let (port, handle) = spawn_single_connection_server(
+        let Some((port, handle)) = spawn_single_connection_server(
+            stringify!(test_execute_transport_rest_dispatch),
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 12\r\nConnection: close\r\n\r\n{\"ok\":true}"
                 .to_string(),
-        );
+        ) else {
+            return;
+        };
 
         let request = TransportRequest::Rest(
             RestRequest::get(format!("http://127.0.0.1:{port}/v1/ping")).timeout(1000),
@@ -1109,7 +1129,10 @@ mod tests {
             return;
         }
 
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback listener");
+        let Some(listener) = bind_loopback_listener(stringify!(test_execute_transport_tcp_dispatch))
+        else {
+            return;
+        };
         let port = listener
             .local_addr()
             .expect("listener local addr")

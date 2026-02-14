@@ -3,7 +3,7 @@
 use gunbc_ir::transport::rest::RestResponse;
 use gunbc_ir::transport::TransportResponse;
 use gunbc_ir::{AuthScheme, Credential, Secret, SecretString, Value};
-use gunbc_primitives::NetworkHandle;
+use gunbc_primitives::{NetEnv, NetworkHandle};
 use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 
 fn mock_credential() -> Value {
@@ -111,7 +111,7 @@ pub fn gcp_github_mock_spec() -> MockSpec {
             Value::Response(TransportResponse::Rest(secret_response)),
         )
         .boundary("build_credential", "credential", mock_credential())
-        .boundary("net_env", "net", mock_net_handle())
+        .boundary("net_env", NetEnv::PORT, mock_net_handle())
         .node_example(
             NodeExample::new("build_credential")
                 .input("secret", Value::Str("mock-secret".into()))
@@ -213,7 +213,7 @@ pub fn gcp_local_mock_spec() -> MockSpec {
             "response",
             Value::Skipped,
         )
-        .boundary("local_auth_upsert/net_env", "net", mock_net_handle())
+        .boundary("local_auth_upsert/net_env", NetEnv::PORT, mock_net_handle())
         // IAM ensure (local dev only) — REST-based check + conditional set
         .input_mock(
             "prepare_ensure_iam",
@@ -273,7 +273,7 @@ pub fn gcp_local_mock_spec() -> MockSpec {
             Value::Response(TransportResponse::Rest(secret_response)),
         )
         .boundary("build_credential", "credential", mock_credential())
-        .boundary("net_env", "net", mock_net_handle())
+        .boundary("net_env", NetEnv::PORT, mock_net_handle())
         .node_example(
             NodeExample::new("build_credential")
                 .input("secret", Value::Str("mock-secret".into()))
@@ -423,7 +423,7 @@ pub fn gcp_github_upsert_mock_spec() -> MockSpec {
             "response",
             Value::Response(TransportResponse::Rest(add_version_response)),
         )
-        .boundary("net_env", "net", mock_net_handle())
+        .boundary("net_env", NetEnv::PORT, mock_net_handle())
         // Probe-observer: terminal needs chain-safe observer
         .live_expected_output(
             "parse_secret_add_version",

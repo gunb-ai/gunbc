@@ -335,7 +335,7 @@ diff --git a/src/main.rs b/src/main.rs
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "review-diff")
         // Filesystem env (git diff access)
-        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         // Cloud env + credential boundaries
         .boundary("cloud_env", "config", mock_cloud_config())
