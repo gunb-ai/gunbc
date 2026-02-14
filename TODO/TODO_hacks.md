@@ -487,13 +487,11 @@ for string params). Deleted `parse_resource_mode()` from `ci.rs`.
 **Residual analysis topic (non-blocking)**:
 - Buck2 mode still renders cargo-based invocations for repo generator binaries;
   a future cross-build-system unification pass may further reduce divergence.
-- Step-mode generated CLIs still use a bespoke positional subcommand scanner
-  (`run`/`step`/`list-steps`); consider modeling subcommands in shared
-  `BinaryArgs` so all binary parsers share one scanner.
 
 **Added**: 2026-02-13 (reconciliation)
 **Updated**: 2026-02-14 (all Makefile cargo tool targets unified to
-build-release-bins + direct release binaries; deps-config verify path added)
+build-release-bins + direct release binaries; deps-config verify path added;
+step-mode generated CLIs now dispatch via shared `gunbc_cli::parse_step_mode`)
 
 ---
 
