@@ -78,7 +78,7 @@ pub fn ensure_lint_upsert_with_ci(
 
     println!("preflight: lint-upsert ({})", state);
 
-    if let Err(e) = run_lint_upsert(resource.resource_id()) {
+    if let Err(e) = run_lint_upsert(resource.resource_id(), ci.as_mut().map(|c| &mut **c)) {
         let msg = format!("preflight: lint-upsert failed: {}", e);
         if let Some(ref mut c) = ci {
             c.error(&msg, None);
@@ -220,7 +220,7 @@ impl ManagedResource for LintResource {
         _manifest: &ResourceManifest,
         io: &dyn ResourceIo,
     ) -> Result<ManifestEntry, ResourceError> {
-        run_lint_upsert(self.resource_id())?;
+        run_lint_upsert(self.resource_id(), None)?;
 
         let files = list_tracked_files(io)?;
         let key = compute_lint_key(io, &files)?;
@@ -325,7 +325,10 @@ fn compute_lint_key(io: &dyn ResourceIo, files: &[PathBuf]) -> Result<ContentHas
     Ok(hash_builder.finalize())
 }
 
-fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
+fn run_lint_upsert(
+    resource_id: &ResourceId,
+    mut ci: Option<&mut gunbc_exec::CiContext>,
+) -> Result<(), ResourceError> {
     let steps: &[(&str, CargoCommand)] = &[
         (
             "codegen-dag",
@@ -346,66 +349,93 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
 
     let total = steps.len() + 2; // +1 for clippy, +1 for test gate
     for (i, (label, cmd)) in steps.iter().enumerate() {
+        if let Some(ref mut c) = ci {
+            c.start_group(label, true);
+        }
         eprint!("  [{}/{}] {}...", i + 1, total, label);
         let _ = std::io::Write::flush(&mut std::io::stderr());
         let start = std::time::Instant::now();
-        run_cargo_command(resource_id, cmd)?;
+        let result = run_cargo_command(resource_id, cmd);
         eprintln!(" {:.1}s", start.elapsed().as_secs_f64());
+        if let Some(ref mut c) = ci {
+            c.end_group();
+        }
+        result?;
     }
 
     // clippy check: cargo clippy -- -D warnings
     // Note: no --all-targets for speed; CI still catches test-only lint issues
-    eprint!("  [{}/{}] clippy...", total, total);
-    let _ = std::io::Write::flush(&mut std::io::stderr());
-    let clippy_start = std::time::Instant::now();
-    let clippy_check = CargoCommand::new(Subcommand::Clippy).warnings(Warnings::Deny);
-    let clippy_result = run_cargo_command_response(resource_id, &clippy_check)?;
-
-    if !clippy_result.success() {
-        eprintln!(" fix needed ({:.1}s)", clippy_start.elapsed().as_secs_f64());
-        eprint!("  [{}/{}] clippy --fix...", total, total);
-        let _ = std::io::Write::flush(&mut std::io::stderr());
-        let fix_start = std::time::Instant::now();
-
-        // clippy fix: cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
-        let clippy_fix = CargoCommand::new(Subcommand::Clippy)
-            .fix()
-            .workspace()
-            .allow_dirty()
-            .allow_staged()
-            .warnings(Warnings::Deny);
-        run_cargo_command(resource_id, &clippy_fix)?;
-
-        // verify fix worked
-        let verify_result = run_cargo_command_response(resource_id, &clippy_check)?;
-        if !verify_result.success() {
-            eprintln!(" failed ({:.1}s)", fix_start.elapsed().as_secs_f64());
-            return Err(ResourceError::CreateFailed(
-                resource_id.clone(),
-                format!(
-                    "cargo clippy failed after fix (exit {})\n{}\n{}",
-                    verify_result.exit_code, verify_result.stdout, verify_result.stderr
-                ),
-            ));
-        }
-        eprintln!(" {:.1}s", fix_start.elapsed().as_secs_f64());
-    } else {
-        eprintln!(" {:.1}s", clippy_start.elapsed().as_secs_f64());
+    if let Some(ref mut c) = ci {
+        c.start_group("clippy", true);
     }
+    let clippy_outcome: Result<(), ResourceError> = (|| {
+        eprint!("  [{}/{}] clippy...", total, total);
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+        let clippy_start = std::time::Instant::now();
+        let clippy_check = CargoCommand::new(Subcommand::Clippy).warnings(Warnings::Deny);
+        let clippy_result = run_cargo_command_response(resource_id, &clippy_check)?;
+
+        if !clippy_result.success() {
+            eprintln!(" fix needed ({:.1}s)", clippy_start.elapsed().as_secs_f64());
+            eprint!("  [{}/{}] clippy --fix...", total, total);
+            let _ = std::io::Write::flush(&mut std::io::stderr());
+            let fix_start = std::time::Instant::now();
+
+            // clippy fix: cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
+            let clippy_fix = CargoCommand::new(Subcommand::Clippy)
+                .fix()
+                .workspace()
+                .allow_dirty()
+                .allow_staged()
+                .warnings(Warnings::Deny);
+            run_cargo_command(resource_id, &clippy_fix)?;
+
+            // verify fix worked
+            let verify_result = run_cargo_command_response(resource_id, &clippy_check)?;
+            if !verify_result.success() {
+                eprintln!(" failed ({:.1}s)", fix_start.elapsed().as_secs_f64());
+                return Err(ResourceError::CreateFailed(
+                    resource_id.clone(),
+                    format!(
+                        "cargo clippy failed after fix (exit {})\n{}\n{}",
+                        verify_result.exit_code, verify_result.stdout, verify_result.stderr
+                    ),
+                ));
+            }
+            eprintln!(" {:.1}s", fix_start.elapsed().as_secs_f64());
+        } else {
+            eprintln!(" {:.1}s", clippy_start.elapsed().as_secs_f64());
+        }
+        Ok(())
+    })();
+    if let Some(ref mut c) = ci {
+        c.end_group();
+    }
+    clippy_outcome?;
 
     // Test gate: run lib tests to catch contract mismatches (e.g., wrong
     // secret names, stale generated tests). Only hermetic tests run here —
     // live/integration tests that require secrets or external services are
     // skipped via GUNBC_TEST_MAX_COST=S. The full CI pipeline covers those.
-    eprint!("  [{}/{}] test --lib...", total, total);
-    let _ = std::io::Write::flush(&mut std::io::stderr());
-    let test_start = std::time::Instant::now();
-    let test_cmd = CargoCommand::new(Subcommand::Test)
-        .workspace()
-        .lib_only()
-        .warnings(Warnings::Deny);
-    run_cargo_command_with_env(resource_id, &test_cmd, &[("GUNBC_TEST_MAX_COST", "S")])?;
-    eprintln!(" {:.1}s", test_start.elapsed().as_secs_f64());
+    if let Some(ref mut c) = ci {
+        c.start_group("test", true);
+    }
+    let test_outcome: Result<(), ResourceError> = (|| {
+        eprint!("  [{}/{}] test --lib...", total, total);
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+        let test_start = std::time::Instant::now();
+        let test_cmd = CargoCommand::new(Subcommand::Test)
+            .workspace()
+            .lib_only()
+            .warnings(Warnings::Deny);
+        run_cargo_command_with_env(resource_id, &test_cmd, &[("GUNBC_TEST_MAX_COST", "S")])?;
+        eprintln!(" {:.1}s", test_start.elapsed().as_secs_f64());
+        Ok(())
+    })();
+    if let Some(ref mut c) = ci {
+        c.end_group();
+    }
+    test_outcome?;
 
     Ok(())
 }

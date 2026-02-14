@@ -655,7 +655,7 @@ oidc_exchange -> access_token -> secret_fetch -> parse -> credential
 - [ ] Draft an implementation roadmap: phase 1 (audit + metrics), phase 2 (consolidate), phase 3 (parallel runtime).
 - [ ] Add a “resource declaration gap” audit for each DAG (which nodes need `res:*` annotations).
 - [x] Add purity enforcement tests (derive_resource_accesses + detect_resource_conflicts). _(2026-02-14: registry-wide test runner active in `gunbc-dag/tests/resource_purity_checks.rs`.)_
-- [x] Ensure every DAG builder is registered (testgen registry) so purity tests cover the entire codebase. _(2026-02-14: added source-level coverage gate in `gunbc-dag/tests/resource_registry_coverage.rs`; removed `resource_test_target(skip)` from canonical workflow builders and registered missing local/upsert variants.)_
+- [x] Ensure every DAG builder is registered (testgen registry) so purity tests cover the entire codebase. _(2026-02-14: added source + runtime coverage gates in `gunbc-dag/tests/resource_registry_coverage.rs`; removed `resource_test_target(skip)` from canonical workflow builders and registered missing local/upsert variants.)_
 - [x] Add clippy guardrails to forbid direct I/O in pure crates (only transport/boundary crates allowed). _(2026-02-14: enforced via root `clippy.toml` disallowed-methods policy.)_
 - [x] Add `#[resource_test_target]` registry + test runner for codebase-wide purity checks. _(2026-02-14: registry implemented + CI guardrail now runs `resource_purity_checks`.)_
 - [ ] Add optional runtime file guard for `res:file:*` during tests.
@@ -715,6 +715,7 @@ Target workflow states and verification gates:
 
 5. Builder registration coverage
    - Every public zero-arg `build_*graph*` builder is covered by non-skip `#[resource_test_target]` registration.
+   - Runtime `iter_resource_tests()` includes non-skip source annotations for force-linked workflow crates.
    - Verify with: `cargo test -p gunbc-dag --test resource_registry_coverage`
 
 ## Cargo Inventory + Strategy (2026-02-14)

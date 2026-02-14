@@ -459,4 +459,74 @@ mod tests {
         let mut ctx = CiContext::new(Box::new(GitLabCiProvider::new()));
         ctx.error("unsupported in strict mode", None);
     }
+
+    #[test]
+    fn test_observer_node_lifecycle_complete() {
+        let (mut ctx, buffer) = capture_context();
+
+        let node = NodeId::from("build");
+        ctx.on_node_start(&node);
+        ctx.on_node_complete(
+            &node,
+            OutputSummary {
+                fields: vec![],
+                elapsed: Duration::from_millis(100),
+            },
+        );
+
+        let output = get_output(&buffer);
+        assert!(output.contains("=== build ==="));
+        assert!(output.contains("=== /build ==="));
+    }
+
+    #[test]
+    fn test_observer_node_lifecycle_failed() {
+        let (mut ctx, buffer) = capture_context();
+
+        let node = NodeId::from("test");
+        ctx.on_node_start(&node);
+        ctx.on_node_failed(&node, "assertion failed");
+
+        let output = get_output(&buffer);
+        assert!(output.contains("=== test ==="));
+        assert!(output.contains("[ERROR]"));
+        assert!(output.contains("Node 'test' failed: assertion failed"));
+        assert!(output.contains("=== /test ==="));
+    }
+
+    #[test]
+    fn test_observer_report_node_skips_groups() {
+        let (mut ctx, buffer) = capture_context();
+
+        let node = NodeId::from("report");
+        ctx.on_node_start(&node);
+        ctx.on_node_complete(
+            &node,
+            OutputSummary {
+                fields: vec![],
+                elapsed: Duration::ZERO,
+            },
+        );
+
+        let output = get_output(&buffer);
+        // "report" node should NOT open or close groups
+        assert!(!output.contains("=== report ==="));
+    }
+
+    #[test]
+    fn test_observer_secret_masking() {
+        let (mut ctx, buffer) = capture_context();
+
+        let node = NodeId::from("auth");
+        ctx.on_secret_output(&node, "s3cr3t-token");
+
+        let output = get_output(&buffer);
+        assert!(output.contains("[masked value]"));
+    }
+
+    #[test]
+    fn test_observer_requires_sequential() {
+        let (ctx, _) = capture_context();
+        assert!(ctx.requires_sequential());
+    }
 }
