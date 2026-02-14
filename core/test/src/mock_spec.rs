@@ -29,7 +29,7 @@
 //! ```
 
 use gunbc_exec::BoundaryMocks;
-use gunbc_ir::Value;
+use gunbc_ir::{normalize_resource_id, Value};
 use std::collections::HashMap;
 
 /// A complete mock specification for a DAG/tool.
@@ -110,7 +110,6 @@ impl MockSpec {
             port: port.into(),
             value,
             sequence: None,
-            sequence_exhausted_is_error: false,
         });
         self
     }
@@ -169,40 +168,20 @@ impl MockSpec {
 
     /// Add a boundary mock with a sequenced response.
     ///
-    /// The mock returns values from `sequence` in order; once exhausted,
-    /// it falls back to `default`. Use `boundary_sequence_strict` to error
-    /// on sequence exhaustion instead.
+    /// The mock returns values from `sequence` in order; exhausting the
+    /// sequence is an error (no silent fallback).
     pub fn boundary_sequence(
         mut self,
         node: impl Into<String>,
         port: impl Into<String>,
-        default: Value,
         sequence: Vec<Value>,
     ) -> Self {
+        assert!(!sequence.is_empty(), "sequence must not be empty; use boundary() for static mocks");
         self.boundary_mocks.push(BoundaryMock {
             node: node.into(),
             port: port.into(),
-            value: default,
+            value: sequence.last().unwrap().clone(),
             sequence: Some(sequence),
-            sequence_exhausted_is_error: false,
-        });
-        self
-    }
-
-    /// Add a boundary mock with a sequenced response that errors on exhaustion.
-    pub fn boundary_sequence_strict(
-        mut self,
-        node: impl Into<String>,
-        port: impl Into<String>,
-        default: Value,
-        sequence: Vec<Value>,
-    ) -> Self {
-        self.boundary_mocks.push(BoundaryMock {
-            node: node.into(),
-            port: port.into(),
-            value: default,
-            sequence: Some(sequence),
-            sequence_exhausted_is_error: true,
         });
         self
     }
@@ -338,11 +317,7 @@ impl MockSpec {
         let mut mocks = BoundaryMocks::new();
         for bm in &self.boundary_mocks {
             if let Some(seq) = &bm.sequence {
-                if bm.sequence_exhausted_is_error {
-                    mocks.set_sequence_strict(&bm.node, &bm.port, bm.value.clone(), seq.clone());
-                } else {
-                    mocks.set_sequence(&bm.node, &bm.port, bm.value.clone(), seq.clone());
-                }
+                mocks.set_sequence(&bm.node, &bm.port, seq.clone());
             } else {
                 mocks.set_value(&bm.node, &bm.port, bm.value.clone());
             }
@@ -362,11 +337,7 @@ impl MockSpec {
         // Boundary mocks for output interception (env nodes, explicit boundaries, etc.)
         for bm in &self.boundary_mocks {
             if let Some(seq) = &bm.sequence {
-                if bm.sequence_exhausted_is_error {
-                    mocks.set_sequence_strict(&bm.node, &bm.port, bm.value.clone(), seq.clone());
-                } else {
-                    mocks.set_sequence(&bm.node, &bm.port, bm.value.clone(), seq.clone());
-                }
+                mocks.set_sequence(&bm.node, &bm.port, seq.clone());
             } else {
                 mocks.set_value(&bm.node, &bm.port, bm.value.clone());
             }
@@ -431,12 +402,10 @@ pub struct BoundaryMock {
     pub node: String,
     /// Port name
     pub port: String,
-    /// Mock value to return (static fallback for sequences)
+    /// Mock value to return (static value, or context for sequences)
     pub value: Value,
-    /// Optional ordered sequence of responses
+    /// Optional ordered sequence of responses (exhaustion is always an error)
     pub sequence: Option<Vec<Value>>,
-    /// If true, sequence exhaustion should be treated as an error.
-    pub sequence_exhausted_is_error: bool,
 }
 
 /// A mock value for a transport executor node (injected via DryRun interception).
@@ -606,8 +575,9 @@ pub struct ResourceSimulation {
 impl ResourceSimulation {
     /// Create a new resource simulation.
     pub fn new(id: impl Into<String>, resource_type: ResourceType) -> Self {
+        let id = id.into();
         Self {
-            resource_id: id.into(),
+            resource_id: normalize_resource_id(&id),
             resource_type,
             behaviors: Vec::new(),
         }
@@ -842,7 +812,8 @@ impl ResourceMocks {
 
     /// Get simulation for a resource.
     pub fn get(&self, id: &str) -> Option<&ResourceSimulation> {
-        self.resources.iter().find(|r| r.resource_id == id)
+        let normalized = normalize_resource_id(id);
+        self.resources.iter().find(|r| r.resource_id == normalized)
     }
 }
 
@@ -1568,6 +1539,19 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn test_resource_mock_id_aliases_normalize_to_canonical() {
+        let spec = MockSpec::new("test")
+            .resource_lock("fs:Makefile")
+            .resource_lock("pkg:manager");
+
+        // Legacy and canonical IDs should both resolve.
+        assert!(spec.get_resource("fs:Makefile").is_some());
+        assert!(spec.get_resource("file:Makefile").is_some());
+        assert!(spec.get_resource("pkg:manager").is_some());
+        assert!(spec.get_resource("target:manager").is_some());
+    }
+
     // ========================================================================
     // to_boundary_mocks tests
     // ========================================================================
@@ -1649,7 +1633,6 @@ mod tests {
         let spec = MockSpec::new("test").boundary_sequence(
             "poll",
             "status",
-            Value::Str("done".into()),
             vec![Value::Str("pending".into()), Value::Str("running".into())],
         );
 

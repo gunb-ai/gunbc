@@ -30,6 +30,7 @@ use gunbc_ir::layout::compute_layout;
 use gunbc_ir::symbols::{SymbolId, STANDARD};
 use gunbc_ir::{detect_boundaries, Dag, NodeId, Value};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::io;
 use std::process;
 use std::sync::{
@@ -642,7 +643,7 @@ pub(crate) fn truncate_log_value(s: &str) -> String {
         out.push_str(line);
         out.push('\n');
     }
-    out.push_str(&format!("    ... ({omitted} lines omitted) ..."));
+    write!(out, "    ... ({omitted} lines omitted) ...").unwrap();
     out.push('\n');
     for (i, line) in lines[lines.len() - tail..].iter().enumerate() {
         out.push_str(line);

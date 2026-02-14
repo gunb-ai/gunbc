@@ -7,6 +7,10 @@
 - `TODO/TODO_credential_lifecycle.md` — auth pattern architecture
 - `docs/design/integration-testgen.md` — test tier taxonomy
 
+Implementation progress is tracked in `TODO/TODO_gcp_infra_parity.md`.
+Use this document as architecture reference; treat its roadmap checklists as
+design guidance when they diverge from the TODO tracker.
+
 ## Motivation
 
 gunbc models GCP services as low-level REST trait interfaces (`SecretManagerService`,

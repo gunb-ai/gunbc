@@ -47,6 +47,7 @@ pub fn cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
                 WrapperKind::Optional => Cardinality::ZERO_OR_ONE,
                 WrapperKind::List | WrapperKind::Set => Cardinality::ZERO_OR_MORE,
                 WrapperKind::NonEmptyList | WrapperKind::NonEmptySet => Cardinality::ONE_OR_MORE,
+                WrapperKind::Map => Cardinality::ONE,
             };
         }
     }
@@ -148,6 +149,7 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
                 Some(WrapperKind::Optional) => Value::Unit,
                 Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(vec![]),
                 Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(vec![]),
+                Some(WrapperKind::Map) => Value::Map(std::collections::BTreeMap::new()),
                 None => Value::Unit, // Scalar empty = absent
             },
             1 => match &wrapper {
@@ -156,6 +158,11 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
                 }
                 Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
                     Value::Set(vec![scalar_witness.clone()])
+                }
+                Some(WrapperKind::Map) => {
+                    let mut map = std::collections::BTreeMap::new();
+                    map.insert("key".to_string(), scalar_witness.clone());
+                    Value::Map(map)
                 }
                 _ => scalar_witness.clone(),
             },

@@ -373,6 +373,6 @@ Fix: Split into `PrepareScan` → `Execute` → `ParseScanResult`
 
 - [`docs/design/overview.md#graph-invariants`](../docs/design/overview.md#graph-invariants) - Canonical invariant definitions
 - [`TODONE/transport-compliance.md`](TODONE/transport-compliance.md) - Prerequisite work (I2 satisfied)
-- [`TODO/opaque-op-tool-mismatch.md`](opaque-op-tool-mismatch.md) - Related problem (tool deps hidden in ops)
+- [`TODO/TODONE/opaque-op-tool-mismatch.md`](opaque-op-tool-mismatch.md) - Related problem (tool deps hidden in ops)
 - [`core/ir/src/patterns/`](../core/ir/src/patterns/) - Existing pattern builders
 - `~/.cursor/plans/pure_node_enforcement_bf6bf5f3.plan.md` - Detailed implementation plan

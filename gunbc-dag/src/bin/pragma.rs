@@ -13,6 +13,7 @@ use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
 use std::env;
+use std::fmt::Write;
 use std::process;
 
 fn main() {
@@ -212,14 +213,16 @@ fn main() {
                 } else {
                     let mut body = String::new();
                     for path in &drifted {
-                        body.push_str(&format!("DRIFT  {path}\n"));
+                        writeln!(body, "DRIFT  {path}").unwrap();
                     }
                     if ok_count > 0 {
-                        body.push_str(&format!(
+                        write!(
+                            body,
                             "({} file{} ok)",
                             ok_count,
                             if ok_count == 1 { "" } else { "s" }
-                        ));
+                        )
+                        .unwrap();
                     }
                     print_attention(
                         &profile,

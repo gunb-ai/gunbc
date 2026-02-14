@@ -18,6 +18,7 @@
 //! allowing incremental IR deepening later.
 
 use crate::testgen::render_rust::plain_rust_renderer;
+use gunbc_cli::ParamType;
 use gunbc_ir::code_ir::{Expr, FnDef, Import, Item, SourceFile, Stmt};
 use gunbc_ir::language::{rust_type as lang_rust_type, NamingCase};
 use gunbc_ir::render_ir::CodeRenderer;
@@ -56,8 +57,8 @@ pub struct ToolMeta {
 pub struct CliEntrypoint {
     /// The port name (becomes --port-name flag)
     pub port_name: String,
-    /// The type (String, Int, Bool, etc.)
-    pub type_id: String,
+    /// The type (Str, Int, Bool).
+    pub type_id: ParamType,
     /// Cardinality of this entrypoint's port.
     ///
     /// Used to determine CLI behavior: `allows_many()` → repeatable flag,
@@ -80,17 +81,13 @@ impl CliEntrypoint {
     ///
     /// Cardinality defaults to `ONE` (scalar). Use `with_cardinality()` to
     /// set it explicitly for collection entrypoints.
-    pub fn new(port_name: impl Into<String>, type_id: impl Into<String>) -> Self {
+    pub fn new(port_name: impl Into<String>, type_id: impl Into<ParamType>) -> Self {
         let port = port_name.into();
-        let type_id_str = type_id.into();
+        let type_id = type_id.into();
         let help = format!("Value for {} port", port);
-        debug_assert!(
-            type_id_str != "List" && type_id_str != "Set",
-            "use explicit cardinality with element type (e.g., String)"
-        );
         Self {
             port_name: port,
-            type_id: type_id_str,
+            type_id,
             cardinality: Cardinality::ONE,
             short_flag: None,
             default_value: None,
@@ -155,7 +152,7 @@ impl CliEntrypoint {
             let element = self.type_id.as_str();
             lang_rust_type(&format!("List<{}>", element))
         } else {
-            lang_rust_type(&self.type_id)
+            lang_rust_type(self.type_id.as_str())
         }
     }
 
@@ -166,11 +163,10 @@ impl CliEntrypoint {
         if self.cardinality.allows_many() {
             "Value::str_list"
         } else {
-            match self.type_id.as_str() {
-                "String" => "Value::Str",
-                "Int" => "Value::Int",
-                "Bool" => "Value::Bool",
-                _ => "Value::Str",
+            match self.type_id {
+                ParamType::Str => "Value::Str",
+                ParamType::Int => "Value::Int",
+                ParamType::Bool => "Value::Bool",
             }
         }
     }
@@ -184,7 +180,7 @@ impl CliEntrypoint {
 
     /// Convert to a `gunbc_cli::CliParam` for in-process parsing.
     pub fn to_cli_param(&self) -> gunbc_cli::CliParam {
-        let mut p = gunbc_cli::CliParam::new(&self.port_name, self.type_id.as_str())
+        let mut p = gunbc_cli::CliParam::new(&self.port_name, self.type_id)
             .with_cardinality(self.cardinality);
         if let Some(c) = self.short_flag {
             p = p.short(c);
@@ -212,10 +208,8 @@ impl CliEntrypoint {
                     .as_str()
                     .expect("port_name required")
                     .to_string();
-                let type_id = entry["type_id"]
-                    .as_str()
-                    .expect("type_id required")
-                    .to_string();
+                let type_id =
+                    ParamType::from(entry["type_id"].as_str().expect("type_id required"));
                 let cardinality = match entry.get("cardinality").and_then(|v| v.as_str()) {
                     Some("ZERO_OR_MORE") => Cardinality::ZERO_OR_MORE,
                     Some("ONE_OR_MORE") => Cardinality::ONE_OR_MORE,
@@ -326,6 +320,10 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
             items: vec!["HashMap".to_string()],
         }));
         items.push(Item::Use(Import {
+            path: vec!["std".to_string(), "fmt".to_string()],
+            items: vec!["Write".to_string()],
+        }));
+        items.push(Item::Use(Import {
             path: vec!["gunbc_ir".to_string(), "resource".to_string()],
             items: vec!["ResourceIo".to_string()],
         }));
@@ -422,15 +420,15 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                 ep.var_name(), ep.port_name
             ).unwrap();
         } else {
-            match ep.type_id.as_str() {
-                "Bool" => writeln!(
+            match ep.type_id {
+                ParamType::Bool => writeln!(
                     code,
                     "let {} = matches!(cli_inputs.get(\"{}\"), Some(Value::Bool(true)));",
                     ep.var_name(),
                     ep.port_name
                 )
                 .unwrap(),
-                "Int" => {
+                ParamType::Int => {
                     let default = match ep.default_value.as_deref() {
                         Some(d) => d.parse::<i64>().unwrap_or_else(|_| {
                             panic!(
@@ -445,7 +443,7 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                         ep.var_name(), ep.port_name, default
                     ).unwrap();
                 }
-                _ => {
+                ParamType::Str => {
                     if ep.default_value.is_some() {
                         let default = ep.default_value.as_deref().unwrap_or("");
                         writeln!(code,
@@ -490,8 +488,8 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
             )
             .unwrap();
         } else {
-            match ep.type_id.as_str() {
-                "Bool" => {
+            match ep.type_id {
+                ParamType::Bool => {
                     writeln!(
                         code,
                         "println!(\"  {}: {{}}\", {});",
@@ -557,10 +555,10 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
         let type_hint = if ep.is_repeatable() {
             " <VAL>..."
         } else {
-            match ep.type_id.as_str() {
-                "Bool" => "",
-                "Int" => " <NUM>",
-                _ => " <VAL>",
+            match ep.type_id {
+                ParamType::Bool => "",
+                ParamType::Int => " <NUM>",
+                ParamType::Str => " <VAL>",
             }
         };
         writeln!(
@@ -1046,8 +1044,8 @@ if let Some(output_file) = env_dict.get(\"GITHUB_OUTPUT\") {\n\
         if !payload.is_empty() {\n\
             payload.push('\\n');\n\
         }\n\
-        payload.push_str(&format!(\"STEP_{}_{}={}\",\n\
-            step_name.to_uppercase(), port.to_uppercase(), str_value));\n\
+        write!(payload, \"STEP_{}_{}={}\",\n\
+            step_name.to_uppercase(), port.to_uppercase(), str_value).unwrap();\n\
     }\n\
     if !payload.is_empty() {\n\
         let mut combined = String::new();\n\

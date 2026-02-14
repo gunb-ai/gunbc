@@ -1,5 +1,6 @@
 # Credential Lifecycle Architecture (Reset)
 
+**Status**: Draft (architecture/spec; migration not complete)
 Status date: 2026-02-12  
 Owner: runtime/auth modeling  
 Supersedes: checklist-style convergence tracker version

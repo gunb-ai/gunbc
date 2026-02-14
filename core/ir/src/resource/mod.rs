@@ -116,6 +116,52 @@ impl AccessMode {
     }
 }
 
+/// Normalize resource IDs to a canonical naming scheme.
+///
+/// This is intentionally applied at resource-accounting boundaries so existing
+/// DAG port names remain backward-compatible while conflict detection converges
+/// on one vocabulary.
+///
+/// Canonical forms:
+/// - `file` / `file:<path>` (legacy alias: `fs`, `fs:<path>`)
+/// - `tool:<id>`
+/// - `api:<provider>` (legacy alias: `net`, `net:<provider>`)
+/// - `repo` (legacy alias: `repo_path`)
+/// - `target` / `target:<name>` (legacy aliases: `pkg`, `pkg:<name>`, `cargo:<name>`)
+pub fn normalize_resource_id(id: &str) -> String {
+    let raw = id.strip_prefix("res:").unwrap_or(id);
+
+    if raw == "fs" {
+        return "file".to_string();
+    }
+    if let Some(path) = raw.strip_prefix("fs:") {
+        return format!("file:{path}");
+    }
+
+    if raw == "net" {
+        return "api:network".to_string();
+    }
+    if let Some(provider) = raw.strip_prefix("net:") {
+        return format!("api:{provider}");
+    }
+
+    if raw == "pkg" {
+        return "target".to_string();
+    }
+    if let Some(name) = raw.strip_prefix("pkg:") {
+        return format!("target:{name}");
+    }
+    if let Some(name) = raw.strip_prefix("cargo:") {
+        return format!("target:{name}");
+    }
+
+    if raw == "repo_path" {
+        return "repo".to_string();
+    }
+
+    raw.to_string()
+}
+
 /// Resource kind: capability vs observation.
 ///
 /// Capabilities are active handles that grant permission to perform actions.
@@ -458,16 +504,13 @@ pub fn derive_resource_accesses<T>(
     for node in &dag.nodes {
         for port in &node.inputs {
             if let Some(res_name) = port.name.0.strip_prefix("res:") {
+                let resource_id = ResourceId::new(normalize_resource_id(res_name));
                 match port.resource_access {
-                    Some(mode) => accesses.push(ResourceAccess::new(
-                        node.id.clone(),
-                        ResourceId::new(res_name),
-                        mode,
-                    )),
+                    Some(mode) => accesses.push(ResourceAccess::new(node.id.clone(), resource_id, mode)),
                     None => errors.push(ResourceAccessError {
                         node_id: node.id.clone(),
                         port_name: port.name.0.clone(),
-                        resource_id: ResourceId::new(res_name),
+                        resource_id,
                     }),
                 }
             }
@@ -685,6 +728,19 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_resource_id_aliases() {
+        assert_eq!(normalize_resource_id("res:fs"), "file");
+        assert_eq!(normalize_resource_id("fs:Makefile"), "file:Makefile");
+        assert_eq!(normalize_resource_id("res:net"), "api:network");
+        assert_eq!(normalize_resource_id("net:gcp"), "api:gcp");
+        assert_eq!(normalize_resource_id("res:pkg"), "target");
+        assert_eq!(normalize_resource_id("pkg:manager"), "target:manager");
+        assert_eq!(normalize_resource_id("cargo:build"), "target:build");
+        assert_eq!(normalize_resource_id("res:repo_path"), "repo");
+        assert_eq!(normalize_resource_id("res:tool:clippy"), "tool:clippy");
+    }
+
+    #[test]
     fn test_port_scalar_has_no_resource_access() {
         let port = Port::scalar("data", "String");
         assert!(port.resource_access.is_none());
@@ -721,9 +777,9 @@ mod tests {
         assert_eq!(platform.node_id.0, "node_a");
         assert_eq!(platform.mode, AccessMode::Read);
 
-        let fs = accesses.iter().find(|a| a.resource_id.0 == "fs").unwrap();
-        assert_eq!(fs.node_id.0, "node_b");
-        assert_eq!(fs.mode, AccessMode::Write);
+        let file = accesses.iter().find(|a| a.resource_id.0 == "file").unwrap();
+        assert_eq!(file.node_id.0, "node_b");
+        assert_eq!(file.mode, AccessMode::Write);
     }
 
     #[test]
@@ -779,7 +835,7 @@ mod tests {
 
         let conflicts = detect_resource_conflicts(&dag).expect("resource accesses should derive");
         assert_eq!(conflicts.len(), 1);
-        assert_eq!(conflicts[0].resource_id.0, "fs");
+        assert_eq!(conflicts[0].resource_id.0, "file");
     }
 
     #[test]

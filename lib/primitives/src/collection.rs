@@ -6,7 +6,7 @@
 use gunbc_exec::{optional_str_list_strict, require_value, ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Wrapper enum for all collection operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -327,10 +327,13 @@ impl SetOp {
             Value::Set(v) => Ok(v.clone()),
             Value::List(v) => {
                 // Promote list to set by deduplication
+                let mut seen = HashSet::new();
                 let mut unique = Vec::with_capacity(v.len());
                 for item in v {
-                    if !unique.contains(item) {
-                        unique.push(item.clone());
+                    if let Ok(key) = serde_json::to_string(item) {
+                        if seen.insert(key) {
+                            unique.push(item.clone());
+                        }
                     }
                 }
                 Ok(unique)
@@ -348,31 +351,72 @@ impl Executable for SetOp {
         let left = Self::extract_set(left_val)?;
         let right = Self::extract_set(right_val)?;
 
-        // Note: Value doesn't implement Hash (contains Json, TransportRequest),
-        // so we use Vec::contains() which is O(n) per lookup. This is acceptable
-        // because DAG sets are small in practice. If large sets become common,
-        // consider a serialization-based HashSet or adding Hash to leaf types.
+        // Value doesn't implement Hash, so we use serialization-based lookup
+        // sets for O(n+m) instead of O(n*m).
         let result = match self {
             SetOp::Union => {
+                let existing: HashSet<String> = left
+                    .iter()
+                    .filter_map(|v| serde_json::to_string(v).ok())
+                    .collect();
                 let mut out = left;
                 for v in &right {
-                    if !out.contains(v) {
-                        out.push(v.clone());
+                    if let Ok(key) = serde_json::to_string(v) {
+                        if !existing.contains(&key) {
+                            out.push(v.clone());
+                        }
                     }
                 }
                 out
             }
-            SetOp::Intersection => left.into_iter().filter(|v| right.contains(v)).collect(),
-            SetOp::Difference => left.into_iter().filter(|v| !right.contains(v)).collect(),
-            SetOp::SymmetricDifference => {
-                let mut out: Vec<Value> = left
+            SetOp::Intersection => {
+                let right_idx: HashSet<String> = right
                     .iter()
-                    .filter(|v| !right.contains(v))
-                    .cloned()
+                    .filter_map(|v| serde_json::to_string(v).ok())
+                    .collect();
+                left.into_iter()
+                    .filter(|v| {
+                        serde_json::to_string(v)
+                            .map(|k| right_idx.contains(&k))
+                            .unwrap_or(false)
+                    })
+                    .collect()
+            }
+            SetOp::Difference => {
+                let right_idx: HashSet<String> = right
+                    .iter()
+                    .filter_map(|v| serde_json::to_string(v).ok())
+                    .collect();
+                left.into_iter()
+                    .filter(|v| {
+                        serde_json::to_string(v)
+                            .map(|k| !right_idx.contains(&k))
+                            .unwrap_or(true)
+                    })
+                    .collect()
+            }
+            SetOp::SymmetricDifference => {
+                let right_idx: HashSet<String> = right
+                    .iter()
+                    .filter_map(|v| serde_json::to_string(v).ok())
+                    .collect();
+                let left_idx: HashSet<String> = left
+                    .iter()
+                    .filter_map(|v| serde_json::to_string(v).ok())
+                    .collect();
+                let mut out: Vec<Value> = left
+                    .into_iter()
+                    .filter(|v| {
+                        serde_json::to_string(v)
+                            .map(|k| !right_idx.contains(&k))
+                            .unwrap_or(true)
+                    })
                     .collect();
                 for v in &right {
-                    if !left.contains(v) {
-                        out.push(v.clone());
+                    if let Ok(key) = serde_json::to_string(v) {
+                        if !left_idx.contains(&key) {
+                            out.push(v.clone());
+                        }
                     }
                 }
                 out

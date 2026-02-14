@@ -171,6 +171,7 @@ fn render_type_expr(expr: &TypeExpr) -> String {
                 WrapperKind::NonEmptyList => "NonEmptyList",
                 WrapperKind::Set => "Set",
                 WrapperKind::NonEmptySet => "NonEmptySet",
+                WrapperKind::Map => "Map",
             };
             format!("{wrapper}<{}>", render_type_expr(inner))
         }
@@ -367,17 +368,18 @@ impl TypeRegistry {
                     WrapperKind::NonEmptyList => type_lib::non_empty_list(inner_dag),
                     WrapperKind::Set => type_lib::set(inner_dag),
                     WrapperKind::NonEmptySet => type_lib::non_empty_set(inner_dag),
+                    WrapperKind::Map => type_lib::map(inner_dag),
                 };
                 Some(dag)
             }
             TypeExpr::Map(key, value) => {
                 let _ = self.resolve_expr(key, ResolveMode::InWrapper)?;
-                let _ = self.resolve_expr(value, ResolveMode::InWrapper)?;
+                let value_dag = self.resolve_expr(value, ResolveMode::InWrapper)?;
                 let name = render_type_expr(expr);
                 if let Some(dag) = self.get_by_name(&name) {
                     return Some(dag.clone());
                 }
-                Some(type_lib::identity(&name))
+                Some(type_lib::map(value_dag))
             }
         }
     }
@@ -677,14 +679,14 @@ mod tests {
         let map_type = TypeId::from("Map<String,Int>");
         assert_eq!(
             registry.base_type_name(&map_type),
-            Some("Map<String,Int>".to_string())
+            Some("Int".to_string())
         );
-        assert_eq!(registry.infer_cardinality(&map_type), None);
+        assert_eq!(registry.infer_cardinality(&map_type), Some(Cardinality::ONE));
 
         let nested = TypeId::from("Optional<Map<String, Optional<Int>>>");
         assert_eq!(
             registry.base_type_name(&nested),
-            Some("Map<String,Optional<Int>>".to_string())
+            Some("Int".to_string())
         );
         assert_eq!(
             registry.infer_cardinality(&nested),

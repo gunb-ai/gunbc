@@ -19,8 +19,24 @@
 
 use crate::transport::{TransportRequest, TransportResponse};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
+
+/// Build a serialization-based lookup index for a slice of Values.
+/// Used for O(1) containment checks in set operations.
+fn value_index(values: &[Value]) -> HashSet<String> {
+    values
+        .iter()
+        .filter_map(|v| serde_json::to_string(v).ok())
+        .collect()
+}
+
+/// Check if a Value is present in a serialization-based index.
+fn in_index(v: &Value, idx: &HashSet<String>) -> bool {
+    serde_json::to_string(v)
+        .map(|k| idx.contains(&k))
+        .unwrap_or(false)
+}
 
 /// A string value that redacts its content in Display and Debug output.
 ///
@@ -140,15 +156,18 @@ impl Value {
         Value::Map(map.into_iter().map(|(k, v)| (k, Value::Str(v))).collect())
     }
 
-    /// Create a set from a vector of values, deduplicating via `PartialEq`.
+    /// Create a set from a vector of values, deduplicating.
     ///
     /// Elements are deduplicated: if the same value appears multiple times,
     /// only the first occurrence is kept.
     pub fn set(values: Vec<Value>) -> Self {
+        let mut seen = HashSet::new();
         let mut unique = Vec::with_capacity(values.len());
         for v in values {
-            if !unique.contains(&v) {
-                unique.push(v);
+            if let Ok(key) = serde_json::to_string(&v) {
+                if seen.insert(key) {
+                    unique.push(v);
+                }
             }
         }
         Value::Set(unique)
@@ -169,9 +188,10 @@ impl Value {
     pub fn set_union(&self, other: &Value) -> Option<Value> {
         match (self, other) {
             (Value::Set(a), Value::Set(b)) => {
+                let existing = value_index(a);
                 let mut result = a.clone();
                 for v in b {
-                    if !result.contains(v) {
+                    if !in_index(v, &existing) {
                         result.push(v.clone());
                     }
                 }
@@ -187,7 +207,9 @@ impl Value {
     pub fn set_intersection(&self, other: &Value) -> Option<Value> {
         match (self, other) {
             (Value::Set(a), Value::Set(b)) => {
-                let result: Vec<Value> = a.iter().filter(|v| b.contains(v)).cloned().collect();
+                let b_idx = value_index(b);
+                let result: Vec<Value> =
+                    a.iter().filter(|v| in_index(v, &b_idx)).cloned().collect();
                 Some(Value::Set(result))
             }
             _ => None,
@@ -200,7 +222,9 @@ impl Value {
     pub fn set_difference(&self, other: &Value) -> Option<Value> {
         match (self, other) {
             (Value::Set(a), Value::Set(b)) => {
-                let result: Vec<Value> = a.iter().filter(|v| !b.contains(v)).cloned().collect();
+                let b_idx = value_index(b);
+                let result: Vec<Value> =
+                    a.iter().filter(|v| !in_index(v, &b_idx)).cloned().collect();
                 Some(Value::Set(result))
             }
             _ => None,
@@ -213,9 +237,12 @@ impl Value {
     pub fn set_symmetric_difference(&self, other: &Value) -> Option<Value> {
         match (self, other) {
             (Value::Set(a), Value::Set(b)) => {
-                let mut result: Vec<Value> = a.iter().filter(|v| !b.contains(v)).cloned().collect();
+                let b_idx = value_index(b);
+                let a_idx = value_index(a);
+                let mut result: Vec<Value> =
+                    a.iter().filter(|v| !in_index(v, &b_idx)).cloned().collect();
                 for v in b {
-                    if !a.contains(v) {
+                    if !in_index(v, &a_idx) {
                         result.push(v.clone());
                     }
                 }
@@ -230,7 +257,10 @@ impl Value {
     /// Returns `None` if either value is not a `Set`.
     pub fn is_subset(&self, other: &Value) -> Option<bool> {
         match (self, other) {
-            (Value::Set(a), Value::Set(b)) => Some(a.iter().all(|v| b.contains(v))),
+            (Value::Set(a), Value::Set(b)) => {
+                let b_idx = value_index(b);
+                Some(a.iter().all(|v| in_index(v, &b_idx)))
+            }
             _ => None,
         }
     }
@@ -240,7 +270,10 @@ impl Value {
     /// Returns `None` if self is not a `Set`.
     pub fn set_contains(&self, value: &Value) -> Option<bool> {
         match self {
-            Value::Set(elements) => Some(elements.contains(value)),
+            Value::Set(elements) => {
+                let idx = value_index(elements);
+                Some(in_index(value, &idx))
+            }
             _ => None,
         }
     }
@@ -478,7 +511,13 @@ impl PartialEq for Value {
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::List(a), Value::List(b)) => a == b,
-            (Value::Set(a), Value::Set(b)) => a.len() == b.len() && a.iter().all(|v| b.contains(v)),
+            (Value::Set(a), Value::Set(b)) => {
+                if a.len() != b.len() {
+                    return false;
+                }
+                let b_idx = value_index(b);
+                a.iter().all(|v| in_index(v, &b_idx))
+            }
             (Value::Map(a), Value::Map(b)) => a == b,
             (Value::Json(a), Value::Json(b)) => a == b,
             (Value::Request(a), Value::Request(b)) => a == b,

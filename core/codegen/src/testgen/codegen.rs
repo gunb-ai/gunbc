@@ -24,6 +24,7 @@ use crate::testgen::analyze::{analyze_dag, DagAnalysis};
 use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
 use crate::testgen::probe_observer::analyze_probe_observers;
 use crate::testgen::render_rust::plain_rust_renderer;
+use gunbc_cli::ParamType;
 use gunbc_infra::hash::ContentHash;
 use gunbc_ir::boundary_label;
 use gunbc_ir::code_ir::{
@@ -38,6 +39,7 @@ use gunbc_ir::{
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Write;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SeedPolicy {
@@ -4511,18 +4513,20 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         // Schema
         code.push_str("let schema = vec![\n");
         for ep in entrypoints {
-            code.push_str(&format!(
+            write!(
+                code,
                 "    CliParam::new(\"{}\", \"{}\")",
                 ep.port_name, ep.type_id
-            ));
+            )
+            .unwrap();
             if ep.cardinality.allows_many() {
                 code.push_str(".with_cardinality(Cardinality::ZERO_OR_MORE)");
             }
             if let Some(c) = ep.short_flag {
-                code.push_str(&format!(".short('{}')", c));
+                write!(code, ".short('{}')", c).unwrap();
             }
             if let Some(ref d) = ep.default_value {
-                code.push_str(&format!(".default(\"{}\")", cli_escape(d)));
+                write!(code, ".default(\"{}\")", cli_escape(d)).unwrap();
             }
             code.push_str(",\n");
         }
@@ -4546,15 +4550,15 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     ep.port_name, cli_escape(&v1), cli_escape(&v2), ep.port_name
                 ));
             } else {
-                match ep.type_id.as_str() {
-                    "Bool" => {
+                match ep.type_id {
+                    ParamType::Bool => {
                         argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
                         assertions.push(format!(
                             "assert_eq!(result.values[\"{}\"], Value::Bool(true), \"bool param '{}' mismatch\");\n",
                             ep.port_name, ep.port_name
                         ));
                     }
-                    "Int" => {
+                    ParamType::Int => {
                         let value = cli_sample_int(ep);
                         argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
                         argv_parts.push(format!("\"{}\"", cli_escape(&value)));
@@ -4563,7 +4567,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                             ep.port_name, value, ep.port_name
                         ));
                     }
-                    _ => {
+                    ParamType::Str => {
                         let value = cli_sample_string(ep);
                         argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
                         argv_parts.push(format!("\"{}\"", cli_escape(&value)));
@@ -4578,10 +4582,12 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         assertions.push("assert!(result.dry_run, \"dry_run should be true\");\n".to_string());
 
         let argv_str = argv_parts.join(", ");
-        code.push_str(&format!(
-            "let argv: Vec<String> = [{}].iter().map(|s| s.to_string()).collect();\n",
+        writeln!(
+            code,
+            "let argv: Vec<String> = [{}].iter().map(|s| s.to_string()).collect();",
             argv_str
-        ));
+        )
+        .unwrap();
         code.push_str("let result = parse(&argv, &schema).expect(\"parse should succeed\");\n");
         for assertion in &assertions {
             code.push_str(assertion);

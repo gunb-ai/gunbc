@@ -126,8 +126,9 @@ pub use render_ir::{
     RenderSurface, Span, SpanStyle, StructuredBlock, StructuredRenderer, Target, TextMedium,
 };
 pub use resource::{
-    derive_resource_accesses, detect_resource_conflicts, AccessMode, Resource, ResourceAccess,
-    ResourceAccessError, ResourceConflict, ResourceId, ResourceKind, Timestamp,
+    derive_resource_accesses, detect_resource_conflicts, normalize_resource_id, AccessMode,
+    Resource, ResourceAccess, ResourceAccessError, ResourceConflict, ResourceId, ResourceKind,
+    Timestamp,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};

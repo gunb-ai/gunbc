@@ -1,5 +1,8 @@
 # GCP Infrastructure Parity: gunbc vs gunb.ai
 
+**Status**: In Progress (planning + phased implementation tracker)
+**Date**: 2026-02-14
+
 ## Context
 
 gunb.ai has a mature GCP infrastructure-as-code system with:

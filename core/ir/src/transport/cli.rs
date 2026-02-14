@@ -1111,4 +1111,145 @@ mod tests {
         let unknown = get_tool_by_id("unknown_tool_xyz");
         assert!(unknown.is_none());
     }
+
+    fn subdag_from(node: Node<CliToolOp>) -> Dag<CliToolOp> {
+        match node.body {
+            crate::node::NodeBody::SubDag(dag) => dag,
+            _ => panic!("expected build_cli_upsert to produce a subdag node"),
+        }
+    }
+
+    fn find_node<'a>(dag: &'a Dag<CliToolOp>, id: &str) -> &'a Node<CliToolOp> {
+        dag.get_node(&id.into())
+            .unwrap_or_else(|| panic!("missing node '{id}'"))
+    }
+
+    fn has_resource_input(node: &Node<CliToolOp>, name: &str, mode: AccessMode) -> bool {
+        node.inputs
+            .iter()
+            .any(|p| p.name.0 == name && p.resource_access == Some(mode))
+    }
+
+    fn has_edge(
+        dag: &Dag<CliToolOp>,
+        from_node: &str,
+        from_port: &str,
+        to_node: &str,
+        to_port: &str,
+    ) -> bool {
+        dag.edges.iter().any(|e| {
+            e.from_node.0 == from_node
+                && e.from_port.0 == from_port
+                && e.to_node.0 == to_node
+                && e.to_port.0 == to_port
+        })
+    }
+
+    #[test]
+    fn test_build_cli_upsert_declares_tool_pkg_target_resource_locks_for_cargo_tool() {
+        let dag = subdag_from(build_cli_upsert(&CLIPPY, &["--all-targets"]));
+
+        let execute_check = find_node(&dag, "execute_check");
+        let execute_install = find_node(&dag, "execute_install");
+        let execute_resolve = find_node(&dag, "execute_resolve");
+
+        assert!(has_resource_input(
+            execute_check,
+            "res:tool:clippy",
+            AccessMode::Read
+        ));
+        assert!(has_resource_input(
+            execute_install,
+            "res:tool:clippy",
+            AccessMode::Write
+        ));
+        assert!(has_resource_input(
+            execute_resolve,
+            "res:tool:clippy",
+            AccessMode::Read
+        ));
+        assert!(has_resource_input(execute_install, "res:pkg", AccessMode::Write));
+        assert!(has_resource_input(
+            execute_resolve,
+            "res:target",
+            AccessMode::Write
+        ));
+
+        assert!(has_edge(
+            &dag,
+            "resource_gate",
+            "tool:clippy",
+            "execute_check",
+            "res:tool:clippy"
+        ));
+        assert!(has_edge(
+            &dag,
+            "resource_gate",
+            "tool:clippy",
+            "execute_install",
+            "res:tool:clippy"
+        ));
+        assert!(has_edge(
+            &dag,
+            "resource_gate",
+            "tool:clippy",
+            "execute_resolve",
+            "res:tool:clippy"
+        ));
+        assert!(has_edge(
+            &dag,
+            "resource_gate",
+            "pkg",
+            "execute_install",
+            "res:pkg"
+        ));
+        assert!(has_edge(
+            &dag,
+            "resource_gate",
+            "target",
+            "execute_resolve",
+            "res:target"
+        ));
+    }
+
+    #[test]
+    fn test_build_cli_upsert_omits_pkg_target_locks_for_non_cargo_non_install_tool() {
+        let dag = subdag_from(build_cli_upsert(&GH, &["repo", "view"]));
+        let execute_install = find_node(&dag, "execute_install");
+        let execute_resolve = find_node(&dag, "execute_resolve");
+
+        assert!(has_resource_input(execute_install, "res:tool:gh", AccessMode::Write));
+        assert!(has_resource_input(execute_resolve, "res:tool:gh", AccessMode::Read));
+        assert!(!has_resource_input(execute_install, "res:pkg", AccessMode::Write));
+        assert!(!has_resource_input(
+            execute_resolve,
+            "res:target",
+            AccessMode::Write
+        ));
+        assert!(!has_edge(
+            &dag,
+            "resource_gate",
+            "pkg",
+            "execute_install",
+            "res:pkg"
+        ));
+        assert!(!has_edge(
+            &dag,
+            "resource_gate",
+            "target",
+            "execute_resolve",
+            "res:target"
+        ));
+    }
+
+    #[test]
+    fn test_build_cli_upsert_uses_tool_access_mode_for_resolve_phase() {
+        let dag = subdag_from(build_cli_upsert(&RUSTFMT, &[]));
+        let execute_resolve = find_node(&dag, "execute_resolve");
+        assert!(has_resource_input(
+            execute_resolve,
+            "res:tool:rustfmt",
+            AccessMode::Write
+        ));
+    }
 }

@@ -385,7 +385,6 @@ impl MockRequirements {
                     port: port.to_string(),
                     value,
                     sequence: None,
-                    sequence_exhausted_is_error: false,
                 });
             }
         }

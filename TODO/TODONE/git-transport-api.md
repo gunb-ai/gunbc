@@ -43,7 +43,7 @@ Every git command needs a baseline set of flags to produce machine-parseable out
 
 ### 3. No shared interface for new operations
 
-The diff gist feature (see `TODO/diff-gist.md`) needs `git diff`. Future features may need `git log`, `git rev-parse`, `git status`. Without a shared interface, each would re-invent shell construction and output parsing.
+The diff gist feature (see `TODO/TODONE/diff-gist.md`) needs `git diff`. Future features may need `git log`, `git rev-parse`, `git status`. Without a shared interface, each would re-invent shell construction and output parsing.
 
 ## Existing Patterns to Follow
 
@@ -349,7 +349,7 @@ The existing `execute_prepare_list_files` and `execute_parse_list_files` functio
 
 ### Layer 3b: Integration — Diff gist graph
 
-The diff gist graph (from `TODO/diff-gist.md`) becomes a consumer of `GitOps`:
+The diff gist graph (from `TODO/TODONE/diff-gist.md`) becomes a consumer of `GitOps`:
 
 ```
 GitOps::PrepareDiff → TransportOps::Execute → GitOps::ParseDiff → Filter → Render → Gist
@@ -468,7 +468,7 @@ Only **one production call site** and **one parser** to migrate. All other git r
 ### Phase 4: Wire into diff gist
 
 - [x] Use `GitOps::PrepareDiff` + `GitOps::ParseDiff` in `build_diff_gist_graph()`
-- [x] (See `TODO/diff-gist.md` for the full diff gist pipeline)
+- [x] (See `TODO/TODONE/diff-gist.md` for the full diff gist pipeline)
 
 ## Design Decisions
 
@@ -517,7 +517,7 @@ No existing code changes. No new patterns to learn.
 
 ## Related
 
-- `TODO/diff-gist.md` — Consumer: uses `GitOps::PrepareDiff` + `GitOps::ParseDiff`
+- `TODO/TODONE/diff-gist.md` — Consumer: uses `GitOps::PrepareDiff` + `GitOps::ParseDiff`
 - `core/ir/src/transport/gist.rs` — Pattern source: `GistRequest` builder
 - `lib/gist-ops/src/lib.rs` — Pattern source: `GistOps` pure ops
 - `core/ir/src/transport/cli.rs:477-484` — Existing `CliToolDef::GIT` (tool acquisition, unchanged)

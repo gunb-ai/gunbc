@@ -24,6 +24,7 @@ use crate::transport::ci::runner::{
 };
 use crate::Dag;
 use std::collections::HashSet;
+use std::fmt::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// GitLab CI provider.
@@ -224,7 +225,7 @@ fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
     yaml.push_str(&config.header("#"));
-    yaml.push_str(&format!("\n\nimage: {}\n\n", config.runner.id));
+    write!(yaml, "\n\nimage: {}\n\n", config.runner.id).unwrap();
 
     // Variables — derived from cargo env + manual overrides
     yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| {
@@ -332,14 +333,14 @@ fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
                 yaml.push_str("  needs:\n");
                 let seen: HashSet<_> = depends_on.iter().map(|d| &d.0).collect();
                 for dep in seen {
-                    yaml.push_str(&format!("    - {}\n", dep));
+                    writeln!(yaml, "    - {}", dep).unwrap();
                 }
             }
 
             // Artifacts for passing data
             yaml.push_str("  artifacts:\n");
             yaml.push_str("    reports:\n");
-            yaml.push_str(&format!("      dotenv: {}.env\n", node_id.0));
+            writeln!(yaml, "      dotenv: {}.env", node_id.0).unwrap();
 
             yaml.push('\n');
             yaml

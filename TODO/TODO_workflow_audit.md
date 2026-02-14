@@ -672,8 +672,8 @@ oidc_exchange -> access_token -> secret_fetch -> parse -> credential
 **Phase B: Resource declarations by construction (now)**
 - [x] Update `add_transport_triplet*` to always attach `res:*` ports (file/network/tool).
 - [x] Update `add_content_upsert_chain` to declare `res:file:*` read/write for outputs.
-- [ ] Update `build_cli_upsert` to declare `res:tool:*` and any `res:target`/`res:pkg` locks.
-- [ ] Normalize resource id naming (`res:file:<path>`, `res:tool:<id>`, `res:api:<provider>`, `res:repo`, `res:target`).
+- [x] Update `build_cli_upsert` to declare `res:tool:*` and any `res:target`/`res:pkg` locks. _(2026-02-14: verified by unit tests in `core/ir/src/transport/cli.rs`)_
+- [x] Normalize resource id naming (`res:file:<path>`, `res:tool:<id>`, `res:api:<provider>`, `res:repo`, `res:target`). _(2026-02-14: added canonical ID normalization in `derive_resource_accesses()` + resource mock alias compatibility; legacy `res:fs`/`res:net`/`res:pkg` continue to work.)_
 
 **Phase C: Codebase-wide purity checks (now)**
 - [x] Implement `#[resource_test_target]` registry (auto-register DAG builders).
@@ -681,7 +681,7 @@ oidc_exchange -> access_token -> secret_fetch -> parse -> credential
   - `derive_resource_accesses()`
   - `detect_resource_conflicts()`
   - `validate_resource_wiring_recursive()`
-- [ ] Wire into CI (fast, deterministic).
+- [ ] Wire into CI (fast, deterministic). _(Blocked 2026-02-14: current registry-wide resource purity checks fail on existing conflicts/unwired ports.)_
 
 **Phase D: Workflow consolidation + parallelism (next)**
 - [ ] Consolidate Makefile + CI + CLI to a single canonical workflow registry.

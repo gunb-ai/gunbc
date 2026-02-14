@@ -26,22 +26,19 @@ External review flagged 14+ items. Cross-check found:
 
 ---
 
-## 1. Boundary mock sequences fall back to static values
+## ~~1. Boundary mock sequences fall back to static values~~ RESOLVED (2026-02-13)
 
 **Where**: `core/exec/src/intercept.rs`, `core/test/src/mock_spec.rs`
 
-**What happens**: `BoundaryMock::next_value()` consumes a sequence and then
-falls back to the static `value`. `MockSpec::boundary_sequence()` mirrors this
-behavior by providing a default fallback value.
-
-**Why it's a hack**: Extra calls beyond the planned sequence are silently
-accepted, so tests can pass even if call counts change or loops are added.
-
-**Suggested fix**: Add a strict mode (or per-mock flag) that errors once the
-sequence is exhausted unless a "repeat last" or explicit fallback mode is set.
-
-**Update (2026-02-07)**: Added strict sequence support; strict mocks now error
-on exhaustion during execution. Default behavior still falls back.
+**What changed**:
+- Removed `SequenceExhaustion` enum and all fallback paths.
+- `BoundaryMock::with_sequence()` now takes only a sequence (no default value);
+  exhaustion always panics/errors.
+- Removed `with_sequence_strict`, `set_sequence_strict`, `boundary_sequence_strict`
+  — there is no lenient variant.
+- `MockSpec::boundary_sequence()` takes 3 args (node, port, sequence) instead of 4.
+- Executor error path uses `has_sequence()` instead of `is_strict()`.
+- All existing tests updated; no escape hatches or migration flags.
 
 ---
 
@@ -298,23 +295,17 @@ CI workflow YAML.
 
 ---
 
-## 15. Shell command timeout is defined but not implemented
+## ~~15. Shell command timeout is defined but not implemented~~ RESOLVED (2026-02-13)
 
-**Where**: `core/ir/src/transport/mod.rs` (`ShellRequest.timeout_ms`),
-`lib/transport/src/executor.rs` (`execute_shell`)
+**Where**: `lib/transport/src/executor.rs` (`execute_shell`)
 
-**What happens**: `ShellRequest` has a `timeout_ms: Option<u64>` field and a
-`.timeout(ms)` builder method, but `execute_shell` calls
-`child.wait_with_output()` with no timeout handling. The field is dead wiring.
-
-**Why it's a hack**: Callers can set a timeout and believe it's enforced, but
-it silently does nothing.
-
-**Suggested fix**: Implement timeout via `wait_timeout` or a background
-watchdog thread that kills the child process, or remove the field until
-implemented.
-
-**Added**: 2026-02-13 (reconciliation)
+**What changed**:
+- `execute_shell` now polls the child process with `try_wait()` when
+  `timeout_ms` is set, kills the child and returns a `TransportError` if
+  the deadline is exceeded.
+- When no timeout is set, behavior is unchanged (`wait_with_output`).
+- Added tests: `test_shell_timeout_kills_slow_command`,
+  `test_shell_timeout_allows_fast_command`.
 
 ---
 
@@ -394,21 +385,18 @@ flags, keeping permissive behavior as a compatibility option.
 
 ---
 
-## 20. Unknown --mode values warn and proceed with default
+## ~~20. Unknown --mode values warn and proceed with default~~ RESOLVED (2026-02-13)
 
 **Where**: all `gunbc-dag/src/bin/*.rs` (codegen, makegen, testgen, bootstrap,
 pragma, ci)
 
-**What happens**: If `ExecMode::parse()` returns `None` for an unrecognized
-mode string, every binary prints a warning and continues with the current or
-hardcoded default mode.
+**What changed**:
+- Added `ExecMode::parse_strict()` which returns `Result<Self, String>` with
+  a descriptive error on unknown mode values.
+- All 6 binaries now use `parse_strict` and `process::exit(1)` on unknown mode,
+  instead of warning and continuing.
 
-**Why it's a hack**: In CI, warnings are easily missed. A typo in `--mode`
-can cause a verify workflow to silently run in ensure mode.
-
-**Suggested fix**: In CI context, treat unknown mode as a hard error.
-
-**Added**: 2026-02-13 (reconciliation)
+**Result**: Unknown `--mode` values are now a hard error everywhere.
 
 ---
 

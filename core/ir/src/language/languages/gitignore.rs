@@ -88,13 +88,15 @@ pub fn render_gitignore_content(patterns: &[String]) -> String {
 /// Render gitignore content with sections.
 #[cfg(test)]
 pub fn render_gitignore_with_sections(sections: &[(String, Vec<String>)]) -> String {
+    use std::fmt::Write as _;
+
     let mut content = String::new();
 
     for (section_name, patterns) in sections {
         if !content.is_empty() {
             content.push_str("\n\n");
         }
-        content.push_str(&format!("# {}\n", section_name));
+        write!(content, "# {}\n", section_name).unwrap();
         for pattern in patterns {
             content.push_str(pattern);
             content.push('\n');

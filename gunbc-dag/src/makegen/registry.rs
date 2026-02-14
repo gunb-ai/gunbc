@@ -606,7 +606,7 @@ impl ToolInfo {
                     make_var: make_var.clone(),
                     // Use the actual CLI flag name (matches generated CLI)
                     cli_flag: format!("--{}", ep.flag_name()),
-                    type_hint: ep.type_id.clone(),
+                    type_hint: ep.type_id.to_string(),
                     default: ep.default_value.clone(),
                     repeatable: ep.cardinality.allows_many(),
                 });

@@ -15,6 +15,7 @@ use crate::dag::{Dag, Port};
 use crate::language::LanguageOp;
 use crate::node::Node;
 use std::collections::HashMap;
+use std::fmt::Write;
 
 /// Variable syntax styles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,7 +82,7 @@ pub fn expand_variables(template: &str, variables: &HashMap<String, String>) -> 
                         result.push_str(value);
                     } else {
                         // Keep original if variable not found
-                        result.push_str(&format!("$({})", var_name));
+                        write!(result, "$({})", var_name).unwrap();
                     }
                 }
                 Some('{') => {
@@ -91,7 +92,7 @@ pub fn expand_variables(template: &str, variables: &HashMap<String, String>) -> 
                         result.push_str(value);
                     } else {
                         // Keep original if variable not found
-                        result.push_str(&format!("${{{}}}", var_name));
+                        write!(result, "${{{}}}", var_name).unwrap();
                     }
                 }
                 Some(&c2) if c2 == '@' || c2 == '<' || c2 == '^' || c2 == '*' => {

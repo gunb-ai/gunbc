@@ -7,6 +7,7 @@
 //! Uses `MakefileStructuredRenderer` to render `StructuredBlock` IR.
 
 use std::borrow::Cow;
+use std::fmt::Write;
 
 use crate::makegen::registry::{
     BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, ResourceTargetMap, ToolInfo,
@@ -163,19 +164,19 @@ fn build_phony_line(registry: &ToolRegistry) -> String {
     );
 
     for meta in &registry.meta_targets {
-        phony.push_str(&format!(" {}", meta.name));
+        write!(phony, " {}", meta.name).unwrap();
         if meta.has_check_variant {
-            phony.push_str(&format!(" {}-check", meta.name));
+            write!(phony, " {}-check", meta.name).unwrap();
         }
         if meta.has_fix_variant {
-            phony.push_str(&format!(" {}-fix", meta.name));
+            write!(phony, " {}-fix", meta.name).unwrap();
         }
     }
 
     for tool in &registry.tools {
-        phony.push_str(&format!(" {} {}-dry", tool.short_name, tool.short_name));
+        write!(phony, " {} {}-dry", tool.short_name, tool.short_name).unwrap();
         for extra in &tool.extra_targets {
-            phony.push_str(&format!(" {}-{}", tool.short_name, extra.suffix));
+            write!(phony, " {}-{}", tool.short_name, extra.suffix).unwrap();
         }
     }
     phony.push_str("\n\n");

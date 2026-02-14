@@ -1,5 +1,7 @@
 //! DAG structure: edges, ports, and the graph itself.
 
+use std::fmt::Write;
+
 use crate::node::Node;
 use crate::resource::AccessMode;
 use crate::type_op::TypeOp;
@@ -85,10 +87,7 @@ impl<T> Dag<T> {
 
         // Create a subgraph for this DAG
         let subgraph_id = name.replace(['-', ' '], "_");
-        out.push_str(&format!(
-            "{}subgraph {}[\"{}\"]\n",
-            indent, subgraph_id, name
-        ));
+        writeln!(out, "{}subgraph {}[\"{}\"]", indent, subgraph_id, name).unwrap();
 
         // Render nodes
         for node in &self.nodes {
@@ -97,10 +96,10 @@ impl<T> Dag<T> {
 
             if node.is_subdag() {
                 // SubDag nodes get double brackets
-                out.push_str(&format!("{}    {}[[{}]]\n", indent, node_id, label));
+                writeln!(out, "{}    {}[[{}]]", indent, node_id, label).unwrap();
             } else {
                 // Regular nodes get single brackets
-                out.push_str(&format!("{}    {}[{}]\n", indent, node_id, label));
+                writeln!(out, "{}    {}[{}]", indent, node_id, label).unwrap();
             }
         }
 
@@ -109,13 +108,10 @@ impl<T> Dag<T> {
             let from_id = format!("{}_{}", subgraph_id, edge.from_node.0.replace('-', "_"));
             let to_id = format!("{}_{}", subgraph_id, edge.to_node.0.replace('-', "_"));
             let label = format!("{}:{}", edge.from_port.0, edge.to_port.0);
-            out.push_str(&format!(
-                "{}    {} -->|{}| {}\n",
-                indent, from_id, label, to_id
-            ));
+            writeln!(out, "{}    {} -->|{}| {}", indent, from_id, label, to_id).unwrap();
         }
 
-        out.push_str(&format!("{}end\n", indent));
+        writeln!(out, "{}end", indent).unwrap();
 
         // Recursively render subdags
         for node in &self.nodes {
@@ -126,10 +122,7 @@ impl<T> Dag<T> {
                 // Link parent node to subgraph
                 let parent_node_id = format!("{}_{}", subgraph_id, node.id.0.replace('-', "_"));
                 let child_subgraph_id = subdag_name.replace(['-', ' ', ':'], "_");
-                out.push_str(&format!(
-                    "{}    {} -.-> {}\n",
-                    indent, parent_node_id, child_subgraph_id
-                ));
+                writeln!(out, "{}    {} -.-> {}", indent, parent_node_id, child_subgraph_id).unwrap();
             }
         }
 

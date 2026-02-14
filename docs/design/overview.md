@@ -993,7 +993,7 @@ The invariant is simpler than "primitives only":
 3. Make `execute_transport()` non-public (close escape hatch)
 4. Migrate remaining tools (deps → buck2 → bootstrap)
 
-See `TODO/graph-level-transport.md` for details.
+See `TODO/TODONE/graph-level-transport.md` for details.
 
 ---
 

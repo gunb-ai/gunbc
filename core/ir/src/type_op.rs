@@ -208,6 +208,8 @@ pub enum WrapperKind {
     Set,
     /// Non-empty set wrapper (T → NonEmptySet<T>).
     NonEmptySet,
+    /// Map wrapper (V → Map<String, V>) — string-keyed map with typed values.
+    Map,
 }
 
 #[cfg(test)]

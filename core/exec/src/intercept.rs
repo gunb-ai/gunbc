@@ -24,27 +24,16 @@ use std::collections::HashMap;
 /// Mock behavior for a single boundary port.
 ///
 /// Supports both static values and ordered sequences. When a sequence is
-/// provided, `next_value()` returns values in order; once exhausted it
-/// falls back to the static `value` unless the mock is marked strict.
+/// provided, `next_value()` returns values in order; sequence exhaustion
+/// is always an error (no silent fallback).
 #[derive(Debug, Clone)]
 pub struct BoundaryMock {
-    /// The static fallback value
+    /// The static value (used when no sequence is set, or as context for error messages)
     pub value: Value,
-    /// Ordered responses (returned before falling back to `value`)
+    /// Ordered responses (returned in order; exhaustion is an error)
     sequence: Vec<Value>,
-    /// Behavior when the sequence is exhausted.
-    sequence_exhaustion: SequenceExhaustion,
     /// Call counter (Cell for interior mutability — DAG execution is single-threaded)
     call_count: Cell<usize>,
-}
-
-/// Sequence exhaustion behavior for boundary mocks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SequenceExhaustion {
-    /// Fall back to the static `value` once the sequence is exhausted.
-    Fallback,
-    /// Treat sequence exhaustion as an error.
-    Error,
 }
 
 impl BoundaryMock {
@@ -52,46 +41,40 @@ impl BoundaryMock {
         Self {
             value,
             sequence: Vec::new(),
-            sequence_exhaustion: SequenceExhaustion::Fallback,
             call_count: Cell::new(0),
         }
     }
 
     /// Create a mock with an ordered sequence of responses.
     ///
-    /// `next_value()` returns `sequence[i]` for call `i`; once the
-    /// sequence is exhausted, it returns the `default` value.
-    pub fn with_sequence(default: Value, sequence: Vec<Value>) -> Self {
+    /// `next_value()` returns `sequence[i]` for call `i`; exhausting the
+    /// sequence panics (call count exceeded). For static mocks that always
+    /// return the same value, use `BoundaryMock::new()` instead.
+    pub fn with_sequence(sequence: Vec<Value>) -> Self {
+        assert!(!sequence.is_empty(), "sequence must not be empty; use BoundaryMock::new() for static mocks");
         Self {
-            value: default,
+            value: sequence.last().unwrap().clone(),
             sequence,
-            sequence_exhaustion: SequenceExhaustion::Fallback,
             call_count: Cell::new(0),
         }
     }
 
-    /// Create a mock with an ordered sequence of responses that errors on exhaustion.
-    pub fn with_sequence_strict(default: Value, sequence: Vec<Value>) -> Self {
-        Self {
-            value: default,
-            sequence,
-            sequence_exhaustion: SequenceExhaustion::Error,
-            call_count: Cell::new(0),
-        }
-    }
-
-    /// Return the next value in the sequence, or the static fallback.
+    /// Return the next value in the sequence, or the static value.
     ///
-    /// In strict mode, exhausting the sequence will panic.
+    /// For sequenced mocks, panics if the sequence is exhausted.
     pub fn next_value(&self) -> Value {
-        let (value, used_fallback) = self.next_value_with_status();
-        if used_fallback && self.is_strict() {
-            panic!("boundary mock sequence exhausted (strict mode)");
+        let (value, exhausted) = self.next_value_with_status();
+        if exhausted && !self.sequence.is_empty() {
+            panic!(
+                "boundary mock sequence exhausted: {} calls but sequence has {} values",
+                self.call_count.get(),
+                self.sequence.len()
+            );
         }
         value
     }
 
-    /// Return the next value and whether it used the fallback.
+    /// Return the next value and whether the sequence was exhausted.
     pub fn next_value_with_status(&self) -> (Value, bool) {
         let idx = self.call_count.get();
         self.call_count.set(idx + 1);
@@ -102,9 +85,9 @@ impl BoundaryMock {
         }
     }
 
-    /// Whether sequence exhaustion should be treated as an error.
-    pub fn is_strict(&self) -> bool {
-        matches!(self.sequence_exhaustion, SequenceExhaustion::Error)
+    /// Whether this mock has a sequence (as opposed to being static).
+    pub fn has_sequence(&self) -> bool {
+        !self.sequence.is_empty()
     }
 
     /// Get the current call count.
@@ -181,31 +164,16 @@ impl BoundaryMocks {
 
     /// Set a sequenced mock for a boundary port (output interception).
     ///
-    /// Returns values from `sequence` in order; once exhausted, falls back to `default`.
+    /// Returns values from `sequence` in order; exhaustion is an error.
     pub fn set_sequence(
         &mut self,
         node_id: impl Into<String>,
         port_name: impl Into<String>,
-        default: Value,
         sequence: Vec<Value>,
     ) {
         self.mocks.insert(
             (node_id.into(), port_name.into()),
-            BoundaryMock::with_sequence(default, sequence),
-        );
-    }
-
-    /// Set a sequenced mock that errors if the sequence is exhausted.
-    pub fn set_sequence_strict(
-        &mut self,
-        node_id: impl Into<String>,
-        port_name: impl Into<String>,
-        default: Value,
-        sequence: Vec<Value>,
-    ) {
-        self.mocks.insert(
-            (node_id.into(), port_name.into()),
-            BoundaryMock::with_sequence_strict(default, sequence),
+            BoundaryMock::with_sequence(sequence),
         );
     }
 
@@ -241,7 +209,6 @@ mod tests {
     #[test]
     fn test_sequence_returns_in_order() {
         let mock = BoundaryMock::with_sequence(
-            Value::Str("default".into()),
             vec![Value::Str("first".into()), Value::Str("second".into())],
         );
 
@@ -250,21 +217,19 @@ mod tests {
     }
 
     #[test]
-    fn test_sequence_exhausted_falls_back_to_default() {
+    #[should_panic(expected = "sequence exhausted")]
+    fn test_sequence_exhausted_panics() {
         let mock = BoundaryMock::with_sequence(
-            Value::Str("default".into()),
             vec![Value::Str("first".into())],
         );
 
         assert_eq!(mock.next_value(), Value::Str("first".into()));
-        assert_eq!(mock.next_value(), Value::Str("default".into()));
-        assert_eq!(mock.next_value(), Value::Str("default".into()));
+        mock.next_value(); // should panic
     }
 
     #[test]
     fn test_sequence_call_count() {
         let mock = BoundaryMock::with_sequence(
-            Value::Str("default".into()),
             vec![Value::Str("a".into()), Value::Str("b".into())],
         );
 
@@ -273,25 +238,20 @@ mod tests {
         assert_eq!(mock.call_count(), 1);
         mock.next_value();
         assert_eq!(mock.call_count(), 2);
-        mock.next_value(); // falls back to default
-        assert_eq!(mock.call_count(), 3);
     }
 
     #[test]
-    fn test_sequence_strict_flags_exhaustion() {
-        let mock = BoundaryMock::with_sequence_strict(
-            Value::Str("default".into()),
+    fn test_sequence_exhaustion_detected_via_status() {
+        let mock = BoundaryMock::with_sequence(
             vec![Value::Str("first".into())],
         );
 
-        assert!(mock.is_strict());
-        let (value, used_fallback) = mock.next_value_with_status();
+        let (value, exhausted) = mock.next_value_with_status();
         assert_eq!(value, Value::Str("first".into()));
-        assert!(!used_fallback);
+        assert!(!exhausted);
 
-        let (value, used_fallback) = mock.next_value_with_status();
-        assert_eq!(value, Value::Str("default".into()));
-        assert!(used_fallback);
+        let (_value, exhausted) = mock.next_value_with_status();
+        assert!(exhausted);
     }
 
     #[test]
@@ -301,6 +261,7 @@ mod tests {
         assert_eq!(mock.next_value(), Value::Int(42));
         assert_eq!(mock.next_value(), Value::Int(42));
         assert_eq!(mock.next_value(), Value::Int(42));
+        assert!(!mock.has_sequence());
     }
 
     #[test]
@@ -309,26 +270,12 @@ mod tests {
         mocks.set_sequence(
             "node",
             "port",
-            Value::Str("default".into()),
-            vec![Value::Str("first".into())],
+            vec![Value::Str("first".into()), Value::Str("second".into())],
         );
 
         let mock = mocks.get_mock(&"node".into(), &"port".into()).unwrap();
+        assert!(mock.has_sequence());
         assert_eq!(mock.next_value(), Value::Str("first".into()));
-        assert_eq!(mock.next_value(), Value::Str("default".into()));
-    }
-
-    #[test]
-    fn test_set_sequence_strict_on_boundary_mocks() {
-        let mut mocks = BoundaryMocks::new();
-        mocks.set_sequence_strict(
-            "node",
-            "port",
-            Value::Str("default".into()),
-            vec![Value::Str("first".into())],
-        );
-
-        let mock = mocks.get_mock(&"node".into(), &"port".into()).unwrap();
-        assert!(mock.is_strict());
+        assert_eq!(mock.next_value(), Value::Str("second".into()));
     }
 }

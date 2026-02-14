@@ -38,6 +38,7 @@ use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
 use gunbc_lib_transport::TransportIo;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 use std::env;
 use std::path::{Path, PathBuf};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
@@ -384,7 +385,7 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
     yaml.push_str(&config.header("#"));
-    yaml.push_str(&format!("\n\nname: {}\n\n", config.workflow_name));
+    write!(yaml, "\n\nname: {}\n\n", config.workflow_name).unwrap();
 
     let branches = config.git.ci_branches();
     yaml.push_str("on:\n  push:\n");
@@ -407,18 +408,22 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
         format!("  {}: {}", k, v)
     });
 
-    yaml.push_str(&format!(
+    write!(
+        yaml,
         "jobs:\n  {}:\n    runs-on: {}\n    timeout-minutes: {}\n    steps:\n",
         config.workflow_name, config.runner.id, config.timeout_minutes,
-    ));
+    )
+    .unwrap();
 
     if let Some(checkout) = &config.checkout {
         yaml.push_str("      - name: Checkout\n        uses: actions/checkout@v4\n");
         if let Some(depth) = checkout.fetch_depth {
-            yaml.push_str(&format!(
+            write!(
+                yaml,
                 "        with:\n          fetch-depth: {}\n",
                 depth
-            ));
+            )
+            .unwrap();
         }
         yaml.push('\n');
     }
@@ -430,7 +435,7 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
         yaml_block(&mut yaml, "          path: |", &cache.paths, |p| {
             format!("            {}", p)
         });
-        yaml.push_str(&format!("          key: {}\n", cache.key));
+        writeln!(yaml, "          key: {}", cache.key).unwrap();
         yaml_block(
             &mut yaml,
             "          restore-keys: |",
@@ -439,20 +444,24 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
         );
     }
 
-    yaml.push_str(&format!(
+    write!(
+        yaml,
         "      - name: Run CI Pipeline\n        run: {}\n",
         config.tool.command(),
-    ));
+    )
+    .unwrap();
 
     // Step-level env: CARGO_INCREMENTAL overrides dtolnay/rust-toolchain's
     // CARGO_INCREMENTAL=0 (set via $GITHUB_ENV). Step-level env takes precedence.
     yaml.push_str("        env:\n");
     yaml.push_str("          CARGO_INCREMENTAL: \"1\"\n");
     for secret in &config.secrets_env {
-        yaml.push_str(&format!(
-            "          {}: ${{{{ secrets.{} }}}}\n",
+        writeln!(
+            yaml,
+            "          {}: ${{{{ secrets.{} }}}}",
             secret, secret
-        ));
+        )
+        .unwrap();
     }
 
     yaml
@@ -475,11 +484,13 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
         "cache:\n  key: cargo-${CI_COMMIT_REF_SLUG}\n  paths:\n    - .cargo/\n    - target/\n\n",
     );
 
-    yaml.push_str(&format!(
+    write!(
+        yaml,
         "{}:\n  stage: ci\n  script:\n    - {}\n",
         config.workflow_name,
         config.tool.command(),
-    ));
+    )
+    .unwrap();
 
     yaml
 }

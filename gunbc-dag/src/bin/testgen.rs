@@ -32,6 +32,7 @@ use gunbc_lib_review as _;
 use gunbc_testgen_registry::{iter_dag_specs, DagSpecDef};
 use std::collections::HashMap;
 use std::env;
+use std::fmt::Write;
 use std::path::PathBuf;
 use std::process;
 
@@ -255,7 +256,7 @@ fn main() {
                     let mut body = String::new();
                     body.push_str("Run `make testgen` to regenerate:\n");
                     for path in &stale {
-                        body.push_str(&format!("  {path}\n"));
+                        writeln!(body, "  {path}").unwrap();
                     }
                     print_attention(
                         &profile,

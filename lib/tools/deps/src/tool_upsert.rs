@@ -25,6 +25,7 @@ use crate::installer::Installer;
 use crate::manifest::PlatformInstall;
 use gunbc_ir::transport::tool::{InstallInputs, InstallOption, ToolDef};
 use std::collections::HashSet;
+use std::fmt::Write;
 
 /// Convert a ToolDef's InstallInputs to a PlatformInstall for the Installer.
 ///
@@ -143,7 +144,7 @@ verify = "{}"
             .iter()
             .map(|d| format!("\"{}\"", d))
             .collect();
-        entry.push_str(&format!("depends_on = [{}]\n", deps.join(", ")));
+        writeln!(entry, "depends_on = [{}]", deps.join(", ")).unwrap();
     }
 
     // Map PM -> platform for install sections
@@ -160,22 +161,24 @@ verify = "{}"
 
     for opt in tool.install_options {
         if let Some(platform) = pm_to_platform(opt.via) {
-            entry.push_str(&format!(
+            write!(
+                entry,
                 r#"
 [dependency.install.{}]
 method = "{}"
 "#,
                 platform, opt.via
-            ));
+            )
+            .unwrap();
 
             // Add packages or crate_name
             if let Some(packages) = opt.inputs.packages {
                 let pkg_strs: Vec<_> = packages.iter().map(|p| format!("\"{}\"", p)).collect();
-                entry.push_str(&format!("packages = [{}]\n", pkg_strs.join(", ")));
+                writeln!(entry, "packages = [{}]", pkg_strs.join(", ")).unwrap();
             } else if let Some(crate_name) = opt.inputs.crate_name {
-                entry.push_str(&format!("packages = [\"{}\"]\n", crate_name));
+                writeln!(entry, "packages = [\"{}\"]", crate_name).unwrap();
                 if let Some(git_url) = opt.inputs.git_url {
-                    entry.push_str(&format!("git = \"{}\"\n", git_url));
+                    writeln!(entry, "git = \"{}\"", git_url).unwrap();
                 }
             }
         }

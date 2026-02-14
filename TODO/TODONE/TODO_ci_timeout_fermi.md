@@ -1,6 +1,10 @@
 # CI Timeout & Fermi Cost Estimation
 
-## Status: Implemented (simple), full fermi integration deferred
+## Status: Completed (moved to TODONE on 2026-02-14)
+
+Core timeout enforcement and CI safety fixes are implemented. Remaining
+follow-on architecture work (per-op fermi modeling and unified non-TTY
+progress/reporting) is tracked in active workflow/logging docs.
 
 ## Problem
 
