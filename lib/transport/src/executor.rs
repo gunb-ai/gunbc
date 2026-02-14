@@ -1027,6 +1027,96 @@ mod tests {
     // produce parseable output via the shell executor.
     // ========================================================================
 
+    // ========================================================================
+    // Pure helper function tests (no I/O needed)
+    // ========================================================================
+
+    #[test]
+    fn test_url_encode_unreserved() {
+        // RFC 3986: A-Z, a-z, 0-9, -, ., _, ~ pass through
+        assert_eq!(url_encode("AZaz09-._~"), "AZaz09-._~");
+    }
+
+    #[test]
+    fn test_url_encode_special_chars() {
+        assert_eq!(url_encode(" "), "%20");
+        assert_eq!(url_encode("&"), "%26");
+        assert_eq!(url_encode("="), "%3D");
+        assert_eq!(url_encode("/"), "%2F");
+        assert_eq!(url_encode("a b&c=d"), "a%20b%26c%3Dd");
+    }
+
+    #[test]
+    fn test_url_encode_empty() {
+        assert_eq!(url_encode(""), "");
+    }
+
+    #[test]
+    fn test_url_encode_unicode() {
+        // UTF-8 multi-byte: each byte gets percent-encoded
+        let encoded = url_encode("café");
+        assert!(encoded.starts_with("caf"));
+        assert!(encoded.contains('%'));
+        assert_ne!(encoded, "café");
+    }
+
+    #[test]
+    fn test_append_query_no_existing() {
+        let mut params = HashMap::new();
+        params.insert("key".to_string(), "value".to_string());
+        let result = append_query("https://example.com/api", &params);
+        assert_eq!(result, "https://example.com/api?key=value");
+    }
+
+    #[test]
+    fn test_append_query_existing() {
+        let mut params = HashMap::new();
+        params.insert("b".to_string(), "2".to_string());
+        let result = append_query("https://example.com/api?a=1", &params);
+        assert_eq!(result, "https://example.com/api?a=1&b=2");
+    }
+
+    #[test]
+    fn test_append_query_empty_params() {
+        let params = HashMap::new();
+        let result = append_query("https://example.com/api", &params);
+        assert_eq!(result, "https://example.com/api");
+    }
+
+    #[test]
+    fn test_append_query_encodes_values() {
+        let mut params = HashMap::new();
+        params.insert("q".to_string(), "hello world".to_string());
+        let result = append_query("https://example.com", &params);
+        assert_eq!(result, "https://example.com?q=hello%20world");
+    }
+
+    #[test]
+    fn test_is_unreserved_url_byte_boundaries() {
+        // Letters
+        assert!(is_unreserved_url_byte(b'A'));
+        assert!(is_unreserved_url_byte(b'Z'));
+        assert!(is_unreserved_url_byte(b'a'));
+        assert!(is_unreserved_url_byte(b'z'));
+        // Digits
+        assert!(is_unreserved_url_byte(b'0'));
+        assert!(is_unreserved_url_byte(b'9'));
+        // Special unreserved
+        assert!(is_unreserved_url_byte(b'-'));
+        assert!(is_unreserved_url_byte(b'.'));
+        assert!(is_unreserved_url_byte(b'_'));
+        assert!(is_unreserved_url_byte(b'~'));
+        // Reserved / other
+        assert!(!is_unreserved_url_byte(b' '));
+        assert!(!is_unreserved_url_byte(b'&'));
+        assert!(!is_unreserved_url_byte(b'/'));
+        assert!(!is_unreserved_url_byte(b'@'));
+    }
+
+    // ========================================================================
+    // Git transport integration tests
+    // ========================================================================
+
     mod git_integration {
         use super::*;
         use gunbc_ir::transport::git::{

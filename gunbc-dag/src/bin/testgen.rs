@@ -10,6 +10,7 @@
 //!     cargo run -p gunbc-dag --bin gunbc-testgen -- --output-dir /path/to/output
 
 #![deny(dead_code)]
+use gunbc_cli::BinaryArgs;
 use gunbc_dag::testgen_dag::graph::build_testgen_graph;
 use gunbc_dag::testgen_resource_def;
 use gunbc_exec::{
@@ -32,7 +33,6 @@ use gunbc_lib_llm_ops as _;
 use gunbc_lib_review as _;
 use gunbc_testgen_registry::{iter_dag_specs, DagSpecDef};
 use std::collections::HashMap;
-use std::env;
 use std::fmt::Write;
 use std::path::PathBuf;
 use std::process;
@@ -45,67 +45,18 @@ fn build_targets() -> Vec<&'static DagSpecDef> {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    let mut output_dir = PathBuf::from(".");
-    let mut dry_run = false;
-    let mut resource_mode = ExecMode::Ensure;
-    let mut check_deprecated = false;
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "-o" | "--output-dir" => {
-                i += 1;
-                if i < args.len() {
-                    output_dir = PathBuf::from(&args[i]);
-                }
-            }
-            "-n" | "--dry-run" => dry_run = true,
-            "-c" | "--check" => {
-                resource_mode = ExecMode::Verify;
-                check_deprecated = true;
-            }
-            "--mode" => {
-                i += 1;
-                if i < args.len() {
-                    match ExecMode::parse_strict(&args[i]) {
-                        Ok(parsed) => resource_mode = parsed,
-                        Err(err) => {
-                            eprintln!("Error: {}", err);
-                            process::exit(1);
-                        }
-                    }
-                } else {
-                    eprintln!("Error: --mode requires a value (verify|ensure)");
-                    process::exit(1);
-                }
-            }
-            arg if arg.starts_with("--mode=") => {
-                let mode_str = arg.trim_start_matches("--mode=");
-                match ExecMode::parse_strict(mode_str) {
-                    Ok(parsed) => resource_mode = parsed,
-                    Err(err) => {
-                        eprintln!("Error: {}", err);
-                        process::exit(1);
-                    }
-                }
-            }
-            "-h" | "--help" => {
-                print_help();
-                return;
-            }
-            other => {
-                eprintln!("error: unknown flag '{}'", other);
-                process::exit(1);
-            }
-        }
-        i += 1;
+    let parsed = BinaryArgs::new()
+        .with_mode()
+        .with_check_deprecated()
+        .with_string_param("output_dir", "output-dir", Some('o'), Some("."))
+        .parse_env();
+    if parsed.help {
+        print_help();
+        return;
     }
-
-    if check_deprecated {
-        eprintln!("Warning: --check is deprecated; use --mode=verify");
-    }
+    let dry_run = parsed.dry_run;
+    let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
+    let output_dir = PathBuf::from(parsed.get_string("output_dir").unwrap_or("."));
 
     if let Err(err) = ensure_lint_upsert() {
         eprintln!("preflight failed: {}", err);

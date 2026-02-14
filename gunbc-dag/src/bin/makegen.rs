@@ -3,6 +3,7 @@
 //! Generates Makefile from tool registry.
 
 #![deny(dead_code)]
+use gunbc_cli::BinaryArgs;
 use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::build_makegen_graph;
 use gunbc_exec::{
@@ -14,72 +15,24 @@ use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
-use std::env;
 use std::process;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    // Parse arguments
-    let mut path = "Makefile".to_string();
-    let mut dry_run = false;
-    let mut resource_mode = ExecMode::Ensure;
-    let mut check_deprecated = false;
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "-o" | "--path" => {
-                i += 1;
-                if i < args.len() {
-                    path = args[i].clone();
-                }
-            }
-            "-n" | "--dry-run" => dry_run = true,
-            "-c" | "--check" => {
-                resource_mode = ExecMode::Verify;
-                check_deprecated = true;
-            }
-            "--mode" => {
-                i += 1;
-                if i < args.len() {
-                    match ExecMode::parse_strict(&args[i]) {
-                        Ok(parsed) => resource_mode = parsed,
-                        Err(err) => {
-                            eprintln!("Error: {}", err);
-                            process::exit(1);
-                        }
-                    }
-                } else {
-                    eprintln!("Error: --mode requires a value (verify|ensure)");
-                    process::exit(1);
-                }
-            }
-            arg if arg.starts_with("--mode=") => {
-                let mode_str = arg.trim_start_matches("--mode=");
-                match ExecMode::parse_strict(mode_str) {
-                    Ok(parsed) => resource_mode = parsed,
-                    Err(err) => {
-                        eprintln!("Error: {}", err);
-                        process::exit(1);
-                    }
-                }
-            }
-            "-h" | "--help" => {
-                print_help();
-                return;
-            }
-            other => {
-                eprintln!("error: unknown flag '{}'", other);
-                process::exit(1);
-            }
-        }
-        i += 1;
+    let parsed = BinaryArgs::new()
+        .with_mode()
+        .with_check_deprecated()
+        .with_string_param("path", "path", Some('o'), Some("Makefile"))
+        .parse_env();
+    if parsed.help {
+        print_help();
+        return;
     }
-
-    if check_deprecated {
-        eprintln!("Warning: --check is deprecated; use --mode=verify");
-    }
+    let dry_run = parsed.dry_run;
+    let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
+    let path = parsed
+        .get_string("path")
+        .unwrap_or("Makefile")
+        .to_string();
 
     if let Err(err) = ensure_lint_upsert() {
         eprintln!("preflight failed: {}", err);

@@ -21,6 +21,7 @@
 //! without requiring separate workflow steps.
 
 #![deny(dead_code)]
+use gunbc_cli::BinaryArgs;
 use gunbc_dag::build_ci_graph_with_mode;
 use gunbc_exec::{execute_and_display, BoundaryMocks, CiContext, ExecutionMode};
 use std::io::IsTerminal;
@@ -30,36 +31,16 @@ use gunbc_ir::Value;
 use gunbc_ir::CODEGEN_STAMP_PATH;
 use gunbc_lib_transport::preflight::ensure_lint_upsert_with_ci;
 use gunbc_primitives::filename;
-use std::env;
 use std::process;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    let dry_run = args.iter().any(|a| a == "-n" || a == "--dry-run");
-
-    // Parse resource mode: --mode=verify or --mode=ensure
-    let resource_mode = parse_resource_mode(&args);
-
-    if args.iter().any(|a| a == "-h" || a == "--help") {
+    let parsed = BinaryArgs::new().with_mode().parse_env();
+    if parsed.help {
         print_help();
         return;
     }
-
-    // Reject unknown flags
-    for arg in args.iter().skip(1) {
-        if arg.starts_with('-')
-            && !matches!(
-                arg.as_str(),
-                "-n" | "--dry-run" | "-h" | "--help"
-            )
-            && !arg.starts_with("--mode=")
-            && arg != "--mode"
-        {
-            eprintln!("error: unknown flag '{}'", arg);
-            process::exit(1);
-        }
-    }
+    let dry_run = parsed.dry_run;
+    let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
 
     let mut ci_preflight = CiContext::detect();
     if let Err(err) = ensure_lint_upsert_with_ci(Some(&mut ci_preflight)) {
@@ -200,25 +181,6 @@ fn main() {
     // are selected internally based on the animated flag and CI environment.
     let animated = std::io::stdout().is_terminal();
     execute_and_display(&dag, mode, animated, Some("overall_success"), None);
-}
-
-/// Parse the resource mode from command-line arguments.
-///
-/// Defaults to `Ensure` (dev-friendly behavior).
-fn parse_resource_mode(args: &[String]) -> ExecMode {
-    for arg in args {
-        if let Some(mode_str) = arg.strip_prefix("--mode=") {
-            return match ExecMode::parse_strict(mode_str) {
-                Ok(parsed) => parsed,
-                Err(err) => {
-                    eprintln!("Error: {}", err);
-                    std::process::exit(1);
-                }
-            };
-        }
-    }
-    // Default: ensure mode (run codegen if needed)
-    ExecMode::Ensure
 }
 
 fn print_help() {

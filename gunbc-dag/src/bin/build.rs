@@ -4,36 +4,22 @@
 //! Progress display is automatic based on terminal capabilities.
 
 #![deny(dead_code)]
+use gunbc_cli::BinaryArgs;
 use gunbc_dag::build::build_build_graph;
 use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode};
 use std::io::IsTerminal;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
-use std::env;
 use std::process;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-
-    // Parse arguments
-    let mut dry_run = false;
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "-n" | "--dry-run" => dry_run = true,
-            "-h" | "--help" => {
-                print_help();
-                return;
-            }
-            other => {
-                eprintln!("error: unknown flag '{}'", other);
-                process::exit(1);
-            }
-        }
-        i += 1;
+    let parsed = BinaryArgs::new().parse_env();
+    if parsed.help {
+        print_help();
+        return;
     }
+    let dry_run = parsed.dry_run;
 
     if let Err(err) = ensure_lint_upsert() {
         eprintln!("preflight failed: {}", err);
