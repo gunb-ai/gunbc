@@ -151,6 +151,7 @@ fn main() {
         // Verify checks: per-generator --mode=verify commands (skippable triplets).
         for node in [
             "execute_verify_makegen_check",
+            "execute_verify_deps_config_check",
             "execute_verify_bootstrap_check",
             "execute_verify_testgen_check",
             "execute_verify_pragma_check",

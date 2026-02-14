@@ -453,6 +453,25 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::Transport(TransportOps::Execute),
         &bootstrap.parse,
     )?;
+    let verify_deps_config = add_skippable_transport_triplet(
+        &mut builder,
+        "verify_deps_config_check",
+        vec![
+            port("prep_success", "Bool"),
+            port("bootstrap_success", "Bool"),
+            port("testgen_success", "Bool"),
+            port("pragma_success", "Bool"),
+        ],
+        vec![fs_resource.clone()],
+        vec![
+            port("verify_deps_config_success", "Bool"),
+            port("verify_deps_config_stderr", "String"),
+        ],
+        CIGraphOp::CI(CIOp::PrepareVerifyDepsConfigCheck),
+        CIGraphOp::CI(CIOp::ParseVerifyDepsConfigResult),
+        CIGraphOp::Transport(TransportOps::Execute),
+        &bootstrap.parse,
+    )?;
     let verify_bootstrap = add_skippable_transport_triplet(
         &mut builder,
         "verify_bootstrap_check",
@@ -516,6 +535,8 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
             vec![
                 port("verify_makegen_success", "Bool"),
                 port("verify_makegen_stderr", "String"),
+                port("verify_deps_config_success", "Bool"),
+                port("verify_deps_config_stderr", "String"),
                 port("verify_bootstrap_success", "Bool"),
                 port("verify_bootstrap_stderr", "String"),
                 port("verify_testgen_success", "Bool"),
@@ -531,6 +552,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         ),
         &[
             &verify_makegen.parse,
+            &verify_deps_config.parse,
             &verify_bootstrap.parse,
             &verify_testgen.parse,
             &verify_pragma.parse,
@@ -656,6 +678,22 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     )?;
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
+        verify_deps_config.prepare.in_port("prep_success"),
+    )?;
+    builder.add_edge(
+        bootstrap.parse.out("bootstrap_success"),
+        verify_deps_config.prepare.in_port("bootstrap_success"),
+    )?;
+    builder.add_edge(
+        testgen.parse.out("testgen_success"),
+        verify_deps_config.prepare.in_port("testgen_success"),
+    )?;
+    builder.add_edge(
+        pragma.parse.out("pragma_success"),
+        verify_deps_config.prepare.in_port("pragma_success"),
+    )?;
+    builder.add_edge(
+        parse_codegen_result.out("prep_success"),
         verify_bootstrap.prepare.in_port("prep_success"),
     )?;
     builder.add_edge(
@@ -709,6 +747,14 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     builder.add_edge(
         verify_makegen.parse.out("verify_makegen_stderr"),
         verify.in_port("verify_makegen_stderr"),
+    )?;
+    builder.add_edge(
+        verify_deps_config.parse.out("verify_deps_config_success"),
+        verify.in_port("verify_deps_config_success"),
+    )?;
+    builder.add_edge(
+        verify_deps_config.parse.out("verify_deps_config_stderr"),
+        verify.in_port("verify_deps_config_stderr"),
     )?;
     builder.add_edge(
         verify_bootstrap.parse.out("verify_bootstrap_success"),
@@ -857,6 +903,10 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
+        verify_deps_config.execute.in_port("res:file"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
         verify_bootstrap.execute.in_port("res:file"),
     )?;
     builder.add_edge(
@@ -983,6 +1033,7 @@ mod tests {
             "execute_clippy_lint",
             "execute_guardrail_check",
             "execute_verify_makegen_check",
+            "execute_verify_deps_config_check",
             "execute_verify_bootstrap_check",
             "execute_verify_testgen_check",
             "execute_verify_pragma_check",
@@ -1013,6 +1064,7 @@ mod tests {
             "execute_test",
             "execute_guardrail_check",
             "execute_verify_makegen_check",
+            "execute_verify_deps_config_check",
             "execute_verify_bootstrap_check",
             "execute_verify_testgen_check",
             "execute_verify_pragma_check",

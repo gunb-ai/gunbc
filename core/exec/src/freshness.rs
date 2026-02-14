@@ -53,38 +53,75 @@ impl Executable for FreshnessStep {
         &self,
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
-        if self.command.is_empty() {
-            return Err(ExecError::new("freshness step has no command"));
-        }
-
-        let program = &self.command[0];
-        let args = &self.command[1..];
-
-        // Freshness steps run external tooling (codegen, clippy, etc.) as child
-        // processes. This is the execution boundary — analogous to a transport
-        // executor — so direct Command::new is correct here.
-        #[allow(clippy::disallowed_methods)]
-        let status = std::process::Command::new(program)
-            .args(args)
-            .env(FRESHNESS_ACTIVE_ENV, "1")
-            .status()
-            .map_err(|e| {
-                ExecError::new(format!(
-                    "freshness step '{}' failed to start: {}",
-                    self.id, e
-                ))
-            })?;
-
-        if !status.success() {
-            let code = status.code().unwrap_or(-1);
-            return Err(ExecError::new(format!(
-                "freshness step '{}' failed (exit {})",
-                self.id, code
-            )));
-        }
-
+        run_freshness_step(self)?;
         Ok(HashMap::from([("done".into(), Value::Bool(true))]))
     }
+}
+
+fn format_freshness_step_failure_detail(output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.trim();
+    if !stderr.is_empty() {
+        return format!("\n{stderr}");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = stdout.trim();
+    if !stdout.is_empty() {
+        return format!("\n{stdout}");
+    }
+
+    String::new()
+}
+
+/// Run a single freshness step command with fail-closed error reporting.
+///
+/// Child stdout/stderr are captured so progress rendering remains clean.
+/// On failure, stderr (or stdout when stderr is empty) is included in the error.
+pub fn run_freshness_step(step: &FreshnessStep) -> Result<(), ExecError> {
+    if step.command.is_empty() {
+        return Err(ExecError::new("freshness step has no command"));
+    }
+
+    let program = &step.command[0];
+    let args = &step.command[1..];
+
+    // Freshness steps run external tooling (codegen, clippy, etc.) as child
+    // processes. Capture stdout/stderr so child output doesn't interleave
+    // with the parent's progress display (gunb.ai's SetTaskOutput pattern:
+    // failure-first, only render child output when the step fails).
+    #[allow(clippy::disallowed_methods)]
+    let output = std::process::Command::new(program)
+        .args(args)
+        .env(FRESHNESS_ACTIVE_ENV, "1")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .map_err(|e| {
+            ExecError::new(format!(
+                "freshness step '{}' failed to start: {}",
+                step.id, e
+            ))
+        })?;
+
+    if !output.status.success() {
+        let code = output.status.code().unwrap_or(-1);
+        let detail = format_freshness_step_failure_detail(&output);
+        return Err(ExecError::new(format!(
+            "freshness step '{}' failed (exit {}){detail}",
+            step.id, code
+        )));
+    }
+
+    Ok(())
+}
+
+/// Run a sequence of freshness steps in order.
+pub fn run_freshness_steps(steps: &[FreshnessStep]) -> Result<(), ExecError> {
+    for step in steps {
+        run_freshness_step(step)?;
+    }
+    Ok(())
 }
 
 /// Wrapper that composes freshness operations with arbitrary tool DAGs.

@@ -5,16 +5,22 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::build_bootstrap_graph;
+use gunbc_dag::resources::{GITIGNORE_OUTPUT_PATH, MAKEFILE_OUTPUT_PATH};
+use gunbc_dag::{build_bootstrap_graph, gitignore_resource_def, makefile_resource_def};
 use gunbc_exec::{
     compose_with_freshness, execute_and_display, execute_and_display_with_result, print_attention,
     AttentionLevel, BoundaryMocks, ExecutionMode,
 };
-use gunbc_ir::resource::ExecMode;
+use gunbc_ir::resource::{
+    update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
+    ResourceDef, ResourceError, ResourceIo, ResourceManifest,
+};
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
+use gunbc_lib_transport::TransportIo;
 use std::fmt::Write;
 use std::io::IsTerminal;
+use std::path::PathBuf;
 use std::process;
 
 fn main() {
@@ -255,6 +261,73 @@ fn main() {
 
         // Execute and display (progress or classic based on terminal)
         execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
+
+        if !dry_run && resource_mode == ExecMode::Ensure {
+            update_manifest_after_bootstrap();
+        }
+    }
+}
+
+fn update_manifest_after_bootstrap() {
+    println!();
+    println!("Updating resource manifest...");
+
+    #[derive(Clone)]
+    struct BootstrapResource {
+        def: ResourceDef,
+        outputs: Vec<PathBuf>,
+    }
+
+    impl ManagedResource for BootstrapResource {
+        fn definition(&self) -> &ResourceDef {
+            &self.def
+        }
+
+        fn create(
+            &self,
+            manifest: &ResourceManifest,
+            io: &dyn ResourceIo,
+        ) -> Result<ManifestEntry, ResourceError> {
+            let (key, file_count, input_files) = self.compute_key_with_file_list(manifest, io)?;
+            Ok(ManifestEntry::new(key, file_count)
+                .with_outputs(self.outputs.clone())
+                .with_input_files(input_files))
+        }
+    }
+
+    let io = TransportIo::new();
+    let resources = [
+        BootstrapResource {
+            def: makefile_resource_def(),
+            outputs: vec![PathBuf::from(MAKEFILE_OUTPUT_PATH)],
+        },
+        BootstrapResource {
+            def: gitignore_resource_def(),
+            outputs: vec![PathBuf::from(GITIGNORE_OUTPUT_PATH)],
+        },
+    ];
+
+    let mut had_error = false;
+    for resource in &resources {
+        match update_resource_manifest(resource, &io) {
+            Ok(()) => {}
+            Err(ManifestUpdateError::Load(e)) => {
+                had_error = true;
+                eprintln!("Failed to load manifest: {e}");
+            }
+            Err(ManifestUpdateError::Save(e)) => {
+                had_error = true;
+                eprintln!("Failed to write manifest: {e}");
+            }
+            Err(ManifestUpdateError::Acquire(e)) => {
+                had_error = true;
+                eprintln!("Failed to update manifest: {e}");
+            }
+        }
+    }
+
+    if !had_error {
+        println!("Resource manifest updated.");
     }
 }
 

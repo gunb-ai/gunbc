@@ -61,7 +61,9 @@ pub use execute::{
     execute_with_progress_and_mode_and_detail, execute_with_progress_and_mode_and_inputs,
     execute_with_progress_and_mode_and_inputs_and_detail, ExecutionLog, ExecutionMode, LogEntry,
 };
-pub use freshness::{compose_with_freshness, FreshnessStep, WithFreshness};
+pub use freshness::{
+    compose_with_freshness, run_freshness_step, run_freshness_steps, FreshnessStep, WithFreshness,
+};
 pub use helpers::{
     optional_bool, optional_bool_strict, optional_int, optional_int_strict, optional_json,
     optional_json_strict, optional_map_str_str, optional_map_str_str_strict,

@@ -1,17 +1,31 @@
-# gunbc tool dependencies
-# Install with: gunbc-deps install
+# Generated from tool registry - do not edit manually
+# Regenerate with: cargo run -p gunbc-deps --bin gen-deps-toml
 
 [[dependency]]
 name = "cargo"
 verify = "cargo --version"
-
-[dependency.install.linux]
-method = "script"
-script = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+depends_on = ["rust"]
 
 [dependency.install.macos]
 method = "brew"
 packages = ["rustup"]
+
+[dependency.install.linux]
+method = "apt"
+packages = ["cargo"]
+
+[[dependency]]
+name = "clippy"
+verify = "cargo clippy --version"
+depends_on = ["cargo"]
+
+[dependency.install.macos]
+method = "brew"
+packages = ["rustup"]
+
+[dependency.install.linux]
+method = "apt"
+packages = ["rust-clippy"]
 
 [[dependency]]
 name = "gh"
@@ -36,3 +50,32 @@ packages = ["git"]
 [dependency.install.macos]
 method = "brew"
 packages = ["git"]
+
+[dependency.install.alpine]
+method = "apk"
+packages = ["git"]
+
+[[dependency]]
+name = "rust"
+verify = "rustc --version"
+
+[dependency.install.macos]
+method = "brew"
+packages = ["rustup"]
+
+[dependency.install.linux]
+method = "apt"
+packages = ["rustc"]
+
+[[dependency]]
+name = "rustfmt"
+verify = "rustfmt --version"
+depends_on = ["cargo"]
+
+[dependency.install.macos]
+method = "brew"
+packages = ["rustup"]
+
+[dependency.install.linux]
+method = "apt"
+packages = ["rustfmt"]

@@ -24,6 +24,7 @@
 //! - `execute_test`: Run cargo test
 //! - `execute_guardrail_check`: Check disallowed-methods allowlist
 //! - `execute_verify_makegen_check`: Run makegen `--mode=verify`
+//! - `execute_verify_deps_config_check`: Run deps-config `--mode=verify`
 //! - `execute_verify_bootstrap_check`: Run bootstrap `--mode=verify`
 //! - `execute_verify_testgen_check`: Run testgen `--mode=verify`
 //! - `execute_verify_pragma_check`: Run pragma `--mode=verify`
@@ -420,6 +421,28 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Verify check success → verify_makegen_success true"),
     )
     .node_example(
+        NodeExample::new("prepare_verify_deps_config_check")
+            .input("prep_success", Value::Bool(true))
+            .input("bootstrap_success", Value::Bool(true))
+            .input("testgen_success", Value::Bool(true))
+            .input("pragma_success", Value::Bool(true))
+            .output("skip", OutputMatcher::IsBool)
+            .description("Verify deps-config prepare emits skip flag"),
+    )
+    .node_example(
+        NodeExample::new("parse_verify_deps_config_check")
+            .input("skip", Value::Bool(false))
+            .input(
+                "response",
+                Value::Response(ShellResponse::ok("All checks passed").into()),
+            )
+            .output(
+                "verify_deps_config_success",
+                OutputMatcher::exact(Value::Bool(true)),
+            )
+            .description("Verify deps-config check success → verify_deps_config_success true"),
+    )
+    .node_example(
         NodeExample::new("prepare_verify_bootstrap_check")
             .input("prep_success", Value::Bool(true))
             .input("bootstrap_success", Value::Bool(true))
@@ -489,6 +512,8 @@ pub fn ci_mock_spec() -> MockSpec {
         NodeExample::new("aggregate_verify_results")
             .input("verify_makegen_success", Value::Bool(true))
             .input("verify_makegen_stderr", Value::Str(String::new()))
+            .input("verify_deps_config_success", Value::Bool(true))
+            .input("verify_deps_config_stderr", Value::Str(String::new()))
             .input("verify_bootstrap_success", Value::Bool(true))
             .input("verify_bootstrap_stderr", Value::Str(String::new()))
             .input("verify_testgen_success", Value::Bool(true))
@@ -618,6 +643,16 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
         .expect("execute_verify_makegen_check skip should match type")
         .boundary_str("execute_verify_makegen_check", "skip_reason", "")
         .expect("execute_verify_makegen_check skip_reason should match type")
+        .transport_response(
+            "execute_verify_deps_config_check",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("All checks passed")),
+        )
+        .expect("execute_verify_deps_config_check response should match type")
+        .boundary_bool("execute_verify_deps_config_check", "skip", false)
+        .expect("execute_verify_deps_config_check skip should match type")
+        .boundary_str("execute_verify_deps_config_check", "skip_reason", "")
+        .expect("execute_verify_deps_config_check skip_reason should match type")
         .transport_response(
             "execute_verify_bootstrap_check",
             "response",
@@ -765,6 +800,16 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
             .boundary_str("execute_verify_makegen_check", "skip_reason", "")
             .expect("execute_verify_makegen_check skip_reason should match type")
             .transport_response(
+                "execute_verify_deps_config_check",
+                "response",
+                TransportResponse::Shell(ShellResponse::ok("All checks passed")),
+            )
+            .expect("execute_verify_deps_config_check response should match type")
+            .boundary_bool("execute_verify_deps_config_check", "skip", false)
+            .expect("execute_verify_deps_config_check skip should match type")
+            .boundary_str("execute_verify_deps_config_check", "skip_reason", "")
+            .expect("execute_verify_deps_config_check skip_reason should match type")
+            .transport_response(
                 "execute_verify_bootstrap_check",
                 "response",
                 TransportResponse::Shell(ShellResponse::ok("All checks passed")),
@@ -889,6 +934,12 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
             .expect("execute_verify_makegen_check skip should match type")
             .boundary_str("execute_verify_makegen_check", "skip_reason", "Prep failed")
             .expect("execute_verify_makegen_check skip_reason should match type")
+            .boundary("execute_verify_deps_config_check", "response", Value::Skipped)
+            .expect("execute_verify_deps_config_check response should match type")
+            .boundary_bool("execute_verify_deps_config_check", "skip", true)
+            .expect("execute_verify_deps_config_check skip should match type")
+            .boundary_str("execute_verify_deps_config_check", "skip_reason", "Prep failed")
+            .expect("execute_verify_deps_config_check skip_reason should match type")
             .boundary("execute_verify_bootstrap_check", "response", Value::Skipped)
             .expect("execute_verify_bootstrap_check response should match type")
             .boundary_bool("execute_verify_bootstrap_check", "skip", true)
@@ -1029,6 +1080,16 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
         .expect("execute_verify_makegen_check skip should match type")
         .boundary_str("execute_verify_makegen_check", "skip_reason", "")
         .expect("execute_verify_makegen_check skip_reason should match type")
+        .transport_response(
+            "execute_verify_deps_config_check",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("All checks passed")),
+        )
+        .expect("execute_verify_deps_config_check response should match type")
+        .boundary_bool("execute_verify_deps_config_check", "skip", false)
+        .expect("execute_verify_deps_config_check skip should match type")
+        .boundary_str("execute_verify_deps_config_check", "skip_reason", "")
+        .expect("execute_verify_deps_config_check skip_reason should match type")
         .transport_response(
             "execute_verify_bootstrap_check",
             "response",
@@ -1263,6 +1324,16 @@ fn with_ci_typed_mocks(reqs: gunbc_test::MockRequirements) -> gunbc_test::MockRe
         .expect("execute_verify_makegen_check skip should match type")
         .boundary_str("execute_verify_makegen_check", "skip_reason", "")
         .expect("execute_verify_makegen_check skip_reason should match type")
+        .transport_response(
+            "execute_verify_deps_config_check",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("All checks passed")),
+        )
+        .expect("execute_verify_deps_config_check response should match type")
+        .boundary_bool("execute_verify_deps_config_check", "skip", false)
+        .expect("execute_verify_deps_config_check skip should match type")
+        .boundary_str("execute_verify_deps_config_check", "skip_reason", "")
+        .expect("execute_verify_deps_config_check skip_reason should match type")
         .transport_response(
             "execute_verify_bootstrap_check",
             "response",

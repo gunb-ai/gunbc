@@ -5,15 +5,21 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_codegen::file_writer::format_diff;
-use gunbc_dag::build_makegen_graph;
+use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
+use gunbc_dag::{build_makegen_graph, makefile_resource_def};
 use gunbc_exec::{
     compose_with_freshness, execute_and_display, execute_and_display_with_result, print_attention,
     AttentionLevel, BoundaryMocks, ExecutionMode,
 };
-use gunbc_ir::resource::ExecMode;
+use gunbc_ir::resource::{
+    update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
+    ResourceDef, ResourceError, ResourceIo, ResourceManifest,
+};
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
+use gunbc_lib_transport::TransportIo;
 use std::io::IsTerminal;
+use std::path::PathBuf;
 use std::process;
 
 fn main() {
@@ -200,6 +206,67 @@ fn main() {
 
         // Execute and display (progress or classic based on terminal)
         execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
+
+        if !dry_run && resource_mode == ExecMode::Ensure {
+            update_manifest_after_makegen(&path);
+        }
+    }
+}
+
+fn update_manifest_after_makegen(path: &str) {
+    if path != MAKEFILE_OUTPUT_PATH {
+        println!(
+            "Skipping resource manifest update for non-canonical Makefile path: {}",
+            path
+        );
+        return;
+    }
+
+    println!();
+    println!("Updating resource manifest...");
+
+    #[derive(Clone)]
+    struct MakefileResource {
+        def: ResourceDef,
+        outputs: Vec<PathBuf>,
+    }
+
+    impl ManagedResource for MakefileResource {
+        fn definition(&self) -> &ResourceDef {
+            &self.def
+        }
+
+        fn create(
+            &self,
+            manifest: &ResourceManifest,
+            io: &dyn ResourceIo,
+        ) -> Result<ManifestEntry, ResourceError> {
+            let (key, file_count, input_files) = self.compute_key_with_file_list(manifest, io)?;
+            Ok(ManifestEntry::new(key, file_count)
+                .with_outputs(self.outputs.clone())
+                .with_input_files(input_files))
+        }
+    }
+
+    let resource = MakefileResource {
+        def: makefile_resource_def(),
+        outputs: vec![PathBuf::from(MAKEFILE_OUTPUT_PATH)],
+    };
+    let io = TransportIo::new();
+
+    match update_resource_manifest(&resource, &io) {
+        Ok(()) => {
+            println!("Resource manifest updated.");
+        }
+        Err(ManifestUpdateError::Load(e)) => {
+            eprintln!("Failed to load manifest: {e}");
+        }
+        Err(ManifestUpdateError::Save(e)) => {
+            eprintln!("Failed to write manifest: {e}");
+        }
+        Err(ManifestUpdateError::Acquire(e)) => {
+            eprintln!("Failed to update manifest: {e}");
+        }
     }
 }
 

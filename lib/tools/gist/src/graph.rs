@@ -379,6 +379,15 @@ fn execute_parse_read_file(
     }
     if !file.success {
         let err = file.error.as_deref().unwrap_or("unknown file read error");
+        // Directories (e.g. git submodules) appear in git ls-files but can't
+        // be read as files. Return empty content so the loop continues; the
+        // downstream collect node filters these out.
+        if err.contains("Is a directory") || err.contains("is a directory") {
+            return OutputMap::new()
+                .str("filename", filename)
+                .str("result", "")
+                .ok();
+        }
         return Err(ExecError::new(format!(
             "failed to read '{}': {}",
             filename, err

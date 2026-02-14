@@ -22,10 +22,12 @@
 
 #![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
+use gunbc_cli::BinaryArgs;
 use gunbc_codegen::{
     all_cleanable_outputs, derive_tool_defs, generate_cli_with_import, FileWriter,
 };
 use gunbc_dag::WorkspaceBinary;
+use gunbc_exec::run_freshness_steps;
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default,
     update_resource_manifest, FreshnessOptions, ManagedResource, ManifestEntry, ManifestFreshness,
@@ -66,33 +68,31 @@ fn main() {
     let _: fn() = bootstrap_tool;
 
     let args: Vec<String> = env::args().collect();
-
-    // Parse command (first non-flag argument)
-    let command = args
-        .iter()
-        .skip(1)
-        .find(|a| !a.starts_with('-'))
-        .map(|s| s.as_str())
-        .unwrap_or("commit");
-
-    let dry_run = args.iter().any(|a| a == "-n" || a == "--dry-run");
-
-    if args.iter().any(|a| a == "-h" || a == "--help") {
+    let parsed = match BinaryArgs::new().parse(&args) {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            std::process::exit(1);
+        }
+    };
+    if parsed.help {
         print_help();
         return;
     }
+    let dry_run = parsed.dry_run;
+    let command = match parse_command_arg(&args) {
+        Ok(command) => command,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            eprintln!("Run 'gunbc-codegen --help' for usage");
+            std::process::exit(1);
+        }
+    };
 
     if let Some(steps) = gunbc_lib_transport::check_and_plan_freshness() {
-        for step in steps {
-            #[allow(clippy::disallowed_methods)]
-            let status = std::process::Command::new(&step.command[0])
-                .args(&step.command[1..])
-                .env("GUNBC_FRESHNESS_ACTIVE", "1")
-                .status();
-            if !status.map(|s| s.success()).unwrap_or(false) {
-                eprintln!("freshness step '{}' failed", step.id);
-                std::process::exit(1);
-            }
+        if let Err(e) = run_freshness_steps(&steps) {
+            eprintln!("{e}");
+            std::process::exit(1);
         }
     }
 
@@ -107,6 +107,24 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+fn parse_command_arg(args: &[String]) -> Result<&str, String> {
+    let positionals: Vec<&str> = args
+        .iter()
+        .skip(1)
+        .filter(|arg| !arg.starts_with('-'))
+        .map(|arg| arg.as_str())
+        .collect();
+
+    if positionals.len() > 1 {
+        let extras = positionals[1..].join(" ");
+        return Err(format!(
+            "unexpected extra positional arguments: {extras} (expected at most one command)"
+        ));
+    }
+
+    Ok(positionals.first().copied().unwrap_or("commit"))
 }
 
 /// Full build transaction: codegen → cargo build → setup bin directory
@@ -913,4 +931,32 @@ fn print_help() {
     println!("    gunbc-codegen rollback       # clean everything");
     println!("    gunbc-codegen codegen -n     # preview CLI generation");
     println!("    gunbc-codegen cigen          # generate CI YAML files");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_command_arg;
+
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parse_command_defaults_to_commit() {
+        let args = argv(&["gunbc-codegen"]);
+        assert_eq!(parse_command_arg(&args).unwrap(), "commit");
+    }
+
+    #[test]
+    fn parse_command_accepts_single_positional() {
+        let args = argv(&["gunbc-codegen", "rollback", "-n"]);
+        assert_eq!(parse_command_arg(&args).unwrap(), "rollback");
+    }
+
+    #[test]
+    fn parse_command_rejects_extra_positionals() {
+        let args = argv(&["gunbc-codegen", "commit", "rollback"]);
+        let err = parse_command_arg(&args).unwrap_err();
+        assert!(err.contains("unexpected extra positional arguments"));
+    }
 }

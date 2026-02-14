@@ -295,6 +295,7 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
     if step_mode {
         exec_items.push("execute_single_node".to_string());
         exec_items.push("print_value".to_string());
+        exec_items.push("run_freshness_step".to_string());
     }
 
     let mut items = vec![
@@ -880,14 +881,9 @@ fn build_run_single_step_fn(tool: &ToolMeta) -> FnDef {
          \n\
          // Freshness check (auto-fix if stale)\n\
          if let Some(steps) = check_and_plan_freshness() {{\n\
-             for step in steps {{\n\
-                 #[allow(clippy::disallowed_methods)]\n\
-                 let status = std::process::Command::new(&step.command[0])\n\
-                     .args(&step.command[1..])\n\
-                     .env(\"GUNBC_FRESHNESS_ACTIVE\", \"1\")\n\
-                     .status();\n\
-                 if !status.map(|s| s.success()).unwrap_or(false) {{\n\
-                     eprintln!(\"freshness step '{{}}' failed\", step.id);\n\
+             for step in &steps {{\n\
+                 if let Err(e) = run_freshness_step(step) {{\n\
+                     eprintln!(\"{{}}\", e);\n\
                      process::exit(1);\n\
                  }}\n\
              }}\n\

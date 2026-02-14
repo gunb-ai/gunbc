@@ -112,6 +112,10 @@ pub enum CIOp {
     PrepareVerifyMakegenCheck,
     /// Parse the makegen verify shell response (pure)
     ParseVerifyMakegenResult,
+    /// Prepare the deps-config verify shell command (pure)
+    PrepareVerifyDepsConfigCheck,
+    /// Parse the deps-config verify shell response (pure)
+    ParseVerifyDepsConfigResult,
     /// Prepare the bootstrap verify shell command (pure)
     PrepareVerifyBootstrapCheck,
     /// Parse the bootstrap verify shell response (pure)
@@ -152,6 +156,8 @@ impl Executable for CIOp {
             CIOp::ParseGuardrailResult => execute_parse_guardrail_result(inputs),
             CIOp::PrepareVerifyMakegenCheck => execute_prepare_verify_makegen_check(inputs),
             CIOp::ParseVerifyMakegenResult => execute_parse_verify_makegen_result(inputs),
+            CIOp::PrepareVerifyDepsConfigCheck => execute_prepare_verify_deps_config_check(inputs),
+            CIOp::ParseVerifyDepsConfigResult => execute_parse_verify_deps_config_result(inputs),
             CIOp::PrepareVerifyBootstrapCheck => execute_prepare_verify_bootstrap_check(inputs),
             CIOp::ParseVerifyBootstrapResult => execute_parse_verify_bootstrap_result(inputs),
             CIOp::PrepareVerifyTestgenCheck => execute_prepare_verify_testgen_check(inputs),
@@ -791,6 +797,14 @@ fn execute_prepare_verify_makegen_check(
     execute_prepare_verify_check(inputs, &config.makegen_check)
 }
 
+/// Prepare the deps-config verify shell command (pure).
+fn execute_prepare_verify_deps_config_check(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let config = BuildConfig::cargo();
+    execute_prepare_verify_check(inputs, &config.deps_config_check)
+}
+
 /// Prepare the bootstrap verify shell command (pure).
 fn execute_prepare_verify_bootstrap_check(
     inputs: HashMap<String, Value>,
@@ -860,6 +874,17 @@ fn execute_parse_verify_makegen_result(
     execute_parse_verify_result(inputs, "verify_makegen_success", "verify_makegen_stderr")
 }
 
+/// Parse the deps-config verify shell response (pure).
+fn execute_parse_verify_deps_config_result(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    execute_parse_verify_result(
+        inputs,
+        "verify_deps_config_success",
+        "verify_deps_config_stderr",
+    )
+}
+
 /// Parse the bootstrap verify shell response (pure).
 fn execute_parse_verify_bootstrap_result(
     inputs: HashMap<String, Value>,
@@ -891,6 +916,11 @@ fn execute_aggregate_verify_results(
 ) -> Result<HashMap<String, Value>, ExecError> {
     let checks = [
         ("makegen", "verify_makegen_success", "verify_makegen_stderr"),
+        (
+            "deps-config",
+            "verify_deps_config_success",
+            "verify_deps_config_stderr",
+        ),
         (
             "bootstrap",
             "verify_bootstrap_success",
@@ -1429,6 +1459,18 @@ impl Mockable for CIOp {
             CIOp::ParseVerifyMakegenResult => OutputMap::new()
                 .bool("verify_makegen_success", true)
                 .str("verify_makegen_stderr", "")
+                .build(),
+            CIOp::PrepareVerifyDepsConfigCheck => {
+                let config = BuildConfig::cargo();
+                let request = TransportRequest::Shell(config.deps_config_check.to_shell_request());
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .build()
+            }
+            CIOp::ParseVerifyDepsConfigResult => OutputMap::new()
+                .bool("verify_deps_config_success", true)
+                .str("verify_deps_config_stderr", "")
                 .build(),
             CIOp::PrepareVerifyBootstrapCheck => {
                 let config = BuildConfig::cargo();

@@ -77,3 +77,7 @@ path = "src/bin/codegen_cli.rs"
 [[bin]]
 name = "gunbc-docgen"
 path = "src/bin/docgen.rs"
+
+[[bin]]
+name = "gunbc-deps-config"
+path = "src/bin/deps_config.rs"

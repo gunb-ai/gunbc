@@ -462,7 +462,7 @@ default to poison/UNSET unless explicitly mocked.
 
 ---
 
-## 24. Multiple `cargo run` invocations in Makefile + ~~duplicated binary CLI parsing~~
+## ~~24. Multiple `cargo run` invocations in Makefile + duplicated binary CLI parsing~~ RESOLVED (2026-02-14)
 
 **Where**: `Makefile` (lines 22, 30, 42, 46, 50, 54-64),
 `gunbc-dag/src/bin/*.rs` (all 8 binaries)
@@ -473,28 +473,27 @@ default to poison/UNSET unless explicitly mocked.
 now accept only canonical flags (`--mode` and canonicalized `--<kebab(name)>`
 for string params). Deleted `parse_resource_mode()` from `ci.rs`.
 
-**Makefile overhead — PARTIALLY RESOLVED (2026-02-14)**:
-- Generated-CLI tool targets now use a shared release-bin path:
-  `build-release-bins` (single `cargo build --workspace --release --bins`) +
-  direct `target/release/<binary>` invocation.
-- Intentional exception: manual bootstrap binaries (`pragma`, `ci`, `build-all`)
-  still use `cargo run` to avoid forcing release-bin builds through
-  `lint-upsert -> pragma` maintenance flows.
+**Makefile overhead — RESOLVED (2026-02-14)**:
+- All cargo Makefile tool targets (including manual binaries `pragma`, `ci`,
+  and `build-all`) now execute through one shared infra:
+  `build-release-bins` + direct `target/release/<binary>`.
+- `lint-upsert` no longer depends on the `pragma` Make target; it runs the
+  pragma command directly, so maintenance flows remain intact without
+  reintroducing cargo-run paths.
+- Added a dedicated `deps-config` / `deps-config-check` path with
+  `gunbc-deps-config`, eliminating the old `deps` fallback mapping for
+  `build:deps_config`.
 
-**Why this is still open**: execution infra is now split between direct-binary
-and cargo-run paths. This is better than before but not yet a fully unified
-"one binary runtime path" model.
-
-**Follow-up (for further analysis)**:
-1. Separate maintenance prerequisites from execution transport for manual bins.
-2. Add direct-binary support for manual bins without regressing
-   `preflight-fix` / `lint-upsert` ergonomics.
-3. Converge all Makefile binary targets onto one shared execution infra
-   (single builder + direct invocation).
+**Residual analysis topic (non-blocking)**:
+- Buck2 mode still renders cargo-based invocations for repo generator binaries;
+  a future cross-build-system unification pass may further reduce divergence.
+- Step-mode generated CLIs still use a bespoke positional subcommand scanner
+  (`run`/`step`/`list-steps`); consider modeling subcommands in shared
+  `BinaryArgs` so all binary parsers share one scanner.
 
 **Added**: 2026-02-13 (reconciliation)
-**Updated**: 2026-02-14 (deprecated `--check` path removed; shared release-bin
-path added for generated-CLI tools)
+**Updated**: 2026-02-14 (all Makefile cargo tool targets unified to
+build-release-bins + direct release binaries; deps-config verify path added)
 
 ---
 

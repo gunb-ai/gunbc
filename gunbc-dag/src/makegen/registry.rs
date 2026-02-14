@@ -423,6 +423,11 @@ impl BuildConfig {
         format!("@{}", self.testgen.to_shell())
     }
 
+    /// Get the pragma command as a shell string.
+    pub fn pragma_shell(&self) -> String {
+        format!("@{}", self.pragma.to_shell())
+    }
+
     /// Get the deps-config-check command as a shell string.
     pub fn deps_config_check_shell(&self) -> String {
         format!("@{}", self.deps_config_check.to_shell())
@@ -1475,7 +1480,7 @@ mod tests {
         );
         assert_eq!(
             map.resolve(&deps_config_resource_id(), ExecMode::Ensure),
-            Some("deps")
+            Some("deps-config")
         );
         assert_eq!(
             map.resolve(&makefile_resource_id(), ExecMode::Ensure),
@@ -1510,7 +1515,7 @@ mod tests {
         );
         assert_eq!(
             map.resolve(&deps_config_resource_id(), ExecMode::Verify),
-            Some("deps")
+            Some("deps-config-check")
         );
         assert_eq!(
             map.resolve(&makefile_resource_id(), ExecMode::Verify),

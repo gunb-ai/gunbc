@@ -271,7 +271,13 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     blocks.push(StructuredBlock::Target(Target {
         name: "deps-config".into(),
         deps: vec!["build-release-bins".into()],
-        body: vec!["@target/release/gunbc-deps-config --mode=ensure".into()],
+        body: vec![
+            format!(
+                "@target/release/{} --mode=ensure",
+                WorkspaceBinary::DepsConfig.invocation().binary
+            )
+            .into(),
+        ],
         comment: Some("Ensure deps.toml matches the canonical generated configuration".into()),
     }));
 
@@ -279,7 +285,13 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     blocks.push(StructuredBlock::Target(Target {
         name: "deps-config-check".into(),
         deps: vec!["build-release-bins".into()],
-        body: vec!["@target/release/gunbc-deps-config --mode=verify".into()],
+        body: vec![
+            format!(
+                "@target/release/{} --mode=verify",
+                WorkspaceBinary::DepsConfig.invocation().binary
+            )
+            .into(),
+        ],
         comment: Some("Check if deps.toml is stale (fails if regeneration needed)".into()),
     }));
 
@@ -901,7 +913,9 @@ mod tests {
 
         // Testgen in .PHONY
         assert!(
-            makefile.contains("testgen testgen-check makegen-check bootstrap-check pragma-check"),
+            makefile.contains(
+                "testgen testgen-check deps-config deps-config-check makegen-check bootstrap-check pragma-check"
+            ),
             "should be in .PHONY"
         );
         assert!(

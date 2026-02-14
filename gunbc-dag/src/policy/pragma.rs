@@ -45,14 +45,6 @@ const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowPattern] = &[
         pattern: "core/exec/src/freshness.rs",
         rationale: "freshness steps run external tooling as child processes",
     },
-    DisallowedMethodsAllowPattern {
-        pattern: "core/codegen/src/cli_gen.rs",
-        rationale: "codegen template for freshness step execution",
-    },
-    DisallowedMethodsAllowPattern {
-        pattern: "gunbc-dag/src/bin/",
-        rationale: "binary entry points with freshness step execution",
-    },
 ];
 
 const PRAGMA_LINT_POLICY: PragmaLintPolicy = PragmaLintPolicy {
