@@ -39,7 +39,7 @@ pub fn build_frame(
         }
         RenderMode::Standard | RenderMode::Dynamic => {
             lines.push(build_dag_header(progress, spinner_frame, tier, symbol_set));
-            lines.extend(build_standard_lines(progress, layout, symbol_set, tier));
+            // No DAG grid — show only the grouped stage panel (gunb.ai style).
             lines.extend(build_legend_lines(
                 progress,
                 layout,
@@ -319,8 +319,8 @@ fn build_legend_lines(
     _tier: Tier,
 ) -> Vec<Line> {
     const LEGEND_LINES: usize = 3;
-    const STAGE_PANEL_MAX_GROUPS: usize = 5;
-    const STAGE_PANEL_MAX_LINES: usize = 7;
+    const STAGE_PANEL_MAX_GROUPS: usize = 12;
+    const STAGE_PANEL_MAX_LINES: usize = 20;
 
     if !progress.snapshot.groups.is_empty() {
         return build_grouped_stage_panel(
@@ -370,7 +370,13 @@ fn build_legend_lines(
 
     for (state, short, label, elapsed) in legend.iter().take(visible) {
         let sym = legend_char(*state);
-        let color = state_color(*state);
+        let icon_color = state_color(*state);
+        let name_color = match state {
+            NodeState::Completed | NodeState::Intercepted | NodeState::Skipped => {
+                Some(SemanticColor::Dim)
+            }
+            _ => None, // Running/Failed use default terminal color
+        };
         let time_str = elapsed
             .map(|d| format!(" [{}]", format_duration(d)))
             .unwrap_or_default();
@@ -383,9 +389,16 @@ fn build_legend_lines(
         lines.push(Line::new(vec![
             Span::plain("  "),
             Span::styled(
-                format!("{}{}", sym, text),
+                sym.to_string(),
                 SpanStyle {
-                    color: Some(color),
+                    color: Some(icon_color),
+                    ..Default::default()
+                },
+            ),
+            Span::styled(
+                text,
+                SpanStyle {
+                    color: name_color,
                     ..Default::default()
                 },
             ),
