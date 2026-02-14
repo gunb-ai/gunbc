@@ -7,8 +7,9 @@ use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::build_makegen_graph;
 use gunbc_exec::{
     execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
-    BoundaryMocks, ExecutionMode, TerminalProfile,
+    BoundaryMocks, ExecutionMode,
 };
+use std::io::IsTerminal;
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
@@ -169,10 +170,11 @@ fn main() {
         ExecutionMode::Real
     };
 
+    let animated = std::io::stdout().is_terminal();
+
     if resource_mode == ExecMode::Verify {
         // Check mode: execute through shared display path and inspect log outputs.
-        let profile = TerminalProfile::detect();
-        match execute_and_display_with_result(&dag, mode, &profile, None, Some(&input_mocks)) {
+        match execute_and_display_with_result(&dag, mode, animated, None, Some(&input_mocks)) {
             Ok(result) => {
                 let log = result.log;
                 // Scan log for compare_*_content.fresh
@@ -189,7 +191,6 @@ fn main() {
                     println!("makegen --mode=verify: 1 file up to date");
                 } else {
                     print_attention(
-                        &profile,
                         AttentionLevel::Error,
                         "makegen --mode=verify: drift detected",
                         &format!("DRIFT  {path}"),
@@ -237,7 +238,6 @@ fn main() {
             }
             Err(e) => {
                 print_attention(
-                    &profile,
                     AttentionLevel::Error,
                     "makegen --mode=verify failed",
                     &e.to_string(),
@@ -246,9 +246,6 @@ fn main() {
             }
         }
     } else {
-        // Detect terminal environment
-        let profile = TerminalProfile::detect();
-
         // Print header
         println!("makegen");
         println!("  path: {}", path);
@@ -257,7 +254,7 @@ fn main() {
         println!();
 
         // Execute and display (progress or classic based on terminal)
-        execute_and_display(&dag, mode, &profile, None, Some(&input_mocks));
+        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
     }
 }
 

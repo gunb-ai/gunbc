@@ -72,7 +72,6 @@ pub use progress::{
     RecordingObserver,
 };
 pub use render::{Animation, AnimationMode, RenderMode};
-pub use terminal::{Shell, TerminalProfile};
 pub use topo::topo_sort;
 
 use gunbc_ir::Value;

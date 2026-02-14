@@ -7,8 +7,9 @@
 use gunbc_dag::build_bootstrap_graph;
 use gunbc_exec::{
     execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
-    BoundaryMocks, ExecutionMode, TerminalProfile,
+    BoundaryMocks, ExecutionMode,
 };
+use std::io::IsTerminal;
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
@@ -79,8 +80,7 @@ fn main() {
         process::exit(1);
     }
 
-    // Detect terminal environment
-    let profile = TerminalProfile::detect();
+    let animated = std::io::stdout().is_terminal();
 
     // Build the graph
     let dag = match build_bootstrap_graph() {
@@ -220,7 +220,7 @@ fn main() {
 
     if resource_mode == ExecMode::Verify {
         // Check mode: execute through shared display path and inspect log outputs.
-        match execute_and_display_with_result(&dag, mode, &profile, None, Some(&input_mocks)) {
+        match execute_and_display_with_result(&dag, mode, animated, None, Some(&input_mocks)) {
             Ok(result) => {
                 let log = result.log;
                 // Scan log for compare_*_content.fresh
@@ -275,7 +275,6 @@ fn main() {
                         .unwrap();
                     }
                     print_attention(
-                        &profile,
                         AttentionLevel::Error,
                         "bootstrap --mode=verify: drift detected",
                         body.trim_end(),
@@ -285,7 +284,6 @@ fn main() {
             }
             Err(e) => {
                 print_attention(
-                    &profile,
                     AttentionLevel::Error,
                     "bootstrap --mode=verify failed",
                     &e.to_string(),
@@ -308,7 +306,7 @@ fn main() {
         println!();
 
         // Execute and display (progress or classic based on terminal)
-        execute_and_display(&dag, mode, &profile, None, Some(&input_mocks));
+        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
     }
 }
 

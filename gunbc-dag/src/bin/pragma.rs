@@ -6,8 +6,9 @@
 use gunbc_dag::build_pragma_graph;
 use gunbc_exec::{
     execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
-    BoundaryMocks, ExecutionMode, TerminalProfile,
+    BoundaryMocks, ExecutionMode,
 };
+use std::io::IsTerminal;
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
@@ -181,10 +182,11 @@ fn main() {
         ExecutionMode::Real
     };
 
+    let animated = std::io::stdout().is_terminal();
+
     if resource_mode == ExecMode::Verify {
         // Check mode: execute through shared display path and inspect log outputs.
-        let profile = TerminalProfile::detect();
-        match execute_and_display_with_result(&dag, mode, &profile, None, Some(&input_mocks)) {
+        match execute_and_display_with_result(&dag, mode, animated, None, Some(&input_mocks)) {
             Ok(result) => {
                 let log = result.log;
                 let mut ok_count = 0;
@@ -228,7 +230,6 @@ fn main() {
                         .unwrap();
                     }
                     print_attention(
-                        &profile,
                         AttentionLevel::Error,
                         "pragma --mode=verify: drift detected",
                         body.trim_end(),
@@ -238,7 +239,6 @@ fn main() {
             }
             Err(e) => {
                 print_attention(
-                    &profile,
                     AttentionLevel::Error,
                     "pragma --mode=verify failed",
                     &e.to_string(),
@@ -247,9 +247,6 @@ fn main() {
             }
         }
     } else {
-        // Detect terminal environment
-        let profile = TerminalProfile::detect();
-
         // Print header
         println!("pragma");
         println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
@@ -257,7 +254,7 @@ fn main() {
         println!();
 
         // Execute and display (progress or classic based on terminal)
-        execute_and_display(&dag, mode, &profile, None, Some(&input_mocks));
+        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
     }
 }
 

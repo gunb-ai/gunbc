@@ -284,7 +284,6 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
         "execute_and_display".to_string(),
         "BoundaryMocks".to_string(),
         "ExecutionMode".to_string(),
-        "TerminalProfile".to_string(),
     ];
     if step_mode {
         exec_items.push("execute_single_node".to_string());
@@ -335,6 +334,10 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
     items.push(Item::Use(Import {
         path: vec!["std".to_string(), "env".to_string()],
         items: vec![],
+    }));
+    items.push(Item::Use(Import {
+        path: vec!["std".to_string(), "io".to_string()],
+        items: vec!["IsTerminal".to_string()],
     }));
     items.push(Item::Use(Import {
         path: vec!["std".to_string(), "process".to_string()],
@@ -642,9 +645,6 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
              process::exit(1);\n\
          }}\n\
          \n\
-         // Detect terminal environment\n\
-         let profile = TerminalProfile::detect();\n\
-         \n\
          // Build the graph\n\
          let dag = {graph_builder_call};\n\
          \n\
@@ -659,7 +659,8 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          println!();\n\
          \n\
          // Execute and display (progress or classic based on terminal)\n\
-         execute_and_display(&dag, mode, &profile, {success_port_arg}, Some(&input_mocks));",
+         let animated = std::io::stdout().is_terminal();\n\
+         execute_and_display(&dag, mode, animated, {success_port_arg}, Some(&input_mocks));",
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
@@ -816,9 +817,6 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
              process::exit(1);\n\
          }}\n\
          \n\
-         // Detect terminal environment\n\
-         let profile = TerminalProfile::detect();\n\
-         \n\
          // Build the graph\n\
          let dag = {graph_builder_call};\n\
          \n\
@@ -833,7 +831,8 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          println!();\n\
          \n\
          // Execute and display (progress or classic based on terminal)\n\
-         execute_and_display(&dag, mode, &profile, {success_port_arg}, Some(&input_mocks));",
+         let animated = std::io::stdout().is_terminal();\n\
+         execute_and_display(&dag, mode, animated, {success_port_arg}, Some(&input_mocks));",
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
@@ -1171,7 +1170,7 @@ mod tests {
         assert!(code.contains("--dry-run"));
         assert!(code.contains("build_gist_graph"));
         assert!(code.contains("execute_and_display"));
-        assert!(code.contains("TerminalProfile::detect()"));
+        assert!(code.contains("std::io::stdout().is_terminal()"));
     }
 
     #[test]

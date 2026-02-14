@@ -6,7 +6,8 @@
 #![deny(dead_code)]
 use gunbc_dag::codegen::build_codegen_graph_with_mode;
 use gunbc_dag::CODEGEN_STAMP_PATH;
-use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile};
+use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode};
+use std::io::IsTerminal;
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
@@ -76,9 +77,6 @@ fn main() {
         process::exit(1);
     }
 
-    // Detect terminal environment
-    let profile = TerminalProfile::detect();
-
     // Build the graph
     let dag = match build_codegen_graph_with_mode(resource_mode) {
         Ok(d) => d,
@@ -132,7 +130,8 @@ fn main() {
     println!();
 
     // Execute and display (progress or classic based on terminal)
-    execute_and_display(&dag, mode, &profile, Some("prep_success"), None);
+    let animated = std::io::stdout().is_terminal();
+    execute_and_display(&dag, mode, animated, Some("prep_success"), None);
 }
 
 fn print_help() {

@@ -22,7 +22,8 @@
 
 #![deny(dead_code)]
 use gunbc_dag::build_ci_graph_with_mode;
-use gunbc_exec::{execute_and_display, BoundaryMocks, CiContext, ExecutionMode, TerminalProfile};
+use gunbc_exec::{execute_and_display, BoundaryMocks, CiContext, ExecutionMode};
+use std::io::IsTerminal;
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
@@ -196,9 +197,9 @@ fn main() {
     println!();
 
     // Shared execution/display path: CI grouping, local progress, and classic mode
-    // are selected internally from TerminalProfile and CI environment.
-    let profile = TerminalProfile::detect();
-    execute_and_display(&dag, mode, &profile, Some("overall_success"), None);
+    // are selected internally based on the animated flag and CI environment.
+    let animated = std::io::stdout().is_terminal();
+    execute_and_display(&dag, mode, animated, Some("overall_success"), None);
 }
 
 /// Parse the resource mode from command-line arguments.

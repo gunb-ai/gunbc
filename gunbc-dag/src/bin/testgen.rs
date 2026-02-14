@@ -14,8 +14,9 @@ use gunbc_dag::testgen_dag::graph::build_testgen_graph;
 use gunbc_dag::testgen_resource_def;
 use gunbc_exec::{
     execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
-    BoundaryMocks, ExecutionMode, TerminalProfile,
+    BoundaryMocks, ExecutionMode,
 };
+use std::io::IsTerminal;
 use gunbc_ir::resource::{
     update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
     ResourceDef, ResourceError, ResourceIo, ResourceManifest,
@@ -224,10 +225,11 @@ fn main() {
         ExecutionMode::Real
     };
 
+    let animated = std::io::stdout().is_terminal();
+
     if resource_mode == ExecMode::Verify {
         // Check mode: execute through shared display path and inspect log outputs.
-        let profile = TerminalProfile::detect();
-        match execute_and_display_with_result(&dag, mode, &profile, None, Some(&input_mocks)) {
+        match execute_and_display_with_result(&dag, mode, animated, None, Some(&input_mocks)) {
             Ok(result) => {
                 let log = result.log;
                 let mut ok_count = 0;
@@ -262,7 +264,6 @@ fn main() {
                         writeln!(body, "  {path}").unwrap();
                     }
                     print_attention(
-                        &profile,
                         AttentionLevel::Error,
                         "testgen --mode=verify: generated tests are out of date",
                         body.trim_end(),
@@ -272,7 +273,6 @@ fn main() {
             }
             Err(e) => {
                 print_attention(
-                    &profile,
                     AttentionLevel::Error,
                     "testgen --mode=verify failed",
                     &e.to_string(),
@@ -281,9 +281,6 @@ fn main() {
             }
         }
     } else {
-        // Detect terminal environment
-        let profile = TerminalProfile::detect();
-
         // Print header
         println!("testgen");
         println!("  output_dir: {}", output_dir.display());
@@ -293,7 +290,7 @@ fn main() {
         println!();
 
         // Execute and display (progress or classic based on terminal)
-        execute_and_display(&dag, mode, &profile, None, Some(&input_mocks));
+        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
 
         // Update manifest after successful generation (not in DAG - post-execution step)
         if !dry_run && resource_mode == ExecMode::Ensure {

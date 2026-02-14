@@ -10,13 +10,12 @@
 //!
 //! # Detection Strategy
 //!
-//! 1. **Shell**: `$SHELL` on Unix, `$PSModulePath`/`$WT_SESSION`/`$ComSpec` on Windows
-//! 2. **TTY**: `std::io::IsTerminal` on stdout (real file descriptor check)
-//! 3. **CI**: `$CI` / `$GITHUB_ACTIONS` / `$GITLAB_CI` / `$JENKINS_URL` / `$BUILDKITE`
-//! 4. **Dumb terminal**: `$TERM=dumb` → no progress, no color
-//! 5. **NO_COLOR**: `$NO_COLOR` set → disable ANSI color codes
-//! 6. **Symbol tier**: `$TERM_PROGRAM`/`$WT_SESSION` → Emoji, `$LANG` UTF-8 → Unicode, else ASCII
-//! 7. **Viewport**: `ioctl(TIOCGWINSZ)` on Unix, then `$COLUMNS`/`$LINES`, default 80×24
+//! 1. **TTY**: `std::io::IsTerminal` on stdout (real file descriptor check)
+//! 2. **CI**: `$CI` / `$GITHUB_ACTIONS` / `$GITLAB_CI` / `$JENKINS_URL` / `$BUILDKITE`
+//! 3. **Dumb terminal**: `$TERM=dumb` → no progress, no color
+//! 4. **NO_COLOR**: `$NO_COLOR` set → disable ANSI color codes
+//! 5. **Symbol tier**: `$TERM_PROGRAM`/`$WT_SESSION` → Emoji, `$LANG` UTF-8 → Unicode, else ASCII
+//! 6. **Viewport**: `ioctl(TIOCGWINSZ)` on Unix, then `$COLUMNS`/`$LINES`, default 80×24
 
 use gunbc_ir::layout::{Viewport, ViewportUnit};
 use gunbc_ir::symbols::Tier;
@@ -33,10 +32,6 @@ pub(crate) struct TerminalProfile {
     /// Whether stdout is connected to an interactive terminal.
     /// Detected via `std::io::IsTerminal` (file descriptor check).
     pub is_tty: bool,
-    /// Whether `$TERM` is `dumb` (minimal terminal, no escape sequences).
-    pub is_dumb: bool,
-    /// Whether `$NO_COLOR` is set (https://no-color.org/).
-    pub no_color: bool,
     /// Symbol tier: Emoji > Unicode > Ascii.
     pub tier: Tier,
     /// Terminal dimensions.
@@ -65,38 +60,11 @@ impl TerminalProfile {
 
         Self {
             is_tty,
-            is_dumb,
-            no_color,
             tier,
             viewport,
             supports_color,
         }
     }
-}
-
-/// Detect the current shell from environment variables.
-fn detect_shell() -> Shell {
-    // Unix: $SHELL is the login shell path
-    if let Ok(shell) = env::var("SHELL") {
-        return match shell.rsplit('/').next().unwrap_or("") {
-            "bash" => Shell::Bash,
-            "zsh" => Shell::Zsh,
-            "fish" => Shell::Fish,
-            other => Shell::Unknown(other.to_string()),
-        };
-    }
-
-    // Windows: PowerShell sets PSModulePath
-    if env::var("PSModulePath").is_ok() {
-        return Shell::PowerShell;
-    }
-
-    // Windows: cmd.exe sets ComSpec but not PSModulePath
-    if env::var("ComSpec").is_ok() {
-        return Shell::Cmd;
-    }
-
-    Shell::Unknown(String::new())
 }
 
 /// Detect whether stdout is connected to an interactive terminal.
@@ -234,25 +202,6 @@ fn terminal_size_ioctl() -> Option<(u16, u16)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_plain_profile() {
-        let profile = TerminalProfile::plain();
-        assert!(!profile.is_tty);
-        assert!(!profile.is_ci);
-        assert!(!profile.supports_progress);
-        assert!(!profile.supports_color);
-        assert_eq!(profile.tier, Tier::Ascii);
-        assert_eq!(profile.shell, Shell::Unknown("none".into()));
-    }
-
-    #[test]
-    fn test_shell_display() {
-        // Ensure Shell variants are distinguishable
-        assert_ne!(Shell::Bash, Shell::Zsh);
-        assert_ne!(Shell::PowerShell, Shell::Cmd);
-        assert_eq!(Shell::Unknown("sh".into()), Shell::Unknown("sh".into()));
-    }
 
     #[test]
     fn test_detect_produces_valid_viewport() {

@@ -790,7 +790,7 @@ Cache tuple:
 - [x] Ensure every DAG builder is registered (testgen registry) so purity tests cover the entire codebase. _(2026-02-14: added source + runtime coverage gates in `gunbc-dag/tests/resource_registry_coverage.rs`; removed `resource_test_target(skip)` from canonical workflow builders and registered missing local/upsert variants.)_
 - [x] Add clippy guardrails to forbid direct I/O in pure crates (only transport/boundary crates allowed). _(2026-02-14: enforced via root `clippy.toml` disallowed-methods policy.)_
 - [x] Add `#[resource_test_target]` registry + test runner for codebase-wide purity checks. _(2026-02-14: registry implemented + CI guardrail now runs `resource_purity_checks`.)_
-- [ ] Add optional runtime file guard for `res:file:*` during tests.
+- [x] Add optional runtime file guard for `res:file:*` during tests. _(2026-02-14: implemented in `core/exec/src/execute.rs` behind `GUNBC_RESOURCE_FILE_GUARD`; enforces write-path declaration matching for non-intercepted node outputs and supports `res:file:*` + legacy `res:fs`.)_
 - [ ] Draft a sandbox + durability/replay RFC (record/replay transport I/O, deterministic tests).
 
 ## Workflow Update Task List (Start ASAP)
@@ -841,11 +841,19 @@ Target workflow states and verification gates:
    - Verify with: `cargo test -p gunbc-dag --test workflow_acceptance ci_verify_stage_uses_verify_mode_commands`
    - Failure-state verify: `cargo test -p gunbc-dag --test workflow_acceptance ci_verify_stage_skips_when_prep_fails`
 
-4. Resource purity always-on
+4. Runtime file declaration guard contract (optional, test mode)
+   - When `GUNBC_RESOURCE_FILE_GUARD=1`, any non-intercepted node emitting file write responses (`Write`, `Append`, `Delete`, `CreateDir`) must declare a matching write-capable resource input:
+     - exact: `res:file:<path>` (or legacy `res:fs:<path>`)
+     - wildcard: `res:file:*` (or legacy coarse `res:fs`)
+     - access mode: `AccessMode::Write` or `AccessMode::Exclusive`
+   - Guard is disabled by default when `GUNBC_RESOURCE_FILE_GUARD` is unset.
+   - Verify with: `cargo test -p gunbc-exec runtime_file_guard`
+
+5. Resource purity always-on
    - Registry-wide purity test remains green and CI-callable.
    - Verify with: `cargo test -p gunbc-dag --test resource_purity_checks`
 
-5. Builder registration coverage
+6. Builder registration coverage
    - Every public zero-arg `build_*graph*` builder is covered by non-skip `#[resource_test_target]` registration.
    - Runtime `iter_resource_tests()` includes non-skip source annotations for force-linked workflow crates.
    - Verify with: `cargo test -p gunbc-dag --test resource_registry_coverage`

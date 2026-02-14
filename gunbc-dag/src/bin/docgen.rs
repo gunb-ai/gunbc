@@ -4,7 +4,8 @@
 
 #![deny(dead_code)]
 use gunbc_dag::{build_docgen_graph, DOCGEN_READ_TARGETS};
-use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile};
+use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode};
+use std::io::IsTerminal;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
@@ -52,8 +53,8 @@ fn main() {
         ExecutionMode::Real
     };
 
-    let profile = TerminalProfile::detect();
-    execute_and_display(&dag, mode, &profile, None, None);
+    let animated = std::io::stdout().is_terminal();
+    execute_and_display(&dag, mode, animated, None, None);
 }
 
 fn build_dry_run_mocks() -> BoundaryMocks {

@@ -34,12 +34,10 @@ use crate::lower::{lower, LoopInfo};
 use crate::progress::{DagSnapshot, OutputSummary, ProgressObserver};
 use crate::topo::topo_sort;
 use crate::Executable;
+use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
     canonical_edge_order, detect_boundaries, detect_entrypoints, AccessMode, BoundaryInfo,
     Cardinality, Dag, Node, NodeBody, NodeId, Value,
-};
-use gunbc_ir::{
-    transport::{FileOp, TransportResponse},
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -367,6 +365,8 @@ pub fn execute_single_node<T: Executable + Clone + Send>(
     inputs: HashMap<String, Value>,
     mode: ExecutionMode,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    let file_guard_enabled = runtime_file_guard_enabled();
+
     // Lower sub-DAGs first (in case the target node is inside a sub-DAG)
     let lowered = lower(dag).exec_context("lowering failed")?;
 
@@ -409,7 +409,11 @@ pub fn execute_single_node<T: Executable + Clone + Send>(
 
     // Execute the node
     match &node.body {
-        NodeBody::Opaque(op) => op.execute(inputs),
+        NodeBody::Opaque(op) => {
+            let outputs = op.execute(inputs)?;
+            enforce_runtime_file_guard(node, &outputs, file_guard_enabled)?;
+            Ok(outputs)
+        }
         NodeBody::SubDag(_) => Err(ExecError::new(format!(
             "node '{}' is a SubDag — this should not happen after lowering",
             node_id
@@ -538,14 +542,7 @@ fn execute_flat<T: Executable + Clone + Send>(
 ) -> Result<ExecutionLog, ExecError> {
     let sequential = observer.as_ref().is_some_and(|o| o.requires_sequential());
     if sequential {
-        execute_flat_sequential(
-            dag,
-            boundaries,
-            mode,
-            observer.unwrap(),
-            input_mocks,
-            loops,
-        )
+        execute_flat_sequential(dag, boundaries, mode, observer.unwrap(), input_mocks, loops)
     } else {
         execute_flat_parallel(dag, boundaries, mode, observer, input_mocks, loops)
     }
@@ -564,6 +561,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
     input_mocks: Option<&BoundaryMocks>,
     loops: &[LoopInfo<T>],
 ) -> Result<ExecutionLog, ExecError> {
+    let file_guard_enabled = runtime_file_guard_enabled();
     let order = topo_sort(dag);
     let node_map: HashMap<&str, &Node<T>> =
         dag.nodes.iter().map(|n| (n.id.0.as_str(), n)).collect();
@@ -744,6 +742,14 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             }
         };
 
+        if !skip && !was_intercepted {
+            if let Err(e) = enforce_runtime_file_guard(node, &outputs, file_guard_enabled) {
+                observer.on_node_failed(node_id, &e.to_string());
+                observer.on_dag_complete(dag_start.elapsed());
+                return Err(e);
+            }
+        }
+
         // Mask any secret values so CI runners redact them from all output.
         // This happens inside the CI group (before on_node_complete closes it).
         for value in outputs.values() {
@@ -769,8 +775,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         // This is deferred from the execution block above so that secret
         // masking and boundary output appear inside the CI group.
         if !skip {
-            let summary =
-                OutputSummary::from_outputs(&node_outputs[&node_id.0], node_elapsed);
+            let summary = OutputSummary::from_outputs(&node_outputs[&node_id.0], node_elapsed);
             if was_intercepted {
                 observer.on_node_intercepted(node_id, summary);
             } else {
@@ -811,6 +816,168 @@ fn execution_max_concurrency() -> usize {
         .and_then(|raw| raw.parse::<usize>().ok())
         .filter(|n| *n > 0)
         .unwrap_or(usize::MAX)
+}
+
+/// Parse optional runtime file guard toggle from `GUNBC_RESOURCE_FILE_GUARD`.
+///
+/// Enabled values: `1`, `true`, `yes`, `on` (case-insensitive).
+/// Disabled values (or unset): everything else.
+fn runtime_file_guard_enabled() -> bool {
+    std::env::var("GUNBC_RESOURCE_FILE_GUARD")
+        .ok()
+        .map(|raw| {
+            matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn file_op_requires_write_declaration(op: FileOp) -> bool {
+    matches!(
+        op,
+        FileOp::Write | FileOp::Append | FileOp::Delete | FileOp::CreateDir
+    )
+}
+
+fn normalize_file_guard_path(path: &str) -> String {
+    let mut normalized = path.replace('\\', "/");
+    while normalized.starts_with("./") {
+        normalized.drain(..2);
+    }
+    if normalized == "." {
+        normalized.clear();
+    }
+    normalized
+}
+
+fn file_resource_pattern_matches_path(pattern: &str, path: &str) -> bool {
+    let normalized_pattern = normalize_file_guard_path(pattern);
+    let normalized_path = normalize_file_guard_path(path);
+
+    if normalized_pattern == "*" || normalized_pattern.is_empty() {
+        return true;
+    }
+
+    if !normalized_pattern.contains('*') {
+        return normalized_pattern == normalized_path;
+    }
+
+    if let Some(prefix) = normalized_pattern.strip_suffix('*') {
+        return normalized_path.starts_with(prefix);
+    }
+    if let Some(suffix) = normalized_pattern.strip_prefix('*') {
+        return normalized_path.ends_with(suffix);
+    }
+    if let Some((prefix, suffix)) = normalized_pattern.split_once('*') {
+        return normalized_path.starts_with(prefix)
+            && normalized_path.ends_with(suffix)
+            && normalized_path.len() >= prefix.len() + suffix.len();
+    }
+
+    false
+}
+
+fn write_file_pattern_for_port_name(
+    port_name: &str,
+    access_mode: Option<AccessMode>,
+) -> Option<&str> {
+    if !matches!(
+        access_mode,
+        Some(AccessMode::Write) | Some(AccessMode::Exclusive)
+    ) {
+        return None;
+    }
+
+    if port_name == "res:file" || port_name == "res:fs" {
+        return Some("*");
+    }
+
+    if let Some(pattern) = port_name.strip_prefix("res:file:") {
+        return Some(if pattern.is_empty() { "*" } else { pattern });
+    }
+    if let Some(pattern) = port_name.strip_prefix("res:fs:") {
+        return Some(if pattern.is_empty() { "*" } else { pattern });
+    }
+
+    None
+}
+
+fn collect_file_write_ops_from_value(value: &Value, writes: &mut Vec<(FileOp, String)>) {
+    match value {
+        Value::Response(TransportResponse::File(resp))
+            if file_op_requires_write_declaration(resp.operation) =>
+        {
+            writes.push((resp.operation, normalize_file_guard_path(&resp.path)));
+        }
+        Value::List(items) | Value::Set(items) => {
+            for item in items {
+                collect_file_write_ops_from_value(item, writes);
+            }
+        }
+        Value::Map(map) => {
+            for item in map.values() {
+                collect_file_write_ops_from_value(item, writes);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn node_has_matching_write_file_input<T>(node: &Node<T>, path: &str) -> bool {
+    node.inputs.iter().any(|port| {
+        write_file_pattern_for_port_name(port.name.0.as_str(), port.resource_access)
+            .is_some_and(|pattern| file_resource_pattern_matches_path(pattern, path))
+    })
+}
+
+fn node_declared_write_file_inputs<T>(node: &Node<T>) -> Vec<String> {
+    node.inputs
+        .iter()
+        .filter_map(|port| {
+            write_file_pattern_for_port_name(port.name.0.as_str(), port.resource_access)
+                .map(|_| port.name.0.clone())
+        })
+        .collect()
+}
+
+/// Optional runtime guard that validates file writes against declared res:file inputs.
+fn enforce_runtime_file_guard<T>(
+    node: &Node<T>,
+    outputs: &HashMap<String, Value>,
+    enabled: bool,
+) -> Result<(), ExecError> {
+    if !enabled {
+        return Ok(());
+    }
+
+    let mut writes = Vec::new();
+    for value in outputs.values() {
+        collect_file_write_ops_from_value(value, &mut writes);
+    }
+
+    for (op, path) in writes {
+        if node_has_matching_write_file_input(node, &path) {
+            continue;
+        }
+
+        let declared = node_declared_write_file_inputs(node);
+        let declared_text = if declared.is_empty() {
+            "none".to_string()
+        } else {
+            declared.join(", ")
+        };
+
+        return Err(ExecError::new(format!(
+            "runtime file guard: node '{}' emitted file {:?} on '{}' without matching write \
+             resource input (declared write inputs: {}). declare `res:file:{}` or `res:file:*` \
+             (legacy `res:fs`) with AccessMode::Write/Exclusive",
+            node.id.0, op, path, declared_text, path
+        )));
+    }
+
+    Ok(())
 }
 
 fn should_intercept_for_mode<T>(node: &Node<T>, mode: &ExecutionMode) -> bool {
@@ -1120,6 +1287,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
     };
 
     let max_concurrency = execution_max_concurrency();
+    let file_guard_enabled = runtime_file_guard_enabled();
     let mut in_flight = 0usize;
     let mut obs = observer;
     let dag_start = Instant::now();
@@ -1236,6 +1404,22 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
             in_flight = in_flight.saturating_sub(1);
             match completed_node.result {
                 Ok(outputs) => {
+                    let node =
+                        node_map
+                            .get(completed_node.node_id.0.as_str())
+                            .ok_or_else(|| {
+                                ExecError::new(format!(
+                                    "node '{}' not found",
+                                    completed_node.node_id.0
+                                ))
+                            })?;
+                    if let Err(e) = enforce_runtime_file_guard(node, &outputs, file_guard_enabled) {
+                        if let Some(ref mut o) = obs {
+                            o.on_node_failed(&completed_node.node_id, &e.to_string());
+                        }
+                        return Err(e);
+                    }
+
                     if let Some(ref mut o) = obs {
                         let summary = OutputSummary::from_outputs(
                             &outputs,
@@ -1307,9 +1491,10 @@ fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> B
                 if !existing.has_mock(&node.id, &port.name) {
                     // Choose a type-appropriate default based on resource inputs:
                     // nodes with FilesystemHandle inputs are file transports.
-                    let is_file_transport = node.inputs.iter().any(|p| {
-                        p.type_id.0 == "FilesystemHandle"
-                    });
+                    let is_file_transport = node
+                        .inputs
+                        .iter()
+                        .any(|p| p.type_id.0 == "FilesystemHandle");
                     let default_response = if is_file_transport {
                         Value::Response(TransportResponse::File(FileResponse {
                             path: String::new(),
@@ -1602,6 +1787,17 @@ mod tests {
 
     // Backward-compat alias used in existing tests
     type Produce = TestOp;
+
+    fn file_response(path: &str, operation: FileOp) -> Value {
+        Value::Response(TransportResponse::File(gunbc_ir::transport::FileResponse {
+            path: path.to_string(),
+            operation,
+            success: true,
+            content: None,
+            exists: None,
+            error: None,
+        }))
+    }
 
     #[test]
     fn test_execute_runs_ready_nodes_in_parallel() {
@@ -2148,6 +2344,128 @@ mod tests {
     fn fan_in_skips_unit_from_empty_list() {
         // Unit from a [0,∞) port is skipped (allows_empty = true)
         assert!(collect_fan_in(&Value::Unit, Cardinality::ZERO_OR_MORE).is_none());
+    }
+
+    #[test]
+    fn runtime_file_guard_allows_matching_declared_path() {
+        let node = Node::opaque(
+            "writer",
+            vec![resource(
+                "file:out.txt",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
+            vec![port("response", "TransportResponse")],
+            TestOp::echo(),
+        );
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "response".to_string(),
+            file_response("out.txt", FileOp::Write),
+        );
+
+        enforce_runtime_file_guard(&node, &outputs, true)
+            .expect("matching file declaration should be accepted");
+    }
+
+    #[test]
+    fn runtime_file_guard_rejects_missing_declaration() {
+        let node = Node::opaque(
+            "writer",
+            vec![],
+            vec![port("response", "TransportResponse")],
+            TestOp::echo(),
+        );
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "response".to_string(),
+            file_response("out.txt", FileOp::Write),
+        );
+
+        let err = enforce_runtime_file_guard(&node, &outputs, true)
+            .expect_err("missing declaration should be rejected");
+        let msg = err.to_string();
+        assert!(msg.contains("runtime file guard"));
+        assert!(msg.contains("out.txt"));
+    }
+
+    #[test]
+    fn runtime_file_guard_rejects_mismatched_declared_path() {
+        let node = Node::opaque(
+            "writer",
+            vec![resource(
+                "file:other.txt",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
+            vec![port("response", "TransportResponse")],
+            TestOp::echo(),
+        );
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "response".to_string(),
+            file_response("out.txt", FileOp::Write),
+        );
+
+        let err = enforce_runtime_file_guard(&node, &outputs, true)
+            .expect_err("mismatched declaration should be rejected");
+        let msg = err.to_string();
+        assert!(msg.contains("out.txt"));
+        assert!(msg.contains("other.txt"));
+    }
+
+    #[test]
+    fn runtime_file_guard_allows_wildcard_and_legacy_fs() {
+        let wildcard_node = Node::opaque(
+            "wildcard_writer",
+            vec![resource("file:*", "FilesystemHandle", AccessMode::Write)],
+            vec![port("response", "TransportResponse")],
+            TestOp::echo(),
+        );
+        let legacy_node = Node::opaque(
+            "legacy_writer",
+            vec![resource("fs", "FilesystemHandle", AccessMode::Write)],
+            vec![port("response", "TransportResponse")],
+            TestOp::echo(),
+        );
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "response".to_string(),
+            file_response("nested/out.txt", FileOp::Append),
+        );
+
+        enforce_runtime_file_guard(&wildcard_node, &outputs, true)
+            .expect("wildcard res:file:* should allow writes");
+        enforce_runtime_file_guard(&legacy_node, &outputs, true)
+            .expect("legacy res:fs should allow writes");
+    }
+
+    #[test]
+    fn runtime_file_guard_requires_write_or_exclusive_access_mode() {
+        let node = Node::opaque(
+            "writer",
+            vec![resource(
+                "file:out.txt",
+                "FilesystemHandle",
+                AccessMode::Read,
+            )],
+            vec![port("response", "TransportResponse")],
+            TestOp::echo(),
+        );
+
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "response".to_string(),
+            file_response("out.txt", FileOp::Write),
+        );
+
+        let err = enforce_runtime_file_guard(&node, &outputs, true)
+            .expect_err("read-only declaration should not satisfy write guard");
+        assert!(err.to_string().contains("AccessMode::Write/Exclusive"));
     }
 
     #[test]

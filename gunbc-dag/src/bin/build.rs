@@ -5,7 +5,8 @@
 
 #![deny(dead_code)]
 use gunbc_dag::build::build_build_graph;
-use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile};
+use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode};
+use std::io::IsTerminal;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
@@ -38,9 +39,6 @@ fn main() {
         eprintln!("preflight failed: {}", err);
         process::exit(1);
     }
-
-    // Detect terminal environment
-    let profile = TerminalProfile::detect();
 
     // Build the graph
     let dag = match build_build_graph() {
@@ -78,7 +76,8 @@ fn main() {
     println!();
 
     // Execute and display (progress or classic based on terminal)
-    execute_and_display(&dag, mode, &profile, Some("overall_success"), None);
+    let animated = std::io::stdout().is_terminal();
+    execute_and_display(&dag, mode, animated, Some("overall_success"), None);
 }
 
 fn print_help() {
