@@ -419,15 +419,57 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
         }
     }
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| TransportError::new(format!("failed to wait: {}", e)))?;
+    // If a timeout is set, wait with a deadline; otherwise wait forever.
+    if let Some(timeout_ms) = request.timeout_ms {
+        let deadline = Duration::from_millis(timeout_ms);
+        let start = std::time::Instant::now();
 
-    Ok(ShellResponse {
-        exit_code: output.status.code().unwrap_or(-1),
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-    })
+        // Poll the child until it exits or the deadline passes.
+        // We drop stdin first so the child can see EOF.
+        drop(child.stdin.take());
+        loop {
+            match child.try_wait() {
+                Ok(Some(_status)) => {
+                    // Child exited; collect output.
+                    let output = child
+                        .wait_with_output()
+                        .map_err(|e| TransportError::new(format!("failed to wait: {}", e)))?;
+                    return Ok(ShellResponse {
+                        exit_code: output.status.code().unwrap_or(-1),
+                        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                    });
+                }
+                Ok(None) => {
+                    // Still running — check deadline.
+                    if start.elapsed() >= deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err(TransportError::new(format!(
+                            "shell command timed out after {}ms: {} {}",
+                            timeout_ms,
+                            request.command,
+                            request.args.join(" "),
+                        )));
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(e) => {
+                    return Err(TransportError::new(format!("failed to wait: {}", e)));
+                }
+            }
+        }
+    } else {
+        let output = child
+            .wait_with_output()
+            .map_err(|e| TransportError::new(format!("failed to wait: {}", e)))?;
+
+        Ok(ShellResponse {
+            exit_code: output.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -901,6 +943,41 @@ mod tests {
         let result = execute_shell(&request);
 
         assert!(result.is_err(), "nonexistent command should error");
+    }
+
+    #[test]
+    fn test_shell_timeout_kills_slow_command() {
+        if !guard_shell(stringify!(test_shell_timeout_kills_slow_command)) {
+            return;
+        }
+
+        let request = ShellRequest::new("sleep").arg("60").timeout(200);
+        let start = std::time::Instant::now();
+        let result = execute_shell(&request);
+        let elapsed = start.elapsed();
+
+        assert!(result.is_err(), "timed-out command should return error");
+        assert!(
+            result.unwrap_err().message.contains("timed out"),
+            "error should mention timeout"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "should not wait for the full 60s sleep"
+        );
+    }
+
+    #[test]
+    fn test_shell_timeout_allows_fast_command() {
+        if !guard_shell(stringify!(test_shell_timeout_allows_fast_command)) {
+            return;
+        }
+
+        let request = ShellRequest::new("echo").arg("fast").timeout(5000);
+        let response = execute_shell(&request).unwrap();
+
+        assert_eq!(response.exit_code, 0);
+        assert!(response.stdout.contains("fast"));
     }
 
     // ========================================================================

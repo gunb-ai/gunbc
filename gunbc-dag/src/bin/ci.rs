@@ -28,6 +28,7 @@ use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use gunbc_ir::CODEGEN_STAMP_PATH;
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
+use gunbc_primitives::filename;
 use std::env;
 use std::process;
 
@@ -61,6 +62,10 @@ fn main() {
     // Set up execution mode
     let mode = if dry_run {
         let mut mocks = BoundaryMocks::new();
+
+        // Resource environment: filesystem handle used by transport executors.
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        mocks.set_value("fs_env", "fs:write", fs.into());
 
         // Transport execution nodes need properly-typed Response mocks.
         // The default mock is Value::Str("<DRY-RUN>"), but downstream parse
@@ -116,41 +121,37 @@ fn main() {
         );
         mocks.set_value("execute_stamp_write", "skip", Value::Bool(false));
 
-        // execute_build: shell command for cargo build
-        mocks.set_value(
-            "execute_build",
-            "response",
-            Value::Response(ShellResponse::ok("<DRY-RUN>").into()),
-        );
-        mocks.set_value("execute_build", "skip", Value::Bool(false));
-
-        // execute_test: shell command for cargo test
-        mocks.set_value(
-            "execute_test",
-            "response",
-            Value::Response(ShellResponse::ok("<DRY-RUN>").into()),
-        );
-        mocks.set_value("execute_test", "skip", Value::Bool(false));
-
-        // clippy_lint: tool consumer (intercepted)
-        mocks.set_value("clippy_lint", "success", Value::Bool(true));
-        mocks.set_value("clippy_lint", "stdout", Value::Str(String::new()));
-        mocks.set_value("clippy_lint", "stderr", Value::Str(String::new()));
-        mocks.set_value("clippy_lint", "skip", Value::Bool(false));
-
-        // verify checks: per-generator --mode=verify commands
-        for node in [
-            "execute_verify_makegen_check",
-            "execute_verify_bootstrap_check",
-            "execute_verify_testgen_check",
-            "execute_verify_pragma_check",
-        ] {
+        let mut set_skippable_shell = |node: &str| {
             mocks.set_value(
                 node,
                 "response",
                 Value::Response(ShellResponse::ok("<DRY-RUN>").into()),
             );
             mocks.set_value(node, "skip", Value::Bool(false));
+            mocks.set_value(node, "skip_reason", Value::Str(String::new()));
+        };
+
+        // Main CI stage transports (skippable triplets).
+        for node in [
+            "execute_testgen",
+            "execute_bootstrap",
+            "execute_pragma",
+            "execute_build",
+            "execute_test",
+            "execute_clippy_lint",
+            "execute_guardrail_check",
+        ] {
+            set_skippable_shell(node);
+        }
+
+        // Verify checks: per-generator --mode=verify commands (skippable triplets).
+        for node in [
+            "execute_verify_makegen_check",
+            "execute_verify_bootstrap_check",
+            "execute_verify_testgen_check",
+            "execute_verify_pragma_check",
+        ] {
+            set_skippable_shell(node);
         }
 
         ExecutionMode::DryRun(mocks)
@@ -189,12 +190,11 @@ fn main() {
 fn parse_resource_mode(args: &[String]) -> ExecMode {
     for arg in args {
         if let Some(mode_str) = arg.strip_prefix("--mode=") {
-            return match mode_str {
-                "verify" => ExecMode::Verify,
-                "ensure" => ExecMode::Ensure,
-                other => {
-                    eprintln!("Warning: Unknown mode '{}', using 'ensure'", other);
-                    ExecMode::Ensure
+            return match ExecMode::parse_strict(mode_str) {
+                Ok(parsed) => parsed,
+                Err(err) => {
+                    eprintln!("Error: {}", err);
+                    std::process::exit(1);
                 }
             };
         }

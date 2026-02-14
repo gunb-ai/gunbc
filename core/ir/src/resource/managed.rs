@@ -411,13 +411,14 @@ pub fn check_manifest_freshness<R: ManagedResource>(
         let mtime_inputs = mtime_inputs_from_def(def);
         if !mtime_inputs.has_non_file_inputs {
             let mut files: Vec<FileMtime> = Vec::new();
-            let mut ok = true;
+            let mut mtime_fallback_reason: Option<String> = None;
 
             for pattern in &mtime_inputs.glob_patterns {
                 let mut paths = match io.glob_paths(pattern) {
                     Ok(p) => p,
-                    Err(_) => {
-                        ok = false;
+                    Err(e) => {
+                        mtime_fallback_reason =
+                            Some(format!("glob failed for '{}': {}", pattern, e));
                         break;
                     }
                 };
@@ -425,38 +426,49 @@ pub fn check_manifest_freshness<R: ManagedResource>(
                 for path in paths {
                     match io.file_mtime(&path) {
                         Ok(modified) => files.push(FileMtime { path, modified }),
-                        Err(_) => {
-                            ok = false;
+                        Err(e) => {
+                            mtime_fallback_reason =
+                                Some(format!("mtime failed for '{}': {}", path.display(), e));
                             break;
                         }
                     }
                 }
-                if !ok {
+                if mtime_fallback_reason.is_some() {
                     break;
                 }
             }
 
-            if ok {
+            if mtime_fallback_reason.is_none() {
                 for path in &mtime_inputs.files {
                     match io.file_mtime(path) {
                         Ok(modified) => files.push(FileMtime {
                             path: path.clone(),
                             modified,
                         }),
-                        Err(_) => {
-                            ok = false;
+                        Err(e) => {
+                            mtime_fallback_reason =
+                                Some(format!("mtime failed for '{}': {}", path.display(), e));
                             break;
                         }
                     }
                 }
             }
 
-            if ok {
-                match check_freshness_mtime(entry, &files) {
+            match mtime_fallback_reason {
+                None => match check_freshness_mtime(entry, &files) {
                     MtimeResult::Fresh => return ManifestFreshness::Fresh,
-                    MtimeResult::MaybeStale(_) => {
-                        // Fall through to full hash comparison.
+                    MtimeResult::MaybeStale(reason) => {
+                        eprintln!(
+                            "  freshness: mtime indicates stale ({:?}), verifying with full hash",
+                            reason
+                        );
                     }
+                },
+                Some(reason) => {
+                    eprintln!(
+                        "  freshness: mtime fast path unavailable ({}), falling back to full hash",
+                        reason
+                    );
                 }
             }
         }

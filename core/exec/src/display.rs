@@ -11,10 +11,11 @@
 //! TerminalProfile::detect() →
 //!   is_ci             → execute_with_mode_and_ci_and_inputs → grouped CI logs
 //!   supports_progress → lower → layout → snapshot → execute → live rendering
-//!   fallback          → execute_with_mode_and_inputs → print log entries
+//!   non_tty           → observer-driven status lines + final summary
+//!   fallback          → execute_with_mode_and_inputs → classic log entries
 //! ```
 
-use crate::frame_build::build_frame;
+use crate::frame_build::{build_frame, format_duration};
 use crate::frame_write::FrameWriter;
 use crate::intercept::BoundaryMocks;
 use crate::progress::{DagProgress, DagSnapshot, OutputSummary, ProgressObserver};
@@ -121,6 +122,8 @@ pub fn execute_and_display_with_result<T: Executable + Clone + Send>(
         run_with_ci(dag, mode, success_port, input_mocks)
     } else if profile.supports_progress {
         run_with_progress(dag, mode, profile, success_port, input_mocks)
+    } else if !profile.is_tty {
+        run_non_tty_summary(dag, mode, success_port, input_mocks)
     } else {
         run_classic(dag, mode, success_port, input_mocks)
     }
@@ -165,6 +168,27 @@ fn run_with_ci<T: Executable + Clone + Send>(
     let log = execute_with_mode_and_ci_and_inputs(dag, mode, &mut ci, input_mocks)?;
     Ok(DisplayResult {
         should_fail: success_port_failed(&log, success_port),
+        log,
+    })
+}
+
+/// Non-TTY execution: concise progress/status lines instead of per-node dumps.
+fn run_non_tty_summary<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    success_port: Option<&str>,
+    input_mocks: Option<&BoundaryMocks>,
+) -> Result<DisplayResult, ExecError> {
+    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {}", e)))?;
+    let boundaries = detect_boundaries(&flat.dag);
+
+    let mut observer = NonTtyProgressObserver::default();
+    let log = execute_with_progress_and_mode_and_inputs(dag, mode, &mut observer, input_mocks)?;
+
+    print_boundary_outputs(&log, &boundaries);
+
+    Ok(DisplayResult {
+        should_fail: observer.failed_count() > 0 || success_port_failed(&log, success_port),
         log,
     })
 }
@@ -305,6 +329,137 @@ impl SharedProgressObserver {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         update(&mut guard);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NonTtyNodeState {
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Skipped,
+    Intercepted,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct NonTtyProgressCounts {
+    total: usize,
+    running: usize,
+    completed: usize,
+    failed: usize,
+    skipped: usize,
+    intercepted: usize,
+}
+
+impl NonTtyProgressCounts {
+    fn done(self) -> usize {
+        self.completed + self.intercepted
+    }
+}
+
+#[derive(Default)]
+struct NonTtyProgressObserver {
+    labels: HashMap<NodeId, String>,
+    states: HashMap<NodeId, NonTtyNodeState>,
+}
+
+impl NonTtyProgressObserver {
+    fn label_for<'a>(&'a self, node_id: &'a NodeId) -> &'a str {
+        self.labels
+            .get(node_id)
+            .map(String::as_str)
+            .unwrap_or(&node_id.0)
+    }
+
+    fn set_state(&mut self, node_id: &NodeId, state: NonTtyNodeState) {
+        self.states.insert(node_id.clone(), state);
+    }
+
+    fn counts(&self) -> NonTtyProgressCounts {
+        let mut counts = NonTtyProgressCounts {
+            total: self.states.len(),
+            ..Default::default()
+        };
+
+        for state in self.states.values() {
+            match state {
+                NonTtyNodeState::Pending => {}
+                NonTtyNodeState::Running => counts.running += 1,
+                NonTtyNodeState::Completed => counts.completed += 1,
+                NonTtyNodeState::Failed => counts.failed += 1,
+                NonTtyNodeState::Skipped => counts.skipped += 1,
+                NonTtyNodeState::Intercepted => counts.intercepted += 1,
+            }
+        }
+        counts
+    }
+
+    fn failed_count(&self) -> usize {
+        self.counts().failed
+    }
+}
+
+fn format_non_tty_summary_line(counts: NonTtyProgressCounts, elapsed: Duration) -> String {
+    let icon = if counts.failed > 0 { "✗" } else { "✓" };
+    let elapsed = format_duration(elapsed);
+    if counts.failed > 0 {
+        return format!(
+            "{icon} progress: {}/{} done, {} failed, {} skipped [{}]",
+            counts.done(),
+            counts.total,
+            counts.failed,
+            counts.skipped,
+            elapsed
+        );
+    }
+
+    format!(
+        "{icon} progress: {}/{} done, {} skipped [{}]",
+        counts.done(),
+        counts.total,
+        counts.skipped,
+        elapsed
+    )
+}
+
+impl ProgressObserver for NonTtyProgressObserver {
+    fn on_dag_start(&mut self, snapshot: &DagSnapshot) {
+        self.labels = snapshot.labels.clone();
+        self.states = snapshot
+            .node_ids
+            .iter()
+            .map(|id| (id.clone(), NonTtyNodeState::Pending))
+            .collect();
+    }
+
+    fn on_node_start(&mut self, node_id: &NodeId) {
+        self.set_state(node_id, NonTtyNodeState::Running);
+        eprintln!("→ {}...", self.label_for(node_id));
+    }
+
+    fn on_node_complete(&mut self, node_id: &NodeId, _summary: OutputSummary) {
+        self.set_state(node_id, NonTtyNodeState::Completed);
+        eprintln!("✓ {}", self.label_for(node_id));
+    }
+
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+        self.set_state(node_id, NonTtyNodeState::Failed);
+        eprintln!("✗ {}: {}", self.label_for(node_id), error);
+    }
+
+    fn on_node_skipped(&mut self, node_id: &NodeId) {
+        self.set_state(node_id, NonTtyNodeState::Skipped);
+    }
+
+    fn on_node_intercepted(&mut self, node_id: &NodeId, _summary: OutputSummary) {
+        self.set_state(node_id, NonTtyNodeState::Intercepted);
+        eprintln!("✓ {} [dry-run]", self.label_for(node_id));
+    }
+
+    fn on_dag_complete(&mut self, elapsed: Duration) {
+        let counts = self.counts();
+        eprintln!("{}", format_non_tty_summary_line(counts, elapsed));
     }
 }
 
@@ -496,4 +651,81 @@ pub(crate) fn truncate_log_value(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_non_tty_observer_counts_track_states() {
+        let a = NodeId::from("a");
+        let b = NodeId::from("b");
+        let c = NodeId::from("c");
+
+        let snapshot = DagSnapshot {
+            node_ids: vec![a.clone(), b.clone(), c.clone()],
+            edges: Vec::new(),
+            topo_order: vec![a.clone(), b.clone(), c.clone()],
+            boundary_nodes: Vec::new(),
+            labels: HashMap::from([
+                (a.clone(), "A".to_string()),
+                (b.clone(), "B".to_string()),
+                (c.clone(), "C".to_string()),
+            ]),
+        };
+
+        let mut observer = NonTtyProgressObserver::default();
+        observer.on_dag_start(&snapshot);
+        observer.on_node_start(&a);
+        observer.on_node_complete(
+            &a,
+            OutputSummary {
+                fields: Vec::new(),
+                elapsed: Duration::ZERO,
+            },
+        );
+        observer.on_node_start(&b);
+        observer.on_node_failed(&b, "boom");
+        observer.on_node_skipped(&c);
+
+        let counts = observer.counts();
+        assert_eq!(counts.total, 3);
+        assert_eq!(counts.done(), 1);
+        assert_eq!(counts.failed, 1);
+        assert_eq!(counts.skipped, 1);
+        assert_eq!(observer.failed_count(), 1);
+    }
+
+    #[test]
+    fn test_non_tty_summary_line_success() {
+        let line = format_non_tty_summary_line(
+            NonTtyProgressCounts {
+                total: 5,
+                completed: 4,
+                intercepted: 1,
+                ..Default::default()
+            },
+            Duration::from_secs(12),
+        );
+        assert!(line.starts_with("✓ progress: 5/5 done"));
+        assert!(line.contains("[12.0s]"));
+    }
+
+    #[test]
+    fn test_non_tty_summary_line_failure() {
+        let line = format_non_tty_summary_line(
+            NonTtyProgressCounts {
+                total: 5,
+                completed: 2,
+                failed: 1,
+                skipped: 2,
+                ..Default::default()
+            },
+            Duration::from_millis(850),
+        );
+        assert!(line.starts_with("✗ progress: 2/5 done, 1 failed, 2 skipped"));
+        assert!(line.contains("[850ms]"));
+    }
 }

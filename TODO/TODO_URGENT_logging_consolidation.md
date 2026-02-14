@@ -50,6 +50,7 @@ Three layers of the output system contributed, each independently too verbose:
 | Unified `print_log_entry` → `print_value` | 2026-02-13 | Eliminated duplicate function; both CI and classic use same path |
 | `truncate_log_value` for CI group output | 2026-02-13 | Multi-line values in CI groups capped at 40 lines (5 head + 35 tail) |
 | Secret redaction in `print_value` | 2026-02-13 | `print_value` now redacts `Value::Secret` (was missing before) |
+| Non-TTY observer summaries | 2026-02-14 | Non-interactive terminals now emit concise `→/✓/✗` progress lines + final summary instead of full per-node dumps |
 
 ### What remains unfixed
 
@@ -361,7 +362,7 @@ This effort is done only when all items below are true.
 
 - [x] Progress is live (observer/event driven), not post-execution replay.
 - [ ] Stage/task grouping exists for `gunbc` pipelines (at least CI stages).
-- [ ] Non-TTY mode emits concise status/progress summaries instead of full per-node output dumps.
+- [x] Non-TTY mode emits concise status/progress summaries instead of full per-node output dumps.
 - [ ] Long-running/noisy groups have an expansion path (or equivalent drill-down) without dumping everything by default.
 - [x] Spinner behavior (TTY) is present and consistent across tools: running state, completion state, and failure state are visually distinct.
 

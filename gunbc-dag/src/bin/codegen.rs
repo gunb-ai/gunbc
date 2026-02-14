@@ -33,27 +33,26 @@ fn main() {
             "--mode" => {
                 i += 1;
                 if i < args.len() {
-                    if let Some(parsed) = ExecMode::parse(&args[i]) {
-                        resource_mode = parsed;
-                    } else {
-                        eprintln!(
-                            "Warning: Unknown mode '{}', using '{}'",
-                            args[i], resource_mode
-                        );
+                    match ExecMode::parse_strict(&args[i]) {
+                        Ok(parsed) => resource_mode = parsed,
+                        Err(err) => {
+                            eprintln!("Error: {}", err);
+                            process::exit(1);
+                        }
                     }
                 } else {
-                    eprintln!("Warning: --mode requires a value (verify|ensure)");
+                    eprintln!("Error: --mode requires a value (verify|ensure)");
+                    process::exit(1);
                 }
             }
             arg if arg.starts_with("--mode=") => {
                 let mode_str = arg.trim_start_matches("--mode=");
-                if let Some(parsed) = ExecMode::parse(mode_str) {
-                    resource_mode = parsed;
-                } else {
-                    eprintln!(
-                        "Warning: Unknown mode '{}', using '{}'",
-                        mode_str, resource_mode
-                    );
+                match ExecMode::parse_strict(mode_str) {
+                    Ok(parsed) => resource_mode = parsed,
+                    Err(err) => {
+                        eprintln!("Error: {}", err);
+                        process::exit(1);
+                    }
                 }
             }
             "-h" | "--help" => {

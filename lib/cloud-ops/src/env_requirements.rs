@@ -2,6 +2,17 @@
 
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind};
 
+/// True only when an env var is set to a non-empty value.
+///
+/// GitHub Actions exports undefined secrets as empty strings, so plain
+/// `env::var(k).is_ok()` would treat those as "present".
+fn env_is_present(key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .filter(|v| !v.is_empty())
+        .is_some()
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct CloudEnvRequirements {
     pub provider: CloudProviderKind,
@@ -132,11 +143,11 @@ pub fn detect_provider_runtime() -> (CloudProviderKind, CloudRuntimeKind) {
 
     let runtime = if let Ok(runtime) = std::env::var("CLOUD_RUNTIME") {
         CloudRuntimeKind::parse(&runtime).unwrap_or(CloudRuntimeKind::LocalDev)
-    } else if std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").is_ok() {
+    } else if env_is_present("ACTIONS_ID_TOKEN_REQUEST_URL") {
         CloudRuntimeKind::GitHubActions
-    } else if std::env::var("GCE_METADATA_HOST").is_ok()
-        || std::env::var("K_SERVICE").is_ok()
-        || std::env::var("K_REVISION").is_ok()
+    } else if env_is_present("GCE_METADATA_HOST")
+        || env_is_present("K_SERVICE")
+        || env_is_present("K_REVISION")
     {
         CloudRuntimeKind::CloudMetadata
     } else {
@@ -151,13 +162,13 @@ pub fn collect_missing_requirements(req: &CloudEnvRequirements) -> MissingCloudE
         .required
         .iter()
         .copied()
-        .filter(|name| std::env::var(name).is_err())
+        .filter(|name| !env_is_present(name))
         .collect();
 
     let missing_any_of = req
         .required_any_of
         .iter()
-        .filter(|group| !group.iter().any(|name| std::env::var(name).is_ok()))
+        .filter(|group| !group.iter().any(|name| env_is_present(name)))
         .map(|group| group.to_vec())
         .collect();
 

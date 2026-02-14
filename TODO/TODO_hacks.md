@@ -1,11 +1,28 @@
-# Hacks & Fallbacks (2026-02-08 scan)
+# Hacks & Fallbacks
 
 **Status**: Active
 **Date**: 2026-02-07
+**Last reconciled**: 2026-02-13 (external review cross-checked against codebase)
 
 Sweep of explicit fallbacks and "best effort" behaviors in the codebase and
 recent changes. These are not necessarily bugs, but they are places where
 behavior can silently degrade or hide missing wiring.
+
+### Reconciliation notes (2026-02-13)
+
+External review flagged 14+ items. Cross-check found:
+- **4 already fixed**: verify→ensure fallback, scalar witness list fallback,
+  registry/makegen/CLI drift, secret redaction (now type-enforced via `SecretString`)
+- **12 still outstanding**: see individual items below
+- **4 claims in review were factually wrong**:
+  - "Secret redaction is by convention" — `Value::Secret(SecretString)` is type-enforced,
+    `print_value` handles it, inner value is private
+  - "Flat 5-minute shell timeout" — `ShellRequest.timeout_ms` defaults to `None` and
+    the executor doesn't implement timeout handling at all (see new item §15)
+  - "Executor is single-threaded" — `execute_flat_parallel` is the default; sequential
+    only when CI context is present
+  - "`check-disallowed-methods.sh` is redundant with clippy" — script enforces *where*
+    `#[allow(clippy::disallowed_methods)]` can appear, complementary to clippy
 
 ---
 
@@ -114,6 +131,11 @@ slowdowns without any diagnostic signal.
 **Suggested fix**: Add a warning/diagnostic or a distinct freshness state that
 captures the reason for the fallback. Consider making fallback behavior
 configurable.
+
+**Update (2026-02-13)**: IO error reasons are now captured and emitted via
+`eprintln!` at the fallback site (`glob failed for ...`, `mtime failed for ...`).
+The `MtimeResult::MaybeStale` reason is also surfaced before falling through to
+full hash. Fallback is no longer silent.
 
 ---
 
@@ -273,3 +295,199 @@ it needs to provision `NEW_SECRET`.
 **Blocked on**: GCP WIF setup for the GitHub Actions runner + a codegen
 pass that extracts secret requirements from testgen metadata into the
 CI workflow YAML.
+
+---
+
+## 15. Shell command timeout is defined but not implemented
+
+**Where**: `core/ir/src/transport/mod.rs` (`ShellRequest.timeout_ms`),
+`lib/transport/src/executor.rs` (`execute_shell`)
+
+**What happens**: `ShellRequest` has a `timeout_ms: Option<u64>` field and a
+`.timeout(ms)` builder method, but `execute_shell` calls
+`child.wait_with_output()` with no timeout handling. The field is dead wiring.
+
+**Why it's a hack**: Callers can set a timeout and believe it's enforced, but
+it silently does nothing.
+
+**Suggested fix**: Implement timeout via `wait_timeout` or a background
+watchdog thread that kills the child process, or remove the field until
+implemented.
+
+**Added**: 2026-02-13 (reconciliation)
+
+---
+
+## 16. CI/local execution path split duplicates display/reporting logic
+
+**Where**: `core/exec/src/display.rs` (lines 121-173), `gunbc-dag/src/bin/ci.rs`
+
+**What happens**: `execute_and_display` branches into completely different
+functions for CI (`run_with_ci`) vs local (`run_with_progress` /
+`run_non_tty_summary` / `run_classic`). Improvements to one path don't
+propagate to the other.
+
+**Why it's a hack**: Display/reporting logic drift between CI and local makes
+failures harder to reproduce and debug across environments.
+
+**Suggested fix**: One execution path, parameterized by a `DisplayConfig` /
+`CiContext`. CI grouping and progress rendering should be observer callbacks,
+not separate codepaths.
+
+**Added**: 2026-02-13 (reconciliation)
+
+---
+
+## 17. Preflight bypasses CI grouping and structured error reporting
+
+**Where**: `lib/transport/src/preflight.rs` (lines 52, 306-365)
+
+**What happens**: Preflight uses raw `println!`/`eprintln!` throughout. It runs
+before the DAG and has no access to `CiContext`, so its output appears as
+unstructured noise in CI logs with no `::error::` annotations.
+
+**Why it's a hack**: Preflight failures in CI produce no GitHub annotations and
+aren't wrapped in CI groups, making them hard to find in logs.
+
+**Suggested fix**: Either make preflight a DAG node, or at minimum accept a
+`CiContext` and emit CI groups + structured error commands.
+
+**Added**: 2026-02-13 (reconciliation)
+
+---
+
+## 18. Report node receives raw unstructured strings
+
+**Where**: `gunbc-dag/src/ci/ops.rs` (lines 920-1099),
+`core/ir/src/render_ir.rs` (`StructuredBlock::Raw`)
+
+**What happens**: `execute_report` formats CI report sections as
+`StructuredBlock::Raw(format!(...))`. Stderr from build/test/clippy is stuffed
+into raw strings and truncated at 60 lines / 500 chars as a band-aid.
+
+**Why it's a hack**: Truncation improves readability but the underlying data
+is unstructured text. Tooling can't programmatically find the "real" error.
+
+**Suggested fix**: Add stage-specific extractors (build errors, clippy warnings,
+test failures) and a unified error field convention so tooling can locate the
+actual error automatically.
+
+**Added**: 2026-02-13 (reconciliation)
+
+---
+
+## 19. Unknown CLI flags are silently ignored
+
+**Where**: `core/cli/src/lib.rs` (line 164, 216), all `gunbc-dag/src/bin/*.rs`
+
+**What happens**: The schema-driven parser and all manual CLI parsers use a
+`_ => {}` catch-all for unrecognized flags. Typos like `--extensinos` become
+silent no-ops.
+
+**Why it's a hack**: Silent flag ignoring is the #1 cause of "why isn't my
+flag working?" confusion, especially in CI where output is hard to inspect.
+
+**Suggested fix**: Add a strict mode (especially for CI) that errors on unknown
+flags, keeping permissive behavior as a compatibility option.
+
+**Added**: 2026-02-13 (reconciliation)
+
+---
+
+## 20. Unknown --mode values warn and proceed with default
+
+**Where**: all `gunbc-dag/src/bin/*.rs` (codegen, makegen, testgen, bootstrap,
+pragma, ci)
+
+**What happens**: If `ExecMode::parse()` returns `None` for an unrecognized
+mode string, every binary prints a warning and continues with the current or
+hardcoded default mode.
+
+**Why it's a hack**: In CI, warnings are easily missed. A typo in `--mode`
+can cause a verify workflow to silently run in ensure mode.
+
+**Suggested fix**: In CI context, treat unknown mode as a hard error.
+
+**Added**: 2026-02-13 (reconciliation)
+
+---
+
+## 21. Transport executor has zero test coverage for tcp/rest/http
+
+**Where**: `lib/transport/src/executor.rs` (`execute_rest`, `execute_http`,
+`execute_tcp`)
+
+**What happens**: Testgen generates tests for Prepare/Parse nodes and
+DryRun-intercepts Execute nodes, so the actual transport I/O boundary is never
+tested. TCP has a confirmed blind spot (a swapped-timeout bug survived because
+of this).
+
+**Why it's a hack**: The most error-prone code (network I/O, timeout handling,
+error mapping) has zero direct test coverage.
+
+**Suggested fix**: Add unit tests per transport (at minimum: request building,
+response parsing, error mapping, timeout behavior). See
+`TODO/TODO_transport_dag_migration.md` for the scoped plan.
+
+**Added**: 2026-02-13 (reconciliation)
+
+---
+
+## 22. Coercion coverage tests don't verify actual coercion
+
+**Where**: `core/codegen/src/testgen/codegen.rs` (`build_coercion_coverage_tests`),
+`core/exec/src/execute.rs` (fan-in logic)
+
+**What happens**: Generated coercion tests build a DAG, execute in DryRun, and
+assert it didn't crash. They don't verify that the coercion actually happened
+(e.g., scalar wrapped into list).
+
+**Why it's a hack**: Smoke tests won't catch shape bugs like nested-list vs
+flat-list coercion errors.
+
+**Suggested fix**: Either add `inputs` to `LogEntry` so tests can assert on
+what target nodes received, or inject shape-assert nodes into test graphs.
+
+**Blocked on**: Design decision — adding inputs to LogEntry doubles log memory;
+shape-assert nodes require more complex testgen logic.
+
+**Added**: 2026-02-13 (reconciliation)
+
+---
+
+## 23. DryRun defaults mask missing resource wiring
+
+**Where**: `lib/tools/deps/src/graph_mock.rs`, `lib/tools/deps/src/env.rs`
+
+**What happens**: DryRun mocks use deterministic defaults (`Platform::Linux`,
+`Timestamp(0)`, empty `EnvVars`) so a DAG can appear to work even if it never
+properly acquired/wired those resources.
+
+**Why it's a hack**: Missing resource wiring is silently papered over by
+defaults instead of failing loudly.
+
+**Suggested fix**: Consider a "strict DryRun" mode where env-node outputs
+default to poison/UNSET unless explicitly mocked.
+
+**Added**: 2026-02-13 (reconciliation)
+
+---
+
+## 24. Multiple `cargo run --release` invocations in Makefile
+
+**Where**: `Makefile` (lines 22, 30, 42, 46, 50, 54-64)
+
+**What happens**: The generated Makefile invokes `cargo run -p gunbc-dag --bin X
+--release` 6+ times for codegen, testgen, pragma, makegen, bootstrap. Each
+invocation incurs full cargo overhead (dependency resolution, compilation
+checks, binary loading).
+
+**Why it's a hack**: Repeated cargo invocations are a CI-time multiplier. The
+binaries are already compiled; running them via `cargo run` re-checks
+dependencies every time.
+
+**Suggested fix**: Build once (`cargo build --release`), then invoke binaries
+directly from `target/release/`. Or use a single orchestrator binary with
+subcommands.
+
+**Added**: 2026-02-13 (reconciliation)

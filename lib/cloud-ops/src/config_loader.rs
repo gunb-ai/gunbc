@@ -157,7 +157,7 @@ pub fn detect_runtime() -> CloudRuntimeKind {
     if std::env::var("GITHUB_ACTIONS").ok().as_deref() == Some("true") {
         return CloudRuntimeKind::GitHubActions;
     }
-    if std::env::var("GCE_METADATA_HOST").is_ok() {
+    if std::env::var("GCE_METADATA_HOST").ok().filter(|v| !v.is_empty()).is_some() {
         return CloudRuntimeKind::CloudMetadata;
     }
     CloudRuntimeKind::LocalDev
