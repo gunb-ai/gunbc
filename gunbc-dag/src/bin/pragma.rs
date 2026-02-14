@@ -18,10 +18,7 @@ use std::io::IsTerminal;
 use std::process;
 
 fn main() {
-    let parsed = BinaryArgs::new()
-        .with_mode()
-        .with_check_deprecated()
-        .parse_env();
+    let parsed = BinaryArgs::new().with_mode().parse_env();
     if parsed.help {
         print_help();
         return;
@@ -231,7 +228,6 @@ fn print_help() {
     println!("OPTIONS:");
     println!("    -n, --dry-run        Don't perform actual I/O");
     println!("    --mode=MODE          Resource mode: verify (CI) or ensure (default)");
-    println!("    -c, --check          Deprecated alias for --mode=verify");
     println!("    -h, --help           Print this help");
     println!();
     println!("Progress display is automatic based on terminal capabilities.");

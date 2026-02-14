@@ -491,6 +491,7 @@ mod window_helper_tests {
         }
         LogEntry {
             node_id: node.to_string(),
+            inputs: None,
             outputs: map,
             was_intercepted: false,
         }
@@ -794,6 +795,7 @@ mod assert_chain_outputs_tests {
                 .into_iter()
                 .map(|(node, outputs)| LogEntry {
                     node_id: node.to_string(),
+                    inputs: None,
                     outputs: outputs
                         .into_iter()
                         .map(|(p, v)| (p.to_string(), v))
@@ -955,6 +957,7 @@ mod tests {
         let baseline = ExecutionLog {
             entries: vec![LogEntry {
                 node_id: "a".to_string(),
+                inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
             }],
@@ -962,6 +965,7 @@ mod tests {
         let window_log = ExecutionLog {
             entries: vec![LogEntry {
                 node_id: "a".to_string(),
+                inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
             }],
@@ -984,6 +988,7 @@ mod tests {
         let baseline = ExecutionLog {
             entries: vec![LogEntry {
                 node_id: "a".to_string(),
+                inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
             }],
@@ -991,6 +996,7 @@ mod tests {
         let window_log = ExecutionLog {
             entries: vec![LogEntry {
                 node_id: "a".to_string(),
+                inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
             }],

@@ -194,8 +194,9 @@ Removed `upsert_and_run` and unused imports (`CliToolError`, `Value`,
 3. `BlobOps::CompareContent` relies on strict input extraction
    (`optional_bool_strict`) to reject wrong-typed inputs at runtime
    (`lib/blob/src/lib.rs`).
-4. CLI parsing still has permissive coercion (`Int` uses parse-or-0) which is
-   runtime behavior, not structural typing (`core/cli/src/lib.rs`).
+4. CLI parsing is now fail-closed (unknown flags and invalid ints are hard
+   errors), but node execution boundaries still accept dynamic `Value` maps
+   (`core/exec/src/lib.rs`, `core/exec/src/execute.rs`).
 
 **Suggested fix (incremental, DAG-first)**:
 1. Add `input_mocks` type validation in testgen coverage checks (same level as
@@ -466,11 +467,11 @@ default to poison/UNSET unless explicitly mocked.
 **Where**: `Makefile` (lines 22, 30, 42, 46, 50, 54-64),
 `gunbc-dag/src/bin/*.rs` (all 8 binaries)
 
-**CLI parsing — RESOLVED (2026-02-13)**: Extracted `BinaryArgs` builder in
-`core/cli/src/binary_args.rs`. All 8 binaries now use `BinaryArgs::new()` with
-opt-in `.with_mode()`, `.with_check_deprecated()`, `.with_string_param()`.
-Deleted `parse_resource_mode()` from `ci.rs`. ~320 lines of hand-rolled
-while-loops replaced with ~3-8 lines per binary.
+**CLI parsing — RESOLVED (2026-02-14)**: Extracted `BinaryArgs` builder in
+`core/cli/src/binary_args.rs` and routed binary parsing through shared
+`gunbc_cli::parse()`. Deprecated `--check`/`-c` handling was removed; binaries
+now accept only canonical flags (`--mode` and canonicalized `--<kebab(name)>`
+for string params). Deleted `parse_resource_mode()` from `ci.rs`.
 
 **Makefile overhead — still open**: The generated Makefile still invokes
 `cargo run -p gunbc-dag --bin X --release` 6+ times. Each invocation incurs
@@ -478,4 +479,68 @@ full cargo overhead. Consider `cargo build --release` once then invoke
 binaries directly from `target/release/`.
 
 **Added**: 2026-02-13 (reconciliation)
-**Updated**: 2026-02-13 (CLI parsing resolved)
+**Updated**: 2026-02-14 (deprecated `--check` path removed)
+
+---
+
+## 25. Probe-observer lowering/analysis is computed in multiple places
+
+**Where**: `core/codegen/src/testgen/codegen.rs`
+
+**What remains**: Header coverage reporting and probe-observer test section
+still perform overlapping lowering/analysis work on separate paths.
+
+**Risk**: drift in filtering/report semantics and duplicate compute cost.
+
+**Suggested fix**: compute one `ProbeObserverBundle` (lowered DAG + analysis +
+report) and thread it through both header and section generation.
+
+**Added**: 2026-02-14 (reconciliation)
+
+---
+
+## 26. Seed policy classification is still testgen-local string matching
+
+**Where**: `core/codegen/src/testgen/codegen.rs`
+
+**What remains**: seed safety policy is encoded as a string whitelist in
+testgen rather than in IR type metadata.
+
+**Risk**: new/refined types can drift unless both IR and testgen are updated.
+
+**Suggested fix**: move seed policy classification into IR type model and query
+it from testgen.
+
+**Added**: 2026-02-14 (reconciliation)
+
+---
+
+## 27. CI secret requirements are not modeled from one source of truth
+
+**Where**: workflow env wiring + testgen metadata (`live_required*`)
+
+**What remains**: required secret lists can drift between CI/workflow config
+and runtime/test metadata.
+
+**Risk**: false skips or false confidence in live paths.
+
+**Suggested fix**: central required-secret accessor + generated CI env exports
+from test metadata.
+
+**Added**: 2026-02-14 (reconciliation)
+
+---
+
+## 28. Execution logs still omit node inputs
+
+**Where**: `core/exec/src/execute.rs` (`LogEntry`)
+
+**What remains**: logs store outputs only; tests/tooling cannot directly assert
+actual received inputs/coercions.
+
+**Risk**: coercion/shape regressions can hide behind non-crash checks.
+
+**Suggested fix**: add opt-in input recording mode for `LogEntry` (at least in
+test execution paths).
+
+**Added**: 2026-02-14 (reconciliation)

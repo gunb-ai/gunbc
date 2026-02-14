@@ -35,6 +35,7 @@
 pub mod backend;
 pub mod cli;
 pub mod executor;
+pub mod lint_guard;
 pub mod ops;
 pub mod preflight;
 pub mod resource_io;
@@ -47,6 +48,7 @@ pub use ops::TransportOps;
 pub use preflight::{
     ensure_lint_upsert, ensure_lint_upsert_with_ci, ensure_lint_upsert_with_observer,
 };
+pub use lint_guard::execute_lint_check;
 pub use resource_io::TransportIo;
 
 #[cfg(test)]

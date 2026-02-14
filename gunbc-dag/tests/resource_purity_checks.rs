@@ -161,6 +161,8 @@ fn resource_ids_have_no_legacy_aliases() {
         format!("out(\"{}\")", "net"),
         format!("boundary(\"{}\", \"{}\"", "net_env", "net"),
         format!("set_value(\"{}\", \"{}\"", "net_env", "net"),
+        format!("{}{}{}{}", "with", "_check", "_deprecated", "("),
+        format!("{} {} {}", "Deprecated alias", "for --mode", "=verify"),
     ];
 
     let mut hits = Vec::new();

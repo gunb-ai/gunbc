@@ -85,10 +85,7 @@ fn build_dag_header(
                     },
                 )
             };
-            Line::new(vec![
-                icon,
-                Span::plain(format!(" Running [{}]", elapsed)),
-            ])
+            Line::new(vec![icon, Span::plain(format!(" Running [{}]", elapsed))])
         }
         DagPhase::Completed { elapsed: e } => {
             let icon_spans = match tier {
@@ -140,7 +137,6 @@ fn build_dag_header(
 // ---------------------------------------------------------------------------
 // Standard mode lines
 // ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // Compact mode
@@ -374,16 +370,32 @@ fn build_grouped_stage_panel(
         } else if is_final {
             // Final static frame: checkmark only if truly done, otherwise pending circle.
             if gp.is_done() {
-                ("\u{2714}".to_string(), SemanticColor::Success, Some(SemanticColor::Dim))
+                (
+                    "\u{2714}".to_string(),
+                    SemanticColor::Success,
+                    Some(SemanticColor::Dim),
+                )
             } else {
-                ("\u{25CB}".to_string(), SemanticColor::Dim, Some(SemanticColor::Dim))
+                (
+                    "\u{25CB}".to_string(),
+                    SemanticColor::Dim,
+                    Some(SemanticColor::Dim),
+                )
             }
         } else if gp.running > 0 {
             (spinner_frame.to_string(), SemanticColor::Active, None) // spinner, orange, default name
         } else if gp.is_done() {
-            ("\u{2714}".to_string(), SemanticColor::Success, Some(SemanticColor::Dim)) // ✔, green, dim name
+            (
+                "\u{2714}".to_string(),
+                SemanticColor::Success,
+                Some(SemanticColor::Dim),
+            ) // ✔, green, dim name
         } else {
-            ("\u{25CB}".to_string(), SemanticColor::Dim, Some(SemanticColor::Dim)) // ○, dim, dim name
+            (
+                "\u{25CB}".to_string(),
+                SemanticColor::Dim,
+                Some(SemanticColor::Dim),
+            ) // ○, dim, dim name
         };
 
         // Build suffix with running task names or failed task names inline
@@ -640,7 +652,6 @@ fn group_has_long_running_node(
     })
 }
 
-
 // ---------------------------------------------------------------------------
 // Footer
 // ---------------------------------------------------------------------------
@@ -719,7 +730,6 @@ fn symbol_span(id: SymbolId, symbol_set: &'static SymbolSet, _tier: Tier) -> Spa
     )
 }
 
-
 /// Map node state to its semantic color.
 pub fn state_color(state: NodeState) -> SemanticColor {
     match state {
@@ -742,7 +752,6 @@ fn legend_char(state: NodeState) -> &'static str {
         NodeState::Pending => "\u{25CB}",                            // ○
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Utility functions
@@ -996,7 +1005,6 @@ mod tests {
         assert_eq!(state_color(NodeState::Completed), SemanticColor::Success);
         assert_eq!(state_color(NodeState::Failed), SemanticColor::Error);
     }
-
 
     #[test]
     fn test_format_duration() {
@@ -1298,5 +1306,4 @@ mod tests {
             all_text
         );
     }
-
 }

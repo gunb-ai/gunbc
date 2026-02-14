@@ -57,6 +57,26 @@ pub enum ExecutionMode {
     Simulate(SimConfig),
 }
 
+/// Execution log detail level.
+///
+/// This controls what information is stored in each [`LogEntry`]. Higher-level
+/// compositions can default to a lighter level and opt into richer capture
+/// where needed (for example, test/verify runs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LogDetailLevel {
+    /// Record node outputs and interception state only.
+    #[default]
+    Basic,
+    /// Record both node outputs and effective node inputs.
+    IncludeInputs,
+}
+
+impl LogDetailLevel {
+    fn includes_inputs(self) -> bool {
+        matches!(self, Self::IncludeInputs)
+    }
+}
+
 /// Configuration for simulation mode.
 #[derive(Debug, Clone, Default)]
 pub struct SimConfig {
@@ -174,6 +194,7 @@ pub struct ResourceUsage {
 #[derive(Debug, Clone)]
 pub struct LogEntry {
     pub node_id: String,
+    pub inputs: Option<HashMap<String, Value>>,
     pub outputs: HashMap<String, Value>,
     pub was_intercepted: bool,
 }
@@ -246,6 +267,17 @@ pub fn execute_with_mode_and_inputs<T: Executable + Clone + Send>(
     mode: ExecutionMode,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<ExecutionLog, ExecError> {
+    execute_with_mode_and_inputs_and_detail(dag, mode, input_mocks, LogDetailLevel::Basic)
+}
+
+/// Execute a DAG with the specified execution mode, optional input mocks,
+/// and an explicit execution log detail level.
+pub fn execute_with_mode_and_inputs_and_detail<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    input_mocks: Option<&BoundaryMocks>,
+    log_detail: LogDetailLevel,
+) -> Result<ExecutionLog, ExecError> {
     // Lower sub-DAGs first
     let lowered = lower(dag).exec_context("lowering failed")?;
 
@@ -267,6 +299,7 @@ pub fn execute_with_mode_and_inputs<T: Executable + Clone + Send>(
         None,
         effective_mocks,
         &lowered.loops,
+        log_detail,
     )
 }
 
@@ -297,6 +330,16 @@ pub fn execute_with_progress_and_mode<T: Executable + Clone + Send>(
     mode: ExecutionMode,
     observer: &mut dyn ProgressObserver,
 ) -> Result<ExecutionLog, ExecError> {
+    execute_with_progress_and_mode_and_detail(dag, mode, observer, LogDetailLevel::Basic)
+}
+
+/// Execute a DAG with execution mode, progress observer, and explicit log detail.
+pub fn execute_with_progress_and_mode_and_detail<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    observer: &mut dyn ProgressObserver,
+    log_detail: LogDetailLevel,
+) -> Result<ExecutionLog, ExecError> {
     let lowered = lower(dag).exec_context("lowering failed")?;
     let boundaries = detect_boundaries(&lowered.dag);
     execute_flat(
@@ -306,6 +349,7 @@ pub fn execute_with_progress_and_mode<T: Executable + Clone + Send>(
         Some(observer),
         None,
         &lowered.loops,
+        log_detail,
     )
 }
 
@@ -315,6 +359,23 @@ pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone + Send>(
     mode: ExecutionMode,
     observer: &mut dyn ProgressObserver,
     input_mocks: Option<&BoundaryMocks>,
+) -> Result<ExecutionLog, ExecError> {
+    execute_with_progress_and_mode_and_inputs_and_detail(
+        dag,
+        mode,
+        observer,
+        input_mocks,
+        LogDetailLevel::Basic,
+    )
+}
+
+/// Execute a DAG with execution mode, progress observer, input mocks, and explicit log detail.
+pub fn execute_with_progress_and_mode_and_inputs_and_detail<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    observer: &mut dyn ProgressObserver,
+    input_mocks: Option<&BoundaryMocks>,
+    log_detail: LogDetailLevel,
 ) -> Result<ExecutionLog, ExecError> {
     let lowered = lower(dag).exec_context("lowering failed")?;
     let remapped_mocks = input_mocks.map(|mocks| remap_input_mocks(mocks, &lowered.input_remaps));
@@ -328,6 +389,7 @@ pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone + Send>(
         Some(observer),
         effective_mocks,
         &lowered.loops,
+        log_detail,
     )
 }
 
@@ -446,6 +508,7 @@ pub fn simulate<T: Executable + Clone + Send>(
         None,
         None,
         &lowered.loops,
+        LogDetailLevel::Basic,
     )?;
 
     // Compute simulation metrics
@@ -539,12 +602,29 @@ fn execute_flat<T: Executable + Clone + Send>(
     observer: Option<&mut dyn ProgressObserver>,
     input_mocks: Option<&BoundaryMocks>,
     loops: &[LoopInfo<T>],
+    log_detail: LogDetailLevel,
 ) -> Result<ExecutionLog, ExecError> {
     let sequential = observer.as_ref().is_some_and(|o| o.requires_sequential());
     if sequential {
-        execute_flat_sequential(dag, boundaries, mode, observer.unwrap(), input_mocks, loops)
+        execute_flat_sequential(
+            dag,
+            boundaries,
+            mode,
+            observer.unwrap(),
+            input_mocks,
+            loops,
+            log_detail,
+        )
     } else {
-        execute_flat_parallel(dag, boundaries, mode, observer, input_mocks, loops)
+        execute_flat_parallel(
+            dag,
+            boundaries,
+            mode,
+            observer,
+            input_mocks,
+            loops,
+            log_detail,
+        )
     }
 }
 
@@ -560,6 +640,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
     observer: &mut dyn ProgressObserver,
     input_mocks: Option<&BoundaryMocks>,
     loops: &[LoopInfo<T>],
+    log_detail: LogDetailLevel,
 ) -> Result<ExecutionLog, ExecError> {
     let file_guard_enabled = runtime_file_guard_enabled();
     let order = topo_sort(dag);
@@ -761,6 +842,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         node_outputs.insert(node_id.0.clone(), outputs.clone());
         let entry = LogEntry {
             node_id: node_id.0.clone(),
+            inputs: log_detail.includes_inputs().then(|| inputs.clone()),
             outputs,
             was_intercepted,
         };
@@ -786,7 +868,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         // Loop body execution: if this node is a loop unpack, execute the body
         // template once per element and replace the element output with results.
         if let Some(loop_info) = loops.iter().find(|l| l.unpack_id == *node_id) {
-            let body_entries = execute_loop_body(loop_info, &node_outputs, mode)?;
+            let body_entries = execute_loop_body(loop_info, &node_outputs, mode, log_detail)?;
 
             let results: Vec<Value> = body_entries
                 .iter()
@@ -1136,9 +1218,11 @@ struct ParallelSchedulerState<'a, T> {
 
 fn finalize_node_parallel<T: Executable + Clone + Send>(
     node_id: &NodeId,
+    inputs: Option<HashMap<String, Value>>,
     outputs: HashMap<String, Value>,
     was_intercepted: bool,
     mode: &ExecutionMode,
+    log_detail: LogDetailLevel,
     state: &mut ParallelSchedulerState<'_, T>,
 ) -> Result<(), ExecError> {
     let idx = *state.node_index.get(node_id).ok_or_else(|| {
@@ -1153,12 +1237,13 @@ fn finalize_node_parallel<T: Executable + Clone + Send>(
         .insert(node_id.0.clone(), outputs.clone());
     state.node_entries[idx] = Some(LogEntry {
         node_id: node_id.0.clone(),
+        inputs,
         outputs,
         was_intercepted,
     });
 
     if let Some(loop_info) = state.loops_by_unpack.get(node_id) {
-        let body_entries = execute_loop_body(loop_info, &state.node_outputs, mode)?;
+        let body_entries = execute_loop_body(loop_info, &state.node_outputs, mode, log_detail)?;
 
         // Replace the unpack element output with transformed body results.
         let results: Vec<Value> = body_entries
@@ -1201,10 +1286,12 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
     observer: Option<&mut dyn ProgressObserver>,
     input_mocks: Option<&BoundaryMocks>,
     loops: &[LoopInfo<T>],
+    log_detail: LogDetailLevel,
 ) -> Result<ExecutionLog, ExecError> {
     struct NodeExecutionResult {
         node_id: NodeId,
         started_at: Instant,
+        inputs: Option<HashMap<String, Value>>,
         result: Result<HashMap<String, Value>, ExecError>,
     }
 
@@ -1325,7 +1412,15 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                     if let Some(ref mut o) = obs {
                         o.on_node_skipped(&node_id);
                     }
-                    finalize_node_parallel(&node_id, outputs, false, mode, &mut state)?;
+                    finalize_node_parallel(
+                        &node_id,
+                        log_detail.includes_inputs().then(|| inputs.clone()),
+                        outputs,
+                        false,
+                        mode,
+                        log_detail,
+                        &mut state,
+                    )?;
                     continue;
                 }
 
@@ -1353,7 +1448,15 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         let summary = OutputSummary::from_outputs(&outputs, node_start.elapsed());
                         o.on_node_intercepted(&node_id, summary);
                     }
-                    finalize_node_parallel(&node_id, outputs, true, mode, &mut state)?;
+                    finalize_node_parallel(
+                        &node_id,
+                        log_detail.includes_inputs().then(|| inputs.clone()),
+                        outputs,
+                        true,
+                        mode,
+                        log_detail,
+                        &mut state,
+                    )?;
                     continue;
                 }
 
@@ -1362,11 +1465,13 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         let op = op.clone();
                         let node_id_clone = node_id.clone();
                         let tx = tx.clone();
+                        let captured_inputs = log_detail.includes_inputs().then(|| inputs.clone());
                         scope.spawn(move || {
                             let result = op.execute(inputs);
                             let _ = tx.send(NodeExecutionResult {
                                 node_id: node_id_clone,
                                 started_at: node_start,
+                                inputs: captured_inputs,
                                 result,
                             });
                         });
@@ -1426,9 +1531,11 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                     }
                     finalize_node_parallel(
                         &completed_node.node_id,
+                        completed_node.inputs,
                         outputs,
                         false,
                         mode,
+                        log_detail,
                         &mut state,
                     )?
                 }
@@ -1522,6 +1629,7 @@ fn execute_loop_body<T: Executable + Clone + Send>(
     loop_info: &LoopInfo<T>,
     node_outputs: &HashMap<String, HashMap<String, Value>>,
     mode: &ExecutionMode,
+    log_detail: LogDetailLevel,
 ) -> Result<Vec<LogEntry>, ExecError> {
     // Get the element list from the unpack outputs
     let unpack_outputs = node_outputs.get(&loop_info.unpack_id.0).ok_or_else(|| {
@@ -1601,6 +1709,7 @@ fn execute_loop_body<T: Executable + Clone + Send>(
             None,
             Some(&iter_mocks),
             &lowered_body.loops,
+            log_detail,
         )?;
 
         // Prefix iteration entries for unique identification in the log
@@ -1608,6 +1717,7 @@ fn execute_loop_body<T: Executable + Clone + Send>(
         for entry in body_log.entries {
             all_entries.push(LogEntry {
                 node_id: format!("{}/{}", prefix, entry.node_id),
+                inputs: entry.inputs,
                 outputs: entry.outputs,
                 was_intercepted: entry.was_intercepted,
             });

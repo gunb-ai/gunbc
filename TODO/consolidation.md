@@ -934,3 +934,40 @@ nodes execute in workspace context, they invoke the wrong operation.
 7. **§17.9** — `Cow<'static, str>` for struct fields with literal values
 8. **§17.5** — `HashSet` for set operations
 9. Rest — minor items, address opportunistically
+
+### 2026-02-14 Modeling Consolidation Backlog
+
+#### A. Probe-observer analysis/lowering single-source bundle
+
+**Where:** `core/codegen/src/testgen/codegen.rs`
+
+Header coverage reporting and probe-observer test section still compute
+overlapping lowering/analysis on separate paths.
+
+**Target:** compute once (lowered DAG + probe-observer analysis + report) and
+reuse everywhere.
+
+#### B. Seed policy ownership in IR types (not testgen whitelist)
+
+**Where:** `core/codegen/src/testgen/codegen.rs`, `core/ir/src/types.rs`
+
+Seed safety policy is still a testgen-local string whitelist.
+
+**Target:** move policy classification to IR type model and query from testgen.
+
+#### C. Live-secret requirements as generated workflow metadata
+
+**Where:** testgen metadata + CI workflow env wiring
+
+Required-secret declarations can drift between metadata and workflow exports.
+
+**Target:** single required-secret model that generates CI env wiring and
+runtime/test gating.
+
+#### D. Execution trace inputs for coercion/assertion observability
+
+**Where:** `core/exec/src/execute.rs` (`LogEntry`)
+
+Logs record outputs but not inputs, limiting coercion/shape assertions.
+
+**Target:** add opt-in input capture mode for test/verify contexts.

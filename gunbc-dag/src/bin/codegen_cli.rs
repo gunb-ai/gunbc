@@ -53,6 +53,8 @@ use gunbc_dag::bootstrap::bootstrap_tool;
 use gunbc_dag::makegen::makegen_tool;
 use gunbc_deps::deps_tool;
 use gunbc_gist::{gist_diff_tool, gist_recent_tool, gist_snapshot_tool};
+// Force-link crates that register live test targets used by ci_live_test_secrets().
+use gunbc_lib_llm_ops as _;
 use gunbc_lib_review::review_tool;
 
 fn main() {
@@ -335,8 +337,8 @@ fn cmd_cigen(dry_run: bool) {
         })
         .collect();
 
-    // GCP secrets required by live flow tests
-    let ci_secrets: Vec<String> = gunbc_dag::ci::graph::ci_gcp_secrets()
+    // Secrets required by live flow tests (derived from testgen metadata).
+    let ci_secrets: Vec<String> = gunbc_dag::ci::graph::ci_live_test_secrets()
         .into_iter()
         .map(|s| s.to_string())
         .collect();

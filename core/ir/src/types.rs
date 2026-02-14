@@ -551,9 +551,48 @@ impl std::fmt::Display for PortName {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeId(pub String);
 
+/// Policy for placeholder seed generation in generated tests.
+///
+/// This classification lives with the IR type model so downstream generators
+/// can share one canonical policy instead of maintaining local string lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeedPlaceholderPolicy {
+    /// Generated placeholder seeds are considered safe for this type.
+    Generated,
+    /// This type must use an explicit authored seed.
+    ExplicitSeedRequired,
+}
+
 impl TypeId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
+    }
+
+    /// Classify placeholder seed policy for this type.
+    ///
+    /// This is fail-closed: unknown/new types default to
+    /// `ExplicitSeedRequired`.
+    pub fn seed_placeholder_policy(&self) -> SeedPlaceholderPolicy {
+        seed_placeholder_policy_for_type_id(&self.0)
+    }
+}
+
+/// Classify placeholder seed policy for a raw type ID.
+pub fn seed_placeholder_policy_for_type_id(type_id: &str) -> SeedPlaceholderPolicy {
+    match type_id {
+        // Primitives.
+        "String" | "Bool" | "Int" | "Unit" | "Json" | "Void"
+        // Refined primitives.
+        | "NonEmptyString" | "Url" | "FilePath" | "Path" | "Email"
+        | "PositiveInt" | "NonNegativeInt"
+        // Common wrappers/container aliases.
+        | "OptionalString" | "OptionalInt" | "OptionalBool" | "OptionalJson"
+        | "OptionalUrl"
+        | "StringList" | "IntList" | "BoolList" | "JsonList"
+        | "UrlList" | "FilePathList"
+        | "NonEmptyStringList" | "NonEmptyFilePathList"
+        => SeedPlaceholderPolicy::Generated,
+        _ => SeedPlaceholderPolicy::ExplicitSeedRequired,
     }
 }
 
@@ -690,6 +729,34 @@ mod tests {
         // Unbounded: no synthetic "large" values are added here.
         let unbounded = Cardinality::new(0, None);
         assert_eq!(unbounded.test_cases_capped(5), vec![0, 1]);
+    }
+
+    #[test]
+    fn test_seed_placeholder_policy_known_types() {
+        assert_eq!(
+            seed_placeholder_policy_for_type_id("String"),
+            SeedPlaceholderPolicy::Generated
+        );
+        assert_eq!(
+            seed_placeholder_policy_for_type_id("OptionalString"),
+            SeedPlaceholderPolicy::Generated
+        );
+        assert_eq!(
+            seed_placeholder_policy_for_type_id("TransportResponse"),
+            SeedPlaceholderPolicy::ExplicitSeedRequired
+        );
+    }
+
+    #[test]
+    fn test_seed_placeholder_policy_fail_closed() {
+        assert_eq!(
+            seed_placeholder_policy_for_type_id("CustomAuthToken"),
+            SeedPlaceholderPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(
+            TypeId::from("SomeNewCarrierType").seed_placeholder_policy(),
+            SeedPlaceholderPolicy::ExplicitSeedRequired
+        );
     }
 
     #[test]

@@ -126,12 +126,11 @@ pub use render_ir::{
     RenderSurface, Span, SpanStyle, StructuredBlock, StructuredRenderer, Target, TextMedium,
 };
 pub use resource::{
-    derive_resource_accesses, detect_resource_conflicts, normalize_resource_id, AccessMode,
-    Resource, ResourceAccess, ResourceAccessError, ResourceConflict, ResourceId, ResourceKind,
-    Timestamp, API_NETWORK_HANDLE_PORT, FILE_HANDLE_READ_PORT, FILE_HANDLE_WRITE_PORT,
-    RESOURCE_API_NETWORK, RESOURCE_FILE, RESOURCE_FILE_PREFIX, RESOURCE_PORT_PREFIX,
-    RESOURCE_REPO, RESOURCE_TARGET, resource_api_port, resource_file_port, resource_port,
-    resource_target_port,
+    derive_resource_accesses, detect_resource_conflicts, normalize_resource_id, resource_api_port,
+    resource_file_port, resource_port, resource_target_port, AccessMode, Resource, ResourceAccess,
+    ResourceAccessError, ResourceConflict, ResourceId, ResourceKind, Timestamp,
+    API_NETWORK_HANDLE_PORT, FILE_HANDLE_READ_PORT, FILE_HANDLE_WRITE_PORT, RESOURCE_API_NETWORK,
+    RESOURCE_FILE, RESOURCE_FILE_PREFIX, RESOURCE_PORT_PREFIX, RESOURCE_REPO, RESOURCE_TARGET,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};
@@ -141,7 +140,10 @@ pub use transport::{
 };
 pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
-pub use types::{boundary_label, Cardinality, CardinalityMismatch, NodeId, PortName, TypeId};
+pub use types::{
+    boundary_label, seed_placeholder_policy_for_type_id, Cardinality, CardinalityMismatch, NodeId,
+    PortName, SeedPlaceholderPolicy, TypeId,
+};
 pub use validate::{
     validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,
     PortDirection, SubDagError, UnwiredResource,

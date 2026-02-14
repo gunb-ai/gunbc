@@ -47,8 +47,7 @@ fn build_targets() -> Vec<&'static DagSpecDef> {
 fn main() {
     let parsed = BinaryArgs::new()
         .with_mode()
-        .with_check_deprecated()
-        .with_string_param("output_dir", "output-dir", Some('o'), Some("."))
+        .with_string_param("output_dir", Some('o'), Some("."))
         .parse_env();
     if parsed.help {
         print_help();
@@ -327,7 +326,6 @@ fn print_help() {
     println!("    -o, --output-dir <DIR>  Output directory (default: current)");
     println!("    -n, --dry-run           Show what would be generated without writing");
     println!("    --mode=MODE             Resource mode: verify (CI) or ensure (default)");
-    println!("    -c, --check             Deprecated alias for --mode=verify");
     println!("    -h, --help              Show this help message");
     println!();
     println!("Progress display is automatic based on terminal capabilities.");

@@ -81,9 +81,8 @@ impl CliEntrypoint {
     ///
     /// Cardinality defaults to `ONE` (scalar). Use `with_cardinality()` to
     /// set it explicitly for collection entrypoints.
-    pub fn new(port_name: impl Into<String>, type_id: impl Into<ParamType>) -> Self {
+    pub fn new(port_name: impl Into<String>, type_id: ParamType) -> Self {
         let port = port_name.into();
-        let type_id = type_id.into();
         let help = format!("Value for {} port", port);
         Self {
             port_name: port,
@@ -208,7 +207,13 @@ impl CliEntrypoint {
                     .as_str()
                     .expect("port_name required")
                     .to_string();
-                let type_id = ParamType::from(entry["type_id"].as_str().expect("type_id required"));
+                let type_id_raw = entry["type_id"].as_str().expect("type_id required");
+                let type_id = ParamType::try_from(type_id_raw).unwrap_or_else(|e| {
+                    panic!(
+                        "entrypoint '{}' has invalid type_id '{}': {}",
+                        port_name, type_id_raw, e
+                    )
+                });
                 let cardinality = match entry.get("cardinality").and_then(|v| v.as_str()) {
                     Some("ZERO_OR_MORE") => Cardinality::ZERO_OR_MORE,
                     Some("ONE_OR_MORE") => Cardinality::ONE_OR_MORE,
@@ -280,7 +285,7 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
 
     // gunbc_exec imports
     let mut exec_items = vec![
-        "execute_and_display_with_preflight".to_string(),
+        "execute_and_display".to_string(),
         "BoundaryMocks".to_string(),
         "ExecutionMode".to_string(),
         "Preamble".to_string(),
@@ -300,11 +305,13 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
             path: vec!["gunbc_ir".to_string()],
             items: vec!["detect_entrypoints".to_string(), "Value".to_string()],
         }),
-        Item::Use(Import {
-            path: vec!["gunbc_lib_transport".to_string(), "preflight".to_string()],
-            items: vec!["ensure_lint_upsert_with_observer".to_string()],
-        }),
     ];
+
+    // Tool crate lint guard import (each tool crate exports wire_lint_guard)
+    items.push(Item::Use(Import {
+        path: vec![crate_module.clone()],
+        items: vec!["wire_lint_guard".to_string()],
+    }));
 
     // Tool-specific import
     let tool_import = match custom_import {
@@ -380,10 +387,15 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     // Build schema
     code.push_str("let schema = vec![\n");
     for ep in entrypoints {
+        let type_expr = match ep.type_id {
+            ParamType::Str => "gunbc_cli::ParamType::Str",
+            ParamType::Int => "gunbc_cli::ParamType::Int",
+            ParamType::Bool => "gunbc_cli::ParamType::Bool",
+        };
         write!(
             code,
-            "    gunbc_cli::CliParam::new(\"{}\", \"{}\")",
-            ep.port_name, ep.type_id
+            "    gunbc_cli::CliParam::new(\"{}\", {})",
+            ep.port_name, type_expr
         )
         .unwrap();
         if ep.is_repeatable() {
@@ -430,12 +442,14 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                 .unwrap(),
                 ParamType::Int => {
                     let default = match ep.default_value.as_deref() {
-                        Some(d) => d.parse::<i64>().unwrap_or_else(|_| {
-                            panic!(
-                                "entrypoint '{}' has invalid default int value: {:?}",
-                                ep.port_name, d
-                            )
-                        }),
+                        Some(d) => {
+                            gunbc_cli::parse_int_flag(&ep.port_name, d).unwrap_or_else(|_| {
+                                panic!(
+                                    "entrypoint '{}' has invalid default int value: {:?}",
+                                    ep.port_name, d
+                                )
+                            })
+                        }
                         None => 0,
                     };
                     writeln!(code,
@@ -632,8 +646,9 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          \n\
          // Parse arguments\n\
          {arg_parsing}\n\
-         // Build the graph\n\
-         let dag = {graph_builder_call};\n\
+         // Build the graph and inject lint guard as a blocking dependency\n\
+         let mut dag = {graph_builder_call};\n\
+         wire_lint_guard(&mut dag);\n\
          \n\
          {input_mocks}\n\
          // Set up execution mode\n\
@@ -645,8 +660,8 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          let preamble = Preamble::with_body(\"{tool_name}\", \"{tool_description}\", body_lines);\n\
          let animated = print_preamble_auto(&preamble);\n\
          \n\
-         // Execute preflight + DAG in one display surface\n\
-         execute_and_display_with_preflight(&dag, mode, animated, {success_port_arg}, Some(&input_mocks), |observer| ensure_lint_upsert_with_observer(observer));",
+         // Execute DAG with unified display\n\
+         execute_and_display(&dag, mode, animated, {success_port_arg}, Some(&input_mocks));",
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
@@ -798,8 +813,9 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          args.extend_from_slice(raw_args);\n\
          \n\
          {arg_parsing}\n\
-         // Build the graph\n\
-         let dag = {graph_builder_call};\n\
+         // Build the graph and inject lint guard as a blocking dependency\n\
+         let mut dag = {graph_builder_call};\n\
+         wire_lint_guard(&mut dag);\n\
          \n\
          {input_mocks}\n\
          // Set up execution mode\n\
@@ -811,8 +827,8 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          let preamble = Preamble::with_body(\"{tool_name}\", \"{tool_description}\", body_lines);\n\
          let animated = print_preamble_auto(&preamble);\n\
          \n\
-         // Execute preflight + DAG in one display surface\n\
-         execute_and_display_with_preflight(&dag, mode, animated, {success_port_arg}, Some(&input_mocks), |observer| ensure_lint_upsert_with_observer(observer));",
+         // Execute DAG with unified display\n\
+         execute_and_display(&dag, mode, animated, {success_port_arg}, Some(&input_mocks));",
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
@@ -859,9 +875,9 @@ fn build_run_single_step_fn(tool: &ToolMeta) -> FnDef {
              }}\n\
          }}\n\
          \n\
-         // Preflight lint (auto-fix if stale)\n\
-         if let Err(err) = ensure_lint_upsert_with_observer(None) {{\n\
-             eprintln!(\"preflight failed: {{}}\", err);\n\
+         // Lint guard (auto-fix if stale)\n\
+         if let Err(err) = gunbc_lib_transport::ensure_lint_upsert() {{\n\
+             eprintln!(\"lint check failed: {{}}\", err);\n\
              process::exit(1);\n\
          }}\n\
          \n\
@@ -1124,7 +1140,7 @@ mod tests {
 
     #[test]
     fn test_cli_entrypoint_flag_name() {
-        let ep = CliEntrypoint::new("repo_path", "String");
+        let ep = CliEntrypoint::new("repo_path", ParamType::Str);
         assert_eq!(ep.flag_name(), "repo-path");
     }
 
@@ -1142,7 +1158,7 @@ mod tests {
             mock_spec_call: Some("gunbc_gist::graph_mock::gist_snapshot_mock_spec()".to_string()),
         };
 
-        let entrypoints = vec![CliEntrypoint::new("repo_path", "String")
+        let entrypoints = vec![CliEntrypoint::new("repo_path", ParamType::Str)
             .short('r')
             .help("Repository path")];
 
@@ -1152,7 +1168,7 @@ mod tests {
         assert!(code.contains("build_gist_graph"));
         assert!(code.contains("execute_and_display"));
         assert!(code.contains("print_preamble_auto"));
-        assert!(code.contains("Preamble::new"));
+        assert!(code.contains("Preamble::with_body"));
     }
 
     #[test]

@@ -2,18 +2,19 @@
 //!
 //! Replaces the hand-rolled while-loop parsers in each `gunbc-dag/src/bin/*.rs`.
 //! All binaries share `-n`/`--dry-run` and `-h`/`--help`; `--mode` and
-//! `--check` (deprecated) are opt-in via builder methods.
+//! additional string params are opt-in via builder methods.
 
 use std::collections::HashMap;
 
-use gunbc_ir::resource::ExecMode;
+use gunbc_ir::{resource::ExecMode, Value};
 
-use crate::ParseError;
+use crate::{parse, CliParam, ParamType, ParseError};
+
+const MODE_PARAM_NAME: &str = "mode";
 
 /// Definition for a string-valued CLI parameter.
 struct StringParamDef {
     name: String,
-    long: String,
     short: Option<char>,
     default: Option<String>,
 }
@@ -23,11 +24,9 @@ struct StringParamDef {
 /// All binaries get `-n`/`--dry-run` and `-h`/`--help` for free.
 /// Optional features are enabled via builder methods:
 /// - `with_mode()` — `--mode=VALUE` / `--mode VALUE`
-/// - `with_check_deprecated()` — `-c`/`--check` (deprecated alias for `--mode=verify`)
-/// - `with_string_param()` — arbitrary `--long VALUE` / `-s VALUE` parameters
+/// - `with_string_param()` — canonical `--<kebab(name)> VALUE` / optional short flag
 pub struct BinaryArgs {
     enable_mode: bool,
-    enable_check: bool,
     string_params: Vec<StringParamDef>,
 }
 
@@ -37,10 +36,8 @@ pub struct ParsedBinaryArgs {
     pub dry_run: bool,
     /// Whether `--help` / `-h` was present.
     pub help: bool,
-    /// Parsed resource mode from `--mode` or `--check`.
+    /// Parsed resource mode from `--mode`.
     pub resource_mode: Option<ExecMode>,
-    /// Whether the deprecated `--check` flag was used.
-    pub check_deprecated: bool,
     /// String parameter values keyed by name.
     string_values: HashMap<String, String>,
 }
@@ -56,7 +53,6 @@ impl BinaryArgs {
     pub fn new() -> Self {
         Self {
             enable_mode: false,
-            enable_check: false,
             string_params: Vec::new(),
         }
     }
@@ -67,23 +63,18 @@ impl BinaryArgs {
         self
     }
 
-    /// Enable `-c`/`--check` as a deprecated alias for `--mode=verify`.
-    pub fn with_check_deprecated(mut self) -> Self {
-        self.enable_check = true;
-        self
-    }
-
     /// Add a string-valued parameter.
+    ///
+    /// The long flag is canonicalized from `name` using kebab-case.
+    /// Example: `output_dir` -> `--output-dir`.
     pub fn with_string_param(
         mut self,
         name: &str,
-        long: &str,
         short: Option<char>,
         default: Option<&str>,
     ) -> Self {
         self.string_params.push(StringParamDef {
             name: name.to_string(),
-            long: long.to_string(),
             short,
             default: default.map(|s| s.to_string()),
         });
@@ -92,101 +83,62 @@ impl BinaryArgs {
 
     /// Parse the given argv slice (index 0 = program name, skipped).
     pub fn parse(self, argv: &[String]) -> Result<ParsedBinaryArgs, ParseError> {
-        let mut dry_run = false;
-        let mut help = false;
-        let mut resource_mode: Option<ExecMode> = None;
-        let mut check_deprecated = false;
-        let mut string_values: HashMap<String, String> = HashMap::new();
+        let mut schema: Vec<CliParam> = Vec::new();
 
-        // Pre-populate defaults
-        for param in &self.string_params {
-            if let Some(ref default) = param.default {
-                string_values.insert(param.name.clone(), default.clone());
-            }
+        if self.enable_mode {
+            schema.push(CliParam::new(MODE_PARAM_NAME, ParamType::Str));
         }
 
-        let mut i = 1;
-        while i < argv.len() {
-            let arg = &argv[i];
-            match arg.as_str() {
-                "-n" | "--dry-run" => dry_run = true,
-                "-h" | "--help" => help = true,
-                "-c" | "--check" if self.enable_check => {
-                    resource_mode = Some(ExecMode::Verify);
-                    check_deprecated = true;
-                }
-                _ if self.enable_mode && arg == "--mode" => {
-                    i += 1;
-                    if i >= argv.len() {
-                        return Err(ParseError::MissingValue {
-                            flag: "--mode".to_string(),
-                        });
-                    }
-                    resource_mode = Some(ExecMode::parse_strict(&argv[i]).map_err(|_| {
-                        ParseError::InvalidValue {
-                            flag: "--mode".to_string(),
-                            value: argv[i].clone(),
-                        }
-                    })?);
-                }
-                _ if self.enable_mode && arg.starts_with("--mode=") => {
-                    let mode_str = arg.trim_start_matches("--mode=");
-                    resource_mode = Some(ExecMode::parse_strict(mode_str).map_err(|_| {
-                        ParseError::InvalidValue {
-                            flag: "--mode".to_string(),
-                            value: mode_str.to_string(),
-                        }
-                    })?);
-                }
-                _ => {
-                    // Check string params
-                    let mut matched = false;
-                    for param in &self.string_params {
-                        let long = format!("--{}", param.long);
-                        let short_match = param.short.map(|c| format!("-{}", c));
-                        if arg == &long || short_match.as_deref() == Some(arg.as_str()) {
-                            i += 1;
-                            if i >= argv.len() {
-                                return Err(ParseError::MissingValue { flag: arg.clone() });
-                            }
-                            string_values.insert(param.name.clone(), argv[i].clone());
-                            matched = true;
-                            break;
-                        }
-                    }
-                    if !matched && arg.starts_with('-') {
-                        return Err(ParseError::UnknownFlag { flag: arg.clone() });
-                    }
-                }
+        for param in &self.string_params {
+            let mut cli = CliParam::new(&param.name, ParamType::Str);
+            if let Some(c) = param.short {
+                cli = cli.short(c);
             }
-            i += 1;
+            if let Some(ref default) = param.default {
+                cli = cli.default(default);
+            }
+            schema.push(cli);
+        }
+
+        let parsed = parse(argv, &schema)?;
+
+        let resource_mode = match parsed.values.get(MODE_PARAM_NAME) {
+            Some(Value::Str(mode)) => {
+                Some(
+                    ExecMode::parse_strict(mode).map_err(|_| ParseError::InvalidValue {
+                        flag: "--mode".to_string(),
+                        value: mode.clone(),
+                    })?,
+                )
+            }
+            _ => None,
+        };
+
+        let mut string_values: HashMap<String, String> = HashMap::new();
+        for param in &self.string_params {
+            if let Some(Value::Str(value)) = parsed.values.get(&param.name) {
+                string_values.insert(param.name.clone(), value.clone());
+            }
         }
 
         Ok(ParsedBinaryArgs {
-            dry_run,
-            help,
+            dry_run: parsed.dry_run,
+            help: parsed.help,
             resource_mode,
-            check_deprecated,
             string_values,
         })
     }
 
     /// Parse from `std::env::args()`, printing errors and exiting on failure.
-    ///
-    /// Also prints the `--check` deprecation warning if applicable.
     pub fn parse_env(self) -> ParsedBinaryArgs {
         let argv: Vec<String> = std::env::args().collect();
-        let parsed = match self.parse(&argv) {
+        match self.parse(&argv) {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("error: {}", e);
                 std::process::exit(1);
             }
-        };
-        if parsed.check_deprecated {
-            eprintln!("Warning: --check is deprecated; use --mode=verify");
         }
-        parsed
     }
 }
 
@@ -274,37 +226,19 @@ mod tests {
     }
 
     #[test]
-    fn test_check_deprecated() {
-        let parsed = BinaryArgs::new()
+    fn test_deprecated_check_flags_are_unknown() {
+        let result_short = BinaryArgs::new().with_mode().parse(&argv(&["prog", "-c"]));
+        let result_long = BinaryArgs::new()
             .with_mode()
-            .with_check_deprecated()
-            .parse(&argv(&["prog", "-c"]))
-            .unwrap();
-        assert_eq!(parsed.resource_mode, Some(ExecMode::Verify));
-        assert!(parsed.check_deprecated);
-    }
-
-    #[test]
-    fn test_check_long_deprecated() {
-        let parsed = BinaryArgs::new()
-            .with_mode()
-            .with_check_deprecated()
-            .parse(&argv(&["prog", "--check"]))
-            .unwrap();
-        assert_eq!(parsed.resource_mode, Some(ExecMode::Verify));
-        assert!(parsed.check_deprecated);
-    }
-
-    #[test]
-    fn test_check_without_enable_is_unknown() {
-        let result = BinaryArgs::new().parse(&argv(&["prog", "-c"]));
-        assert!(matches!(result, Err(ParseError::UnknownFlag { .. })));
+            .parse(&argv(&["prog", "--check"]));
+        assert!(matches!(result_short, Err(ParseError::UnknownFlag { .. })));
+        assert!(matches!(result_long, Err(ParseError::UnknownFlag { .. })));
     }
 
     #[test]
     fn test_string_param_short() {
         let parsed = BinaryArgs::new()
-            .with_string_param("path", "path", Some('o'), Some("Makefile"))
+            .with_string_param("path", Some('o'), Some("Makefile"))
             .parse(&argv(&["prog", "-o", "output.mk"]))
             .unwrap();
         assert_eq!(parsed.get_string("path"), Some("output.mk"));
@@ -313,7 +247,7 @@ mod tests {
     #[test]
     fn test_string_param_default() {
         let parsed = BinaryArgs::new()
-            .with_string_param("path", "path", Some('o'), Some("Makefile"))
+            .with_string_param("path", Some('o'), Some("Makefile"))
             .parse(&argv(&["prog"]))
             .unwrap();
         assert_eq!(parsed.get_string("path"), Some("Makefile"));
@@ -322,7 +256,7 @@ mod tests {
     #[test]
     fn test_string_param_long() {
         let parsed = BinaryArgs::new()
-            .with_string_param("path", "path", Some('o'), None)
+            .with_string_param("path", Some('o'), None)
             .parse(&argv(&["prog", "--path", "foo"]))
             .unwrap();
         assert_eq!(parsed.get_string("path"), Some("foo"));
@@ -331,7 +265,7 @@ mod tests {
     #[test]
     fn test_string_param_missing_value() {
         let result = BinaryArgs::new()
-            .with_string_param("path", "path", Some('o'), None)
+            .with_string_param("path", Some('o'), None)
             .parse(&argv(&["prog", "--path"]));
         assert!(matches!(result, Err(ParseError::MissingValue { .. })));
     }
@@ -340,8 +274,7 @@ mod tests {
     fn test_combined_flags() {
         let parsed = BinaryArgs::new()
             .with_mode()
-            .with_check_deprecated()
-            .with_string_param("path", "path", Some('o'), Some("Makefile"))
+            .with_string_param("path", Some('o'), Some("Makefile"))
             .parse(&argv(&["prog", "-n", "--mode=verify", "-o", "out.mk"]))
             .unwrap();
         assert!(parsed.dry_run);
@@ -366,9 +299,18 @@ mod tests {
     #[test]
     fn test_string_param_no_default_absent() {
         let parsed = BinaryArgs::new()
-            .with_string_param("path", "path", Some('o'), None)
+            .with_string_param("path", Some('o'), None)
             .parse(&argv(&["prog"]))
             .unwrap();
         assert_eq!(parsed.get_string("path"), None);
+    }
+
+    #[test]
+    fn test_string_param_uses_canonical_long_name() {
+        let parsed = BinaryArgs::new()
+            .with_string_param("output_dir", None, None)
+            .parse(&argv(&["prog", "--output-dir", "generated"]))
+            .unwrap();
+        assert_eq!(parsed.get_string("output_dir"), Some("generated"));
     }
 }

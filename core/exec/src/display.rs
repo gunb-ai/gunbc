@@ -1207,8 +1207,7 @@ pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
             let _ = b.write_top(&mut stderr);
             // Show last `max` lines (most relevant for errors)
             let skip = lines.len() - max;
-            let truncation_notice =
-                format!("... ({} lines omitted, showing last {})", skip, max);
+            let truncation_notice = format!("... ({} lines omitted, showing last {})", skip, max);
             let _ = b.write_content(&mut stderr, &truncation_notice);
             for line in &lines[skip..] {
                 let _ = b.write_content(&mut stderr, line);

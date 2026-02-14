@@ -147,7 +147,9 @@ impl AccessMode {
 /// - `repo`
 /// - `target` / `target:<name>`
 pub fn normalize_resource_id(id: &str) -> String {
-    id.strip_prefix(RESOURCE_PORT_PREFIX).unwrap_or(id).to_string()
+    id.strip_prefix(RESOURCE_PORT_PREFIX)
+        .unwrap_or(id)
+        .to_string()
 }
 
 /// Build a canonical `res:*` port from any canonical resource id.
@@ -759,7 +761,10 @@ mod tests {
         assert_eq!(normalize_resource_id("res:api:network"), "api:network");
         assert_eq!(normalize_resource_id("res:api:gcp"), "api:gcp");
         assert_eq!(normalize_resource_id("res:target"), "target");
-        assert_eq!(normalize_resource_id("res:target:manager"), "target:manager");
+        assert_eq!(
+            normalize_resource_id("res:target:manager"),
+            "target:manager"
+        );
         assert_eq!(normalize_resource_id("res:target:build"), "target:build");
         assert_eq!(normalize_resource_id("res:repo"), "repo");
         assert_eq!(normalize_resource_id("res:tool:clippy"), "tool:clippy");
@@ -802,7 +807,11 @@ mod tests {
         ));
         dag.add_node(Node::opaque(
             "node_b",
-            vec![Port::resource("file", "FilesystemHandle", AccessMode::Write)],
+            vec![Port::resource(
+                "file",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
             vec![],
             "op_b".to_string(),
         ));
@@ -862,13 +871,21 @@ mod tests {
         let mut dag: Dag<String> = Dag::new();
         dag.add_node(Node::opaque(
             "a",
-            vec![Port::resource("file", "FilesystemHandle", AccessMode::Write)],
+            vec![Port::resource(
+                "file",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
             vec![],
             "op_a".to_string(),
         ));
         dag.add_node(Node::opaque(
             "b",
-            vec![Port::resource("file", "FilesystemHandle", AccessMode::Write)],
+            vec![Port::resource(
+                "file",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
             vec![],
             "op_b".to_string(),
         ));
@@ -904,7 +921,11 @@ mod tests {
         let mut inner: Dag<()> = Dag::new();
         inner.add_node(Node::opaque(
             "worker",
-            vec![Port::resource("file", "FilesystemHandle", AccessMode::Write)],
+            vec![Port::resource(
+                "file",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
             vec![Port::scalar("result", "String")],
             (),
         ));

@@ -34,49 +34,23 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, Cardinality, Dag, NodeId, PortName, SecretString, TypeRegistry, Value, ValueExpr,
+    contract, seed_placeholder_policy_for_type_id, Cardinality, Dag, NodeId, PortName,
+    SecretString, SeedPlaceholderPolicy, TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SeedPolicy {
-    Generated,
-    ExplicitSeedRequired,
-}
+type SeedPolicy = SeedPlaceholderPolicy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SeedContext {
     RealSingleNodeRequiredInput,
 }
 
-/// Determine seed policy for a type.
-///
-/// This is **fail-closed**: only types on the known-safe whitelist use
-/// generated placeholders. Unknown types (including new semantic carriers
-/// and aliases) default to `ExplicitSeedRequired`, preventing silent
-/// shape-valid-but-behavior-invalid placeholders from sneaking through.
 fn seed_policy_for_type(type_id: &str) -> SeedPolicy {
-    match type_id {
-        // Primitives: generated placeholders are safe.
-        "String" | "Bool" | "Int" | "Unit" | "Json" | "Void"
-        // Refined primitives
-        | "NonEmptyString" | "Url" | "FilePath" | "Path" | "Email"
-        | "PositiveInt" | "NonNegativeInt"
-        // Container/wrapped types
-        | "OptionalString" | "OptionalInt" | "OptionalBool" | "OptionalJson"
-        | "OptionalUrl"
-        | "StringList" | "IntList" | "BoolList" | "JsonList"
-        | "UrlList" | "FilePathList"
-        | "NonEmptyStringList" | "NonEmptyFilePathList"
-        => SeedPolicy::Generated,
-        // Everything else (TransportRequest, TransportResponse, Credential,
-        // Secret, FilesystemHandle, NetworkHandle, ToolHandle, Platform, and
-        // any future types) requires explicit seeds — fail closed.
-        _ => SeedPolicy::ExplicitSeedRequired,
-    }
+    seed_placeholder_policy_for_type_id(type_id)
 }
 
 fn requires_explicit_seed(type_id: &str, context: SeedContext) -> bool {
@@ -1200,7 +1174,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             // CLI contract tests need gunbc_cli imports
             file.imports.push(Import {
                 path: vec!["gunbc_cli".to_string()],
-                items: vec!["parse".to_string(), "CliParam".to_string()],
+                items: vec![
+                    "parse".to_string(),
+                    "CliParam".to_string(),
+                    "ParamType".to_string(),
+                ],
             });
             file.sections.push(section);
         }
@@ -4513,10 +4491,15 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         // Schema
         code.push_str("let schema = vec![\n");
         for ep in entrypoints {
+            let type_expr = match ep.type_id {
+                ParamType::Str => "ParamType::Str",
+                ParamType::Int => "ParamType::Int",
+                ParamType::Bool => "ParamType::Bool",
+            };
             write!(
                 code,
-                "    CliParam::new(\"{}\", \"{}\")",
-                ep.port_name, ep.type_id
+                "    CliParam::new(\"{}\", {})",
+                ep.port_name, type_expr
             )
             .unwrap();
             if ep.cardinality.allows_many() {

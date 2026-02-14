@@ -32,17 +32,35 @@ impl ParamType {
     }
 }
 
-impl From<&str> for ParamType {
-    fn from(s: &str) -> Self {
+/// Parse error for `ParamType`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParamTypeParseError {
+    value: String,
+}
+
+impl std::fmt::Display for ParamTypeParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "unknown ParamType '{}'; expected String/Str, Int, or Bool",
+            self.value
+        )
+    }
+}
+
+impl std::error::Error for ParamTypeParseError {}
+
+impl TryFrom<&str> for ParamType {
+    type Error = ParamTypeParseError;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
-            "String" | "Str" => Self::Str,
-            "Bool" => Self::Bool,
-            "Int" => Self::Int,
-            other => panic!(
-                "ParamType::from(\"{}\") — unknown type; \
-                 use ParamType::Str, ParamType::Int, or ParamType::Bool",
-                other
-            ),
+            "String" | "Str" => Ok(Self::Str),
+            "Bool" => Ok(Self::Bool),
+            "Int" => Ok(Self::Int),
+            other => Err(ParamTypeParseError {
+                value: other.to_string(),
+            }),
         }
     }
 }
@@ -70,13 +88,10 @@ pub struct CliParam {
 
 impl CliParam {
     /// Create a new CLI param with default `Cardinality::ONE`.
-    ///
-    /// Accepts `&str` for the type_id thanks to `From<&str> for ParamType`,
-    /// so existing callers like `CliParam::new("port", "String")` still work.
-    pub fn new(port_name: impl Into<String>, type_id: impl Into<ParamType>) -> Self {
+    pub fn new(port_name: impl Into<String>, type_id: ParamType) -> Self {
         Self {
             port_name: port_name.into(),
-            type_id: type_id.into(),
+            type_id,
             cardinality: Cardinality::ONE,
             short_flag: None,
             default_value: None,
@@ -166,6 +181,14 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// Parse an i64 value for a CLI flag using canonical error semantics.
+pub fn parse_int_flag(flag: &str, value: &str) -> Result<i64, ParseError> {
+    value.parse::<i64>().map_err(|_| ParseError::InvalidInt {
+        flag: flag.to_string(),
+        value: value.to_string(),
+    })
+}
+
 /// Parse CLI arguments against a schema.
 ///
 /// Implements the same while-loop logic that `cli_gen.rs` generates inline:
@@ -210,20 +233,52 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
             "-n" | "--dry-run" => dry_run = true,
             "-h" | "--help" => help = true,
             _ => {
-                if let Some(&idx) = flag_map.get(arg.as_str()) {
+                let (flag, inline_value) = match arg.split_once('=') {
+                    Some((f, v)) if f.starts_with('-') => (f, Some(v)),
+                    _ => (arg.as_str(), None),
+                };
+
+                if let Some(&idx) = flag_map.get(flag) {
                     let param = &schema[idx];
                     if param.type_id == ParamType::Bool && !param.is_repeatable() {
-                        scalars.insert(idx, Some("true".to_string()));
+                        let bool_value = match inline_value {
+                            Some("true") => "true",
+                            Some("false") => "false",
+                            Some(v) => {
+                                return Err(ParseError::InvalidValue {
+                                    flag: flag.to_string(),
+                                    value: v.to_string(),
+                                });
+                            }
+                            None => "true",
+                        };
+                        scalars.insert(idx, Some(bool_value.to_string()));
                     } else if param.is_repeatable() {
-                        i += 1;
-                        if i < argv.len() {
-                            lists.get_mut(&idx).unwrap().push(argv[i].clone());
-                        }
+                        let value = if let Some(v) = inline_value {
+                            v.to_string()
+                        } else {
+                            i += 1;
+                            if i >= argv.len() {
+                                return Err(ParseError::MissingValue {
+                                    flag: flag.to_string(),
+                                });
+                            }
+                            argv[i].clone()
+                        };
+                        lists.get_mut(&idx).unwrap().push(value);
                     } else {
-                        i += 1;
-                        if i < argv.len() {
-                            scalars.insert(idx, Some(argv[i].clone()));
-                        }
+                        let value = if let Some(v) = inline_value {
+                            v.to_string()
+                        } else {
+                            i += 1;
+                            if i >= argv.len() {
+                                return Err(ParseError::MissingValue {
+                                    flag: flag.to_string(),
+                                });
+                            }
+                            argv[i].clone()
+                        };
+                        scalars.insert(idx, Some(value));
                     }
                 } else if arg.starts_with('-') {
                     return Err(ParseError::UnknownFlag { flag: arg.clone() });
@@ -247,12 +302,7 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
                 Some(Some(val)) => {
                     let value = match param.type_id {
                         ParamType::Bool => Value::Bool(val == "true"),
-                        ParamType::Int => {
-                            Value::Int(val.parse::<i64>().map_err(|_| ParseError::InvalidInt {
-                                flag: param.flag_name(),
-                                value: val.clone(),
-                            })?)
-                        }
+                        ParamType::Int => Value::Int(parse_int_flag(&param.flag_name(), val)?),
                         ParamType::Str => Value::Str(val.clone()),
                     };
                     values.insert(param.port_name.clone(), value);
@@ -303,28 +353,28 @@ mod tests {
 
     #[test]
     fn test_string_param() {
-        let schema = vec![CliParam::new("repo_path", "String")];
+        let schema = vec![CliParam::new("repo_path", ParamType::Str)];
         let result = parse(&argv(&["prog", "--repo-path", "my-repo"]), &schema).unwrap();
         assert_eq!(result.values["repo_path"], Value::Str("my-repo".into()));
     }
 
     #[test]
     fn test_int_param() {
-        let schema = vec![CliParam::new("count", "Int")];
+        let schema = vec![CliParam::new("count", ParamType::Int)];
         let result = parse(&argv(&["prog", "--count", "42"]), &schema).unwrap();
         assert_eq!(result.values["count"], Value::Int(42));
     }
 
     #[test]
     fn test_bool_param() {
-        let schema = vec![CliParam::new("public", "Bool")];
+        let schema = vec![CliParam::new("public", ParamType::Bool)];
         let result = parse(&argv(&["prog", "--public"]), &schema).unwrap();
         assert_eq!(result.values["public"], Value::Bool(true));
     }
 
     #[test]
     fn test_bool_absent() {
-        let schema = vec![CliParam::new("public", "Bool")];
+        let schema = vec![CliParam::new("public", ParamType::Bool)];
         let result = parse(&argv(&["prog"]), &schema).unwrap();
         assert_eq!(result.values["public"], Value::Bool(false));
     }
@@ -332,7 +382,8 @@ mod tests {
     #[test]
     fn test_repeatable_param() {
         let schema =
-            vec![CliParam::new("extensions", "String").with_cardinality(Cardinality::ZERO_OR_MORE)];
+            vec![CliParam::new("extensions", ParamType::Str)
+                .with_cardinality(Cardinality::ZERO_OR_MORE)];
         let result = parse(
             &argv(&["prog", "--extensions", ".rs", "--extensions", ".toml"]),
             &schema,
@@ -347,28 +398,29 @@ mod tests {
     #[test]
     fn test_repeatable_empty() {
         let schema =
-            vec![CliParam::new("extensions", "String").with_cardinality(Cardinality::ZERO_OR_MORE)];
+            vec![CliParam::new("extensions", ParamType::Str)
+                .with_cardinality(Cardinality::ZERO_OR_MORE)];
         let result = parse(&argv(&["prog"]), &schema).unwrap();
         assert!(!result.values.contains_key("extensions"));
     }
 
     #[test]
     fn test_default_value() {
-        let schema = vec![CliParam::new("repo_path", "String").default(".")];
+        let schema = vec![CliParam::new("repo_path", ParamType::Str).default(".")];
         let result = parse(&argv(&["prog"]), &schema).unwrap();
         assert_eq!(result.values["repo_path"], Value::Str(".".into()));
     }
 
     #[test]
     fn test_default_overridden() {
-        let schema = vec![CliParam::new("repo_path", "String").default(".")];
+        let schema = vec![CliParam::new("repo_path", ParamType::Str).default(".")];
         let result = parse(&argv(&["prog", "--repo-path", "other"]), &schema).unwrap();
         assert_eq!(result.values["repo_path"], Value::Str("other".into()));
     }
 
     #[test]
     fn test_short_flag() {
-        let schema = vec![CliParam::new("repo_path", "String").short('r')];
+        let schema = vec![CliParam::new("repo_path", ParamType::Str).short('r')];
         let result = parse(&argv(&["prog", "-r", "my-repo"]), &schema).unwrap();
         assert_eq!(result.values["repo_path"], Value::Str("my-repo".into()));
     }
@@ -405,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_unknown_flags_error() {
-        let schema = vec![CliParam::new("repo_path", "String")];
+        let schema = vec![CliParam::new("repo_path", ParamType::Str)];
         let result = parse(
             &argv(&["prog", "--unknown", "val", "--repo-path", "my-repo"]),
             &schema,
@@ -421,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_empty_argv() {
-        let schema = vec![CliParam::new("repo_path", "String").default(".")];
+        let schema = vec![CliParam::new("repo_path", ParamType::Str).default(".")];
         let result = parse(&argv(&["prog"]), &schema).unwrap();
         assert_eq!(result.values["repo_path"], Value::Str(".".into()));
         assert!(!result.dry_run);
@@ -430,14 +482,14 @@ mod tests {
 
     #[test]
     fn test_kebab_case_flag_names() {
-        let schema = vec![CliParam::new("base_ref", "String")];
+        let schema = vec![CliParam::new("base_ref", ParamType::Str)];
         let result = parse(&argv(&["prog", "--base-ref", "main"]), &schema).unwrap();
         assert_eq!(result.values["base_ref"], Value::Str("main".into()));
     }
 
     #[test]
     fn test_invalid_int_returns_error() {
-        let schema = vec![CliParam::new("count", "Int")];
+        let schema = vec![CliParam::new("count", ParamType::Int)];
         let result = parse(&argv(&["prog", "--count", "not-a-number"]), &schema);
         assert!(result.is_err());
         assert_eq!(
@@ -452,9 +504,11 @@ mod tests {
     #[test]
     fn test_multiple_params() {
         let schema = vec![
-            CliParam::new("repo_path", "String").short('r').default("."),
-            CliParam::new("public", "Bool"),
-            CliParam::new("extensions", "String").with_cardinality(Cardinality::ZERO_OR_MORE),
+            CliParam::new("repo_path", ParamType::Str)
+                .short('r')
+                .default("."),
+            CliParam::new("public", ParamType::Bool),
+            CliParam::new("extensions", ParamType::Str).with_cardinality(Cardinality::ZERO_OR_MORE),
         ];
         let result = parse(
             &argv(&[
@@ -482,15 +536,71 @@ mod tests {
 
     #[test]
     fn test_string_no_default_absent() {
-        let schema = vec![CliParam::new("repo_path", "String")];
+        let schema = vec![CliParam::new("repo_path", ParamType::Str)];
         let result = parse(&argv(&["prog"]), &schema).unwrap();
         assert!(!result.values.contains_key("repo_path"));
     }
 
     #[test]
     fn test_int_default() {
-        let schema = vec![CliParam::new("count", "Int").default("10")];
+        let schema = vec![CliParam::new("count", ParamType::Int).default("10")];
         let result = parse(&argv(&["prog"]), &schema).unwrap();
         assert_eq!(result.values["count"], Value::Int(10));
+    }
+
+    #[test]
+    fn test_param_type_try_from() {
+        assert_eq!(ParamType::try_from("String").unwrap(), ParamType::Str);
+        assert_eq!(ParamType::try_from("Int").unwrap(), ParamType::Int);
+        assert_eq!(ParamType::try_from("Bool").unwrap(), ParamType::Bool);
+    }
+
+    #[test]
+    fn test_param_type_try_from_invalid() {
+        let err = ParamType::try_from("Json").unwrap_err();
+        assert!(err.to_string().contains("unknown ParamType"));
+    }
+
+    #[test]
+    fn test_equals_syntax_for_scalar_flag() {
+        let schema = vec![CliParam::new("count", ParamType::Int)];
+        let result = parse(&argv(&["prog", "--count=7"]), &schema).unwrap();
+        assert_eq!(result.values["count"], Value::Int(7));
+    }
+
+    #[test]
+    fn test_missing_value_errors_for_scalar() {
+        let schema = vec![CliParam::new("repo_path", ParamType::Str)];
+        let result = parse(&argv(&["prog", "--repo-path"]), &schema);
+        assert!(matches!(result, Err(ParseError::MissingValue { .. })));
+    }
+
+    #[test]
+    fn test_missing_value_errors_for_repeatable() {
+        let schema =
+            vec![CliParam::new("extensions", ParamType::Str)
+                .with_cardinality(Cardinality::ZERO_OR_MORE)];
+        let result = parse(&argv(&["prog", "--extensions"]), &schema);
+        assert!(matches!(result, Err(ParseError::MissingValue { .. })));
+    }
+
+    #[test]
+    fn test_bool_equals_rejects_invalid_value() {
+        let schema = vec![CliParam::new("public", ParamType::Bool)];
+        let result = parse(&argv(&["prog", "--public=maybe"]), &schema);
+        assert!(matches!(result, Err(ParseError::InvalidValue { .. })));
+    }
+
+    #[test]
+    fn test_parse_int_flag_success() {
+        assert_eq!(parse_int_flag("count", "12").unwrap(), 12);
+    }
+
+    #[test]
+    fn test_parse_int_flag_error() {
+        assert!(matches!(
+            parse_int_flag("count", "x"),
+            Err(ParseError::InvalidInt { .. })
+        ));
     }
 }

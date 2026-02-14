@@ -350,10 +350,16 @@ mod tests {
         b.render(&mut buf, &["something failed"]).unwrap();
         let output = String::from_utf8(buf).unwrap();
         assert!(output.contains("╭"));
-        assert!(!output.contains("╮"), "open-right should not have top-right corner");
+        assert!(
+            !output.contains("╮"),
+            "open-right should not have top-right corner"
+        );
         assert!(output.contains("│"));
         assert!(output.contains("╰"));
-        assert!(!output.contains("╯"), "open-right should not have bottom-right corner");
+        assert!(
+            !output.contains("╯"),
+            "open-right should not have bottom-right corner"
+        );
         assert!(output.contains("something failed"));
     }
 

@@ -20,8 +20,7 @@ use std::process;
 fn main() {
     let parsed = BinaryArgs::new()
         .with_mode()
-        .with_check_deprecated()
-        .with_string_param("path", "path", Some('o'), Some("Makefile"))
+        .with_string_param("path", Some('o'), Some("Makefile"))
         .parse_env();
     if parsed.help {
         print_help();
@@ -227,6 +226,5 @@ fn print_help() {
     println!("    -o, --path <VAL>     Output Makefile path");
     println!("    -n, --dry-run        Don't perform actual I/O");
     println!("    --mode=MODE          Resource mode: verify (CI) or ensure (default)");
-    println!("    -c, --check          Deprecated alias for --mode=verify");
     println!("    -h, --help           Print this help");
 }

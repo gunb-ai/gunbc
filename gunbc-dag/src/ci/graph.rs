@@ -54,7 +54,8 @@ use gunbc_ir::{
 use gunbc_lib_cloud_ops::CloudEnvStatus;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{EmbeddedFileExistsOp, FsEnv};
-use std::collections::HashMap;
+use gunbc_testgen_registry::iter_dag_specs;
+use std::collections::{BTreeSet, HashMap};
 
 // ============================================================================
 // CIGraphOp - Union type following MakegenGraphOp pattern
@@ -145,23 +146,52 @@ pub fn ci_workflow_permissions() -> Permissions {
     ci_workflow_config().permissions
 }
 
-/// GCP secret names required by live tests.
+/// Live-test secret env vars that must be exported in CI.
 ///
-/// These must be configured as GitHub repository secrets. The CI workflow
-/// template passes them as environment variables so that live flow tests can
-/// authenticate via Workload Identity Federation.
+/// Derived from testgen target metadata (`live_required` and
+/// `live_required_any_of`) to keep workflow secrets and test metadata in sync.
 ///
 /// Note: `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`
-/// are automatically provided by GitHub Actions when the `id-token: write`
-/// permission is granted — they do not need to be set as repository secrets.
+/// are automatically provided by GitHub Actions when `id-token: write` is
+/// granted; they are excluded from repository-secret export lists.
+pub fn ci_live_test_secrets() -> Vec<&'static str> {
+    let mut secrets: BTreeSet<&'static str> = BTreeSet::new();
+
+    for def in iter_dag_specs() {
+        if let Some(required) = def.testgen.live_required {
+            for &secret in required {
+                if !is_github_actions_runtime_env(secret) {
+                    secrets.insert(secret);
+                }
+            }
+        }
+        if let Some(any_of_groups) = def.testgen.live_required_any_of {
+            for group in any_of_groups {
+                for &secret in *group {
+                    if !is_github_actions_runtime_env(secret) {
+                        secrets.insert(secret);
+                    }
+                }
+            }
+        }
+    }
+
+    secrets.into_iter().collect()
+}
+
+/// GCP-specific subset of live-test secrets.
 pub fn ci_gcp_secrets() -> Vec<&'static str> {
-    vec![
-        "GCP_WIF_PROVIDER",
-        "GCP_SECRETS_PROJECT",
-        "GCP_SECRETS_PREFIX",
-        "GCP_SECRETS_SA",
-        "GCP_SECRETS_IMPERSONATE_SA",
-    ]
+    ci_live_test_secrets()
+        .into_iter()
+        .filter(|name| name.starts_with("GCP_"))
+        .collect()
+}
+
+fn is_github_actions_runtime_env(name: &str) -> bool {
+    matches!(
+        name,
+        "ACTIONS_ID_TOKEN_REQUEST_URL" | "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+    )
 }
 
 // ============================================================================
@@ -793,13 +823,34 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         fs_env.out(FsEnv::WRITE_PORT),
         _deps_exists.execute.in_port("res:file"),
     )?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), bootstrap.execute.in_port("res:file"))?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), pragma.execute.in_port("res:file"))?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), testgen.execute.in_port("res:file"))?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), build.execute.in_port("res:file"))?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), test.execute.in_port("res:file"))?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), lint.execute.in_port("res:file"))?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), guardrail.execute.in_port("res:file"))?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        bootstrap.execute.in_port("res:file"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        pragma.execute.in_port("res:file"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        testgen.execute.in_port("res:file"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        build.execute.in_port("res:file"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        test.execute.in_port("res:file"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        lint.execute.in_port("res:file"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        guardrail.execute.in_port("res:file"),
+    )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
         verify_makegen.execute.in_port("res:file"),
@@ -1076,6 +1127,15 @@ mod tests {
         assert!(secrets.contains(&"GCP_WIF_PROVIDER"));
         assert!(secrets.contains(&"GCP_SECRETS_PROJECT"));
         assert!(secrets.contains(&"GCP_SECRETS_PREFIX"));
+        assert!(secrets.contains(&"GCP_SECRETS_SA"));
+        assert!(secrets.contains(&"GCP_SECRETS_IMPERSONATE_SA"));
+        assert!(!secrets.contains(&"ACTIONS_ID_TOKEN_REQUEST_URL"));
+        assert!(!secrets.contains(&"ACTIONS_ID_TOKEN_REQUEST_TOKEN"));
+    }
+
+    #[test]
+    fn test_ci_live_test_secrets_include_any_of() {
+        let secrets = ci_live_test_secrets();
         assert!(secrets.contains(&"GCP_SECRETS_SA"));
         assert!(secrets.contains(&"GCP_SECRETS_IMPERSONATE_SA"));
     }
