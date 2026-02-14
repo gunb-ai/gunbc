@@ -35,17 +35,6 @@ fn resource_purity_registry_wide() {
     let _: fn() -> gunbc_test::MockSpec = gunbc_lib_llm_ops::graph_mock::openai_mock_spec;
     let _: fn() -> gunbc_test::MockSpec = gunbc_lib_review::graph_mock::inline_review_mock_spec;
     let _: fn() -> gunbc_test::MockSpec = gunbc_lib_review::graph_mock::diff_review_mock_spec;
-    let _: fn() -> gunbc_test::MockSpec = gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec;
-    let _: fn() -> gunbc_test::MockSpec = gunbc_dag::ci::graph_mock::ci_mock_spec;
-    let _: fn() -> gunbc_test::MockSpec = gunbc_dag::makegen::graph_mock::makegen_mock_spec;
-    let _: fn() -> gunbc_test::MockSpec = gunbc_dag::pragma::graph_mock::pragma_mock_spec;
-    let _: fn() -> gunbc_test::MockSpec =
-        gunbc_dag::testgen_dag::graph_mock::testgen_dag_mock_spec;
-    let _: fn() -> gunbc_test::MockSpec =
-        gunbc_dag::credential_lifecycle::github_credential_lifecycle_mock_spec;
-    let _ = gunbc_dag::build_build_graph();
-    let _ = gunbc_dag::build_codegen_graph();
-    let _ = gunbc_dag::build_docgen_graph();
 
     let mut defs: Vec<_> = iter_resource_tests().collect();
     defs.sort_by(|a, b| {

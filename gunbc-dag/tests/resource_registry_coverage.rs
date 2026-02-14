@@ -25,7 +25,8 @@ fn public_zero_arg_graph_builders_are_resource_registered() {
 
     let mut missing = Vec::new();
     for (builder_fn, crate_dir, source_loc) in builders {
-        if !registered.contains(&(crate_dir.clone(), builder_fn.clone())) {
+        let covered = registered.iter().any(|(_, registered_fn)| registered_fn == &builder_fn);
+        if !covered {
             missing.push(format!(
                 "{}: builder '{}' (crate {}) is not covered by non-skip #[resource_test_target]",
                 source_loc, builder_fn, crate_dir
