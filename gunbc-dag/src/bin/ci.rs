@@ -24,13 +24,14 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::build_ci_graph_with_mode;
 use gunbc_exec::{
-    execute_and_display, print_attention, AttentionLevel, BoundaryMocks, CiContext, ExecutionMode,
+    execute_and_display_with_preflight, print_attention, AttentionLevel, BoundaryMocks, CiContext,
+    ExecutionMode,
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use gunbc_ir::CODEGEN_STAMP_PATH;
-use gunbc_lib_transport::preflight::ensure_lint_upsert_with_ci;
+use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use gunbc_primitives::filename;
 use std::io::IsTerminal;
 use std::process;
@@ -43,12 +44,6 @@ fn main() {
     }
     let dry_run = parsed.dry_run;
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
-
-    let mut ci_preflight = CiContext::detect();
-    if let Err(err) = ensure_lint_upsert_with_ci(Some(&mut ci_preflight)) {
-        print_attention(AttentionLevel::Error, "Preflight failed", &err);
-        process::exit(1);
-    }
 
     // Build the CI graph with the exec mode embedded in the inlined codegen DAG
     let dag = match build_ci_graph_with_mode(resource_mode) {
@@ -185,7 +180,14 @@ fn main() {
     // Shared execution/display path: CI grouping, local progress, and classic mode
     // are selected internally based on the animated flag and CI environment.
     let animated = std::io::stdout().is_terminal();
-    execute_and_display(&dag, mode, animated, Some("overall_success"), None);
+    execute_and_display_with_preflight(
+        &dag,
+        mode,
+        animated,
+        Some("overall_success"),
+        None,
+        |observer| ensure_lint_upsert_with_observer(observer),
+    );
 }
 
 fn print_help() {

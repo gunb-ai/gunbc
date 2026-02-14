@@ -26,6 +26,7 @@ use gunbc_codegen::{
     all_cleanable_outputs, derive_tool_defs, generate_cli_with_import, FileWriter,
 };
 use gunbc_dag::WorkspaceBinary;
+use gunbc_exec::run_preflight_with_display;
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default,
     update_resource_manifest, FreshnessOptions, ManagedResource, ManifestEntry, ManifestFreshness,
@@ -35,12 +36,12 @@ use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
 use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
-use gunbc_exec::PreflightStatusObserver;
 use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use gunbc_lib_transport::TransportIo;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::Write;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
@@ -82,8 +83,11 @@ fn main() {
         return;
     }
 
-    if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {
-        eprintln!("preflight failed: {}", err);
+    let animated = std::io::stdout().is_terminal();
+    if let Err(err) = run_preflight_with_display(animated, &mut |observer| {
+        ensure_lint_upsert_with_observer(observer)
+    }) {
+        eprintln!("{}", err);
         std::process::exit(1);
     }
 

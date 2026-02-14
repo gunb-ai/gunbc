@@ -7,8 +7,8 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::build::build_build_graph;
 use gunbc_exec::{
-    execute_and_display, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
-    PreflightStatusObserver,
+    execute_and_display_with_preflight, print_attention, AttentionLevel, BoundaryMocks,
+    ExecutionMode,
 };
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
@@ -23,11 +23,6 @@ fn main() {
         return;
     }
     let dry_run = parsed.dry_run;
-
-    if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {
-        print_attention(AttentionLevel::Error, "Preflight failed", &err);
-        process::exit(1);
-    }
 
     // Build the graph
     let dag = match build_build_graph() {
@@ -66,7 +61,14 @@ fn main() {
 
     // Execute and display (progress or classic based on terminal)
     let animated = std::io::stdout().is_terminal();
-    execute_and_display(&dag, mode, animated, Some("overall_success"), None);
+    execute_and_display_with_preflight(
+        &dag,
+        mode,
+        animated,
+        Some("overall_success"),
+        None,
+        |observer| ensure_lint_upsert_with_observer(observer),
+    );
 }
 
 fn print_help() {

@@ -100,6 +100,79 @@ pub fn execute_and_display<T: Executable + Clone + Send>(
     }
 }
 
+/// Execute preflight and then execute/display a DAG with a unified terminal surface.
+///
+/// `preflight` is passed a [`PreflightObserver`] to report progress.
+pub fn execute_and_display_with_preflight<T, F>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    animated: bool,
+    success_port: Option<&str>,
+    input_mocks: Option<&BoundaryMocks>,
+    mut preflight: F,
+) where
+    T: Executable + Clone + Send,
+    F: FnMut(Option<&mut dyn PreflightObserver>) -> Result<(), String>,
+{
+    match execute_and_display_with_preflight_result(
+        dag,
+        mode,
+        animated,
+        success_port,
+        input_mocks,
+        &mut preflight,
+    ) {
+        Ok(result) => {
+            if result.should_fail {
+                print_attention(
+                    AttentionLevel::Error,
+                    "Execution failed",
+                    "A required success check returned false.",
+                );
+                process::exit(1);
+            }
+        }
+        Err(e) => {
+            print_attention(AttentionLevel::Error, "Execution failed", &e.to_string());
+            process::exit(1);
+        }
+    }
+}
+
+/// Result-returning variant of [`execute_and_display_with_preflight`].
+pub fn execute_and_display_with_preflight_result<T, F>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    animated: bool,
+    success_port: Option<&str>,
+    input_mocks: Option<&BoundaryMocks>,
+    preflight: &mut F,
+) -> Result<DisplayResult, ExecError>
+where
+    T: Executable + Clone + Send,
+    F: FnMut(Option<&mut dyn PreflightObserver>) -> Result<(), String>,
+{
+    run_preflight_with_display(animated, preflight)?;
+
+    execute_and_display_with_result(dag, mode, animated, success_port, input_mocks)
+}
+
+/// Run preflight using the same terminal display surface used by DAG execution.
+pub fn run_preflight_with_display<F>(animated: bool, preflight: &mut F) -> Result<(), ExecError>
+where
+    F: FnMut(Option<&mut dyn PreflightObserver>) -> Result<(), String>,
+{
+    if animated {
+        run_preflight_with_progress(|observer| preflight(Some(observer)))
+    } else if is_ci_environment() {
+        let mut ci = crate::CiContext::detect();
+        preflight(Some(&mut ci)).map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
+    } else {
+        let mut status = PreflightStatusObserver;
+        preflight(Some(&mut status)).map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
+    }
+}
+
 /// Execute a DAG through the shared display path and return execution results.
 ///
 /// Unlike [`execute_and_display`], this function never exits the process.
@@ -115,6 +188,89 @@ pub fn execute_and_display_with_result<T: Executable + Clone + Send>(
     } else {
         run_plain(dag, mode, success_port, input_mocks)
     }
+}
+
+fn run_preflight_with_progress<F>(mut preflight: F) -> Result<(), ExecError>
+where
+    F: FnMut(&mut dyn PreflightObserver) -> Result<(), String>,
+{
+    let profile = TerminalProfile::detect();
+
+    let progress_state = Arc::new(Mutex::new(DagProgress::new(initial_preflight_snapshot())));
+    let stop_render = Arc::new(AtomicBool::new(false));
+
+    let progress_for_render = Arc::clone(&progress_state);
+    let stop_for_render = Arc::clone(&stop_render);
+    let profile_for_render = profile.clone();
+    let render_handle = thread::spawn(move || {
+        let spinner_frames: Vec<String> = [
+            SymbolId::Spinner0,
+            SymbolId::Spinner1,
+            SymbolId::Spinner2,
+            SymbolId::Spinner3,
+        ]
+        .iter()
+        .map(|id| {
+            STANDARD
+                .resolve_tier(*id, profile_for_render.tier)
+                .to_string()
+        })
+        .collect();
+        let mut spinner = Animation::cycle(spinner_frames, Duration::from_millis(150));
+        let mut writer = FrameWriter::new(
+            profile_for_render.supports_color,
+            profile_for_render.tier,
+            &STANDARD,
+            profile_for_render.is_tty,
+        );
+        let mut stdout = io::stdout();
+        let mut last_tick = Instant::now();
+
+        loop {
+            let now = Instant::now();
+            spinner.tick(now.saturating_duration_since(last_tick));
+            last_tick = now;
+
+            let progress = {
+                let guard = progress_for_render
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                guard.clone()
+            };
+
+            let layout = compute_layout(
+                &progress.snapshot.topo_order,
+                &progress.snapshot.edges,
+                &progress.snapshot.labels,
+                &profile_for_render.viewport,
+            );
+            render_progress_frame(
+                &progress,
+                &layout,
+                &spinner,
+                &mut writer,
+                &mut stdout,
+                &profile_for_render,
+            );
+
+            if stop_for_render.load(Ordering::Relaxed) {
+                break;
+            }
+            thread::sleep(PROGRESS_TICK);
+        }
+    });
+
+    let mut observer = SharedPreflightObserver::new(Arc::clone(&progress_state));
+    let preflight_result = preflight(&mut observer);
+
+    stop_render.store(true, Ordering::Relaxed);
+    if render_handle.join().is_err() {
+        return Err(ExecError::new(
+            "preflight progress renderer thread panicked",
+        ));
+    }
+
+    preflight_result.map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
 }
 
 /// Plain execution: observer-driven status lines + boundary outputs.
@@ -133,9 +289,7 @@ fn run_plain<T: Executable + Clone + Send>(
 
     let mut status_observer = NonTtyProgressObserver::default();
 
-    let is_ci = std::env::var("CI").is_ok()
-        || std::env::var("GITHUB_ACTIONS").is_ok()
-        || std::env::var("GITLAB_CI").is_ok();
+    let is_ci = is_ci_environment();
 
     let log = if is_ci {
         // CI groups require sequential execution (groups must nest properly).
@@ -165,6 +319,12 @@ fn run_plain<T: Executable + Clone + Send>(
         should_fail: status_observer.failed_count() > 0 || success_port_failed(&log, success_port),
         log,
     })
+}
+
+fn is_ci_environment() -> bool {
+    std::env::var("CI").is_ok()
+        || std::env::var("GITHUB_ACTIONS").is_ok()
+        || std::env::var("GITLAB_CI").is_ok()
 }
 
 /// Mask secret values from an execution log via CI workflow commands.
@@ -226,13 +386,7 @@ fn run_with_progress<T: Executable + Clone + Send>(
         .nodes
         .iter()
         .map(|n| {
-            let label = n
-                .id
-                .0
-                .split('/')
-                .next_back()
-                .unwrap_or(&n.id.0)
-                .to_string();
+            let label = n.id.0.split('/').next_back().unwrap_or(&n.id.0).to_string();
             (n.id.clone(), label)
         })
         .collect();
@@ -351,6 +505,69 @@ impl SharedProgressObserver {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         update(&mut guard);
+    }
+}
+
+#[derive(Clone)]
+struct SharedPreflightObserver {
+    progress: Arc<Mutex<DagProgress>>,
+    started: bool,
+    initialized_steps: bool,
+    total_steps: usize,
+    current_step: Option<usize>,
+}
+
+impl SharedPreflightObserver {
+    fn new(progress: Arc<Mutex<DagProgress>>) -> Self {
+        Self {
+            progress,
+            started: false,
+            initialized_steps: false,
+            total_steps: 0,
+            current_step: None,
+        }
+    }
+
+    fn with_progress<F>(&self, update: F)
+    where
+        F: FnOnce(&mut DagProgress),
+    {
+        let mut guard = self
+            .progress
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        update(&mut guard);
+    }
+
+    fn ensure_started(&mut self) {
+        if self.started {
+            return;
+        }
+        self.with_progress(|progress| {
+            let snapshot = progress.snapshot.clone();
+            progress.on_dag_start(&snapshot);
+            progress.on_node_start(&NodeId::from("preflight_check"));
+        });
+        self.started = true;
+    }
+
+    fn ensure_initialized_steps(&mut self, total: usize) {
+        if self.initialized_steps && self.total_steps == total {
+            return;
+        }
+        let snapshot = preflight_snapshot(total);
+        self.with_progress(|progress| {
+            *progress = DagProgress::new(snapshot.clone());
+            progress.on_dag_start(&snapshot);
+        });
+        self.initialized_steps = true;
+        self.total_steps = total;
+        self.current_step = None;
+        self.started = true;
+    }
+
+    fn step_node_id(step: usize) -> NodeId {
+        NodeId::from(format!("preflight_step_{}", step))
     }
 }
 
@@ -645,6 +862,57 @@ fn render_progress_frame(
     let _ = writer.write_frame(&frame, stdout);
 }
 
+fn initial_preflight_snapshot() -> DagSnapshot {
+    let node_id = NodeId::from("preflight_check");
+    DagSnapshot {
+        node_ids: vec![node_id.clone()],
+        edges: Vec::new(),
+        topo_order: vec![node_id.clone()],
+        boundary_nodes: Vec::new(),
+        labels: HashMap::from([(node_id.clone(), "preflight".to_string())]),
+        groups: Vec::new(),
+    }
+}
+
+fn preflight_snapshot(total_steps: usize) -> DagSnapshot {
+    let mut node_ids = Vec::new();
+    let mut edges = Vec::new();
+    let mut labels = HashMap::new();
+
+    for step in 1..=total_steps {
+        let id = SharedPreflightObserver::step_node_id(step);
+        labels.insert(id.clone(), format!("step {}", step));
+        if step > 1 {
+            let prev = SharedPreflightObserver::step_node_id(step - 1);
+            edges.push(gunbc_ir::Edge::new(
+                prev.0.clone(),
+                "out",
+                id.0.clone(),
+                "in",
+            ));
+        }
+        node_ids.push(id);
+    }
+
+    let groups = if node_ids.len() > 1 {
+        vec![StageGroup {
+            name: "preflight".to_string(),
+            node_ids: node_ids.clone(),
+        }]
+    } else {
+        Vec::new()
+    };
+
+    DagSnapshot {
+        topo_order: node_ids.clone(),
+        node_ids,
+        edges,
+        boundary_nodes: Vec::new(),
+        labels,
+        groups,
+    }
+}
+
 /// Print a single output value in the standard format.
 ///
 /// Uses `Value::display_redacted_truncated()` as the single chokepoint
@@ -793,6 +1061,62 @@ impl PreflightObserver for PreflightStatusObserver {
     fn on_preflight_error(&mut self, name: &str, error: &str) {
         let first_line = error.lines().next().unwrap_or(error);
         eprintln!("✗ {}: {}", name, first_line);
+    }
+}
+
+impl PreflightObserver for SharedPreflightObserver {
+    fn on_preflight_start(&mut self, _name: &str) {
+        self.ensure_started();
+    }
+
+    fn on_preflight_step(&mut self, step: usize, total: usize, label: &str) {
+        self.ensure_initialized_steps(total);
+        let node_id = Self::step_node_id(step);
+        self.with_progress(|progress| {
+            if let Some(existing_label) = progress.snapshot.labels.get_mut(&node_id) {
+                *existing_label = label.to_string();
+            }
+            progress.on_node_start(&node_id);
+        });
+        self.current_step = Some(step);
+    }
+
+    fn on_preflight_step_complete(&mut self, _label: &str, elapsed: Duration) {
+        let step = self.current_step.unwrap_or(1);
+        let node_id = Self::step_node_id(step);
+        self.with_progress(|progress| {
+            progress.on_node_complete(
+                &node_id,
+                OutputSummary {
+                    fields: Vec::new(),
+                    elapsed,
+                },
+            );
+        });
+    }
+
+    fn on_preflight_complete(&mut self, _name: &str, elapsed: Duration) {
+        // Fresh-state preflight can complete without explicit steps.
+        if !self.initialized_steps {
+            self.with_progress(|progress| {
+                progress.on_node_complete(
+                    &NodeId::from("preflight_check"),
+                    OutputSummary {
+                        fields: Vec::new(),
+                        elapsed,
+                    },
+                );
+            });
+        }
+        self.with_progress(|progress| progress.on_dag_complete(elapsed));
+    }
+
+    fn on_preflight_error(&mut self, _name: &str, error: &str) {
+        let node_id = match self.current_step {
+            Some(step) => Self::step_node_id(step),
+            None => NodeId::from("preflight_check"),
+        };
+        self.with_progress(|progress| progress.on_node_failed(&node_id, error));
     }
 }
 

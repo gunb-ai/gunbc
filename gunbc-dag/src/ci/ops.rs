@@ -1060,9 +1060,19 @@ fn build_report_blocks(
         StageResult::new("Lint", lint_success, lint_stdout, lint_stderr)
             .with_extractor(extract_lint_warnings),
         StageResult::new("Testgen", testgen_success, testgen_stdout, testgen_stderr),
-        StageResult::new("Bootstrap", bootstrap_success, bootstrap_stdout, bootstrap_stderr),
+        StageResult::new(
+            "Bootstrap",
+            bootstrap_success,
+            bootstrap_stdout,
+            bootstrap_stderr,
+        ),
         StageResult::new("Pragma", pragma_success, pragma_stdout, pragma_stderr),
-        StageResult::new("Guardrails", guardrail_success, guardrail_stdout, guardrail_stderr),
+        StageResult::new(
+            "Guardrails",
+            guardrail_success,
+            guardrail_stdout,
+            guardrail_stderr,
+        ),
         StageResult::new("Verify", verify_success, "", verify_stderr),
     ];
 
@@ -1219,7 +1229,13 @@ struct StageResult<'a> {
 
 impl<'a> StageResult<'a> {
     fn new(name: &'a str, success: bool, stdout: &'a str, stderr: &'a str) -> Self {
-        Self { name, success, stdout, stderr, extractor: None }
+        Self {
+            name,
+            success,
+            stdout,
+            stderr,
+            extractor: None,
+        }
     }
 
     fn with_extractor(mut self, f: fn(&str) -> Option<String>) -> Self {

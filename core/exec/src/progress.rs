@@ -103,13 +103,7 @@ impl DagSnapshot {
             .map(|n| {
                 // For SubDag children like "rev_list/prepare_rev_list",
                 // strip the parent prefix to show just "prepare_rev_list".
-                let label = n
-                    .id
-                    .0
-                    .split('/')
-                    .next_back()
-                    .unwrap_or(&n.id.0)
-                    .to_string();
+                let label = n.id.0.split('/').next_back().unwrap_or(&n.id.0).to_string();
                 (n.id.clone(), label)
             })
             .collect();

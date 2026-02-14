@@ -14,8 +14,8 @@ use gunbc_cli::BinaryArgs;
 use gunbc_dag::testgen_dag::graph::build_testgen_graph;
 use gunbc_dag::testgen_resource_def;
 use gunbc_exec::{
-    execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
-    BoundaryMocks, ExecutionMode, PreflightStatusObserver,
+    execute_and_display_with_preflight, execute_and_display_with_preflight_result, print_attention,
+    AttentionLevel, BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::{
     update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
@@ -57,11 +57,6 @@ fn main() {
     let dry_run = parsed.dry_run;
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
     let output_dir = PathBuf::from(parsed.get_string("output_dir").unwrap_or("."));
-
-    if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {
-        print_attention(AttentionLevel::Error, "Preflight failed", &err);
-        process::exit(1);
-    }
 
     let targets = build_targets();
     if targets.is_empty() {
@@ -184,7 +179,14 @@ fn main() {
 
     if resource_mode == ExecMode::Verify {
         // Check mode: execute through shared display path and inspect log outputs.
-        match execute_and_display_with_result(&dag, mode, animated, None, Some(&input_mocks)) {
+        match execute_and_display_with_preflight_result(
+            &dag,
+            mode,
+            animated,
+            None,
+            Some(&input_mocks),
+            &mut |observer| ensure_lint_upsert_with_observer(observer),
+        ) {
             Ok(result) => {
                 let log = result.log;
                 let mut ok_count = 0;
@@ -245,7 +247,14 @@ fn main() {
         println!();
 
         // Execute and display (progress or classic based on terminal)
-        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
+        execute_and_display_with_preflight(
+            &dag,
+            mode,
+            animated,
+            None,
+            Some(&input_mocks),
+            |observer| ensure_lint_upsert_with_observer(observer),
+        );
 
         // Update manifest after successful generation (not in DAG - post-execution step)
         if !dry_run && resource_mode == ExecMode::Ensure {

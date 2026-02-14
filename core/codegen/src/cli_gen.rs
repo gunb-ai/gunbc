@@ -280,10 +280,9 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
 
     // gunbc_exec imports
     let mut exec_items = vec![
-        "execute_and_display".to_string(),
+        "execute_and_display_with_preflight".to_string(),
         "BoundaryMocks".to_string(),
         "ExecutionMode".to_string(),
-        "PreflightStatusObserver".to_string(),
     ];
     if step_mode {
         exec_items.push("execute_single_node".to_string());
@@ -639,12 +638,6 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          \n\
          // Parse arguments\n\
          {arg_parsing}\n\
-         // Preflight lint (auto-fix if stale)\n\
-         if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {{\n\
-             eprintln!(\"preflight failed: {{}}\", err);\n\
-             process::exit(1);\n\
-         }}\n\
-         \n\
          // Build the graph\n\
          let dag = {graph_builder_call};\n\
          \n\
@@ -658,9 +651,9 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          println!(\"  mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }});\n\
          println!();\n\
          \n\
-         // Execute and display (progress or classic based on terminal)\n\
+         // Execute preflight + DAG in one display surface\n\
          let animated = std::io::stdout().is_terminal();\n\
-         execute_and_display(&dag, mode, animated, {success_port_arg}, Some(&input_mocks));",
+         execute_and_display_with_preflight(&dag, mode, animated, {success_port_arg}, Some(&input_mocks), |observer| ensure_lint_upsert_with_observer(observer));",
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
@@ -811,12 +804,6 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          args.extend_from_slice(raw_args);\n\
          \n\
          {arg_parsing}\n\
-         // Preflight lint (auto-fix if stale)\n\
-         if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {{\n\
-             eprintln!(\"preflight failed: {{}}\", err);\n\
-             process::exit(1);\n\
-         }}\n\
-         \n\
          // Build the graph\n\
          let dag = {graph_builder_call};\n\
          \n\
@@ -830,9 +817,9 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          println!(\"  mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }});\n\
          println!();\n\
          \n\
-         // Execute and display (progress or classic based on terminal)\n\
+         // Execute preflight + DAG in one display surface\n\
          let animated = std::io::stdout().is_terminal();\n\
-         execute_and_display(&dag, mode, animated, {success_port_arg}, Some(&input_mocks));",
+         execute_and_display_with_preflight(&dag, mode, animated, {success_port_arg}, Some(&input_mocks), |observer| ensure_lint_upsert_with_observer(observer));",
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
@@ -879,7 +866,7 @@ fn build_run_single_step_fn(tool: &ToolMeta) -> FnDef {
          }}\n\
          \n\
          // Preflight lint (auto-fix if stale)\n\
-         if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {{\n\
+         if let Err(err) = ensure_lint_upsert_with_observer(None) {{\n\
              eprintln!(\"preflight failed: {{}}\", err);\n\
              process::exit(1);\n\
          }}\n\

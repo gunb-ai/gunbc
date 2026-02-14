@@ -8,8 +8,8 @@ use gunbc_cli::BinaryArgs;
 use gunbc_dag::codegen::build_codegen_graph_with_mode;
 use gunbc_dag::CODEGEN_STAMP_PATH;
 use gunbc_exec::{
-    execute_and_display, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
-    PreflightStatusObserver,
+    execute_and_display_with_preflight, print_attention, AttentionLevel, BoundaryMocks,
+    ExecutionMode,
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
@@ -29,11 +29,6 @@ fn main() {
     }
     let dry_run = parsed.dry_run;
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
-
-    if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {
-        print_attention(AttentionLevel::Error, "Preflight failed", &err);
-        process::exit(1);
-    }
 
     // Build the graph
     let dag = match build_codegen_graph_with_mode(resource_mode) {
@@ -89,7 +84,14 @@ fn main() {
 
     // Execute and display (progress or classic based on terminal)
     let animated = std::io::stdout().is_terminal();
-    execute_and_display(&dag, mode, animated, Some("prep_success"), None);
+    execute_and_display_with_preflight(
+        &dag,
+        mode,
+        animated,
+        Some("prep_success"),
+        None,
+        |observer| ensure_lint_upsert_with_observer(observer),
+    );
 }
 
 fn print_help() {

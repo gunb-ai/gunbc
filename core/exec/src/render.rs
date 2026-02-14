@@ -573,6 +573,9 @@ mod tests {
         let output = render_to_string(&progress, &layout);
         // The frame does not display field previews directly in the standard view,
         // but verify the secret value "s3cr3t" never appears
-        assert!(!output.contains("s3cr3t"), "Secret value should not appear in render output");
+        assert!(
+            !output.contains("s3cr3t"),
+            "Secret value should not appear in render output"
+        );
     }
 }

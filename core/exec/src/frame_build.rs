@@ -301,11 +301,10 @@ fn build_compact_line(
 // Legend
 // ---------------------------------------------------------------------------
 
-/// Build the legend lines (running/failed first, then recent completions).
+/// Build lower panel lines under the DAG grid.
 ///
-/// When groups are present, shows group-level progress:
-/// - Failed/running groups are expanded to show individual nodes (auto-expand)
-/// - Completed groups are shown as a single collapsed line with count
+/// When groups are present, render a stage panel with per-stage progress bars.
+/// Otherwise, render the legacy per-node legend.
 fn build_legend_lines(
     progress: &DagProgress,
     layout: &DagLayout,
@@ -313,9 +312,11 @@ fn build_legend_lines(
     _tier: Tier,
 ) -> Vec<Line> {
     const LEGEND_LINES: usize = 3;
+    const STAGE_PANEL_MAX_GROUPS: usize = 5;
+    const STAGE_PANEL_MAX_LINES: usize = 7;
 
     if !progress.snapshot.groups.is_empty() {
-        return build_grouped_legend(progress, layout, LEGEND_LINES);
+        return build_grouped_stage_panel(progress, STAGE_PANEL_MAX_GROUPS, STAGE_PANEL_MAX_LINES);
     }
 
     let mut active_entries: Vec<(NodeState, String, String, Option<Duration>)> = Vec::new();
@@ -387,76 +388,196 @@ fn build_legend_lines(
     lines
 }
 
-/// Build group-aware legend lines.
+/// Build a grouped stage panel with progress bars and inline expansion.
 ///
-/// Failed/running groups are expanded to show individual nodes.
-/// Completed groups are shown as a single collapsed line.
-fn build_grouped_legend(
+/// Failed groups always expand. Running groups auto-expand when they contain
+/// long-running nodes.
+fn build_grouped_stage_panel(
     progress: &DagProgress,
-    _layout: &DagLayout,
+    max_groups: usize,
     max_lines: usize,
 ) -> Vec<Line> {
-    let mut lines = Vec::new();
+    const BAR_WIDTH: usize = 14;
+    const LONG_RUNNING_EXPAND_AFTER: Duration = Duration::from_secs(20);
+    const DETAILS_PER_GROUP: usize = 2;
 
-    // Collect groups by priority: failed/running first, then completed
-    let mut active_groups: Vec<(usize, &str, GroupProgress)> = Vec::new();
-    let mut done_groups: Vec<(usize, &str, GroupProgress)> = Vec::new();
+    let mut lines = vec![Line::new(vec![Span::plain("  Stages:")])];
 
-    for (idx, group) in progress.snapshot.groups.iter().enumerate() {
-        let gp = group.progress(progress);
-        if gp.is_failed() || gp.running > 0 {
-            active_groups.push((idx, &group.name, gp));
-        } else if gp.is_done() {
-            done_groups.push((idx, &group.name, gp));
+    let mut rows: Vec<(usize, GroupProgress)> = progress
+        .snapshot
+        .groups
+        .iter()
+        .enumerate()
+        .map(|(idx, group)| (idx, group.progress(progress)))
+        .collect();
+    if rows.is_empty() {
+        while lines.len() < max_lines {
+            lines.push(Line::new(vec![Span::plain("")]));
         }
+        return lines;
     }
 
-    // Active groups: expanded to show individual nodes
-    for (_idx, name, gp) in &active_groups {
+    // Prioritize groups that are active/failing, then fill with remaining
+    // groups in topology order to keep context visible.
+    let mut selected: Vec<(usize, GroupProgress)> = rows
+        .iter()
+        .filter(|(_, gp)| gp.is_failed() || gp.running > 0)
+        .cloned()
+        .collect();
+    for row in rows.drain(..) {
+        if selected.len() >= max_groups {
+            break;
+        }
+        if selected.iter().any(|(idx, _)| *idx == row.0) {
+            continue;
+        }
+        selected.push(row);
+    }
+    selected.truncate(max_groups);
+
+    for (group_idx, gp) in selected {
         if lines.len() >= max_lines {
             break;
         }
+        let group = &progress.snapshot.groups[group_idx];
+        let done = gp.completed + gp.failed + gp.skipped;
+        let bar = stage_progress_bar(done, gp.total, BAR_WIDTH);
         let (sym, color) = if gp.is_failed() {
             ("\u{2718}", SemanticColor::Error) // ✘
-        } else {
+        } else if gp.running > 0 {
             ("\u{25D0}", SemanticColor::Active) // ◐
+        } else if gp.is_done() {
+            ("\u{2714}", SemanticColor::Success) // ✔
+        } else {
+            ("\u{25CB}", SemanticColor::Dim) // ○
         };
+
+        let mut suffix = String::new();
+        if gp.failed > 0 {
+            suffix = format!(" ({} failed)", gp.failed);
+        } else if gp.running > 0 {
+            suffix = format!(" ({} running)", gp.running);
+        }
+
         lines.push(Line::new(vec![
             Span::plain("  "),
             Span::styled(
-                format!("{} {} [{}/{}]", sym, name, gp.completed, gp.total),
+                format!(
+                    "{} {:<18} [{}] {}/{}{}",
+                    sym, group.name, bar, done, gp.total, suffix
+                ),
                 SpanStyle {
                     color: Some(color),
                     ..Default::default()
                 },
             ),
         ]));
+
+        let expand = gp.is_failed()
+            || group_has_long_running_node(progress, group_idx, LONG_RUNNING_EXPAND_AFTER);
+        if !expand {
+            continue;
+        }
+
+        for detail_line in grouped_detail_lines(progress, group_idx, DETAILS_PER_GROUP) {
+            if lines.len() >= max_lines {
+                break;
+            }
+            lines.push(detail_line);
+        }
     }
 
-    // Completed groups: collapsed
-    for (_idx, name, gp) in done_groups.iter().rev() {
-        if lines.len() >= max_lines {
-            break;
+    // Keep fixed height to reduce flicker while stages update.
+    while lines.len() < max_lines {
+        lines.push(Line::new(vec![Span::plain("")]));
+    }
+    lines
+}
+
+fn grouped_detail_lines(progress: &DagProgress, group_idx: usize, limit: usize) -> Vec<Line> {
+    let group = &progress.snapshot.groups[group_idx];
+    let mut entries: Vec<(NodeState, String, Option<Duration>)> = Vec::new();
+
+    for node_id in &group.node_ids {
+        let Some(np) = progress.nodes.get(node_id) else {
+            continue;
+        };
+        if !matches!(np.state, NodeState::Failed | NodeState::Running) {
+            continue;
         }
+
+        let label = full_label(node_id, &progress.snapshot.labels);
+        let elapsed = np.elapsed.or_else(|| np.start_time.map(|t| t.elapsed()));
+        entries.push((np.state, label, elapsed));
+    }
+
+    entries.sort_by_key(|(state, _, _)| match state {
+        NodeState::Failed => 0,
+        NodeState::Running => 1,
+        _ => 2,
+    });
+
+    let mut lines = Vec::new();
+    for (state, label, elapsed) in entries.iter().take(limit) {
+        let time_str = elapsed
+            .map(|d| format!(" [{}]", format_duration(d)))
+            .unwrap_or_default();
         lines.push(Line::new(vec![
-            Span::plain("  "),
+            Span::plain("    "),
             Span::styled(
-                format!("\u{2714} {} [{}/{}]", name, gp.completed, gp.total), // ✔
+                format!("{} {}{}", legend_char(*state), label, time_str),
                 SpanStyle {
-                    color: Some(SemanticColor::Success),
+                    color: Some(state_color(*state)),
                     ..Default::default()
                 },
             ),
         ]));
     }
 
-    // Pad remaining slots with empty lines to prevent jitter
-    let visible = lines.len().min(max_lines);
-    for _ in visible..max_lines {
-        lines.push(Line::new(vec![Span::plain("")]));
+    if entries.len() > limit {
+        lines.push(Line::new(vec![
+            Span::plain("    "),
+            Span::styled(
+                format!("… {} more", entries.len() - limit),
+                SpanStyle {
+                    color: Some(SemanticColor::Dim),
+                    ..Default::default()
+                },
+            ),
+        ]));
     }
 
     lines
+}
+
+fn group_has_long_running_node(
+    progress: &DagProgress,
+    group_idx: usize,
+    threshold: Duration,
+) -> bool {
+    let group = &progress.snapshot.groups[group_idx];
+    group.node_ids.iter().any(|node_id| {
+        let Some(np) = progress.nodes.get(node_id) else {
+            return false;
+        };
+        if np.state != NodeState::Running {
+            return false;
+        }
+        np.start_time
+            .map(|start| start.elapsed() >= threshold)
+            .unwrap_or(false)
+    })
+}
+
+fn stage_progress_bar(done: usize, total: usize, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    if total == 0 {
+        return "-".repeat(width);
+    }
+    let filled = ((done * width) + (total / 2)) / total;
+    format!("{}{}", "#".repeat(filled), "-".repeat(width - filled))
 }
 
 // ---------------------------------------------------------------------------
@@ -746,6 +867,7 @@ mod tests {
     use gunbc_ir::layout::{compute_layout, Viewport, ViewportUnit};
     use gunbc_ir::symbols::STANDARD;
     use gunbc_ir::{Edge, NodeId};
+    use std::time::Instant;
 
     fn test_snapshot() -> DagSnapshot {
         DagSnapshot {
@@ -929,7 +1051,7 @@ mod tests {
     }
 
     // -------------------------------------------------------------------
-    // Phase 6: Grouped legend tests
+    // Phase 6: Grouped stage-panel tests
     // -------------------------------------------------------------------
 
     #[test]
@@ -1000,6 +1122,16 @@ mod tests {
             "Grouped legend should contain group name 'build', got:\n{}",
             all_text
         );
+        assert!(
+            all_text.contains("Stages:"),
+            "Grouped panel should contain 'Stages:', got:\n{}",
+            all_text
+        );
+        assert!(
+            all_text.contains("["), // progress bar bracket
+            "Grouped panel should contain a progress bar, got:\n{}",
+            all_text
+        );
     }
 
     #[test]
@@ -1034,5 +1166,155 @@ mod tests {
             "Ungrouped legend should contain node name 'build', got:\n{}",
             all_text
         );
+    }
+
+    #[test]
+    fn test_grouped_stage_panel_auto_expands_long_running_node() {
+        use crate::progress::StageGroup;
+        use gunbc_ir::layout::{compute_layout, Viewport, ViewportUnit};
+
+        let snap = DagSnapshot {
+            node_ids: vec![
+                NodeId::from("prepare_build"),
+                NodeId::from("execute_build"),
+                NodeId::from("parse_build"),
+            ],
+            edges: vec![
+                Edge::new("prepare_build", "out", "execute_build", "in"),
+                Edge::new("execute_build", "out", "parse_build", "in"),
+            ],
+            topo_order: vec![
+                NodeId::from("prepare_build"),
+                NodeId::from("execute_build"),
+                NodeId::from("parse_build"),
+            ],
+            boundary_nodes: vec![],
+            labels: [
+                (NodeId::from("prepare_build"), "prepare_build".to_string()),
+                (NodeId::from("execute_build"), "execute_build".to_string()),
+                (NodeId::from("parse_build"), "parse_build".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+            groups: vec![StageGroup {
+                name: "build".into(),
+                node_ids: vec![
+                    NodeId::from("prepare_build"),
+                    NodeId::from("execute_build"),
+                    NodeId::from("parse_build"),
+                ],
+            }],
+        };
+
+        let mut progress = DagProgress::new(snap.clone());
+        progress.on_dag_start(&snap);
+        progress.on_node_start(&NodeId::from("prepare_build"));
+        progress.on_node_complete(&NodeId::from("prepare_build"), empty_summary());
+        progress.on_node_start(&NodeId::from("execute_build"));
+        if let Some(np) = progress.nodes.get_mut(&NodeId::from("execute_build")) {
+            np.start_time = Some(Instant::now() - Duration::from_secs(25));
+        }
+
+        let vp = Viewport::new(80, 24, ViewportUnit::Chars);
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
+        let frame = build_frame(
+            &progress,
+            &layout,
+            RenderMode::Standard,
+            "◐",
+            Tier::Unicode,
+            &STANDARD,
+        );
+
+        let all_text: String = frame
+            .lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.text.as_str()))
+            .collect();
+        assert!(
+            all_text.contains("execute_build"),
+            "Long-running group should auto-expand running node detail, got:\n{}",
+            all_text
+        );
+    }
+
+    #[test]
+    fn test_grouped_stage_panel_expands_failed_node_detail() {
+        use crate::progress::StageGroup;
+        use gunbc_ir::layout::{compute_layout, Viewport, ViewportUnit};
+
+        let snap = DagSnapshot {
+            node_ids: vec![
+                NodeId::from("prepare_build"),
+                NodeId::from("execute_build"),
+                NodeId::from("parse_build"),
+            ],
+            edges: vec![
+                Edge::new("prepare_build", "out", "execute_build", "in"),
+                Edge::new("execute_build", "out", "parse_build", "in"),
+            ],
+            topo_order: vec![
+                NodeId::from("prepare_build"),
+                NodeId::from("execute_build"),
+                NodeId::from("parse_build"),
+            ],
+            boundary_nodes: vec![],
+            labels: [
+                (NodeId::from("prepare_build"), "prepare_build".to_string()),
+                (NodeId::from("execute_build"), "execute_build".to_string()),
+                (NodeId::from("parse_build"), "parse_build".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+            groups: vec![StageGroup {
+                name: "build".into(),
+                node_ids: vec![
+                    NodeId::from("prepare_build"),
+                    NodeId::from("execute_build"),
+                    NodeId::from("parse_build"),
+                ],
+            }],
+        };
+
+        let mut progress = DagProgress::new(snap.clone());
+        progress.on_dag_start(&snap);
+        progress.on_node_start(&NodeId::from("prepare_build"));
+        progress.on_node_complete(&NodeId::from("prepare_build"), empty_summary());
+        progress.on_node_start(&NodeId::from("execute_build"));
+        progress.on_node_failed(&NodeId::from("execute_build"), "boom");
+
+        let vp = Viewport::new(80, 24, ViewportUnit::Chars);
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
+        let frame = build_frame(
+            &progress,
+            &layout,
+            RenderMode::Standard,
+            "◐",
+            Tier::Unicode,
+            &STANDARD,
+        );
+
+        let all_text: String = frame
+            .lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.text.as_str()))
+            .collect();
+        assert!(
+            all_text.contains("✘"),
+            "Failed stage should render failure marker, got:\n{}",
+            all_text
+        );
+        assert!(
+            all_text.contains("execute_build"),
+            "Failed stage should include failed node detail, got:\n{}",
+            all_text
+        );
+    }
+
+    #[test]
+    fn test_stage_progress_bar_renders_expected_fill() {
+        assert_eq!(stage_progress_bar(0, 4, 10), "----------");
+        assert_eq!(stage_progress_bar(2, 4, 10), "#####-----");
+        assert_eq!(stage_progress_bar(4, 4, 10), "##########");
     }
 }

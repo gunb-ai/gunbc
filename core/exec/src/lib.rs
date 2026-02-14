@@ -46,8 +46,10 @@ pub mod topo;
 
 pub use ci_context::CiContext;
 pub use display::{
-    execute_and_display, execute_and_display_with_result, print_attention, print_value,
-    AttentionLevel, DisplayResult, PreflightObserver, PreflightStatusObserver,
+    execute_and_display, execute_and_display_with_preflight,
+    execute_and_display_with_preflight_result, execute_and_display_with_result, print_attention,
+    print_value, run_preflight_with_display, AttentionLevel, DisplayResult, PreflightObserver,
+    PreflightStatusObserver,
 };
 pub use env::{single_output as env_single_output, EnvNode};
 pub use error::{ExecError, IntoExecResult, ResultExt};

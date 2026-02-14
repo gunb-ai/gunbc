@@ -57,7 +57,7 @@ pub fn ensure_lint_upsert_with_ci(ci: Option<&mut gunbc_exec::CiContext>) -> Res
 /// runs silently (output only on state change via the `println!` in
 /// `ensure_lint_upsert_manifest_state`).
 pub fn ensure_lint_upsert_with_observer(
-    mut observer: Option<&mut dyn gunbc_exec::PreflightObserver>,
+    observer: Option<&mut dyn gunbc_exec::PreflightObserver>,
 ) -> Result<(), String> {
     if should_skip_preflight() {
         return Ok(());
@@ -65,41 +65,43 @@ pub fn ensure_lint_upsert_with_observer(
 
     let preflight_start = std::time::Instant::now();
 
-    if let Some(ref mut obs) = observer {
-        obs.on_preflight_start("preflight");
-    }
-
     let io = TransportIo::new();
     let resource = LintResource::new();
 
     let mut manifest = load_manifest_default(&io)
         .map_err(|e| format!("preflight: manifest load failed: {}", e))?;
-    let updated = match ensure_lint_upsert_manifest_state(&io, &mut manifest, &resource, |id| {
-        // Keep lint-upsert execution independent from observer plumbing until
-        // run_lint_upsert is fully migrated to the observer trait.
-        run_lint_upsert(id, None)
-    }) {
-        Ok(updated) => updated,
-        Err(msg) => {
-            if let Some(ref mut obs) = observer {
-                obs.on_preflight_error("preflight", &msg);
-            }
-            return Err(msg);
-        }
-    };
 
-    if updated {
-        save_manifest_default(&io, &manifest).map_err(|e| {
-            let msg = format!("preflight: manifest save failed: {}", e);
-            if let Some(ref mut obs) = observer {
+    if let Some(obs) = observer {
+        obs.on_preflight_start("preflight");
+        let updated = match ensure_lint_upsert_manifest_state(&io, &mut manifest, &resource, |id| {
+            run_lint_upsert(id, Some(obs))
+        }) {
+            Ok(updated) => updated,
+            Err(msg) => {
                 obs.on_preflight_error("preflight", &msg);
+                return Err(msg);
             }
-            msg
-        })?;
+        };
+
+        if updated {
+            if let Err(e) = save_manifest_default(&io, &manifest) {
+                let msg = format!("preflight: manifest save failed: {}", e);
+                obs.on_preflight_error("preflight", &msg);
+                return Err(msg);
+            }
+        }
+
+        obs.on_preflight_complete("preflight", preflight_start.elapsed());
+        return Ok(());
     }
 
-    if let Some(ref mut obs) = observer {
-        obs.on_preflight_complete("preflight", preflight_start.elapsed());
+    let updated = ensure_lint_upsert_manifest_state(&io, &mut manifest, &resource, |id| {
+        run_lint_upsert(id, None)
+    })?;
+
+    if updated {
+        save_manifest_default(&io, &manifest)
+            .map_err(|e| format!("preflight: manifest save failed: {}", e))?;
     }
 
     Ok(())
@@ -421,6 +423,7 @@ fn run_lint_upsert(
         eprint!("  [{}/{}] clippy...", clippy_step, total);
         let _ = std::io::Write::flush(&mut std::io::stderr());
     }
+    let mut clippy_elapsed = Duration::ZERO;
     let clippy_outcome: Result<(), ResourceError> = (|| {
         let clippy_start = std::time::Instant::now();
         let clippy_check = CargoCommand::new(Subcommand::Clippy).warnings(Warnings::Deny);
@@ -454,13 +457,15 @@ fn run_lint_upsert(
                 ));
             }
             eprintln!(" {:.1}s", fix_start.elapsed().as_secs_f64());
+            clippy_elapsed = clippy_start.elapsed();
         } else {
             eprintln!(" {:.1}s", clippy_start.elapsed().as_secs_f64());
+            clippy_elapsed = clippy_start.elapsed();
         }
         Ok(())
     })();
     if let Some(ref mut obs) = observer {
-        obs.on_preflight_step_complete("clippy", Duration::ZERO);
+        obs.on_preflight_step_complete("clippy", clippy_elapsed);
     }
     clippy_outcome?;
 
@@ -843,13 +848,7 @@ mod tests {
         let cmd = preflight_test_gate_command();
         assert_eq!(
             cmd.to_args(),
-            vec![
-                "cargo",
-                "test",
-                "--workspace",
-                "--lib",
-                "--no-run",
-            ]
+            vec!["cargo", "test", "--workspace", "--lib", "--no-run",]
         );
         assert_eq!(
             cmd.env(),

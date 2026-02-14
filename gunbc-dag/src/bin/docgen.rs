@@ -6,8 +6,8 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::{build_docgen_graph, DOCGEN_READ_TARGETS};
 use gunbc_exec::{
-    execute_and_display, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
-    PreflightStatusObserver,
+    execute_and_display_with_preflight, print_attention, AttentionLevel, BoundaryMocks,
+    ExecutionMode,
 };
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::Value;
@@ -25,11 +25,6 @@ fn main() {
     }
     let dry_run = parsed.dry_run;
 
-    if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {
-        print_attention(AttentionLevel::Error, "Preflight failed", &err);
-        process::exit(1);
-    }
-
     let dag = match build_docgen_graph() {
         Ok(d) => d,
         Err(e) => {
@@ -45,7 +40,9 @@ fn main() {
     };
 
     let animated = std::io::stdout().is_terminal();
-    execute_and_display(&dag, mode, animated, None, None);
+    execute_and_display_with_preflight(&dag, mode, animated, None, None, |observer| {
+        ensure_lint_upsert_with_observer(observer)
+    });
 }
 
 fn build_dry_run_mocks() -> BoundaryMocks {
