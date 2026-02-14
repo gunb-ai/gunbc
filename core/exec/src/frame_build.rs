@@ -4,7 +4,7 @@
 //! The caller passes the resulting [`Frame`] to a
 //! [`FrameWriter`](super::frame_write::FrameWriter) for actual output.
 
-use crate::progress::{DagPhase, DagProgress, EdgeState, GroupProgress, NodeState};
+use crate::progress::{DagPhase, DagProgress, GroupProgress, NodeState};
 use crate::render::RenderMode;
 use gunbc_ir::layout::DagLayout;
 use gunbc_ir::render_ir::{CursorAction, Frame, Line, Span, SpanStyle};
@@ -150,106 +150,6 @@ fn build_dag_header(
 // Standard mode lines
 // ---------------------------------------------------------------------------
 
-/// Build the DAG grid lines for standard/dynamic mode.
-fn build_standard_lines(
-    progress: &DagProgress,
-    layout: &DagLayout,
-    _symbol_set: &'static SymbolSet,
-    _tier: Tier,
-) -> Vec<Line> {
-    if layout.levels.is_empty() {
-        return Vec::new();
-    }
-
-    let num_cols = layout.levels.len();
-    let num_tracks = layout.tracks;
-    let col_w = layout.box_width as usize;
-    let gap_w = layout.gap_width as usize;
-
-    let visible_levels = &layout.overflow.visible_levels;
-    let start_col = visible_levels.start;
-    let end_col = visible_levels.end.min(num_cols);
-
-    let mut lines = Vec::new();
-
-    for track in 0..num_tracks {
-        let mut spans = Vec::new();
-        let last_col = end_col.saturating_sub(1);
-
-        for (col, connector_row) in layout
-            .connectors
-            .iter()
-            .enumerate()
-            .take(last_col)
-            .skip(start_col)
-        {
-            if let Some(node) = layout.grid.get(&(track, col)) {
-                let state = progress
-                    .nodes
-                    .get(node)
-                    .map(|np| np.state)
-                    .unwrap_or(NodeState::Pending);
-                let label = layout
-                    .node_letters
-                    .get(node)
-                    .map(|s| s.as_str())
-                    .unwrap_or("?");
-                spans.extend(node_box_spans(label, state));
-                let vis_w = display_width(label) + 2; // [label]
-                let pad = col_w.saturating_sub(vis_w);
-                if pad > 0 {
-                    spans.push(Span::plain(" ".repeat(pad)));
-                }
-            } else {
-                spans.push(Span::plain(" ".repeat(col_w)));
-            }
-
-            let cell = connector_row.get(track);
-            let glyph = cell.map(|c| c.glyph).unwrap_or(' ');
-            let conn = pad_connector(&format!(" {} ", glyph), gap_w);
-            let edge_state = cell
-                .map(|c| connector_cell_state(&c.edges, progress))
-                .unwrap_or(EdgeState::Idle);
-            spans.push(connector_span(&conn, edge_state));
-        }
-
-        if end_col > start_col {
-            let col = last_col;
-            if let Some(node) = layout.grid.get(&(track, col)) {
-                let state = progress
-                    .nodes
-                    .get(node)
-                    .map(|np| np.state)
-                    .unwrap_or(NodeState::Pending);
-                let label = layout
-                    .node_letters
-                    .get(node)
-                    .map(|s| s.as_str())
-                    .unwrap_or("?");
-                spans.extend(node_box_spans(label, state));
-                let vis_w = display_width(label) + 2;
-                let pad = col_w.saturating_sub(vis_w);
-                if pad > 0 {
-                    spans.push(Span::plain(" ".repeat(pad)));
-                }
-            } else {
-                spans.push(Span::plain(" ".repeat(col_w)));
-            }
-        }
-
-        // Check if any spans contain non-whitespace
-        let has_content = spans
-            .iter()
-            .any(|s| s.text.chars().any(|c| !c.is_whitespace()));
-        if has_content {
-            // Prepend 2-space indent
-            spans.insert(0, Span::plain("  "));
-            lines.push(Line::new(spans));
-        }
-    }
-
-    lines
-}
 
 // ---------------------------------------------------------------------------
 // Compact mode
@@ -742,16 +642,6 @@ fn group_has_long_running_node(
     })
 }
 
-fn stage_progress_bar(done: usize, total: usize, width: usize) -> String {
-    if width == 0 {
-        return String::new();
-    }
-    if total == 0 {
-        return "-".repeat(width);
-    }
-    let filled = ((done * width) + (total / 2)) / total;
-    format!("{}{}", "#".repeat(filled), "-".repeat(width - filled))
-}
 
 // ---------------------------------------------------------------------------
 // Footer
@@ -831,40 +721,6 @@ fn symbol_span(id: SymbolId, symbol_set: &'static SymbolSet, _tier: Tier) -> Spa
     )
 }
 
-/// Create spans for a node box: `[` + styled label + `]`.
-fn node_box_spans(label: &str, state: NodeState) -> Vec<Span> {
-    let color = state_color(state);
-    let bold = matches!(
-        state,
-        NodeState::Completed | NodeState::Failed | NodeState::Running | NodeState::Intercepted
-    );
-
-    vec![Span::styled(
-        format!("[{}]", label),
-        SpanStyle {
-            color: Some(color),
-            bold,
-            ..Default::default()
-        },
-    )]
-}
-
-/// Create a span for a connector string with edge-state coloring.
-fn connector_span(text: &str, edge_state: EdgeState) -> Span {
-    let color = match edge_state {
-        EdgeState::Idle => SemanticColor::Dim,
-        EdgeState::Flowing => SemanticColor::Accent,
-        EdgeState::Done => SemanticColor::Success,
-        EdgeState::Dead => SemanticColor::Dim,
-    };
-    Span::styled(
-        text.to_string(),
-        SpanStyle {
-            color: Some(color),
-            ..Default::default()
-        },
-    )
-}
 
 /// Map node state to its semantic color.
 pub fn state_color(state: NodeState) -> SemanticColor {
@@ -889,32 +745,6 @@ fn legend_char(state: NodeState) -> &'static str {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Connector helpers
-// ---------------------------------------------------------------------------
-
-/// Determine the dominant edge state for a connector cell.
-fn connector_cell_state(edges: &[(NodeId, NodeId)], progress: &DagProgress) -> EdgeState {
-    let mut has_done = false;
-    let mut has_dead = false;
-    for (from, to) in edges {
-        if let Some(ep) = progress.edges.get(&(from.clone(), to.clone())) {
-            match ep.state {
-                EdgeState::Flowing => return EdgeState::Flowing,
-                EdgeState::Dead => has_dead = true,
-                EdgeState::Done => has_done = true,
-                EdgeState::Idle => {}
-            }
-        }
-    }
-    if has_dead {
-        EdgeState::Dead
-    } else if has_done {
-        EdgeState::Done
-    } else {
-        EdgeState::Idle
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Utility functions
@@ -1126,7 +956,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_frame_standard_contains_node_boxes() {
+    fn test_build_frame_standard_contains_header() {
         let snap = test_snapshot();
         let progress = DagProgress::new(snap.clone());
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
@@ -1136,20 +966,24 @@ mod tests {
             &progress,
             &layout,
             RenderMode::Standard,
-            "◐",
+            "\u{280B}",
             Tier::Unicode,
             &STANDARD,
         );
 
-        // Collect all text from all spans
-        let all_text: String = frame
-            .lines
-            .iter()
-            .flat_map(|l| l.spans.iter().map(|s| s.text.as_str()))
-            .collect();
-        assert!(all_text.contains("[A]"), "Missing [A] in: {}", all_text);
-        assert!(all_text.contains("[B]"), "Missing [B] in: {}", all_text);
-        assert!(all_text.contains("[C]"), "Missing [C] in: {}", all_text);
+        // Standard mode should have header + legend panel lines
+        assert!(
+            frame.lines.len() >= 2,
+            "Standard mode should have at least header + legend, got {}",
+            frame.lines.len()
+        );
+        // First line is the header
+        let header: String = frame.lines[0].spans.iter().map(|s| &s.text[..]).collect();
+        assert!(
+            header.contains("DAG pending") || header.contains("Running"),
+            "Header should describe DAG state: {}",
+            header
+        );
     }
 
     #[test]
@@ -1160,23 +994,6 @@ mod tests {
         assert_eq!(state_color(NodeState::Failed), SemanticColor::Error);
     }
 
-    #[test]
-    fn test_node_box_spans_bold_for_running() {
-        let spans = node_box_spans("A", NodeState::Running);
-        assert!(
-            spans.iter().any(|s| s.style.bold),
-            "Running node should be bold"
-        );
-    }
-
-    #[test]
-    fn test_node_box_spans_not_bold_for_pending() {
-        let spans = node_box_spans("A", NodeState::Pending);
-        assert!(
-            !spans.iter().any(|s| s.style.bold),
-            "Pending node should not be bold"
-        );
-    }
 
     #[test]
     fn test_format_duration() {
@@ -1289,20 +1106,15 @@ mod tests {
             .iter()
             .flat_map(|l| l.spans.iter().map(|s| s.text.as_str()))
             .collect();
-        // Grouped legend should show "build" group name, not individual node names
+        // Grouped legend should show "build" group name with [done/total] count
         assert!(
             all_text.contains("build"),
             "Grouped legend should contain group name 'build', got:\n{}",
             all_text
         );
         assert!(
-            all_text.contains("Stages:"),
-            "Grouped panel should contain 'Stages:', got:\n{}",
-            all_text
-        );
-        assert!(
-            all_text.contains("["), // progress bar bracket
-            "Grouped panel should contain a progress bar, got:\n{}",
+            all_text.contains("[1/3]"),
+            "Grouped panel should contain count [done/total], got:\n{}",
             all_text
         );
     }
@@ -1484,10 +1296,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_stage_progress_bar_renders_expected_fill() {
-        assert_eq!(stage_progress_bar(0, 4, 10), "----------");
-        assert_eq!(stage_progress_bar(2, 4, 10), "#####-----");
-        assert_eq!(stage_progress_bar(4, 4, 10), "##########");
-    }
 }

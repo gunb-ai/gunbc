@@ -476,8 +476,11 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
 mod tests {
     use super::*;
     use gunbc_test::{guard_test, FermiCost, TestClass};
+    use std::io::{Read as _, Write as _};
+    use std::net::TcpListener;
     use std::env::temp_dir;
     use std::path::{Path, PathBuf};
+    use std::thread;
 
     /// Generate a unique temp file path for testing.
     fn temp_path(name: &str) -> PathBuf {
@@ -506,6 +509,32 @@ mod tests {
             &["git", "shell"],
             &[],
         )
+    }
+
+    fn guard_network(name: &str) -> bool {
+        guard_test(name, TestClass::Integration, FermiCost::S, &["network"], &[])
+    }
+
+    fn spawn_single_connection_server(response: String) -> (u16, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback listener");
+        let port = listener
+            .local_addr()
+            .expect("listener local addr")
+            .port();
+
+        let handle = thread::spawn(move || {
+            let (mut stream, _addr) = listener.accept().expect("accept client connection");
+            let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+
+            let mut buf = [0_u8; 1024];
+            let _ = stream.read(&mut buf);
+
+            stream
+                .write_all(response.as_bytes())
+                .expect("write server response");
+        });
+
+        (port, handle)
     }
 
     // ========================================================================
@@ -1018,6 +1047,103 @@ mod tests {
             }
             _ => panic!("expected Shell response"),
         }
+    }
+
+    #[test]
+    fn test_execute_transport_http_dispatch() {
+        if !guard_network(stringify!(test_execute_transport_http_dispatch)) {
+            return;
+        }
+
+        let (port, handle) = spawn_single_connection_server(
+            "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+                .to_string(),
+        );
+
+        let request = TransportRequest::Http(
+            HttpRequest::get(format!("http://127.0.0.1:{port}/health")).timeout(1000),
+        );
+        let response = execute_transport(&request).expect("http dispatch should succeed");
+
+        match response {
+            TransportResponse::Http(http) => {
+                assert_eq!(http.status, 200);
+                assert_eq!(http.body, "ok");
+            }
+            _ => panic!("expected Http response"),
+        }
+
+        handle.join().expect("server thread should finish");
+    }
+
+    #[test]
+    fn test_execute_transport_rest_dispatch() {
+        if !guard_network(stringify!(test_execute_transport_rest_dispatch)) {
+            return;
+        }
+
+        let (port, handle) = spawn_single_connection_server(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 12\r\nConnection: close\r\n\r\n{\"ok\":true}"
+                .to_string(),
+        );
+
+        let request = TransportRequest::Rest(
+            RestRequest::get(format!("http://127.0.0.1:{port}/v1/ping")).timeout(1000),
+        );
+        let response = execute_transport(&request).expect("rest dispatch should succeed");
+
+        match response {
+            TransportResponse::Rest(rest) => {
+                assert_eq!(rest.status, 200);
+                assert_eq!(rest.body["ok"], serde_json::json!(true));
+            }
+            _ => panic!("expected Rest response"),
+        }
+
+        handle.join().expect("server thread should finish");
+    }
+
+    #[test]
+    fn test_execute_transport_tcp_dispatch() {
+        if !guard_network(stringify!(test_execute_transport_tcp_dispatch)) {
+            return;
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback listener");
+        let port = listener
+            .local_addr()
+            .expect("listener local addr")
+            .port();
+
+        let handle = thread::spawn(move || {
+            let (mut stream, _addr) = listener.accept().expect("accept client");
+            let mut buf = [0_u8; 5];
+            stream
+                .read_exact(&mut buf)
+                .expect("read tcp payload from client");
+            assert_eq!(&buf, b"PING\n");
+            stream.write_all(b"PONG\n").expect("write tcp response");
+        });
+
+        let request = TransportRequest::Tcp(
+            TcpRequest::new("127.0.0.1", port)
+                .data("PING\n")
+                .connect_timeout(1000)
+                .read_timeout(1000),
+        );
+        let response = execute_transport(&request).expect("tcp dispatch should succeed");
+
+        match response {
+            TransportResponse::Tcp(tcp) => {
+                assert!(tcp.connected);
+                assert_eq!(tcp.bytes_sent, 5);
+                assert_eq!(tcp.data.as_deref(), Some("PONG\n"));
+                assert!(tcp.bytes_received >= 5);
+            }
+            _ => panic!("expected Tcp response"),
+        }
+
+        handle.join().expect("server thread should finish");
     }
 
     // ========================================================================

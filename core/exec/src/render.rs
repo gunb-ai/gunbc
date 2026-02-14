@@ -206,9 +206,11 @@ mod tests {
 
         let output = render_to_string(&progress, &layout);
         assert!(!output.is_empty());
-        assert!(output.contains("[A]"), "Missing [A]\n{}", output);
-        assert!(output.contains("[B]"), "Missing [B]\n{}", output);
-        assert!(output.contains("[C]"), "Missing [C]\n{}", output);
+        assert!(
+            output.contains("DAG pending"),
+            "Pending state should contain header, got:\n{}",
+            output
+        );
     }
 
     #[test]
@@ -371,77 +373,42 @@ mod tests {
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
         let output = render_to_string(&progress, &layout);
-        assert!(output.contains("A"));
-        assert!(output.contains("B"));
-        assert!(output.contains("C"));
-        assert!(output.contains("D"));
-    }
-
-    #[test]
-    fn test_horizontal_linear_single_line() {
-        let snap = test_snapshot();
-        let progress = DagProgress::new(snap.clone());
-
-        let vp = Viewport::new(80, 24, ViewportUnit::Chars);
-        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
-
-        let output = render_to_string(&progress, &layout);
-        let lines: Vec<&str> = output.lines().collect();
-        let has_all_on_one_line = lines
-            .iter()
-            .any(|line| line.contains("[A]") && line.contains("[B]") && line.contains("[C]"));
+        // Header + ungrouped legend should contain "Running" and completed node "A"
         assert!(
-            has_all_on_one_line,
-            "Linear chain should render all labeled boxes on one line, got:\n{}",
+            output.contains("Running"),
+            "Diamond should show Running header, got:\n{}",
+            output
+        );
+        assert!(
+            output.contains("A"),
+            "Diamond should show completed node A in legend, got:\n{}",
             output
         );
     }
 
     #[test]
-    fn test_horizontal_fanout_two_tracks() {
-        let snap = DagSnapshot {
-            node_ids: vec![NodeId::from("A"), NodeId::from("B"), NodeId::from("C")],
-            edges: vec![
-                Edge::new("A", "out", "B", "in"),
-                Edge::new("A", "out", "C", "in"),
-            ],
-            topo_order: vec![NodeId::from("A"), NodeId::from("B"), NodeId::from("C")],
-            boundary_nodes: vec![],
-            labels: [
-                (NodeId::from("A"), "A".to_string()),
-                (NodeId::from("B"), "B".to_string()),
-                (NodeId::from("C"), "C".to_string()),
-            ]
-            .into_iter()
-            .collect(),
-            groups: vec![],
-        };
-
+    fn test_ungrouped_legend_shows_task_names() {
+        let snap = test_snapshot();
         let mut progress = DagProgress::new(snap.clone());
         progress.on_dag_start(&snap);
-        progress.on_node_start(&NodeId::from("A"));
-        progress.on_node_complete(&NodeId::from("A"), empty_summary());
+        progress.on_node_start(&NodeId::from("lint"));
+        progress.on_node_complete(&NodeId::from("lint"), empty_summary());
+        progress.on_node_start(&NodeId::from("build"));
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
         let output = render_to_string(&progress, &layout);
-        let b_line = output.lines().find(|l| l.contains("[B]"));
-        let c_line = output.lines().find(|l| l.contains("[C]"));
+        // Ungrouped legend should show active (running) and completed task names
         assert!(
-            b_line.is_some(),
-            "B box should appear in output:\n{}",
+            output.contains("build"),
+            "Ungrouped legend should show running task 'build', got:\n{}",
             output
         );
         assert!(
-            c_line.is_some(),
-            "C box should appear in output:\n{}",
+            output.contains("lint"),
+            "Ungrouped legend should show completed task 'lint', got:\n{}",
             output
-        );
-        assert_ne!(
-            b_line.unwrap(),
-            c_line.unwrap(),
-            "Fan-out should put B and C boxes on different lines"
         );
     }
 
@@ -510,10 +477,6 @@ mod tests {
             "Completed DAG should say 'Completed', got:\n{}",
             output
         );
-        // Should contain all three node boxes
-        assert!(output.contains("[A]"));
-        assert!(output.contains("[B]"));
-        assert!(output.contains("[C]"));
     }
 
     /// Render a DAG with a failed middle node and verify failure detail appears.

@@ -42,6 +42,12 @@ fn main() {
         print_help();
         return;
     }
+    // Safety default: enable runtime file declaration guard in CI runs
+    // unless the caller explicitly sets GUNBC_RESOURCE_FILE_GUARD.
+    if std::env::var_os("GUNBC_RESOURCE_FILE_GUARD").is_none() {
+        std::env::set_var("GUNBC_RESOURCE_FILE_GUARD", "1");
+    }
+
     let dry_run = parsed.dry_run;
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
 

@@ -72,7 +72,7 @@ impl SemanticColor {
             Self::Error => "\x1b[38;5;196m",   // 256-color red
             Self::Info => "\x1b[38;5;39m",     // 256-color cyan
             Self::Dim => "\x1b[2m",            // SGR dim
-            Self::Active => "\x1b[1;37m",      // Bold white
+            Self::Active => "\x1b[38;5;208m",  // 256-color orange (matches gunb.ai)
             Self::Accent => "\x1b[38;5;75m",   // 256-color soft blue
         }
     }
@@ -729,7 +729,7 @@ mod tests {
         assert_eq!(SemanticColor::Info.ansi(), "\x1b[38;5;39m");
         assert_eq!(SemanticColor::Accent.ansi(), "\x1b[38;5;75m");
         assert_eq!(SemanticColor::Dim.ansi(), "\x1b[2m");
-        assert_eq!(SemanticColor::Active.ansi(), "\x1b[1;37m");
+        assert_eq!(SemanticColor::Active.ansi(), "\x1b[38;5;208m");
     }
 
     #[test]
