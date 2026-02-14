@@ -1,4 +1,0 @@
--o
-buck-out/v2/gen/root/bef66bd6acb1c0aa/__cargo_wrapper__/cargo_wrapper
--Wl,-oso_prefix,.
-buck-out/v2/gen/root/bef66bd6acb1c0aa/__cargo_wrapper__/__objects__/tools/cargo_wrapper.c.pic.o

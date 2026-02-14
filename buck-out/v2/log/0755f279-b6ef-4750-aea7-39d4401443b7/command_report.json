@@ -1,8 +1,0 @@
-{
-  "trace_id": "0755f279-b6ef-4750-aea7-39d4401443b7",
-  "exit_code": 0,
-  "error_messages": [],
-  "finalizing_error_messages": [
-    "'invocation recorder' failed to finalize\n\nCaused by:\n    Scribe sink not enabled (internal error)"
-  ]
-}
