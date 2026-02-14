@@ -8,7 +8,7 @@
 
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_test::{InputConstraint, MockSpec};
+use gunbc_test::{InputConstraint, MockSpec, OutputMatcher};
 
 /// Mock specification for the clippy DAG.
 ///
@@ -72,4 +72,10 @@ pub fn clippy_mock_spec() -> MockSpec {
         .skip_node_example("prepare_resolve")
         .skip_node_example("execute_resolve")
         .skip_node_example("parse_resolve")
+        // Observer: parse_resolve is the terminal node — needs an OutputMatcher
+        // so the observability invariant (every terminal reachable from a probe
+        // must have an observer) is satisfied. Uses live_expected_output rather
+        // than NodeExample because the op's output keys (success, exit_code, ...)
+        // don't match the DAG port name (result), preventing standalone execution.
+        .live_expected_output("parse_resolve", "result", OutputMatcher::NonEmpty)
 }

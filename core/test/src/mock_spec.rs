@@ -1567,4 +1567,154 @@ mod tests {
             }
         ));
     }
+
+    // ========================================================================
+    // to_boundary_mocks tests
+    // ========================================================================
+
+    use gunbc_ir::{NodeId, PortName};
+
+    /// Helper to get the static value from a BoundaryMocks output mock.
+    fn get_output_value(bm: &BoundaryMocks, node: &str, port: &str) -> Option<Value> {
+        bm.get_mock(&NodeId::from(node), &PortName::from(port))
+            .map(|m| m.value.clone())
+    }
+
+    #[test]
+    fn test_to_boundary_mocks_includes_boundary_mocks() {
+        let spec = MockSpec::new("test")
+            .boundary("env_net", "network", Value::Str("mock-net".into()))
+            .boundary("env_fs", "filesystem", Value::Bool(true));
+
+        let bm = spec.to_boundary_mocks();
+        assert_eq!(
+            get_output_value(&bm, "env_net", "network"),
+            Some(Value::Str("mock-net".into())),
+            "boundary mock should appear in BoundaryMocks"
+        );
+        assert_eq!(
+            get_output_value(&bm, "env_fs", "filesystem"),
+            Some(Value::Bool(true)),
+            "second boundary mock should appear"
+        );
+    }
+
+    #[test]
+    fn test_to_boundary_mocks_includes_transport_mocks() {
+        let spec = MockSpec::new("test")
+            .transport_mock("execute_http", "response", Value::Str("200 OK".into()));
+
+        let bm = spec.to_boundary_mocks();
+        assert_eq!(
+            get_output_value(&bm, "execute_http", "response"),
+            Some(Value::Str("200 OK".into())),
+            "transport mock should be included in BoundaryMocks"
+        );
+    }
+
+    #[test]
+    fn test_to_boundary_mocks_includes_input_mocks() {
+        let spec = MockSpec::new("test")
+            .input_mock("prepare", "provider", Value::Str("gcp".into()));
+
+        let bm = spec.to_boundary_mocks();
+        assert_eq!(
+            bm.get_input("prepare", "provider"),
+            Some(&Value::Str("gcp".into())),
+            "input mock should be included via set_input"
+        );
+    }
+
+    #[test]
+    fn test_to_boundary_mocks_combines_all_mock_types() {
+        let spec = MockSpec::new("combined")
+            .boundary("env", "net", Value::Str("net-mock".into()))
+            .transport_mock("exec", "resp", Value::Int(42))
+            .input_mock("entry", "arg", Value::Bool(false));
+
+        let bm = spec.to_boundary_mocks();
+        assert_eq!(
+            get_output_value(&bm, "env", "net"),
+            Some(Value::Str("net-mock".into()))
+        );
+        assert_eq!(get_output_value(&bm, "exec", "resp"), Some(Value::Int(42)));
+        assert_eq!(bm.get_input("entry", "arg"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_to_boundary_mocks_sequence() {
+        let spec = MockSpec::new("test").boundary_sequence(
+            "poll",
+            "status",
+            Value::Str("done".into()),
+            vec![
+                Value::Str("pending".into()),
+                Value::Str("running".into()),
+            ],
+        );
+
+        let bm = spec.to_boundary_mocks();
+        assert!(
+            bm.get_mock(&NodeId::from("poll"), &PortName::from("status"))
+                .is_some(),
+            "sequence mock should be retrievable"
+        );
+    }
+
+    #[test]
+    fn test_to_boundary_mocks_empty_spec() {
+        let spec = MockSpec::new("empty");
+        let bm = spec.to_boundary_mocks();
+        assert!(
+            get_output_value(&bm, "any", "port").is_none(),
+            "empty spec produces empty BoundaryMocks"
+        );
+        assert!(
+            bm.get_input("any", "port").is_none(),
+            "empty spec has no input mocks"
+        );
+    }
+
+    #[test]
+    fn test_to_dry_run_mocks_excludes_input_mocks() {
+        let spec = MockSpec::new("test")
+            .boundary("env", "net", Value::Str("mock".into()))
+            .input_mock("entry", "arg", Value::Bool(true));
+
+        let dry = spec.to_dry_run_mocks();
+        assert_eq!(
+            get_output_value(&dry, "env", "net"),
+            Some(Value::Str("mock".into())),
+            "boundary mock should be in dry run mocks"
+        );
+        assert!(
+            dry.get_input("entry", "arg").is_none(),
+            "input mocks should NOT be in dry run mocks"
+        );
+    }
+
+    #[test]
+    fn test_to_boundary_mocks_vs_to_dry_run_mocks_difference() {
+        let spec = MockSpec::new("diff")
+            .boundary("env", "net", Value::Str("mock".into()))
+            .transport_mock("exec", "resp", Value::Int(1))
+            .input_mock("entry", "arg", Value::Bool(true));
+
+        let boundary = spec.to_boundary_mocks();
+        let dry_run = spec.to_dry_run_mocks();
+
+        // Both should have boundary and transport mocks
+        assert_eq!(
+            get_output_value(&boundary, "env", "net"),
+            get_output_value(&dry_run, "env", "net")
+        );
+        assert_eq!(
+            get_output_value(&boundary, "exec", "resp"),
+            get_output_value(&dry_run, "exec", "resp")
+        );
+
+        // Only to_boundary_mocks should have input mocks
+        assert!(boundary.get_input("entry", "arg").is_some());
+        assert!(dry_run.get_input("entry", "arg").is_none());
+    }
 }

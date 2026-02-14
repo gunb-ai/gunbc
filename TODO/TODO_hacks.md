@@ -252,3 +252,38 @@ are followed by `.expect()`. All enclosing functions return `Result`.
 of returning a diagnostic error.
 
 **Suggested fix**: Replace `.expect()` / `.unwrap()` with `.ok_or_else(|| ...)?`.
+
+---
+
+## 14. Fermi guard skips live tests instead of running them in CI
+
+**Where**: `core/test/src/fermi.rs` — `guard()`, `guard_test_with_env()`
+
+**What happened**: The fermi guard previously panicked in CI when secrets
+were missing and `GUNBC_TEST_MAX_COST` wasn't explicitly set. This was
+designed to catch CI misconfigurations, but it conflated two concerns:
+cost limits (CI config) and secret availability (environment provisioning).
+The panic was removed (2026-02-13) because it caused real CI failures for
+tests like `test_live_flow_github_credential_lifecycle` that require GCP
+WIF credentials not provisioned on the runner.
+
+**What remains**: Live flow tests (`live_flow_tests` in testgen) are
+intended to run in CI but currently can't because the runner lacks the
+required secrets. These tests are silently skipped.
+
+**Intended fix**: The CI workflow should derive secret requirements from
+the repo's testgen metadata (the `live_required` / `live_required_any_of`
+annotations on mock specs). This would allow the workflow to:
+1. Scan all `testgen_target` annotations for `live_required` secrets
+2. Provision exactly the secrets that live tests need (via GitHub Actions
+   secrets + GCP Workload Identity Federation)
+3. Set `GUNBC_TEST_MAX_COST` appropriately for the live test tier
+
+This turns secret provisioning from a manual CI configuration step into
+something derivable from the state of the repo — when a new live test is
+added with `live_required("NEW_SECRET")`, CI should automatically know
+it needs to provision `NEW_SECRET`.
+
+**Blocked on**: GCP WIF setup for the GitHub Actions runner + a codegen
+pass that extracts secret requirements from testgen metadata into the
+CI workflow YAML.

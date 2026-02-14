@@ -118,6 +118,15 @@ pub fn testgen_dag_mock_spec() -> MockSpec {
             .resource_lock(format!("fs:{}/generated_tests.rs", name.replace('-', "_")));
     }
 
+    // Probe-observer: transport terminals need chain-safe observers
+    for name in &["mock-alpha", "mock-beta"] {
+        spec = spec.live_expected_output(
+            format!("execute_{}_transport", name),
+            "skip",
+            OutputMatcher::IsBool,
+        );
+    }
+
     spec = spec
         .node_example(
             NodeExample::new("fs_env")

@@ -158,6 +158,12 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
                 .output("ok", OutputMatcher::exact(Value::Bool(true)))
                 .description("Parse status extracts HTTP status and ok flag"),
         )
+        // Probe-observer: GCP sub-DAG terminal needs chain-safe observer
+        .live_expected_output(
+            "cloud_credential/gcp_wif_secret/parse_set_iam",
+            "ok",
+            OutputMatcher::IsBool,
+        )
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("bind_secret")

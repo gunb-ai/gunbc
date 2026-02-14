@@ -240,6 +240,8 @@ pub fn deps_mock_spec() -> MockSpec {
                 .output("stderr", OutputMatcher::exact(Value::Str("".into())))
                 .description("Parses install execution result"),
         )
+        // Probe-observer: terminal needs chain-safe observer
+        .live_expected_output("parse_execute_result", "success", OutputMatcher::IsBool)
 }
 
 /// Mock spec for testing sudo elevation scenarios.

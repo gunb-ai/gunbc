@@ -644,6 +644,298 @@ mod window_helper_tests {
 }
 
 #[cfg(test)]
+mod window_subdag_tests {
+    use super::*;
+    use gunbc_ir::build::{edge, port};
+    use gunbc_ir::{Dag, Node};
+
+    #[test]
+    fn subdag_contains_only_window_nodes() {
+        // DAG: A -> B -> C
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque("a", vec![], vec![port("out", "Int")], ()));
+        dag.add_node(Node::opaque(
+            "b",
+            vec![port("in", "Int")],
+            vec![port("out", "Int")],
+            (),
+        ));
+        dag.add_node(Node::opaque("c", vec![port("in", "Int")], vec![], ()));
+        dag.add_edge(edge("a", "out", "b", "in"));
+        dag.add_edge(edge("b", "out", "c", "in"));
+
+        let window = Window::from_nodes(&dag, vec!["a", "b"]);
+        let sub = window_subdag(&dag, &window);
+
+        assert_eq!(sub.nodes.len(), 2, "subdag should have 2 nodes");
+        let ids: Vec<&str> = sub.nodes.iter().map(|n| n.id.0.as_str()).collect();
+        assert!(ids.contains(&"a"));
+        assert!(ids.contains(&"b"));
+        assert!(!ids.contains(&"c"), "node c should be excluded");
+    }
+
+    #[test]
+    fn subdag_retains_internal_edges_only() {
+        // DAG: A -> B -> C
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque("a", vec![], vec![port("out", "Int")], ()));
+        dag.add_node(Node::opaque(
+            "b",
+            vec![port("in", "Int")],
+            vec![port("out", "Int")],
+            (),
+        ));
+        dag.add_node(Node::opaque("c", vec![port("in", "Int")], vec![], ()));
+        dag.add_edge(edge("a", "out", "b", "in"));
+        dag.add_edge(edge("b", "out", "c", "in"));
+
+        let window = Window::from_nodes(&dag, vec!["a", "b"]);
+        let sub = window_subdag(&dag, &window);
+
+        assert_eq!(
+            sub.edges.len(),
+            1,
+            "only the a->b edge should be in the subdag"
+        );
+        assert_eq!(sub.edges[0].from_node.0, "a");
+        assert_eq!(sub.edges[0].to_node.0, "b");
+    }
+
+    #[test]
+    fn subdag_single_node_has_no_edges() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "a",
+            vec![port("in", "Int")],
+            vec![port("out", "Int")],
+            (),
+        ));
+        dag.add_node(Node::opaque("b", vec![port("in", "Int")], vec![], ()));
+        dag.add_edge(edge("a", "out", "b", "in"));
+
+        let window = Window::from_nodes(&dag, vec!["a"]);
+        let sub = window_subdag(&dag, &window);
+
+        assert_eq!(sub.nodes.len(), 1);
+        assert_eq!(sub.edges.len(), 0, "single-node window has no internal edges");
+    }
+
+    #[test]
+    fn subdag_preserves_node_ports() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "a",
+            vec![port("x", "String"), port("y", "Int")],
+            vec![port("out", "Bool")],
+            (),
+        ));
+
+        let window = Window::from_nodes(&dag, vec!["a"]);
+        let sub = window_subdag(&dag, &window);
+
+        let node = sub.get_node(&"a".into()).expect("node a should exist");
+        assert_eq!(node.inputs.len(), 2, "input ports should be preserved");
+        assert_eq!(node.outputs.len(), 1, "output ports should be preserved");
+    }
+
+    #[test]
+    fn subdag_diamond_topology() {
+        // Diamond: A -> B, A -> C, B -> D, C -> D
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque("a", vec![], vec![port("out", "Int")], ()));
+        dag.add_node(Node::opaque(
+            "b",
+            vec![port("in", "Int")],
+            vec![port("out", "Int")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "c",
+            vec![port("in", "Int")],
+            vec![port("out", "Int")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "d",
+            vec![port("x", "Int"), port("y", "Int")],
+            vec![],
+            (),
+        ));
+        dag.add_edge(edge("a", "out", "b", "in"));
+        dag.add_edge(edge("a", "out", "c", "in"));
+        dag.add_edge(edge("b", "out", "d", "x"));
+        dag.add_edge(edge("c", "out", "d", "y"));
+
+        // Window all 4 nodes
+        let window = Window::from_nodes(&dag, vec!["a", "b", "c", "d"]);
+        let sub = window_subdag(&dag, &window);
+
+        assert_eq!(sub.nodes.len(), 4);
+        assert_eq!(sub.edges.len(), 4);
+
+        // Window only middle layer
+        let window2 = Window::from_nodes(&dag, vec!["b", "c"]);
+        let sub2 = window_subdag(&dag, &window2);
+
+        assert_eq!(sub2.nodes.len(), 2);
+        assert_eq!(sub2.edges.len(), 0, "b and c have no edges between them");
+    }
+}
+
+#[cfg(test)]
+mod assert_chain_outputs_tests {
+    use super::*;
+    use crate::mock_spec::OutputMatcher;
+    use gunbc_exec::{ExecutionLog, LogEntry};
+    use gunbc_ir::Value;
+    use std::collections::HashMap;
+
+    fn make_log(entries: Vec<(&str, Vec<(&str, Value)>)>) -> ExecutionLog {
+        ExecutionLog {
+            entries: entries
+                .into_iter()
+                .map(|(node, outputs)| LogEntry {
+                    node_id: node.to_string(),
+                    outputs: outputs
+                        .into_iter()
+                        .map(|(p, v)| (p.to_string(), v))
+                        .collect(),
+                    was_intercepted: false,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn passes_when_all_matchers_match() {
+        let log = make_log(vec![
+            ("parse", vec![("content", Value::Str("hello world".into()))]),
+            ("validate", vec![("ok", Value::Bool(true))]),
+        ]);
+
+        let mut matchers = HashMap::new();
+        matchers.insert(
+            ("parse".to_string(), "content".to_string()),
+            OutputMatcher::contains("hello"),
+        );
+        matchers.insert(
+            ("validate".to_string(), "ok".to_string()),
+            OutputMatcher::exact(Value::Bool(true)),
+        );
+
+        assert!(assert_chain_outputs(&log, &matchers).is_ok());
+    }
+
+    #[test]
+    fn fails_when_matcher_does_not_match() {
+        let log = make_log(vec![(
+            "parse",
+            vec![("content", Value::Str("goodbye".into()))],
+        )]);
+
+        let mut matchers = HashMap::new();
+        matchers.insert(
+            ("parse".to_string(), "content".to_string()),
+            OutputMatcher::contains("hello"),
+        );
+
+        let err = assert_chain_outputs(&log, &matchers).expect_err("should fail");
+        match err {
+            WindowError::MatcherFailed { node, port, .. } => {
+                assert_eq!(node, "parse");
+                assert_eq!(port, "content");
+            }
+            other => panic!("expected MatcherFailed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn fails_when_node_missing_from_log() {
+        let log = make_log(vec![]);
+
+        let mut matchers = HashMap::new();
+        matchers.insert(
+            ("missing_node".to_string(), "out".to_string()),
+            OutputMatcher::non_empty(),
+        );
+
+        let err = assert_chain_outputs(&log, &matchers).expect_err("should fail");
+        match err {
+            WindowError::MissingObserverNode { node } => {
+                assert_eq!(node, "missing_node");
+            }
+            other => panic!("expected MissingObserverNode, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn fails_when_port_missing_from_log() {
+        let log = make_log(vec![("node_a", vec![("out", Value::Int(1))])]);
+
+        let mut matchers = HashMap::new();
+        matchers.insert(
+            ("node_a".to_string(), "missing_port".to_string()),
+            OutputMatcher::non_empty(),
+        );
+
+        let err = assert_chain_outputs(&log, &matchers).expect_err("should fail");
+        match err {
+            WindowError::MissingObserverPort { node, port } => {
+                assert_eq!(node, "node_a");
+                assert_eq!(port, "missing_port");
+            }
+            other => panic!("expected MissingObserverPort, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn empty_matchers_always_passes() {
+        let log = make_log(vec![("some_node", vec![("out", Value::Int(42))])]);
+        let matchers = HashMap::new();
+        assert!(assert_chain_outputs(&log, &matchers).is_ok());
+    }
+
+    #[test]
+    fn works_with_typed_matchers() {
+        let log = make_log(vec![
+            ("a", vec![("flag", Value::Bool(true))]),
+            ("b", vec![("count", Value::Int(10))]),
+            ("c", vec![("name", Value::Str("test".into()))]),
+        ]);
+
+        let mut matchers = HashMap::new();
+        matchers.insert(
+            ("a".to_string(), "flag".to_string()),
+            OutputMatcher::IsBool,
+        );
+        matchers.insert(
+            ("b".to_string(), "count".to_string()),
+            OutputMatcher::IntGe(5),
+        );
+        matchers.insert(
+            ("c".to_string(), "name".to_string()),
+            OutputMatcher::IsString,
+        );
+
+        assert!(assert_chain_outputs(&log, &matchers).is_ok());
+    }
+
+    #[test]
+    fn int_ge_fails_below_threshold() {
+        let log = make_log(vec![("b", vec![("count", Value::Int(3))])]);
+
+        let mut matchers = HashMap::new();
+        matchers.insert(
+            ("b".to_string(), "count".to_string()),
+            OutputMatcher::IntGe(5),
+        );
+
+        let err = assert_chain_outputs(&log, &matchers).expect_err("should fail");
+        assert!(matches!(err, WindowError::MatcherFailed { .. }));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use gunbc_exec::LogEntry;

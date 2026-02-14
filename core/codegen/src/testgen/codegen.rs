@@ -48,17 +48,30 @@ enum SeedContext {
     RealSingleNodeRequiredInput,
 }
 
+/// Determine seed policy for a type.
+///
+/// This is **fail-closed**: only types on the known-safe whitelist use
+/// generated placeholders. Unknown types (including new semantic carriers
+/// and aliases) default to `ExplicitSeedRequired`, preventing silent
+/// shape-valid-but-behavior-invalid placeholders from sneaking through.
 fn seed_policy_for_type(type_id: &str) -> SeedPolicy {
     match type_id {
-        // Semantic carrier types: shape-valid placeholders are often behavior-invalid.
-        "TransportRequest"
-        | "TransportResponse"
-        | "Credential"
-        | "Secret"
-        | "FilesystemHandle"
-        | "NetworkHandle"
-        | "ToolHandle" => SeedPolicy::ExplicitSeedRequired,
-        _ => SeedPolicy::Generated,
+        // Primitives: generated placeholders are safe.
+        "String" | "Bool" | "Int" | "Unit" | "Json" | "Void"
+        // Refined primitives
+        | "NonEmptyString" | "Url" | "FilePath" | "Path" | "Email"
+        | "PositiveInt" | "NonNegativeInt"
+        // Container/wrapped types
+        | "OptionalString" | "OptionalInt" | "OptionalBool" | "OptionalJson"
+        | "OptionalUrl"
+        | "StringList" | "IntList" | "BoolList" | "JsonList"
+        | "UrlList" | "FilePathList"
+        | "NonEmptyStringList" | "NonEmptyFilePathList"
+        => SeedPolicy::Generated,
+        // Everything else (TransportRequest, TransportResponse, Credential,
+        // Secret, FilesystemHandle, NetworkHandle, ToolHandle, Platform, and
+        // any future types) requires explicit seeds — fail closed.
+        _ => SeedPolicy::ExplicitSeedRequired,
     }
 }
 
@@ -2109,6 +2122,18 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         node: &gunbc_ir::Node<T>,
         base_inputs: &BTreeMap<String, ValueExpr>,
     ) {
+        // Nodes explicitly marked skip_node_example are resource/boundary nodes
+        // that won't be tested in single-node Real mode — no seed assertion needed.
+        if let Some(spec) = &self.mock_spec {
+            if spec
+                .skipped_node_examples
+                .iter()
+                .any(|s| s == &node.id.0)
+            {
+                return;
+            }
+        }
+
         let mut missing = Vec::new();
 
         for port in &node.inputs {
@@ -3664,11 +3689,26 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         // must use the lowered node IDs since test execution happens on the flat DAG.
         let lowered = match gunbc_exec::lower(self.dag) {
             Ok(lowered) => lowered,
-            Err(_) => return None, // DAG can't be lowered; skip chain tests
+            Err(e) => {
+                // Lowering failed — emit a diagnostic test instead of silently skipping.
+                let err_msg = format!("DAG lowering failed, probe-observer tests skipped: {}", e);
+                return Some(TestSection {
+                    title: "Probe-Observer Integration Tests".to_string(),
+                    notes: vec![err_msg.clone()],
+                    tests: vec![TestFn {
+                        name: "test_probe_observer_lowering_failed".to_string(),
+                        doc: vec!["Lowering must succeed for probe-observer tests.".to_string()],
+                        body: vec![Stmt::Expr(Expr::call(
+                            "panic!",
+                            vec![Expr::Str(err_msg)],
+                        ))],
+                    }],
+                });
+            }
         };
         let lowered_analysis = analyze_dag(&lowered.dag);
         let po_analysis = analyze_probe_observers(&lowered.dag, spec, &lowered_analysis);
-        if po_analysis.tests.is_empty() {
+        if po_analysis.tests.is_empty() && po_analysis.gaps.is_empty() {
             return None;
         }
 
@@ -3851,10 +3891,43 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             });
         }
 
+        // Generate a failing test for coverage gaps (observability invariant).
+        // The module doc states: "Every terminal node reachable from any probe
+        // must have an OutputMatcher. Testgen emits an error for unobserved terminals."
+        if !po_analysis.gaps.is_empty() {
+            let gap_lines: Vec<String> = po_analysis
+                .gaps
+                .iter()
+                .map(|g| {
+                    format!(
+                        "  terminal '{}' reachable from probe '{}' has no OutputMatcher",
+                        g.terminal_node, g.probe_node
+                    )
+                })
+                .collect();
+            let msg = format!(
+                "Observability invariant violated: {} unobserved terminal(s):\n{}\n\
+                 Add OutputMatchers via NodeExample or live_expected_output for these nodes.",
+                po_analysis.gaps.len(),
+                gap_lines.join("\n")
+            );
+            tests.push(TestFn {
+                name: "test_observability_invariant_no_gaps".to_string(),
+                doc: vec![
+                    "Every terminal node reachable from a probe must have an OutputMatcher.".to_string(),
+                    "This test fails when coverage gaps exist — add observers to fix.".to_string(),
+                ],
+                body: vec![Stmt::Expr(Expr::call(
+                    "panic!",
+                    vec![Expr::Str(msg)],
+                ))],
+            });
+        }
+
         Some(TestSection {
             title: "Probe-Observer Integration Tests".to_string(),
             notes: vec![
-                format!("Probes: {} | Observers: {} | Tests: {}", 
+                format!("Probes: {} | Observers: {} | Tests: {}",
                     po_analysis.probes.len(),
                     po_analysis.observers.len(),
                     po_analysis.tests.len()),
@@ -6068,6 +6141,7 @@ mod tests {
 
     #[test]
     fn test_seed_policy_marks_semantic_types_explicit() {
+        // Known semantic carriers require explicit seeds.
         assert_eq!(
             seed_policy_for_type("TransportResponse"),
             SeedPolicy::ExplicitSeedRequired
@@ -6084,8 +6158,29 @@ mod tests {
             seed_policy_for_type("Secret"),
             SeedPolicy::ExplicitSeedRequired
         );
+        assert_eq!(
+            seed_policy_for_type("FilesystemHandle"),
+            SeedPolicy::ExplicitSeedRequired
+        );
+
+        // Primitive/structural types are safe for generated placeholders.
         assert_eq!(seed_policy_for_type("String"), SeedPolicy::Generated);
         assert_eq!(seed_policy_for_type("Int"), SeedPolicy::Generated);
+        assert_eq!(seed_policy_for_type("Bool"), SeedPolicy::Generated);
+        assert_eq!(seed_policy_for_type("OptionalString"), SeedPolicy::Generated);
+        assert_eq!(seed_policy_for_type("StringList"), SeedPolicy::Generated);
+
+        // Fail-closed: unknown/new types default to ExplicitSeedRequired.
+        assert_eq!(
+            seed_policy_for_type("SomeNewCarrierType"),
+            SeedPolicy::ExplicitSeedRequired,
+            "unknown types must fail closed"
+        );
+        assert_eq!(
+            seed_policy_for_type("CustomAuthToken"),
+            SeedPolicy::ExplicitSeedRequired,
+            "unknown types must fail closed"
+        );
 
         assert!(requires_explicit_seed(
             "TransportResponse",
@@ -6100,6 +6195,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "Optional input tests require explicit seeds for required semantic inputs in Real single-node mode")]
     fn test_optional_inputs_require_explicit_semantic_seed() {
+        use gunbc_test::{NodeExample, OutputMatcher};
+
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
             "parse",
@@ -6111,14 +6208,48 @@ mod tests {
             (),
         ));
 
+        // Provide a node_example with outputs (satisfies the I/O example
+        // requirement) but do NOT seed the TransportResponse input — the
+        // seed assertion should fire.
         let spec = MockSpec::new("opt")
             .boundary("parse", "result", Value::Str("ok".into()))
-            .skip_node_example("parse");
+            .node_example(
+                NodeExample::new("parse")
+                    .input("fallback", Value::Str("fb".into()))
+                    .output("result", OutputMatcher::non_empty()),
+            );
 
         let generator = TestGenerator::new(&dag)
             .with_mock_spec(spec)
             .with_mock_spec_fn("crate::mock_spec()");
         let _ = generator.generate_test_module("opt", "build_opt_graph()");
+    }
+
+    #[test]
+    fn test_skip_node_example_bypasses_seed_assertion() {
+        // Nodes with skip_node_example should NOT panic about missing seeds
+        // — they are known resource/boundary nodes that won't be tested
+        // in single-node Real mode.
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "resolver",
+            vec![
+                port("config", "TransportResponse"),
+                optional("name", "OptionalString"),
+            ],
+            vec![port("result", "String")],
+            (),
+        ));
+
+        let spec = MockSpec::new("skip")
+            .boundary("resolver", "result", Value::Str("ok".into()))
+            .skip_node_example("resolver");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        // Should NOT panic — skip_node_example suppresses the seed check.
+        let _ = generator.generate_test_module("skip", "build_skip_graph()");
     }
 
     #[test]

@@ -32,9 +32,14 @@ impl ParamType {
 impl From<&str> for ParamType {
     fn from(s: &str) -> Self {
         match s {
+            "String" | "Str" => Self::Str,
             "Bool" => Self::Bool,
             "Int" => Self::Int,
-            _ => Self::Str,
+            other => panic!(
+                "ParamType::from(\"{}\") — unknown type; \
+                 use ParamType::Str, ParamType::Int, or ParamType::Bool",
+                other
+            ),
         }
     }
 }
@@ -228,7 +233,12 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
                 Some(Some(val)) => {
                     let value = match param.type_id {
                         ParamType::Bool => Value::Bool(val == "true"),
-                        ParamType::Int => Value::Int(val.parse::<i64>().unwrap_or(0)),
+                        ParamType::Int => Value::Int(
+                            val.parse::<i64>().map_err(|_| ParseError::InvalidInt {
+                                flag: param.flag_name(),
+                                value: val.clone(),
+                            })?,
+                        ),
                         ParamType::Str => Value::Str(val.clone()),
                     };
                     values.insert(param.port_name.clone(), value);
@@ -407,11 +417,17 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_int_defaults_to_zero() {
-        // Matches generated CLI behavior: .parse().unwrap_or(0)
+    fn test_invalid_int_returns_error() {
         let schema = vec![CliParam::new("count", "Int")];
-        let result = parse(&argv(&["prog", "--count", "not-a-number"]), &schema).unwrap();
-        assert_eq!(result.values["count"], Value::Int(0));
+        let result = parse(&argv(&["prog", "--count", "not-a-number"]), &schema);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            ParseError::InvalidInt {
+                flag: "count".to_string(),
+                value: "not-a-number".to_string()
+            }
+        );
     }
 
     #[test]

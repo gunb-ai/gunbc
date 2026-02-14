@@ -286,6 +286,8 @@ pub fn gcp_local_mock_spec() -> MockSpec {
                 .output("credential", OutputMatcher::Any)
                 .description("Builds a bearer credential from secret material"),
         )
+        // Probe-observer: parse_set_iam terminal needs chain-safe observer
+        .live_expected_output("parse_set_iam", "ok", OutputMatcher::IsBool)
         // Sub-DAG internal nodes — tested at their own level
         .skip_node_example("local_auth_upsert")
         .skip_node_example("should_impersonate")
@@ -427,6 +429,8 @@ pub fn gcp_github_upsert_mock_spec() -> MockSpec {
             Value::Response(TransportResponse::Rest(add_version_response)),
         )
         .boundary("net_env", "net", mock_net_handle())
+        // Probe-observer: terminal needs chain-safe observer
+        .live_expected_output("parse_secret_add_version", "version", OutputMatcher::IsString)
         // Pure nodes — skip example enforcement for now
         .skip_node_example("prepare_github_oidc")
         .skip_node_example("parse_github_oidc")

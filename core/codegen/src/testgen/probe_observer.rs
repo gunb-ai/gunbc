@@ -54,6 +54,8 @@ pub enum ProbeSource {
     BoundaryMock,
     /// From a NodeExample's inputs (pure node with developer-specified inputs).
     NodeExampleInputs,
+    /// From an input_mock in MockSpec (entry node with developer-specified input values).
+    InputMock,
     /// From an intermediate observer that was promoted to a probe.
     /// The observer's OutputMatcher::Exact values become the new probe values.
     IntermediateObserver {
@@ -84,6 +86,11 @@ pub struct MatcherDescription {
     /// Whether this matcher is input-independent (valid regardless of what
     /// input the node receives). Exact matchers are input-dependent.
     pub is_input_independent: bool,
+    /// Whether this is a "weak" matcher (Any, IsRequest, IsResponse) that
+    /// asserts minimal properties. Weak matchers count as observers for
+    /// chain discovery, but an all-weak terminal observer is flagged in the
+    /// coverage report as needing stronger assertions.
+    pub is_weak: bool,
 }
 
 /// A discovered integration test: probe -> observer through a subgraph.
@@ -149,6 +156,19 @@ fn is_input_independent(matcher: &OutputMatcher) -> bool {
     }
 }
 
+/// Check if an OutputMatcher is a "weak" assertion (matches almost anything).
+///
+/// Weak matchers like `Any`, `IsRequest`, and `IsResponse` pass regardless
+/// of the actual value, so they provide minimal observability. They're still
+/// valid for chain discovery, but an all-weak terminal observer is flagged
+/// in the coverage report.
+fn is_weak_matcher(matcher: &OutputMatcher) -> bool {
+    matches!(
+        matcher,
+        OutputMatcher::Any | OutputMatcher::IsRequest | OutputMatcher::IsResponse
+    )
+}
+
 // ============================================================================
 // Discovery
 // ============================================================================
@@ -188,6 +208,16 @@ fn extract_probes(spec: &MockSpec, _analysis: &DagAnalysis) -> Vec<Probe> {
         }
     }
 
+    // Input mocks → probes at entry nodes (dangling input ports)
+    for im in &spec.input_mocks {
+        if seen.insert(im.node.clone()) {
+            probes.push(Probe {
+                node_id: im.node.clone(),
+                source: ProbeSource::InputMock,
+            });
+        }
+    }
+
     probes
 }
 
@@ -195,63 +225,59 @@ fn extract_probes(spec: &MockSpec, _analysis: &DagAnalysis) -> Vec<Probe> {
 fn extract_observers<T>(spec: &MockSpec, dag: &Dag<T>) -> Vec<Observer> {
     let terminal_nodes = find_terminal_nodes(dag);
     let mut observers = Vec::new();
-    let mut seen = HashSet::new();
 
-    // NodeExamples with outputs → observers (only input-independent matchers)
+    // Merge matchers from NodeExamples and LiveExpectedOutputs by node_id.
+    // This avoids a bug where NodeExamples with only input-dependent matchers
+    // (Exact/Contains/Satisfies) would mark a node as "seen" without creating
+    // an observer, suppressing valid chain-safe matchers from live_expected_outputs.
+    let mut matchers_by_node: BTreeMap<String, BTreeMap<String, MatcherDescription>> =
+        BTreeMap::new();
+
+    // Collect chain-safe matchers from NodeExamples.
     for ex in &spec.node_examples {
-        if !ex.outputs.is_empty() && seen.insert(ex.node_id.clone()) {
-            let matchers: BTreeMap<String, MatcherDescription> = ex
-                .outputs
-                .iter()
-                .filter(|(_, matcher)| is_input_independent(matcher))
-                .map(|(port, matcher)| {
-                    (
+        for (port, matcher) in &ex.outputs {
+            if is_input_independent(matcher) {
+                matchers_by_node
+                    .entry(ex.node_id.clone())
+                    .or_default()
+                    .insert(
                         port.clone(),
                         MatcherDescription {
                             description: format!("{:?}", matcher),
                             has_concrete_value: matches!(matcher, OutputMatcher::Exact(_)),
                             is_input_independent: true,
+                            is_weak: is_weak_matcher(matcher),
                         },
-                    )
-                })
-                .collect();
-
-            // Only add as observer if there are chain-compatible matchers.
-            if !matchers.is_empty() {
-                observers.push(Observer {
-                    node_id: ex.node_id.clone(),
-                    matchers,
-                    is_terminal: terminal_nodes.contains(&ex.node_id),
-                });
+                    );
             }
         }
     }
 
-    // LiveExpectedOutputs → observers
-    // Group by node, multiple ports per node.
-    let mut live_by_node: BTreeMap<String, BTreeMap<String, MatcherDescription>> = BTreeMap::new();
+    // Merge chain-safe matchers from LiveExpectedOutputs (union of ports).
     for leo in &spec.live_expected_outputs {
-        if !seen.contains(&leo.node) && is_input_independent(&leo.matcher) {
-            live_by_node
+        if is_input_independent(&leo.matcher) {
+            matchers_by_node
                 .entry(leo.node.clone())
                 .or_default()
-                .insert(
-                    leo.port.clone(),
-                    MatcherDescription {
-                        description: format!("{:?}", leo.matcher),
-                        has_concrete_value: matches!(leo.matcher, OutputMatcher::Exact(_)),
-                        is_input_independent: true,
-                    },
-                );
+                .entry(leo.port.clone())
+                .or_insert_with(|| MatcherDescription {
+                    description: format!("{:?}", leo.matcher),
+                    has_concrete_value: matches!(leo.matcher, OutputMatcher::Exact(_)),
+                    is_input_independent: true,
+                    is_weak: is_weak_matcher(&leo.matcher),
+                });
         }
     }
-    for (node_id, matchers) in live_by_node {
-        seen.insert(node_id.clone());
-        observers.push(Observer {
-            node_id: node_id.clone(),
-            matchers,
-            is_terminal: terminal_nodes.contains(&node_id),
-        });
+
+    // Build observers from merged matchers.
+    for (node_id, matchers) in matchers_by_node {
+        if !matchers.is_empty() {
+            observers.push(Observer {
+                node_id: node_id.clone(),
+                matchers,
+                is_terminal: terminal_nodes.contains(&node_id),
+            });
+        }
     }
 
     observers
@@ -426,6 +452,7 @@ pub fn analyze_probe_observers<T: Clone>(
     // For each probe, find nearest observers and generate tests.
     // Then promote intermediate observers to probes and recurse.
     let mut processed_pairs: HashSet<(String, String)> = HashSet::new();
+    let mut all_probes = probes.clone();
     let mut probe_queue: Vec<Probe> = probes.clone();
 
     while let Some(probe) = probe_queue.pop() {
@@ -453,22 +480,18 @@ pub fn analyze_probe_observers<T: Clone>(
                 });
 
                 // If this is an intermediate observer (not terminal), promote to probe.
+                // All intermediate observers are promoted because test execution
+                // seeds from a full baseline DryRun — concrete Exact values at the
+                // observer are not needed to derive downstream window inputs.
                 if !observer.is_terminal {
-                    // Only promote if the observer has Exact matchers (concrete values
-                    // that can feed downstream).
-                    let has_exact = observer
-                        .matchers
-                        .values()
-                        .any(|m| m.has_concrete_value);
-
-                    if has_exact {
-                        probe_queue.push(Probe {
-                            node_id: obs_node_id.clone(),
-                            source: ProbeSource::IntermediateObserver {
-                                upstream_probe: probe.node_id.clone(),
-                            },
-                        });
-                    }
+                    let promoted = Probe {
+                        node_id: obs_node_id.clone(),
+                        source: ProbeSource::IntermediateObserver {
+                            upstream_probe: probe.node_id.clone(),
+                        },
+                    };
+                    all_probes.push(promoted.clone());
+                    probe_queue.push(promoted);
                 }
             }
         }
@@ -510,7 +533,7 @@ pub fn analyze_probe_observers<T: Clone>(
     gaps.dedup_by(|a, b| a.probe_node == b.probe_node && a.terminal_node == b.terminal_node);
 
     ProbeObserverAnalysis {
-        probes,
+        probes: all_probes,
         observers,
         tests,
         gaps,
@@ -527,6 +550,7 @@ pub fn observability_report(analysis: &ProbeObserverAnalysis) -> String {
             ProbeSource::TransportMock => "transport mock",
             ProbeSource::BoundaryMock => "boundary mock",
             ProbeSource::NodeExampleInputs => "node example inputs",
+            ProbeSource::InputMock => "input mock",
             ProbeSource::IntermediateObserver { upstream_probe } => {
                 // Use a temporary string for this case
                 &format!("intermediate (from {})", upstream_probe)
@@ -539,17 +563,40 @@ pub fn observability_report(analysis: &ProbeObserverAnalysis) -> String {
     lines.push(format!("Observers: {}", analysis.observers.len()));
     for obs in &analysis.observers {
         let terminal_tag = if obs.is_terminal { " [terminal]" } else { "" };
+        let all_weak = obs.matchers.values().all(|m| m.is_weak);
+        let weak_tag = if all_weak { " [WEAK]" } else { "" };
         let matcher_desc: Vec<String> = obs
             .matchers
             .iter()
             .map(|(port, m)| format!("{}: {}", port, m.description))
             .collect();
         lines.push(format!(
-            "  {}{} ({})",
+            "  {}{}{} ({})",
             obs.node_id,
             terminal_tag,
+            weak_tag,
             matcher_desc.join(", ")
         ));
+    }
+
+    // Flag weak terminal observers as a coverage concern.
+    let weak_terminals: Vec<&Observer> = analysis
+        .observers
+        .iter()
+        .filter(|o| o.is_terminal && o.matchers.values().all(|m| m.is_weak))
+        .collect();
+    if !weak_terminals.is_empty() {
+        lines.push(String::new());
+        lines.push(format!(
+            "Weak terminal observers: {} (all matchers are Any/IsRequest/IsResponse)",
+            weak_terminals.len()
+        ));
+        for obs in &weak_terminals {
+            lines.push(format!(
+                "  {} — consider adding stronger assertions (NonEmpty, IsString, IntGe, etc.)",
+                obs.node_id
+            ));
+        }
     }
 
     lines.push(String::new());
@@ -742,10 +789,10 @@ mod tests {
 
         let result = analyze_probe_observers(&dag, &spec, &analysis);
 
-        // Should have tests from probe a through observers at b and c.
-        // Since b is an intermediate observer with an input-independent matcher,
-        // it splits the chain: a->b and a->c (b isn't promoted since it has no
-        // concrete Exact value to use as downstream input).
+        // b is an intermediate observer that splits the chain:
+        //   a->b (probe a reaches observer b)
+        //   b->c (promoted observer b reaches terminal c)
+        // a->c is NOT generated because BFS from a stops at observer b.
         let a_to_b = result
             .tests
             .iter()
@@ -756,15 +803,86 @@ mod tests {
             .find(|t| t.probe.node_id == "a" && t.observer.node_id == "c");
 
         assert!(a_to_b.is_some(), "should have a->b test");
-        // Since b is an intermediate observer but doesn't have Exact values,
-        // the chain continues past b to reach c directly from a.
         assert!(a_to_c.is_none(), "a->c should be segmented: a hits observer b first");
-        // But b->c should exist because b is also a probe (from NodeExample inputs)
+
+        // b is promoted to a probe (intermediate observer), so b->c exists.
+        // b is also a probe from NodeExample inputs, so there are two sources.
         let b_to_c = result
             .tests
             .iter()
             .find(|t| t.probe.node_id == "b" && t.observer.node_id == "c");
-        assert!(b_to_c.is_some(), "should have b->c test (b is also a probe from example inputs)");
+        assert!(b_to_c.is_some(), "should have b->c test (b promoted + example inputs)");
+
+        // Verify the promoted probe appears in the analysis.
+        let promoted = result
+            .probes
+            .iter()
+            .any(|p| p.node_id == "b" && matches!(p.source, ProbeSource::IntermediateObserver { .. }));
+        assert!(promoted, "b should be promoted to probe from intermediate observer");
+
         assert!(result.gaps.is_empty(), "no coverage gaps");
+    }
+
+    #[test]
+    fn test_live_expected_outputs_not_suppressed_by_exact_node_example() {
+        // Regression test: a NodeExample with only Exact outputs (input-dependent)
+        // should not prevent live_expected_outputs for the same node from becoming
+        // observers.
+        let dag = linear_dag();
+
+        let spec = MockSpec::new("test")
+            .transport_mock("a", "response", gunbc_ir::Value::Str("hello".into()))
+            // Node c has a NodeExample with only Exact (input-dependent) output...
+            .node_example(
+                NodeExample::new("c")
+                    .input("in", gunbc_ir::Value::Str("hello".into()))
+                    .output("out", OutputMatcher::Exact(Box::new(gunbc_ir::Value::Str("world".into())))),
+            )
+            // ...and a live_expected_output with chain-safe NonEmpty matcher.
+            .live_expected_output("c", "out", OutputMatcher::non_empty());
+
+        let observers = extract_observers(&spec, &dag);
+
+        // The live_expected_output's NonEmpty matcher should create an observer
+        // at c, even though the NodeExample had only Exact matchers.
+        assert_eq!(observers.len(), 1, "should have observer at c");
+        assert_eq!(observers[0].node_id, "c");
+        assert!(
+            observers[0].matchers.contains_key("out"),
+            "observer should have 'out' matcher"
+        );
+    }
+
+    #[test]
+    fn test_intermediate_observer_promoted_without_exact() {
+        // Intermediate observers are promoted to probes even without Exact matchers.
+        // Tests are seeded from baseline DryRun, so concrete values aren't needed.
+        let dag = linear_dag();
+        let analysis = simple_analysis();
+
+        // Probe at a, intermediate observer at b with only NonEmpty (no Exact).
+        let spec = MockSpec::new("test")
+            .transport_mock("a", "response", gunbc_ir::Value::Str("hello".into()))
+            .node_example(
+                NodeExample::new("b").output("out", OutputMatcher::non_empty()),
+            )
+            .node_example(
+                NodeExample::new("c").output("out", OutputMatcher::non_empty()),
+            );
+
+        let result = analyze_probe_observers(&dag, &spec, &analysis);
+
+        // b should be promoted as an intermediate observer → probe.
+        let promoted = result
+            .probes
+            .iter()
+            .any(|p| p.node_id == "b" && matches!(p.source, ProbeSource::IntermediateObserver { .. }));
+        assert!(promoted, "b should be promoted even without Exact matchers");
+
+        // Should have: a->b, b->c (b is promoted probe)
+        let a_to_b = result.tests.iter().any(|t| t.probe.node_id == "a" && t.observer.node_id == "b");
+        let b_to_c = result.tests.iter().any(|t| t.probe.node_id == "b" && t.observer.node_id == "c");
+        assert!(a_to_b, "should have a->b test");
+        assert!(b_to_c, "should have b->c test from promoted probe");
     }
 }

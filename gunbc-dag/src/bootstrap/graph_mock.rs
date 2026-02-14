@@ -258,6 +258,9 @@ pub fn bootstrap_mock_spec() -> MockSpec {
                 )
                 .description("Generates .gitignore content from build config"),
         )
+        // Probe-observer: transport terminals need chain-safe observers
+        .live_expected_output("execute_makefile_transport", "skip", OutputMatcher::IsBool)
+        .live_expected_output("execute_gitignore_transport", "skip", OutputMatcher::IsBool)
         // Primitive nodes — tested in their own crates
         .skip_node_example("prepare_read_makefile")
         .skip_node_example("prepare_write_makefile")

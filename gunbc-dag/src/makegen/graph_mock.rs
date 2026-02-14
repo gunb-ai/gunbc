@@ -168,6 +168,8 @@ pub fn makegen_mock_spec() -> MockSpec {
                 .output("makefile_content", OutputMatcher::contains("gist"))
                 .description("Rendered Makefile contains gist target"),
         )
+        // Probe-observer: transport terminal needs chain-safe observer
+        .live_expected_output("execute_makegen_transport", "skip", OutputMatcher::IsBool)
         // Primitive nodes — tested in their own crates
         .skip_node_example("prepare_read_makegen")
         .skip_node_example("prepare_write_makegen")

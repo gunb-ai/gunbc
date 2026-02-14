@@ -498,6 +498,9 @@ pub fn ci_mock_spec() -> MockSpec {
             .output("verify_success", OutputMatcher::exact(Value::Bool(true)))
             .description("Aggregate verify checks into final verify_success"),
     )
+    // Probe-observer: report terminal needs chain-safe observer
+    .live_expected_output("report", "overall_success", OutputMatcher::IsBool)
+    .live_expected_output("report", "report", OutputMatcher::NonEmpty)
     // Primitive nodes — tested in their own crates
     .skip_node_example("prepare_deps_exists")
     // I/O node — transport execute, tested via DryRun

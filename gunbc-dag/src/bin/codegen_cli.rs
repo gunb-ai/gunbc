@@ -317,12 +317,32 @@ fn cmd_cigen(dry_run: bool) {
     // Generate CI YAML for gunbc-ci
     let codegen = WorkspaceBinary::Codegen.invocation();
     let tool = WorkspaceBinary::Ci.invocation();
+
+    // Derive permissions from CI workflow integrations (checkout, GCP WIF, etc.)
+    let ci_perms: Vec<(String, String)> = gunbc_dag::ci::graph::ci_workflow_permissions()
+        .into_iter()
+        .map(|(scope, level)| {
+            (
+                scope.as_yaml_key().to_string(),
+                level.as_yaml_value().to_string(),
+            )
+        })
+        .collect();
+
+    // GCP secrets required by live flow tests
+    let ci_secrets: Vec<String> = gunbc_dag::ci::graph::ci_gcp_secrets()
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
+
     let config = RenderConfig::new("ci", tool)
         .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
         .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
         .with_cargo_env(gunbc_ir::CargoEnv::ci())
         .with_git(gunbc_ir::GitConfig::default())
-        .with_cache(CacheConfig::rust());
+        .with_cache(CacheConfig::rust())
+        .with_permissions(ci_perms)
+        .with_secrets_env(ci_secrets);
 
     let outputs: Vec<(&str, String, String)> = vec![
         (
@@ -376,6 +396,13 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
         format!("      - {}", b)
     });
 
+    yaml_block(
+        &mut yaml,
+        "permissions:",
+        &config.permissions,
+        |(scope, level)| format!("  {}: {}", scope, level),
+    );
+
     yaml_block(&mut yaml, "env:", &config.all_env(), |(k, v)| {
         format!("  {}: {}", k, v)
     });
@@ -416,6 +443,16 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
         "      - name: Run CI Pipeline\n        run: {} --release\n",
         config.tool.command(),
     ));
+
+    if !config.secrets_env.is_empty() {
+        yaml.push_str("        env:\n");
+        for secret in &config.secrets_env {
+            yaml.push_str(&format!(
+                "          {}: ${{{{ secrets.{} }}}}\n",
+                secret, secret
+            ));
+        }
+    }
 
     yaml
 }

@@ -1021,64 +1021,74 @@ fn build_report_blocks(
         }
     )));
 
-    // Failure details
+    // Failure details — all sections are truncated to keep the report readable.
     if !build_success && !build_stderr.is_empty() {
+        let summary = truncate_for_report(build_stderr);
         blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Build stderr ---\n{build_stderr}\n"
+            "\n--- Build stderr ---\n{summary}\n"
         )));
     }
 
     if !test_success {
         if let Some(failures_section) = extract_test_failures(test_stdout) {
+            let summary = truncate_for_report(&failures_section);
             blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Test failures ---\n{failures_section}\n"
+                "\n--- Test failures ---\n{summary}\n"
             )));
         } else if !test_stdout.is_empty() {
+            let summary = truncate_for_report(test_stdout);
             blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Test stdout ---\n{test_stdout}\n"
+                "\n--- Test stdout ---\n{summary}\n"
             )));
         }
 
         if !test_stderr.is_empty() {
+            let summary = truncate_for_report(test_stderr);
             blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Test stderr ---\n{test_stderr}\n"
+                "\n--- Test stderr ---\n{summary}\n"
             )));
         }
     }
 
     if !lint_success && !lint_stderr.is_empty() {
+        let summary = truncate_for_report(lint_stderr);
         blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Lint stderr ---\n{lint_stderr}\n"
+            "\n--- Lint stderr ---\n{summary}\n"
         )));
     }
 
     if !bootstrap_success && !bootstrap_stderr.is_empty() {
+        let summary = truncate_for_report(bootstrap_stderr);
         blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Bootstrap stderr ---\n{bootstrap_stderr}\n"
+            "\n--- Bootstrap stderr ---\n{summary}\n"
         )));
     }
 
     if !pragma_success && !pragma_stderr.is_empty() {
+        let summary = truncate_for_report(pragma_stderr);
         blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Pragma stderr ---\n{pragma_stderr}\n"
+            "\n--- Pragma stderr ---\n{summary}\n"
         )));
     }
 
     if !testgen_success && !testgen_stderr.is_empty() {
+        let summary = truncate_for_report(testgen_stderr);
         blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Testgen stderr ---\n{testgen_stderr}\n"
+            "\n--- Testgen stderr ---\n{summary}\n"
         )));
     }
 
     if !guardrail_success && !guardrail_stderr.is_empty() {
+        let summary = truncate_for_report(guardrail_stderr);
         blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Guardrails stderr ---\n{guardrail_stderr}\n"
+            "\n--- Guardrails stderr ---\n{summary}\n"
         )));
     }
 
     if !verify_success && !verify_stderr.is_empty() {
+        let summary = truncate_for_report(verify_stderr);
         blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Verify stderr ---\n{verify_stderr}\n"
+            "\n--- Verify stderr ---\n{summary}\n"
         )));
     }
 
@@ -1089,6 +1099,51 @@ fn build_report_blocks(
     }
 
     Ok(blocks)
+}
+
+/// Maximum lines per stderr/stdout section in the CI report.
+const MAX_REPORT_SECTION_LINES: usize = 60;
+/// Maximum characters per line before truncation.
+const MAX_REPORT_LINE_WIDTH: usize = 500;
+
+/// Truncate verbose output for the CI report.
+///
+/// - Individual lines longer than [`MAX_REPORT_LINE_WIDTH`] are truncated
+///   (catches massive linker commands with hundreds of `.rlib` paths).
+/// - If the total exceeds [`MAX_REPORT_SECTION_LINES`], the middle is
+///   replaced with a marker keeping the first 10 and last 50 lines.
+fn truncate_for_report(text: &str) -> String {
+    let raw_lines: Vec<&str> = text.lines().collect();
+
+    // Truncate individual long lines
+    let lines: Vec<String> = raw_lines
+        .iter()
+        .map(|line| {
+            if line.len() > MAX_REPORT_LINE_WIDTH {
+                format!(
+                    "{}... ({} more chars)",
+                    &line[..MAX_REPORT_LINE_WIDTH],
+                    line.len() - MAX_REPORT_LINE_WIDTH
+                )
+            } else {
+                (*line).to_string()
+            }
+        })
+        .collect();
+
+    if lines.len() <= MAX_REPORT_SECTION_LINES {
+        return lines.join("\n");
+    }
+
+    let head = 10;
+    let tail = MAX_REPORT_SECTION_LINES - head;
+    let omitted = lines.len() - head - tail;
+
+    let mut result = Vec::with_capacity(head + 1 + tail);
+    result.extend_from_slice(&lines[..head]);
+    result.push(format!("... ({omitted} lines omitted) ..."));
+    result.extend_from_slice(&lines[lines.len() - tail..]);
+    result.join("\n")
 }
 
 /// Extract the "failures:" section from cargo test output.
@@ -1429,5 +1484,63 @@ mod tests {
             result.get("overall_success").and_then(|v| v.as_bool()),
             Some(false)
         );
+    }
+
+    #[test]
+    fn test_truncate_for_report_short() {
+        let text = "line 1\nline 2\nline 3";
+        assert_eq!(truncate_for_report(text), text);
+    }
+
+    #[test]
+    fn test_truncate_for_report_long_lines() {
+        let long_line = "x".repeat(600);
+        let result = truncate_for_report(&long_line);
+        assert!(result.len() < long_line.len());
+        assert!(result.contains("more chars)"));
+    }
+
+    #[test]
+    fn test_truncate_for_report_many_lines() {
+        let lines: Vec<String> = (0..200).map(|i| format!("line {i}")).collect();
+        let text = lines.join("\n");
+        let result = truncate_for_report(&text);
+        let result_lines: Vec<&str> = result.lines().collect();
+        // Should be capped at MAX_REPORT_SECTION_LINES + 1 (truncation marker)
+        assert!(result_lines.len() <= MAX_REPORT_SECTION_LINES + 1);
+        assert!(result.contains("lines omitted"));
+        // First 10 lines preserved
+        assert!(result.contains("line 0"));
+        assert!(result.contains("line 9"));
+        // Last 50 lines preserved
+        assert!(result.contains("line 199"));
+    }
+
+    #[test]
+    fn test_report_build_fail_truncates_stderr() {
+        let mut inputs = HashMap::new();
+        inputs.insert("build_success".to_string(), Value::Bool(false));
+        // Build a massive stderr with 200 lines
+        let lines: Vec<String> = (0..200).map(|i| format!("error line {i}")).collect();
+        inputs.insert(
+            "build_stderr".to_string(),
+            Value::Str(lines.join("\n")),
+        );
+        inputs.insert("test_success".to_string(), Value::Bool(true));
+        inputs.insert("test_stdout".to_string(), Value::Str(String::new()));
+        inputs.insert("test_stderr".to_string(), Value::Str(String::new()));
+        inputs.insert("lint_success".to_string(), Value::Bool(true));
+        inputs.insert("lint_stderr".to_string(), Value::Str(String::new()));
+        inputs.insert("testgen_success".to_string(), Value::Bool(true));
+        inputs.insert("bootstrap_success".to_string(), Value::Bool(true));
+        inputs.insert("pragma_success".to_string(), Value::Bool(true));
+        inputs.insert("guardrail_success".to_string(), Value::Bool(true));
+        inputs.insert("verify_success".to_string(), Value::Bool(true));
+
+        let result = execute_report(inputs).unwrap();
+        let report = result.get("report").and_then(|v| v.as_str()).unwrap();
+        assert!(report.contains("lines omitted"));
+        // Last lines should be preserved (errors tend to be at the end)
+        assert!(report.contains("error line 199"));
     }
 }

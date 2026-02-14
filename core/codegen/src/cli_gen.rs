@@ -427,11 +427,15 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                     ep.port_name
                 ).unwrap(),
                 "Int" => {
-                    let default = ep
-                        .default_value
-                        .as_deref()
-                        .and_then(|d| d.parse::<i64>().ok())
-                        .unwrap_or(0);
+                    let default = match ep.default_value.as_deref() {
+                        Some(d) => d.parse::<i64>().unwrap_or_else(|_| {
+                            panic!(
+                                "entrypoint '{}' has invalid default int value: {:?}",
+                                ep.port_name, d
+                            )
+                        }),
+                        None => 0,
+                    };
                     writeln!(code,
                         "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Int(i)) => *i, _ => {} }};",
                         ep.var_name(), ep.port_name, default

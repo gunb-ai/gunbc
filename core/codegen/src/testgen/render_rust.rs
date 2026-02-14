@@ -10,7 +10,9 @@ use std::fmt::Write;
 
 /// Escape a string for embedding in a Rust string literal.
 fn escape_rust_str(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
 }
 
 /// Generic Rust code renderer parameterized over output medium.
