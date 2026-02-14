@@ -15,7 +15,7 @@ use gunbc_dag::testgen_dag::graph::build_testgen_graph;
 use gunbc_dag::testgen_resource_def;
 use gunbc_exec::{
     execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
-    BoundaryMocks, ExecutionMode,
+    BoundaryMocks, ExecutionMode, PreflightStatusObserver,
 };
 use gunbc_ir::resource::{
     update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
@@ -23,7 +23,7 @@ use gunbc_ir::resource::{
 };
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
-use gunbc_lib_transport::preflight::ensure_lint_upsert;
+use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use gunbc_lib_transport::TransportIo;
 use std::io::IsTerminal;
 // Force-link crates that register testgen targets.
@@ -58,14 +58,18 @@ fn main() {
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
     let output_dir = PathBuf::from(parsed.get_string("output_dir").unwrap_or("."));
 
-    if let Err(err) = ensure_lint_upsert() {
-        eprintln!("preflight failed: {}", err);
+    if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {
+        print_attention(AttentionLevel::Error, "Preflight failed", &err);
         process::exit(1);
     }
 
     let targets = build_targets();
     if targets.is_empty() {
-        eprintln!("No testgen targets registered.");
+        print_attention(
+            AttentionLevel::Error,
+            "No testgen targets",
+            "No testgen targets registered.",
+        );
         process::exit(1);
     }
 
@@ -73,7 +77,7 @@ fn main() {
     let dag = match build_testgen_graph(&targets, &output_dir) {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Error building graph: {}", e);
+            print_attention(AttentionLevel::Error, "Graph build failed", &e.to_string());
             process::exit(1);
         }
     };

@@ -7,11 +7,14 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::codegen::build_codegen_graph_with_mode;
 use gunbc_dag::CODEGEN_STAMP_PATH;
-use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{
+    execute_and_display, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
+    PreflightStatusObserver,
+};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_lib_transport::preflight::ensure_lint_upsert;
+use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use std::io::IsTerminal;
 use std::process;
 
@@ -27,8 +30,8 @@ fn main() {
     let dry_run = parsed.dry_run;
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
 
-    if let Err(err) = ensure_lint_upsert() {
-        eprintln!("preflight failed: {}", err);
+    if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {
+        print_attention(AttentionLevel::Error, "Preflight failed", &err);
         process::exit(1);
     }
 
@@ -36,7 +39,7 @@ fn main() {
     let dag = match build_codegen_graph_with_mode(resource_mode) {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Error building graph: {}", e);
+            print_attention(AttentionLevel::Error, "Graph build failed", &e.to_string());
             process::exit(1);
         }
     };

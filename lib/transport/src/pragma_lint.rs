@@ -26,10 +26,21 @@ mod tests {
         }
     }
 
+    fn default_disallowed_methods_allowlist() -> HashSet<String> {
+        HashSet::from(["lib/transport/".to_string()])
+    }
+
     fn load_disallowed_methods_allowlist(root: &Path) -> HashSet<String> {
         let path = root.join("tools/disallowed-methods-allowlist.txt");
-        let content = fs::read_to_string(&path)
-            .unwrap_or_else(|_| panic!("missing allowlist file: {}", path.display()));
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(_) => {
+                // The shell guardrail script was removed; this generated file may
+                // be absent on fresh checkouts. Fall back to the canonical
+                // transport-boundary prefix used by pragma policy.
+                return default_disallowed_methods_allowlist();
+            }
+        };
         let mut allowed = HashSet::new();
         for line in content.lines() {
             let line = line.trim();
@@ -42,7 +53,11 @@ mod tests {
             }
             allowed.insert(line.to_string());
         }
-        allowed
+        if allowed.is_empty() {
+            default_disallowed_methods_allowlist()
+        } else {
+            allowed
+        }
     }
 
     struct PragmaLintPolicy {

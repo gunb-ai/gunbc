@@ -5,10 +5,13 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::{build_docgen_graph, DOCGEN_READ_TARGETS};
-use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{
+    execute_and_display, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
+    PreflightStatusObserver,
+};
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_lib_transport::preflight::ensure_lint_upsert;
+use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use std::io::IsTerminal;
 use std::process;
 
@@ -22,15 +25,15 @@ fn main() {
     }
     let dry_run = parsed.dry_run;
 
-    if let Err(err) = ensure_lint_upsert() {
-        eprintln!("preflight failed: {}", err);
+    if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {
+        print_attention(AttentionLevel::Error, "Preflight failed", &err);
         process::exit(1);
     }
 
     let dag = match build_docgen_graph() {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Error building graph: {}", e);
+            print_attention(AttentionLevel::Error, "Graph build failed", &e.to_string());
             process::exit(1);
         }
     };

@@ -35,7 +35,8 @@ use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
 use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
-use gunbc_lib_transport::preflight::ensure_lint_upsert;
+use gunbc_exec::PreflightStatusObserver;
+use gunbc_lib_transport::preflight::ensure_lint_upsert_with_observer;
 use gunbc_lib_transport::TransportIo;
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -81,7 +82,7 @@ fn main() {
         return;
     }
 
-    if let Err(err) = ensure_lint_upsert() {
+    if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {
         eprintln!("preflight failed: {}", err);
         std::process::exit(1);
     }

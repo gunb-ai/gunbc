@@ -21,8 +21,9 @@ External review flagged 14+ items. Cross-check found:
     the executor doesn't implement timeout handling at all (see new item §15)
   - "Executor is single-threaded" — `execute_flat_parallel` is the default; sequential
     only when CI context is present
-  - "`check-disallowed-methods.sh` is redundant with clippy" — script enforces *where*
-    `#[allow(clippy::disallowed_methods)]` can appear, complementary to clippy
+  - "`check-disallowed-methods.sh` is redundant with clippy" — historically false
+    at the time (script was enforcing pragma placement). The script was later
+    removed on 2026-02-14; current enforcement is clippy + pragma policy checks.
 
 ---
 

@@ -813,7 +813,7 @@ Cache tuple:
   - `derive_resource_accesses()`
   - `detect_resource_conflicts()`
   - `validate_resource_wiring_recursive()`
-- [x] Wire into CI (fast, deterministic). _(2026-02-14: added `gunbc-dag/tests/resource_purity_checks.rs` and wired guardrail command to run `cargo test -p gunbc-dag --test resource_purity_checks` alongside `tools/check-disallowed-methods.sh`.)_
+- [x] Wire into CI (fast, deterministic). _(2026-02-14: added `gunbc-dag/tests/resource_purity_checks.rs` and wired guardrail command to run `cargo test -p gunbc-dag --test resource_purity_checks`.)_
 
 **Phase D: Workflow consolidation + parallelism (next)**
 - [ ] Consolidate Makefile + CI + CLI to a single canonical workflow registry.
@@ -866,7 +866,7 @@ Current CI command inventory (from `gunbc-dag` CI prepare nodes):
 2. Test stage: `cargo test` (execute tests)
 3. Lint stage: `cargo clippy --all-targets -- -D warnings`
 4. Verify stages: `cargo run -p gunbc-dag --bin gunbc-{makegen|bootstrap|testgen|pragma} -- --mode=verify`
-5. Guardrail stage: `tools/check-disallowed-methods.sh` plus `cargo test -p gunbc-dag --test resource_purity_checks`
+5. Guardrail stage: `cargo test -p gunbc-dag --test resource_purity_checks`
 
 Single-build + multi-run strategy target:
 

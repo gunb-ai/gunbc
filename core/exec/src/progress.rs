@@ -82,6 +82,9 @@ pub struct DagSnapshot {
     pub topo_order: Vec<NodeId>,
     pub boundary_nodes: Vec<NodeId>,
     pub labels: HashMap<NodeId, String>,
+    /// Stage groups derived from DAG structure (SubDag parents, transport triplets).
+    /// When empty, rendering falls back to the ungrouped per-node view.
+    pub groups: Vec<StageGroup>,
 }
 
 impl DagSnapshot {
@@ -97,8 +100,21 @@ impl DagSnapshot {
         let labels: HashMap<NodeId, String> = dag
             .nodes
             .iter()
-            .map(|n| (n.id.clone(), n.id.0.clone()))
+            .map(|n| {
+                // For SubDag children like "rev_list/prepare_rev_list",
+                // strip the parent prefix to show just "prepare_rev_list".
+                let label = n
+                    .id
+                    .0
+                    .split('/')
+                    .next_back()
+                    .unwrap_or(&n.id.0)
+                    .to_string();
+                (n.id.clone(), label)
+            })
             .collect();
+
+        let groups = derive_stage_groups(&node_ids);
 
         Self {
             node_ids,
@@ -106,6 +122,7 @@ impl DagSnapshot {
             topo_order: topo_order.to_vec(),
             boundary_nodes,
             labels,
+            groups,
         }
     }
 }
@@ -169,7 +186,7 @@ impl OutputSummary {
                     Value::List(l) => (FieldKind::List(l.len()), format!("[{} items]", l.len())),
                     Value::Map(m) => (FieldKind::Map(m.len()), format!("{{{} entries}}", m.len())),
                     Value::Json(_) => (FieldKind::Scalar, "<JSON>".to_string()),
-                    Value::Secret(_) => (FieldKind::Secret, "***".to_string()),
+                    Value::Secret(_) => (FieldKind::Secret, value.display_redacted()),
                     Value::Request(_) => (FieldKind::Scalar, "<Request>".to_string()),
                     Value::Response(_) => (FieldKind::Scalar, "<Response>".to_string()),
                     Value::Set(s) => (FieldKind::List(s.len()), format!("{{{} items}}", s.len())),
@@ -194,6 +211,125 @@ fn truncate_str(s: &str, max: usize) -> String {
     match s.char_indices().nth(max) {
         Some((byte_idx, _)) => format!("{}...", &s[..byte_idx]),
         None => s.to_string(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// StageGroup — logical grouping of nodes for CI pipelines
+// ---------------------------------------------------------------------------
+
+/// A named group of DAG nodes representing a logical stage.
+///
+/// Groups are derived automatically from the lowered DAG structure:
+/// SubDag children are grouped by parent prefix, and flat transport
+/// triplets (`prepare_X`, `execute_X`, `parse_X`) are grouped by suffix.
+/// When groups are empty, rendering falls back to the ungrouped view.
+#[derive(Debug, Clone)]
+pub struct StageGroup {
+    pub name: String,
+    pub node_ids: Vec<NodeId>,
+}
+
+/// Computed progress for a stage group.
+#[derive(Debug, Clone, Default)]
+pub struct GroupProgress {
+    pub total: usize,
+    pub running: usize,
+    pub completed: usize,
+    pub failed: usize,
+    pub skipped: usize,
+}
+
+impl GroupProgress {
+    /// Whether all nodes in the group have reached a terminal state.
+    pub fn is_done(&self) -> bool {
+        self.completed + self.failed + self.skipped == self.total
+    }
+
+    /// Whether any node in the group has failed.
+    pub fn is_failed(&self) -> bool {
+        self.failed > 0
+    }
+}
+
+/// Derive stage groups from node structure after lowering.
+///
+/// Recognizes two grouping patterns:
+///
+/// 1. **SubDag children**: Nodes with `parent/child` IDs (created by lowering)
+///    are grouped by their parent prefix (the part before `/`).
+///    Example: `rev_list/prepare_rev_list`, `rev_list/execute_rev_list` → group `rev_list`
+///
+/// 2. **Flat transport triplets**: Top-level nodes matching `prepare_X`,
+///    `execute_X`, `parse_X` are grouped by suffix `X`.
+///    Example: `prepare_build`, `execute_build`, `parse_build` → group `build`
+///
+/// Single-node groups are dropped (they add noise without value).
+/// Returns empty `Vec` when no multi-node groups are found.
+pub fn derive_stage_groups(node_ids: &[NodeId]) -> Vec<StageGroup> {
+    const PREFIXES: &[&str] = &["prepare_", "execute_", "parse_"];
+
+    let mut seen = std::collections::HashSet::new();
+    let mut ordered_names: Vec<String> = Vec::new();
+    let mut group_nodes: HashMap<String, Vec<NodeId>> = HashMap::new();
+
+    for node_id in node_ids {
+        let name = &node_id.0;
+
+        // Strategy 1: SubDag children — group by parent prefix (before `/`)
+        // Strategy 2: Flat transport triplet — group by suffix (after `prepare_`/etc.)
+        // Fallback: standalone node — uses its own name as group key
+        let group_name = if let Some(slash_pos) = name.find('/') {
+            &name[..slash_pos]
+        } else {
+            PREFIXES
+                .iter()
+                .find_map(|p| name.strip_prefix(p))
+                .unwrap_or(name)
+        };
+
+        group_nodes
+            .entry(group_name.to_string())
+            .or_default()
+            .push(node_id.clone());
+        if seen.insert(group_name.to_string()) {
+            ordered_names.push(group_name.to_string());
+        }
+    }
+
+    // Build groups in topo order, keeping only multi-node groups
+    let groups: Vec<StageGroup> = ordered_names
+        .into_iter()
+        .filter_map(|name| {
+            group_nodes
+                .remove(&name)
+                .filter(|nodes| nodes.len() > 1)
+                .map(|node_ids| StageGroup { name, node_ids })
+        })
+        .collect();
+
+    groups
+}
+
+impl StageGroup {
+    /// Compute progress for this group from the current DAG progress state.
+    pub fn progress(&self, dag_progress: &DagProgress) -> GroupProgress {
+        let mut gp = GroupProgress {
+            total: self.node_ids.len(),
+            ..Default::default()
+        };
+        for node_id in &self.node_ids {
+            if let Some(np) = dag_progress.nodes.get(node_id) {
+                match np.state {
+                    NodeState::Running => gp.running += 1,
+                    NodeState::Completed | NodeState::Intercepted => gp.completed += 1,
+                    NodeState::Failed => gp.failed += 1,
+                    NodeState::Skipped => gp.skipped += 1,
+                    NodeState::Pending => {}
+                }
+            }
+        }
+        gp
     }
 }
 
@@ -647,6 +783,7 @@ mod tests {
             ]
             .into_iter()
             .collect(),
+            groups: vec![],
         }
     }
 
@@ -833,5 +970,171 @@ mod tests {
 
         let list_field = summary.fields.iter().find(|f| f.name == "items").unwrap();
         assert_eq!(list_field.kind, FieldKind::List(2));
+    }
+
+    // -----------------------------------------------------------------------
+    // StageGroup + GroupProgress tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_group_progress_computes_states() {
+        let snap = DagSnapshot {
+            node_ids: vec![
+                NodeId::from("prepare_build"),
+                NodeId::from("execute_build"),
+                NodeId::from("parse_build"),
+            ],
+            edges: vec![
+                Edge::new("prepare_build", "out", "execute_build", "in"),
+                Edge::new("execute_build", "out", "parse_build", "in"),
+            ],
+            topo_order: vec![
+                NodeId::from("prepare_build"),
+                NodeId::from("execute_build"),
+                NodeId::from("parse_build"),
+            ],
+            boundary_nodes: vec![],
+            labels: HashMap::new(),
+            groups: vec![StageGroup {
+                name: "build".into(),
+                node_ids: vec![
+                    NodeId::from("prepare_build"),
+                    NodeId::from("execute_build"),
+                    NodeId::from("parse_build"),
+                ],
+            }],
+        };
+
+        let mut progress = DagProgress::new(snap.clone());
+        progress.on_dag_start(&snap);
+        progress.on_node_start(&NodeId::from("prepare_build"));
+        progress.on_node_complete(&NodeId::from("prepare_build"), empty_summary());
+        progress.on_node_start(&NodeId::from("execute_build"));
+
+        let gp = snap.groups[0].progress(&progress);
+        assert_eq!(gp.total, 3);
+        assert_eq!(gp.completed, 1);
+        assert_eq!(gp.running, 1);
+        assert!(!gp.is_done());
+        assert!(!gp.is_failed());
+    }
+
+    #[test]
+    fn test_group_progress_is_done() {
+        let gp = GroupProgress {
+            total: 3,
+            running: 0,
+            completed: 2,
+            failed: 0,
+            skipped: 1,
+        };
+        assert!(gp.is_done());
+        assert!(!gp.is_failed());
+    }
+
+    #[test]
+    fn test_group_progress_is_failed() {
+        let gp = GroupProgress {
+            total: 3,
+            running: 0,
+            completed: 1,
+            failed: 1,
+            skipped: 1,
+        };
+        assert!(gp.is_done());
+        assert!(gp.is_failed());
+    }
+
+    #[test]
+    fn test_derive_stage_groups_ci_naming() {
+        let node_ids = vec![
+            NodeId::from("prepare_build"),
+            NodeId::from("execute_build"),
+            NodeId::from("parse_build"),
+            NodeId::from("prepare_test"),
+            NodeId::from("execute_test"),
+            NodeId::from("parse_test"),
+            NodeId::from("report"),
+        ];
+
+        let groups = derive_stage_groups(&node_ids);
+        assert_eq!(groups.len(), 2); // build (3), test (3); report (1) dropped
+        assert_eq!(groups[0].name, "build");
+        assert_eq!(groups[0].node_ids.len(), 3);
+        assert_eq!(groups[1].name, "test");
+        assert_eq!(groups[1].node_ids.len(), 3);
+    }
+
+    #[test]
+    fn test_derive_stage_groups_subdag_prefixed() {
+        // Simulates a lowered gist-recent DAG
+        let node_ids = vec![
+            NodeId::from("fs_env"),
+            NodeId::from("resolve_auth"),
+            NodeId::from("rev_list/prepare_rev_list"),
+            NodeId::from("rev_list/execute_rev_list"),
+            NodeId::from("rev_list/parse_rev_list"),
+            NodeId::from("diff/prepare_diff"),
+            NodeId::from("diff/execute_diff"),
+            NodeId::from("diff/parse_diff"),
+            NodeId::from("render_markdown"),
+        ];
+
+        let groups = derive_stage_groups(&node_ids);
+        assert_eq!(groups.len(), 2); // rev_list (3), diff (3); singletons dropped
+        assert_eq!(groups[0].name, "rev_list");
+        assert_eq!(groups[0].node_ids.len(), 3);
+        assert_eq!(groups[1].name, "diff");
+        assert_eq!(groups[1].node_ids.len(), 3);
+    }
+
+    #[test]
+    fn test_derive_stage_groups_no_structure_returns_empty() {
+        let node_ids = vec![
+            NodeId::from("fetch"),
+            NodeId::from("transform"),
+            NodeId::from("upload"),
+        ];
+
+        let groups = derive_stage_groups(&node_ids);
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn test_derive_stage_groups_preserves_topo_order() {
+        let node_ids = vec![
+            NodeId::from("prepare_lint"),
+            NodeId::from("prepare_build"),
+            NodeId::from("execute_lint"),
+            NodeId::from("execute_build"),
+            NodeId::from("parse_lint"),
+            NodeId::from("parse_build"),
+        ];
+
+        let groups = derive_stage_groups(&node_ids);
+        assert_eq!(groups.len(), 2);
+        // lint appears first in topo order
+        assert_eq!(groups[0].name, "lint");
+        assert_eq!(groups[1].name, "build");
+    }
+
+    #[test]
+    fn test_derive_stage_groups_mixed_subdag_and_flat() {
+        // Mix of SubDag children and flat transport triplets
+        let node_ids = vec![
+            NodeId::from("cloud_credential/resolve"),
+            NodeId::from("cloud_credential/bind"),
+            NodeId::from("prepare_build"),
+            NodeId::from("execute_build"),
+            NodeId::from("parse_build"),
+            NodeId::from("standalone"),
+        ];
+
+        let groups = derive_stage_groups(&node_ids);
+        assert_eq!(groups.len(), 2); // cloud_credential (2), build (3); standalone (1) dropped
+        assert_eq!(groups[0].name, "cloud_credential");
+        assert_eq!(groups[0].node_ids.len(), 2);
+        assert_eq!(groups[1].name, "build");
+        assert_eq!(groups[1].node_ids.len(), 3);
     }
 }

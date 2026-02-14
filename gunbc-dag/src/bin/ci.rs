@@ -23,7 +23,9 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::build_ci_graph_with_mode;
-use gunbc_exec::{execute_and_display, BoundaryMocks, CiContext, ExecutionMode};
+use gunbc_exec::{
+    execute_and_display, print_attention, AttentionLevel, BoundaryMocks, CiContext, ExecutionMode,
+};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
@@ -44,8 +46,7 @@ fn main() {
 
     let mut ci_preflight = CiContext::detect();
     if let Err(err) = ensure_lint_upsert_with_ci(Some(&mut ci_preflight)) {
-        ci_preflight.error(&format!("preflight failed: {}", err), None);
-        eprintln!("preflight failed: {}", err);
+        print_attention(AttentionLevel::Error, "Preflight failed", &err);
         process::exit(1);
     }
 
@@ -53,7 +54,11 @@ fn main() {
     let dag = match build_ci_graph_with_mode(resource_mode) {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Error building CI graph: {}", e);
+            print_attention(
+                AttentionLevel::Error,
+                "CI graph build failed",
+                &e.to_string(),
+            );
             process::exit(1);
         }
     };

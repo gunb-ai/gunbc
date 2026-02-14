@@ -17,7 +17,7 @@ use crate::frame_build::{build_frame, format_duration};
 use crate::frame_write::FrameWriter;
 use crate::intercept::BoundaryMocks;
 use crate::progress::{
-    ComposedObserver, DagProgress, DagSnapshot, OutputSummary, ProgressObserver,
+    ComposedObserver, DagProgress, DagSnapshot, OutputSummary, ProgressObserver, StageGroup,
 };
 use crate::render::{Animation, RenderMode};
 use crate::terminal::TerminalProfile;
@@ -29,7 +29,6 @@ use gunbc_ir::layout::compute_layout;
 use gunbc_ir::symbols::{SymbolId, STANDARD};
 use gunbc_ir::{detect_boundaries, Dag, NodeId, Value};
 use std::collections::HashMap;
-use std::fmt::Write;
 use std::io::{self, IsTerminal};
 use std::process;
 use std::sync::{
@@ -221,12 +220,21 @@ fn run_with_progress<T: Executable + Clone + Send>(
     let boundaries = detect_boundaries(&flat.dag);
     let topo_order = topo_sort(&flat.dag);
 
-    // Build labels from node IDs
+    // Build labels from node IDs, stripping SubDag parent prefix for readability
     let labels: HashMap<NodeId, String> = flat
         .dag
         .nodes
         .iter()
-        .map(|n| (n.id.clone(), n.id.0.clone()))
+        .map(|n| {
+            let label = n
+                .id
+                .0
+                .split('/')
+                .next_back()
+                .unwrap_or(&n.id.0)
+                .to_string();
+            (n.id.clone(), label)
+        })
         .collect();
 
     // Compute layout from profile viewport
@@ -376,6 +384,14 @@ impl NonTtyProgressCounts {
 struct NonTtyProgressObserver {
     labels: HashMap<NodeId, String>,
     states: HashMap<NodeId, NonTtyNodeState>,
+    /// Track failed nodes with their error first lines for the dag_complete summary.
+    failures: Vec<(String, String)>,
+    /// Stage groups from the snapshot (empty for non-CI DAGs).
+    groups: Vec<StageGroup>,
+    /// Maps node_id → group index for quick lookup.
+    group_map: HashMap<NodeId, usize>,
+    /// Which groups have had their separator printed.
+    groups_started: Vec<bool>,
 }
 
 impl NonTtyProgressObserver {
@@ -412,6 +428,66 @@ impl NonTtyProgressObserver {
     fn failed_count(&self) -> usize {
         self.counts().failed
     }
+
+    /// Check if all nodes in the given group have reached a terminal state.
+    fn is_group_done(&self, group_idx: usize) -> bool {
+        if let Some(group) = self.groups.get(group_idx) {
+            group.node_ids.iter().all(|id| {
+                matches!(
+                    self.states.get(id),
+                    Some(
+                        NonTtyNodeState::Completed
+                            | NonTtyNodeState::Failed
+                            | NonTtyNodeState::Skipped
+                            | NonTtyNodeState::Intercepted
+                    )
+                )
+            })
+        } else {
+            false
+        }
+    }
+
+    /// Emit a group separator if the node's group hasn't been started yet.
+    fn maybe_emit_group_header(&mut self, node_id: &NodeId) {
+        if let Some(&group_idx) = self.group_map.get(node_id) {
+            if !self.groups_started[group_idx] {
+                self.groups_started[group_idx] = true;
+                let name = &self.groups[group_idx].name;
+                eprintln!("--- {} ---", name);
+            }
+        }
+    }
+
+    /// Check if the node's group just completed and emit a summary if so.
+    fn maybe_emit_group_summary(&self, node_id: &NodeId) {
+        if let Some(&group_idx) = self.group_map.get(node_id) {
+            if self.is_group_done(group_idx) {
+                let group = &self.groups[group_idx];
+                let done = group
+                    .node_ids
+                    .iter()
+                    .filter(|id| {
+                        matches!(
+                            self.states.get(*id),
+                            Some(NonTtyNodeState::Completed | NonTtyNodeState::Intercepted)
+                        )
+                    })
+                    .count();
+                let failed = group
+                    .node_ids
+                    .iter()
+                    .filter(|id| matches!(self.states.get(*id), Some(NonTtyNodeState::Failed)))
+                    .count();
+                let total = group.node_ids.len();
+                if failed > 0 {
+                    eprintln!("✗ {} [{}/{}]", group.name, done, total);
+                } else {
+                    eprintln!("✓ {} [{}/{}]", group.name, done, total);
+                }
+            }
+        }
+    }
 }
 
 fn format_non_tty_summary_line(counts: NonTtyProgressCounts, elapsed: Duration) -> String {
@@ -445,43 +521,78 @@ impl ProgressObserver for NonTtyProgressObserver {
             .iter()
             .map(|id| (id.clone(), NonTtyNodeState::Pending))
             .collect();
+        // Initialize group tracking
+        self.groups = snapshot.groups.clone();
+        self.groups_started = vec![false; self.groups.len()];
+        self.group_map = HashMap::new();
+        for (idx, group) in self.groups.iter().enumerate() {
+            for node_id in &group.node_ids {
+                self.group_map.insert(node_id.clone(), idx);
+            }
+        }
     }
 
     fn on_node_start(&mut self, node_id: &NodeId) {
         self.set_state(node_id, NonTtyNodeState::Running);
+        self.maybe_emit_group_header(node_id);
         eprintln!("→ {}...", self.label_for(node_id));
     }
 
     fn on_node_complete(&mut self, node_id: &NodeId, _summary: OutputSummary) {
         self.set_state(node_id, NonTtyNodeState::Completed);
         eprintln!("✓ {}", self.label_for(node_id));
+        self.maybe_emit_group_summary(node_id);
     }
 
     fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
         self.set_state(node_id, NonTtyNodeState::Failed);
         let label = self.label_for(node_id).to_string();
+        // Save first line for the dag_complete summary
+        let first_line = error.lines().next().unwrap_or(error).to_string();
+        self.failures.push((label.clone(), first_line));
         eprintln!("✗ {}: {}", label, error);
-        // Print boxed failure detail so failures are visually prominent
+        // Print boxed failure detail, capped at FAILURE_DETAIL_LINES
         eprintln!();
         eprintln!("  ┌─ [ERROR] {}", label);
-        for line in error.lines() {
+        let lines: Vec<&str> = error.lines().collect();
+        let display_lines = lines.len().min(FAILURE_DETAIL_LINES);
+        for line in &lines[..display_lines] {
             eprintln!("  │ {}", line);
         }
+        if lines.len() > FAILURE_DETAIL_LINES {
+            eprintln!(
+                "  │ ... ({} more lines)",
+                lines.len() - FAILURE_DETAIL_LINES
+            );
+        }
         eprintln!("  └─");
+        self.maybe_emit_group_summary(node_id);
     }
 
     fn on_node_skipped(&mut self, node_id: &NodeId) {
         self.set_state(node_id, NonTtyNodeState::Skipped);
+        self.maybe_emit_group_summary(node_id);
     }
 
     fn on_node_intercepted(&mut self, node_id: &NodeId, _summary: OutputSummary) {
         self.set_state(node_id, NonTtyNodeState::Intercepted);
         eprintln!("✓ {} [dry-run]", self.label_for(node_id));
+        self.maybe_emit_group_summary(node_id);
     }
 
     fn on_dag_complete(&mut self, elapsed: Duration) {
         let counts = self.counts();
         eprintln!("{}", format_non_tty_summary_line(counts, elapsed));
+
+        // Print failure summary listing all failed nodes with error first lines
+        if !self.failures.is_empty() {
+            eprintln!();
+            for (label, first_line) in &self.failures {
+                eprintln!("  ┌─ [FAILED] {}", label);
+                eprintln!("  │ {}", first_line);
+                eprintln!("  └─");
+            }
+        }
     }
 }
 
@@ -535,34 +646,31 @@ fn render_progress_frame(
 }
 
 /// Print a single output value in the standard format.
+///
+/// Uses `Value::display_redacted_truncated()` as the single chokepoint
+/// for rendering values. Port-name-specific formatting (suppressing empty
+/// stderr/stdout, short string inline) is layered on top.
 pub fn print_value(port: &str, value: &Value) {
     match value {
-        Value::Secret(_) => {
-            println!("  {}: ***", port);
-        }
+        Value::Skipped | Value::Unit => {}
         Value::Str(s) => {
-            if port.ends_with("stderr") || port.ends_with("stdout") {
-                if !s.is_empty() {
-                    let t = truncate_log_value(s);
-                    println!("  {}: {}", port, t);
-                }
-            } else if s.contains('\n') {
-                let t = truncate_log_value(s);
-                println!("  {}: {}", port, t);
-            } else if s.len() < 120 {
-                println!("  {}: {}", port, s);
-            } else {
-                println!("  {}: {}...", port, truncate_str(s, 80));
+            // Suppress empty stderr/stdout
+            if (port.ends_with("stderr") || port.ends_with("stdout")) && s.is_empty() {
+                return;
             }
+            // Short single-line strings inline
+            if !s.contains('\n') && s.len() < 120 {
+                println!("  {}: {}", port, value.display_redacted());
+                return;
+            }
+            // Everything else through the truncating chokepoint
+            let rendered = value.display_redacted_truncated(MAX_LOG_VALUE_LINES, MAX_LINE_WIDTH);
+            println!("  {}: {}", port, rendered);
         }
-        Value::Int(i) => println!("  {}: {}", port, i),
-        Value::Bool(b) => println!("  {}: {}", port, b),
-        Value::List(list) => println!("  {}: [{} items]", port, list.len()),
-        Value::Set(set) => println!("  {}: {{{} items}}", port, set.len()),
-        Value::Map(map) => println!("  {}: {{{} entries}}", port, map.len()),
-        Value::Json(_) => println!("  {}: <JSON>", port),
-        Value::Skipped => {}
-        _ => {}
+        _ => {
+            let rendered = value.display_redacted();
+            println!("  {}: {}", port, rendered);
+        }
     }
 }
 
@@ -633,48 +741,69 @@ pub fn print_attention(level: AttentionLevel, title: &str, body: &str) {
     }
 }
 
-/// Truncate a string to at most `max_chars` characters (char-boundary safe).
+// ---------------------------------------------------------------------------
+// PreflightObserver
+// ---------------------------------------------------------------------------
+
+/// Trait for receiving preflight execution events.
 ///
-/// Returns a borrowed slice when possible. Never panics on multi-byte UTF-8.
-fn truncate_str(s: &str, max_chars: usize) -> &str {
-    match s.char_indices().nth(max_chars) {
-        Some((byte_idx, _)) => &s[..byte_idx],
-        None => s,
+/// Abstracts the output of preflight operations (lint-upsert, codegen, etc.)
+/// so they can emit structured output in CI, status lines in non-TTY, or
+/// nothing at all in library usage.
+pub trait PreflightObserver: Send {
+    /// Called when preflight begins.
+    fn on_preflight_start(&mut self, name: &str);
+
+    /// Called when a preflight step begins.
+    fn on_preflight_step(&mut self, step: usize, total: usize, label: &str);
+
+    /// Called when a preflight step completes successfully.
+    fn on_preflight_step_complete(&mut self, label: &str, elapsed: Duration);
+
+    /// Called when all preflight steps complete.
+    fn on_preflight_complete(&mut self, name: &str, elapsed: Duration);
+
+    /// Called when preflight fails.
+    fn on_preflight_error(&mut self, name: &str, error: &str);
+}
+
+/// Status-line preflight observer for non-interactive environments.
+///
+/// Emits `→ step...` / `✓ step [0.5s]` style status lines to stderr.
+pub struct PreflightStatusObserver;
+
+impl PreflightObserver for PreflightStatusObserver {
+    fn on_preflight_start(&mut self, name: &str) {
+        eprintln!("--- {} ---", name);
+    }
+
+    fn on_preflight_step(&mut self, step: usize, total: usize, label: &str) {
+        eprint!("  [{}/{}] {}...", step, total, label);
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+    }
+
+    fn on_preflight_step_complete(&mut self, _label: &str, elapsed: Duration) {
+        eprintln!(" {:.1}s", elapsed.as_secs_f64());
+    }
+
+    fn on_preflight_complete(&mut self, name: &str, elapsed: Duration) {
+        eprintln!("✓ {} [{:.1}s]", name, elapsed.as_secs_f64());
+    }
+
+    fn on_preflight_error(&mut self, name: &str, error: &str) {
+        let first_line = error.lines().next().unwrap_or(error);
+        eprintln!("✗ {}: {}", name, first_line);
     }
 }
 
 /// Maximum lines to display for a single port value in log output.
 const MAX_LOG_VALUE_LINES: usize = 40;
 
-/// Truncate a multi-line string for display in CI groups and classic log output.
-///
-/// Keeps the first 5 and last 35 lines, inserting a truncation marker.
-/// Also truncates individual lines longer than 500 characters.
-pub(crate) fn truncate_log_value(s: &str) -> String {
-    let lines: Vec<&str> = s.lines().collect();
-    if lines.len() <= MAX_LOG_VALUE_LINES {
-        return s.to_string();
-    }
+/// Maximum characters per line before truncation.
+const MAX_LINE_WIDTH: usize = 500;
 
-    let head = 5;
-    let tail = MAX_LOG_VALUE_LINES - head;
-    let omitted = lines.len() - head - tail;
-
-    let mut out = String::new();
-    for line in &lines[..head] {
-        out.push_str(line);
-        out.push('\n');
-    }
-    write!(out, "    ... ({omitted} lines omitted) ...").unwrap();
-    out.push('\n');
-    for (i, line) in lines[lines.len() - tail..].iter().enumerate() {
-        out.push_str(line);
-        if i < tail - 1 {
-            out.push('\n');
-        }
-    }
-    out
-}
+/// Maximum lines to show for a single failure detail in NonTty mode.
+const FAILURE_DETAIL_LINES: usize = 30;
 
 #[cfg(test)]
 mod tests {
@@ -697,6 +826,7 @@ mod tests {
                 (b.clone(), "B".to_string()),
                 (c.clone(), "C".to_string()),
             ]),
+            groups: vec![],
         };
 
         let mut observer = NonTtyProgressObserver::default();
@@ -750,5 +880,109 @@ mod tests {
         );
         assert!(line.starts_with("✗ progress: 2/5 done, 1 failed, 2 skipped"));
         assert!(line.contains("[850ms]"));
+    }
+
+    // -------------------------------------------------------------------
+    // Phase 6: NonTty group-aware rendering tests
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_non_tty_observer_group_tracking() {
+        use crate::progress::StageGroup;
+
+        let snapshot = DagSnapshot {
+            node_ids: vec![
+                NodeId::from("prepare_build"),
+                NodeId::from("execute_build"),
+                NodeId::from("parse_build"),
+            ],
+            edges: Vec::new(),
+            topo_order: vec![
+                NodeId::from("prepare_build"),
+                NodeId::from("execute_build"),
+                NodeId::from("parse_build"),
+            ],
+            boundary_nodes: Vec::new(),
+            labels: HashMap::from([
+                (NodeId::from("prepare_build"), "prepare_build".to_string()),
+                (NodeId::from("execute_build"), "execute_build".to_string()),
+                (NodeId::from("parse_build"), "parse_build".to_string()),
+            ]),
+            groups: vec![StageGroup {
+                name: "build".into(),
+                node_ids: vec![
+                    NodeId::from("prepare_build"),
+                    NodeId::from("execute_build"),
+                    NodeId::from("parse_build"),
+                ],
+            }],
+        };
+
+        let mut observer = NonTtyProgressObserver::default();
+        observer.on_dag_start(&snapshot);
+
+        // Group tracking should be initialized
+        assert_eq!(observer.groups.len(), 1);
+        assert_eq!(observer.group_map.len(), 3);
+        assert!(!observer.groups_started[0]);
+
+        // Starting a node in the group should mark group as started
+        observer.on_node_start(&NodeId::from("prepare_build"));
+        assert!(observer.groups_started[0]);
+
+        // Group should not be done yet
+        assert!(!observer.is_group_done(0));
+
+        // Complete all nodes in the group
+        observer.on_node_complete(
+            &NodeId::from("prepare_build"),
+            OutputSummary {
+                fields: Vec::new(),
+                elapsed: Duration::ZERO,
+            },
+        );
+        observer.on_node_start(&NodeId::from("execute_build"));
+        observer.on_node_complete(
+            &NodeId::from("execute_build"),
+            OutputSummary {
+                fields: Vec::new(),
+                elapsed: Duration::ZERO,
+            },
+        );
+        observer.on_node_start(&NodeId::from("parse_build"));
+        observer.on_node_complete(
+            &NodeId::from("parse_build"),
+            OutputSummary {
+                fields: Vec::new(),
+                elapsed: Duration::ZERO,
+            },
+        );
+
+        // Group should now be done
+        assert!(observer.is_group_done(0));
+    }
+
+    #[test]
+    fn test_non_tty_observer_failure_tracking() {
+        let snapshot = DagSnapshot {
+            node_ids: vec![NodeId::from("a"), NodeId::from("b")],
+            edges: Vec::new(),
+            topo_order: vec![NodeId::from("a"), NodeId::from("b")],
+            boundary_nodes: Vec::new(),
+            labels: HashMap::from([
+                (NodeId::from("a"), "A".to_string()),
+                (NodeId::from("b"), "B".to_string()),
+            ]),
+            groups: vec![],
+        };
+
+        let mut observer = NonTtyProgressObserver::default();
+        observer.on_dag_start(&snapshot);
+        observer.on_node_start(&NodeId::from("a"));
+        observer.on_node_failed(&NodeId::from("a"), "error line 1\nerror line 2");
+
+        assert_eq!(observer.failures.len(), 1);
+        assert_eq!(observer.failures[0].0, "A");
+        assert_eq!(observer.failures[0].1, "error line 1");
     }
 }

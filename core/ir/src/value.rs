@@ -499,6 +499,76 @@ impl Value {
             _ => None,
         }
     }
+
+    // =========================================================================
+    // Display chokepoint (the single sanctioned path for human-visible text)
+    // =========================================================================
+
+    /// Render this value for human display, redacting secrets.
+    ///
+    /// This is the **single chokepoint** for all human-visible Value text.
+    /// Delegates to the `Display` impl (which already redacts secrets).
+    /// Prefer this over `format!("{}", value)` to make redaction intent explicit.
+    pub fn display_redacted(&self) -> String {
+        format!("{}", self)
+    }
+
+    /// Render this value for human display with truncation, redacting secrets.
+    ///
+    /// For `Str` values: truncates to `max_lines` lines, with individual lines
+    /// capped at `max_line_width` characters. For all other variants: delegates
+    /// to `display_redacted()` (which is already concise).
+    pub fn display_redacted_truncated(&self, max_lines: usize, max_line_width: usize) -> String {
+        match self {
+            Value::Str(s) => {
+                let lines: Vec<&str> = s.lines().collect();
+                if lines.len() <= max_lines {
+                    // Still truncate individual long lines
+                    let truncated: Vec<String> = lines
+                        .iter()
+                        .map(|line| {
+                            if line.len() > max_line_width {
+                                format!("{}...", &line[..max_line_width])
+                            } else {
+                                (*line).to_string()
+                            }
+                        })
+                        .collect();
+                    return truncated.join("\n");
+                }
+
+                let head = 5.min(max_lines);
+                let tail = max_lines.saturating_sub(head);
+                let omitted = lines.len() - head - tail;
+
+                let mut out = String::new();
+                for line in &lines[..head] {
+                    if line.len() > max_line_width {
+                        out.push_str(&line[..max_line_width]);
+                        out.push_str("...");
+                    } else {
+                        out.push_str(line);
+                    }
+                    out.push('\n');
+                }
+                out.push_str(&format!("    ... ({omitted} lines omitted) ..."));
+                out.push('\n');
+                for (i, line) in lines[lines.len() - tail..].iter().enumerate() {
+                    if line.len() > max_line_width {
+                        out.push_str(&line[..max_line_width]);
+                        out.push_str("...");
+                    } else {
+                        out.push_str(line);
+                    }
+                    if i < tail - 1 {
+                        out.push('\n');
+                    }
+                }
+                out
+            }
+            _ => self.display_redacted(),
+        }
+    }
 }
 
 /// Manual PartialEq: all variants use derived equality except Set,
@@ -557,5 +627,65 @@ impl From<TransportRequest> for Value {
 impl From<TransportResponse> for Value {
     fn from(r: TransportResponse) -> Self {
         Value::Response(r)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_redacted_secret() {
+        let v = Value::Secret(SecretString::new("top-secret"));
+        assert_eq!(v.display_redacted(), "***");
+    }
+
+    #[test]
+    fn display_redacted_str() {
+        let v = Value::Str("hello".to_string());
+        assert_eq!(v.display_redacted(), "hello");
+    }
+
+    #[test]
+    fn display_redacted_bool() {
+        assert_eq!(Value::Bool(true).display_redacted(), "true");
+    }
+
+    #[test]
+    fn display_redacted_truncated_short_string() {
+        let v = Value::Str("line1\nline2\nline3".to_string());
+        let result = v.display_redacted_truncated(10, 500);
+        assert_eq!(result, "line1\nline2\nline3");
+    }
+
+    #[test]
+    fn display_redacted_truncated_long_string() {
+        let lines: Vec<String> = (0..20).map(|i| format!("line {i}")).collect();
+        let v = Value::Str(lines.join("\n"));
+        let result = v.display_redacted_truncated(5, 500);
+        // Should have head (5) + omission marker + tail (0) = truncated
+        assert!(result.contains("lines omitted"));
+        assert!(result.contains("line 0"));
+    }
+
+    #[test]
+    fn display_redacted_truncated_long_lines() {
+        let long_line = "x".repeat(600);
+        let v = Value::Str(long_line);
+        let result = v.display_redacted_truncated(10, 100);
+        assert!(result.len() < 200);
+        assert!(result.ends_with("..."));
+    }
+
+    #[test]
+    fn display_redacted_truncated_secret() {
+        let v = Value::Secret(SecretString::new("top-secret"));
+        assert_eq!(v.display_redacted_truncated(10, 500), "***");
+    }
+
+    #[test]
+    fn display_redacted_truncated_non_str() {
+        let v = Value::Int(42);
+        assert_eq!(v.display_redacted_truncated(10, 500), "42");
     }
 }

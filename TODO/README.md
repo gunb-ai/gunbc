@@ -19,7 +19,6 @@ Last reconciled: 2026-02-14
 | `TODO/design-codegen-quality.md` | Active (ongoing concern) | Generated code quality and backend idiom coverage |
 | `TODO/TODO_transport_dag_migration.md` | Draft | Recommended migration plan, not implemented end-to-end |
 | `TODO/TODO_testgen_seed_policy_postmortem.md` | Partially complete | Core fix landed; follow-up hardening still open |
-| `TODO/TODO_remove_disallowed_methods_script.md` | Pending | Script/allowlist removal task |
 
 ## Source Of Truth Notes
 
@@ -35,6 +34,7 @@ Last reconciled: 2026-02-14
 ## Recently Moved To TODONE
 
 - `TODO/TODONE/TODO_ci_timeout_fermi.md` (moved 2026-02-14)
+- `TODO/TODONE/TODO_remove_disallowed_methods_script.md` (moved 2026-02-14)
 
 ## Plan Template
 

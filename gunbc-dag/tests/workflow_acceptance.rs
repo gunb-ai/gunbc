@@ -98,7 +98,10 @@ fn ci_guardrail_stage_runs_disallowed_methods_and_resource_purity_checks() {
         .args
         .get(1)
         .expect("bash -lc command should be present");
-    assert!(command.contains("tools/check-disallowed-methods.sh"));
+    assert!(
+        !command.contains("tools/check-disallowed-methods.sh"),
+        "guardrail should no longer invoke deprecated shell script"
+    );
     assert!(command.contains("cargo test -p gunbc-dag --test resource_purity_checks"));
 }
 

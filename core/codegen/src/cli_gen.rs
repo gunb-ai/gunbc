@@ -283,6 +283,7 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
         "execute_and_display".to_string(),
         "BoundaryMocks".to_string(),
         "ExecutionMode".to_string(),
+        "PreflightStatusObserver".to_string(),
     ];
     if step_mode {
         exec_items.push("execute_single_node".to_string());
@@ -300,7 +301,7 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
         }),
         Item::Use(Import {
             path: vec!["gunbc_lib_transport".to_string(), "preflight".to_string()],
-            items: vec!["ensure_lint_upsert".to_string()],
+            items: vec!["ensure_lint_upsert_with_observer".to_string()],
         }),
     ];
 
@@ -639,7 +640,7 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          // Parse arguments\n\
          {arg_parsing}\n\
          // Preflight lint (auto-fix if stale)\n\
-         if let Err(err) = ensure_lint_upsert() {{\n\
+         if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {{\n\
              eprintln!(\"preflight failed: {{}}\", err);\n\
              process::exit(1);\n\
          }}\n\
@@ -811,7 +812,7 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          \n\
          {arg_parsing}\n\
          // Preflight lint (auto-fix if stale)\n\
-         if let Err(err) = ensure_lint_upsert() {{\n\
+         if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {{\n\
              eprintln!(\"preflight failed: {{}}\", err);\n\
              process::exit(1);\n\
          }}\n\
@@ -878,7 +879,7 @@ fn build_run_single_step_fn(tool: &ToolMeta) -> FnDef {
          }}\n\
          \n\
          // Preflight lint (auto-fix if stale)\n\
-         if let Err(err) = ensure_lint_upsert() {{\n\
+         if let Err(err) = ensure_lint_upsert_with_observer(Some(&mut PreflightStatusObserver)) {{\n\
              eprintln!(\"preflight failed: {{}}\", err);\n\
              process::exit(1);\n\
          }}\n\

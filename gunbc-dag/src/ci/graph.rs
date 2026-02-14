@@ -115,11 +115,10 @@ pub fn ci_signature() -> WorkflowSignature {
         .with_output("response", "TransportResponse", Cardinality::ZERO_OR_ONE)
         .with_output("skip", "Bool", Cardinality::ONE)
         .with_output("build_skipped", "Bool", Cardinality::ONE)
-        .with_output("build_stdout", "String", Cardinality::ONE)
+        // Note: build_stdout, test_stdout, lint_stdout are no longer boundary outputs -
+        // they're wired to the report node
         .with_output("test_skipped", "Bool", Cardinality::ONE)
-        // Note: test_stdout is no longer a boundary output - it's wired to report node
         .with_output("lint_skipped", "Bool", Cardinality::ONE)
-        .with_output("lint_stdout", "String", Cardinality::ONE)
         .with_output("skip_reason", "OptionalString", Cardinality::ZERO_OR_ONE)
         .with_output("overall_success", "Bool", Cardinality::ONE)
         .with_output("report", "String", Cardinality::ONE)
@@ -261,6 +260,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         vec![
             port("bootstrap_success", "Bool"),
             port("bootstrap_stderr", "String"),
+            port("bootstrap_stdout", "String"),
         ],
         CIGraphOp::CI(CIOp::PrepareBootstrapCommand),
         CIGraphOp::CI(CIOp::ParseBootstrapResult),
@@ -280,6 +280,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         vec![
             port("pragma_success", "Bool"),
             port("pragma_stderr", "String"),
+            port("pragma_stdout", "String"),
         ],
         CIGraphOp::CI(CIOp::PreparePragmaCommand),
         CIGraphOp::CI(CIOp::ParsePragmaResult),
@@ -299,6 +300,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         vec![
             port("testgen_success", "Bool"),
             port("testgen_stderr", "String"),
+            port("testgen_stdout", "String"),
         ],
         CIGraphOp::CI(CIOp::PrepareTestgenCommand),
         CIGraphOp::CI(CIOp::ParseTestgenResult),
@@ -390,6 +392,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         vec![
             port("guardrail_success", "Bool"),
             port("guardrail_stderr", "String"),
+            port("guardrail_stdout", "String"),
         ],
         CIGraphOp::CI(CIOp::PrepareGuardrailCheck),
         CIGraphOp::CI(CIOp::ParseGuardrailResult),
@@ -521,13 +524,19 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
                 port("guardrail_success", "Bool"),
                 port("verify_success", "Bool"),
                 optional("build_stderr", "OptionalString"),
+                optional("build_stdout", "OptionalString"),
                 optional("testgen_stderr", "OptionalString"),
+                optional("testgen_stdout", "OptionalString"),
                 optional("bootstrap_stderr", "OptionalString"),
+                optional("bootstrap_stdout", "OptionalString"),
                 optional("pragma_stderr", "OptionalString"),
+                optional("pragma_stdout", "OptionalString"),
                 optional("test_stdout", "OptionalString"),
                 optional("test_stderr", "OptionalString"),
                 optional("lint_stderr", "OptionalString"),
+                optional("lint_stdout", "OptionalString"),
                 optional("guardrail_stderr", "OptionalString"),
+                optional("guardrail_stdout", "OptionalString"),
                 optional("verify_stderr", "OptionalString"),
                 optional("cloud_env_status", "OptionalString"),
             ],
@@ -730,23 +739,44 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         report.in_port("build_stderr"),
     )?;
     builder.add_edge(
+        build.parse.out("build_stdout"),
+        report.in_port("build_stdout"),
+    )?;
+    builder.add_edge(
         testgen.parse.out("testgen_stderr"),
         report.in_port("testgen_stderr"),
+    )?;
+    builder.add_edge(
+        testgen.parse.out("testgen_stdout"),
+        report.in_port("testgen_stdout"),
     )?;
     builder.add_edge(
         bootstrap.parse.out("bootstrap_stderr"),
         report.in_port("bootstrap_stderr"),
     )?;
     builder.add_edge(
+        bootstrap.parse.out("bootstrap_stdout"),
+        report.in_port("bootstrap_stdout"),
+    )?;
+    builder.add_edge(
         pragma.parse.out("pragma_stderr"),
         report.in_port("pragma_stderr"),
+    )?;
+    builder.add_edge(
+        pragma.parse.out("pragma_stdout"),
+        report.in_port("pragma_stdout"),
     )?;
     builder.add_edge(test.parse.out("test_stdout"), report.in_port("test_stdout"))?;
     builder.add_edge(test.parse.out("test_stderr"), report.in_port("test_stderr"))?;
     builder.add_edge(lint.parse.out("lint_stderr"), report.in_port("lint_stderr"))?;
+    builder.add_edge(lint.parse.out("lint_stdout"), report.in_port("lint_stdout"))?;
     builder.add_edge(
         guardrail.parse.out("guardrail_stderr"),
         report.in_port("guardrail_stderr"),
+    )?;
+    builder.add_edge(
+        guardrail.parse.out("guardrail_stdout"),
+        report.in_port("guardrail_stdout"),
     )?;
     builder.add_edge(
         verify.out("verify_success"),

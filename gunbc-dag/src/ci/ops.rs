@@ -238,9 +238,11 @@ fn execute_prepare_testgen_command(
 fn execute_parse_testgen_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) =
-        propagate_skipped(&inputs, "response", &["testgen_success", "testgen_stderr"])
-    {
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "response",
+        &["testgen_success", "testgen_stderr", "testgen_stdout"],
+    ) {
         return result;
     }
 
@@ -253,6 +255,7 @@ fn execute_parse_testgen_result(
         return OutputMap::new()
             .bool("testgen_success", false)
             .str("testgen_stderr", reason)
+            .str("testgen_stdout", "")
             .ok();
     }
 
@@ -262,6 +265,7 @@ fn execute_parse_testgen_result(
             return OutputMap::new()
                 .bool("testgen_success", false)
                 .str("testgen_stderr", "missing response")
+                .str("testgen_stdout", "")
                 .ok();
         }
     };
@@ -269,6 +273,7 @@ fn execute_parse_testgen_result(
     OutputMap::new()
         .bool("testgen_success", shell.success())
         .str("testgen_stderr", shell.stderr.clone())
+        .str("testgen_stdout", shell.stdout.clone())
         .ok()
 }
 
@@ -305,7 +310,7 @@ fn execute_parse_bootstrap_result(
     if let Some(result) = propagate_skipped(
         &inputs,
         "response",
-        &["bootstrap_success", "bootstrap_stderr"],
+        &["bootstrap_success", "bootstrap_stderr", "bootstrap_stdout"],
     ) {
         return result;
     }
@@ -319,6 +324,7 @@ fn execute_parse_bootstrap_result(
         return OutputMap::new()
             .bool("bootstrap_success", false)
             .str("bootstrap_stderr", reason)
+            .str("bootstrap_stdout", "")
             .ok();
     }
 
@@ -328,6 +334,7 @@ fn execute_parse_bootstrap_result(
             return OutputMap::new()
                 .bool("bootstrap_success", false)
                 .str("bootstrap_stderr", "missing response")
+                .str("bootstrap_stdout", "")
                 .ok();
         }
     };
@@ -335,6 +342,7 @@ fn execute_parse_bootstrap_result(
     OutputMap::new()
         .bool("bootstrap_success", shell.success())
         .str("bootstrap_stderr", shell.stderr.clone())
+        .str("bootstrap_stdout", shell.stdout.clone())
         .ok()
 }
 
@@ -368,9 +376,11 @@ fn execute_prepare_pragma_command(
 fn execute_parse_pragma_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) =
-        propagate_skipped(&inputs, "response", &["pragma_success", "pragma_stderr"])
-    {
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "response",
+        &["pragma_success", "pragma_stderr", "pragma_stdout"],
+    ) {
         return result;
     }
 
@@ -383,6 +393,7 @@ fn execute_parse_pragma_result(
         return OutputMap::new()
             .bool("pragma_success", false)
             .str("pragma_stderr", reason)
+            .str("pragma_stdout", "")
             .ok();
     }
 
@@ -392,6 +403,7 @@ fn execute_parse_pragma_result(
             return OutputMap::new()
                 .bool("pragma_success", false)
                 .str("pragma_stderr", "missing response")
+                .str("pragma_stdout", "")
                 .ok();
         }
     };
@@ -399,6 +411,7 @@ fn execute_parse_pragma_result(
     OutputMap::new()
         .bool("pragma_success", shell.success())
         .str("pragma_stderr", shell.stderr.clone())
+        .str("pragma_stdout", shell.stdout.clone())
         .ok()
 }
 
@@ -646,7 +659,8 @@ fn execute_parse_clippy_lint_result(
 // Guardrails Stage - Pure Operations
 // ============================================================================
 
-const GUARDRAIL_CHECK_COMMAND: &str = "tools/check-disallowed-methods.sh && cargo test -p gunbc-dag --test resource_purity_checks --quiet";
+const GUARDRAIL_CHECK_COMMAND: &str =
+    "cargo test -p gunbc-dag --test resource_purity_checks --quiet";
 
 /// Prepare the disallowed-methods check (pure).
 fn execute_prepare_guardrail_check(
@@ -685,7 +699,7 @@ fn execute_parse_guardrail_result(
     if let Some(result) = propagate_skipped(
         &inputs,
         "response",
-        &["guardrail_success", "guardrail_stderr"],
+        &["guardrail_success", "guardrail_stderr", "guardrail_stdout"],
     ) {
         return result;
     }
@@ -699,6 +713,7 @@ fn execute_parse_guardrail_result(
         return OutputMap::new()
             .bool("guardrail_success", false)
             .str("guardrail_stderr", reason)
+            .str("guardrail_stdout", "")
             .ok();
     }
 
@@ -708,6 +723,7 @@ fn execute_parse_guardrail_result(
             return OutputMap::new()
                 .bool("guardrail_success", false)
                 .str("guardrail_stderr", "missing response")
+                .str("guardrail_stdout", "")
                 .ok();
         }
     };
@@ -715,6 +731,7 @@ fn execute_parse_guardrail_result(
     OutputMap::new()
         .bool("guardrail_success", shell.success())
         .str("guardrail_stderr", shell.stderr.clone())
+        .str("guardrail_stdout", shell.stdout.clone())
         .ok()
 }
 
@@ -1027,75 +1044,53 @@ fn build_report_blocks(
         }
     )));
 
-    // Failure details — all sections are truncated to keep the report readable.
-    if !build_success && !build_stderr.is_empty() {
-        let summary = truncate_for_report(build_stderr);
-        blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Build stderr ---\n{summary}\n"
-        )));
-    }
+    // Failure details — each stage gets a section with specialized extraction
+    // where available, falling back to tail summary.
+    let build_stdout = optional_str_strict(inputs, "build_stdout")?.unwrap_or("");
+    let lint_stdout = optional_str_strict(inputs, "lint_stdout")?.unwrap_or("");
+    let testgen_stdout = optional_str_strict(inputs, "testgen_stdout")?.unwrap_or("");
+    let bootstrap_stdout = optional_str_strict(inputs, "bootstrap_stdout")?.unwrap_or("");
+    let pragma_stdout = optional_str_strict(inputs, "pragma_stdout")?.unwrap_or("");
+    let guardrail_stdout = optional_str_strict(inputs, "guardrail_stdout")?.unwrap_or("");
 
-    if !test_success {
-        if let Some(failures_section) = extract_test_failures(test_stdout) {
-            let summary = truncate_for_report(&failures_section);
-            blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Test failures ---\n{summary}\n"
-            )));
-        } else if !test_stdout.is_empty() {
-            let summary = truncate_for_report(test_stdout);
-            blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Test stdout ---\n{summary}\n"
-            )));
+    let stages = [
+        StageResult::new("Build", build_success, build_stdout, build_stderr)
+            .with_extractor(extract_build_errors),
+        StageResult::new("Test", test_success, test_stdout, test_stderr),
+        StageResult::new("Lint", lint_success, lint_stdout, lint_stderr)
+            .with_extractor(extract_lint_warnings),
+        StageResult::new("Testgen", testgen_success, testgen_stdout, testgen_stderr),
+        StageResult::new("Bootstrap", bootstrap_success, bootstrap_stdout, bootstrap_stderr),
+        StageResult::new("Pragma", pragma_success, pragma_stdout, pragma_stderr),
+        StageResult::new("Guardrails", guardrail_success, guardrail_stdout, guardrail_stderr),
+        StageResult::new("Verify", verify_success, "", verify_stderr),
+    ];
+
+    for stage in &stages {
+        if stage.success {
+            continue;
         }
-
-        if !test_stderr.is_empty() {
-            let summary = truncate_for_report(test_stderr);
-            blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Test stderr ---\n{summary}\n"
-            )));
+        // Special handling for test failures: extract the "failures:" section
+        if stage.name == "Test" {
+            if let Some(failures_section) = extract_test_failures(stage.stdout) {
+                let summary = truncate_for_report(&failures_section);
+                blocks.push(StructuredBlock::Raw(format!(
+                    "\n--- Test failures ---\n{summary}\n"
+                )));
+            }
+            if !stage.stderr.is_empty() {
+                let summary = truncate_for_report(stage.stderr);
+                blocks.push(StructuredBlock::Raw(format!(
+                    "\n--- Test stderr ---\n{summary}\n"
+                )));
+            }
+            continue;
         }
-    }
-
-    if !lint_success && !lint_stderr.is_empty() {
-        let summary = truncate_for_report(lint_stderr);
-        blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Lint stderr ---\n{summary}\n"
-        )));
-    }
-
-    if !bootstrap_success && !bootstrap_stderr.is_empty() {
-        let summary = truncate_for_report(bootstrap_stderr);
-        blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Bootstrap stderr ---\n{summary}\n"
-        )));
-    }
-
-    if !pragma_success && !pragma_stderr.is_empty() {
-        let summary = truncate_for_report(pragma_stderr);
-        blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Pragma stderr ---\n{summary}\n"
-        )));
-    }
-
-    if !testgen_success && !testgen_stderr.is_empty() {
-        let summary = truncate_for_report(testgen_stderr);
-        blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Testgen stderr ---\n{summary}\n"
-        )));
-    }
-
-    if !guardrail_success && !guardrail_stderr.is_empty() {
-        let summary = truncate_for_report(guardrail_stderr);
-        blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Guardrails stderr ---\n{summary}\n"
-        )));
-    }
-
-    if !verify_success && !verify_stderr.is_empty() {
-        let summary = truncate_for_report(verify_stderr);
-        blocks.push(StructuredBlock::Raw(format!(
-            "\n--- Verify stderr ---\n{summary}\n"
-        )));
+        if let Some(section) =
+            format_stage_failure(stage.name, stage.stdout, stage.stderr, stage.extractor)
+        {
+            blocks.push(StructuredBlock::Raw(section));
+        }
     }
 
     if !cloud_env_status.is_empty() {
@@ -1152,6 +1147,122 @@ fn truncate_for_report(text: &str) -> String {
     result.join("\n")
 }
 
+/// Extract `error[E...]` lines + context from build stderr.
+///
+/// Filters out massive linker `.rlib` paths that bloat the output.
+fn extract_build_errors(stderr: &str) -> Option<String> {
+    let mut result_lines = Vec::new();
+    for line in stderr.lines() {
+        // Skip lines that are mostly linker .rlib paths
+        if line.contains(".rlib") && line.len() > 200 {
+            continue;
+        }
+        // Include error lines and their context (-->, |, note:)
+        if line.starts_with("error")
+            || line.contains("error[E")
+            || line.starts_with("warning")
+            || line.trim_start().starts_with("-->")
+            || line.trim_start().starts_with('|')
+            || line.trim_start().starts_with("note:")
+            || line.trim_start().starts_with("= help:")
+            || line.trim_start().starts_with("= note:")
+        {
+            result_lines.push(line);
+        }
+    }
+    if result_lines.is_empty() {
+        None
+    } else {
+        Some(result_lines.join("\n"))
+    }
+}
+
+/// Extract `warning:` and `error:` lines + context from clippy output.
+fn extract_lint_warnings(stderr: &str) -> Option<String> {
+    let mut result_lines = Vec::new();
+    for line in stderr.lines() {
+        if line.starts_with("warning")
+            || line.starts_with("error")
+            || line.trim_start().starts_with("-->")
+            || line.trim_start().starts_with('|')
+            || line.trim_start().starts_with("= help:")
+            || line.trim_start().starts_with("= note:")
+        {
+            result_lines.push(line);
+        }
+    }
+    if result_lines.is_empty() {
+        None
+    } else {
+        Some(result_lines.join("\n"))
+    }
+}
+
+/// Generic fallback: last N lines of text.
+fn extract_tail_summary(text: &str, max_lines: usize) -> Option<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.is_empty() {
+        return None;
+    }
+    let start = lines.len().saturating_sub(max_lines);
+    Some(lines[start..].join("\n"))
+}
+
+/// A single stage's result for report generation.
+struct StageResult<'a> {
+    name: &'a str,
+    success: bool,
+    stdout: &'a str,
+    stderr: &'a str,
+    extractor: Option<fn(&str) -> Option<String>>,
+}
+
+impl<'a> StageResult<'a> {
+    fn new(name: &'a str, success: bool, stdout: &'a str, stderr: &'a str) -> Self {
+        Self { name, success, stdout, stderr, extractor: None }
+    }
+
+    fn with_extractor(mut self, f: fn(&str) -> Option<String>) -> Self {
+        self.extractor = Some(f);
+        self
+    }
+}
+
+/// Unified helper for formatting a stage failure section.
+///
+/// Tries the extractor on stderr, falls back to `extract_tail_summary`,
+/// applies `truncate_for_report` to bound output size.
+fn format_stage_failure(
+    name: &str,
+    stdout: &str,
+    stderr: &str,
+    extractor: Option<fn(&str) -> Option<String>>,
+) -> Option<String> {
+    // Try the specialized extractor on stderr first
+    if let Some(extract) = extractor {
+        if let Some(extracted) = extract(stderr) {
+            let summary = truncate_for_report(&extracted);
+            return Some(format!("\n--- {name} errors ---\n{summary}\n"));
+        }
+    }
+
+    // Fall back to tail of stderr
+    if !stderr.is_empty() {
+        let tail = extract_tail_summary(stderr, 30).unwrap_or_default();
+        let summary = truncate_for_report(&tail);
+        return Some(format!("\n--- {name} stderr ---\n{summary}\n"));
+    }
+
+    // If stderr empty but stdout has content, show tail of stdout
+    if !stdout.is_empty() {
+        let tail = extract_tail_summary(stdout, 30).unwrap_or_default();
+        let summary = truncate_for_report(&tail);
+        return Some(format!("\n--- {name} stdout ---\n{summary}\n"));
+    }
+
+    None
+}
+
 /// Extract the "failures:" section from cargo test output.
 /// This includes the failure list and any panic messages.
 fn extract_test_failures(stdout: &str) -> Option<String> {
@@ -1205,6 +1316,7 @@ impl Mockable for CIOp {
             CIOp::ParseTestgenResult => OutputMap::new()
                 .bool("testgen_success", true)
                 .str("testgen_stderr", "")
+                .str("testgen_stdout", "")
                 .build(),
             CIOp::PrepareBootstrapCommand => {
                 let config = BuildConfig::cargo();
@@ -1217,6 +1329,7 @@ impl Mockable for CIOp {
             CIOp::ParseBootstrapResult => OutputMap::new()
                 .bool("bootstrap_success", true)
                 .str("bootstrap_stderr", "")
+                .str("bootstrap_stdout", "")
                 .build(),
             CIOp::PreparePragmaCommand => {
                 let config = BuildConfig::cargo();
@@ -1229,6 +1342,7 @@ impl Mockable for CIOp {
             CIOp::ParsePragmaResult => OutputMap::new()
                 .bool("pragma_success", true)
                 .str("pragma_stderr", "")
+                .str("pragma_stdout", "")
                 .build(),
             CIOp::PrepareBuildCommand => {
                 let compile_only_test_build = CargoCommand::new(Subcommand::Test)
@@ -1272,6 +1386,7 @@ impl Mockable for CIOp {
             CIOp::ParseGuardrailResult => OutputMap::new()
                 .bool("guardrail_success", true)
                 .str("guardrail_stderr", "")
+                .str("guardrail_stdout", "")
                 .build(),
             CIOp::PrepareClippyLint => {
                 let config = BuildConfig::cargo();
@@ -1556,5 +1671,101 @@ mod tests {
         assert!(report.contains("lines omitted"));
         // Last lines should be preserved (errors tend to be at the end)
         assert!(report.contains("error line 199"));
+    }
+
+    #[test]
+    fn test_extract_build_errors_filters_rlib_lines() {
+        let stderr = format!(
+            "error[E0308]: mismatched types\n  --> src/lib.rs:42:5\n  |\n42 |     foo()\n  |     ^^^^^ expected u32\n\n{}\n\nerror: aborting due to previous error",
+            "x".repeat(4000) + ".rlib"
+        );
+        let result = extract_build_errors(&stderr).unwrap();
+        assert!(result.contains("error[E0308]"));
+        assert!(!result.contains(".rlib"));
+        assert!(result.len() < 500);
+    }
+
+    #[test]
+    fn test_extract_build_errors_empty() {
+        assert!(extract_build_errors("Compiling foo v0.1.0\nFinished dev").is_none());
+    }
+
+    #[test]
+    fn test_extract_lint_warnings() {
+        let stderr = "warning: unused variable `x`\n  --> src/main.rs:5:9\n  |\n5 |     let x = 1;\n  |         ^ help: use `_x`\n\nerror: aborting due to previous error";
+        let result = extract_lint_warnings(stderr).unwrap();
+        assert!(result.contains("warning: unused variable"));
+        assert!(result.contains("error: aborting"));
+    }
+
+    #[test]
+    fn test_extract_lint_warnings_empty() {
+        assert!(extract_lint_warnings("Checking foo v0.1.0\nFinished dev").is_none());
+    }
+
+    #[test]
+    fn test_extract_tail_summary() {
+        let text = (0..100)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let result = extract_tail_summary(&text, 5).unwrap();
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines.len(), 5);
+        assert!(result.contains("line 99"));
+    }
+
+    #[test]
+    fn test_extract_tail_summary_short() {
+        let result = extract_tail_summary("just one line", 10).unwrap();
+        assert_eq!(result, "just one line");
+    }
+
+    #[test]
+    fn test_format_stage_failure_with_extractor() {
+        let stderr = "error[E0308]: mismatched types\n  --> src/lib.rs:42:5";
+        let result = format_stage_failure("Build", "", stderr, Some(extract_build_errors));
+        assert!(result.is_some());
+        let section = result.unwrap();
+        assert!(section.contains("Build errors"));
+        assert!(section.contains("error[E0308]"));
+    }
+
+    #[test]
+    fn test_format_stage_failure_without_extractor() {
+        let result = format_stage_failure("Testgen", "", "some error output", None);
+        assert!(result.is_some());
+        let section = result.unwrap();
+        assert!(section.contains("Testgen stderr"));
+    }
+
+    #[test]
+    fn test_format_stage_failure_empty() {
+        let result = format_stage_failure("Build", "", "", Some(extract_build_errors));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_regression_linker_explosion() {
+        // Regression test: massive linker stderr with 4000-char .rlib paths
+        let mut stderr = String::new();
+        stderr.push_str("error[E0308]: mismatched types\n");
+        stderr.push_str("  --> src/lib.rs:42:5\n");
+        // Simulate huge linker line with many .rlib paths
+        let rlib_line = (0..100)
+            .map(|i| format!("/long/path/to/target/debug/deps/libfoo_{i}.rlib"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        stderr.push_str(&rlib_line);
+        stderr.push('\n');
+        stderr.push_str("error: aborting due to previous error\n");
+
+        let result = extract_build_errors(&stderr).unwrap();
+        // Should not include the giant .rlib line
+        assert!(!result.contains(".rlib"));
+        // Should include the actual error
+        assert!(result.contains("error[E0308]"));
+        // Output should be bounded
+        assert!(result.len() < 1000);
     }
 }

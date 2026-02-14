@@ -47,7 +47,7 @@ pub mod topo;
 pub use ci_context::CiContext;
 pub use display::{
     execute_and_display, execute_and_display_with_result, print_attention, print_value,
-    AttentionLevel, DisplayResult,
+    AttentionLevel, DisplayResult, PreflightObserver, PreflightStatusObserver,
 };
 pub use env::{single_output as env_single_output, EnvNode};
 pub use error::{ExecError, IntoExecResult, ResultExt};
@@ -68,8 +68,8 @@ pub use intercept::{BoundaryMock, BoundaryMocks};
 pub use lower::{lower, LoopInfo, LowerError, LowerResult};
 pub use progress::{
     ComposedObserver, DagPhase, DagProgress, DagSnapshot, EdgeProgress, EdgeState, FieldKind,
-    FieldSummary, NodeProgress, NodeState, OutputSummary, ProgressEvent, ProgressObserver,
-    RecordingObserver,
+    FieldSummary, GroupProgress, NodeProgress, NodeState, OutputSummary, ProgressEvent,
+    ProgressObserver, RecordingObserver, StageGroup,
 };
 pub use render::{Animation, AnimationMode, RenderMode};
 pub use topo::topo_sort;

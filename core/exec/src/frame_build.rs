@@ -4,7 +4,7 @@
 //! The caller passes the resulting [`Frame`] to a
 //! [`FrameWriter`](super::frame_write::FrameWriter) for actual output.
 
-use crate::progress::{DagPhase, DagProgress, EdgeState, NodeState};
+use crate::progress::{DagPhase, DagProgress, EdgeState, GroupProgress, NodeState};
 use crate::render::RenderMode;
 use gunbc_ir::layout::DagLayout;
 use gunbc_ir::render_ir::{CursorAction, Frame, Line, Span, SpanStyle};
@@ -302,6 +302,10 @@ fn build_compact_line(
 // ---------------------------------------------------------------------------
 
 /// Build the legend lines (running/failed first, then recent completions).
+///
+/// When groups are present, shows group-level progress:
+/// - Failed/running groups are expanded to show individual nodes (auto-expand)
+/// - Completed groups are shown as a single collapsed line with count
 fn build_legend_lines(
     progress: &DagProgress,
     layout: &DagLayout,
@@ -309,6 +313,10 @@ fn build_legend_lines(
     _tier: Tier,
 ) -> Vec<Line> {
     const LEGEND_LINES: usize = 3;
+
+    if !progress.snapshot.groups.is_empty() {
+        return build_grouped_legend(progress, layout, LEGEND_LINES);
+    }
 
     let mut active_entries: Vec<(NodeState, String, String, Option<Duration>)> = Vec::new();
     let mut done_entries: Vec<(NodeState, String, String, Option<Duration>)> = Vec::new();
@@ -373,6 +381,78 @@ fn build_legend_lines(
 
     // Pad remaining slots with empty lines to prevent jitter
     for _ in visible..LEGEND_LINES {
+        lines.push(Line::new(vec![Span::plain("")]));
+    }
+
+    lines
+}
+
+/// Build group-aware legend lines.
+///
+/// Failed/running groups are expanded to show individual nodes.
+/// Completed groups are shown as a single collapsed line.
+fn build_grouped_legend(
+    progress: &DagProgress,
+    _layout: &DagLayout,
+    max_lines: usize,
+) -> Vec<Line> {
+    let mut lines = Vec::new();
+
+    // Collect groups by priority: failed/running first, then completed
+    let mut active_groups: Vec<(usize, &str, GroupProgress)> = Vec::new();
+    let mut done_groups: Vec<(usize, &str, GroupProgress)> = Vec::new();
+
+    for (idx, group) in progress.snapshot.groups.iter().enumerate() {
+        let gp = group.progress(progress);
+        if gp.is_failed() || gp.running > 0 {
+            active_groups.push((idx, &group.name, gp));
+        } else if gp.is_done() {
+            done_groups.push((idx, &group.name, gp));
+        }
+    }
+
+    // Active groups: expanded to show individual nodes
+    for (_idx, name, gp) in &active_groups {
+        if lines.len() >= max_lines {
+            break;
+        }
+        let (sym, color) = if gp.is_failed() {
+            ("\u{2718}", SemanticColor::Error) // ✘
+        } else {
+            ("\u{25D0}", SemanticColor::Active) // ◐
+        };
+        lines.push(Line::new(vec![
+            Span::plain("  "),
+            Span::styled(
+                format!("{} {} [{}/{}]", sym, name, gp.completed, gp.total),
+                SpanStyle {
+                    color: Some(color),
+                    ..Default::default()
+                },
+            ),
+        ]));
+    }
+
+    // Completed groups: collapsed
+    for (_idx, name, gp) in done_groups.iter().rev() {
+        if lines.len() >= max_lines {
+            break;
+        }
+        lines.push(Line::new(vec![
+            Span::plain("  "),
+            Span::styled(
+                format!("\u{2714} {} [{}/{}]", name, gp.completed, gp.total), // ✔
+                SpanStyle {
+                    color: Some(SemanticColor::Success),
+                    ..Default::default()
+                },
+            ),
+        ]));
+    }
+
+    // Pad remaining slots with empty lines to prevent jitter
+    let visible = lines.len().min(max_lines);
+    for _ in visible..max_lines {
         lines.push(Line::new(vec![Span::plain("")]));
     }
 
@@ -691,6 +771,7 @@ mod tests {
             ]
             .into_iter()
             .collect(),
+            groups: vec![],
         }
     }
 
@@ -845,5 +926,113 @@ mod tests {
 
         let footer = build_footer_line(&progress, &STANDARD, Tier::Unicode);
         assert!(footer.is_some(), "Completed phase should have a footer");
+    }
+
+    // -------------------------------------------------------------------
+    // Phase 6: Grouped legend tests
+    // -------------------------------------------------------------------
+
+    #[test]
+    fn test_grouped_legend_shows_group_names() {
+        use crate::progress::StageGroup;
+        use gunbc_ir::layout::{compute_layout, Viewport, ViewportUnit};
+
+        let snap = DagSnapshot {
+            node_ids: vec![
+                NodeId::from("prepare_build"),
+                NodeId::from("execute_build"),
+                NodeId::from("parse_build"),
+            ],
+            edges: vec![
+                Edge::new("prepare_build", "out", "execute_build", "in"),
+                Edge::new("execute_build", "out", "parse_build", "in"),
+            ],
+            topo_order: vec![
+                NodeId::from("prepare_build"),
+                NodeId::from("execute_build"),
+                NodeId::from("parse_build"),
+            ],
+            boundary_nodes: vec![],
+            labels: [
+                (NodeId::from("prepare_build"), "prepare_build".to_string()),
+                (NodeId::from("execute_build"), "execute_build".to_string()),
+                (NodeId::from("parse_build"), "parse_build".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+            groups: vec![StageGroup {
+                name: "build".into(),
+                node_ids: vec![
+                    NodeId::from("prepare_build"),
+                    NodeId::from("execute_build"),
+                    NodeId::from("parse_build"),
+                ],
+            }],
+        };
+
+        let mut progress = DagProgress::new(snap.clone());
+        progress.on_dag_start(&snap);
+        progress.on_node_start(&NodeId::from("prepare_build"));
+        progress.on_node_complete(&NodeId::from("prepare_build"), empty_summary());
+        progress.on_node_start(&NodeId::from("execute_build"));
+
+        let vp = Viewport::new(80, 24, ViewportUnit::Chars);
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
+
+        let frame = build_frame(
+            &progress,
+            &layout,
+            RenderMode::Standard,
+            "◐",
+            Tier::Unicode,
+            &STANDARD,
+        );
+
+        // Collect all text from the frame
+        let all_text: String = frame
+            .lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.text.as_str()))
+            .collect();
+        // Grouped legend should show "build" group name, not individual node names
+        assert!(
+            all_text.contains("build"),
+            "Grouped legend should contain group name 'build', got:\n{}",
+            all_text
+        );
+    }
+
+    #[test]
+    fn test_ungrouped_legend_shows_node_names() {
+        let snap = test_snapshot(); // No groups
+        let mut progress = DagProgress::new(snap.clone());
+        progress.on_dag_start(&snap);
+        progress.on_node_start(&NodeId::from("lint"));
+        progress.on_node_complete(&NodeId::from("lint"), empty_summary());
+        progress.on_node_start(&NodeId::from("build"));
+
+        let vp = Viewport::new(80, 24, ViewportUnit::Chars);
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
+
+        let frame = build_frame(
+            &progress,
+            &layout,
+            RenderMode::Standard,
+            "◐",
+            Tier::Unicode,
+            &STANDARD,
+        );
+
+        let all_text: String = frame
+            .lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.text.as_str()))
+            .collect();
+        // Ungrouped legend should show individual node names
+        assert!(
+            all_text.contains("build"),
+            "Ungrouped legend should contain node name 'build', got:\n{}",
+            all_text
+        );
     }
 }

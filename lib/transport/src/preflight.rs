@@ -36,22 +36,37 @@ const PREFLIGHT_SKIP_BINARIES: &[&str] = &[
 
 /// Ensure lint is fresh (run lint-upsert if stale/missing).
 pub fn ensure_lint_upsert() -> Result<(), String> {
-    ensure_lint_upsert_with_ci(None)
+    ensure_lint_upsert_with_observer(None)
 }
 
 /// Ensure lint is fresh with optional CI context for structured output.
 ///
-/// When a `CiContext` is provided, preflight wraps the entire operation
-/// in a collapsible CI group and emits `::error::` annotations on failure.
-pub fn ensure_lint_upsert_with_ci(
-    mut ci: Option<&mut gunbc_exec::CiContext>,
+/// Deprecated: use [`ensure_lint_upsert_with_observer`] instead.
+/// This adapter wraps the CiContext in a `PreflightObserver`.
+pub fn ensure_lint_upsert_with_ci(ci: Option<&mut gunbc_exec::CiContext>) -> Result<(), String> {
+    match ci {
+        Some(c) => ensure_lint_upsert_with_observer(Some(c)),
+        None => ensure_lint_upsert_with_observer(None),
+    }
+}
+
+/// Ensure lint is fresh with optional observer for structured output.
+///
+/// When a [`PreflightObserver`] is provided, preflight emits structured
+/// events for steps, completion, and errors. Without an observer, preflight
+/// runs silently (output only on state change via the `println!` in
+/// `ensure_lint_upsert_manifest_state`).
+pub fn ensure_lint_upsert_with_observer(
+    mut observer: Option<&mut dyn gunbc_exec::PreflightObserver>,
 ) -> Result<(), String> {
     if should_skip_preflight() {
         return Ok(());
     }
 
-    if let Some(ref mut c) = ci {
-        c.start_group("preflight", false);
+    let preflight_start = std::time::Instant::now();
+
+    if let Some(ref mut obs) = observer {
+        obs.on_preflight_start("preflight");
     }
 
     let io = TransportIo::new();
@@ -60,13 +75,14 @@ pub fn ensure_lint_upsert_with_ci(
     let mut manifest = load_manifest_default(&io)
         .map_err(|e| format!("preflight: manifest load failed: {}", e))?;
     let updated = match ensure_lint_upsert_manifest_state(&io, &mut manifest, &resource, |id| {
-        run_lint_upsert(id, ci.as_deref_mut())
+        // Keep lint-upsert execution independent from observer plumbing until
+        // run_lint_upsert is fully migrated to the observer trait.
+        run_lint_upsert(id, None)
     }) {
         Ok(updated) => updated,
         Err(msg) => {
-            if let Some(ref mut c) = ci {
-                c.error(&msg, None);
-                c.end_group();
+            if let Some(ref mut obs) = observer {
+                obs.on_preflight_error("preflight", &msg);
             }
             return Err(msg);
         }
@@ -75,16 +91,15 @@ pub fn ensure_lint_upsert_with_ci(
     if updated {
         save_manifest_default(&io, &manifest).map_err(|e| {
             let msg = format!("preflight: manifest save failed: {}", e);
-            if let Some(ref mut c) = ci {
-                c.error(&msg, None);
-                c.end_group();
+            if let Some(ref mut obs) = observer {
+                obs.on_preflight_error("preflight", &msg);
             }
             msg
         })?;
     }
 
-    if let Some(ref mut c) = ci {
-        c.end_group();
+    if let Some(ref mut obs) = observer {
+        obs.on_preflight_complete("preflight", preflight_start.elapsed());
     }
 
     Ok(())
@@ -358,7 +373,7 @@ fn compute_lint_key(io: &dyn ResourceIo, files: &[PathBuf]) -> Result<ContentHas
 
 fn run_lint_upsert(
     resource_id: &ResourceId,
-    mut ci: Option<&mut gunbc_exec::CiContext>,
+    mut observer: Option<&mut dyn gunbc_exec::PreflightObserver>,
 ) -> Result<(), ResourceError> {
     let steps: &[(&str, CargoCommand)] = &[
         (
@@ -380,35 +395,40 @@ fn run_lint_upsert(
 
     let total = steps.len() + 2; // +1 for clippy, +1 for test gate
     for (i, (label, cmd)) in steps.iter().enumerate() {
-        if let Some(ref mut c) = ci {
-            c.start_group(label, true);
+        if let Some(ref mut obs) = observer {
+            obs.on_preflight_step(i + 1, total, label);
+        } else {
+            eprint!("  [{}/{}] {}...", i + 1, total, label);
+            let _ = std::io::Write::flush(&mut std::io::stderr());
         }
-        eprint!("  [{}/{}] {}...", i + 1, total, label);
-        let _ = std::io::Write::flush(&mut std::io::stderr());
         let start = std::time::Instant::now();
         let result = run_cargo_command(resource_id, cmd);
-        eprintln!(" {:.1}s", start.elapsed().as_secs_f64());
-        if let Some(ref mut c) = ci {
-            c.end_group();
+        let elapsed = start.elapsed();
+        if let Some(ref mut obs) = observer {
+            obs.on_preflight_step_complete(label, elapsed);
+        } else {
+            eprintln!(" {:.1}s", elapsed.as_secs_f64());
         }
         result?;
     }
 
     // clippy check: cargo clippy -- -D warnings
     // Note: no --all-targets for speed; CI still catches test-only lint issues
-    if let Some(ref mut c) = ci {
-        c.start_group("clippy", true);
+    let clippy_step = total - 1;
+    if let Some(ref mut obs) = observer {
+        obs.on_preflight_step(clippy_step, total, "clippy");
+    } else {
+        eprint!("  [{}/{}] clippy...", clippy_step, total);
+        let _ = std::io::Write::flush(&mut std::io::stderr());
     }
     let clippy_outcome: Result<(), ResourceError> = (|| {
-        eprint!("  [{}/{}] clippy...", total, total);
-        let _ = std::io::Write::flush(&mut std::io::stderr());
         let clippy_start = std::time::Instant::now();
         let clippy_check = CargoCommand::new(Subcommand::Clippy).warnings(Warnings::Deny);
         let clippy_result = run_cargo_command_response(resource_id, &clippy_check)?;
 
         if !clippy_result.success() {
             eprintln!(" fix needed ({:.1}s)", clippy_start.elapsed().as_secs_f64());
-            eprint!("  [{}/{}] clippy --fix...", total, total);
+            eprint!("  [{}/{}] clippy --fix...", clippy_step, total);
             let _ = std::io::Write::flush(&mut std::io::stderr());
             let fix_start = std::time::Instant::now();
 
@@ -439,36 +459,49 @@ fn run_lint_upsert(
         }
         Ok(())
     })();
-    if let Some(ref mut c) = ci {
-        c.end_group();
+    if let Some(ref mut obs) = observer {
+        obs.on_preflight_step_complete("clippy", Duration::ZERO);
     }
     clippy_outcome?;
 
-    // Test gate: run lib tests to catch contract mismatches (e.g., wrong
-    // secret names, stale generated tests). Only hermetic tests run here —
-    // live/integration tests that require secrets or external services are
-    // skipped via GUNBC_TEST_MAX_COST=S. The full CI pipeline covers those.
-    if let Some(ref mut c) = ci {
-        c.start_group("test", true);
+    // Test gate: compile all workspace lib test targets without executing
+    // them. This catches contract/compile mismatches (including stale
+    // generated tests) while avoiding long-running runtime execution in
+    // local preflight.
+    if let Some(ref mut obs) = observer {
+        obs.on_preflight_step(total, total, "test --lib --no-run");
+    } else {
+        eprint!("  [{}/{}] test --lib --no-run...", total, total);
+        let _ = std::io::Write::flush(&mut std::io::stderr());
     }
     let test_outcome: Result<(), ResourceError> = (|| {
-        eprint!("  [{}/{}] test --lib...", total, total);
-        let _ = std::io::Write::flush(&mut std::io::stderr());
         let test_start = std::time::Instant::now();
-        let test_cmd = CargoCommand::new(Subcommand::Test)
-            .workspace()
-            .lib_only()
-            .warnings(Warnings::Deny);
+        let test_cmd = preflight_test_gate_command();
         run_cargo_command_with_env(resource_id, &test_cmd, &[("GUNBC_TEST_MAX_COST", "S")])?;
-        eprintln!(" {:.1}s", test_start.elapsed().as_secs_f64());
+        let elapsed = test_start.elapsed();
+        if let Some(ref mut obs) = observer {
+            obs.on_preflight_step_complete("test --lib --no-run", elapsed);
+        } else {
+            eprintln!(" {:.1}s", elapsed.as_secs_f64());
+        }
         Ok(())
     })();
-    if let Some(ref mut c) = ci {
-        c.end_group();
+    if test_outcome.is_err() {
+        if let Some(ref mut obs) = observer {
+            obs.on_preflight_step_complete("test --lib --no-run", Duration::ZERO);
+        }
     }
     test_outcome?;
 
     Ok(())
+}
+
+fn preflight_test_gate_command() -> CargoCommand {
+    CargoCommand::new(Subcommand::Test)
+        .workspace()
+        .lib_only()
+        .no_run()
+        .warnings(Warnings::Deny)
 }
 
 /// Run a cargo command, failing on non-zero exit.
@@ -802,6 +835,25 @@ mod tests {
         assert!(
             manifest.get(resource.resource_id()).is_none(),
             "failed run should not write manifest entry"
+        );
+    }
+
+    #[test]
+    fn preflight_test_gate_uses_compile_only_workspace_libs() {
+        let cmd = preflight_test_gate_command();
+        assert_eq!(
+            cmd.to_args(),
+            vec![
+                "cargo",
+                "test",
+                "--workspace",
+                "--lib",
+                "--no-run",
+            ]
+        );
+        assert_eq!(
+            cmd.env(),
+            vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())]
         );
     }
 }
