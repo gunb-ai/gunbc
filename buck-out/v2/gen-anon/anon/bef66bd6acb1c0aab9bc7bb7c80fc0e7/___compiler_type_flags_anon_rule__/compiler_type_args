@@ -1,0 +1,5 @@
+-Xclang
+-fdebug-compilation-dir
+-Xclang
+.
+-fcolor-diagnostics

@@ -1,0 +1,10 @@
+{
+  "trace_id": "66fc0075-9ff8-41fc-b147-68866144a24a",
+  "exit_code": 3,
+  "error_messages": [
+    "Error evaluating build file: `root//:BUCK`\n\nCaused by:\n    0: Traceback (most recent call last):\n         * BUCK:1, in <module>\n             command_alias(\n       \n       error: Error coercing attribute `exe` of `root//:buck_test_runner`\n        --> BUCK:1:1\n         |\n       1 | / command_alias(\n       2 | |     name = \"buck_test_runner\",\n       3 | |     exe = \"cargo\",\n       4 | |     args = [\"run\", \"-p\", \"gunbc-test-runner\", \"--\"],\n       5 | | )\n         | |_^\n         |\n    1: Error coercing attribute `exe` of type `attrs.option(attrs.one_of(attrs.dep(), attrs.source()), default=None)`\n    2: Error coercing \"cargo\"\n    3: one_of fails, the errors against each alternative in turn were:\n       Invalid target pattern `cargo` is not allowed: Expected pattern to contain `:`, trailing `/...` or literal `...`.\n       Coercing `cargo` as a source: Source file `cargo` does not exist as a member of package `root//`."
+  ],
+  "finalizing_error_messages": [
+    "'invocation recorder' failed to finalize\n\nCaused by:\n    Scribe sink not enabled (internal error)"
+  ]
+}

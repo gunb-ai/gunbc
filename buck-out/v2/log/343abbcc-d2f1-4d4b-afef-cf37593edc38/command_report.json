@@ -1,0 +1,10 @@
+{
+  "trace_id": "343abbcc-d2f1-4d4b-afef-cf37593edc38",
+  "exit_code": 3,
+  "error_messages": [
+    "From load at BUCK:1\n\nCaused by:\n    0: Error evaluating module: `root//buck2/prelude.bzl`\n    1: error: Variable `native` not found\n        --> buck2/prelude.bzl:2:5\n         |\n       2 |     native.genrule(**kwargs)\n         |     ^^^^^^\n         |\n       "
+  ],
+  "finalizing_error_messages": [
+    "'invocation recorder' failed to finalize\n\nCaused by:\n    Scribe sink not enabled (internal error)"
+  ]
+}

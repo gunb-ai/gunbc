@@ -1,0 +1,10 @@
+{
+  "trace_id": "cd3c1969-469a-43e4-a8e0-0a672d6c2887",
+  "exit_code": 3,
+  "error_messages": [
+    "Error evaluating build file: `root//:BUCK`\n\nCaused by:\n    error: Variable `native` not found\n     --> BUCK:1:1\n      |\n    1 | native.genrule(\n      | ^^^^^^\n      |\n    "
+  ],
+  "finalizing_error_messages": [
+    "'invocation recorder' failed to finalize\n\nCaused by:\n    Scribe sink not enabled (internal error)"
+  ]
+}

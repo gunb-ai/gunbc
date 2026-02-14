@@ -1,0 +1,10 @@
+{
+  "trace_id": "16ed4a92-58c9-4a6e-9150-c1e0643651c7",
+  "exit_code": 32,
+  "error_messages": [
+    "Test execution completed but the tests failed"
+  ],
+  "finalizing_error_messages": [
+    "'invocation recorder' failed to finalize\n\nCaused by:\n    Scribe sink not enabled (internal error)"
+  ]
+}

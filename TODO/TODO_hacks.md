@@ -571,3 +571,133 @@ of a single global runtime toggle.
 
 **Added**: 2026-02-14
 **Resolved**: 2026-02-14
+
+---
+
+## 30. "List" used as type_id AND cardinality shape (dual encoding) — PARTIAL FIXES
+
+**Where**: CLI arg parsing, mock generation, loop patterns, makegen repeatable detection
+
+**What happens**: The design doc says cardinality is the canonical shape layer, but "List" is
+deeply embedded as a type_id across 28 files.
+
+**Progress so far**:
+- CLI generation now derives list-ness from cardinality (no type_id == "List").
+- makegen registry repeatable flags derive from cardinality.
+- loop pattern defaults use element types + cardinality.
+- deps graphs now use `"String"` element types for dep/tool name lists.
+- bootstrap graphs now use list("crate_names", "String") instead of type_id "List".
+- language subdags/patterns now use list(..., "String") for list ports.
+- registry entrypoints now use type_id "String" + cardinality for extensions.
+- CliEntrypoint::new no longer infers cardinality from "List"/"Set".
+
+**Remaining work**: finish removing type_id-encoded cardinality
+(e.g., StringList/OptionalString) once the type registry refactor lands.
+Mock generation now hard-fails on unknown type_ids and on `List`/`Set`.
+
+**Files**:
+- core/ir/src/types.rs
+- core/codegen/src/testgen/codegen.rs
+
+**Added**: 2026-02-14 (consolidated from root TODO_hacks)
+
+---
+
+## 31. Cardinality test-case cap is a bandaid
+
+**Where**: `core/ir/src/types.rs`, `core/ir/src/contract.rs`
+
+**What happens**: To avoid huge generated vectors when a bounded max is large, testgen now
+uses a capped boundary set (`Cardinality::test_cases_for_tests`, cap=64).
+This prevents OOM/giant files but hides the deeper design issue.
+
+**Why it's a hack**: The contract/testgen layer doesn't distinguish "boundary correctness"
+from "large-N stress." We need a principled sampling strategy or explicit
+test-budget policy (e.g., boundary-only by default, optional stress tests
+per port/type) rather than a hardcoded cap.
+
+**Files**:
+- core/ir/src/types.rs (test_cases_for_tests / cap)
+- core/ir/src/contract.rs (witnesses uses capped cases)
+- core/codegen/src/testgen/analyze.rs
+- core/codegen/src/testgen/obligation.rs
+
+**Added**: 2026-02-14 (consolidated from root TODO_hacks)
+
+---
+
+## 32. `Map` type_id is under-specified for proofs/testgen
+
+**Where**: `core/ir/src/value.rs`, `core/ir/src/types.rs`, `core/codegen/src/testgen/codegen.rs`
+
+**What happens**: Value::Map(BTreeMap<String, Value>) lost type parameter info when
+MapStrStr was replaced with generic Map. Codegen can't serialize
+Value::Map in general, and there's no way to express "map of string
+to string" vs "map of string to json" at the port type level.
+
+**Note**: Item 3 resolved Map *resolution* in the type registry. This item is about
+Map *proof generation* — testgen still can't produce typed map witnesses.
+
+**Suggested fix**: Either parametric type IDs (Map<String,String>) or a type DAG /
+type expression structure instead of flat String type_id.
+
+**Added**: 2026-02-14 (consolidated from root TODO_hacks)
+
+---
+
+## 33. Cardinality constants are flat — no compositional modeling
+
+**Where**: `core/ir/src/types.rs`
+
+**What happens**: Named cardinality constants (ZERO, ONE, ZERO_OR_ONE, etc.) are syntactic
+sugar for interval structs. If "everything is a DAG" then cardinality
+constraints could be modeled as composable DAG nodes.
+
+**Why it's a hack**: Cardinality is compile-time only (used for test generation and port
+validation), not a first-class runtime concept. Making it compositional would
+enable runtime-evaluable multiplicity constraints.
+
+**Added**: 2026-02-14 (consolidated from root TODO_hacks)
+
+---
+
+## 34. Resource capabilities potentially forgeable via TryFrom<Value>
+
+**Where**: Resource trait proposal in `TODO/TODONE/design-resource-acquisition.md`
+
+**What happens**: The resource acquisition design proposes:
+```rust
+pub trait Resource: Into<Value> + TryFrom<Value>
+```
+
+If `TryFrom<Value>` accepts any token-like value, capabilities become forgeable.
+A malicious/buggy node could construct a fake handle from data.
+
+**Suggested fix**: Runtime guard ensuring only env nodes can mint capability handles
+(e.g., internal IDs stored in executor-side handle table, not in Value itself).
+
+Also: `EnvVars` as observation resource risks spilling secrets unless it's a
+filtered projection (the `CredentialOp` approach is safer).
+
+**Added**: 2026-02-14 (consolidated from root TODO_hacks)
+
+---
+
+## 35. Compound shell commands should be replaced with native Rust — PARTIAL
+
+**Where**: `lib/tools/gist/src/graph.rs`
+
+**What happens**: `execute_prepare_read_files` builds a shell script that concatenates N
+`echo marker; cat file` commands joined with `;`. This exists because we
+need the contents of N files and chose to batch them into one shell call.
+
+**Update (2026-02-14)**: Snapshot-mode runtime reads now use per-file native
+`TransportRequest::File(FileRequest::read(...))` in the active LoopBuilder
+path. The legacy batch helpers still exist but are no longer the active
+snapshot execution path.
+
+**Files**:
+- lib/tools/gist/src/graph.rs (`execute_prepare_read_files`, ~line 150)
+- lib/tools/gist/src/graph.rs (`execute_parse_read_files`, ~line 207)
+
+**Added**: 2026-02-14 (consolidated from root TODO_hacks)

@@ -2,6 +2,23 @@
 
 This document is the short onboarding guide for contributors and agents. It points you to the canonical docs and summarizes the non-negotiable invariants in this repo.
 
+## Installation
+
+```bash
+# Clone and bootstrap
+git clone <repo>
+cd gunbc
+make install
+```
+
+The `make install` target bootstraps the repository:
+1. Generates CLI entrypoints (`gunbc-codegen --mode=ensure`)
+2. Generates `Makefile` and `.gitignore` (`gunbc-bootstrap --mode=ensure`)
+
+After installation, run `make help` to see all available targets.
+
+**Note:** The generated `Makefile` is gitignored. The handwritten `GNUmakefile` provides the `install` target and delegates everything else to the generated `Makefile`.
+
 ## Start Here
 
 - `docs/handbook.md` for the conceptual map, pattern catalog, and e2e examples (single file — copy-friendly)

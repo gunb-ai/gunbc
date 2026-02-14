@@ -1,0 +1,10 @@
+{
+  "trace_id": "9947870b-89d4-414e-8021-96d1720d112b",
+  "exit_code": 11,
+  "error_messages": [
+    "Failed to connect to buck daemon.\n    Try running `buck2 kill` and your command afterwards.\n    Alternatively, try running `rm -rf ~/.buck/buckd` and your command afterwards\n\nCaused by:\n    Operation not permitted (os error 1)"
+  ],
+  "finalizing_error_messages": [
+    "'invocation recorder' failed to finalize\n\nCaused by:\n    Scribe sink not enabled (internal error)"
+  ]
+}
