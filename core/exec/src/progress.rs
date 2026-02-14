@@ -371,6 +371,8 @@ pub struct NodeProgress {
     pub start_time: Option<Instant>,
     pub elapsed: Option<Duration>,
     pub summary: Option<OutputSummary>,
+    /// Error message for failed nodes. Populated by `on_node_failed`.
+    pub error: Option<String>,
 }
 
 /// Per-edge progress tracking.
@@ -422,6 +424,7 @@ impl DagProgress {
                         start_time: None,
                         elapsed: None,
                         summary: None,
+                        error: None,
                     },
                 )
             })
@@ -465,6 +468,32 @@ impl DagProgress {
                     | NodeState::Intercepted
             )
         })
+    }
+
+    /// Collect information about all failed nodes.
+    ///
+    /// Returns `(node_label, error_message)` pairs for rendering error boxes.
+    pub fn failed_nodes(&self) -> Vec<(String, String)> {
+        let mut failures = Vec::new();
+        // Walk in topo order to maintain deterministic ordering
+        for node_id in &self.snapshot.topo_order {
+            if let Some(np) = self.nodes.get(node_id) {
+                if np.state == NodeState::Failed {
+                    let label = self
+                        .snapshot
+                        .labels
+                        .get(node_id)
+                        .cloned()
+                        .unwrap_or_else(|| node_id.0.clone());
+                    let error = np
+                        .error
+                        .clone()
+                        .unwrap_or_else(|| "(no error detail)".to_string());
+                    failures.push((label, error));
+                }
+            }
+        }
+        failures
     }
 
     /// Transition outgoing edges from a completed/intercepted node to Flowing.
@@ -551,6 +580,7 @@ impl ProgressObserver for DagProgress {
         if let Some(np) = self.nodes.get_mut(node_id) {
             np.state = NodeState::Failed;
             np.elapsed = np.start_time.map(|t| t.elapsed());
+            np.error = Some(error.to_string());
         }
         self.kill_edges_from(node_id);
         self.phase = DagPhase::Failed {

@@ -505,8 +505,8 @@ mod tests {
         let rendered = medium.render_span(&sample_span());
         assert!(rendered.contains("\x1b[1m"), "should contain bold code");
         assert!(
-            rendered.contains("\x1b[32m"),
-            "should contain green (success) code"
+            rendered.contains("\x1b[38;5;34m"),
+            "should contain 256-color green (success) code"
         );
         assert!(rendered.contains("hello"));
         assert!(rendered.contains("\x1b[0m"), "should contain reset code");

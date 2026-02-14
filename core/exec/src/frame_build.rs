@@ -40,7 +40,13 @@ pub fn build_frame(
         RenderMode::Standard | RenderMode::Dynamic => {
             lines.push(build_dag_header(progress, spinner_frame, tier, symbol_set));
             lines.extend(build_standard_lines(progress, layout, symbol_set, tier));
-            lines.extend(build_legend_lines(progress, layout, symbol_set, tier));
+            lines.extend(build_legend_lines(
+                progress,
+                layout,
+                spinner_frame,
+                symbol_set,
+                tier,
+            ));
             if let Some(footer) = build_footer_line(progress, symbol_set, tier) {
                 lines.push(footer);
             }
@@ -308,6 +314,7 @@ fn build_compact_line(
 fn build_legend_lines(
     progress: &DagProgress,
     layout: &DagLayout,
+    spinner_frame: &str,
     _symbol_set: &'static SymbolSet,
     _tier: Tier,
 ) -> Vec<Line> {
@@ -316,7 +323,12 @@ fn build_legend_lines(
     const STAGE_PANEL_MAX_LINES: usize = 7;
 
     if !progress.snapshot.groups.is_empty() {
-        return build_grouped_stage_panel(progress, STAGE_PANEL_MAX_GROUPS, STAGE_PANEL_MAX_LINES);
+        return build_grouped_stage_panel(
+            progress,
+            spinner_frame,
+            STAGE_PANEL_MAX_GROUPS,
+            STAGE_PANEL_MAX_LINES,
+        );
     }
 
     let mut active_entries: Vec<(NodeState, String, String, Option<Duration>)> = Vec::new();
@@ -390,18 +402,22 @@ fn build_legend_lines(
 
 /// Build a grouped stage panel with progress bars and inline expansion.
 ///
+/// Matches `gunb.ai`'s group rendering style:
+/// `spinner › GroupName [done/total] (running-task-name)`
+///
 /// Failed groups always expand. Running groups auto-expand when they contain
 /// long-running nodes.
 fn build_grouped_stage_panel(
     progress: &DagProgress,
+    spinner_frame: &str,
     max_groups: usize,
     max_lines: usize,
 ) -> Vec<Line> {
-    const BAR_WIDTH: usize = 14;
-    const LONG_RUNNING_EXPAND_AFTER: Duration = Duration::from_secs(20);
-    const DETAILS_PER_GROUP: usize = 2;
+    /// Auto-expand groups after 30s (matches gunb.ai threshold).
+    const LONG_RUNNING_EXPAND_AFTER: Duration = Duration::from_secs(30);
+    const DETAILS_PER_GROUP: usize = 4;
 
-    let mut lines = vec![Line::new(vec![Span::plain("  Stages:")])];
+    let mut lines: Vec<Line> = Vec::new();
 
     let mut rows: Vec<(usize, GroupProgress)> = progress
         .snapshot
@@ -417,8 +433,8 @@ fn build_grouped_stage_panel(
         return lines;
     }
 
-    // Prioritize groups that are active/failing, then fill with remaining
-    // groups in topology order to keep context visible.
+    // Show all groups in topology order (up to max_groups).
+    // Active/failing groups are always included, then fill remaining slots.
     let mut selected: Vec<(usize, GroupProgress)> = rows
         .iter()
         .filter(|(_, gp)| gp.is_failed() || gp.running > 0)
@@ -435,43 +451,86 @@ fn build_grouped_stage_panel(
     }
     selected.truncate(max_groups);
 
+    let is_final = spinner_frame.is_empty();
+
     for (group_idx, gp) in selected {
         if lines.len() >= max_lines {
             break;
         }
         let group = &progress.snapshot.groups[group_idx];
         let done = gp.completed + gp.failed + gp.skipped;
-        let bar = stage_progress_bar(done, gp.total, BAR_WIDTH);
-        let (sym, color) = if gp.is_failed() {
-            ("\u{2718}", SemanticColor::Error) // ✘
-        } else if gp.running > 0 {
-            ("\u{25D0}", SemanticColor::Active) // ◐
-        } else if gp.is_done() {
-            ("\u{2714}", SemanticColor::Success) // ✔
+
+        // Icon color: colored icon, but name uses a SEPARATE style (matching gunb.ai).
+        // - Failed:    red ✘,   default name
+        // - Running:   orange spinner, default name
+        // - Completed: green ✔, dim name
+        // - Pending:   dim ○,   dim name
+        let (icon, icon_color, name_color) = if gp.is_failed() {
+            ("\u{2718}".to_string(), SemanticColor::Error, None) // ✘, red icon, default name
+        } else if gp.running > 0 && !is_final {
+            (spinner_frame.to_string(), SemanticColor::Active, None) // spinner, orange, default name
+        } else if gp.running > 0 || gp.is_done() {
+            ("\u{2714}".to_string(), SemanticColor::Success, Some(SemanticColor::Dim)) // ✔, green, dim name
         } else {
-            ("\u{25CB}", SemanticColor::Dim) // ○
+            ("\u{25CB}".to_string(), SemanticColor::Dim, Some(SemanticColor::Dim)) // ○, dim, dim name
         };
 
-        let mut suffix = String::new();
-        if gp.failed > 0 {
-            suffix = format!(" ({} failed)", gp.failed);
+        // Build suffix with running task names or failed task names inline
+        let suffix = if gp.failed > 0 {
+            let failed_names = group_failed_task_names(progress, group_idx);
+            if failed_names.is_empty() {
+                format!(" ({} failed)", gp.failed)
+            } else {
+                format!(" [failed: {}]", failed_names.join(", "))
+            }
         } else if gp.running > 0 {
-            suffix = format!(" ({} running)", gp.running);
-        }
+            let running_names = group_running_task_names(progress, group_idx);
+            if running_names.is_empty() {
+                format!(" ({} running)", gp.running)
+            } else if running_names.len() <= 2 {
+                format!(" ({})", running_names.join(", "))
+            } else {
+                format!(" ({}, +{} more)", running_names[0], running_names.len() - 1)
+            }
+        } else {
+            String::new()
+        };
 
-        lines.push(Line::new(vec![
+        // Main group line: icon › GroupName [done/total] suffix
+        // No progress bar — just the count, like gunb.ai.
+        let mut spans = vec![
             Span::plain("  "),
             Span::styled(
-                format!(
-                    "{} {:<18} [{}] {}/{}{}",
-                    sym, group.name, bar, done, gp.total, suffix
-                ),
+                icon,
                 SpanStyle {
-                    color: Some(color),
+                    color: Some(icon_color),
                     ..Default::default()
                 },
             ),
-        ]));
+            Span::plain(" \u{203A} "), // › (uncolored, neutral separator)
+            Span::styled(
+                format!("{:<18} [{}/{}]", group.name, done, gp.total),
+                SpanStyle {
+                    color: name_color,
+                    ..Default::default()
+                },
+            ),
+        ];
+        if !suffix.is_empty() {
+            let suffix_color = if gp.failed > 0 {
+                SemanticColor::Error
+            } else {
+                SemanticColor::Dim
+            };
+            spans.push(Span::styled(
+                suffix,
+                SpanStyle {
+                    color: Some(suffix_color),
+                    ..Default::default()
+                },
+            ));
+        }
+        lines.push(Line::new(spans));
 
         let expand = gp.is_failed()
             || group_has_long_running_node(progress, group_idx, LONG_RUNNING_EXPAND_AFTER);
@@ -494,23 +553,67 @@ fn build_grouped_stage_panel(
     lines
 }
 
+/// Get the names of running tasks in a group.
+fn group_running_task_names(progress: &DagProgress, group_idx: usize) -> Vec<String> {
+    let group = &progress.snapshot.groups[group_idx];
+    group
+        .node_ids
+        .iter()
+        .filter(|node_id| {
+            progress
+                .nodes
+                .get(*node_id)
+                .map(|np| np.state == NodeState::Running)
+                .unwrap_or(false)
+        })
+        .map(|node_id| full_label(node_id, &progress.snapshot.labels))
+        .collect()
+}
+
+/// Get the names of failed tasks in a group.
+fn group_failed_task_names(progress: &DagProgress, group_idx: usize) -> Vec<String> {
+    let group = &progress.snapshot.groups[group_idx];
+    group
+        .node_ids
+        .iter()
+        .filter(|node_id| {
+            progress
+                .nodes
+                .get(*node_id)
+                .map(|np| np.state == NodeState::Failed)
+                .unwrap_or(false)
+        })
+        .map(|node_id| full_label(node_id, &progress.snapshot.labels))
+        .collect()
+}
+
 fn grouped_detail_lines(progress: &DagProgress, group_idx: usize, limit: usize) -> Vec<Line> {
+    /// Maximum pending tasks to show before truncating.
+    const MAX_PENDING_DISPLAY: usize = 4;
+
     let group = &progress.snapshot.groups[group_idx];
     let mut entries: Vec<(NodeState, String, Option<Duration>)> = Vec::new();
+    let mut pending_entries: Vec<String> = Vec::new();
 
     for node_id in &group.node_ids {
         let Some(np) = progress.nodes.get(node_id) else {
             continue;
         };
-        if !matches!(np.state, NodeState::Failed | NodeState::Running) {
-            continue;
-        }
 
         let label = full_label(node_id, &progress.snapshot.labels);
-        let elapsed = np.elapsed.or_else(|| np.start_time.map(|t| t.elapsed()));
-        entries.push((np.state, label, elapsed));
+        match np.state {
+            NodeState::Failed | NodeState::Running => {
+                let elapsed = np.elapsed.or_else(|| np.start_time.map(|t| t.elapsed()));
+                entries.push((np.state, label, elapsed));
+            }
+            NodeState::Pending => {
+                pending_entries.push(label);
+            }
+            _ => {}
+        }
     }
 
+    // Sort: failed first, then running
     entries.sort_by_key(|(state, _, _)| match state {
         NodeState::Failed => 0,
         NodeState::Running => 1,
@@ -518,16 +621,32 @@ fn grouped_detail_lines(progress: &DagProgress, group_idx: usize, limit: usize) 
     });
 
     let mut lines = Vec::new();
+
+    // Show failed and running entries with split icon/name coloring (gunb.ai style):
+    // Icon gets the status color; name is default for running/failed, dim for completed.
     for (state, label, elapsed) in entries.iter().take(limit) {
         let time_str = elapsed
-            .map(|d| format!(" [{}]", format_duration(d)))
+            .map(|d| format!(" ({})", format_duration(d)))
             .unwrap_or_default();
+        let name_color = match state {
+            NodeState::Completed | NodeState::Intercepted | NodeState::Skipped => {
+                Some(SemanticColor::Dim)
+            }
+            _ => None, // Running / Failed use default terminal color
+        };
         lines.push(Line::new(vec![
             Span::plain("    "),
             Span::styled(
-                format!("{} {}{}", legend_char(*state), label, time_str),
+                legend_char(*state).to_string(),
                 SpanStyle {
                     color: Some(state_color(*state)),
+                    ..Default::default()
+                },
+            ),
+            Span::styled(
+                format!(" {}{}", label, time_str),
+                SpanStyle {
+                    color: name_color,
                     ..Default::default()
                 },
             ),
@@ -538,7 +657,48 @@ fn grouped_detail_lines(progress: &DagProgress, group_idx: usize, limit: usize) 
         lines.push(Line::new(vec![
             Span::plain("    "),
             Span::styled(
-                format!("… {} more", entries.len() - limit),
+                format!("… {} more active", entries.len() - limit),
+                SpanStyle {
+                    color: Some(SemanticColor::Dim),
+                    ..Default::default()
+                },
+            ),
+        ]));
+    }
+
+    // Show pending tasks (up to MAX_PENDING_DISPLAY, then truncate)
+    let pending_to_show = pending_entries.len().min(MAX_PENDING_DISPLAY);
+    for label in pending_entries.iter().take(pending_to_show) {
+        if lines.len() >= limit + MAX_PENDING_DISPLAY {
+            break;
+        }
+        lines.push(Line::new(vec![
+            Span::plain("    "),
+            Span::styled(
+                legend_char(NodeState::Pending).to_string(),
+                SpanStyle {
+                    color: Some(SemanticColor::Dim),
+                    ..Default::default()
+                },
+            ),
+            Span::styled(
+                format!(" {}", label),
+                SpanStyle {
+                    color: Some(SemanticColor::Dim),
+                    ..Default::default()
+                },
+            ),
+        ]));
+    }
+
+    if pending_entries.len() > MAX_PENDING_DISPLAY {
+        lines.push(Line::new(vec![
+            Span::plain("    "),
+            Span::styled(
+                format!(
+                    "… and {} more pending",
+                    pending_entries.len() - MAX_PENDING_DISPLAY
+                ),
                 SpanStyle {
                     color: Some(SemanticColor::Dim),
                     ..Default::default()

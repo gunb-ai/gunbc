@@ -53,17 +53,27 @@ pub enum SemanticColor {
 }
 
 impl SemanticColor {
-    /// ANSI escape code for this color.
+    /// ANSI escape code for this color (256-color palette).
+    ///
+    /// Uses the 256-color palette from `gunb.ai/pkg/fermi/colors.go` for
+    /// consistent, professional appearance across modern terminals:
+    ///   - Green (34):  Success, safe, completed
+    ///   - Orange (208): Attention, in-progress, warning
+    ///   - Red (196):   Danger, error, failure
+    ///   - Cyan (39):   Info, user action needed
+    ///   - Soft blue (75): Calm, informational, accent
+    ///   - Dim (SGR 2): Inactive, pending, secondary
+    ///   - Bold white:  Active, running
     pub fn ansi(self) -> &'static str {
         match self {
             Self::Default => "\x1b[0m",
-            Self::Success => "\x1b[32m",
-            Self::Warning => "\x1b[33m",
-            Self::Error => "\x1b[31m",
-            Self::Info => "\x1b[34m",
-            Self::Dim => "\x1b[2m",
-            Self::Active => "\x1b[1;37m",
-            Self::Accent => "\x1b[36m",
+            Self::Success => "\x1b[38;5;34m",  // 256-color green
+            Self::Warning => "\x1b[38;5;208m", // 256-color orange
+            Self::Error => "\x1b[38;5;196m",   // 256-color red
+            Self::Info => "\x1b[38;5;39m",     // 256-color cyan
+            Self::Dim => "\x1b[2m",            // SGR dim
+            Self::Active => "\x1b[1;37m",      // Bold white
+            Self::Accent => "\x1b[38;5;75m",   // 256-color soft blue
         }
     }
 
@@ -86,6 +96,25 @@ impl SemanticColor {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Terminal control constants (matching gunb.ai/pkg/fermi/colors.go)
+// ---------------------------------------------------------------------------
+
+/// Hide the terminal cursor (useful during animations).
+pub const CURSOR_HIDE: &str = "\x1b[?25l";
+
+/// Show (restore) the terminal cursor.
+pub const CURSOR_SHOW: &str = "\x1b[?25h";
+
+/// Move cursor to column 0 (carriage return).
+pub const CURSOR_TO_COL0: &str = "\r";
+
+/// Clear the entire current line.
+pub const CLEAR_LINE: &str = "\x1b[2K";
+
+/// Clear from cursor position to end of screen.
+pub const CLEAR_TO_END: &str = "\x1b[J";
 
 /// What concept a symbol represents.
 ///
@@ -115,11 +144,17 @@ pub enum SymbolId {
     // Structural
     BoundaryMarker,
 
-    // Spinners (animation frames)
+    // Spinners (animation frames — braille dots, 10 frames)
     Spinner0,
     Spinner1,
     Spinner2,
     Spinner3,
+    Spinner4,
+    Spinner5,
+    Spinner6,
+    Spinner7,
+    Spinner8,
+    Spinner9,
 
     // Status indicators (general purpose)
     Success,
@@ -224,7 +259,7 @@ pub static STANDARD: SymbolSet = SymbolSet {
     symbols: &STANDARD_SYMBOLS,
 };
 
-static STANDARD_SYMBOLS: [Symbol; 34] = [
+static STANDARD_SYMBOLS: [Symbol; 40] = [
     // Node states
     Symbol {
         id: SymbolId::NodePending,
@@ -334,35 +369,18 @@ static STANDARD_SYMBOLS: [Symbol; 34] = [
         ascii: "[B]",
         color: SemanticColor::Info,
     },
-    // Spinners
-    Symbol {
-        id: SymbolId::Spinner0,
-        emoji: "🌑",
-        unicode: "◐",
-        ascii: "|",
-        color: SemanticColor::Active,
-    },
-    Symbol {
-        id: SymbolId::Spinner1,
-        emoji: "🌒",
-        unicode: "◓",
-        ascii: "/",
-        color: SemanticColor::Active,
-    },
-    Symbol {
-        id: SymbolId::Spinner2,
-        emoji: "🌓",
-        unicode: "◑",
-        ascii: "-",
-        color: SemanticColor::Active,
-    },
-    Symbol {
-        id: SymbolId::Spinner3,
-        emoji: "🌔",
-        unicode: "◒",
-        ascii: "\\",
-        color: SemanticColor::Active,
-    },
+    // Spinners — braille dots (10 frames, matching gunb.ai)
+    // Braille characters are universally supported in modern terminals across all tiers.
+    Symbol { id: SymbolId::Spinner0, emoji: "⠋", unicode: "⠋", ascii: "|",  color: SemanticColor::Active },
+    Symbol { id: SymbolId::Spinner1, emoji: "⠙", unicode: "⠙", ascii: "/",  color: SemanticColor::Active },
+    Symbol { id: SymbolId::Spinner2, emoji: "⠹", unicode: "⠹", ascii: "-",  color: SemanticColor::Active },
+    Symbol { id: SymbolId::Spinner3, emoji: "⠸", unicode: "⠸", ascii: "\\", color: SemanticColor::Active },
+    Symbol { id: SymbolId::Spinner4, emoji: "⠼", unicode: "⠼", ascii: "|",  color: SemanticColor::Active },
+    Symbol { id: SymbolId::Spinner5, emoji: "⠴", unicode: "⠴", ascii: "/",  color: SemanticColor::Active },
+    Symbol { id: SymbolId::Spinner6, emoji: "⠦", unicode: "⠦", ascii: "-",  color: SemanticColor::Active },
+    Symbol { id: SymbolId::Spinner7, emoji: "⠧", unicode: "⠧", ascii: "\\", color: SemanticColor::Active },
+    Symbol { id: SymbolId::Spinner8, emoji: "⠇", unicode: "⠇", ascii: "|",  color: SemanticColor::Active },
+    Symbol { id: SymbolId::Spinner9, emoji: "⠏", unicode: "⠏", ascii: "/",  color: SemanticColor::Active },
     // Status indicators
     Symbol {
         id: SymbolId::Success,
@@ -572,9 +590,9 @@ pub fn build_symbol_subdag(symbol: &Symbol) -> Node<SymbolOp> {
     Node::subdag(format!("symbol_{:?}", symbol.id), inner)
 }
 
-/// Build a spinner animation SubDag (4 frames + cycle).
+/// Build a spinner animation SubDag (10 braille frames + cycle).
 ///
-/// Structure: frame_0 → frame_1 → frame_2 → frame_3 → (cycle back to 0)
+/// Structure: frame_0 → frame_1 → … → frame_9 → (cycle back to 0)
 pub fn build_spinner_subdag(symbol_set: &SymbolSet) -> Node<SymbolOp> {
     let mut inner = Dag::new();
 
@@ -583,6 +601,12 @@ pub fn build_spinner_subdag(symbol_set: &SymbolSet) -> Node<SymbolOp> {
         SymbolId::Spinner1,
         SymbolId::Spinner2,
         SymbolId::Spinner3,
+        SymbolId::Spinner4,
+        SymbolId::Spinner5,
+        SymbolId::Spinner6,
+        SymbolId::Spinner7,
+        SymbolId::Spinner8,
+        SymbolId::Spinner9,
     ];
 
     for (i, _id) in spinner_ids.iter().enumerate() {
@@ -609,17 +633,21 @@ pub fn build_spinner_subdag(symbol_set: &SymbolSet) -> Node<SymbolOp> {
         SymbolOp::Cycle,
     ));
 
-    // Chain: frame_0 → frame_1 → frame_2 → frame_3 → cycle → frame_0
+    // Chain: frame_0 → frame_1 → … → frame_9 → cycle → frame_0
+    for i in 0..spinner_ids.len() - 1 {
+        inner.add_edge(crate::dag::build::edge(
+            &format!("frame_{}", i),
+            "next",
+            &format!("frame_{}", i + 1),
+            "prev",
+        ));
+    }
     inner.add_edge(crate::dag::build::edge(
-        "frame_0", "next", "frame_1", "prev",
+        &format!("frame_{}", spinner_ids.len() - 1),
+        "next",
+        "cycle",
+        "last",
     ));
-    inner.add_edge(crate::dag::build::edge(
-        "frame_1", "next", "frame_2", "prev",
-    ));
-    inner.add_edge(crate::dag::build::edge(
-        "frame_2", "next", "frame_3", "prev",
-    ));
-    inner.add_edge(crate::dag::build::edge("frame_3", "next", "cycle", "last"));
     // Note: cycle → frame_0 edge creates a cycle — modeled as metadata, not an actual DAG edge
 
     let _ = symbol_set; // Used to select frame content per tier at resolve time
@@ -666,6 +694,12 @@ mod tests {
             SymbolId::Spinner1,
             SymbolId::Spinner2,
             SymbolId::Spinner3,
+            SymbolId::Spinner4,
+            SymbolId::Spinner5,
+            SymbolId::Spinner6,
+            SymbolId::Spinner7,
+            SymbolId::Spinner8,
+            SymbolId::Spinner9,
             SymbolId::Success,
             SymbolId::Failure,
             SymbolId::Warning,
@@ -689,9 +723,13 @@ mod tests {
 
     #[test]
     fn test_semantic_color_ansi() {
-        assert_eq!(SemanticColor::Success.ansi(), "\x1b[32m");
-        assert_eq!(SemanticColor::Error.ansi(), "\x1b[31m");
+        assert_eq!(SemanticColor::Success.ansi(), "\x1b[38;5;34m");
+        assert_eq!(SemanticColor::Error.ansi(), "\x1b[38;5;196m");
+        assert_eq!(SemanticColor::Warning.ansi(), "\x1b[38;5;208m");
+        assert_eq!(SemanticColor::Info.ansi(), "\x1b[38;5;39m");
+        assert_eq!(SemanticColor::Accent.ansi(), "\x1b[38;5;75m");
         assert_eq!(SemanticColor::Dim.ansi(), "\x1b[2m");
+        assert_eq!(SemanticColor::Active.ansi(), "\x1b[1;37m");
     }
 
     #[test]
@@ -699,8 +737,16 @@ mod tests {
         let sym = STANDARD.get(SymbolId::NodeCompleted);
         let colored = sym.resolve_colored(Tier::Ascii);
         assert!(colored.contains("[x]"));
-        assert!(colored.contains("\x1b[32m")); // Green for Success
+        assert!(colored.contains("\x1b[38;5;34m")); // 256-color green for Success
         assert!(colored.contains("\x1b[0m")); // Reset
+    }
+
+    #[test]
+    fn test_terminal_control_constants() {
+        assert_eq!(CURSOR_HIDE, "\x1b[?25l");
+        assert_eq!(CURSOR_SHOW, "\x1b[?25h");
+        assert_eq!(CLEAR_LINE, "\x1b[2K");
+        assert_eq!(CLEAR_TO_END, "\x1b[J");
     }
 
     #[test]
@@ -719,12 +765,18 @@ mod tests {
             SymbolId::Spinner1,
             SymbolId::Spinner2,
             SymbolId::Spinner3,
+            SymbolId::Spinner4,
+            SymbolId::Spinner5,
+            SymbolId::Spinner6,
+            SymbolId::Spinner7,
+            SymbolId::Spinner8,
+            SymbolId::Spinner9,
         ]
         .iter()
         .map(|id| STANDARD.resolve_tier(*id, Tier::Unicode))
         .collect();
 
-        // All four frames should be distinct
+        // All ten frames should be distinct
         for i in 0..frames.len() {
             for j in (i + 1)..frames.len() {
                 assert_ne!(
@@ -761,8 +813,8 @@ mod tests {
         let node = build_spinner_subdag(&STANDARD);
         match &node.body {
             crate::node::NodeBody::SubDag(inner) => {
-                // 4 frame nodes + 1 cycle node = 5
-                assert_eq!(inner.nodes.len(), 5);
+                // 10 frame nodes + 1 cycle node = 11
+                assert_eq!(inner.nodes.len(), 11);
             }
             _ => panic!("expected SubDag"),
         }

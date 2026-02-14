@@ -283,6 +283,8 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
         "execute_and_display_with_preflight".to_string(),
         "BoundaryMocks".to_string(),
         "ExecutionMode".to_string(),
+        "Preamble".to_string(),
+        "print_preamble_auto".to_string(),
     ];
     if step_mode {
         exec_items.push("execute_single_node".to_string());
@@ -333,10 +335,6 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
     items.push(Item::Use(Import {
         path: vec!["std".to_string(), "env".to_string()],
         items: vec![],
-    }));
-    items.push(Item::Use(Import {
-        path: vec!["std".to_string(), "io".to_string()],
-        items: vec!["IsTerminal".to_string()],
     }));
     items.push(Item::Use(Import {
         path: vec!["std".to_string(), "process".to_string()],
@@ -484,7 +482,7 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
         if ep.is_repeatable() {
             writeln!(
                 code,
-                "println!(\"  {}: {{:?}}\", {});",
+                "eprintln!(\"  {}: {{:?}}\", {});",
                 ep.port_name,
                 ep.var_name()
             )
@@ -494,7 +492,7 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
                 ParamType::Bool => {
                     writeln!(
                         code,
-                        "println!(\"  {}: {{}}\", {});",
+                        "eprintln!(\"  {}: {{}}\", {});",
                         ep.port_name,
                         ep.var_name()
                     )
@@ -504,7 +502,7 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
                     if ep.default_value.is_some() {
                         writeln!(
                             code,
-                            "println!(\"  {}: {{}}\", {});",
+                            "eprintln!(\"  {}: {{}}\", {});",
                             ep.port_name,
                             ep.var_name()
                         )
@@ -512,7 +510,7 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
                     } else {
                         writeln!(
                             code,
-                            "println!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));",
+                            "eprintln!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));",
                             ep.port_name,
                             ep.var_name()
                         )
@@ -645,20 +643,21 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          // Set up execution mode\n\
          {dry_run_block}\n\
          \n\
-         // Print header\n\
-         println!(\"{tool_name}\");\n\
+         // Print preamble box and detect terminal capabilities\n\
+         let preamble = Preamble::new(\"{tool_name}\", \"{tool_description}\");\n\
+         let animated = print_preamble_auto(&preamble);\n\
          {print_inputs}\
-         println!(\"  mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }});\n\
-         println!();\n\
+         eprintln!(\"  mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }});\n\
+         eprintln!();\n\
          \n\
          // Execute preflight + DAG in one display surface\n\
-         let animated = std::io::stdout().is_terminal();\n\
          execute_and_display_with_preflight(&dag, mode, animated, {success_port_arg}, Some(&input_mocks), |observer| ensure_lint_upsert_with_observer(observer));",
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
         dry_run_block = dry_run_block,
         tool_name = tool.tool_name,
+        tool_description = tool.description.replace('"', "\\\""),
         print_inputs = print_inputs,
         success_port_arg = success_port_arg,
     );
@@ -811,20 +810,21 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          // Set up execution mode\n\
          {dry_run_block}\n\
          \n\
-         // Print header\n\
-         println!(\"{tool_name}\");\n\
+         // Print preamble box and detect terminal capabilities\n\
+         let preamble = Preamble::new(\"{tool_name}\", \"{tool_description}\");\n\
+         let animated = print_preamble_auto(&preamble);\n\
          {print_inputs}\
-         println!(\"  mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }});\n\
-         println!();\n\
+         eprintln!(\"  mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }});\n\
+         eprintln!();\n\
          \n\
          // Execute preflight + DAG in one display surface\n\
-         let animated = std::io::stdout().is_terminal();\n\
          execute_and_display_with_preflight(&dag, mode, animated, {success_port_arg}, Some(&input_mocks), |observer| ensure_lint_upsert_with_observer(observer));",
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
         dry_run_block = dry_run_block,
         tool_name = tool.tool_name,
+        tool_description = tool.description.replace('"', "\\\""),
         print_inputs = print_inputs,
         success_port_arg = success_port_arg,
     );
@@ -1157,7 +1157,8 @@ mod tests {
         assert!(code.contains("--dry-run"));
         assert!(code.contains("build_gist_graph"));
         assert!(code.contains("execute_and_display"));
-        assert!(code.contains("std::io::stdout().is_terminal()"));
+        assert!(code.contains("print_preamble_auto"));
+        assert!(code.contains("Preamble::new"));
     }
 
     #[test]

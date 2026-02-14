@@ -28,6 +28,7 @@
 //! log groups around DAG nodes, emit annotations for errors, etc.
 
 #![deny(dead_code)]
+pub mod box_draw;
 pub mod ci_context;
 pub mod display;
 pub mod env;
@@ -48,7 +49,8 @@ pub use ci_context::CiContext;
 pub use display::{
     execute_and_display, execute_and_display_with_preflight,
     execute_and_display_with_preflight_result, execute_and_display_with_result, print_attention,
-    print_value, run_preflight_with_display, AttentionLevel, DisplayResult, PreflightObserver,
+    print_error_boxes, print_preamble, print_preamble_auto, print_value,
+    run_preflight_with_display, AttentionLevel, DisplayResult, Preamble, PreflightObserver,
     PreflightStatusObserver,
 };
 pub use env::{single_output as env_single_output, EnvNode};
@@ -73,6 +75,7 @@ pub use progress::{
     FieldSummary, GroupProgress, NodeProgress, NodeState, OutputSummary, ProgressEvent,
     ProgressObserver, RecordingObserver, StageGroup,
 };
+pub use box_draw::{error_box, info_box, preamble_box, BoxStyle, TermBox};
 pub use render::{Animation, AnimationMode, RenderMode};
 pub use topo::topo_sort;
 

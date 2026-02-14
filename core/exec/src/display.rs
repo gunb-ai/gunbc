@@ -13,6 +13,7 @@
 //!           (CI environments compose CiGroupObserver for workflow annotations)
 //! ```
 
+use crate::box_draw;
 use crate::frame_build::{build_frame, format_duration};
 use crate::frame_write::FrameWriter;
 use crate::intercept::BoundaryMocks;
@@ -26,10 +27,10 @@ use crate::{
     ExecutionMode, NodeState,
 };
 use gunbc_ir::layout::compute_layout;
-use gunbc_ir::symbols::{SymbolId, STANDARD};
+use gunbc_ir::symbols::{SemanticColor, SymbolId, Tier, STANDARD};
 use gunbc_ir::{detect_boundaries, Dag, NodeId, Value};
 use std::collections::HashMap;
-use std::io::{self, IsTerminal};
+use std::io::{self, IsTerminal, Write};
 use std::process;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -38,11 +39,36 @@ use std::sync::{
 use std::thread;
 use std::time::{Duration, Instant};
 
-const ANSI_RED: &str = "\x1b[31m";
-const ANSI_YELLOW: &str = "\x1b[33m";
-const ANSI_BLUE: &str = "\x1b[34m";
-const ANSI_RESET: &str = "\x1b[0m";
-const PROGRESS_TICK: Duration = Duration::from_millis(100);
+const PROGRESS_TICK: Duration = Duration::from_millis(80);
+
+/// Minimum time to show the progress display before clearing.
+///
+/// Prevents visual flicker for fast operations where the progress display
+/// appears and disappears too quickly to read. Matches `gunb.ai`'s
+/// `SPINNER_MIN_SECONDS` behavior.
+const MIN_DISPLAY_DURATION: Duration = Duration::from_millis(200);
+
+/// All 10 braille spinner symbol IDs (matching gunb.ai's progressSpinnerFrames).
+const SPINNER_SYMBOL_IDS: [SymbolId; 10] = [
+    SymbolId::Spinner0,
+    SymbolId::Spinner1,
+    SymbolId::Spinner2,
+    SymbolId::Spinner3,
+    SymbolId::Spinner4,
+    SymbolId::Spinner5,
+    SymbolId::Spinner6,
+    SymbolId::Spinner7,
+    SymbolId::Spinner8,
+    SymbolId::Spinner9,
+];
+
+/// Resolve spinner frames for the given tier.
+fn resolve_spinner_frames(tier: Tier) -> Vec<String> {
+    SPINNER_SYMBOL_IDS
+        .iter()
+        .map(|id| STANDARD.resolve_tier(*id, tier).to_string())
+        .collect()
+}
 
 /// High-signal attention levels for user-facing terminal messaging.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +76,45 @@ pub enum AttentionLevel {
     Info,
     Warning,
     Error,
+}
+
+/// Preamble header displayed before DAG execution begins.
+///
+/// Rendered as a box with the tool name and a short description.
+/// Matches `gunb.ai`'s preamble box style.
+#[derive(Debug, Clone, Default)]
+pub struct Preamble {
+    /// Tool name (e.g., "gist", "ci").
+    pub title: String,
+    /// Short description of what this tool does.
+    pub description: String,
+}
+
+impl Preamble {
+    /// Create a new preamble.
+    pub fn new(title: impl Into<String>, description: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            description: description.into(),
+        }
+    }
+}
+
+/// Print a preamble box to stderr.
+///
+/// Uses the box drawing module with `Accent` color for the border.
+/// Rendered in both TTY and non-TTY modes (non-TTY gets a plain fallback).
+pub fn print_preamble(preamble: &Preamble, tier: Tier, use_color: bool) {
+    if preamble.title.is_empty() {
+        return;
+    }
+    let b = box_draw::preamble_box(&preamble.title, tier, use_color);
+    let mut stderr = io::stderr();
+    if preamble.description.is_empty() {
+        let _ = b.render(&mut stderr, &[]);
+    } else {
+        let _ = b.render(&mut stderr, &[&preamble.description]);
+    }
 }
 
 /// Result from display-aware DAG execution.
@@ -139,6 +204,17 @@ pub fn execute_and_display_with_preflight<T, F>(
     }
 }
 
+/// Detect terminal capabilities and print a preamble box.
+///
+/// Returns `(animated, tier, use_color)` for use by callers that need
+/// to make further display decisions.
+pub fn print_preamble_auto(preamble: &Preamble) -> bool {
+    let profile = TerminalProfile::detect();
+    let animated = profile.is_tty && !is_ci_environment();
+    print_preamble(preamble, profile.tier, profile.supports_color);
+    animated
+}
+
 /// Result-returning variant of [`execute_and_display_with_preflight`].
 pub fn execute_and_display_with_preflight_result<T, F>(
     dag: &Dag<T>,
@@ -152,13 +228,23 @@ where
     T: Executable + Clone + Send,
     F: FnMut(Option<&mut dyn PreflightObserver>) -> Result<(), String>,
 {
-    run_preflight_with_display(animated, preflight)?;
+    let preflight_lines = run_preflight_with_display(animated, preflight)?;
 
-    execute_and_display_with_result(dag, mode, animated, success_port, input_mocks)
+    execute_and_display_with_result_seeded(
+        dag,
+        mode,
+        animated,
+        success_port,
+        input_mocks,
+        preflight_lines,
+    )
 }
 
 /// Run preflight using the same terminal display surface used by DAG execution.
-pub fn run_preflight_with_display<F>(animated: bool, preflight: &mut F) -> Result<(), ExecError>
+///
+/// Returns the number of lines the final preflight frame occupies on screen
+/// (0 for non-animated paths) so the next display phase can overwrite seamlessly.
+pub fn run_preflight_with_display<F>(animated: bool, preflight: &mut F) -> Result<usize, ExecError>
 where
     F: FnMut(Option<&mut dyn PreflightObserver>) -> Result<(), String>,
 {
@@ -166,10 +252,14 @@ where
         run_preflight_with_progress(|observer| preflight(Some(observer)))
     } else if is_ci_environment() {
         let mut ci = crate::CiContext::detect();
-        preflight(Some(&mut ci)).map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
+        preflight(Some(&mut ci))
+            .map(|()| 0)
+            .map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
     } else {
         let mut status = PreflightStatusObserver;
-        preflight(Some(&mut status)).map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
+        preflight(Some(&mut status))
+            .map(|()| 0)
+            .map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
     }
 }
 
@@ -183,17 +273,33 @@ pub fn execute_and_display_with_result<T: Executable + Clone + Send>(
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<DisplayResult, ExecError> {
+    execute_and_display_with_result_seeded(dag, mode, animated, success_port, input_mocks, 0)
+}
+
+/// Like [`execute_and_display_with_result`] but seeds the render writer with a
+/// previous frame line count so the first frame overwrites the previous display
+/// (used for seamless preflight → DAG transitions).
+fn execute_and_display_with_result_seeded<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    animated: bool,
+    success_port: Option<&str>,
+    input_mocks: Option<&BoundaryMocks>,
+    seed_lines: usize,
+) -> Result<DisplayResult, ExecError> {
     if animated {
-        run_with_progress(dag, mode, success_port, input_mocks)
+        run_with_progress(dag, mode, success_port, input_mocks, seed_lines)
     } else {
         run_plain(dag, mode, success_port, input_mocks)
     }
 }
 
-fn run_preflight_with_progress<F>(mut preflight: F) -> Result<(), ExecError>
+/// Returns the final-frame line count so the next display phase can overwrite seamlessly.
+fn run_preflight_with_progress<F>(mut preflight: F) -> Result<usize, ExecError>
 where
     F: FnMut(&mut dyn PreflightObserver) -> Result<(), String>,
 {
+    let display_start = Instant::now();
     let profile = TerminalProfile::detect();
 
     let progress_state = Arc::new(Mutex::new(DagProgress::new(initial_preflight_snapshot())));
@@ -202,28 +308,17 @@ where
     let progress_for_render = Arc::clone(&progress_state);
     let stop_for_render = Arc::clone(&stop_render);
     let profile_for_render = profile.clone();
-    let render_handle = thread::spawn(move || {
-        let spinner_frames: Vec<String> = [
-            SymbolId::Spinner0,
-            SymbolId::Spinner1,
-            SymbolId::Spinner2,
-            SymbolId::Spinner3,
-        ]
-        .iter()
-        .map(|id| {
-            STANDARD
-                .resolve_tier(*id, profile_for_render.tier)
-                .to_string()
-        })
-        .collect();
-        let mut spinner = Animation::cycle(spinner_frames, Duration::from_millis(150));
+    let render_handle: thread::JoinHandle<usize> = thread::spawn(move || {
+        let _cursor_guard = crate::frame_write::CursorGuard::new(profile_for_render.is_tty);
+        let spinner_frames = resolve_spinner_frames(profile_for_render.tier);
+        let mut spinner = Animation::cycle(spinner_frames, PROGRESS_TICK);
         let mut writer = FrameWriter::new(
             profile_for_render.supports_color,
             profile_for_render.tier,
             &STANDARD,
             profile_for_render.is_tty,
         );
-        let mut stdout = io::stdout();
+        let mut stderr = io::stderr();
         let mut last_tick = Instant::now();
 
         loop {
@@ -249,7 +344,7 @@ where
                 &layout,
                 &spinner,
                 &mut writer,
-                &mut stdout,
+                &mut stderr,
                 &profile_for_render,
             );
 
@@ -258,19 +353,41 @@ where
             }
             thread::sleep(PROGRESS_TICK);
         }
+        writer.last_frame_lines()
     });
 
     let mut observer = SharedPreflightObserver::new(Arc::clone(&progress_state));
     let preflight_result = preflight(&mut observer);
 
-    stop_render.store(true, Ordering::Relaxed);
-    if render_handle.join().is_err() {
-        return Err(ExecError::new(
-            "preflight progress renderer thread panicked",
-        ));
+    // Anti-flicker: if preflight was very fast, wait so the final frame is visible
+    let elapsed_display = display_start.elapsed();
+    if elapsed_display < MIN_DISPLAY_DURATION {
+        thread::sleep(MIN_DISPLAY_DURATION - elapsed_display);
     }
 
-    preflight_result.map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
+    stop_render.store(true, Ordering::Relaxed);
+    let last_lines = render_handle.join().unwrap_or(0);
+
+    // Render a clean final frame with static icons (no spinner),
+    // seeded with the last animated frame's line count for seamless overwrite.
+    let final_progress = {
+        let guard = progress_state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard.clone()
+    };
+    let final_layout = compute_layout(
+        &final_progress.snapshot.topo_order,
+        &final_progress.snapshot.edges,
+        &final_progress.snapshot.labels,
+        &profile.viewport,
+    );
+    let final_lines =
+        render_final_static_frame_seeded(&final_progress, &final_layout, &profile, last_lines);
+
+    preflight_result
+        .map(|()| final_lines)
+        .map_err(|e| ExecError::new(format!("preflight failed: {}", e)))
 }
 
 /// Plain execution: observer-driven status lines + boundary outputs.
@@ -367,12 +484,17 @@ impl Drop for CiConcurrencyGuard {
 }
 
 /// Progress-display execution: live DAG visualization driven by observer events.
+///
+/// `seed_lines` seeds the render writer so the first frame overwrites the
+/// previous display (e.g., the preflight's final frame).
 fn run_with_progress<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
+    seed_lines: usize,
 ) -> Result<DisplayResult, ExecError> {
+    let display_start = Instant::now();
     let profile = TerminalProfile::detect();
     // Lower the DAG to get flat topology for layout
     let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {}", e)))?;
@@ -399,32 +521,25 @@ fn run_with_progress<T: Executable + Clone + Send>(
     let stop_render = Arc::new(AtomicBool::new(false));
 
     // Render live frames on a background thread while execution runs.
+    // CursorGuard hides the cursor during animation, restores on drop/panic.
     let progress_for_render = Arc::clone(&progress_state);
     let stop_for_render = Arc::clone(&stop_render);
     let layout_for_render = layout.clone();
     let profile_for_render = profile.clone();
     let render_handle = thread::spawn(move || {
-        let spinner_frames: Vec<String> = [
-            SymbolId::Spinner0,
-            SymbolId::Spinner1,
-            SymbolId::Spinner2,
-            SymbolId::Spinner3,
-        ]
-        .iter()
-        .map(|id| {
-            STANDARD
-                .resolve_tier(*id, profile_for_render.tier)
-                .to_string()
-        })
-        .collect();
-        let mut spinner = Animation::cycle(spinner_frames, Duration::from_millis(150));
+        let _cursor_guard = crate::frame_write::CursorGuard::new(profile_for_render.is_tty);
+        let spinner_frames = resolve_spinner_frames(profile_for_render.tier);
+        let mut spinner = Animation::cycle(spinner_frames, PROGRESS_TICK);
         let mut writer = FrameWriter::new(
             profile_for_render.supports_color,
             profile_for_render.tier,
             &STANDARD,
             profile_for_render.is_tty,
         );
-        let mut stdout = io::stdout();
+        // Seed with the previous display phase's line count so the first
+        // frame overwrites it (e.g., preflight → DAG transition).
+        writer.seed_last_frame_lines(seed_lines);
+        let mut stderr = io::stderr();
         let mut last_tick = Instant::now();
 
         loop {
@@ -443,7 +558,7 @@ fn run_with_progress<T: Executable + Clone + Send>(
                 &layout_for_render,
                 &spinner,
                 &mut writer,
-                &mut stdout,
+                &mut stderr,
                 &profile_for_render,
             );
 
@@ -452,16 +567,21 @@ fn run_with_progress<T: Executable + Clone + Send>(
             }
             thread::sleep(PROGRESS_TICK);
         }
+        writer.last_frame_lines()
     });
 
     let mut observer = SharedProgressObserver::new(Arc::clone(&progress_state));
     let log_result =
         execute_with_progress_and_mode_and_inputs(dag, mode, &mut observer, input_mocks);
 
-    stop_render.store(true, Ordering::Relaxed);
-    if render_handle.join().is_err() {
-        return Err(ExecError::new("progress renderer thread panicked"));
+    // Anti-flicker: if execution was very fast, wait so the final frame is visible
+    let elapsed_display = display_start.elapsed();
+    if elapsed_display < MIN_DISPLAY_DURATION {
+        thread::sleep(MIN_DISPLAY_DURATION - elapsed_display);
     }
+
+    stop_render.store(true, Ordering::Relaxed);
+    let last_lines = render_handle.join().unwrap_or(0);
 
     let log = log_result?;
 
@@ -472,12 +592,19 @@ fn run_with_progress<T: Executable + Clone + Send>(
         guard.clone()
     };
 
+    // Render a clean final frame with static icons (no spinner animation),
+    // seeded with the last animated frame's line count for seamless overwrite.
+    render_final_static_frame_seeded(&final_progress, &layout, &profile, last_lines);
+
     // Check final node states for hard failures
     let mut should_fail = final_progress
         .nodes
         .values()
         .any(|np| np.state == NodeState::Failed);
     should_fail = should_fail || success_port_failed(&log, success_port);
+
+    // Render error detail boxes for failed nodes
+    print_error_boxes(&final_progress, profile.tier, profile.supports_color);
 
     // Surface boundary outputs after progress render so users see
     // the actual tool results (e.g., gist URL) instead of only the DAG view.
@@ -843,12 +970,48 @@ impl ProgressObserver for SharedProgressObserver {
     }
 }
 
+/// Render a clean final frame with static icons (no spinner animation).
+///
+/// Called after the render loop stops. Uses an empty `spinner_frame` so
+/// `build_frame` resolves to static checkmarks / X marks instead of animated
+/// braille dots.
+///
+/// `seed_lines` is the line count of the last animated frame. The writer is
+/// seeded with this value so the final frame cursor-ups over the animated
+/// frame and overwrites it cleanly.
+/// Returns the line count of the final frame written.
+fn render_final_static_frame_seeded(
+    progress: &DagProgress,
+    layout: &gunbc_ir::layout::DagLayout,
+    profile: &TerminalProfile,
+    seed_lines: usize,
+) -> usize {
+    let frame = build_frame(
+        progress,
+        layout,
+        RenderMode::Standard,
+        "", // empty → static icons
+        profile.tier,
+        &STANDARD,
+    );
+    let line_count = frame.lines.len();
+    let mut writer = FrameWriter::new(
+        profile.supports_color,
+        profile.tier,
+        &STANDARD,
+        profile.is_tty,
+    );
+    writer.seed_last_frame_lines(seed_lines);
+    let _ = writer.write_frame(&frame, &mut io::stderr());
+    line_count
+}
+
 fn render_progress_frame(
     progress: &DagProgress,
     layout: &gunbc_ir::layout::DagLayout,
     spinner: &Animation,
     writer: &mut FrameWriter,
-    stdout: &mut io::Stdout,
+    sink: &mut dyn io::Write,
     profile: &TerminalProfile,
 ) {
     let frame = build_frame(
@@ -859,7 +1022,7 @@ fn render_progress_frame(
         profile.tier,
         &STANDARD,
     );
-    let _ = writer.write_frame(&frame, stdout);
+    let _ = writer.write_frame(&frame, sink);
 }
 
 fn initial_preflight_snapshot() -> DagSnapshot {
@@ -870,7 +1033,10 @@ fn initial_preflight_snapshot() -> DagSnapshot {
         topo_order: vec![node_id.clone()],
         boundary_nodes: Vec::new(),
         labels: HashMap::from([(node_id.clone(), "preflight".to_string())]),
-        groups: Vec::new(),
+        groups: vec![StageGroup {
+            name: "preflight".to_string(),
+            node_ids: vec![node_id],
+        }],
     }
 }
 
@@ -894,14 +1060,10 @@ fn preflight_snapshot(total_steps: usize) -> DagSnapshot {
         node_ids.push(id);
     }
 
-    let groups = if node_ids.len() > 1 {
-        vec![StageGroup {
-            name: "preflight".to_string(),
-            node_ids: node_ids.clone(),
-        }]
-    } else {
-        Vec::new()
-    };
+    let groups = vec![StageGroup {
+        name: "preflight".to_string(),
+        node_ids: node_ids.clone(),
+    }];
 
     DagSnapshot {
         topo_order: node_ids.clone(),
@@ -972,29 +1134,71 @@ fn success_port_failed(log: &crate::ExecutionLog, success_port: Option<&str>) ->
         .any(|entry| matches!(entry.outputs.get(port), Some(Value::Bool(false))))
 }
 
+/// Render error detail boxes for all failed nodes in the DAG.
+///
+/// Each failed node gets an open-right box with `Error` color border and
+/// `Dim` content text. Error text is truncated to [`ERROR_OUTPUT_MAX_LINES`]
+/// lines. Matches `gunb.ai`'s `printErrorBoxes()` behavior.
+///
+/// [`ERROR_OUTPUT_MAX_LINES`]: crate::box_draw::ERROR_OUTPUT_MAX_LINES
+pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
+    let failures = progress.failed_nodes();
+    if failures.is_empty() {
+        return;
+    }
+
+    let mut stderr = io::stderr();
+    let _ = writeln!(stderr);
+
+    for (label, error) in &failures {
+        let b = box_draw::error_box(label, tier, use_color);
+
+        // Truncate error output to max lines
+        let lines: Vec<&str> = error.lines().collect();
+        let max = box_draw::ERROR_OUTPUT_MAX_LINES;
+        if lines.len() <= max {
+            let _ = b.render(&mut stderr, &lines);
+        } else {
+            let _ = b.write_top(&mut stderr);
+            // Show last `max` lines (most relevant for errors)
+            let skip = lines.len() - max;
+            let truncation_notice =
+                format!("... ({} lines omitted, showing last {})", skip, max);
+            let _ = b.write_content(&mut stderr, &truncation_notice);
+            for line in &lines[skip..] {
+                let _ = b.write_content(&mut stderr, line);
+            }
+            let _ = b.write_bottom(&mut stderr);
+        }
+        let _ = writeln!(stderr);
+    }
+}
+
 /// Print a high-signal attention block.
 ///
 /// TTY with color uses a boxed section keyed by severity color.
 /// Non-TTY uses a compact plain fallback.
 pub fn print_attention(level: AttentionLevel, title: &str, body: &str) {
     let (label, color) = match level {
-        AttentionLevel::Info => ("INFO", ANSI_BLUE),
-        AttentionLevel::Warning => ("WARNING", ANSI_YELLOW),
-        AttentionLevel::Error => ("ERROR", ANSI_RED),
+        AttentionLevel::Info => ("INFO", SemanticColor::Info),
+        AttentionLevel::Warning => ("WARNING", SemanticColor::Warning),
+        AttentionLevel::Error => ("ERROR", SemanticColor::Error),
     };
+    let ansi = color.ansi();
+    let reset = SemanticColor::reset();
     let lines: Vec<&str> = body.lines().collect();
     let use_color = std::io::stdout().is_terminal() && std::env::var("NO_COLOR").is_err();
     if use_color {
         eprintln!();
-        eprintln!("  {color}┌─ [{label}] {title}{ANSI_RESET}");
+        eprintln!("  {ansi}┌─ [{label}] {title}{reset}");
         if lines.is_empty() {
-            eprintln!("  {color}│{ANSI_RESET} ");
+            eprintln!("  {ansi}│{reset} ");
         } else {
             for line in &lines {
-                eprintln!("  {color}│{ANSI_RESET} {line}");
+                eprintln!("  {ansi}│{reset} {line}");
             }
         }
-        eprintln!("  {color}└─{ANSI_RESET}");
+        eprintln!("  {ansi}└─{reset}");
         return;
     }
 

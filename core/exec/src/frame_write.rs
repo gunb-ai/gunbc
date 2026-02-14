@@ -2,9 +2,12 @@
 //!
 //! [`FrameWriter`] dispatches between [`AnsiFrameRenderer`] and [`PlainFrameRenderer`],
 //! each implementing [`FrameRenderer<M>`] for their respective medium.
+//!
+//! [`CursorGuard`] provides RAII cursor hide/show to ensure the cursor is
+//! always restored, even on panics.
 
 use gunbc_ir::render_ir::{AnsiText, CursorAction, Frame, FrameRenderer, OutputMedium, PlainText};
-use gunbc_ir::symbols::{SymbolSet, Tier};
+use gunbc_ir::symbols::{SymbolSet, Tier, CURSOR_HIDE, CURSOR_SHOW};
 use std::io::Write;
 
 // ---------------------------------------------------------------------------
@@ -93,30 +96,20 @@ fn render_frame_common<M: OutputMedium<Output = String>>(
     is_tty: bool,
     last_frame_lines: &mut usize,
 ) -> std::io::Result<()> {
-    // Cursor-up to overwrite previous frame
+    // Cursor-up then clear-to-end-of-screen to overwrite the previous frame.
+    // This matches gunb.ai's approach: \x1b[NA\r moves up N lines, then
+    // \x1b[J clears everything from the cursor to the end of the screen.
+    // This is simpler and more robust than per-line clearing.
     if is_tty && *last_frame_lines > 0 && frame.cursor_action == CursorAction::Overwrite {
-        write!(sink, "\x1b[{}A\r", *last_frame_lines)?;
+        write!(sink, "\x1b[{}A\r\x1b[J", *last_frame_lines)?;
     }
 
     let num_lines = frame.lines.len();
 
-    // Render each line
+    // Render each line (no per-line clearing needed — \x1b[J already cleared)
     for line in &frame.lines {
-        if is_tty {
-            write!(sink, "\x1b[2K")?; // erase entire line
-        }
         let rendered = medium.render_line(line);
         writeln!(sink, "{}", rendered)?;
-    }
-
-    // Clear leftover lines if previous frame was taller
-    if is_tty && num_lines < *last_frame_lines {
-        let extra = *last_frame_lines - num_lines;
-        for _ in 0..extra {
-            writeln!(sink, "\x1b[2K")?;
-        }
-        // Move cursor back up past the blank lines
-        write!(sink, "\x1b[{}A", extra)?;
     }
 
     sink.flush()?;
@@ -165,6 +158,60 @@ impl FrameWriter {
             Self::Plain(r) => r.render_frame(frame, sink),
         }
     }
+
+    /// Get the number of lines the last rendered frame occupied.
+    /// Used to seed a subsequent writer for seamless transitions.
+    pub fn last_frame_lines(&self) -> usize {
+        match self {
+            Self::Ansi(r) => r.last_frame_lines,
+            Self::Plain(r) => r.last_frame_lines,
+        }
+    }
+
+    /// Seed the writer with a known previous frame height so the first
+    /// frame it renders will cursor-up over that many lines.
+    pub fn seed_last_frame_lines(&mut self, lines: usize) {
+        match self {
+            Self::Ansi(r) => r.last_frame_lines = lines,
+            Self::Plain(r) => r.last_frame_lines = lines,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CursorGuard — RAII cursor hide/show
+// ---------------------------------------------------------------------------
+
+/// RAII guard that hides the terminal cursor on creation and restores it on drop.
+///
+/// This ensures the cursor is always restored, even if the progress render
+/// loop panics. Matches `gunb.ai`'s cursor management pattern.
+///
+/// Only hides the cursor when `is_tty` is true. When not a TTY, this is a no-op.
+pub struct CursorGuard {
+    is_tty: bool,
+}
+
+impl CursorGuard {
+    /// Create a new cursor guard. If `is_tty`, immediately hides the cursor.
+    pub fn new(is_tty: bool) -> Self {
+        if is_tty {
+            // Hide cursor — write directly to stderr (progress renders to stderr)
+            let _ = write!(std::io::stderr(), "{}", CURSOR_HIDE);
+            let _ = std::io::stderr().flush();
+        }
+        Self { is_tty }
+    }
+}
+
+impl Drop for CursorGuard {
+    fn drop(&mut self) {
+        if self.is_tty {
+            // Restore cursor — critical for terminal cleanup
+            let _ = write!(std::io::stderr(), "{}", CURSOR_SHOW);
+            let _ = std::io::stderr().flush();
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -206,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_frame_tty_cursor_up() {
+    fn test_write_frame_tty_cursor_up_and_clear() {
         let mut buf = Vec::new();
         let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, true);
 
@@ -214,14 +261,14 @@ mod tests {
         let frame1 = make_frame(vec!["first"], CursorAction::Overwrite);
         writer.write_frame(&frame1, &mut buf).unwrap();
 
-        // Second frame should cursor-up
+        // Second frame should cursor-up and clear-to-end
         let frame2 = make_frame(vec!["second"], CursorAction::Overwrite);
         writer.write_frame(&frame2, &mut buf).unwrap();
 
         let output = String::from_utf8(buf).unwrap();
         assert!(
-            output.contains("\x1b[1A"),
-            "TTY should contain cursor-up escape"
+            output.contains("\x1b[1A\r\x1b[J"),
+            "TTY should contain cursor-up + clear-to-end"
         );
         assert!(output.contains("second"));
     }
@@ -243,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_frame_clears_leftover_lines() {
+    fn test_write_frame_shorter_frame_uses_clear_to_end() {
         let mut buf = Vec::new();
         let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, true);
 
@@ -251,15 +298,16 @@ mod tests {
         let frame1 = make_frame(vec!["a", "b", "c"], CursorAction::Overwrite);
         writer.write_frame(&frame1, &mut buf).unwrap();
 
-        // Second frame: 1 line — should clear 2 leftover
+        // Second frame: 1 line — clear-to-end handles the leftover
         let frame2 = make_frame(vec!["x"], CursorAction::Overwrite);
         writer.write_frame(&frame2, &mut buf).unwrap();
 
         let output = String::from_utf8(buf).unwrap();
-        // Should contain cursor-up for the leftover lines
+        // Should cursor-up 3 lines (previous frame height) then clear
         assert!(
-            output.contains("\x1b[2A"),
-            "Should cursor-up past 2 leftover lines"
+            output.contains("\x1b[3A\r\x1b[J"),
+            "Should cursor-up 3 lines + clear-to-end"
         );
+        assert!(output.contains("x\n"));
     }
 }

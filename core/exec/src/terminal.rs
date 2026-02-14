@@ -10,7 +10,7 @@
 //!
 //! # Detection Strategy
 //!
-//! 1. **TTY**: `std::io::IsTerminal` on stdout (real file descriptor check)
+//! 1. **TTY**: `std::io::IsTerminal` on stderr (real file descriptor check, since progress renders to stderr)
 //! 2. **CI**: `$CI` / `$GITHUB_ACTIONS` / `$GITLAB_CI` / `$JENKINS_URL` / `$BUILDKITE`
 //! 3. **Dumb terminal**: `$TERM=dumb` → no progress, no color
 //! 4. **NO_COLOR**: `$NO_COLOR` set → disable ANSI color codes
@@ -29,8 +29,9 @@ use std::io::IsTerminal;
 /// rendering details (viewport, tier, color support).
 #[derive(Debug, Clone)]
 pub(crate) struct TerminalProfile {
-    /// Whether stdout is connected to an interactive terminal.
-    /// Detected via `std::io::IsTerminal` (file descriptor check).
+    /// Whether stderr is connected to an interactive terminal.
+    /// Progress output renders to stderr (matching gunb.ai), so TTY detection
+    /// checks stderr. Detected via `std::io::IsTerminal` (file descriptor check).
     pub is_tty: bool,
     /// Symbol tier: Emoji > Unicode > Ascii.
     pub tier: Tier,
@@ -67,12 +68,13 @@ impl TerminalProfile {
     }
 }
 
-/// Detect whether stdout is connected to an interactive terminal.
+/// Detect whether stderr is connected to an interactive terminal.
 ///
+/// Progress output renders to stderr (matching `gunb.ai`), so we check stderr.
 /// Uses `std::io::IsTerminal` (file descriptor check via isatty(2) on Unix,
 /// GetConsoleMode on Windows). This is the real thing — not an env var heuristic.
 fn detect_tty() -> bool {
-    std::io::stdout().is_terminal()
+    std::io::stderr().is_terminal()
 }
 
 /// Detect whether we're running inside a CI environment.
@@ -189,7 +191,7 @@ fn terminal_size_ioctl() -> Option<(u16, u16)> {
         ws_ypixel: 0,
     };
 
-    let fd = std::io::stdout().as_raw_fd();
+    let fd = std::io::stderr().as_raw_fd();
     let result = unsafe { ioctl(fd, TIOCGWINSZ, &mut ws as *mut Winsize) };
 
     if result == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
