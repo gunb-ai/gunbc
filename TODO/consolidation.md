@@ -619,6 +619,11 @@ defaulting to "unknown".~~ **DONE**: Replaced `InputPattern::Env("RUSTC_VERSION"
 with `InputPattern::CommandOutput("rustc", ["--version"])`. The actual
 compiler version is now captured directly, regardless of environment setup.
 
+**Root artifact tracking**: **DONE** for lint freshness tracking.
+`list_tracked_files()` now includes `deps.toml`, `Makefile`, and `.gitignore`
+so preflight manifest freshness and CI lint-upsert checks invalidate when these
+repo-root artifacts change.
+
 ---
 
 ## Tasks
@@ -650,9 +655,9 @@ compiler version is now captured directly, regardless of environment setup.
 ### Remaining (extension features — from architecture-debt.md §16)
 
 - [x] Codegen content-hash manifest (record actual inputs, not glob approximation) — §16
-- [ ] deps.toml tracking — §16
-- [ ] Makefile tracking — §16
-- [ ] .gitignore tracking — §16
+- [x] deps.toml tracking — §16
+- [x] Makefile tracking — §16
+- [x] .gitignore tracking — §16
 - [x] RUSTC_VERSION as modeled resource — §16
 
 ### Remaining (new functionality — integration tests)

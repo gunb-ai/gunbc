@@ -12,6 +12,11 @@
 //! The `BuildConfig` struct is the single source of truth for all build/test/lint
 //! commands. This eliminates duplicate hardcoded commands across the codebase.
 
+use crate::resources::{
+    compiled_code_resource_id, deps_config_resource_id, generated_cli_resource_id,
+    generated_tests_resource_id, gitignore_resource_id, makefile_resource_id,
+    pragma_config_resource_id, verified_artifacts_resource_id,
+};
 use crate::WorkspaceBinary;
 use gunbc_infra::ResourceId;
 use gunbc_ir::cargo::{BinaryArgs, CargoCommand, CodegenSubcommand, Subcommand, Warnings};
@@ -106,6 +111,10 @@ pub struct BuildConfig {
     pub ci_yaml: BuildCommand,
     /// Command to regenerate tests from DAGs
     pub testgen: BuildCommand,
+    /// Command to ensure deps.toml is up to date (`--mode=ensure`)
+    pub deps_config_ensure: BuildCommand,
+    /// Command to check if deps.toml is stale (`--mode=verify`)
+    pub deps_config_check: BuildCommand,
     /// Command to generate bootstrap artifacts (Makefile + .gitignore)
     pub bootstrap: BuildCommand,
     /// Command to generate pragma artifacts (clippy.toml + allowlists)
@@ -174,6 +183,16 @@ impl BuildConfig {
                 CargoCommand::new(Subcommand::Run(WorkspaceBinary::Testgen.invocation()))
                     .warnings(w),
             ),
+            deps_config_ensure: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::DepsConfig.invocation(),
+            ))
+            .args(BinaryArgs::with_mode(ExecMode::Ensure))
+            .warnings(w)),
+            deps_config_check: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::DepsConfig.invocation(),
+            ))
+            .args(BinaryArgs::with_mode(ExecMode::Verify))
+            .warnings(w)),
             bootstrap: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Bootstrap.invocation(),
             ))
@@ -288,6 +307,16 @@ impl BuildConfig {
                 CargoCommand::new(Subcommand::Run(WorkspaceBinary::Testgen.invocation()))
                     .warnings(w),
             ),
+            deps_config_ensure: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::DepsConfig.invocation(),
+            ))
+            .args(BinaryArgs::with_mode(ExecMode::Ensure))
+            .warnings(w)),
+            deps_config_check: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::DepsConfig.invocation(),
+            ))
+            .args(BinaryArgs::with_mode(ExecMode::Verify))
+            .warnings(w)),
             bootstrap: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Bootstrap.invocation(),
             ))
@@ -392,6 +421,16 @@ impl BuildConfig {
     /// Get the testgen command as a shell string.
     pub fn testgen_shell(&self) -> String {
         format!("@{}", self.testgen.to_shell())
+    }
+
+    /// Get the deps-config-check command as a shell string.
+    pub fn deps_config_check_shell(&self) -> String {
+        format!("@{}", self.deps_config_check.to_shell())
+    }
+
+    /// Get the deps-config-ensure command as a shell string.
+    pub fn deps_config_ensure_shell(&self) -> String {
+        format!("@{}", self.deps_config_ensure.to_shell())
     }
 
     /// Get the testgen-check command as a shell string.
@@ -774,31 +813,46 @@ impl ResourceTargetMap {
         Self {
             entries: vec![
                 ResourceTargetEntry {
-                    id: ResourceId::build("generated_cli"),
+                    id: generated_cli_resource_id(),
                     ensure_target: "ensure-codegen".to_string(),
                     // Explicitly ensure-only in verify workflows (no check target exists yet).
                     verify_target: "ensure-codegen".to_string(),
                 },
                 ResourceTargetEntry {
-                    id: ResourceId::build("generated_tests"),
+                    id: generated_tests_resource_id(),
                     ensure_target: "testgen".to_string(),
                     verify_target: "testgen-check".to_string(),
                 },
                 ResourceTargetEntry {
-                    id: ResourceId::build("pragma_config"),
+                    id: pragma_config_resource_id(),
                     ensure_target: "pragma".to_string(),
                     verify_target: "pragma-check".to_string(),
                 },
                 ResourceTargetEntry {
-                    id: ResourceId::build("compiled_code"),
+                    id: compiled_code_resource_id(),
                     ensure_target: compiled_code_target.to_string(),
                     // Explicitly ensure-only in verify workflows (no check target exists yet).
                     verify_target: compiled_code_target.to_string(),
                 },
                 ResourceTargetEntry {
-                    id: ResourceId::build("verified_artifacts"),
+                    id: verified_artifacts_resource_id(),
                     ensure_target: "verify-fix".to_string(),
                     verify_target: "verify".to_string(),
+                },
+                ResourceTargetEntry {
+                    id: deps_config_resource_id(),
+                    ensure_target: "deps-config".to_string(),
+                    verify_target: "deps-config-check".to_string(),
+                },
+                ResourceTargetEntry {
+                    id: makefile_resource_id(),
+                    ensure_target: "makegen".to_string(),
+                    verify_target: "makegen-check".to_string(),
+                },
+                ResourceTargetEntry {
+                    id: gitignore_resource_id(),
+                    ensure_target: "bootstrap".to_string(),
+                    verify_target: "bootstrap-check".to_string(),
                 },
             ],
         }
@@ -1040,25 +1094,25 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
         // build already includes testgen, so no separate generated_tests dependency needed
         // test-fix: fmt-fix + lint-fix first, then test
         MetaTarget::new("test", "Run tests (<=S)", ConfigField::Test)
-            .needs(ResourceId::build("compiled_code"), ExecMode::Ensure)
-            .needs(ResourceId::build("verified_artifacts"), ExecMode::Ensure)
+            .needs(compiled_code_resource_id(), ExecMode::Ensure)
+            .needs(verified_artifacts_resource_id(), ExecMode::Ensure)
             .with_fix_variant(vec![FixAlias::FmtFix, FixAlias::LintFix]),
         // test-all - run all tests regardless of cost (includes XL)
         MetaTarget::new("test-all", "Run all tests (<=XL)", ConfigField::Test)
             .with_command_prefix("GUNBC_TEST_MAX_COST=XL")
-            .needs(ResourceId::build("compiled_code"), ExecMode::Ensure)
-            .needs(ResourceId::build("verified_artifacts"), ExecMode::Ensure),
+            .needs(compiled_code_resource_id(), ExecMode::Ensure)
+            .needs(verified_artifacts_resource_id(), ExecMode::Ensure),
         // check - type check without building (requires codegen + pragma)
         // check-fix: fmt-fix first, then check
         MetaTarget::new("check", "Type check all targets", ConfigField::Check)
-            .needs(ResourceId::build("generated_cli"), ExecMode::Ensure)
-            .needs(ResourceId::build("pragma_config"), ExecMode::Verify)
+            .needs(generated_cli_resource_id(), ExecMode::Ensure)
+            .needs(pragma_config_resource_id(), ExecMode::Verify)
             .with_fix_variant(vec![FixAlias::FmtFix]),
         // clippy - run linter (requires codegen + pragma)
         // clippy-fix: uses cargo clippy --fix (auto-fix where possible)
         MetaTarget::new("clippy", "Run clippy linter", ConfigField::Lint)
-            .needs(ResourceId::build("generated_cli"), ExecMode::Ensure)
-            .needs(ResourceId::build("pragma_config"), ExecMode::Verify)
+            .needs(generated_cli_resource_id(), ExecMode::Ensure)
+            .needs(pragma_config_resource_id(), ExecMode::Verify)
             .with_fix_variant(vec![]),
         // fmt - format code (no resources needed)
         // fmt has check variant (fmt-check) but not fix variant (fmt IS the fix)
@@ -1309,7 +1363,7 @@ mod tests {
 
         let test = targets.iter().find(|t| t.name == "test").unwrap();
         assert_eq!(test.resources.len(), 2);
-        assert_eq!(test.resources[0].id, ResourceId::build("compiled_code"));
+        assert_eq!(test.resources[0].id, compiled_code_resource_id());
         assert_eq!(test.resources[0].base_mode, ExecMode::Ensure);
 
         let fmt = targets.iter().find(|t| t.name == "fmt").unwrap();
@@ -1317,7 +1371,7 @@ mod tests {
 
         let clippy = targets.iter().find(|t| t.name == "clippy").unwrap();
         assert_eq!(clippy.resources.len(), 2);
-        assert_eq!(clippy.resources[0].id, ResourceId::build("generated_cli"));
+        assert_eq!(clippy.resources[0].id, generated_cli_resource_id());
         assert_eq!(clippy.resources[1].base_mode, ExecMode::Verify);
     }
 
@@ -1404,20 +1458,32 @@ mod tests {
         let map = ResourceTargetMap::default_map(&config);
 
         assert_eq!(
-            map.resolve(&ResourceId::build("generated_tests"), ExecMode::Ensure),
+            map.resolve(&generated_tests_resource_id(), ExecMode::Ensure),
             Some("testgen")
         );
         assert_eq!(
-            map.resolve(&ResourceId::build("verified_artifacts"), ExecMode::Ensure),
+            map.resolve(&verified_artifacts_resource_id(), ExecMode::Ensure),
             Some("verify-fix")
         );
         assert_eq!(
-            map.resolve(&ResourceId::build("compiled_code"), ExecMode::Ensure),
+            map.resolve(&compiled_code_resource_id(), ExecMode::Ensure),
             Some("build")
         );
         assert_eq!(
-            map.resolve(&ResourceId::build("generated_cli"), ExecMode::Ensure),
+            map.resolve(&generated_cli_resource_id(), ExecMode::Ensure),
             Some("ensure-codegen")
+        );
+        assert_eq!(
+            map.resolve(&deps_config_resource_id(), ExecMode::Ensure),
+            Some("deps")
+        );
+        assert_eq!(
+            map.resolve(&makefile_resource_id(), ExecMode::Ensure),
+            Some("makegen")
+        );
+        assert_eq!(
+            map.resolve(&gitignore_resource_id(), ExecMode::Ensure),
+            Some("bootstrap")
         );
     }
 
@@ -1427,20 +1493,32 @@ mod tests {
         let map = ResourceTargetMap::default_map(&config);
 
         assert_eq!(
-            map.resolve(&ResourceId::build("generated_tests"), ExecMode::Verify),
+            map.resolve(&generated_tests_resource_id(), ExecMode::Verify),
             Some("testgen-check")
         );
         assert_eq!(
-            map.resolve(&ResourceId::build("pragma_config"), ExecMode::Verify),
+            map.resolve(&pragma_config_resource_id(), ExecMode::Verify),
             Some("pragma-check")
         );
         assert_eq!(
-            map.resolve(&ResourceId::build("generated_cli"), ExecMode::Verify),
+            map.resolve(&generated_cli_resource_id(), ExecMode::Verify),
             Some("ensure-codegen")
         );
         assert_eq!(
-            map.resolve(&ResourceId::build("verified_artifacts"), ExecMode::Verify),
+            map.resolve(&verified_artifacts_resource_id(), ExecMode::Verify),
             Some("verify")
+        );
+        assert_eq!(
+            map.resolve(&deps_config_resource_id(), ExecMode::Verify),
+            Some("deps")
+        );
+        assert_eq!(
+            map.resolve(&makefile_resource_id(), ExecMode::Verify),
+            Some("makegen-check")
+        );
+        assert_eq!(
+            map.resolve(&gitignore_resource_id(), ExecMode::Verify),
+            Some("bootstrap-check")
         );
     }
 
@@ -1451,7 +1529,7 @@ mod tests {
 
         // compiled_code maps to "codegen" when DAG entrypoints are used
         assert_eq!(
-            map.resolve(&ResourceId::build("compiled_code"), ExecMode::Ensure),
+            map.resolve(&compiled_code_resource_id(), ExecMode::Ensure),
             Some("codegen")
         );
     }

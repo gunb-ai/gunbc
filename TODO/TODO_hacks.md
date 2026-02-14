@@ -462,7 +462,7 @@ default to poison/UNSET unless explicitly mocked.
 
 ---
 
-## 24. Multiple `cargo run --release` invocations in Makefile + ~~duplicated binary CLI parsing~~
+## 24. Multiple `cargo run` invocations in Makefile + ~~duplicated binary CLI parsing~~
 
 **Where**: `Makefile` (lines 22, 30, 42, 46, 50, 54-64),
 `gunbc-dag/src/bin/*.rs` (all 8 binaries)
@@ -473,29 +473,44 @@ default to poison/UNSET unless explicitly mocked.
 now accept only canonical flags (`--mode` and canonicalized `--<kebab(name)>`
 for string params). Deleted `parse_resource_mode()` from `ci.rs`.
 
-**Makefile overhead — still open**: The generated Makefile still invokes
-`cargo run -p gunbc-dag --bin X --release` 6+ times. Each invocation incurs
-full cargo overhead. Consider `cargo build --release` once then invoke
-binaries directly from `target/release/`.
+**Makefile overhead — PARTIALLY RESOLVED (2026-02-14)**:
+- Generated-CLI tool targets now use a shared release-bin path:
+  `build-release-bins` (single `cargo build --workspace --release --bins`) +
+  direct `target/release/<binary>` invocation.
+- Intentional exception: manual bootstrap binaries (`pragma`, `ci`, `build-all`)
+  still use `cargo run` to avoid forcing release-bin builds through
+  `lint-upsert -> pragma` maintenance flows.
+
+**Why this is still open**: execution infra is now split between direct-binary
+and cargo-run paths. This is better than before but not yet a fully unified
+"one binary runtime path" model.
+
+**Follow-up (for further analysis)**:
+1. Separate maintenance prerequisites from execution transport for manual bins.
+2. Add direct-binary support for manual bins without regressing
+   `preflight-fix` / `lint-upsert` ergonomics.
+3. Converge all Makefile binary targets onto one shared execution infra
+   (single builder + direct invocation).
 
 **Added**: 2026-02-13 (reconciliation)
-**Updated**: 2026-02-14 (deprecated `--check` path removed)
+**Updated**: 2026-02-14 (deprecated `--check` path removed; shared release-bin
+path added for generated-CLI tools)
 
 ---
 
-## 25. Probe-observer lowering/analysis is computed in multiple places
+## ~~25. Probe-observer lowering/analysis is computed in multiple places~~ RESOLVED (2026-02-14)
 
 **Where**: `core/codegen/src/testgen/codegen.rs`
 
-**What remains**: Header coverage reporting and probe-observer test section
-still perform overlapping lowering/analysis work on separate paths.
+**What changed**:
+- Added a single `ProbeObserverBundle` model (`analysis`, `report`,
+  `lowering_error`) computed once per test module generation.
+- Header coverage reporting now reads the precomputed bundle report.
+- Probe-observer section generation now reads the same bundle (including
+  lowering-failure diagnostic path) instead of recomputing lowering/analysis.
 
-**Risk**: drift in filtering/report semantics and duplicate compute cost.
-
-**Suggested fix**: compute one `ProbeObserverBundle` (lowered DAG + analysis +
-report) and thread it through both header and section generation.
-
-**Added**: 2026-02-14 (reconciliation)
+**Result**: header + section stay aligned by construction and no longer
+maintain separate overlapping probe-observer analysis paths.
 
 ---
 

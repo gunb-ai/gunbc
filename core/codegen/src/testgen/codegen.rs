@@ -22,7 +22,9 @@
 
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
 use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
-use crate::testgen::probe_observer::analyze_probe_observers;
+use crate::testgen::probe_observer::{
+    analyze_probe_observers, observability_report, ProbeObserverAnalysis,
+};
 use crate::testgen::render_rust::plain_rust_renderer;
 use gunbc_cli::ParamType;
 use gunbc_infra::hash::ContentHash;
@@ -175,6 +177,18 @@ pub struct TestGenerator<'a, T> {
     type_registry: Option<TypeRegistry>,
 }
 
+struct ProbeObserverBundle {
+    analysis: ProbeObserverAnalysis,
+    report: String,
+    lowering_error: Option<String>,
+}
+
+impl ProbeObserverBundle {
+    fn has_coverage(&self) -> bool {
+        !self.analysis.probes.is_empty() || !self.analysis.observers.is_empty()
+    }
+}
+
 impl<'a, T: Clone> TestGenerator<'a, T> {
     /// Create a new test generator for a DAG.
     pub fn new(dag: &'a Dag<T>) -> Self {
@@ -233,6 +247,30 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     pub fn with_type_registry(mut self, registry: TypeRegistry) -> Self {
         self.type_registry = Some(registry);
         self
+    }
+
+    fn build_probe_observer_bundle(&self, analysis: &DagAnalysis) -> Option<ProbeObserverBundle> {
+        let spec = self.mock_spec.as_ref()?;
+
+        let (po_analysis, lowering_error) = match gunbc_exec::lower(self.dag) {
+            Ok(lowered) => {
+                let lowered_analysis = analyze_dag(&lowered.dag);
+                (
+                    analyze_probe_observers(&lowered.dag, spec, &lowered_analysis),
+                    None,
+                )
+            }
+            Err(err) => (
+                analyze_probe_observers(self.dag, spec, analysis),
+                Some(err.to_string()),
+            ),
+        };
+
+        Some(ProbeObserverBundle {
+            report: observability_report(&po_analysis),
+            analysis: po_analysis,
+            lowering_error,
+        })
     }
 
     /// Generate the test module code.
@@ -460,8 +498,14 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         }
 
         let obligations = collect_obligations(self.dag, None, None);
+        let probe_observer_bundle = self.build_probe_observer_bundle(&analysis);
 
-        let mut file = self.generate_test_file(&analysis, &obligations, graph_builder_fn);
+        let mut file = self.generate_test_file(
+            &analysis,
+            &obligations,
+            graph_builder_fn,
+            probe_observer_bundle.as_ref(),
+        );
 
         // Render body (no header) to compute content hash.
         let body = plain_rust_renderer().render_file(&file);
@@ -482,22 +526,14 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         ];
 
         // Append probe-observer coverage report if available.
-        if let Some(spec) = &self.mock_spec {
-            let lowered_dag = gunbc_exec::lower(self.dag).ok();
-            let po_analysis = if let Some(ref lowered) = lowered_dag {
-                let la = analyze_dag(&lowered.dag);
-                analyze_probe_observers(&lowered.dag, spec, &la)
-            } else {
-                analyze_probe_observers(self.dag, spec, &analysis)
-            };
-            if !po_analysis.probes.is_empty() || !po_analysis.observers.is_empty() {
-                use crate::testgen::probe_observer::observability_report;
+        if let Some(bundle) = probe_observer_bundle.as_ref() {
+            if bundle.has_coverage() {
                 file.header.push(String::new());
                 file.header.push("Probe-Observer Coverage:".to_string());
-                for line in observability_report(&po_analysis).lines() {
+                for line in bundle.report.lines() {
                     file.header.push(format!("  {}", line));
                 }
-                if !po_analysis.gaps.is_empty() {
+                if !bundle.analysis.gaps.is_empty() {
                     file.header.push(String::new());
                     file.header
                         .push("WARNING: Unobserved terminal nodes detected.".to_string());
@@ -826,6 +862,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         analysis: &DagAnalysis,
         obligations: &ObligationSet,
         graph_builder_fn: &str,
+        probe_observer_bundle: Option<&ProbeObserverBundle>,
     ) -> TestFile {
         let mut file = TestFile {
             header: Vec::new(),
@@ -1159,7 +1196,9 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         }
 
         if self.config.probe_observer_tests {
-            if let Some(section) = self.build_probe_observer_section(analysis, graph_builder_fn) {
+            if let Some(section) =
+                self.build_probe_observer_section(probe_observer_bundle, graph_builder_fn)
+            {
                 file.sections.push(section);
             }
         }
@@ -3664,32 +3703,27 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
     fn build_probe_observer_section(
         &self,
-        _analysis: &DagAnalysis,
+        bundle: Option<&ProbeObserverBundle>,
         graph_builder_fn: &str,
     ) -> Option<TestSection> {
-        let spec = self.mock_spec.as_ref()?;
+        self.mock_spec.as_ref()?;
         self.mock_spec_fn.as_ref()?;
+        let bundle = bundle?;
 
-        // Lower the DAG so SubDag nodes are expanded. The probe-observer analysis
-        // must use the lowered node IDs since test execution happens on the flat DAG.
-        let lowered = match gunbc_exec::lower(self.dag) {
-            Ok(lowered) => lowered,
-            Err(e) => {
-                // Lowering failed — emit a diagnostic test instead of silently skipping.
-                let err_msg = format!("DAG lowering failed, probe-observer tests skipped: {}", e);
-                return Some(TestSection {
-                    title: "Probe-Observer Integration Tests".to_string(),
-                    notes: vec![err_msg.clone()],
-                    tests: vec![TestFn {
-                        name: "test_probe_observer_lowering_failed".to_string(),
-                        doc: vec!["Lowering must succeed for probe-observer tests.".to_string()],
-                        body: vec![Stmt::Expr(Expr::call("panic!", vec![Expr::Str(err_msg)]))],
-                    }],
-                });
-            }
-        };
-        let lowered_analysis = analyze_dag(&lowered.dag);
-        let po_analysis = analyze_probe_observers(&lowered.dag, spec, &lowered_analysis);
+        if let Some(err) = &bundle.lowering_error {
+            let err_msg = format!("DAG lowering failed, probe-observer tests skipped: {}", err);
+            return Some(TestSection {
+                title: "Probe-Observer Integration Tests".to_string(),
+                notes: vec![err_msg.clone()],
+                tests: vec![TestFn {
+                    name: "test_probe_observer_lowering_failed".to_string(),
+                    doc: vec!["Lowering must succeed for probe-observer tests.".to_string()],
+                    body: vec![Stmt::Expr(Expr::call("panic!", vec![Expr::Str(err_msg)]))],
+                }],
+            });
+        }
+
+        let po_analysis = &bundle.analysis;
         if po_analysis.tests.is_empty() && po_analysis.gaps.is_empty() {
             return None;
         }

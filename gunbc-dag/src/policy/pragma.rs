@@ -36,11 +36,24 @@ const CRATE_POLICIES: &[CratePolicy] = &[CratePolicy::allow_disallowed_methods(
     "IS the I/O boundary - the designated place for I/O",
 )];
 
-const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowPattern] =
-    &[DisallowedMethodsAllowPattern {
+const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowPattern] = &[
+    DisallowedMethodsAllowPattern {
         pattern: "lib/transport/",
         rationale: "transport boundary",
-    }];
+    },
+    DisallowedMethodsAllowPattern {
+        pattern: "core/exec/src/freshness.rs",
+        rationale: "freshness steps run external tooling as child processes",
+    },
+    DisallowedMethodsAllowPattern {
+        pattern: "core/codegen/src/cli_gen.rs",
+        rationale: "codegen template for freshness step execution",
+    },
+    DisallowedMethodsAllowPattern {
+        pattern: "gunbc-dag/src/bin/",
+        rationale: "binary entry points with freshness step execution",
+    },
+];
 
 const PRAGMA_LINT_POLICY: PragmaLintPolicy = PragmaLintPolicy {
     allow_dead_code: &[],

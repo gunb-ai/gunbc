@@ -881,6 +881,7 @@ fn build_run_single_step_fn(tool: &ToolMeta) -> FnDef {
          // Freshness check (auto-fix if stale)\n\
          if let Some(steps) = check_and_plan_freshness() {{\n\
              for step in steps {{\n\
+                 #[allow(clippy::disallowed_methods)]\n\
                  let status = std::process::Command::new(&step.command[0])\n\
                      .args(&step.command[1..])\n\
                      .env(\"GUNBC_FRESHNESS_ACTIVE\", \"1\")\n\

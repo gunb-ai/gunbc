@@ -10,8 +10,8 @@ use std::borrow::Cow;
 use std::fmt::Write;
 
 use crate::makegen::registry::{
-    BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, ResourceTargetMap, ToolInfo,
-    ToolRegistry,
+    BuildConfig, BuildSystem, EntrypointParam, ExtraTarget, MetaTarget, ResourceTargetMap,
+    ToolInfo, ToolRegistry,
 };
 use crate::WorkspaceBinary;
 use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
@@ -160,7 +160,7 @@ fn build_makefile_blocks(registry: &ToolRegistry, config: &BuildConfig) -> Vec<S
 /// Build the .PHONY line.
 fn build_phony_line(registry: &ToolRegistry) -> String {
     let mut phony = String::from(
-        ".PHONY: help preflight-fix lint-upsert ensure-codegen codegen build clean testgen testgen-check pragma-check verify verify-fix fmt-fix lint-fix",
+        ".PHONY: help preflight-fix lint-upsert ensure-codegen build-release-bins codegen build clean testgen testgen-check deps-config deps-config-check makegen-check bootstrap-check pragma-check verify verify-fix fmt-fix lint-fix",
     );
 
     for meta in &registry.meta_targets {
@@ -203,14 +203,22 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         comment: Some("Ensure CLI entrypoints exist (bootstrap-safe)".into()),
     }));
 
+    // build-release-bins
+    blocks.push(StructuredBlock::Target(Target {
+        name: "build-release-bins".into(),
+        deps: vec!["ensure-codegen".into()],
+        body: vec!["@RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins".into()],
+        comment: Some("Build workspace binaries once for direct tool execution".into()),
+    }));
+
     // lint-upsert
     let lint_cmd = config.lint.to_shell();
     let lint_fix_cmd = config.lint_fix.to_shell();
     let lint_upsert = format!("@{} || ({} && {})", lint_cmd, lint_fix_cmd, lint_cmd);
     blocks.push(StructuredBlock::Target(Target {
         name: "lint-upsert".into(),
-        deps: vec!["ensure-codegen".into(), "pragma".into()],
-        body: vec![lint_upsert.into()],
+        deps: vec!["ensure-codegen".into(), "preflight-fix".into()],
+        body: vec![config.pragma_shell().into(), lint_upsert.into()],
         comment: Some("Lint upsert: fix if needed, then verify".into()),
     }));
 
@@ -259,6 +267,41 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         comment: Some("Check if generated tests are stale (fails if regeneration needed)".into()),
     }));
 
+    // deps-config
+    blocks.push(StructuredBlock::Target(Target {
+        name: "deps-config".into(),
+        deps: vec!["build-release-bins".into()],
+        body: vec!["@target/release/gunbc-deps-config --mode=ensure".into()],
+        comment: Some("Ensure deps.toml matches the canonical generated configuration".into()),
+    }));
+
+    // deps-config-check
+    blocks.push(StructuredBlock::Target(Target {
+        name: "deps-config-check".into(),
+        deps: vec!["build-release-bins".into()],
+        body: vec!["@target/release/gunbc-deps-config --mode=verify".into()],
+        comment: Some("Check if deps.toml is stale (fails if regeneration needed)".into()),
+    }));
+
+    // makegen-check
+    blocks.push(StructuredBlock::Target(Target {
+        name: "makegen-check".into(),
+        deps: vec!["lint-upsert".into()],
+        body: vec![config.makegen_check_shell().into()],
+        comment: Some("Check if generated Makefile is stale (fails if regeneration needed)".into()),
+    }));
+
+    // bootstrap-check
+    blocks.push(StructuredBlock::Target(Target {
+        name: "bootstrap-check".into(),
+        deps: vec!["lint-upsert".into()],
+        body: vec![config.bootstrap_check_shell().into()],
+        comment: Some(
+            "Check if generated bootstrap artifacts are stale (fails if regeneration needed)"
+                .into(),
+        ),
+    }));
+
     // pragma-check
     blocks.push(StructuredBlock::Target(Target {
         name: "pragma-check".into(),
@@ -272,10 +315,11 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         name: "verify".into(),
         deps: vec!["lint-upsert".into()],
         body: vec![
-            config.makegen_check_shell().into(),
-            config.bootstrap_check_shell().into(),
-            config.testgen_check_shell().into(),
-            config.pragma_check_shell().into(),
+            "@$(MAKE) deps-config-check".into(),
+            "@$(MAKE) makegen-check".into(),
+            "@$(MAKE) bootstrap-check".into(),
+            "@$(MAKE) testgen-check".into(),
+            "@$(MAKE) pragma-check".into(),
         ],
         comment: Some("Verify generated artifacts match their generators".into()),
     }));
@@ -285,6 +329,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         name: "verify-fix".into(),
         deps: vec!["lint-upsert".into()],
         body: vec![
+            "@$(MAKE) deps-config".into(),
             config.makegen_ensure_shell().into(),
             config.bootstrap_ensure_shell().into(),
             config.testgen_ensure_shell().into(),
@@ -316,11 +361,18 @@ fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> Structure
     lines.push(format!("@echo \"  build    - {build_desc}\"").into());
     lines.push("@echo \"  codegen  - Generate CLI entrypoints\"".into());
     lines.push("@echo \"  ensure-codegen  - Bootstrap CLI entrypoints (safe on clean)\"".into());
+    lines.push("@echo \"  build-release-bins  - Build workspace binaries once (release)\"".into());
     lines.push("@echo \"  preflight-fix  - Auto-fix rustc warnings (workspace)\"".into());
     lines.push("@echo \"  lint-upsert  - Auto-fix lint issues then verify\"".into());
     lines.push("@echo \"  clean    - Remove build artifacts\"".into());
     lines.push("@echo \"  testgen  - Regenerate tests from DAG structures\"".into());
     lines.push("@echo \"  testgen-check  - Check if generated tests are stale\"".into());
+    lines.push("@echo \"  deps-config  - Ensure deps.toml is up to date\"".into());
+    lines.push("@echo \"  deps-config-check  - Check if deps.toml is stale\"".into());
+    lines.push("@echo \"  makegen-check  - Check if generated Makefile is stale\"".into());
+    lines.push(
+        "@echo \"  bootstrap-check  - Check if generated bootstrap artifacts are stale\"".into(),
+    );
     lines.push("@echo \"  pragma-check  - Check if pragma artifacts are stale\"".into());
     lines.push("@echo \"  verify   - Verify generated artifacts match their generators\"".into());
     lines.push("@echo \"  verify-fix  - Ensure generated artifacts are up to date\"".into());
@@ -562,12 +614,6 @@ fn render_help_params(params: &[EntrypointParam]) -> String {
 
 /// Build a tool target.
 fn build_tool_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBlock {
-    let warning_prefix = if config.warnings == Warnings::Deny {
-        "RUSTFLAGS=\"-D warnings\" "
-    } else {
-        ""
-    };
-
     let port_list = tool
         .entrypoints
         .iter()
@@ -575,60 +621,79 @@ fn build_tool_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBlock {
         .collect::<Vec<_>>()
         .join(", ");
 
-    let cli_args = render_cli_args(&tool.entrypoints);
-
-    let deps = if tool.short_name == "pragma" {
-        vec!["preflight-fix".into()]
-    } else if tool.needs_generated_cli {
-        vec!["ensure-codegen".into()]
-    } else {
-        vec!["preflight-fix".into()]
-    };
+    let deps = tool_target_deps(tool, config);
+    let cmd = tool_command(tool, config, false);
 
     StructuredBlock::Target(Target {
         name: tool.short_name.clone().into(),
         deps,
-        body: vec![format!(
-            "@{}{} --{}",
-            warning_prefix,
-            tool.invocation.command(),
-            cli_args
-        )
-        .into()],
+        body: vec![cmd.into()],
         comment: Some(format!("{} entrypoints: {}", tool.binary_name(), port_list).into()),
     })
 }
 
 /// Build a dry-run target.
 fn build_dry_run_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBlock {
-    let warning_prefix = if config.warnings == Warnings::Deny {
-        "RUSTFLAGS=\"-D warnings\" "
-    } else {
-        ""
-    };
+    let deps = tool_target_deps(tool, config);
+    let cmd = tool_command(tool, config, true);
 
-    let cli_args = render_cli_args(&tool.entrypoints);
+    StructuredBlock::Target(Target {
+        name: format!("{}-dry", tool.short_name).into(),
+        deps,
+        body: vec![cmd.into()],
+        comment: None,
+    })
+}
 
-    let deps = if tool.short_name == "pragma" {
+fn tool_target_deps(tool: &ToolInfo, config: &BuildConfig) -> Vec<Cow<'static, str>> {
+    if config.build_system == BuildSystem::Cargo {
+        let mut deps = Vec::new();
+        if !tool.needs_generated_cli {
+            deps.push(Cow::Borrowed("preflight-fix"));
+        }
+        deps.push(Cow::Borrowed("build-release-bins"));
+        deps
+    } else if tool.short_name == "pragma" {
         vec!["preflight-fix".into()]
     } else if tool.needs_generated_cli {
         vec!["ensure-codegen".into()]
     } else {
         vec!["preflight-fix".into()]
-    };
+    }
+}
 
-    StructuredBlock::Target(Target {
-        name: format!("{}-dry", tool.short_name).into(),
-        deps,
-        body: vec![format!(
+fn tool_command(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -> String {
+    let cli_args = render_cli_args(&tool.entrypoints);
+
+    if config.build_system == BuildSystem::Cargo {
+        let mut cmd = format!("@target/release/{}", tool.binary_name());
+        if dry_run {
+            cmd.push_str(" --dry-run");
+        }
+        cmd.push_str(&cli_args);
+        return cmd;
+    }
+
+    let warning_prefix = if config.warnings == Warnings::Deny {
+        "RUSTFLAGS=\"-D warnings\" "
+    } else {
+        ""
+    };
+    if dry_run {
+        format!(
             "@{}{} -- --dry-run{}",
             warning_prefix,
             tool.invocation.command(),
             cli_args
         )
-        .into()],
-        comment: None,
-    })
+    } else {
+        format!(
+            "@{}{} --{}",
+            warning_prefix,
+            tool.invocation.command(),
+            cli_args
+        )
+    }
 }
 
 /// Build an extra composite target.
@@ -750,8 +815,11 @@ mod tests {
         );
         assert!(makefile.contains("codegen: lint-upsert"));
         assert!(makefile.contains("build: codegen testgen"));
+        assert!(makefile.contains("build-release-bins: ensure-codegen"));
         assert!(makefile.contains("testgen: lint-upsert"));
         assert!(makefile.contains("testgen-check: lint-upsert"));
+        assert!(makefile.contains("makegen-check: lint-upsert"));
+        assert!(makefile.contains("bootstrap-check: lint-upsert"));
         assert!(makefile.contains("pragma-check: lint-upsert"));
         assert!(makefile.contains("gunbc-pragma -- --mode=verify"));
         assert!(makefile.contains("clean:"));
@@ -809,6 +877,14 @@ mod tests {
             "should have testgen-check target"
         );
         assert!(
+            makefile.contains("makegen-check:"),
+            "should have makegen-check target"
+        );
+        assert!(
+            makefile.contains("bootstrap-check:"),
+            "should have bootstrap-check target"
+        );
+        assert!(
             makefile.contains("pragma-check:"),
             "should have pragma-check target"
         );
@@ -825,7 +901,7 @@ mod tests {
 
         // Testgen in .PHONY
         assert!(
-            makefile.contains("testgen testgen-check pragma-check"),
+            makefile.contains("testgen testgen-check makegen-check bootstrap-check pragma-check"),
             "should be in .PHONY"
         );
         assert!(
@@ -860,12 +936,12 @@ mod tests {
         let config = BuildConfig::cargo();
         let makefile = render_makefile_with_config(&registry, &config);
 
+        assert!(makefile.contains("build-release-bins: ensure-codegen"));
         assert!(
-            makefile.contains("RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-gist --bin gunbc-gist")
+            makefile.contains("RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins")
         );
-        assert!(makefile.contains(
-            "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-gist --bin gunbc-gist -- --dry-run"
-        ));
+        assert!(makefile.contains("@target/release/gunbc-gist"));
+        assert!(makefile.contains("@target/release/gunbc-gist --dry-run"));
     }
 
     #[test]
@@ -1005,7 +1081,7 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        // Tool targets with generated CLI should depend on ensure-codegen, not lint-upsert
+        // Tool targets with generated CLI should depend on release binary build.
         let generated_cli_tools: Vec<_> = registry
             .tools
             .iter()
@@ -1013,17 +1089,24 @@ mod tests {
             .collect();
 
         for tool in &generated_cli_tools {
-            let expected = format!("{}: ensure-codegen", tool.short_name);
+            let expected = format!("{}: build-release-bins", tool.short_name);
             assert!(
                 makefile.contains(&expected),
-                "tool '{}' should depend on ensure-codegen (minimal), got something else.\n\
+                "tool '{}' should depend on build-release-bins (minimal), got something else.\n\
                  lint-upsert is for maintenance targets only.",
                 tool.short_name
             );
         }
 
         // Maintenance targets MUST still use lint-upsert
-        for target in ["codegen", "testgen", "testgen-check", "pragma-check"] {
+        for target in [
+            "codegen",
+            "testgen",
+            "testgen-check",
+            "makegen-check",
+            "bootstrap-check",
+            "pragma-check",
+        ] {
             assert!(
                 makefile.contains(&format!("{target}: lint-upsert")),
                 "maintenance target '{target}' must depend on lint-upsert for full verification"

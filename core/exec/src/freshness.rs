@@ -60,6 +60,10 @@ impl Executable for FreshnessStep {
         let program = &self.command[0];
         let args = &self.command[1..];
 
+        // Freshness steps run external tooling (codegen, clippy, etc.) as child
+        // processes. This is the execution boundary — analogous to a transport
+        // executor — so direct Command::new is correct here.
+        #[allow(clippy::disallowed_methods)]
         let status = std::process::Command::new(program)
             .args(args)
             .env(FRESHNESS_ACTIVE_ENV, "1")

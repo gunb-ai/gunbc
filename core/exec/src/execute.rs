@@ -1195,7 +1195,7 @@ fn capture_log_inputs_for_node<T>(
     if node.inputs.is_empty() {
         return node_log_detail
             .includes_inputs()
-            .then(|| HashMap::<String, Value>::new());
+            .then(HashMap::<String, Value>::new);
     }
 
     let mut captured = HashMap::new();

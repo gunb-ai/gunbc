@@ -84,6 +84,7 @@ fn main() {
 
     if let Some(steps) = gunbc_lib_transport::check_and_plan_freshness() {
         for step in steps {
+            #[allow(clippy::disallowed_methods)]
             let status = std::process::Command::new(&step.command[0])
                 .args(&step.command[1..])
                 .env("GUNBC_FRESHNESS_ACTIVE", "1")

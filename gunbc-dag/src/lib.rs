@@ -59,7 +59,9 @@ pub use makegen::{
     render_makefile, BuildConfig, MakegenGraphOp, MakegenOp,
 };
 pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp, PragmaOp};
-pub use resources::testgen_resource_def;
+pub use resources::{
+    deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
+};
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use workspace::{
     build_bootstrap_subdag, build_ci_subdag, build_clippy_lint_all_subdag, build_clippy_subdag,

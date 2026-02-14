@@ -39,7 +39,7 @@ pub mod frame_write;
 pub mod freshness;
 pub mod helpers;
 pub mod intercept;
-pub mod lint_guard;
+
 pub mod lower;
 pub mod pattern_op;
 pub mod progress;
@@ -71,7 +71,7 @@ pub use helpers::{
     require_value, InputsExt, OutputMap, TransportResponseExt,
 };
 pub use intercept::{BoundaryMock, BoundaryMocks};
-pub use lint_guard::inject_lint_guard;
+
 pub use lower::{lower, LoopInfo, LowerError, LowerResult};
 pub use progress::{
     ComposedObserver, DagPhase, DagProgress, DagSnapshot, EdgeProgress, EdgeState, FieldKind,

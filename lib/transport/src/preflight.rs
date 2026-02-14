@@ -47,7 +47,7 @@ pub fn ensure_lint_upsert() -> Result<(), String> {
         .map_err(|e| format!("preflight: manifest load failed: {}", e))?;
 
     let updated =
-        ensure_lint_upsert_manifest_state(&io, &mut manifest, &resource, |id| run_lint_upsert(id))?;
+        ensure_lint_upsert_manifest_state(&io, &mut manifest, &resource, run_lint_upsert)?;
 
     if updated {
         save_manifest_default(&io, &manifest)
@@ -258,6 +258,9 @@ fn list_tracked_files(io: &dyn ResourceIo) -> Result<Vec<PathBuf>, ResourceError
         "**/*.rs".to_string(),
         "**/Cargo.toml".to_string(),
         "Cargo.lock".to_string(),
+        "deps.toml".to_string(),
+        "Makefile".to_string(),
+        ".gitignore".to_string(),
         "clippy.toml".to_string(),
         "rustfmt.toml".to_string(),
         "rust-toolchain".to_string(),
@@ -630,6 +633,9 @@ mod tests {
             "**/*.rs".to_string(),
             "**/Cargo.toml".to_string(),
             "Cargo.lock".to_string(),
+            "deps.toml".to_string(),
+            "Makefile".to_string(),
+            ".gitignore".to_string(),
             "clippy.toml".to_string(),
             "rustfmt.toml".to_string(),
             "rust-toolchain".to_string(),
@@ -650,7 +656,7 @@ mod tests {
         io.insert_command_output(
             "git",
             &tracked_files_args("/repo"),
-            b"src/main.rs\0Cargo.toml\0",
+            b"src/main.rs\0Cargo.toml\0deps.toml\0Makefile\0.gitignore\0",
         );
         io.insert_command_output("rustc", &string_args(&["--version"]), b"rustc 1.90.0\n");
         io.insert_command_output(
@@ -665,6 +671,13 @@ mod tests {
             b"[package]\nname = \"demo\"\n",
             old_mtime,
         );
+        io.insert_file(
+            "/repo/deps.toml",
+            b"[[dependency]]\nname = \"demo\"\n",
+            old_mtime,
+        );
+        io.insert_file("/repo/Makefile", b"all:\n\t@echo demo\n", old_mtime);
+        io.insert_file("/repo/.gitignore", b"/target\n", old_mtime);
         io
     }
 
@@ -687,14 +700,17 @@ mod tests {
         let entry = manifest
             .get(resource.resource_id())
             .expect("manifest entry should be written");
-        assert_eq!(entry.input_file_count, 2);
+        assert_eq!(entry.input_file_count, 5);
         assert_eq!(
             entry
                 .input_files
                 .as_ref()
                 .expect("input files should be stored"),
             &vec![
+                "/repo/.gitignore".to_string(),
                 "/repo/Cargo.toml".to_string(),
+                "/repo/Makefile".to_string(),
+                "/repo/deps.toml".to_string(),
                 "/repo/src/main.rs".to_string()
             ]
         );
