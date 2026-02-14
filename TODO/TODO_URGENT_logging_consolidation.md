@@ -289,16 +289,53 @@ in its name."
 
 ---
 
-## Refactoring Order
+## 9. Cross-Repo Target: Mirror `../gunb.ai` `terminal.progress`
+
+The concrete target for this work is the behavior in:
+
+- `../gunb.ai/tools/terminal/progress.go`
+- `../gunb.ai/OaaS_v2/pkg/dag/progress.go`
+
+That stack has one progress model used by both grouped and flat task flows,
+with explicit APIs for task status, contention, captured output, and final
+error rendering.
+
+### Gap matrix (current `gunbc` vs target)
+
+| Capability | `gunb.ai` today | `gunbc` today | Gap |
+|------------|-----------------|---------------|-----|
+| Live progress updates | Executor callbacks update display in real time (`SetTaskStatus`) | `run_with_progress` executes DAG first, then replays animation | No live view of actual runtime state |
+| Grouped task progress | Native group model (`AddGroup`, counters, running labels) | DAG grid + legend only | Missing stage/task grouping UX |
+| Nested detail expansion | `ExpandGroup` + auto-expand for long-running groups | None | Can't drill into noisy/slow stages on demand |
+| Contention visibility | `SetTaskContention` (resource wait reasons) | None in observer/display model | No "what is blocked and why" visibility |
+| Per-task captured output | `SetTaskOutput` + boxed failure output in `PrintFinal()` | Inline log printing (`print_value`) + truncation | Output is noisy and duplicated instead of failure-focused |
+| Non-TTY summary mode | Deterministic status lines + final failure blocks | Classic mode prints every node output | Non-TTY logs are too verbose and hard to scan |
+| Single execution/display path | `ExecuteWithProgress(opts)` drives one flow | CI and local split at binary level (`ci.rs`) | Behavior drifts across environments |
+
+### Target contract for `gunbc`
+
+1. One execution path with `DisplayConfig` selects surface (`TTY`, non-TTY, CI grouped) without changing execution logic.
+2. Progress is live (observer-driven), not post-hoc replay.
+3. Output policy is failure-first: keep per-node stdout/stderr attached to task state and render details only when failed (or explicit verbose mode).
+4. Grouping is first-class (pipeline stages), with optional nested expansion for high-fanout groups.
+5. CI and local terminals share the same progress model and summarization rules.
+6. Verify/check modes still use the same display engine (different verbosity), not ad-hoc bypass paths.
+
+---
+
+## Refactoring Order (Parity-Oriented)
 
 1. ~~**Immediate**: Unify `print_value` + `print_log_entry`~~ (done 2026-02-13)
-2. **Immediate**: Secret redaction via `Value::display_redacted` chokepoint
-3. **Short-term**: Add stdout capture to all CI stages (testgen, bootstrap, pragma, guardrail, verify)
-4. **Short-term**: Add per-stage error extractors for the CI report
-5. **Medium-term**: Unify CI vs local execution paths in `ci.rs`
-6. **Medium-term**: Wrap preflight in CI groups
-7. **Long-term**: Unified `ExecutionDisplay` trait with configurable verbosity
-8. **Long-term**: Standardize error field conventions across all ops
+2. **Immediate**: Replace replay-only progress with live observer-driven rendering.
+3. **Immediate**: Introduce one `DisplayConfig` path used by local, CI, and verify/check modes.
+4. **Immediate**: Secret redaction via `Value::display_redacted` chokepoint.
+5. **Short-term**: Capture stdout + stderr for all CI stages (testgen, bootstrap, pragma, guardrail, verify).
+6. **Short-term**: Add failure-first rendering (per-stage extractors + boxed failure details; avoid full-output dumps).
+7. **Short-term**: Add grouped progress model for `gunbc` stages (and nested expansion hooks for noisy groups).
+8. **Medium-term**: Surface resource contention/wait reasons in progress display.
+9. **Medium-term**: Route preflight through the same display/grouping infrastructure.
+10. **Long-term**: Standardize error field conventions across all ops.
+11. **Long-term**: Keep CI/report output as summaries derived from shared task state, not separate ad-hoc formatters.
 
 ---
 
@@ -307,3 +344,68 @@ in its name."
 - `TODO_workflow_audit.md` — broader workflow consolidation plan
 - `TODO_hacks.md` — other fallback/hack patterns
 - PR #39 — `truncate_for_report` added as immediate mitigation
+
+---
+
+## Acceptance Criteria (Definition of Done)
+
+This effort is done only when all items below are true.
+
+### A. Unified execution/display path
+
+- [ ] Local, CI, and verify/check flows use one execution path configured by display settings (no environment-specific execution fork).
+- [ ] `ci.rs` no longer has separate CI/local execution logic that bypasses shared display behavior.
+- [ ] Verify/check modes no longer bypass display via direct `execute_with_mode_and_inputs` calls.
+
+### B. Progress parity with `gunb.ai`
+
+- [ ] Progress is live (observer/event driven), not post-execution replay.
+- [ ] Stage/task grouping exists for `gunbc` pipelines (at least CI stages).
+- [ ] Non-TTY mode emits concise status/progress summaries instead of full per-node output dumps.
+- [ ] Long-running/noisy groups have an expansion path (or equivalent drill-down) without dumping everything by default.
+- [ ] Spinner behavior (TTY) is present and consistent across tools: running state, completion state, and failure state are visually distinct.
+
+### C. Output quality and noise control
+
+- [ ] Default output is failure-first: concise success path, detailed output only for failed stages/nodes.
+- [ ] Raw stdout/stderr is not duplicated across execution logs, parse nodes, and final report.
+- [ ] CI report and terminal summaries use one consistent truncation/summarization policy.
+- [ ] Per-stage extractors exist for at least build, test, lint, and verify-style failures (with sensible fallback).
+
+### D. Data capture completeness
+
+- [ ] Parse ops for testgen/bootstrap/pragma/guardrail/verify capture both stdout and stderr.
+- [ ] Report formatting can render failing stage output generically from structured stage fields.
+
+### E. Secret safety
+
+- [ ] Human-visible rendering of values goes through a redaction chokepoint (`Value::display_redacted` or equivalent).
+- [ ] No display path can accidentally emit `Value::Secret` plaintext.
+- [ ] CI masking still occurs for secret outputs.
+
+### F. Preflight integration
+
+- [ ] Preflight output is routed through the same display/grouping infrastructure (no standalone `println!/eprint!` progress stream).
+- [ ] Preflight failures produce structured error output consistent with the rest of the pipeline.
+
+### G. User attention and error UX parity
+
+- [ ] High-signal failures are rendered with explicit attention formatting (boxed sections / equivalent) in TTY mode.
+- [ ] Error detail rendering preserves a clear non-TTY fallback (plain but structured, not raw dumps).
+- [ ] Attention-level messaging (error/warning/info notices) uses one shared formatting path, not per-tool ad-hoc printing.
+- [ ] Color semantics are consistent across status states (running, success, failure, dim/inactive) in TTY mode.
+
+### H. End-to-end workflow adoption
+
+- [ ] All primary workflow binaries (`build`, `ci`, `codegen`, `testgen`, `makegen`, `bootstrap`, `pragma`) run through the shared progress/display path.
+- [ ] Generated CLI workflows also use the shared progress/display path (no generated bypass path).
+- [ ] CI workflow execution and local execution both use the same underlying progress/event model, with only surface config differences.
+- [ ] There are no remaining direct per-binary node-log print loops outside shared display infrastructure.
+
+### I. Verification and regression tests
+
+- [ ] Unit tests cover display configuration modes (TTY/non-TTY/CI) and secret redaction behavior.
+- [ ] Golden/snapshot tests cover concise success output and failure detail output for terminal and CI text modes.
+- [ ] A regression test reproduces the 2026-02-13 large-log failure shape and proves output stays readable (bounded + non-duplicated).
+- [ ] Existing tool flows (`build`, `ci`, `testgen`, `makegen`, `bootstrap`, `pragma`) pass with the new display path.
+- [ ] End-to-end smoke coverage validates workflow UX parity in TTY and non-TTY modes for each primary binary.

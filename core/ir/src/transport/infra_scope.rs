@@ -282,12 +282,11 @@ mod tests {
     fn test_secret_read_scope() {
         let scope = InfraScope::new(InfraScopeType::Secret, InfraAccessLevel::Read, "my-secret");
         let gcp = scope.resolve_gcp("my-project");
-        assert_eq!(
-            gcp.resource_path,
-            "projects/my-project/secrets/my-secret"
-        );
+        assert_eq!(gcp.resource_path, "projects/my-project/secrets/my-secret");
         assert_eq!(gcp.iam_role, "roles/secretmanager.secretAccessor");
-        assert!(gcp.permissions.contains(&"secretmanager.versions.access".to_string()));
+        assert!(gcp
+            .permissions
+            .contains(&"secretmanager.versions.access".to_string()));
     }
 
     #[test]
@@ -295,7 +294,9 @@ mod tests {
         let scope = InfraScope::new(InfraScopeType::Secret, InfraAccessLevel::Write, "*");
         let gcp = scope.resolve_gcp("my-project");
         assert_eq!(gcp.iam_role, "roles/secretmanager.secretVersionAdder");
-        assert!(gcp.permissions.contains(&"secretmanager.secrets.create".to_string()));
+        assert!(gcp
+            .permissions
+            .contains(&"secretmanager.secrets.create".to_string()));
     }
 
     #[test]
@@ -307,7 +308,9 @@ mod tests {
         );
         let gcp = scope.resolve_gcp("my-project");
         assert_eq!(gcp.iam_role, "roles/iam.serviceAccountTokenCreator");
-        assert!(gcp.permissions.contains(&"iam.serviceAccounts.getAccessToken".to_string()));
+        assert!(gcp
+            .permissions
+            .contains(&"iam.serviceAccounts.getAccessToken".to_string()));
     }
 
     #[test]
@@ -318,7 +321,9 @@ mod tests {
             "github-pool",
         );
         let gcp = scope.resolve_gcp("my-project");
-        assert!(gcp.resource_path.contains("workloadIdentityPools/github-pool"));
+        assert!(gcp
+            .resource_path
+            .contains("workloadIdentityPools/github-pool"));
         assert_eq!(gcp.iam_role, "roles/iam.workloadIdentityPoolViewer");
     }
 

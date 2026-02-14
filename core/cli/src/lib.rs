@@ -233,12 +233,12 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
                 Some(Some(val)) => {
                     let value = match param.type_id {
                         ParamType::Bool => Value::Bool(val == "true"),
-                        ParamType::Int => Value::Int(
-                            val.parse::<i64>().map_err(|_| ParseError::InvalidInt {
+                        ParamType::Int => {
+                            Value::Int(val.parse::<i64>().map_err(|_| ParseError::InvalidInt {
                                 flag: param.flag_name(),
                                 value: val.clone(),
-                            })?,
-                        ),
+                            })?)
+                        }
                         ParamType::Str => Value::Str(val.clone()),
                     };
                     values.insert(param.port_name.clone(), value);

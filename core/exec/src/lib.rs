@@ -45,14 +45,16 @@ pub mod terminal;
 pub mod topo;
 
 pub use ci_context::CiContext;
-pub use display::{execute_and_display, print_value};
+pub use display::{
+    execute_and_display, execute_and_display_with_result, print_value, DisplayResult,
+};
 pub use env::{single_output as env_single_output, EnvNode};
 pub use error::{ExecError, IntoExecResult, ResultExt};
 pub use execute::{
     execute, execute_single_node, execute_with_all, execute_with_ci, execute_with_mode,
-    execute_with_mode_and_ci, execute_with_mode_and_inputs, execute_with_progress,
-    execute_with_progress_and_mode, execute_with_progress_and_mode_and_inputs, ExecutionLog,
-    ExecutionMode, LogEntry,
+    execute_with_mode_and_ci, execute_with_mode_and_ci_and_inputs, execute_with_mode_and_inputs,
+    execute_with_progress, execute_with_progress_and_mode,
+    execute_with_progress_and_mode_and_inputs, ExecutionLog, ExecutionMode, LogEntry,
 };
 pub use helpers::{
     optional_bool, optional_bool_strict, optional_int, optional_int_strict, optional_json,

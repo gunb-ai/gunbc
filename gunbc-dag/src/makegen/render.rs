@@ -54,10 +54,8 @@ pub(crate) const MAKEGEN_NAME: &str = "gunbc-makegen";
 impl MakefileRenderer<'_> {
     /// Render the complete Makefile with header.
     pub fn render(&self) -> String {
-        let regenerate_cmd = CargoCommand::new(Subcommand::Run(
-            WorkspaceBinary::Makegen.invocation(),
-        ))
-        .release();
+        let regenerate_cmd =
+            CargoCommand::new(Subcommand::Run(WorkspaceBinary::Makegen.invocation())).release();
         let header = FileHeader {
             generator_name: MAKEGEN_NAME.into(),
             regenerate_command: regenerate_cmd.to_shell().into(),
@@ -132,9 +130,7 @@ fn build_makefile_blocks(registry: &ToolRegistry, config: &BuildConfig) -> Vec<S
     ));
 
     // Default goal
-    blocks.push(StructuredBlock::Raw(
-        ".DEFAULT_GOAL := help\n\n".into(),
-    ));
+    blocks.push(StructuredBlock::Raw(".DEFAULT_GOAL := help\n\n".into()));
 
     // .PHONY
     blocks.push(StructuredBlock::Raw(build_phony_line(registry)));
@@ -259,9 +255,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         name: "testgen-check".into(),
         deps: vec!["lint-upsert".into()],
         body: vec![config.testgen_check_shell().into()],
-        comment: Some(
-            "Check if generated tests are stale (fails if regeneration needed)".into(),
-        ),
+        comment: Some("Check if generated tests are stale (fails if regeneration needed)".into()),
     }));
 
     // pragma-check
@@ -269,9 +263,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         name: "pragma-check".into(),
         deps: vec!["lint-upsert".into()],
         body: vec![config.pragma_check_shell().into()],
-        comment: Some(
-            "Check if pragma artifacts are stale (fails if regeneration needed)".into(),
-        ),
+        comment: Some("Check if pragma artifacts are stale (fails if regeneration needed)".into()),
     }));
 
     // verify
@@ -322,18 +314,14 @@ fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> Structure
     };
     lines.push(format!("@echo \"  build    - {build_desc}\"").into());
     lines.push("@echo \"  codegen  - Generate CLI entrypoints\"".into());
-    lines.push(
-        "@echo \"  ensure-codegen  - Bootstrap CLI entrypoints (safe on clean)\"".into(),
-    );
+    lines.push("@echo \"  ensure-codegen  - Bootstrap CLI entrypoints (safe on clean)\"".into());
     lines.push("@echo \"  preflight-fix  - Auto-fix rustc warnings (workspace)\"".into());
     lines.push("@echo \"  lint-upsert  - Auto-fix lint issues then verify\"".into());
     lines.push("@echo \"  clean    - Remove build artifacts\"".into());
     lines.push("@echo \"  testgen  - Regenerate tests from DAG structures\"".into());
     lines.push("@echo \"  testgen-check  - Check if generated tests are stale\"".into());
     lines.push("@echo \"  pragma-check  - Check if pragma artifacts are stale\"".into());
-    lines.push(
-        "@echo \"  verify   - Verify generated artifacts match their generators\"".into(),
-    );
+    lines.push("@echo \"  verify   - Verify generated artifacts match their generators\"".into());
     lines.push("@echo \"  verify-fix  - Ensure generated artifacts are up to date\"".into());
     lines.push("@echo \"\"".into());
 
@@ -633,12 +621,18 @@ fn build_extra_target(tool: &ToolInfo, extra: &ExtraTarget) -> StructuredBlock {
     StructuredBlock::Target(Target {
         name: format!("{}-{}", tool.short_name, extra.suffix).into(),
         deps: vec![tool.short_name.clone().into()],
-        body: extra.post_commands.iter().map(|s| Cow::from(s.clone())).collect(),
-        comment: Some(format!(
-            "{}-{}: {}",
-            tool.short_name, extra.suffix, extra.description
-        )
-        .into()),
+        body: extra
+            .post_commands
+            .iter()
+            .map(|s| Cow::from(s.clone()))
+            .collect(),
+        comment: Some(
+            format!(
+                "{}-{}: {}",
+                tool.short_name, extra.suffix, extra.description
+            )
+            .into(),
+        ),
     })
 }
 

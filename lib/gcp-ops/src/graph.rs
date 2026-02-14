@@ -1186,10 +1186,7 @@ fn add_ensure_iam_nodes(
 
     // Wire: check_iam_binding -> execute_set_iam
     builder
-        .add_edge(
-            check_iam.out("request"),
-            execute_set_iam.in_port("request"),
-        )
+        .add_edge(check_iam.out("request"), execute_set_iam.in_port("request"))
         .expect("check_iam_binding.request -> execute_set_iam.request");
     builder
         .add_edge(check_iam.out("skip"), execute_set_iam.in_port("skip"))
@@ -1550,12 +1547,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "execute_reread_adc",
         "skip",
     ));
-    dag.add_edge(Edge::new(
-        "net_env",
-        "net",
-        "execute_reread_adc",
-        "res:net",
-    ));
+    dag.add_edge(Edge::new("net_env", "net", "execute_reread_adc", "res:net"));
     dag.add_edge(Edge::new(
         "execute_reread_adc",
         "response",

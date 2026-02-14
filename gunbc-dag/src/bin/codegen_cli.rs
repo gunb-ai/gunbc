@@ -152,7 +152,8 @@ fn run_cargo_build(io: &dyn ResourceIo) -> Result<(), ResourceError> {
     let cmd = gunbc_ir::cargo::CargoCommand::new(gunbc_ir::cargo::Subcommand::Build).release();
     let full_args = cmd.to_args();
     // full_args = ["cargo", "build", "--release"]
-    io.command_output(&full_args[0], &full_args[1..]).map(|_| ())
+    io.command_output(&full_args[0], &full_args[1..])
+        .map(|_| ())
 }
 
 /// Setup bin directory - symlink on Unix, marker on Windows.

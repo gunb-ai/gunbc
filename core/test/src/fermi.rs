@@ -70,11 +70,11 @@ impl FermiCost {
     /// an explicit value. Also used for CI job timeout estimation.
     pub fn timeout_ms(self) -> u64 {
         match self {
-            FermiCost::XS => 30_000,      //  30 s
-            FermiCost::S => 300_000,       //   5 min
-            FermiCost::M => 600_000,       //  10 min
-            FermiCost::L => 1_800_000,     //  30 min
-            FermiCost::XL => 3_600_000,    //  60 min
+            FermiCost::XS => 30_000,    //  30 s
+            FermiCost::S => 300_000,    //   5 min
+            FermiCost::M => 600_000,    //  10 min
+            FermiCost::L => 1_800_000,  //  30 min
+            FermiCost::XL => 3_600_000, //  60 min
         }
     }
 }
@@ -435,7 +435,10 @@ mod tests {
                     &["GCP_WIF_PROVIDER", "GCP_SECRETS_PROJECT"],
                     &[&["GCP_SECRETS_SA", "GCP_SECRETS_IMPERSONATE_SA"]],
                 );
-                assert!(!result, "live test should be skipped with explicit cost limit");
+                assert!(
+                    !result,
+                    "live test should be skipped with explicit cost limit"
+                );
             },
         );
     }
@@ -559,10 +562,7 @@ mod tests {
     #[test]
     fn test_guard_runs_within_budget() {
         with_env(
-            &[
-                ("GITHUB_ACTIONS", None),
-                ("GUNBC_TEST_MAX_COST", Some("M")),
-            ],
+            &[("GITHUB_ACTIONS", None), ("GUNBC_TEST_MAX_COST", Some("M"))],
             || {
                 let result = guard(TestMeta {
                     name: "cheap_test",

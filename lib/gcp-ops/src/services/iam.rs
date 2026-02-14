@@ -158,8 +158,7 @@ impl IamService for IamRest {
         if let Some(lifetime) = lifetime_seconds {
             body["lifetime"] = serde_json::json!(format!("{}s", lifetime));
         }
-        self.authed_post(IAM_CREDENTIALS, &path)
-            .json(body)
+        self.authed_post(IAM_CREDENTIALS, &path).json(body)
     }
 
     fn exchange_token(
@@ -169,15 +168,14 @@ impl IamService for IamRest {
         subject_token_type: &str,
     ) -> RestRequest {
         let url = format!("{}/v1/token", super::base_urls::STS);
-        RestRequest::post(url)
-            .json(serde_json::json!({
-                "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
-                "audience": format!("//iam.googleapis.com/{}", audience),
-                "scope": "https://www.googleapis.com/auth/cloud-platform",
-                "requestedTokenType": "urn:ietf:params:oauth:token-type:access_token",
-                "subjectToken": subject_token,
-                "subjectTokenType": subject_token_type,
-            }))
+        RestRequest::post(url).json(serde_json::json!({
+            "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
+            "audience": format!("//iam.googleapis.com/{}", audience),
+            "scope": "https://www.googleapis.com/auth/cloud-platform",
+            "requestedTokenType": "urn:ietf:params:oauth:token-type:access_token",
+            "subjectToken": subject_token,
+            "subjectTokenType": subject_token_type,
+        }))
     }
 }
 
@@ -201,7 +199,9 @@ mod tests {
     fn test_get_service_account_url() {
         let svc = IamRest::unauthenticated();
         let req = svc.get_service_account("my-project", "sa@project.iam.gserviceaccount.com");
-        assert!(req.url.contains("serviceAccounts/sa@project.iam.gserviceaccount.com"));
+        assert!(req
+            .url
+            .contains("serviceAccounts/sa@project.iam.gserviceaccount.com"));
     }
 
     #[test]

@@ -1601,8 +1601,11 @@ mod tests {
 
     #[test]
     fn test_to_boundary_mocks_includes_transport_mocks() {
-        let spec = MockSpec::new("test")
-            .transport_mock("execute_http", "response", Value::Str("200 OK".into()));
+        let spec = MockSpec::new("test").transport_mock(
+            "execute_http",
+            "response",
+            Value::Str("200 OK".into()),
+        );
 
         let bm = spec.to_boundary_mocks();
         assert_eq!(
@@ -1614,8 +1617,8 @@ mod tests {
 
     #[test]
     fn test_to_boundary_mocks_includes_input_mocks() {
-        let spec = MockSpec::new("test")
-            .input_mock("prepare", "provider", Value::Str("gcp".into()));
+        let spec =
+            MockSpec::new("test").input_mock("prepare", "provider", Value::Str("gcp".into()));
 
         let bm = spec.to_boundary_mocks();
         assert_eq!(
@@ -1647,10 +1650,7 @@ mod tests {
             "poll",
             "status",
             Value::Str("done".into()),
-            vec![
-                Value::Str("pending".into()),
-                Value::Str("running".into()),
-            ],
+            vec![Value::Str("pending".into()), Value::Str("running".into())],
         );
 
         let bm = spec.to_boundary_mocks();

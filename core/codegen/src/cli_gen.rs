@@ -18,11 +18,11 @@
 //! allowing incremental IR deepening later.
 
 use crate::testgen::render_rust::plain_rust_renderer;
-use std::fmt::Write;
 use gunbc_ir::code_ir::{Expr, FnDef, Import, Item, SourceFile, Stmt};
 use gunbc_ir::language::{rust_type as lang_rust_type, NamingCase};
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::Cardinality;
+use std::fmt::Write;
 
 /// Metadata about a tool for CLI generation.
 #[derive(Debug, Clone)]
@@ -382,10 +382,12 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     // Build schema
     code.push_str("let schema = vec![\n");
     for ep in entrypoints {
-        write!(code,
+        write!(
+            code,
             "    gunbc_cli::CliParam::new(\"{}\", \"{}\")",
             ep.port_name, ep.type_id
-        ).unwrap();
+        )
+        .unwrap();
         if ep.is_repeatable() {
             code.push_str(".with_cardinality(gunbc_ir::Cardinality::ZERO_OR_MORE)");
         }
@@ -421,11 +423,13 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
             ).unwrap();
         } else {
             match ep.type_id.as_str() {
-                "Bool" => writeln!(code,
+                "Bool" => writeln!(
+                    code,
                     "let {} = matches!(cli_inputs.get(\"{}\"), Some(Value::Bool(true)));",
                     ep.var_name(),
                     ep.port_name
-                ).unwrap(),
+                )
+                .unwrap(),
                 "Int" => {
                     let default = match ep.default_value.as_deref() {
                         Some(d) => d.parse::<i64>().unwrap_or_else(|_| {
@@ -478,33 +482,41 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
     for ep in entrypoints {
         if ep.is_repeatable() {
-            writeln!(code,
+            writeln!(
+                code,
                 "println!(\"  {}: {{:?}}\", {});",
                 ep.port_name,
                 ep.var_name()
-            ).unwrap();
+            )
+            .unwrap();
         } else {
             match ep.type_id.as_str() {
                 "Bool" => {
-                    writeln!(code,
+                    writeln!(
+                        code,
                         "println!(\"  {}: {{}}\", {});",
                         ep.port_name,
                         ep.var_name()
-                    ).unwrap();
+                    )
+                    .unwrap();
                 }
                 _ => {
                     if ep.default_value.is_some() {
-                        writeln!(code,
+                        writeln!(
+                            code,
                             "println!(\"  {}: {{}}\", {});",
                             ep.port_name,
                             ep.var_name()
-                        ).unwrap();
+                        )
+                        .unwrap();
                     } else {
-                        writeln!(code,
+                        writeln!(
+                            code,
                             "println!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));",
                             ep.port_name,
                             ep.var_name()
-                        ).unwrap();
+                        )
+                        .unwrap();
                     }
                 }
             }
@@ -551,14 +563,16 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
                 _ => " <VAL>",
             }
         };
-        writeln!(code,
+        writeln!(
+            code,
             "println!(\"    {}--{}{:width$}  {}\");",
             short,
             flag,
             type_hint,
             ep.help,
             width = 20 - flag.len()
-        ).unwrap();
+        )
+        .unwrap();
     }
     code
 }

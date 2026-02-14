@@ -141,20 +141,20 @@ pub fn execute_cli_tool_op(op: &CliToolOp) -> Result<HashMap<String, Value>, Cli
         CliToolOp::Run { tool, args } => execute_run(tool, args),
         CliToolOp::ResourceGate { ports, .. } => execute_resource_gate(ports),
         CliToolOp::PrepareCheck { tool } => Ok(prepare_check(tool)),
-        CliToolOp::ParseCheck { .. } => {
-            Err(CliToolError::invariant("ParseCheck should be called via execute_cli_tool_op_with_inputs"))
-        }
+        CliToolOp::ParseCheck { .. } => Err(CliToolError::invariant(
+            "ParseCheck should be called via execute_cli_tool_op_with_inputs",
+        )),
         CliToolOp::PrepareInstall { tool } => Ok(prepare_install(tool)),
-        CliToolOp::ParseInstall { .. } => {
-            Err(CliToolError::invariant("ParseInstall should be called via execute_cli_tool_op_with_inputs"))
-        }
+        CliToolOp::ParseInstall { .. } => Err(CliToolError::invariant(
+            "ParseInstall should be called via execute_cli_tool_op_with_inputs",
+        )),
         CliToolOp::PrepareRun { tool, args } => Ok(prepare_run(tool, args)),
-        CliToolOp::ParseRun { .. } => {
-            Err(CliToolError::invariant("ParseRun should be called via execute_cli_tool_op_with_inputs"))
-        }
-        CliToolOp::Transport => {
-            Err(CliToolError::invariant("Transport should be executed via TransportOps, not execute_cli_tool_op"))
-        }
+        CliToolOp::ParseRun { .. } => Err(CliToolError::invariant(
+            "ParseRun should be called via execute_cli_tool_op_with_inputs",
+        )),
+        CliToolOp::Transport => Err(CliToolError::invariant(
+            "Transport should be executed via TransportOps, not execute_cli_tool_op",
+        )),
     }
 }
 
@@ -437,9 +437,10 @@ fn execute_run(
     tool: &'static CliToolDef,
     args: &[String],
 ) -> Result<HashMap<String, Value>, CliToolError> {
-    let (cmd, _) = tool.run_cmd.split_first().ok_or_else(|| {
-        CliToolError::new(tool, "run", "No run command defined")
-    })?;
+    let (cmd, _) = tool
+        .run_cmd
+        .split_first()
+        .ok_or_else(|| CliToolError::new(tool, "run", "No run command defined"))?;
     execute_run_impl(tool, args, cmd.as_ref())
 }
 

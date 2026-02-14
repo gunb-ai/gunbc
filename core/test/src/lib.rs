@@ -69,7 +69,8 @@ pub use simulator::{IoContract, Simulator};
 pub use window::{
     apply_window_inputs, assert_chain_outputs, assert_window_outputs, window_subdag, Window,
     WindowError,
-};/// Assert that the typed MockSpec builder rejects an unknown slot.
+};
+/// Assert that the typed MockSpec builder rejects an unknown slot.
 ///
 /// This is the shared implementation for the `test_typed_builder_rejects_wrong_slot`
 /// test that appears in every `graph_mock.rs`.

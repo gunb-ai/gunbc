@@ -13,7 +13,7 @@
 use gunbc_dag::testgen_dag::graph::build_testgen_graph;
 use gunbc_dag::testgen_resource_def;
 use gunbc_exec::{
-    execute_and_display, execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode,
+    execute_and_display, execute_and_display_with_result, BoundaryMocks, ExecutionMode,
     TerminalProfile,
 };
 use gunbc_ir::resource::{
@@ -222,9 +222,11 @@ fn main() {
     };
 
     if resource_mode == ExecMode::Verify {
-        // Check mode: bypass display, use execute_with_mode_and_inputs directly
-        match execute_with_mode_and_inputs(&dag, mode, Some(&input_mocks)) {
-            Ok(log) => {
+        // Check mode: execute through shared display path and inspect log outputs.
+        let profile = TerminalProfile::detect();
+        match execute_and_display_with_result(&dag, mode, &profile, None, Some(&input_mocks)) {
+            Ok(result) => {
+                let log = result.log;
                 let mut ok_count = 0;
                 let mut stale = Vec::new();
 

@@ -297,8 +297,28 @@ pub fn execute_with_mode_and_ci<T: Executable + Clone + Send>(
     mode: ExecutionMode,
     ci: &mut crate::CiContext,
 ) -> Result<ExecutionLog, ExecError> {
+    execute_with_mode_and_ci_and_inputs(dag, mode, ci, None)
+}
+
+/// Execute a DAG with execution mode, CI context, and optional input mocks.
+///
+/// Input mocks are injected into entrypoint ports after lowering/remapping,
+/// matching the behavior of [`execute_with_mode_and_inputs`].
+pub fn execute_with_mode_and_ci_and_inputs<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    ci: &mut crate::CiContext,
+    input_mocks: Option<&BoundaryMocks>,
+) -> Result<ExecutionLog, ExecError> {
     // Lower sub-DAGs first
     let lowered = lower(dag).exec_context("lowering failed")?;
+
+    // Remap input mock keys from original SubDag IDs to lowered inner IDs
+    let remapped_mocks = input_mocks.map(|mocks| remap_input_mocks(mocks, &lowered.input_remaps));
+    let effective_mocks = remapped_mocks.as_ref().or(input_mocks);
+
+    // Remap DryRun/Simulate mode input mocks too
+    let effective_mode = remap_mode_inputs(mode, &lowered.input_remaps);
 
     // Detect boundaries
     let boundaries = detect_boundaries(&lowered.dag);
@@ -307,10 +327,10 @@ pub fn execute_with_mode_and_ci<T: Executable + Clone + Send>(
     execute_flat(
         &lowered.dag,
         &boundaries,
-        &mode,
+        &effective_mode,
         Some(ci),
         None,
-        None,
+        effective_mocks,
         &lowered.loops,
     )
 }

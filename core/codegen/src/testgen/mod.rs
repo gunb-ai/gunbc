@@ -37,6 +37,6 @@ pub use obligation::{
     ObligationSource, ObligationStats, ProofObligation,
 };
 pub use probe_observer::{
-    analyze_probe_observers, observability_report, CoverageGap, Observer,
-    Probe, ProbeObserverAnalysis, ProbeObserverTest, ProbeSource,
+    analyze_probe_observers, observability_report, CoverageGap, Observer, Probe,
+    ProbeObserverAnalysis, ProbeObserverTest, ProbeSource,
 };

@@ -98,8 +98,7 @@ impl StorageRest {
 
 impl StorageService for StorageRest {
     fn list_buckets(&self, project: &str) -> RestRequest {
-        self.authed_get("/storage/v1/b")
-            .query("project", project)
+        self.authed_get("/storage/v1/b").query("project", project)
     }
 
     fn get_bucket(&self, bucket: &str) -> RestRequest {

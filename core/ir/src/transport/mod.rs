@@ -84,26 +84,18 @@ pub use cloud::{
     CloudConfigSpec, CloudNamespace, CloudProviderKind, CloudRuntimeKind, CloudSecretConfig,
     CloudSecretRef,
 };
-pub use gcp::{
-    GcpBucket, GcpIamBinding, GcpIamCondition, GcpIamPolicy, GcpInfraSpec, GcpProject,
-    GcpSecret, GcpSecretPayload, GcpServiceAccount, GcpWifPool, GcpWifProvider,
-};
-pub use infra_scope::{GcpScope, InfraAccessLevel, InfraScope, InfraScopeType};
 pub use credential::{AuthScheme, Credential, CredentialError, Secret, SecretSource};
 pub use credential_policy::{
-    CredentialIntentPolicy,
-    CredentialPolicyDefaults,
-    CredentialPolicyError,
-    CredentialPolicyProfile,
-    CredentialPolicySpec,
-    ImpersonationPolicy,
-    ResolvedCredentialIntentPolicy,
-    ResolvedCredentialPolicyProfile,
-    ScopeMergeMode,
-    SecretBinding,
+    CredentialIntentPolicy, CredentialPolicyDefaults, CredentialPolicyError,
+    CredentialPolicyProfile, CredentialPolicySpec, ImpersonationPolicy,
+    ResolvedCredentialIntentPolicy, ResolvedCredentialPolicyProfile, ScopeMergeMode, SecretBinding,
     VersionSelector,
 };
 pub use file::{FileOp, FileRequest, FileResponse};
+pub use gcp::{
+    GcpBucket, GcpIamBinding, GcpIamCondition, GcpIamPolicy, GcpInfraSpec, GcpProject, GcpSecret,
+    GcpSecretPayload, GcpServiceAccount, GcpWifPool, GcpWifProvider,
+};
 pub use gist::GistRequest;
 pub use git::GitRequest;
 pub use github::cli::GH_TOOL;
@@ -117,6 +109,7 @@ pub use github_actions::{
     WorkflowConfig,
 };
 pub use http::{HttpMethod, HttpRequest, HttpResponse};
+pub use infra_scope::{GcpScope, InfraAccessLevel, InfraScope, InfraScopeType};
 pub use llm::{
     anthropic_provider, build_chat_request, builtin_provider_ids, openai_provider,
     parse_chat_response, provider_by_id, ChatMessage, ChatRequest, ChatResponse, FinishReason,

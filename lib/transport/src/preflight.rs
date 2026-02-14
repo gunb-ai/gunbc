@@ -341,9 +341,7 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
                 resource_id.clone(),
                 format!(
                     "cargo clippy failed after fix (exit {})\n{}\n{}",
-                    verify_result.exit_code,
-                    verify_result.stdout,
-                    verify_result.stderr
+                    verify_result.exit_code, verify_result.stdout, verify_result.stderr
                 ),
             ));
         }

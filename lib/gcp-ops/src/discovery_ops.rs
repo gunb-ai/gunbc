@@ -71,10 +71,9 @@ impl Executable for GcpDiscoveryOps {
             // =================================================================
             GcpDiscoveryOps::PrepareListProjects => {
                 let access_token = require_str(&inputs, "access_token")?;
-                let req = RestRequest::get(
-                    "https://cloudresourcemanager.googleapis.com/v1/projects",
-                )
-                .bearer(access_token);
+                let req =
+                    RestRequest::get("https://cloudresourcemanager.googleapis.com/v1/projects")
+                        .bearer(access_token);
                 OutputMap::new()
                     .request("request", req.into())
                     .bool("skip", false)
@@ -171,10 +170,7 @@ impl Executable for GcpDiscoveryOps {
             GcpDiscoveryOps::PrepareListWifProviders => {
                 let access_token = require_str(&inputs, "access_token")?;
                 let pool_name = require_str(&inputs, "pool_name")?;
-                let url = format!(
-                    "https://iam.googleapis.com/v1/{}/providers",
-                    pool_name
-                );
+                let url = format!("https://iam.googleapis.com/v1/{}/providers", pool_name);
                 let req = RestRequest::get(url).bearer(access_token);
                 OutputMap::new()
                     .request("request", req.into())
@@ -204,7 +200,8 @@ impl Executable for GcpDiscoveryOps {
                             attribute_mappings: p
                                 .get("attributeMapping")
                                 .and_then(|v| {
-                                    serde_json::from_value::<HashMap<String, String>>(v.clone()).ok()
+                                    serde_json::from_value::<HashMap<String, String>>(v.clone())
+                                        .ok()
                                 })
                                 .unwrap_or_default(),
                             attribute_condition: p
@@ -264,10 +261,7 @@ impl Executable for GcpDiscoveryOps {
                                 .get("description")
                                 .and_then(|v| v.as_str())
                                 .map(String::from),
-                            unique_id: a
-                                .get("uniqueId")
-                                .and_then(|v| v.as_str())
-                                .map(String::from),
+                            unique_id: a.get("uniqueId").and_then(|v| v.as_str()).map(String::from),
                         })
                     })
                     .collect();
@@ -313,15 +307,13 @@ impl Executable for GcpDiscoveryOps {
                             secret_id,
                             project_id,
                             labels: parse_labels(s.get("labels")),
-                            replication: s
-                                .get("replication")
-                                .map(|r| {
-                                    if r.get("automatic").is_some() {
-                                        "AUTOMATIC".to_string()
-                                    } else {
-                                        "USER_MANAGED".to_string()
-                                    }
-                                }),
+                            replication: s.get("replication").map(|r| {
+                                if r.get("automatic").is_some() {
+                                    "AUTOMATIC".to_string()
+                                } else {
+                                    "USER_MANAGED".to_string()
+                                }
+                            }),
                         })
                     })
                     .collect();
@@ -472,8 +464,7 @@ impl Executable for GcpDiscoveryOps {
                     extract_json_list(&inputs, "service_accounts")?;
                 let secrets: Vec<GcpSecret> = extract_json_list(&inputs, "secrets")?;
                 let buckets: Vec<GcpBucket> = extract_json_list(&inputs, "buckets")?;
-                let iam_policies: Vec<GcpIamPolicy> =
-                    extract_json_list(&inputs, "iam_policies")?;
+                let iam_policies: Vec<GcpIamPolicy> = extract_json_list(&inputs, "iam_policies")?;
 
                 let spec = GcpInfraSpec {
                     projects,
@@ -489,9 +480,7 @@ impl Executable for GcpDiscoveryOps {
 
                 let json = serde_json::to_value(&spec)
                     .map_err(|e| ExecError::new(format!("serialize infra spec: {e}")))?;
-                OutputMap::new()
-                    .value("infra_spec", Value::Json(json))
-                    .ok()
+                OutputMap::new().value("infra_spec", Value::Json(json)).ok()
             }
 
             // =================================================================
@@ -595,9 +584,7 @@ fn chrono_now_iso8601() -> String {
 /// Generate a CloudConfigSpec from discovered infrastructure.
 ///
 /// Derives namespaces from secret prefix patterns and WIF configurations.
-fn generate_config_from_infra(
-    spec: &GcpInfraSpec,
-) -> gunbc_ir::transport::cloud::CloudConfigSpec {
+fn generate_config_from_infra(spec: &GcpInfraSpec) -> gunbc_ir::transport::cloud::CloudConfigSpec {
     use gunbc_ir::transport::cloud::{CloudConfigSpec, CloudNamespace, CloudProviderKind};
 
     // Find unique prefixes from secret names
@@ -657,9 +644,7 @@ fn generate_config_from_infra(
 /// Simple TOML serializer for CloudConfigSpec.
 ///
 /// Avoids pulling in a full TOML crate by doing manual formatting.
-fn toml_serialize(
-    config: &gunbc_ir::transport::cloud::CloudConfigSpec,
-) -> Result<String, String> {
+fn toml_serialize(config: &gunbc_ir::transport::cloud::CloudConfigSpec) -> Result<String, String> {
     let mut out = String::new();
 
     if let Some(ref ns) = config.default_namespace {
@@ -714,16 +699,18 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "response".to_string(),
-            Value::Response(TransportResponse::Rest(RestResponse::ok(serde_json::json!({
-                "projects": [
-                    {
-                        "projectId": "gunbai-secrets",
-                        "projectNumber": "582015116396",
-                        "name": "gunbai-secrets",
-                        "lifecycleState": "ACTIVE"
-                    }
-                ]
-            })))),
+            Value::Response(TransportResponse::Rest(RestResponse::ok(
+                serde_json::json!({
+                    "projects": [
+                        {
+                            "projectId": "gunbai-secrets",
+                            "projectNumber": "582015116396",
+                            "name": "gunbai-secrets",
+                            "lifecycleState": "ACTIVE"
+                        }
+                    ]
+                }),
+            ))),
         );
         let outputs = GcpDiscoveryOps::ParseListProjects.execute(inputs).unwrap();
         let projects: Vec<GcpProject> =
@@ -737,18 +724,20 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "response".to_string(),
-            Value::Response(TransportResponse::Rest(RestResponse::ok(serde_json::json!({
-                "secrets": [
-                    {
-                        "name": "projects/gunbai-secrets/secrets/dev-github-token",
-                        "replication": { "automatic": {} }
-                    },
-                    {
-                        "name": "projects/gunbai-secrets/secrets/prod-api-key",
-                        "labels": { "env": "prod" }
-                    }
-                ]
-            })))),
+            Value::Response(TransportResponse::Rest(RestResponse::ok(
+                serde_json::json!({
+                    "secrets": [
+                        {
+                            "name": "projects/gunbai-secrets/secrets/dev-github-token",
+                            "replication": { "automatic": {} }
+                        },
+                        {
+                            "name": "projects/gunbai-secrets/secrets/prod-api-key",
+                            "labels": { "env": "prod" }
+                        }
+                    ]
+                }),
+            ))),
         );
         let outputs = GcpDiscoveryOps::ParseListSecrets.execute(inputs).unwrap();
         let secrets: Vec<GcpSecret> =

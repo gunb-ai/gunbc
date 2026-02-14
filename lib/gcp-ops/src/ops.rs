@@ -956,10 +956,7 @@ impl Executable for GcpOps {
                 }
 
                 // Build getIamPolicy REST request using user's access token.
-                let cred = Credential::new(
-                    Secret::static_value(access_token),
-                    AuthScheme::Bearer,
-                );
+                let cred = Credential::new(Secret::static_value(access_token), AuthScheme::Bearer);
                 let svc = ResourceManagerRest::new(cred);
                 let req = svc.get_iam_policy(project);
 
@@ -1026,9 +1023,7 @@ impl Executable for GcpOps {
                             .get("members")
                             .and_then(|m| m.as_array())
                             .map(|members| {
-                                members
-                                    .iter()
-                                    .any(|m| m.as_str() == Some(member.as_str()))
+                                members.iter().any(|m| m.as_str() == Some(member.as_str()))
                             })
                             .unwrap_or(false)
                 });
@@ -1071,10 +1066,7 @@ impl Executable for GcpOps {
                 new_policy["bindings"] = serde_json::Value::Array(new_bindings);
 
                 // Build setIamPolicy REST request.
-                let cred = Credential::new(
-                    Secret::static_value(access_token),
-                    AuthScheme::Bearer,
-                );
+                let cred = Credential::new(Secret::static_value(access_token), AuthScheme::Bearer);
                 let svc = ResourceManagerRest::new(cred);
                 let req = svc.set_iam_policy(project, new_policy);
 
@@ -1958,10 +1950,7 @@ mod tests {
             "access_token".to_string(),
             Value::Str("mock-token".to_string()),
         );
-        inputs.insert(
-            "project".to_string(),
-            Value::Str("project".to_string()),
-        );
+        inputs.insert("project".to_string(), Value::Str("project".to_string()));
         inputs.insert(
             "service_account".to_string(),
             Value::Str("sa@project.iam.gserviceaccount.com".to_string()),
@@ -1988,10 +1977,7 @@ mod tests {
             "access_token".to_string(),
             Value::Str("mock-token".to_string()),
         );
-        inputs.insert(
-            "project".to_string(),
-            Value::Str("project".to_string()),
-        );
+        inputs.insert("project".to_string(), Value::Str("project".to_string()));
         inputs.insert(
             "service_account".to_string(),
             Value::Str("sa@project.iam.gserviceaccount.com".to_string()),
@@ -2024,10 +2010,7 @@ mod tests {
             "access_token".to_string(),
             Value::Str("mock-token".to_string()),
         );
-        inputs.insert(
-            "project".to_string(),
-            Value::Str("project".to_string()),
-        );
+        inputs.insert("project".to_string(), Value::Str("project".to_string()));
         inputs.insert(
             "service_account".to_string(),
             Value::Str("sa@project.iam.gserviceaccount.com".to_string()),

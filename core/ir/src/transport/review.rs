@@ -64,8 +64,12 @@ mod tests {
         let intent = ReviewScopeContract::new("openai").credential_intent();
         assert_eq!(intent.provider, "openai");
         assert_eq!(intent.scheme, "bearer");
-        assert!(intent.required_scopes.contains(&"llm:chat_completion".to_string()));
-        assert!(intent.required_scopes.contains(&"review:code_review".to_string()));
+        assert!(intent
+            .required_scopes
+            .contains(&"llm:chat_completion".to_string()));
+        assert!(intent
+            .required_scopes
+            .contains(&"review:code_review".to_string()));
         assert!(intent.validate().is_ok());
     }
 
@@ -75,7 +79,9 @@ mod tests {
         assert_eq!(intent.provider, "anthropic");
         assert_eq!(intent.scheme, "header");
         assert_eq!(intent.header_name, "x-api-key");
-        assert!(intent.required_scopes.contains(&"review:code_review".to_string()));
+        assert!(intent
+            .required_scopes
+            .contains(&"review:code_review".to_string()));
         assert!(intent.validate().is_ok());
     }
 }

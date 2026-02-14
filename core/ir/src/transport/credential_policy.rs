@@ -33,7 +33,9 @@ impl CredentialPolicySpec {
         let mut seen_profiles = BTreeSet::new();
         for profile in &self.profiles {
             if !seen_profiles.insert(profile.name.clone()) {
-                return Err(CredentialPolicyError::DuplicateProfile(profile.name.clone()));
+                return Err(CredentialPolicyError::DuplicateProfile(
+                    profile.name.clone(),
+                ));
             }
 
             let mut seen_intents = BTreeSet::new();
@@ -65,14 +67,12 @@ impl CredentialPolicySpec {
         intent_key: &str,
     ) -> Result<ResolvedCredentialIntentPolicy, CredentialPolicyError> {
         let resolved = self.resolve_profile(profile_name)?;
-        let mut policy = resolved
-            .intents
-            .get(intent_key)
-            .cloned()
-            .ok_or_else(|| CredentialPolicyError::UnknownIntent {
+        let mut policy = resolved.intents.get(intent_key).cloned().ok_or_else(|| {
+            CredentialPolicyError::UnknownIntent {
                 profile: profile_name.to_string(),
                 intent: intent_key.to_string(),
-            })?;
+            }
+        })?;
 
         if policy.provider.is_none() {
             policy.provider = resolved.defaults.provider;
@@ -116,9 +116,9 @@ impl CredentialPolicySpec {
             return Err(CredentialPolicyError::InheritanceCycle(cycle));
         }
 
-        let profile =
-            self.profile(name)
-                .ok_or_else(|| CredentialPolicyError::UnknownProfile(name.to_string()))?;
+        let profile = self
+            .profile(name)
+            .ok_or_else(|| CredentialPolicyError::UnknownProfile(name.to_string()))?;
 
         stack.push(name.to_string());
 
@@ -186,7 +186,10 @@ impl CredentialPolicyDefaults {
         CredentialPolicyDefaults {
             provider: child.provider.or(self.provider),
             runtime: child.runtime.or(self.runtime),
-            impersonation: child.impersonation.clone().or_else(|| self.impersonation.clone()),
+            impersonation: child
+                .impersonation
+                .clone()
+                .or_else(|| self.impersonation.clone()),
             version_selector: child
                 .version_selector
                 .clone()
@@ -229,7 +232,6 @@ pub enum ScopeMergeMode {
     /// Child scopes are unioned with parent scopes.
     Union,
 }
-
 
 /// Secret binding reference used by an intent policy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -378,10 +380,7 @@ impl std::fmt::Display for CredentialPolicyError {
                 write!(f, "unknown credential policy profile '{profile}'")
             }
             CredentialPolicyError::UnknownIntent { profile, intent } => {
-                write!(
-                    f,
-                    "unknown intent policy '{intent}' in profile '{profile}'"
-                )
+                write!(f, "unknown intent policy '{intent}' in profile '{profile}'")
             }
             CredentialPolicyError::DuplicateProfile(profile) => {
                 write!(f, "duplicate credential policy profile '{profile}'")
@@ -428,7 +427,9 @@ mod tests {
                         provider: Some(CloudProviderKind::Gcp),
                         runtime: Some(CloudRuntimeKind::LocalDev),
                         impersonation: Some(ImpersonationPolicy::IfConfigured {
-                            service_account: Some("base-sa@example.iam.gserviceaccount.com".to_string()),
+                            service_account: Some(
+                                "base-sa@example.iam.gserviceaccount.com".to_string(),
+                            ),
                         }),
                         version_selector: Some(VersionSelector::Alias {
                             name: "active".to_string(),
@@ -467,14 +468,11 @@ mod tests {
                         provider: None,
                         runtime: None,
                         secret: None,
-                        required_scopes: Some(vec![
-                            "gist:write".to_string(),
-                            "repo".to_string(),
-                        ]),
+                        required_scopes: Some(vec!["gist:write".to_string(), "repo".to_string()]),
                         scope_merge: Some(ScopeMergeMode::Union),
                         impersonation: Some(ImpersonationPolicy::Always {
-                            service_account:
-                                "dev-secrets@example.iam.gserviceaccount.com".to_string(),
+                            service_account: "dev-secrets@example.iam.gserviceaccount.com"
+                                .to_string(),
                         }),
                         version_selector: None,
                     }],
@@ -702,9 +700,7 @@ mod tests {
             ],
         };
 
-        let resolved = spec
-            .resolve_profile("dev")
-            .expect("profile should resolve");
+        let resolved = spec.resolve_profile("dev").expect("profile should resolve");
 
         // Should inherit parent's Union.
         assert_eq!(

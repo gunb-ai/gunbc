@@ -365,7 +365,11 @@ impl Executable for SetOp {
             SetOp::Intersection => left.into_iter().filter(|v| right.contains(v)).collect(),
             SetOp::Difference => left.into_iter().filter(|v| !right.contains(v)).collect(),
             SetOp::SymmetricDifference => {
-                let mut out: Vec<Value> = left.iter().filter(|v| !right.contains(v)).cloned().collect();
+                let mut out: Vec<Value> = left
+                    .iter()
+                    .filter(|v| !right.contains(v))
+                    .cloned()
+                    .collect();
                 for v in &right {
                     if !left.contains(v) {
                         out.push(v.clone());

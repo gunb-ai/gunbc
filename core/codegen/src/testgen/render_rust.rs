@@ -64,10 +64,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
 
         // Helper functions
         for helper in &file.helpers {
-            writeln!(out,
-                "fn {}() -> {} {{",
-                helper.name, helper.return_type
-            ).unwrap();
+            writeln!(out, "fn {}() -> {} {{", helper.name, helper.return_type).unwrap();
             for stmt in &helper.body {
                 out.push_str(&self.render_stmt(stmt, 1));
             }
@@ -76,12 +73,14 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
 
         // Test sections
         for section in &file.sections {
-            write!(out,
+            write!(
+                out,
                 "// =========================================================================\n\
                  // {}\n\
                  // =========================================================================\n\n",
                 section.title
-            ).unwrap();
+            )
+            .unwrap();
 
             for note in &section.notes {
                 writeln!(out, "// {}", note).unwrap();
@@ -638,14 +637,16 @@ impl<M: TextMedium> RustCodeRenderer<M> {
             Some(ty) => format!(" -> {}", ty),
             None => String::new(),
         };
-        writeln!(out,
+        writeln!(
+            out,
             "{}{}fn {}({}){} {{",
             pad,
             vis,
             f.name,
             params.join(", "),
             ret
-        ).unwrap();
+        )
+        .unwrap();
 
         // Body
         for stmt in &f.body {

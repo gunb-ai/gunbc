@@ -16,10 +16,7 @@ pub enum AwsOps {
 }
 
 impl Executable for AwsOps {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         // Validate optional inputs so wrong-typed values are rejected,
         // matching the port declarations in the graph.
         optional_str_strict(&inputs, "header_name")?;
@@ -41,8 +38,6 @@ impl Executable for AwsOps {
             "cap".to_string(),
             Value::Secret(SecretString::new("capability")),
         );
-        OutputMap::new()
-            .value("credential", Value::Map(cred))
-            .ok()
+        OutputMap::new().value("credential", Value::Map(cred)).ok()
     }
 }

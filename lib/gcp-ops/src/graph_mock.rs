@@ -179,17 +179,18 @@ pub fn gcp_local_mock_spec() -> MockSpec {
         .boundary(
             "local_auth_upsert/execute_check",
             "response",
-            Value::Response(TransportResponse::File(
-                FileResponse::exists_result(&adc_path, true),
-            )),
+            Value::Response(TransportResponse::File(FileResponse::exists_result(
+                &adc_path, true,
+            ))),
         )
         // local_auth_upsert sub-DAG: read ADC file (File transport)
         .boundary(
             "local_auth_upsert/execute_read_adc",
             "response",
-            Value::Response(TransportResponse::File(
-                FileResponse::read_ok(&adc_path, mock_adc_json.to_string()),
-            )),
+            Value::Response(TransportResponse::File(FileResponse::read_ok(
+                &adc_path,
+                mock_adc_json.to_string(),
+            ))),
         )
         // local_auth_upsert sub-DAG: OAuth2 token try-refresh (REST transport)
         .boundary(
@@ -239,11 +240,7 @@ pub fn gcp_local_mock_spec() -> MockSpec {
             ))),
         )
         // setIamPolicy is skipped (binding already exists in mock)
-        .transport_mock(
-            "execute_set_iam",
-            "response",
-            Value::Skipped,
-        )
+        .transport_mock("execute_set_iam", "response", Value::Skipped)
         .input_mock(
             "prepare_impersonate",
             "service_account",
@@ -430,7 +427,11 @@ pub fn gcp_github_upsert_mock_spec() -> MockSpec {
         )
         .boundary("net_env", "net", mock_net_handle())
         // Probe-observer: terminal needs chain-safe observer
-        .live_expected_output("parse_secret_add_version", "version", OutputMatcher::IsString)
+        .live_expected_output(
+            "parse_secret_add_version",
+            "version",
+            OutputMatcher::IsString,
+        )
         // Pure nodes — skip example enforcement for now
         .skip_node_example("prepare_github_oidc")
         .skip_node_example("parse_github_oidc")

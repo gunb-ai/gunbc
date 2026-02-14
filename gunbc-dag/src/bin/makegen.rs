@@ -6,7 +6,7 @@
 use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::build_makegen_graph;
 use gunbc_exec::{
-    execute_and_display, execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode,
+    execute_and_display, execute_and_display_with_result, BoundaryMocks, ExecutionMode,
     TerminalProfile,
 };
 use gunbc_ir::resource::ExecMode;
@@ -168,9 +168,11 @@ fn main() {
     };
 
     if resource_mode == ExecMode::Verify {
-        // Check mode: bypass display, use execute_with_mode_and_inputs directly
-        match execute_with_mode_and_inputs(&dag, mode, Some(&input_mocks)) {
-            Ok(log) => {
+        // Check mode: execute through shared display path and inspect log outputs.
+        let profile = TerminalProfile::detect();
+        match execute_and_display_with_result(&dag, mode, &profile, None, Some(&input_mocks)) {
+            Ok(result) => {
+                let log = result.log;
                 // Scan log for compare_*_content.fresh
                 let fresh = log
                     .entries

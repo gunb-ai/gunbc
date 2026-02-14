@@ -202,14 +202,12 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
 
     let fs_resource = resource("fs", "FilesystemHandle", AccessMode::Write);
 
-    let cloud_env_status = builder
-        .add_root_node(Node::opaque(
-            "cloud_env_status",
-            vec![],
-            vec![port("status", "String")],
-            CIGraphOp::CloudEnv(CloudEnvStatus::new()),
-        ))
-        .expect("cloud_env_status node");
+    let cloud_env_status = builder.add_root_node(Node::opaque(
+        "cloud_env_status",
+        vec![],
+        vec![port("status", "String")],
+        CIGraphOp::CloudEnv(CloudEnvStatus::new()),
+    ))?;
 
     // ========================================================================
     // SetupDeps Stage: Check if deps.toml exists
@@ -239,10 +237,16 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     let codegen_nodes = inline_codegen_dag(&mut builder, mode)?;
     let parse_codegen_result = codegen_nodes
         .get(&NodeId::from("parse_codegen_result"))
-        .expect("codegen DAG should include parse_codegen_result");
+        .ok_or_else(|| {
+            BuilderError::InternalInvariant(
+                "codegen DAG should include parse_codegen_result".to_string(),
+            )
+        })?;
     let fs_env = codegen_nodes
         .get(&NodeId::from("fs_env"))
-        .expect("codegen DAG should include fs_env")
+        .ok_or_else(|| {
+            BuilderError::InternalInvariant("codegen DAG should include fs_env".to_string())
+        })?
         .clone();
 
     // ========================================================================
@@ -828,19 +832,25 @@ fn inline_codegen_dag(
         let node_ref = if deps.is_empty() {
             builder.add_root_node(mapped_node)?
         } else if deps.len() == 1 {
-            let dep_ref = node_refs
-                .get(&deps[0])
-                .expect("codegen DAG dependency should be present");
+            let dep_ref = node_refs.get(&deps[0]).ok_or_else(|| {
+                BuilderError::InternalInvariant(format!(
+                    "codegen DAG dependency should be present: {}",
+                    deps[0]
+                ))
+            })?;
             builder.add_node_after(mapped_node, dep_ref)?
         } else {
             let dep_refs: Vec<&NodeRef<CIGraphOp>> = deps
                 .iter()
                 .map(|id| {
-                    node_refs
-                        .get(id)
-                        .expect("codegen DAG dependency should be present")
+                    node_refs.get(id).ok_or_else(|| {
+                        BuilderError::InternalInvariant(format!(
+                            "codegen DAG dependency should be present: {}",
+                            id
+                        ))
+                    })
                 })
-                .collect();
+                .collect::<Result<Vec<_>, _>>()?;
             builder.add_node_after_all(mapped_node, &dep_refs)?
         };
 
@@ -848,12 +858,18 @@ fn inline_codegen_dag(
     }
 
     for edge in &dag.edges {
-        let from_ref = node_refs
-            .get(&edge.from_node)
-            .expect("codegen DAG source node missing");
-        let to_ref = node_refs
-            .get(&edge.to_node)
-            .expect("codegen DAG target node missing");
+        let from_ref = node_refs.get(&edge.from_node).ok_or_else(|| {
+            BuilderError::InternalInvariant(format!(
+                "codegen DAG source node missing: {}",
+                edge.from_node
+            ))
+        })?;
+        let to_ref = node_refs.get(&edge.to_node).ok_or_else(|| {
+            BuilderError::InternalInvariant(format!(
+                "codegen DAG target node missing: {}",
+                edge.to_node
+            ))
+        })?;
         builder.add_edge(
             from_ref.out(edge.from_port.clone()),
             to_ref.in_port(edge.to_port.clone()),

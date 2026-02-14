@@ -21,12 +21,7 @@ pub trait SecretManagerService {
     /// Access a secret version's payload.
     ///
     /// `GET /v1/projects/{project}/secrets/{secret}/versions/{version}:access`
-    fn access_secret_version(
-        &self,
-        project: &str,
-        secret: &str,
-        version: &str,
-    ) -> RestRequest;
+    fn access_secret_version(&self, project: &str, secret: &str, version: &str) -> RestRequest;
 
     /// Get secret metadata (check existence).
     ///
@@ -41,12 +36,7 @@ pub trait SecretManagerService {
     /// Add a version to an existing secret.
     ///
     /// `POST /v1/projects/{project}/secrets/{secret}:addVersion`
-    fn add_secret_version(
-        &self,
-        project: &str,
-        secret: &str,
-        payload_base64: &str,
-    ) -> RestRequest;
+    fn add_secret_version(&self, project: &str, secret: &str, payload_base64: &str) -> RestRequest;
 
     /// List all secrets in a project.
     ///
@@ -148,12 +138,7 @@ impl SecretManagerRest {
 }
 
 impl SecretManagerService for SecretManagerRest {
-    fn access_secret_version(
-        &self,
-        project: &str,
-        secret: &str,
-        version: &str,
-    ) -> RestRequest {
+    fn access_secret_version(&self, project: &str, secret: &str, version: &str) -> RestRequest {
         let path = format!(
             "/v1/projects/{}/secrets/{}/versions/{}:access",
             project, secret, version
@@ -177,12 +162,7 @@ impl SecretManagerService for SecretManagerRest {
             .query("secretId", secret_id)
     }
 
-    fn add_secret_version(
-        &self,
-        project: &str,
-        secret: &str,
-        payload_base64: &str,
-    ) -> RestRequest {
+    fn add_secret_version(&self, project: &str, secret: &str, payload_base64: &str) -> RestRequest {
         let path = format!("/v1/projects/{}/secrets/{}:addVersion", project, secret);
         self.base_request(HttpMethod::Post, &path)
             .json(serde_json::json!({
@@ -210,7 +190,9 @@ mod tests {
     fn test_access_secret_version_url() {
         let svc = SecretManagerRest::unauthenticated();
         let req = svc.access_secret_version("my-project", "my-secret", "latest");
-        assert!(req.url.contains("/v1/projects/my-project/secrets/my-secret/versions/latest:access"));
+        assert!(req
+            .url
+            .contains("/v1/projects/my-project/secrets/my-secret/versions/latest:access"));
         assert_eq!(req.method, HttpMethod::Get);
     }
 
@@ -218,7 +200,9 @@ mod tests {
     fn test_get_secret_url() {
         let svc = SecretManagerRest::unauthenticated();
         let req = svc.get_secret("my-project", "my-secret");
-        assert!(req.url.contains("/v1/projects/my-project/secrets/my-secret"));
+        assert!(req
+            .url
+            .contains("/v1/projects/my-project/secrets/my-secret"));
         assert_eq!(req.method, HttpMethod::Get);
     }
 
@@ -255,6 +239,9 @@ mod tests {
     fn test_method_meta_access_secret_version() {
         const { assert!(ACCESS_SECRET_VERSION_META.idempotent) };
         const { assert!(ACCESS_SECRET_VERSION_META.read_only) };
-        assert_eq!(ACCESS_SECRET_VERSION_META.permissions, &["secretmanager.versions.access"]);
+        assert_eq!(
+            ACCESS_SECRET_VERSION_META.permissions,
+            &["secretmanager.versions.access"]
+        );
     }
 }

@@ -33,12 +33,7 @@ pub trait WorkloadIdentityService {
     /// Get a specific WIF provider.
     ///
     /// `GET /v1/projects/{project}/locations/global/workloadIdentityPools/{pool}/providers/{provider}`
-    fn get_provider(
-        &self,
-        project: &str,
-        pool_id: &str,
-        provider_id: &str,
-    ) -> RestRequest;
+    fn get_provider(&self, project: &str, pool_id: &str, provider_id: &str) -> RestRequest;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,7 +72,8 @@ pub const LIST_PROVIDERS_META: MethodMeta = MethodMeta {
 
 /// Metadata for `get_provider`.
 pub const GET_PROVIDER_META: MethodMeta = MethodMeta {
-    endpoint: "/v1/projects/{project}/locations/global/workloadIdentityPools/{pool}/providers/{provider}",
+    endpoint:
+        "/v1/projects/{project}/locations/global/workloadIdentityPools/{pool}/providers/{provider}",
     http_method: HttpMethod::Get,
     idempotent: true,
     read_only: true,
@@ -141,12 +137,7 @@ impl WorkloadIdentityService for WorkloadIdentityRest {
         self.authed_get(&path)
     }
 
-    fn get_provider(
-        &self,
-        project: &str,
-        pool_id: &str,
-        provider_id: &str,
-    ) -> RestRequest {
+    fn get_provider(&self, project: &str, pool_id: &str, provider_id: &str) -> RestRequest {
         let path = format!(
             "/v1/projects/{}/locations/global/workloadIdentityPools/{}/providers/{}",
             project, pool_id, provider_id
@@ -182,7 +173,9 @@ mod tests {
     fn test_list_providers_url() {
         let svc = WorkloadIdentityRest::unauthenticated();
         let req = svc.list_providers("my-project", "github-pool");
-        assert!(req.url.contains("workloadIdentityPools/github-pool/providers"));
+        assert!(req
+            .url
+            .contains("workloadIdentityPools/github-pool/providers"));
     }
 
     #[test]

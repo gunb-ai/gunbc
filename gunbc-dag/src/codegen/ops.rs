@@ -12,18 +12,18 @@ use gunbc_ir::resource::{
     FreshnessOptions, ManagedResource, ManifestEntry, ManifestFreshness, ResourceDef,
     ResourceError, ResourceIo, ResourceManifest,
 };
-use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest};
+use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_STAMP_PATH};
 use gunbc_lib_transport::TransportIo;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Operations for the codegen DAG.
 #[derive(Debug, Clone)]
 pub enum CodegenOp {
-    /// Prepare a shell request that checks for generated CLI files.
+    /// Prepare a file glob request that checks for generated CLI files.
     PrepareCodegenExists,
-    /// Parse the exists check response.
+    /// Parse the exists check response (file-glob response, with shell fallback).
     ParseCodegenExists(ExecMode),
     /// Prepare the codegen shell command.
     PrepareCodegenCommand,
@@ -48,29 +48,8 @@ impl Executable for CodegenOp {
 fn execute_prepare_codegen_exists(
     _inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let paths = expected_codegen_paths();
-
-    // If no tools are registered, treat as "exists".
-    if paths.is_empty() {
-        let request = ShellRequest::new("true").into_transport_request();
-        return OutputMap::new()
-            .request("request", request)
-            .bool("skip", false)
-            .ok();
-    }
-
-    let mut cmd = String::new();
-    for path in paths {
-        if !cmd.is_empty() {
-            cmd.push_str(" && ");
-        }
-        cmd.push_str("test -f ");
-        cmd.push_str(&shell_quote(&path));
-    }
-
-    let request = ShellRequest::new("sh")
-        .args(["-c", &cmd])
-        .into_transport_request();
+    let pattern = format!("{}/**/main.rs", CODEGEN_BIN_DIR);
+    let request = TransportRequest::File(FileRequest::glob(pattern));
 
     OutputMap::new()
         .request("request", request)
@@ -87,8 +66,7 @@ fn execute_parse_codegen_exists(
     }
 
     let response = require_response(&inputs, "response")?;
-    let shell = response.require_shell()?;
-    let output_exists = shell.exit_code == 0;
+    let output_exists = codegen_outputs_exist(response)?;
 
     let manifest_result = check_codegen_manifest_freshness(output_exists);
 
@@ -124,6 +102,41 @@ fn execute_parse_codegen_exists(
     };
 
     OutputMap::new().bool("codegen_needed", codegen_needed).ok()
+}
+
+fn codegen_outputs_exist(response: &TransportResponse) -> Result<bool, ExecError> {
+    let expected_paths = expected_codegen_paths();
+    if expected_paths.is_empty() {
+        return Ok(true);
+    }
+
+    match response {
+        TransportResponse::File(file) if file.operation == FileOp::Glob => {
+            if !file.success {
+                return Ok(false);
+            }
+            let listed_paths: HashSet<&str> = file
+                .content
+                .as_deref()
+                .unwrap_or_default()
+                .lines()
+                .filter(|line| !line.is_empty())
+                .collect();
+            Ok(expected_paths
+                .iter()
+                .all(|path| listed_paths.contains(path.as_str())))
+        }
+        // Backward compatibility for older tests/mocks still using shell responses.
+        TransportResponse::Shell(shell) => Ok(shell.exit_code == 0),
+        TransportResponse::File(file) => Err(ExecError::new(format!(
+            "expected file glob response for codegen exists check, got {:?}",
+            file.operation
+        ))),
+        other => Err(ExecError::new(format!(
+            "unexpected response for codegen exists check: {:?}",
+            other
+        ))),
+    }
 }
 
 #[derive(Clone)]
@@ -288,27 +301,25 @@ fn expected_codegen_paths() -> Vec<String> {
         .collect()
 }
 
-fn shell_quote(value: &str) -> String {
-    if value.contains('\'') {
-        let escaped = value.replace('\'', "'\"'\"'");
-        format!("'{}'", escaped)
-    } else {
-        format!("'{}'", value)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_ir::transport::{FileResponse, ShellResponse};
 
     #[test]
-    fn test_shell_quote_simple() {
-        assert_eq!(shell_quote("path/to/file"), "'path/to/file'");
+    fn test_codegen_outputs_exist_from_glob_response() {
+        let expected = expected_codegen_paths();
+        let response = TransportResponse::File(FileResponse::glob_result(
+            format!("{}/**/main.rs", CODEGEN_BIN_DIR),
+            expected,
+        ));
+        assert!(codegen_outputs_exist(&response).expect("glob response should parse"));
     }
 
     #[test]
-    fn test_shell_quote_with_single_quote() {
-        assert_eq!(shell_quote("a'b"), "'a'\"'\"'b'");
+    fn test_codegen_outputs_exist_accepts_legacy_shell_response() {
+        let response = TransportResponse::Shell(ShellResponse::ok(""));
+        assert!(codegen_outputs_exist(&response).expect("shell response should parse"));
     }
 
     #[test]

@@ -12,10 +12,15 @@ pub fn topo_sort<T>(dag: &Dag<T>) -> Vec<NodeId> {
     let mut adj: HashMap<&str, Vec<&str>> = node_ids.iter().map(|id| (*id, Vec::new())).collect();
 
     for edge in &dag.edges {
-        *in_degree.get_mut(edge.to_node.0.as_str()).unwrap() += 1;
-        adj.get_mut(edge.from_node.0.as_str())
-            .unwrap()
-            .push(&edge.to_node.0);
+        if let Some(deg) = in_degree.get_mut(edge.to_node.0.as_str()) {
+            *deg += 1;
+        } else {
+            // Guard against malformed DAG edge refs to avoid panics in execution.
+            continue;
+        }
+        if let Some(neighbors) = adj.get_mut(edge.from_node.0.as_str()) {
+            neighbors.push(&edge.to_node.0);
+        }
     }
 
     // Start with nodes that have no incoming edges
@@ -36,10 +41,11 @@ pub fn topo_sort<T>(dag: &Dag<T>) -> Vec<NodeId> {
         if let Some(neighbors) = adj.get(id) {
             let mut next = Vec::new();
             for &neighbor in neighbors {
-                let deg = in_degree.get_mut(neighbor).unwrap();
-                *deg -= 1;
-                if *deg == 0 {
-                    next.push(neighbor);
+                if let Some(deg) = in_degree.get_mut(neighbor) {
+                    *deg -= 1;
+                    if *deg == 0 {
+                        next.push(neighbor);
+                    }
                 }
             }
             next.sort();

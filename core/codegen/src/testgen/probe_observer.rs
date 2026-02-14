@@ -381,11 +381,7 @@ fn nodes_on_paths<T>(dag: &Dag<T>, start: &str, end: &str) -> Vec<String> {
 ///
 /// "Nearest" means: for each path from the probe, find the first observer.
 /// This implements the segmentation rule: intermediate observers split chains.
-fn nearest_observers<T>(
-    dag: &Dag<T>,
-    probe_node: &str,
-    observers: &[Observer],
-) -> Vec<String> {
+fn nearest_observers<T>(dag: &Dag<T>, probe_node: &str, observers: &[Observer]) -> Vec<String> {
     let observer_set: HashSet<&str> = observers.iter().map(|o| o.node_id.as_str()).collect();
 
     // BFS from probe, stopping at observers.
@@ -600,10 +596,7 @@ pub fn observability_report(analysis: &ProbeObserverAnalysis) -> String {
     }
 
     lines.push(String::new());
-    lines.push(format!(
-        "Integration tests: {}",
-        analysis.tests.len()
-    ));
+    lines.push(format!("Integration tests: {}", analysis.tests.len()));
     for test in &analysis.tests {
         lines.push(format!(
             "  {} -> {} (depth {})",
@@ -648,7 +641,12 @@ mod tests {
     /// Helper to build a simple linear DAG: A -> B -> C
     fn linear_dag() -> Dag<()> {
         let mut dag = Dag::new();
-        dag.add_node(Node::opaque("a", vec![], vec![Port::new("out", "String")], ()));
+        dag.add_node(Node::opaque(
+            "a",
+            vec![],
+            vec![Port::new("out", "String")],
+            (),
+        ));
         dag.add_node(Node::opaque(
             "b",
             vec![Port::new("in", "String")],
@@ -683,8 +681,11 @@ mod tests {
 
     #[test]
     fn test_extract_probes_from_transport_mocks() {
-        let spec = MockSpec::new("test")
-            .transport_mock("a", "response", gunbc_ir::Value::Str("hello".into()));
+        let spec = MockSpec::new("test").transport_mock(
+            "a",
+            "response",
+            gunbc_ir::Value::Str("hello".into()),
+        );
         let analysis = simple_analysis();
         let probes = extract_probes(&spec, &analysis);
         assert_eq!(probes.len(), 1);
@@ -756,8 +757,11 @@ mod tests {
         let dag = linear_dag();
         let analysis = simple_analysis();
         // Probe at a, but NO observer at terminal c
-        let spec = MockSpec::new("test")
-            .transport_mock("a", "response", gunbc_ir::Value::Str("hello".into()));
+        let spec = MockSpec::new("test").transport_mock(
+            "a",
+            "response",
+            gunbc_ir::Value::Str("hello".into()),
+        );
 
         let result = analyze_probe_observers(&dag, &spec, &analysis);
         assert!(!result.gaps.is_empty());
@@ -803,7 +807,10 @@ mod tests {
             .find(|t| t.probe.node_id == "a" && t.observer.node_id == "c");
 
         assert!(a_to_b.is_some(), "should have a->b test");
-        assert!(a_to_c.is_none(), "a->c should be segmented: a hits observer b first");
+        assert!(
+            a_to_c.is_none(),
+            "a->c should be segmented: a hits observer b first"
+        );
 
         // b is promoted to a probe (intermediate observer), so b->c exists.
         // b is also a probe from NodeExample inputs, so there are two sources.
@@ -811,14 +818,19 @@ mod tests {
             .tests
             .iter()
             .find(|t| t.probe.node_id == "b" && t.observer.node_id == "c");
-        assert!(b_to_c.is_some(), "should have b->c test (b promoted + example inputs)");
+        assert!(
+            b_to_c.is_some(),
+            "should have b->c test (b promoted + example inputs)"
+        );
 
         // Verify the promoted probe appears in the analysis.
-        let promoted = result
-            .probes
-            .iter()
-            .any(|p| p.node_id == "b" && matches!(p.source, ProbeSource::IntermediateObserver { .. }));
-        assert!(promoted, "b should be promoted to probe from intermediate observer");
+        let promoted = result.probes.iter().any(|p| {
+            p.node_id == "b" && matches!(p.source, ProbeSource::IntermediateObserver { .. })
+        });
+        assert!(
+            promoted,
+            "b should be promoted to probe from intermediate observer"
+        );
 
         assert!(result.gaps.is_empty(), "no coverage gaps");
     }
@@ -836,7 +848,10 @@ mod tests {
             .node_example(
                 NodeExample::new("c")
                     .input("in", gunbc_ir::Value::Str("hello".into()))
-                    .output("out", OutputMatcher::Exact(Box::new(gunbc_ir::Value::Str("world".into())))),
+                    .output(
+                        "out",
+                        OutputMatcher::Exact(Box::new(gunbc_ir::Value::Str("world".into()))),
+                    ),
             )
             // ...and a live_expected_output with chain-safe NonEmpty matcher.
             .live_expected_output("c", "out", OutputMatcher::non_empty());
@@ -863,25 +878,26 @@ mod tests {
         // Probe at a, intermediate observer at b with only NonEmpty (no Exact).
         let spec = MockSpec::new("test")
             .transport_mock("a", "response", gunbc_ir::Value::Str("hello".into()))
-            .node_example(
-                NodeExample::new("b").output("out", OutputMatcher::non_empty()),
-            )
-            .node_example(
-                NodeExample::new("c").output("out", OutputMatcher::non_empty()),
-            );
+            .node_example(NodeExample::new("b").output("out", OutputMatcher::non_empty()))
+            .node_example(NodeExample::new("c").output("out", OutputMatcher::non_empty()));
 
         let result = analyze_probe_observers(&dag, &spec, &analysis);
 
         // b should be promoted as an intermediate observer → probe.
-        let promoted = result
-            .probes
-            .iter()
-            .any(|p| p.node_id == "b" && matches!(p.source, ProbeSource::IntermediateObserver { .. }));
+        let promoted = result.probes.iter().any(|p| {
+            p.node_id == "b" && matches!(p.source, ProbeSource::IntermediateObserver { .. })
+        });
         assert!(promoted, "b should be promoted even without Exact matchers");
 
         // Should have: a->b, b->c (b is promoted probe)
-        let a_to_b = result.tests.iter().any(|t| t.probe.node_id == "a" && t.observer.node_id == "b");
-        let b_to_c = result.tests.iter().any(|t| t.probe.node_id == "b" && t.observer.node_id == "c");
+        let a_to_b = result
+            .tests
+            .iter()
+            .any(|t| t.probe.node_id == "a" && t.observer.node_id == "b");
+        let b_to_c = result
+            .tests
+            .iter()
+            .any(|t| t.probe.node_id == "b" && t.observer.node_id == "c");
         assert!(a_to_b, "should have a->b test");
         assert!(b_to_c, "should have b->c test from promoted probe");
     }

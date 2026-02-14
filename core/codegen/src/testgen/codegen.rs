@@ -26,7 +26,9 @@ use crate::testgen::probe_observer::analyze_probe_observers;
 use crate::testgen::render_rust::plain_rust_renderer;
 use gunbc_infra::hash::ContentHash;
 use gunbc_ir::boundary_label;
-use gunbc_ir::code_ir::{Assert, Expr, HelperFn, Import, Item, Stmt, TestFile, TestFn, TestSection};
+use gunbc_ir::code_ir::{
+    Assert, Expr, HelperFn, Import, Item, Stmt, TestFile, TestFn, TestSection,
+};
 use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
@@ -521,10 +523,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 }
                 if !po_analysis.gaps.is_empty() {
                     file.header.push(String::new());
-                    file.header.push("WARNING: Unobserved terminal nodes detected.".to_string());
-                    file.header.push(
-                        "Add OutputMatchers via NodeExample for these nodes.".to_string(),
-                    );
+                    file.header
+                        .push("WARNING: Unobserved terminal nodes detected.".to_string());
+                    file.header
+                        .push("Add OutputMatchers via NodeExample for these nodes.".to_string());
                 }
             }
         }
@@ -2125,11 +2127,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         // Nodes explicitly marked skip_node_example are resource/boundary nodes
         // that won't be tested in single-node Real mode — no seed assertion needed.
         if let Some(spec) = &self.mock_spec {
-            if spec
-                .skipped_node_examples
-                .iter()
-                .any(|s| s == &node.id.0)
-            {
+            if spec.skipped_node_examples.iter().any(|s| s == &node.id.0) {
                 return;
             }
         }
@@ -2153,7 +2151,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if !base_inputs.contains_key(&port.name.0)
                 || !self.has_explicit_node_input_seed(&node.id.0, &port.name.0)
             {
-                missing.push(format!("{}.{} ({})", node.id.0, port.name.0, port.type_id.0));
+                missing.push(format!(
+                    "{}.{} ({})",
+                    node.id.0, port.name.0, port.type_id.0
+                ));
             }
         }
 
@@ -3172,7 +3173,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 if input_mock.node != node_id.0 {
                     continue;
                 }
-                if !node.inputs.iter().any(|port| port.name.0 == input_mock.port) {
+                if !node
+                    .inputs
+                    .iter()
+                    .any(|port| port.name.0 == input_mock.port)
+                {
                     continue;
                 }
                 inputs
@@ -3698,10 +3703,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     tests: vec![TestFn {
                         name: "test_probe_observer_lowering_failed".to_string(),
                         doc: vec!["Lowering must succeed for probe-observer tests.".to_string()],
-                        body: vec![Stmt::Expr(Expr::call(
-                            "panic!",
-                            vec![Expr::Str(err_msg)],
-                        ))],
+                        body: vec![Stmt::Expr(Expr::call("panic!", vec![Expr::Str(err_msg)]))],
                     }],
                 });
             }
@@ -3880,9 +3882,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 doc: vec![
                     format!(
                         "Chain test: {} -> {} (depth {})",
-                        chain_test.probe.node_id,
-                        chain_test.observer.node_id,
-                        chain_test.depth
+                        chain_test.probe.node_id, chain_test.observer.node_id, chain_test.depth
                     ),
                     String::new(),
                     "Non-tautological: asserts observer matchers, not baseline values.".to_string(),
@@ -3914,23 +3914,23 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             tests.push(TestFn {
                 name: "test_observability_invariant_no_gaps".to_string(),
                 doc: vec![
-                    "Every terminal node reachable from a probe must have an OutputMatcher.".to_string(),
+                    "Every terminal node reachable from a probe must have an OutputMatcher."
+                        .to_string(),
                     "This test fails when coverage gaps exist — add observers to fix.".to_string(),
                 ],
-                body: vec![Stmt::Expr(Expr::call(
-                    "panic!",
-                    vec![Expr::Str(msg)],
-                ))],
+                body: vec![Stmt::Expr(Expr::call("panic!", vec![Expr::Str(msg)]))],
             });
         }
 
         Some(TestSection {
             title: "Probe-Observer Integration Tests".to_string(),
             notes: vec![
-                format!("Probes: {} | Observers: {} | Tests: {}",
+                format!(
+                    "Probes: {} | Observers: {} | Tests: {}",
                     po_analysis.probes.len(),
                     po_analysis.observers.len(),
-                    po_analysis.tests.len()),
+                    po_analysis.tests.len()
+                ),
                 if po_analysis.gaps.is_empty() {
                     "All terminal nodes are observed.".to_string()
                 } else {
@@ -6167,7 +6167,10 @@ mod tests {
         assert_eq!(seed_policy_for_type("String"), SeedPolicy::Generated);
         assert_eq!(seed_policy_for_type("Int"), SeedPolicy::Generated);
         assert_eq!(seed_policy_for_type("Bool"), SeedPolicy::Generated);
-        assert_eq!(seed_policy_for_type("OptionalString"), SeedPolicy::Generated);
+        assert_eq!(
+            seed_policy_for_type("OptionalString"),
+            SeedPolicy::Generated
+        );
         assert_eq!(seed_policy_for_type("StringList"), SeedPolicy::Generated);
 
         // Fail-closed: unknown/new types default to ExplicitSeedRequired.
@@ -6193,7 +6196,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Optional input tests require explicit seeds for required semantic inputs in Real single-node mode")]
+    #[should_panic(
+        expected = "Optional input tests require explicit seeds for required semantic inputs in Real single-node mode"
+    )]
     fn test_optional_inputs_require_explicit_semantic_seed() {
         use gunbc_test::{NodeExample, OutputMatcher};
 

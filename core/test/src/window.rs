@@ -139,14 +139,9 @@ pub enum WindowError {
         detail: String,
     },
     /// Observer node missing from execution log.
-    MissingObserverNode {
-        node: String,
-    },
+    MissingObserverNode { node: String },
     /// Observer port missing from execution log.
-    MissingObserverPort {
-        node: String,
-        port: String,
-    },
+    MissingObserverPort { node: String, port: String },
 }
 
 impl fmt::Display for WindowError {
@@ -427,16 +422,15 @@ pub fn assert_chain_outputs(
     for ((node, port), matcher) in matchers {
         let entry = log
             .get(node)
-            .ok_or_else(|| WindowError::MissingObserverNode {
-                node: node.clone(),
-            })?;
+            .ok_or_else(|| WindowError::MissingObserverNode { node: node.clone() })?;
 
-        let actual = entry.outputs.get(port).ok_or_else(|| {
-            WindowError::MissingObserverPort {
+        let actual = entry
+            .outputs
+            .get(port)
+            .ok_or_else(|| WindowError::MissingObserverPort {
                 node: node.clone(),
                 port: port.clone(),
-            }
-        })?;
+            })?;
 
         matcher
             .check(actual)
@@ -717,7 +711,11 @@ mod window_subdag_tests {
         let sub = window_subdag(&dag, &window);
 
         assert_eq!(sub.nodes.len(), 1);
-        assert_eq!(sub.edges.len(), 0, "single-node window has no internal edges");
+        assert_eq!(
+            sub.edges.len(),
+            0,
+            "single-node window has no internal edges"
+        );
     }
 
     #[test]
@@ -904,10 +902,7 @@ mod assert_chain_outputs_tests {
         ]);
 
         let mut matchers = HashMap::new();
-        matchers.insert(
-            ("a".to_string(), "flag".to_string()),
-            OutputMatcher::IsBool,
-        );
+        matchers.insert(("a".to_string(), "flag".to_string()), OutputMatcher::IsBool);
         matchers.insert(
             ("b".to_string(), "count".to_string()),
             OutputMatcher::IntGe(5),

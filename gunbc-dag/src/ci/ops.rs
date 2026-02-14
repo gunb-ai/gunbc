@@ -1281,8 +1281,7 @@ impl Mockable for CIOp {
                 .build(),
             CIOp::PrepareVerifyMakegenCheck => {
                 let config = BuildConfig::cargo();
-                let request =
-                    TransportRequest::Shell(config.makegen_check.to_shell_request());
+                let request = TransportRequest::Shell(config.makegen_check.to_shell_request());
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)
@@ -1294,8 +1293,7 @@ impl Mockable for CIOp {
                 .build(),
             CIOp::PrepareVerifyBootstrapCheck => {
                 let config = BuildConfig::cargo();
-                let request =
-                    TransportRequest::Shell(config.bootstrap_check.to_shell_request());
+                let request = TransportRequest::Shell(config.bootstrap_check.to_shell_request());
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)
@@ -1307,8 +1305,7 @@ impl Mockable for CIOp {
                 .build(),
             CIOp::PrepareVerifyTestgenCheck => {
                 let config = BuildConfig::cargo();
-                let request =
-                    TransportRequest::Shell(config.testgen_check.to_shell_request());
+                let request = TransportRequest::Shell(config.testgen_check.to_shell_request());
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)
@@ -1320,8 +1317,7 @@ impl Mockable for CIOp {
                 .build(),
             CIOp::PrepareVerifyPragmaCheck => {
                 let config = BuildConfig::cargo();
-                let request =
-                    TransportRequest::Shell(config.pragma_check.to_shell_request());
+                let request = TransportRequest::Shell(config.pragma_check.to_shell_request());
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)
@@ -1522,10 +1518,7 @@ mod tests {
         inputs.insert("build_success".to_string(), Value::Bool(false));
         // Build a massive stderr with 200 lines
         let lines: Vec<String> = (0..200).map(|i| format!("error line {i}")).collect();
-        inputs.insert(
-            "build_stderr".to_string(),
-            Value::Str(lines.join("\n")),
-        );
+        inputs.insert("build_stderr".to_string(), Value::Str(lines.join("\n")));
         inputs.insert("test_success".to_string(), Value::Bool(true));
         inputs.insert("test_stdout".to_string(), Value::Str(String::new()));
         inputs.insert("test_stderr".to_string(), Value::Str(String::new()));

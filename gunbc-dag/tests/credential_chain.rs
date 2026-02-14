@@ -18,7 +18,12 @@ use gunbc_ir::transport::scope::ScopeContract;
 // ---------------------------------------------------------------------------
 
 fn assert_canonical_chain<T: std::fmt::Debug>(dag: &gunbc_ir::Dag<T>, graph_name: &str) {
-    let canonical_nodes = ["resolve_auth", "cloud_env", "bind_secret", "cloud_credential"];
+    let canonical_nodes = [
+        "resolve_auth",
+        "cloud_env",
+        "bind_secret",
+        "cloud_credential",
+    ];
 
     for node_id in &canonical_nodes {
         assert!(

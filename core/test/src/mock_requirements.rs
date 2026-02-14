@@ -146,7 +146,11 @@ impl fmt::Display for MockIncompleteError {
         writeln!(f)?;
         writeln!(f, "  Missing boundary mocks:")?;
         for slot in &self.missing {
-            writeln!(f, "    .boundary(\"{}\", \"{}\", <{}>)", slot.node, slot.port, slot.type_id)?;
+            writeln!(
+                f,
+                "    .boundary(\"{}\", \"{}\", <{}>)",
+                slot.node, slot.port, slot.type_id
+            )?;
         }
         writeln!(f)?;
         write!(
@@ -745,7 +749,10 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.missing.iter().any(|s| s.node == "node" && s.port == "port"));
+        assert!(err
+            .missing
+            .iter()
+            .any(|s| s.node == "node" && s.port == "port"));
     }
 
     #[test]

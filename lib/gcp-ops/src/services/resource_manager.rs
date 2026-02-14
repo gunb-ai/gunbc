@@ -33,11 +33,7 @@ pub trait ResourceManagerService {
     /// Set the IAM policy for a project (read-modify-write with etag).
     ///
     /// `POST /v1/projects/{project}:setIamPolicy`
-    fn set_iam_policy(
-        &self,
-        project: &str,
-        policy: serde_json::Value,
-    ) -> RestRequest;
+    fn set_iam_policy(&self, project: &str, policy: serde_json::Value) -> RestRequest;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,15 +132,10 @@ impl ResourceManagerService for ResourceManagerRest {
 
     fn get_iam_policy(&self, project: &str) -> RestRequest {
         let path = format!("/v1/projects/{}:getIamPolicy", project);
-        self.authed_post(&path)
-            .json(serde_json::json!({}))
+        self.authed_post(&path).json(serde_json::json!({}))
     }
 
-    fn set_iam_policy(
-        &self,
-        project: &str,
-        policy: serde_json::Value,
-    ) -> RestRequest {
+    fn set_iam_policy(&self, project: &str, policy: serde_json::Value) -> RestRequest {
         let path = format!("/v1/projects/{}:setIamPolicy", project);
         self.authed_post(&path)
             .json(serde_json::json!({ "policy": policy }))

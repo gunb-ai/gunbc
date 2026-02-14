@@ -211,15 +211,15 @@ Files:
   - lib/tools/gist/src/graph.rs (`execute_prepare_read_files`, ~line 150)
   - lib/tools/gist/src/graph.rs (`execute_parse_read_files`, ~line 207)
 
-### Codegen exists check: `sh -c` with `&&`-joined `test -f` commands
+### ~~Codegen exists check: `sh -c` with `&&`-joined `test -f` commands~~ FIXED (2026-02-14)
 
-`execute_prepare_codegen_exists` builds `test -f path1 && test -f path2 && ...`
-to check whether generated CLI files exist. The answer is a single bool.
+`execute_prepare_codegen_exists` now uses a native file transport glob request
+(`TransportRequest::File(FileRequest::glob("{CODEGEN_BIN_DIR}/**/main.rs"))`)
+instead of `sh -c`. `execute_parse_codegen_exists` checks expected generated
+paths against the glob result and computes a single `codegen_needed` bool.
 
-**Why shell isn't necessary:** Rust can check file existence directly via
-`std::path::Path::exists()`. This could be a pure Rust check in the transport
-executor (e.g., `TransportRequest::FilesExist(Vec<PathBuf>)`) or even a pure
-node that checks the filesystem through a resource handle.
+For compatibility with older tests/mocks, parse still accepts legacy shell
+responses, but production wiring no longer uses compound shell commands.
 
 Files:
   - gunbc-dag/src/codegen/ops.rs (`execute_prepare_codegen_exists`, ~line 41)

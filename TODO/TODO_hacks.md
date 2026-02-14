@@ -203,55 +203,42 @@ Removed `upsert_and_run` and unused imports (`CliToolError`, `Value`,
 
 ---
 
-## 11. Swapped TCP timeout fields — PROBABLE BUG
+## ~~11. Swapped TCP timeout fields — PROBABLE BUG~~ FIXED (2026-02-14)
 
-**Where**: `lib/transport/src/executor.rs` ~lines 343-352
+**Where**: `lib/transport/src/executor.rs` (`execute_tcp`)
 
-**What happens**: `connect_timeout_ms` is assigned to `set_read_timeout`
-and `read_timeout_ms` is assigned to `set_write_timeout`. The fields
-are swapped, meaning TCP reads use the connect timeout and writes use
-the read timeout.
+**What changed**:
+- `connect_timeout_ms` now controls `TcpStream::connect_timeout(...)`.
+- `read_timeout_ms` now maps to both `set_read_timeout(...)` and
+  `set_write_timeout(...)` for socket I/O timing.
 
-**Impact**: If `connect_timeout_ms` is short (e.g. 5s) and `read_timeout_ms`
-is long (e.g. 30s), reads will time out prematurely while writes get an
-unexpectedly long window. This can cause intermittent timeout failures
-that are difficult to diagnose.
-
-**Suggested fix**: Swap the assignments so `read_timeout_ms` maps to
-`set_read_timeout` and an appropriate value maps to `set_write_timeout`.
-
-See also: consolidation.md §17.1.
+**Result**: connect timeout and I/O timeout semantics are no longer swapped.
 
 ---
 
-## 12. `panic!()` in Result-returning `Executable` impl
+## ~~12. `panic!()` in Result-returning `Executable` impl~~ RESOLVED (2026-02-14 audit)
 
-**Where**: `lib/transport/src/cli.rs` lines 144-157
-
-**What happens**: Several match arms use `panic!()` for unexpected
-`CliToolOp` variants. The function returns `Result<_, ExecError>`.
-
-**Impact**: If a new variant is accidentally routed here, the process
-crashes instead of returning a recoverable error.
-
-**Suggested fix**: Replace `panic!(...)` with `Err(ExecError::new(...))`.
-
-See also: consolidation.md §17.6.
+`lib/transport/src/cli.rs` no longer panics for unexpected `CliToolOp`
+variants in `execute_cli_tool_op`; these paths now return invariant
+errors (`CliToolError::invariant(...)`) instead of crashing.
 
 ---
 
-## 13. ~70 `.expect()` calls in production graph builders
+## ~~13. ~70 `.expect()` calls in production graph builders~~ RESOLVED (2026-02-14)
 
 **Where**: `gunbc-dag/src/ci/graph.rs`, `gunbc-dag/src/workspace/subdags/bootstrap.rs`,
 `gunbc-dag/src/workspace/subdags/deps.rs`, `core/exec/src/topo.rs`
 
-**What happens**: Builder methods (`.add_node`, `.add_edge`, HashMap lookups)
-are followed by `.expect()`. All enclosing functions return `Result`.
+**What changed**:
+- `build_bootstrap_subdag` and deps subdag builders now return `Result<_, BuilderError>`
+  and propagate builder failures with `?`.
+- `build_workspace_dag` now returns `Result` and propagates subdag build errors.
+- `ci::graph` codegen inlining no longer uses `.expect()` in production code paths;
+  internal violations now return `BuilderError::InternalInvariant(...)`.
+- `topo_sort` no longer unwraps malformed edge references.
 
-**Impact**: A renamed node ID or malformed DAG panics the process instead
-of returning a diagnostic error.
-
-**Suggested fix**: Replace `.expect()` / `.unwrap()` with `.ok_or_else(|| ...)?`.
+**Result**: the cited production builder/execution paths now fail with
+recoverable errors instead of panicking.
 
 ---
 

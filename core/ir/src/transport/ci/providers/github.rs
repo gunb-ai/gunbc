@@ -18,9 +18,9 @@ use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
 use crate::transport::ci::render::{dag_to_shared_steps, CiRenderer, RenderConfig, SharedStep};
 use crate::transport::ci::runner::Runner;
-use std::fmt::Write;
 use crate::transport::github_actions::{ubuntu_22_04, ubuntu_24_04, ubuntu_latest, RunnerImage};
 use crate::Dag;
+use std::fmt::Write;
 
 /// GitHub Actions CI provider.
 ///
@@ -196,10 +196,12 @@ fn render_github_workflow(steps: &[SharedStep], config: &RenderConfig) -> String
     });
 
     // Job
-    write!(yaml,
+    write!(
+        yaml,
         "jobs:\n  {}:\n    runs-on: {}\n    timeout-minutes: {}\n    steps:\n",
         config.workflow_name, config.runner.id, config.timeout_minutes,
-    ).unwrap();
+    )
+    .unwrap();
 
     for step in steps {
         yaml.push_str(&render_github_step(step, config));
@@ -248,12 +250,14 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
                 yaml.push_str("        env:\n");
                 for dep in depends_on {
                     // Pass outputs from previous steps
-                    writeln!(yaml,
+                    writeln!(
+                        yaml,
                         "          STEP_{}_SUCCESS: ${{{{ steps.{}.outputs.STEP_{}_SUCCESS }}}}",
                         dep.0.to_uppercase(),
                         dep.0,
                         dep.0.to_uppercase()
-                    ).unwrap();
+                    )
+                    .unwrap();
                 }
             }
 

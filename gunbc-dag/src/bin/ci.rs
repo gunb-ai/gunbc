@@ -22,10 +22,7 @@
 
 #![deny(dead_code)]
 use gunbc_dag::build_ci_graph_with_mode;
-use gunbc_exec::{
-    execute_and_display, execute_with_mode_and_ci, BoundaryMocks, CiContext, ExecutionMode,
-    TerminalProfile,
-};
+use gunbc_exec::{execute_and_display, BoundaryMocks, CiContext, ExecutionMode, TerminalProfile};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
@@ -180,27 +177,10 @@ fn main() {
     }
     println!();
 
-    if is_ci {
-        // CI environment: use CI context for workflow commands (::group::, etc.)
-        let mut ci = ci;
-        match execute_with_mode_and_ci(&dag, mode, &mut ci) {
-            Ok(log) => {
-                for entry in &log.entries {
-                    if let Some(Value::Bool(false)) = entry.outputs.get("overall_success") {
-                        process::exit(1);
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                process::exit(1);
-            }
-        }
-    } else {
-        // Local environment: use progress display
-        let profile = TerminalProfile::detect();
-        execute_and_display(&dag, mode, &profile, Some("overall_success"), None);
-    }
+    // Shared execution/display path: CI grouping, local progress, and classic mode
+    // are selected internally from TerminalProfile and CI environment.
+    let profile = TerminalProfile::detect();
+    execute_and_display(&dag, mode, &profile, Some("overall_success"), None);
 }
 
 /// Parse the resource mode from command-line arguments.

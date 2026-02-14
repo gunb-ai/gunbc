@@ -114,10 +114,9 @@ impl ScopeContract for LlmScopeContract {
             _ => ("bearer", ""),
         };
 
-        let mut intent =
-            CredentialIntent::new(&self.provider_id, &self.provider_id, scheme)
-                .with_required_scopes([LlmScope::ChatCompletion.as_str()])
-                .with_interactive_allowed(true);
+        let mut intent = CredentialIntent::new(&self.provider_id, &self.provider_id, scheme)
+            .with_required_scopes([LlmScope::ChatCompletion.as_str()])
+            .with_interactive_allowed(true);
 
         if !header_name.is_empty() {
             intent = intent.with_header_name(header_name);

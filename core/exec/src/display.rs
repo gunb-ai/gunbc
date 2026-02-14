@@ -8,9 +8,10 @@
 //! # Architecture
 //!
 //! ```text
-//! TerminalProfile::detect() → supports_progress?
-//!   yes → lower → layout → snapshot → execute → animated replay
-//!   no  → execute_with_mode_and_inputs → print log entries
+//! TerminalProfile::detect() →
+//!   is_ci             → execute_with_mode_and_ci_and_inputs → grouped CI logs
+//!   supports_progress → lower → layout → snapshot → execute → animated replay
+//!   fallback          → execute_with_mode_and_inputs → print log entries
 //! ```
 
 use crate::frame_build::build_frame;
@@ -20,8 +21,9 @@ use crate::progress::{DagPhase, DagProgress, DagSnapshot, OutputSummary, Progres
 use crate::render::{Animation, RenderMode};
 use crate::terminal::TerminalProfile;
 use crate::{
-    execute_with_mode_and_inputs, execute_with_progress_and_mode_and_inputs, lower, topo_sort,
-    Executable, ExecutionMode, NodeState,
+    execute_with_mode_and_ci_and_inputs, execute_with_mode_and_inputs,
+    execute_with_progress_and_mode_and_inputs, lower, topo_sort, ExecError, Executable,
+    ExecutionMode, NodeState,
 };
 use gunbc_ir::layout::compute_layout;
 use gunbc_ir::symbols::{SymbolId, STANDARD};
@@ -31,6 +33,18 @@ use std::io;
 use std::process;
 use std::thread;
 use std::time::Duration;
+
+const ANSI_RED: &str = "\x1b[31m";
+const ANSI_RESET: &str = "\x1b[0m";
+
+/// Result from display-aware DAG execution.
+#[derive(Debug, Clone)]
+pub struct DisplayResult {
+    pub log: crate::ExecutionLog,
+    /// True when execution completed but policy indicates non-zero exit
+    /// (for example: `success_port=false`).
+    pub should_fail: bool,
+}
 
 /// Execute a DAG and display results based on terminal capabilities.
 ///
@@ -54,10 +68,35 @@ pub fn execute_and_display<T: Executable + Clone + Send>(
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) {
-    if profile.supports_progress {
-        run_with_progress(dag, mode, profile, success_port, input_mocks);
+    match execute_and_display_with_result(dag, mode, profile, success_port, input_mocks) {
+        Ok(result) => {
+            if result.should_fail {
+                process::exit(1);
+            }
+        }
+        Err(e) => {
+            print_error_attention(profile, "Execution failed", &e.to_string());
+            process::exit(1);
+        }
+    }
+}
+
+/// Execute a DAG through the shared display path and return execution results.
+///
+/// Unlike [`execute_and_display`], this function never exits the process.
+pub fn execute_and_display_with_result<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    profile: &TerminalProfile,
+    success_port: Option<&str>,
+    input_mocks: Option<&BoundaryMocks>,
+) -> Result<DisplayResult, ExecError> {
+    if profile.is_ci {
+        run_with_ci(dag, mode, success_port, input_mocks)
+    } else if profile.supports_progress {
+        run_with_progress(dag, mode, profile, success_port, input_mocks)
     } else {
-        run_classic(dag, mode, success_port, input_mocks);
+        run_classic(dag, mode, success_port, input_mocks)
     }
 }
 
@@ -67,35 +106,41 @@ fn run_classic<T: Executable + Clone + Send>(
     mode: ExecutionMode,
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
-) {
-    match execute_with_mode_and_inputs(dag, mode, input_mocks) {
-        Ok(log) => {
-            for entry in &log.entries {
-                let marker = if entry.was_intercepted {
-                    " [DRY-RUN]"
-                } else {
-                    ""
-                };
-                println!("[{}]{}", entry.node_id, marker);
+) -> Result<DisplayResult, ExecError> {
+    let log = execute_with_mode_and_inputs(dag, mode, input_mocks)?;
 
-                for (port, value) in &entry.outputs {
-                    print_value(port, value);
-                }
-            }
-            // Check success port if specified
-            if let Some(port) = success_port {
-                for entry in &log.entries {
-                    if let Some(Value::Bool(false)) = entry.outputs.get(port) {
-                        process::exit(1);
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            process::exit(1);
+    for entry in &log.entries {
+        let marker = if entry.was_intercepted {
+            " [DRY-RUN]"
+        } else {
+            ""
+        };
+        println!("[{}]{}", entry.node_id, marker);
+
+        for (port, value) in &entry.outputs {
+            print_value(port, value);
         }
     }
+
+    Ok(DisplayResult {
+        should_fail: success_port_failed(&log, success_port),
+        log,
+    })
+}
+
+/// CI execution: provider-aware grouped output via [`crate::CiContext`].
+fn run_with_ci<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    success_port: Option<&str>,
+    input_mocks: Option<&BoundaryMocks>,
+) -> Result<DisplayResult, ExecError> {
+    let mut ci = crate::CiContext::detect();
+    let log = execute_with_mode_and_ci_and_inputs(dag, mode, &mut ci, input_mocks)?;
+    Ok(DisplayResult {
+        should_fail: success_port_failed(&log, success_port),
+        log,
+    })
 }
 
 /// Progress-display execution: live DAG visualization with animated replay.
@@ -105,15 +150,9 @@ fn run_with_progress<T: Executable + Clone + Send>(
     profile: &TerminalProfile,
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
-) {
+) -> Result<DisplayResult, ExecError> {
     // Lower the DAG to get flat topology for layout
-    let flat = match lower(dag) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Error lowering DAG: {}", e);
-            process::exit(1);
-        }
-    };
+    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {}", e)))?;
 
     let boundaries = detect_boundaries(&flat.dag);
     let topo_order = topo_sort(&flat.dag);
@@ -253,36 +292,17 @@ fn run_with_progress<T: Executable + Clone + Send>(
     render(&visual, &spinner, &layout, &mut writer, &mut stdout);
 
     // Check execution result and exit code
-    match result {
-        Ok(log) => {
-            // Check final node states for hard failures
-            let mut should_fail = final_states.values().any(|s| *s == NodeState::Failed);
+    let log = result?;
 
-            // Check success port from execution log — same policy as classic path.
-            // A node can complete successfully (NodeState::Completed) while still
-            // emitting overall_success=false. Both paths must apply the same check.
-            if let Some(port) = success_port {
-                for entry in &log.entries {
-                    if let Some(Value::Bool(false)) = entry.outputs.get(port) {
-                        should_fail = true;
-                        break;
-                    }
-                }
-            }
+    // Check final node states for hard failures
+    let mut should_fail = final_states.values().any(|s| *s == NodeState::Failed);
+    should_fail = should_fail || success_port_failed(&log, success_port);
 
-            // Surface boundary outputs after progress render so users see
-            // the actual tool results (e.g., gist URL) instead of only the DAG view.
-            print_boundary_outputs(&log, &boundaries);
+    // Surface boundary outputs after progress render so users see
+    // the actual tool results (e.g., gist URL) instead of only the DAG view.
+    print_boundary_outputs(&log, &boundaries);
 
-            if should_fail {
-                process::exit(1);
-            }
-        }
-        Err(e) => {
-            eprintln!("\nError: {}", e);
-            process::exit(1);
-        }
-    }
+    Ok(DisplayResult { log, should_fail })
 }
 
 /// Print a single output value in the standard format.
@@ -333,6 +353,47 @@ fn print_boundary_outputs(log: &crate::ExecutionLog, boundaries: &gunbc_ir::Boun
             let label = format!("{}.{}", node_id.0, port_name.0);
             print_value(&label, value);
         }
+    }
+}
+
+/// Returns true when `success_port` is present and emits `false` in any log entry.
+fn success_port_failed(log: &crate::ExecutionLog, success_port: Option<&str>) -> bool {
+    let Some(port) = success_port else {
+        return false;
+    };
+
+    log.entries
+        .iter()
+        .any(|entry| matches!(entry.outputs.get(port), Some(Value::Bool(false))))
+}
+
+/// Print a high-signal error block.
+///
+/// TTY with color uses a red boxed section. Non-TTY uses a compact plain fallback.
+fn print_error_attention(profile: &TerminalProfile, title: &str, body: &str) {
+    let lines: Vec<&str> = body.lines().collect();
+    if profile.is_tty && profile.supports_color {
+        eprintln!();
+        eprintln!("  {ANSI_RED}┌─ {title}{ANSI_RESET}");
+        if lines.is_empty() {
+            eprintln!("  {ANSI_RED}│{ANSI_RESET} ");
+        } else {
+            for line in &lines {
+                eprintln!("  {ANSI_RED}│{ANSI_RESET} {line}");
+            }
+        }
+        eprintln!("  {ANSI_RED}└─{ANSI_RESET}");
+        return;
+    }
+
+    eprintln!();
+    eprintln!("ERROR: {title}");
+    if lines.is_empty() {
+        eprintln!("  (no details)");
+        return;
+    }
+    for line in &lines {
+        eprintln!("  {line}");
     }
 }
 

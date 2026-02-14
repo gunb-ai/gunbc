@@ -129,11 +129,7 @@ pub fn derive_categories(config: &BuildConfig) -> Vec<Category> {
     categories.push(Category {
         name: "Secrets and local config".into(),
         source: Some("secrets".into()),
-        items: vec![
-            ".env".into(),
-            ".env.local".into(),
-            ".env.*.local".into(),
-        ],
+        items: vec![".env".into(), ".env.local".into(), ".env.*.local".into()],
         rationale: Some("Environment-specific, may contain secrets".into()),
     });
     categories.push(Category {
@@ -199,10 +195,8 @@ impl<'a> GitignoreRenderer<'a> {
 
     /// Render the complete .gitignore with header.
     pub fn render(&self) -> String {
-        let regenerate_cmd = CargoCommand::new(Subcommand::Run(
-            WorkspaceBinary::Bootstrap.invocation(),
-        ))
-        .release();
+        let regenerate_cmd =
+            CargoCommand::new(Subcommand::Run(WorkspaceBinary::Bootstrap.invocation())).release();
         let header = FileHeader {
             generator_name: "gunbc-bootstrap".into(),
             regenerate_command: regenerate_cmd.to_shell().into(),

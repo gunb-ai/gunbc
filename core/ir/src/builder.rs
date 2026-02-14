@@ -91,6 +91,8 @@ pub enum BuilderError {
     InvalidResourceOutputPort { node: NodeId, port: PortName },
     /// Resource input port is not wired to any upstream edge.
     UnwiredResourceInput { node: NodeId, port: PortName },
+    /// Internal invariant violation while constructing a graph.
+    InternalInvariant(String),
 }
 
 /// Whether a port is an input or output.
@@ -200,6 +202,9 @@ impl fmt::Display for BuilderError {
                     "unwired resource input '{}:{}' (res:* inputs must be connected)",
                     node, port
                 )
+            }
+            BuilderError::InternalInvariant(msg) => {
+                write!(f, "internal invariant violated: {}", msg)
             }
         }
     }

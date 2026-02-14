@@ -7,7 +7,7 @@ use gunbc_ir::transport::{
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -337,15 +337,24 @@ fn execute_file(request: &FileRequest) -> Result<FileResponse, TransportError> {
 fn execute_tcp(request: &TcpRequest) -> Result<TcpResponse, TransportError> {
     let addr = format!("{}:{}", request.host, request.port);
 
-    let mut stream = TcpStream::connect(&addr)
-        .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?;
+    let mut stream = if let Some(timeout) = request.connect_timeout_ms {
+        let mut addrs = addr
+            .to_socket_addrs()
+            .map_err(|e| TransportError::new(format!("address resolution failed: {}", e)))?;
+        let socket_addr = addrs
+            .next()
+            .ok_or_else(|| TransportError::new(format!("no socket address for {}", addr)))?;
+        TcpStream::connect_timeout(&socket_addr, Duration::from_millis(timeout))
+            .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?
+    } else {
+        TcpStream::connect(&addr)
+            .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?
+    };
 
-    if let Some(timeout) = request.connect_timeout_ms {
+    if let Some(timeout) = request.read_timeout_ms {
         stream
             .set_read_timeout(Some(Duration::from_millis(timeout)))
             .ok();
-    }
-    if let Some(timeout) = request.read_timeout_ms {
         stream
             .set_write_timeout(Some(Duration::from_millis(timeout)))
             .ok();
