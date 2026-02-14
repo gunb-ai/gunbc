@@ -28,6 +28,18 @@ method = "apt"
 packages = ["rust-clippy"]
 
 [[dependency]]
+name = "gcloud"
+verify = "gcloud --version"
+
+[dependency.install.macos]
+method = "brew"
+packages = ["google-cloud-sdk"]
+
+[dependency.install.linux]
+method = "apt"
+packages = ["google-cloud-cli"]
+
+[[dependency]]
 name = "gh"
 verify = "gh --version"
 

@@ -160,7 +160,7 @@ fn build_makefile_blocks(registry: &ToolRegistry, config: &BuildConfig) -> Vec<S
 /// Build the .PHONY line.
 fn build_phony_line(registry: &ToolRegistry) -> String {
     let mut phony = String::from(
-        ".PHONY: help preflight-fix lint-upsert ensure-codegen build-release-bins codegen build clean testgen testgen-check deps-config deps-config-check makegen-check bootstrap-check pragma-check verify verify-fix fmt-fix lint-fix",
+        ".PHONY: help preflight-fix lint-upsert ensure-codegen build-release-bins ensure-tool-deps codegen build clean testgen testgen-check deps-config deps-config-check makegen-check bootstrap-check pragma-check verify verify-fix fmt-fix lint-fix",
     );
 
     for meta in &registry.meta_targets {
@@ -249,7 +249,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         deps: vec!["build-release-bins".into()],
         body: vec![wrap_with_progress(
             "Checking tool dependencies",
-            "target/release/gunbc-deps",
+            "target/release/gunbc-deps --manifest deps.toml",
         )
         .into()],
         comment: Some(
