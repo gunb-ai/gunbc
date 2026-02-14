@@ -644,16 +644,148 @@ oidc_exchange -> access_token -> secret_fetch -> parse -> credential
 - **Fast-path freshness**
   - Use `git status --porcelain` + `HEAD` hash to skip per-file scans when clean.
 
+## Consolidated Workflow Model Proposal (SSoT)
+
+### Target
+
+Define workflows once in a canonical registry and generate:
+1. DAG builders (runtime graph shape)
+2. CLI wrappers (`gunbc-*` binaries)
+3. Makefile targets
+4. CI workflow steps
+
+### Proposed Registry Shape
+
+```text
+WorkflowSpec {
+  id: "ci" | "build" | "codegen" | ...,
+  mode: "normal" | "verify",
+  steps: [StepSpec],
+  edges: [(from_step, to_step)],
+  resources: [ResourceContract],
+  outputs: [WorkflowOutput],
+}
+```
+
+```text
+StepSpec {
+  id: string,
+  kind: "prepare" | "execute" | "parse" | "subworkflow",
+  command_template?: string,
+  skip_on_failure_of?: [step_id],
+  verify_equivalent?: string,
+}
+```
+
+### Generation Rules
+
+1. `WorkflowSpec -> DAG`: generate node/edge assembly code with stable node IDs.
+2. `WorkflowSpec -> CLI`: generate `--mode=verify` / normal command wiring from the same step definitions.
+3. `WorkflowSpec -> Makefile`: generate targets and dependencies from the same edge set.
+4. `WorkflowSpec -> CI`: generate CI stage order and command invocations from the same stage projection.
+
+### Validation Gates
+
+1. Golden tests for generated Makefile and CI snippets.
+2. Contract tests for command arguments (`workflow_acceptance` style).
+3. Registry completeness test: all shipping workflows appear in the registry.
+
+## Parallel Executor Plan
+
+### Scheduler
+
+Use a deterministic ready-queue on top of topological ordering:
+1. Track indegree for each node.
+2. Push indegree-0 nodes into a ready queue.
+3. Pop nodes in deterministic order (stable lexical `NodeId` tie-break).
+4. Dispatch to worker pool when resource locks permit.
+
+### Worker Pool
+
+1. `N` workers, configurable (default: logical CPUs bounded by a sane cap).
+2. Nodes execute independently once admitted by scheduler.
+3. Completion updates downstream indegree and unlocks resources.
+
+### Resource Conflict Gating
+
+1. Use `derive_resource_accesses()` output as lock requests.
+2. Read/Read compatible; any Write conflicts with Read/Write on same resource.
+3. Admission control blocks conflicting nodes until lock release.
+4. Missing resource declarations are hard errors in parallel mode.
+
+### Failure + Skip Semantics
+
+1. Preserve current skip propagation behavior.
+2. Failed node marks dependents as skipped when configured.
+3. No partial reordering after failure beyond already running nodes.
+
+### Verification
+
+1. Determinism test: same DAG + mocks produces stable terminal outputs across repeated runs.
+2. Conflict test: intentionally conflicting nodes never overlap.
+3. Throughput smoke test: synthetic independent nodes execute faster with `N>1`.
+
+## Fast-Path Freshness Proposal
+
+### Goal
+
+Skip O(n) file scans in preflight when repo state is unchanged.
+
+### Key
+
+Cache tuple:
+1. `HEAD` commit (`git rev-parse HEAD`)
+2. Dirty bit + staged/unstaged summary (`git status --porcelain --untracked-files=no`)
+3. Toolchain fingerprint (`rustc --version`, `cargo clippy --version`)
+
+### Behavior
+
+1. If key matches previous run and dirty bit is clean, skip tracked-file stat/hash walk.
+2. If dirty or key missing/mismatched, fall back to current full scan/hash behavior.
+3. If `git` unavailable, use existing conservative full-scan path.
+
+### Cache Location
+
+`target/.gunbc-preflight-cache.json` (ephemeral, local, ignored by VCS).
+
+## Workflow Merge/Retire Decisions
+
+1. Merge `ensure-codegen` semantics into canonical workflow preflight stage (retire standalone Makefile-only orchestration role).
+2. Keep `gunbc-codegen-dag` as the canonical codegen freshness workflow; treat `gunbc-codegen` CLI as authoring/maintenance tool, not orchestration source.
+3. Keep `makegen`, `bootstrap`, `testgen`, `pragma` as distinct subworkflows, but invoke via registry-driven composition (not hard-coded duplicated chains).
+4. Keep CI `verify` stage as separate mode projection (`mode=verify`) from same registry steps.
+5. Retire duplicated dependency wiring in handwritten Makefile/CI once generated outputs are authoritative.
+
+## Implementation Roadmap
+
+### Phase 1: Audit + Metrics
+
+1. Land canonical `WorkflowSpec` types and registry loader.
+2. Add completeness tests: every existing workflow has a registry entry.
+3. Add baseline metrics hooks (node counts, critical path estimate, command counts).
+
+### Phase 2: Consolidate
+
+1. Generate Makefile + CI fragments from registry.
+2. Generate CLI wrapper wiring from registry.
+3. Keep old handwritten paths behind parity tests until outputs match.
+
+### Phase 3: Parallel Runtime
+
+1. Implement ready-queue + worker pool executor.
+2. Enable resource lock gating from declared accesses.
+3. Roll out behind feature flag, then make default after determinism/conflict tests pass.
+
 ## Tasks
 
-- [ ] Extend this doc with a dependency diagram for each workflow (ASCII or graph description).
-- [ ] Build a consolidated workflow model proposal (single source of truth for Makefile + CI + CLI).
+- [x] Extend this doc with a dependency diagram for each workflow (ASCII or graph description). _(2026-02-14: completed in “Workflow Maps (Static)” sections for Makefile, CI, build, codegen, testgen, makegen, pragma, bootstrap, docgen, gist, deps, clippy, llm/review/cloud workflows.)_
+- [x] Build a consolidated workflow model proposal (single source of truth for Makefile + CI + CLI). _(2026-02-14: completed in “Consolidated Workflow Model Proposal (SSoT)”.)_
 - [x] Identify all `cargo` invocations across workflows and propose a single-build + multi-run strategy. _(2026-02-14: inventory + strategy below; CI Build stage switched to `cargo test --no-run` and acceptance-verified in `gunbc-dag/tests/workflow_acceptance.rs`.)_
-- [ ] Design a parallel executor plan (ready-queue, worker pool, resource conflict checks).
-- [ ] Propose fast-path freshness detection (git HEAD/dirty state) to avoid per-file stat loops.
-- [ ] Decide which workflows should be merged/retired (e.g., `ensure-codegen` vs preflight vs codegen DAG).
-- [ ] Draft an implementation roadmap: phase 1 (audit + metrics), phase 2 (consolidate), phase 3 (parallel runtime).
-- [ ] Add a “resource declaration gap” audit for each DAG (which nodes need `res:*` annotations).
+- [x] Design a parallel executor plan (ready-queue, worker pool, resource conflict checks). _(2026-02-14: completed in “Parallel Executor Plan”.)_
+- [x] Propose fast-path freshness detection (git HEAD/dirty state) to avoid per-file stat loops. _(2026-02-14: completed in “Fast-Path Freshness Proposal”.)_
+- [x] Decide which workflows should be merged/retired (e.g., `ensure-codegen` vs preflight vs codegen DAG). _(2026-02-14: completed in “Workflow Merge/Retire Decisions”.)_
+- [x] Draft an implementation roadmap: phase 1 (audit + metrics), phase 2 (consolidate), phase 3 (parallel runtime). _(2026-02-14: completed in “Implementation Roadmap”.)_
+- [x] Add a “resource declaration gap” audit for each DAG (which nodes need `res:*` annotations). _(2026-02-14: completed in “Resource Declaration Gap Audit (Per DAG)”.)_
 - [x] Add purity enforcement tests (derive_resource_accesses + detect_resource_conflicts). _(2026-02-14: registry-wide test runner active in `gunbc-dag/tests/resource_purity_checks.rs`.)_
 - [x] Ensure every DAG builder is registered (testgen registry) so purity tests cover the entire codebase. _(2026-02-14: added source + runtime coverage gates in `gunbc-dag/tests/resource_registry_coverage.rs`; removed `resource_test_target(skip)` from canonical workflow builders and registered missing local/upsert variants.)_
 - [x] Add clippy guardrails to forbid direct I/O in pure crates (only transport/boundary crates allowed). _(2026-02-14: enforced via root `clippy.toml` disallowed-methods policy.)_

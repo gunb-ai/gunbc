@@ -57,7 +57,7 @@ pub fn ensure_lint_upsert_with_ci(
     let io = TransportIo::new();
     let resource = LintResource::new();
 
-    let manifest = load_manifest_default(&io)
+    let mut manifest = load_manifest_default(&io)
         .map_err(|e| format!("preflight: manifest load failed: {}", e))?;
 
     let state = resource.check_state(&manifest, &io);
@@ -86,6 +86,19 @@ pub fn ensure_lint_upsert_with_ci(
         }
         return Err(msg);
     }
+
+    let files = list_tracked_files(&io)
+        .map_err(|e| format!("preflight: failed to list tracked files: {}", e))?;
+    let key = compute_lint_key(&io, &files)
+        .map_err(|e| format!("preflight: failed to compute lint key: {}", e))?;
+    let file_list: Vec<String> = files
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+    manifest.insert(
+        resource.resource_id().clone(),
+        ManifestEntry::new(key, file_list.len()).with_input_files(file_list),
+    );
 
     save_manifest_default(&io, &manifest)
         .map_err(|e| {

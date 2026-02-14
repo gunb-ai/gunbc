@@ -23,32 +23,16 @@ use gunbc_ir::symbols::Tier;
 use std::env;
 use std::io::IsTerminal;
 
-/// Shell environment type.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Shell {
-    Bash,
-    Zsh,
-    Fish,
-    PowerShell,
-    Cmd,
-    Unknown(String),
-}
-
 /// Terminal profile: models the runtime environment for rendering decisions.
 ///
 /// Created via [`TerminalProfile::detect()`] which queries the OS and reads
-/// environment variables. The [`supports_progress`](Self::supports_progress)
-/// and [`supports_color`](Self::supports_color) fields are the decision
-/// points for rendering behavior.
+/// environment variables. Used internally by the display module for progress
+/// rendering details (viewport, tier, color support).
 #[derive(Debug, Clone)]
-pub struct TerminalProfile {
-    /// Detected shell.
-    pub shell: Shell,
+pub(crate) struct TerminalProfile {
     /// Whether stdout is connected to an interactive terminal.
     /// Detected via `std::io::IsTerminal` (file descriptor check).
     pub is_tty: bool,
-    /// Whether running inside a CI system (GitHub Actions, GitLab CI, etc.).
-    pub is_ci: bool,
     /// Whether `$TERM` is `dumb` (minimal terminal, no escape sequences).
     pub is_dumb: bool,
     /// Whether `$NO_COLOR` is set (https://no-color.org/).
@@ -57,10 +41,6 @@ pub struct TerminalProfile {
     pub tier: Tier,
     /// Terminal dimensions.
     pub viewport: Viewport,
-    /// Whether animated progress display is supported.
-    ///
-    /// True when: real TTY + not CI + not dumb + Unicode or better.
-    pub supports_progress: bool,
     /// Whether ANSI color codes are supported.
     ///
     /// True when: real TTY + not CI + not dumb + NO_COLOR not set.
@@ -71,9 +51,8 @@ impl TerminalProfile {
     /// Detect the terminal profile from the current environment.
     ///
     /// Queries the OS for TTY status and terminal size, then reads
-    /// environment variables for shell type, CI context, and capabilities.
-    pub fn detect() -> Self {
-        let shell = detect_shell();
+    /// environment variables for capabilities.
+    pub(crate) fn detect() -> Self {
         let is_tty = detect_tty();
         let is_ci = detect_ci();
         let is_dumb = detect_dumb();
@@ -81,41 +60,16 @@ impl TerminalProfile {
         let tier = detect_tier(is_dumb);
         let viewport = detect_viewport();
 
-        // Progress requires: real TTY + not CI + not dumb + at least Unicode
-        let supports_progress = is_tty && !is_ci && !is_dumb && !matches!(tier, Tier::Ascii);
-
         // Color requires: real TTY + not CI + not dumb + NO_COLOR not set
         let supports_color = is_tty && !is_ci && !is_dumb && !no_color;
 
         Self {
-            shell,
             is_tty,
-            is_ci,
             is_dumb,
             no_color,
             tier,
             viewport,
-            supports_progress,
             supports_color,
-        }
-    }
-
-    /// Create a non-interactive profile (serial connection baseline).
-    ///
-    /// Used in tests and as the explicit "no terminal" state.
-    /// `supports_progress` and `supports_color` are always false.
-    #[cfg(test)]
-    pub fn plain() -> Self {
-        Self {
-            shell: Shell::Unknown("none".into()),
-            is_tty: false,
-            is_ci: false,
-            is_dumb: false,
-            no_color: false,
-            tier: Tier::Ascii,
-            viewport: Viewport::new(80, 24, ViewportUnit::Chars),
-            supports_progress: false,
-            supports_color: false,
         }
     }
 }

@@ -7,10 +7,10 @@
 //! # Architecture
 //!
 //! ```text
-//! TerminalProfile::detect() →
-//!   supports_progress → live DAG animation via SharedProgressObserver
-//!   else              → observer-driven status lines + boundary outputs
-//!                       (CI environments compose CiGroupObserver for workflow annotations)
+//! animated: bool →
+//!   true  → live DAG animation via SharedProgressObserver
+//!   false → observer-driven status lines + boundary outputs
+//!           (CI environments compose CiGroupObserver for workflow annotations)
 //! ```
 
 use crate::frame_build::{build_frame, format_duration};
@@ -30,7 +30,7 @@ use gunbc_ir::symbols::{SymbolId, STANDARD};
 use gunbc_ir::{detect_boundaries, Dag, NodeId, Value};
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::io;
+use std::io::{self, IsTerminal};
 use std::process;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -65,8 +65,7 @@ pub struct DisplayResult {
 /// Execute a DAG and display results based on terminal capabilities.
 ///
 /// This is the single entry point for all CLI tools. It handles:
-/// - Terminal profile detection (already done by caller)
-/// - Progress display with animated replay (when `profile.supports_progress`)
+/// - Progress display with animated replay (when `animated` is true)
 /// - Classic text output (otherwise)
 /// - Exit code handling (exits with code 1 on failure)
 ///
@@ -74,21 +73,20 @@ pub struct DisplayResult {
 ///
 /// - `dag`: The DAG to execute.
 /// - `mode`: Execution mode (real or dry-run with mocks).
-/// - `profile`: Terminal profile from `TerminalProfile::detect()`.
+/// - `animated`: Whether to use animated progress display.
 /// - `success_port`: Optional port name to check for `false` → exit(1).
 /// - `input_mocks`: Optional input overrides for entrypoint ports.
 pub fn execute_and_display<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
-    profile: &TerminalProfile,
+    animated: bool,
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) {
-    match execute_and_display_with_result(dag, mode, profile, success_port, input_mocks) {
+    match execute_and_display_with_result(dag, mode, animated, success_port, input_mocks) {
         Ok(result) => {
             if result.should_fail {
                 print_attention(
-                    profile,
                     AttentionLevel::Error,
                     "Execution failed",
                     "A required success check returned false.",
@@ -98,7 +96,6 @@ pub fn execute_and_display<T: Executable + Clone + Send>(
         }
         Err(e) => {
             print_attention(
-                profile,
                 AttentionLevel::Error,
                 "Execution failed",
                 &e.to_string(),
@@ -114,14 +111,14 @@ pub fn execute_and_display<T: Executable + Clone + Send>(
 pub fn execute_and_display_with_result<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
-    profile: &TerminalProfile,
+    animated: bool,
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<DisplayResult, ExecError> {
-    if profile.supports_progress {
-        run_with_progress(dag, mode, profile, success_port, input_mocks)
+    if animated {
+        run_with_progress(dag, mode, success_port, input_mocks)
     } else {
-        run_plain(dag, mode, profile, success_port, input_mocks)
+        run_plain(dag, mode, success_port, input_mocks)
     }
 }
 
@@ -133,7 +130,6 @@ pub fn execute_and_display_with_result<T: Executable + Clone + Send>(
 fn run_plain<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
-    profile: &TerminalProfile,
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<DisplayResult, ExecError> {
@@ -142,7 +138,11 @@ fn run_plain<T: Executable + Clone + Send>(
 
     let mut status_observer = NonTtyProgressObserver::default();
 
-    let log = if profile.is_ci {
+    let is_ci = std::env::var("CI").is_ok()
+        || std::env::var("GITHUB_ACTIONS").is_ok()
+        || std::env::var("GITLAB_CI").is_ok();
+
+    let log = if is_ci {
         // CI groups require sequential execution (groups must nest properly).
         // The parallel executor already respects GUNBC_EXEC_MAX_CONCURRENCY.
         let _guard = CiConcurrencyGuard::new();
@@ -216,10 +216,10 @@ impl Drop for CiConcurrencyGuard {
 fn run_with_progress<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
-    profile: &TerminalProfile,
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<DisplayResult, ExecError> {
+    let profile = TerminalProfile::detect();
     // Lower the DAG to get flat topology for layout
     let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {}", e)))?;
 
@@ -605,14 +605,15 @@ fn success_port_failed(log: &crate::ExecutionLog, success_port: Option<&str>) ->
 ///
 /// TTY with color uses a boxed section keyed by severity color.
 /// Non-TTY uses a compact plain fallback.
-pub fn print_attention(profile: &TerminalProfile, level: AttentionLevel, title: &str, body: &str) {
+pub fn print_attention(level: AttentionLevel, title: &str, body: &str) {
     let (label, color) = match level {
         AttentionLevel::Info => ("INFO", ANSI_BLUE),
         AttentionLevel::Warning => ("WARNING", ANSI_YELLOW),
         AttentionLevel::Error => ("ERROR", ANSI_RED),
     };
     let lines: Vec<&str> = body.lines().collect();
-    if profile.is_tty && profile.supports_color {
+    let use_color = std::io::stdout().is_terminal() && std::env::var("NO_COLOR").is_err();
+    if use_color {
         eprintln!();
         eprintln!("  {color}┌─ [{label}] {title}{ANSI_RESET}");
         if lines.is_empty() {

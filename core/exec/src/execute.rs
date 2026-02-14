@@ -35,8 +35,11 @@ use crate::progress::{DagSnapshot, OutputSummary, ProgressObserver};
 use crate::topo::topo_sort;
 use crate::Executable;
 use gunbc_ir::{
-    canonical_edge_order, detect_boundaries, detect_entrypoints, BoundaryInfo, Cardinality, Dag,
-    Node, NodeBody, NodeId, Value,
+    canonical_edge_order, detect_boundaries, detect_entrypoints, AccessMode, BoundaryInfo,
+    Cardinality, Dag, Node, NodeBody, NodeId, Value,
+};
+use gunbc_ir::{
+    transport::{FileOp, TransportResponse},
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;

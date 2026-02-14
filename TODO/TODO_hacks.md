@@ -316,41 +316,42 @@ CI workflow YAML.
 
 ---
 
-## 16. CI/local execution path split duplicates display/reporting logic
+## ~~16. CI/local execution path split duplicates display/reporting logic~~ RESOLVED (2026-02-13)
 
-**Where**: `core/exec/src/display.rs` (lines 121-173), `gunbc-dag/src/bin/ci.rs`
+**Where**: `core/exec/src/display.rs`, `core/exec/src/progress.rs`,
+`core/exec/src/ci_context.rs`
 
-**What happens**: `execute_and_display` branches into completely different
-functions for CI (`run_with_ci`) vs local (`run_with_progress` /
-`run_non_tty_summary` / `run_classic`). Improvements to one path don't
-propagate to the other.
+**What changed**:
+- Extended `ProgressObserver` trait with CI-aware hooks: `on_secret_output`,
+  `on_failure_diagnostics`, `on_boundary_output`, `requires_sequential`.
+- Implemented `ProgressObserver` on `CiContext` — maps observer hooks to
+  CI workflow commands (groups, error annotations, secret masking).
+- Added `ComposedObserver` adapter to fan out to two observers.
+- `display.rs` now uses a single `run_plain` path that composes
+  `NonTtyProgressObserver` with `CiContext` via `ComposedObserver` when
+  in CI, instead of branching into separate CI/local display functions.
 
-**Why it's a hack**: Display/reporting logic drift between CI and local makes
-failures harder to reproduce and debug across environments.
-
-**Suggested fix**: One execution path, parameterized by a `DisplayConfig` /
-`CiContext`. CI grouping and progress rendering should be observer callbacks,
-not separate codepaths.
-
-**Added**: 2026-02-13 (reconciliation)
+**Result**: One execution path for both CI and local. CI grouping and
+progress rendering are observer callbacks, not separate codepaths.
 
 ---
 
-## 17. Preflight bypasses CI grouping and structured error reporting
+## ~~17. Preflight bypasses CI grouping and structured error reporting~~ RESOLVED (2026-02-13)
 
-**Where**: `lib/transport/src/preflight.rs` (lines 52, 306-365)
+**Where**: `lib/transport/src/preflight.rs`, `gunbc-dag/src/bin/ci.rs`
 
-**What happens**: Preflight uses raw `println!`/`eprintln!` throughout. It runs
-before the DAG and has no access to `CiContext`, so its output appears as
-unstructured noise in CI logs with no `::error::` annotations.
+**What changed**:
+- Added `ensure_lint_upsert_with_ci(ci: Option<&mut CiContext>)` which
+  wraps the entire preflight in a CI group and emits `::error::` annotations
+  on failure.
+- `run_lint_upsert` now accepts an optional `CiContext` and wraps each step
+  (codegen-dag, testgen, pragma, clippy, test) in collapsed CI sub-groups.
+- `ci.rs` passes a `CiContext::detect()` to preflight for structured output.
+- `ensure_lint_upsert()` delegates to `ensure_lint_upsert_with_ci(None)` for
+  backward compatibility (non-CI binaries).
 
-**Why it's a hack**: Preflight failures in CI produce no GitHub annotations and
-aren't wrapped in CI groups, making them hard to find in logs.
-
-**Suggested fix**: Either make preflight a DAG node, or at minimum accept a
-`CiContext` and emit CI groups + structured error commands.
-
-**Added**: 2026-02-13 (reconciliation)
+**Result**: Preflight failures in CI produce GitHub annotations and are
+wrapped in collapsible CI groups. Each step is a separate sub-group.
 
 ---
 
@@ -472,21 +473,39 @@ default to poison/UNSET unless explicitly mocked.
 
 ---
 
-## 24. Multiple `cargo run --release` invocations in Makefile
+## 24. Multiple `cargo run --release` invocations in Makefile + duplicated binary CLI parsing
 
-**Where**: `Makefile` (lines 22, 30, 42, 46, 50, 54-64)
+**Where**: `Makefile` (lines 22, 30, 42, 46, 50, 54-64),
+`gunbc-dag/src/bin/*.rs` (all 8 binaries)
 
-**What happens**: The generated Makefile invokes `cargo run -p gunbc-dag --bin X
---release` 6+ times for codegen, testgen, pragma, makegen, bootstrap. Each
-invocation incurs full cargo overhead (dependency resolution, compilation
-checks, binary loading).
+**What happens**: Two related issues:
 
-**Why it's a hack**: Repeated cargo invocations are a CI-time multiplier. The
-binaries are already compiled; running them via `cargo run` re-checks
-dependencies every time.
+1. **Makefile overhead**: The generated Makefile invokes `cargo run -p gunbc-dag
+   --bin X --release` 6+ times for codegen, testgen, pragma, makegen, bootstrap.
+   Each invocation incurs full cargo overhead (dependency resolution, compilation
+   checks, binary loading).
 
-**Suggested fix**: Build once (`cargo build --release`), then invoke binaries
-directly from `target/release/`. Or use a single orchestrator binary with
-subcommands.
+2. **Duplicated CLI parsing**: All 8 binaries (`codegen`, `build`, `docgen`,
+   `makegen`, `testgen`, `bootstrap`, `pragma`, `ci`) hand-roll the same
+   ~30-line arg-parsing boilerplate: `env::args().collect()` → while-loop match
+   on `-n`/`--dry-run`, `-h`/`--help`, `--mode=verify|ensure`, `--check`
+   (deprecated). 6 of 8 binaries share the full `--mode` flag set; `build` and
+   `docgen` are the simpler pair (dry-run + help only).
+
+**Why it's a hack**: Repeated cargo invocations are a CI-time multiplier.
+Duplicated CLI parsing is maintenance burden and a drift risk — §19 and §20
+each required touching all 8 binaries for what should have been a one-line
+change.
+
+**Suggested fix**:
+- **Makefile**: Build once (`cargo build --release`), then invoke binaries
+  directly from `target/release/`. Or use a single orchestrator binary with
+  subcommands.
+- **CLI parsing**: Extract a shared `BinaryArgs` type in `core/cli/` with
+  `BinaryArgs::parse()` that handles the common flag vocabulary (`--dry-run`,
+  `--help`, `--mode`, `--check`). The `--mode` flag can be opt-in for the
+  simpler binaries. This could also be generated by codegen if the binary
+  entry points themselves become generated artifacts.
 
 **Added**: 2026-02-13 (reconciliation)
+**Updated**: 2026-02-13 (added duplicated CLI parsing scope)
