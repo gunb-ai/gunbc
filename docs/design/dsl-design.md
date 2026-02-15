@@ -30,6 +30,7 @@
 - [G. Worked Example: Rendering / Emission](#appendix-g-rendering--emission)
 - [H. Pattern Catalog](#appendix-h-pattern-catalog)
 - [I. Inspiration Targets](#appendix-i-inspiration-targets)
+- [J. Cross-Repository Capability Matrix](#appendix-j-cross-repository-capability-matrix)
 
 ---
 
@@ -2197,3 +2198,491 @@ pattern emit {
 - **Terraform state**: Mutable state management (our model is stateless)
 - **Pulumi**: Host-language coupling (defeats language-agnosticism)
 - **Helm**: Template-of-a-template layering (complexity without guarantees)
+
+---
+
+# Appendix J: Cross-Repository Capability Matrix
+
+This appendix documents what each generation of the platform (gunb.ai, the-gunbai, gunbc) provides "for free" — meaning what the framework gives you without manual effort — and how capabilities transfer across the lineage as scenarios evolve.
+
+## J.1 The Lineage: What Each Generation Proved
+
+```
+gunb.ai (v1, Go)          the-gunbai (v2, Rust)       gunbc (v3, Rust)           DSL (v4, target)
+──────────────────         ──────────────────────      ──────────────────         ──────────────────
+DAGs work                  Codegen from knowledge      Full IR + proofs           Language-level DAGs
+CaptureWriter              TUI progress                Testgen (73% gen)          95% generated code
+Lease execution            40+ understandings          Transport boundaries       Filesystem discovery
+                           195+ behaviors              DryRun interception        Multi-target emission
+```
+
+### What "for free" means at each generation
+
+| Generation | "For free" = | You still write manually |
+|---|---|---|
+| **gunb.ai** | Parallel execution, output capture, progress sections | Everything: graph wiring, tests, types, discovery, progress groups |
+| **the-gunbai** | Integration code from understandings, TUI progress, some contract tests | Graph wiring, most tests, IR is implicit, no structural guarantees |
+| **gunbc** | Structural soundness, 73% of tests, DryRun, transport interception, pattern reuse | Graph builders (7,000+ lines), discovery (6 islands), progress rendering |
+| **DSL** | Graph authoring (10-100x compressed), discovery, progress manifest, multi-language codegen | Pure transformation logic (~5% of total code) |
+
+## J.2 Scenario Inventory
+
+Seven canonical scenarios span the three repos. Each exercises different framework capabilities.
+
+| # | Scenario | Pattern | Key Concern | Repos |
+|---|---|---|---|---|
+| S1 | Content upsert (makegen) | `content_upsert` | File generation, skip-if-unchanged | gunbc, DSL |
+| S2 | Cloud credential acquisition | `credential_chain` | Multi-transport, branching, guards | gunb.ai, the-gunbai, gunbc, DSL |
+| S3 | Tool installation | `upsert` | Check → install → resolve | gunbc, DSL |
+| S4 | Service composition (gist) | Journey composition + loop | Multi-service, loops, SubDag | gunb.ai, the-gunbai, gunbc, DSL |
+| S5 | CI pipeline | `pipeline` | Stages, parallel groups, aggregation | gunbc, DSL |
+| S6 | LLM review | Credential + service call | Cloud + external API composition | gunbc, DSL |
+| S7 | Authentication flow | Interactive + credential | Passthrough, TUI sections, OAuth | gunb.ai, the-gunbai |
+
+## J.3 Per-Scenario Cross-Comparison
+
+### S1: Content Upsert (Makegen)
+
+The simplest complete graph. Generates a file, reads the existing version, compares, writes only if changed.
+
+**What each repo gets for free:**
+
+| Capability | gunb.ai | the-gunbai | gunbc | DSL |
+|---|---|---|---|---|
+| Graph wiring | Manual (~500 lines) | Manual (~300 lines) | Builder + helper (~200 lines) | 5 lines of `.dag` |
+| Skip-if-unchanged logic | Handwritten | Handwritten | `ContentUpsertChain` helper | `content_upsert` pattern (compiler expands) |
+| Tests | All handwritten | Mostly handwritten | 73% generated (testgen derives obligations from graph structure) | 95%+ generated |
+| DryRun | N/A | N/A | Free (transport boundary interception) | Free |
+| Progress display | Manual groups | Runtime TUI | Frame-based (manual wiring) | ProgressManifest (compiler-derived) |
+| File resource tracking | Implicit | Implicit | Typed `res:file:*` ports | `uses fs: Filesystem(mode: Write)` — compiler inserts lifecycle |
+
+**The transition in concrete terms:**
+
+```
+gunb.ai:     500 lines Go + 100 lines test = 600 total, 0% generated
+the-gunbai:  300 lines Rust + 80 lines test = 380 total, 0% generated
+gunbc:       200 lines Rust + 50 lines test = 250 total, ~60% generated (testgen)
+DSL:         5 lines .dag + 20 lines pure logic = 25 total, ~95% generated
+```
+
+gunbc's contribution to the DSL: `ContentUpsertChain` proved that the 5-node pattern (read → compare → conditional write) is universal. Every content-generation tool in gunbc uses it. The DSL makes it a first-class `pattern` that the compiler expands, eliminating the helper entirely.
+
+### S2: Cloud Credential Acquisition (GCP)
+
+The most complex graph. OIDC token → STS exchange → optional impersonation → secret access. The canonical stress test.
+
+**What each repo gets for free:**
+
+| Capability | gunb.ai | the-gunbai | gunbc | DSL |
+|---|---|---|---|---|
+| Graph wiring | ~800 lines Go | Understanding-generated (~400 lines) | ~1,688 lines Rust builders | ~50 lines across 2 `.dag` files |
+| Transport triplets | Handwritten per API call | Generated from understandings | Handwritten (prepare/execute/parse × 8) | Compiler expands from `@rest` annotations |
+| Runtime branching (GitHub Actions vs Metadata vs Local) | `switch` statement | Behavior routing | `BranchBuilder` (manual arm wiring) | `match runtime { ... }` — compiler creates BranchBuilder |
+| Optional impersonation | `if` block | Conditional behavior | Guarded port (manual) | `when service_account { ... }` |
+| Service declarations | Inline code | Understandings (structured docs) | Rust trait + `MethodMeta` (180 lines per service) | `service gcp.SecretManager { ... }` (20 lines) |
+| Mock boundary for DryRun | N/A | N/A | Free (all 8 transport nodes intercepted) | Free |
+| Test scenarios | All handwritten | Some generated from behavior patterns | 100+ generated (4-bucket testgen) | 100+ generated (same model, from DSL structure) |
+| Resource threading | Manual env passing | Implicit | Manual `net_env` → `res:api:network` edges | `uses net: Network` — compiler threads automatically |
+
+**The understanding → service transition:**
+
+the-gunbai's key innovation was *understandings* — structured documents describing external systems:
+
+```
+the-gunbai understanding (conceptual):
+  system: GCP Secret Manager
+  operations:
+    - name: AccessSecretVersion
+      http: GET /v1/projects/{project}/secrets/{secret}/versions/{version}:access
+      permissions: [secretmanager.versions.access]
+      idempotent: true
+```
+
+This generated integration code, but the understanding was a separate document format with no type system and no IR. gunbc replaced understandings with Rust traits (`SecretManagerService`) and `MethodMeta` structs — typed, but verbose (180 lines per service).
+
+The DSL synthesizes both: structured declarations with a type system:
+
+```
+service gcp.SecretManager {
+  operation AccessVersion {
+    input { project: String, secret: String, version: String = "latest" }
+    output { payload: Bytes, name: String }
+    @rest(GET, "/v1/projects/{project}/secrets/{secret}/versions/{version}:access")
+    @idempotent @readonly
+    @permissions(["secretmanager.versions.access"])
+  }
+}
+```
+
+This is the understanding made first-class. The `@rest` annotation IS the understanding — but now it lives inside a typed language with a compiler that expands it to transport triplets, generates mocks, and derives test obligations.
+
+**What gunbc gives the DSL for free:** The transport triplet pattern (prepare/execute/parse), DryRun interception model, 4-bucket testgen obligation structure, and resource conflict detection algorithm. All of these transfer directly — the DSL compiler produces the same IR that gunbc's hand-wired builders produce.
+
+### S3: Tool Installation (Upsert)
+
+Check if a tool exists → install if missing → resolve the installed handle.
+
+**What each repo gets for free:**
+
+| Capability | gunb.ai | the-gunbai | gunbc | DSL |
+|---|---|---|---|---|
+| Upsert pattern | Handwritten check/install/verify | Handwritten | `UpsertBuilder` (5 lines of builder code) | `upsert { check: ..., create: ..., resolve: ... }` |
+| Skip-if-exists | Manual `if` | Manual | Guard on create node (structural) | `[when !check.exists]` — compiler emits guard |
+| Tool registration | Hardcoded list | Hardcoded list | `#[tool_target]` proc macro → inventory | Filesystem discovery (tool is a `.dag` file) |
+| Tests | All handwritten | All handwritten | Generated: DryRun, guard branch coverage, skip-path | Generated: same obligations, from `.dag` structure |
+
+**Pattern evolution:**
+
+```
+gunb.ai:      if !which("clippy") { rustup_add("clippy") }; version = clippy_version()
+the-gunbai:   behavior CheckClippy → behavior InstallClippy → behavior ResolveClippy
+gunbc:        UpsertBuilder::new("clippy").with_check(...).with_create(...).with_resolve(...)
+DSL:          upsert { check: shell("which clippy-driver"), create: shell("rustup ..."), resolve: shell("clippy-driver --version") }
+```
+
+Each generation compressed the pattern. gunbc's `UpsertBuilder` proved the 3-node shape is universal — every tool installation follows it. The DSL makes `upsert` a built-in pattern keyword.
+
+### S4: Service Composition (Gist Snapshot)
+
+Multi-service orchestration: git operations → file reads (loop) → rendering → credential chain (SubDag) → API call.
+
+**What each repo gets for free:**
+
+| Capability | gunb.ai | the-gunbai | gunbc | DSL |
+|---|---|---|---|---|
+| Graph wiring | ~600 lines Go | ~400 lines Rust | 1,449 lines Rust (3 modes) | ~80 lines `.dag` (3 modes) |
+| Loop over files | Manual goroutine pool | Manual iterator | `LoopBuilder` (manual body wiring) | `for file in files.files { fs.read(path: file) }` |
+| SubDag composition | N/A (flat graph) | N/A | Manual SubDag node construction | `cred = credential_chain(...)` — journey call = SubDag |
+| Progress for parallel file reads | Manual counter | TUI scatter group | Not displayed (no scatter support) | Scatter group: `read files [8/8]` (from ProgressManifest) |
+| Journey composition | N/A | N/A | Manual SubDag wiring | `result = gist_upload(...)` — implicit composition |
+| Multi-mode support (snapshot/diff/recent) | 3 separate Go programs | 3 separate commands | 3 graph builders in one file | 3 journeys in one `.dag` file |
+
+**What the-gunbai contributed that gunbc lost:**
+
+the-gunbai's TUI had scatter group progress for parallel tasks: `[2/5]` showing how many items in a loop had completed. gunbc's frame-based renderer doesn't support this — it was rebuilt from scratch without inheriting the-gunbai's progress model.
+
+The DSL fixes this by deriving `ProgressManifest` at compile time, which includes `scatter_points` — nodes that expand to parallel instances at runtime. The renderer gets scatter groups for free because the compiler tells it where loops are.
+
+### S5: CI Pipeline
+
+Staged workflow: codegen → generate (parallel: bootstrap, pragma, testgen) → build → verify (parallel: test, clippy) → report.
+
+**What each repo gets for free:**
+
+| Capability | gunb.ai | the-gunbai | gunbc | DSL |
+|---|---|---|---|---|
+| Stage ordering | Make targets with deps | Make targets | 920 lines of graph builder | `stage build [after generate]` |
+| Parallel execution within stage | Manual goroutines | Manual | SubDag with parallel roots | `parallel { bootstrap(); pragma(); testgen() }` |
+| Stage groups in progress | Manual | TUI groups | Frame sections (manual) | ProgressManifest `StageGroup` (compiler-derived) |
+| Aggregation | Manual result collection | Manual | Manual aggregate node | `aggregate(results: [verify.*])` |
+| Makefile/CI YAML generation | Handwritten | Handwritten | `makegen` tool (Content upsert) | Compiler emits from pipeline definition |
+
+### S6: LLM Review
+
+Combines credential acquisition with an external LLM API call. Shows how cloud infrastructure composes with arbitrary services.
+
+**What each repo gets for free:**
+
+| Capability | gunb.ai | the-gunbai | gunbc | DSL |
+|---|---|---|---|---|
+| Graph wiring | N/A (didn't exist) | N/A | 1,376 lines Rust | ~30 lines `.dag` |
+| Credential reuse | N/A | N/A | SubDag reference to credential chain | `cred = credential_chain(...)` |
+| New service declaration | N/A | New understanding document | New Rust trait (180 lines) + ops match arm | `service llm.OpenAI { operation ChatCompletion { ... } }` |
+| Test generation | N/A | N/A | Full testgen (DryRun, scenarios, resource hygiene) | Same, from `.dag` structure |
+| Adding this workflow | N/A | ~500 lines + understanding | ~1,500 lines across 6 files | ~50 lines across 2 files |
+
+**Key insight:** In gunbc, adding a new service (like an LLM provider) requires ~180 lines of Rust trait + `MethodMeta`, plus ~40 lines of ops enum wiring, plus manual graph construction. In the DSL, it's a `service` declaration with `@rest` annotations — the compiler generates the trait, the meta, and the transport triplets.
+
+### S7: Authentication Flow (Interactive)
+
+OAuth login with interactive terminal passthrough. The user's browser opens, they authenticate, the CLI resumes.
+
+**What each repo gets for free:**
+
+| Capability | gunb.ai | the-gunbai | gunbc | DSL |
+|---|---|---|---|---|
+| Subprocess output capture | `CaptureWriter` (manual) | Integrated in TUI | Frame-based (rebuilt) | `CaptureMode::Captured` (compiler default) |
+| Interactive passthrough | `cmd.Stdout = os.Stdout` (manual) | Passthrough mode in TUI | Not fully implemented | `@interactive` annotation → `CaptureMode::Passthrough` |
+| Progress pause/resume during OAuth | Manual clear/resume | TUI handles it | Not implemented | Compiler + runtime handle from manifest |
+| Section headers (› Authentication) | Manual `ProgressOptions.Groups` | Inferred from DAG in TUI | Manual section wiring | Inferred from SubDag boundaries (structural) |
+
+**gunb.ai → DSL transition for progress:**
+
+gunb.ai required manual progress group declarations:
+```go
+ProgressOptions{
+    Groups: []dag.ProgressGroup{
+        {Name: "Authentication", Nodes: [...]},
+        {Name: "Fetching Secrets", Nodes: [...]},
+    },
+}
+```
+
+the-gunbai improved this — the TUI inferred groups from runtime DAG traversal, but only at runtime (couldn't preview before execution).
+
+gunbc rebuilt progress from scratch, losing the-gunbai's TUI quality but gaining `build_frame()` as a pure function.
+
+The DSL combines all three: sections emerge from SubDag boundaries (like the-gunbai), the manifest is computed at compile time (improving on runtime inference), and the visual design matches gunb.ai's proven color palette and icon vocabulary (already ported to gunbc's symbol system). Progress becomes a view that can be rendered before, during, and after execution from the same manifest.
+
+## J.4 Capability Transfer Matrix
+
+What each repo contributes to the DSL, organized by concern.
+
+### DAG Modeling
+
+| What transfers | From | To DSL as |
+|---|---|---|
+| `Node<T>`, `Dag<T>`, `Port`, `Edge` types | gunbc | Core IR target (identical structure after lowering) |
+| `DagBuilder` with generations | gunbc | Compiler's `Lower` phase produces same builder output |
+| `Cardinality` (One, ZeroOrOne, ZeroOrMore, OneOrMore) | gunbc | Simplified to `T`, `T?`, `List<T>` in surface syntax |
+| Acyclicity by construction | gunbc | Guaranteed by language (no cycles expressible in `.dag`) |
+| Boundary/entrypoint detection | gunbc | Compiler's `Validate` phase (same algorithm) |
+
+### Testing
+
+| What transfers | From | To DSL as |
+|---|---|---|
+| 4-bucket obligation model | gunbc testgen | Compiler's `Derive` phase produces `TestObligations` |
+| Anti-tautology rule | gunbc testgen | Same: only generate tests for Unknown/RuntimeOnly obligations |
+| DryRun completion test | gunbc | Generated for every journey |
+| Transport interception test | gunbc | Generated for every service call |
+| N+1 scenario coverage | gunbc | Generated: all-succeed + per-transport failure |
+| Guard branch coverage | gunbc | Generated from `when` / `match` constructs |
+| Resource hygiene | gunbc | Generated from `uses` declarations |
+| MockSpec infrastructure | gunbc | Compiler generates MockSpec from service declarations |
+| `Simulator` / `IoContract` | gunbc | Generated from typed ports |
+
+### Progress & Terminal
+
+| What transfers | From | To DSL as |
+|---|---|---|
+| `CaptureWriter` pattern | gunb.ai | Per-node `CaptureBuffer` (default for all transport nodes) |
+| Passthrough mode | gunb.ai | `@interactive` annotation → `CaptureMode::Passthrough` |
+| Section rendering (`›`) | gunb.ai | Inferred from SubDag boundaries in ProgressManifest |
+| Error boxes (bordered, captured stderr) | gunb.ai | Same visual design, driven by CaptureBuffer on failure |
+| Color palette (ANSI 256) | gunb.ai → gunbc | Identical: `SemanticColor` enum, same codes |
+| Spinner (braille, 80ms) | gunb.ai → gunbc | Identical: same frames, same timing |
+| TUI with edge pulses | the-gunbai | Optional `tui` renderer reading ProgressManifest |
+| Wave-based layout | the-gunbai | `TopologyNode.depth` in ProgressManifest |
+| Scatter groups (`[2/5]`) | the-gunbai | `scatter_points` in ProgressManifest |
+| Inline progress bar | the-gunbai | `inline` renderer reading ProgressManifest |
+| JSONL event streaming | the-gunbai | `jsonl` renderer reading ProgressManifest |
+| Frame-based display (`build_frame()`) | gunbc | Manifest-driven frame builder (same pure function concept) |
+| `OutputMedium` / `SemanticColor` / `SymbolId` | gunbc | Terminal crate (harvested directly, ~2,271 lines) |
+
+### Services & Resources
+
+| What transfers | From | To DSL as |
+|---|---|---|
+| Understanding concept (structured external system docs) | the-gunbai | `service` declarations with `@rest`, `@shell` annotations |
+| Behavior generation from understandings | the-gunbai | Compiler expands service operations to transport triplets |
+| `SecretManagerService` trait + `MethodMeta` | gunbc | `service gcp.SecretManager { operation ... }` |
+| Transport triplet (prepare/execute/parse) | gunbc | Compiler generates from service call + `@rest`/`@shell` |
+| DryRun interception at transport boundary | gunbc | Same: mock transport executor swapped at execute node |
+| `ResourceAccess` / `detect_conflicts()` | gunbc | Compiler's resource conflict check in `Validate` phase |
+| Typed resource ports (`res:*`) | gunbc | `uses fs: Filesystem(mode: Write)` — compiler threads edges |
+| Lease/heartbeat model | gunb.ai | `resource` with lifecycle (acquire/use/release) |
+
+### Discovery
+
+| What transfers | From | To DSL as |
+|---|---|---|
+| Manual hardcoded lists | gunb.ai, the-gunbai | Eliminated |
+| `#[tool_target]` proc macro | gunbc | Eliminated (filesystem discovery) |
+| `#[testgen_target]` proc macro | gunbc | Eliminated (every journey has test obligations) |
+| `build_workspace_dag()` | gunbc | Eliminated (module graph IS workspace DAG) |
+| `inventory` crate | gunbc | Eliminated |
+
+## J.5 The "For Free" Progression: Worked Example
+
+To make the transition concrete, here is the complete lifecycle of adding a new tool — from gunb.ai through the DSL — showing what you write vs what the framework provides.
+
+### Adding a "format" tool that runs `cargo fmt`
+
+**gunb.ai (v1) — you write everything:**
+
+```go
+// 1. Tool struct (30 lines)
+type FormatTool struct { ... }
+
+// 2. DAG node (50 lines)
+func (t *FormatTool) Execute(ctx context.Context, inputs dag.Inputs) (dag.Outputs, error) {
+    cmd := exec.CommandContext(ctx, "cargo", "fmt", "--check")
+    cmd.Stdout = t.captureWriter  // CaptureWriter is free
+    err := cmd.Run()
+    // ... parse exit code, build outputs
+}
+
+// 3. Registration in workspace DAG (20 lines)
+func buildWorkspaceDag() *dag.Dag {
+    // ... hardcoded list ...
+    dag.AddNode("format", &FormatTool{})
+}
+
+// 4. Progress group (10 lines)
+ProgressOptions{Groups: []dag.ProgressGroup{{Name: "Format", Nodes: ["format"]}}}
+
+// 5. Tests (100 lines) — ALL handwritten
+func TestFormatSuccess(t *testing.T) { ... }
+func TestFormatFailure(t *testing.T) { ... }
+
+// 6. CLI entrypoint (40 lines)
+func main() { ... }
+
+// 7. Makefile target (5 lines)
+// Total: ~255 lines, 0% generated
+// Free: parallel execution, output capture
+```
+
+**the-gunbai (v2) — understandings help:**
+
+```rust
+// 1. Understanding document (30 lines)
+// system: cargo-fmt
+// command: cargo fmt --check
+// behaviors: [check_formatting, format_code]
+
+// 2. Generated behavior code (~80 lines generated, ~40 manual)
+// 3. TUI integration (free from framework)
+// 4. Registration (manual, 10 lines)
+// 5. Tests (~60 lines, some generated from behavior patterns)
+// Total: ~150 lines manual + ~80 generated = ~230 total
+// Free: TUI progress, some integration code, some tests
+```
+
+**gunbc (v3) — IR + testgen help:**
+
+```rust
+// 1. Graph builder (60 lines)
+pub fn build_format_graph() -> Dag<FormatOp> {
+    let mut builder = DagBuilder::new();
+    let upsert = UpsertBuilder::new("cargo_fmt")
+        .with_check(FormatOp::Check)       // which cargo-fmt
+        .with_create(FormatOp::Install)     // rustup component add rustfmt
+        .with_resolve(FormatOp::Resolve);   // cargo fmt --version
+    // ... transport nodes for the actual fmt --check
+    builder.build()
+}
+
+// 2. Op enum + implementations (80 lines)
+// 3. MockSpec (20 lines)
+// 4. Registration: #[tool_target] + #[testgen_target] (10 lines)
+// 5. Tests: ~15 lines handwritten, ~40 lines generated by testgen
+// 6. CLI entrypoint (generated by codegen, 0 manual)
+// Total: ~170 lines manual + ~60 generated = ~230 total
+// Free: structural soundness, 73% of tests, DryRun, CLI generation,
+//       UpsertBuilder pattern, transport interception
+```
+
+**DSL (v4) — almost everything generated:**
+
+```
+// 1. tools/format.dag (entire tool definition)
+module tools.format
+
+import std.patterns { upsert }
+
+journey install_fmt {
+  output { handle: String }
+  result = upsert {
+    check:   shell("which cargo-fmt") -> { exists: Bool }
+    create:  shell("rustup component add rustfmt")
+    resolve: shell("cargo-fmt --version") -> { handle: String }
+  }
+  return { handle: result.handle }
+}
+
+journey format_check {
+  input { paths: List<String>? }
+  output { clean: Bool, diff: String }
+  uses tool: install_fmt
+
+  result = shell("cargo fmt --check")
+  return { clean: result.exit_code == 0, diff: result.stdout }
+}
+
+// 2. Pure logic: parse_format_result (10 lines Rust/Go/Python)
+// That's it. Everything else is generated.
+// Total: ~25 lines manual, ~200+ lines generated
+// Free: graph wiring, transport triplets, all tests, DryRun,
+//       progress manifest, CLI, discovery, resource lifecycle,
+//       Makefile target, CI integration
+```
+
+### Compression ratio by generation
+
+| Generation | Manual Lines | Generated Lines | Total | Manual % |
+|---|---|---|---|---|
+| gunb.ai | 255 | 0 | 255 | 100% |
+| the-gunbai | 150 | 80 | 230 | 65% |
+| gunbc | 170 | 60 | 230 | 74% |
+| DSL | 25 | 200+ | 225+ | ~11% |
+
+Note: gunbc's manual percentage is *higher* than the-gunbai's for graph wiring because gunbc's IR is more explicit (typed ports, cardinality, explicit edges). The testgen compensates by generating more tests, but the authoring cost increased. This is precisely the problem the DSL solves — the IR's explicitness is a feature (enables testgen, DryRun, structural proofs), but the authoring surface must be compressed.
+
+## J.6 What Doesn't Transfer (Lessons from Each Failure)
+
+Each generation also proved what *not* to do. These negative lessons are as important as the positive transfers.
+
+| Lesson | Learned from | Applied in |
+|---|---|---|
+| Manual progress groups don't scale | gunb.ai's `ProgressOptions.Groups` | DSL: progress is a view, inferred from DAG structure |
+| Understanding format without type system leads to drift | the-gunbai's 40+ understanding documents | DSL: `service` declarations are typed and compiled |
+| Runtime-only TUI can't preview before execution | the-gunbai's ratatui TUI | DSL: ProgressManifest computed at compile time |
+| Hand-wired graph builders don't scale past ~5 tools | gunbc's 7,000+ lines of builders | DSL: `.dag` files, 10-100x compression |
+| Registration islands fragment discovery | gunbc's 6 registration systems | DSL: filesystem IS the registry |
+| Transport types in core IR create coupling | gunbc's 17 transport modules in `core/ir/` | DSL: transport is late-bound (annotation → codegen backend) |
+| Rebuilding progress from scratch loses quality | gunbc lost the-gunbai's TUI | DSL: harvest terminal code from gunbc + TUI from the-gunbai |
+| `Value`/`ValueExpr` parallel hierarchies are technical debt | gunbc | DSL: codegen works from IR + types, no runtime value expressions |
+
+## J.7 Scenario Coverage by Testgen Bucket
+
+For each scenario, what test obligations are derivable from graph structure.
+
+| Scenario | Bucket A (Execution) | Bucket B (Contract) | Bucket C (Scenarios) | Bucket D (Resources) |
+|---|---|---|---|---|
+| **S1: Content upsert** | DryRun, 2× transport intercept | 1× node compliance | All-succeed, 2× failure, 1× guard branch | 2× resource connected, conflict absence |
+| **S2: Credential chain** | DryRun, 4× transport intercept | 2× entailment, 14× compliance | All-succeed, 4× failure, 2× guard branch | 4× resource connected, conflict absence |
+| **S3: Tool install** | DryRun, 3× transport intercept | 1× compliance | All-succeed, 3× failure, 1× guard branch | 3× resource connected |
+| **S4: Gist snapshot** | DryRun, 5× transport intercept | 3× compliance | All-succeed, 5× failure, 1× loop expansion | 3× resource connected, conflict absence |
+| **S5: CI pipeline** | DryRun, 8× transport intercept | 5× compliance | All-succeed, 8× failure, 2× stage ordering | Stage resource isolation |
+| **S6: LLM review** | DryRun, 5× transport intercept | 2× compliance | All-succeed, 5× failure, 1× guard branch | 3× resource connected |
+| **S7: Auth flow** | DryRun, 6× transport intercept | 2× compliance | All-succeed, 6× failure, 2× guard branch, 1× interactive passthrough | 2× resource connected |
+
+In gunb.ai and the-gunbai, **all** of these tests would be handwritten. In gunbc, Buckets A, C, and D are generated; Bucket B is partially generated. In the DSL, all four buckets are generated from the `.dag` file structure — the same obligation model, but derived from a 10-100x smaller source.
+
+## J.8 Summary: The DAG Modeling → Understandings → gunbc Pipeline
+
+The three repos represent a pipeline of increasing formalization:
+
+```
+gunb.ai                    the-gunbai                  gunbc                       DSL
+─────────                  ──────────                  ─────                       ───
+"DAGs work"                "Knowledge scales"          "Proofs work"               "Language compresses"
+
+Proved that causal         Proved that structured       Proved that typed IR +      Combines all three:
+DAGs are the right         knowledge about external     structural invariants +     typed DAGs authored in
+abstraction for            systems (understandings)     proof obligations =         a language that compresses
+workflow orchestration.    can generate integration     73% generated tests,        7000 lines to 50, while
+                          code at scale.               DryRun, and structural      preserving every guarantee.
+                                                       soundness guarantees.
+                          ┌─────────────────────┐
+                          │  What transfers:     │
+                          │  Understanding       │───→  service + @rest/shell
+                          │  concept             │      annotations (typed)
+                          └─────────────────────┘
+┌─────────────────────┐
+│  What transfers:     │
+│  CaptureWriter,      │───────────────────────────→  CaptureMode in IR
+│  progress sections,  │                              Section inference
+│  passthrough mode    │                              @interactive
+└─────────────────────┘
+                                                  ┌─────────────────────┐
+                                                  │  What transfers:     │
+                                                  │  IR types, patterns, │──→  Compiler target IR
+                                                  │  testgen, transport, │     (identical structure)
+                                                  │  DryRun, resources   │
+                                                  └─────────────────────┘
+```
+
+Each generation's "free" capabilities compound: the DSL gets parallel execution from gunb.ai + codegen from the-gunbai + structural proofs from gunbc + language-level compression from the new compiler. Nothing is thrown away — everything is harvested, formalized, and made available through the `.dag` surface syntax.
