@@ -1027,7 +1027,7 @@ These become a single `terminal` crate in the new repo. The gunb.ai color palett
 
 **Frame building from gunbc: harvest.** The pure `build_frame()` function (~300 lines) computes frames from progress state. It depends on the manifest (which we'll derive from the compiler) but the frame-building logic itself is reusable.
 
-### 6.11 How It Compiles
+### 6.11 How Progress Compiles
 
 The progress model touches three compiler phases:
 
