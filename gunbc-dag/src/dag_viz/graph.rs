@@ -149,9 +149,14 @@ pub enum DagVizGraphOp {
 
     /// Prepare gist upload request (PURE).
     ///
-    /// Inputs: `content` (String), `branch` (String), `ext` (String), `prefix` (String)
+    /// Inputs: `content` (String), `branch` (String), `ext` (String, only when not defaulted)
     /// Outputs: `request` (TransportRequest), `skip` (Bool)
-    PrepareGistUpload,
+    PrepareGistUpload {
+        /// Filename prefix (e.g., "dag-snapshot", "dag-diff").
+        prefix: String,
+        /// Default extension (e.g., "md"). If None, `ext` input port is used.
+        default_ext: Option<String>,
+    },
 
     /// Parse gist upload response (PURE).
     ///
@@ -170,6 +175,35 @@ pub enum DagVizGraphOp {
     /// Inputs: `response` (TransportResponse), `node_count` (Int), `total_node_count` (Int)
     /// Outputs: `summary` (String)
     ParseWriteResult,
+
+    /// Prepare local file save (PURE).
+    ///
+    /// Writes rendered content to a local file for browser viewing.
+    ///
+    /// Inputs: `content` (String), `ext` (String)
+    /// Outputs: `request` (TransportRequest), `skip` (Bool)
+    PrepareLocalSave {
+        /// Output directory (e.g., "target/dag-viz").
+        output_dir: String,
+    },
+
+    /// Parse local file save response (PURE).
+    ///
+    /// Inputs: `response` (TransportResponse)
+    /// Outputs: `file_path` (String)
+    ParseLocalSave,
+
+    /// Prepare browser open command (PURE).
+    ///
+    /// Inputs: `file_path` (String)
+    /// Outputs: `request` (TransportRequest), `skip` (Bool)
+    OpenBrowser,
+
+    /// Parse browser open result (PURE — no-op).
+    ///
+    /// Inputs: `response` (TransportResponse)
+    /// Outputs: `opened` (Bool)
+    ParseBrowserOpen,
 }
 
 // ============================================================================
@@ -191,10 +225,19 @@ impl Executable for DagVizGraphOp {
                 execute_prepare_git_show(inputs, base_ref)
             }
             DagVizGraphOp::ParseGitShow => execute_parse_git_show(inputs),
-            DagVizGraphOp::PrepareGistUpload => execute_prepare_gist_upload(inputs),
+            DagVizGraphOp::PrepareGistUpload {
+                prefix,
+                default_ext,
+            } => execute_prepare_gist_upload(inputs, prefix, default_ext.as_deref()),
             DagVizGraphOp::ParseGistUpload => execute_parse_gist_upload(inputs),
             DagVizGraphOp::PrepareWriteSnapshot => execute_prepare_write_snapshot(inputs),
             DagVizGraphOp::ParseWriteResult => execute_parse_write_result(inputs),
+            DagVizGraphOp::PrepareLocalSave { output_dir } => {
+                execute_prepare_local_save(inputs, output_dir)
+            }
+            DagVizGraphOp::ParseLocalSave => execute_parse_local_save(inputs),
+            DagVizGraphOp::OpenBrowser => execute_open_browser(inputs),
+            DagVizGraphOp::ParseBrowserOpen => execute_parse_browser_open(inputs),
         }
     }
 }
@@ -363,11 +406,15 @@ fn execute_parse_git_show(
 /// Uses `gh gist create` with stdin piping to avoid writing temp files.
 fn execute_prepare_gist_upload(
     inputs: HashMap<String, Value>,
+    prefix: &str,
+    default_ext: Option<&str>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let content = gunbc_exec::require_str(&inputs, "content")?;
     let branch = gunbc_exec::require_str(&inputs, "branch")?;
-    let ext = gunbc_exec::require_str(&inputs, "ext")?;
-    let prefix = gunbc_exec::require_str(&inputs, "prefix")?;
+    let ext = match default_ext {
+        Some(e) => e,
+        None => gunbc_exec::require_str(&inputs, "ext")?,
+    };
 
     let filename = format!("{}_{}.{}", prefix, branch.replace('/', "_"), ext);
     let description = format!("DAG visualization of {} created by gunbc-dag-viz", branch);
@@ -459,6 +506,90 @@ fn execute_parse_write_result(
     }
 }
 
+/// Prepare local file save request.
+fn execute_prepare_local_save(
+    inputs: HashMap<String, Value>,
+    output_dir: &str,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let content = gunbc_exec::require_str(&inputs, "content")?;
+    let ext = gunbc_exec::require_str(&inputs, "ext")?;
+
+    let file_path = format!("{}/dag-visualization.{}", output_dir, ext);
+    let request = TransportRequest::File(FileRequest {
+        path: file_path,
+        operation: FileOp::Write,
+        content: Some(content.to_string()),
+        create_parents: true,
+    });
+
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
+}
+
+/// Parse local file save response.
+fn execute_parse_local_save(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let response = gunbc_exec::require_response(&inputs, "response")?;
+
+    match response {
+        TransportResponse::File(FileResponse {
+            success: true,
+            ref path,
+            ..
+        }) => OutputMap::new().str("file_path", path).ok(),
+        TransportResponse::File(ref f) => Err(ExecError::new(format!(
+            "Failed to save local file: {}",
+            f.error.as_deref().unwrap_or("unknown error")
+        ))),
+        _ => Err(ExecError::new(
+            "Unexpected response type for local file save",
+        )),
+    }
+}
+
+/// Prepare browser open command.
+///
+/// Uses platform-appropriate open command:
+/// - Linux/WSL: `xdg-open`
+/// - macOS: `open`
+fn execute_open_browser(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let file_path = gunbc_exec::require_str(&inputs, "file_path")?;
+
+    let open_cmd = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+
+    let request = ShellRequest::new(open_cmd)
+        .arg(file_path)
+        .into_transport_request();
+
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
+}
+
+/// Parse browser open result (best-effort — browser open may fail silently).
+fn execute_parse_browser_open(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let response = gunbc_exec::require_response(&inputs, "response")?;
+
+    let opened = matches!(
+        response,
+        TransportResponse::Shell(ref s) if s.success()
+    );
+
+    OutputMap::new().bool("opened", opened).ok()
+}
+
 // ============================================================================
 // Workflow Signature
 // ============================================================================
@@ -471,7 +602,8 @@ pub fn dag_viz_signature(mode: &DagVizMode) -> WorkflowSignature {
         DagVizMode::Snapshot => {
             sig = sig
                 .with_input("format", "String", Cardinality::ONE)
-                .with_output("url", "String", Cardinality::ONE);
+                .with_output("url", "String", Cardinality::ONE)
+                .with_output("file_path", "String", Cardinality::ONE);
         }
         DagVizMode::Diff { .. } => {
             sig = sig
@@ -562,7 +694,7 @@ fn build_snapshot_graph(
     let current_branch = add_transport_triplet(
         builder,
         "current_branch",
-        vec![],
+        vec![port("repo_path", "String")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![optional("branch", "OptionalString")],
         DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::PrepareCurrentBranch),
@@ -608,11 +740,13 @@ fn build_snapshot_graph(
             scalar("content", "String"),
             optional("branch", "OptionalString"),
             scalar("ext", "String"),
-            scalar("prefix", "String"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![scalar("url", "String")],
-        DagVizGraphOp::PrepareGistUpload,
+        DagVizGraphOp::PrepareGistUpload {
+            prefix: "dag-snapshot".to_string(),
+            default_ext: None, // ext comes from render_snapshot
+        },
         DagVizGraphOp::ParseGistUpload,
         DagVizGraphOp::Transport(TransportOps::Execute),
         Some(&render_snapshot),
@@ -632,6 +766,56 @@ fn build_snapshot_graph(
         gist.execute.in_port("res:file"),
     )?;
 
+    // Local save + browser open (parallel to gist upload)
+    let local_save = add_transport_triplet(
+        builder,
+        "local_save",
+        vec![scalar("content", "String"), scalar("ext", "String")],
+        vec![resource("file", "FilesystemHandle", AccessMode::Write)],
+        vec![scalar("file_path", "String")],
+        DagVizGraphOp::PrepareLocalSave {
+            output_dir: "target/dag-viz".to_string(),
+        },
+        DagVizGraphOp::ParseLocalSave,
+        DagVizGraphOp::Transport(TransportOps::Execute),
+        Some(&render_snapshot),
+    )?;
+
+    builder.add_edge(
+        render_snapshot.out("content"),
+        local_save.prepare.in_port("content"),
+    )?;
+    builder.add_edge(
+        render_snapshot.out("ext"),
+        local_save.prepare.in_port("ext"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        local_save.execute.in_port("res:file"),
+    )?;
+
+    // Open in browser after local save
+    let browser_open = add_transport_triplet(
+        builder,
+        "browser_open",
+        vec![scalar("file_path", "String")],
+        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
+        vec![scalar("opened", "Bool")],
+        DagVizGraphOp::OpenBrowser,
+        DagVizGraphOp::ParseBrowserOpen,
+        DagVizGraphOp::Transport(TransportOps::Execute),
+        Some(&local_save.parse),
+    )?;
+
+    builder.add_edge(
+        local_save.parse.out("file_path"),
+        browser_open.prepare.in_port("file_path"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        browser_open.execute.in_port("res:file"),
+    )?;
+
     Ok(())
 }
 
@@ -646,7 +830,7 @@ fn build_diff_graph(
     let current_branch = add_transport_triplet(
         builder,
         "current_branch",
-        vec![],
+        vec![port("repo_path", "String")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![optional("branch", "OptionalString")],
         DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::PrepareCurrentBranch),
@@ -716,12 +900,13 @@ fn build_diff_graph(
         vec![
             scalar("content", "String"),
             optional("branch", "OptionalString"),
-            scalar("ext", "String"),
-            scalar("prefix", "String"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![scalar("url", "String")],
-        DagVizGraphOp::PrepareGistUpload,
+        DagVizGraphOp::PrepareGistUpload {
+            prefix: "dag-diff".to_string(),
+            default_ext: Some("md".to_string()),
+        },
         DagVizGraphOp::ParseGistUpload,
         DagVizGraphOp::Transport(TransportOps::Execute),
         Some(&diff_and_render),
@@ -753,7 +938,7 @@ fn build_recent_graph(
     let current_branch = add_transport_triplet(
         builder,
         "current_branch",
-        vec![],
+        vec![port("repo_path", "String")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![optional("branch", "OptionalString")],
         DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::PrepareCurrentBranch),
@@ -771,7 +956,7 @@ fn build_recent_graph(
     let rev_list = add_transport_triplet(
         builder,
         "rev_list",
-        vec![],
+        vec![port("repo_path", "String")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![optional("base_ref", "OptionalString")],
         DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::PrepareRevListBefore {
@@ -853,12 +1038,13 @@ fn build_recent_graph(
         vec![
             scalar("content", "String"),
             optional("branch", "OptionalString"),
-            scalar("ext", "String"),
-            scalar("prefix", "String"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![scalar("url", "String")],
-        DagVizGraphOp::PrepareGistUpload,
+        DagVizGraphOp::PrepareGistUpload {
+            prefix: "dag-recent".to_string(),
+            default_ext: Some("md".to_string()),
+        },
         DagVizGraphOp::ParseGistUpload,
         DagVizGraphOp::Transport(TransportOps::Execute),
         Some(&diff_and_render),
@@ -1031,7 +1217,7 @@ impl Mockable for DagVizGraphOp {
                 .str("topology_json", r#"{"nodes":[],"edges":[]}"#)
                 .build(),
 
-            DagVizGraphOp::PrepareGistUpload => OutputMap::new()
+            DagVizGraphOp::PrepareGistUpload { .. } => OutputMap::new()
                 .request(
                     "request",
                     ShellRequest::new("gh")
@@ -1060,6 +1246,37 @@ impl Mockable for DagVizGraphOp {
 
             DagVizGraphOp::ParseWriteResult => OutputMap::new()
                 .str("summary", "Saved DAG topology snapshot")
+                .build(),
+
+            DagVizGraphOp::PrepareLocalSave { .. } => OutputMap::new()
+                .request(
+                    "request",
+                    TransportRequest::File(FileRequest {
+                        path: "target/dag-viz/dag-visualization.html".to_string(),
+                        operation: FileOp::Write,
+                        content: Some("<html>mock</html>".to_string()),
+                        create_parents: true,
+                    }),
+                )
+                .bool("skip", false)
+                .build(),
+
+            DagVizGraphOp::ParseLocalSave => OutputMap::new()
+                .str("file_path", "target/dag-viz/dag-visualization.html")
+                .build(),
+
+            DagVizGraphOp::OpenBrowser => OutputMap::new()
+                .request(
+                    "request",
+                    ShellRequest::new("xdg-open")
+                        .arg("target/dag-viz/dag-visualization.html")
+                        .into_transport_request(),
+                )
+                .bool("skip", false)
+                .build(),
+
+            DagVizGraphOp::ParseBrowserOpen => OutputMap::new()
+                .bool("opened", true)
                 .build(),
         }
     }

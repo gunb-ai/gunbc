@@ -60,7 +60,26 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                     "response",
                     mock_shell_ok("https://gist.github.com/mock/abc123\n"),
                 )
-                .expect("gist response should match");
+                .expect("gist response should match")
+                .transport_response(
+                    "execute_local_save",
+                    "response",
+                    TransportResponse::File(FileResponse {
+                        path: "target/dag-viz/dag-visualization.html".into(),
+                        operation: FileOp::Write,
+                        success: true,
+                        content: None,
+                        exists: Some(true),
+                        error: None,
+                    }),
+                )
+                .expect("local_save response should match")
+                .transport_response(
+                    "execute_browser_open",
+                    "response",
+                    mock_shell_ok(""),
+                )
+                .expect("browser_open response should match");
         }
         DagVizMode::Diff { .. } => {
             reqs = reqs
@@ -130,7 +149,22 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
 
     // Terminal boundary mocks: outputs that are DAG sinks
     match mode {
-        DagVizMode::Snapshot | DagVizMode::Diff { .. } | DagVizMode::Recent => {
+        DagVizMode::Snapshot => {
+            reqs = reqs
+                .boundary_str(
+                    "parse_gist",
+                    "url",
+                    "https://gist.github.com/mock/abc123",
+                )
+                .expect("parse_gist.url mock should match type")
+                .boundary(
+                    "parse_browser_open",
+                    "opened",
+                    Value::Bool(true),
+                )
+                .expect("parse_browser_open.opened mock should match type");
+        }
+        DagVizMode::Diff { .. } | DagVizMode::Recent => {
             reqs = reqs
                 .boundary_str(
                     "parse_gist",
@@ -157,49 +191,47 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
         DagVizMode::Snapshot => {
             spec = spec
                 .input_mock(
+                    "prepare_current_branch",
+                    "repo_path",
+                    Value::Str(".".into()),
+                )
+                .input_mock(
                     "render_snapshot",
                     "format",
                     Value::Str("html".into()),
                 )
-                .input_mock(
-                    "prepare_gist",
-                    "prefix",
-                    Value::Str("dag-snapshot".into()),
-                )
+                .expects_input("repo_path", InputConstraint::Any)
                 .expects_input("format", InputConstraint::Any);
         }
         DagVizMode::Diff { .. } => {
             spec = spec
                 .input_mock(
+                    "prepare_current_branch",
+                    "repo_path",
+                    Value::Str(".".into()),
+                )
+                .input_mock(
                     "diff_and_render",
                     "base_ref",
                     Value::Str("main".into()),
                 )
-                .input_mock(
-                    "prepare_gist",
-                    "ext",
-                    Value::Str("md".into()),
-                )
-                .input_mock(
-                    "prepare_gist",
-                    "prefix",
-                    Value::Str("dag-diff".into()),
-                )
+                .expects_input("repo_path", InputConstraint::Any)
                 .expects_input("format", InputConstraint::Any)
                 .expects_input("base_ref", InputConstraint::Any);
         }
         DagVizMode::Recent => {
             spec = spec
                 .input_mock(
-                    "prepare_gist",
-                    "ext",
-                    Value::Str("md".into()),
+                    "prepare_current_branch",
+                    "repo_path",
+                    Value::Str(".".into()),
                 )
                 .input_mock(
-                    "prepare_gist",
-                    "prefix",
-                    Value::Str("dag-recent".into()),
+                    "prepare_rev_list",
+                    "repo_path",
+                    Value::Str(".".into()),
                 )
+                .expects_input("repo_path", InputConstraint::Any)
                 .expects_input("format", InputConstraint::Any);
         }
         DagVizMode::SaveSnapshot => {
@@ -228,6 +260,7 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                 // Git ops — tested in gunbc-lib-git-ops crate
                 .node_example(
                     NodeExample::new("prepare_current_branch")
+                        .input("repo_path", Value::Str(".".into()))
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares git rev-parse request for current branch"),
                 )
@@ -255,7 +288,6 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                         .input("content", Value::Str("<html>mock</html>".into()))
                         .input("branch", Value::Str("main".into()))
                         .input("ext", Value::Str("html".into()))
-                        .input("prefix", Value::Str("dag-snapshot".into()))
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares gist upload shell request"),
                 )
@@ -268,13 +300,54 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                         .output("url", OutputMatcher::contains("gist.github.com"))
                         .description("Extracts gist URL from response"),
                 )
-                .live_expected_output("parse_gist", "url", OutputMatcher::NonEmpty);
+                // Local save + browser open
+                .node_example(
+                    NodeExample::new("prepare_local_save")
+                        .input("content", Value::Str("<html>mock</html>".into()))
+                        .input("ext", Value::Str("html".into()))
+                        .output("request", OutputMatcher::IsRequest)
+                        .description("Prepares file write request for local HTML"),
+                )
+                .node_example(
+                    NodeExample::new("parse_local_save")
+                        .input(
+                            "response",
+                            Value::Response(TransportResponse::File(FileResponse {
+                                path: "target/dag-viz/dag-visualization.html".into(),
+                                operation: FileOp::Write,
+                                success: true,
+                                content: None,
+                                exists: Some(true),
+                                error: None,
+                            })),
+                        )
+                        .output("file_path", OutputMatcher::non_empty())
+                        .description("Extracts local file path from write response"),
+                )
+                .node_example(
+                    NodeExample::new("prepare_browser_open")
+                        .input("file_path", Value::Str("target/dag-viz/dag-visualization.html".into()))
+                        .output("request", OutputMatcher::IsRequest)
+                        .description("Prepares xdg-open/open command for browser"),
+                )
+                .node_example(
+                    NodeExample::new("parse_browser_open")
+                        .input(
+                            "response",
+                            Value::Response(ShellResponse::ok("").into()),
+                        )
+                        .output("opened", OutputMatcher::IsBool)
+                        .description("Confirms browser open succeeded"),
+                )
+                .live_expected_output("parse_gist", "url", OutputMatcher::NonEmpty)
+                .live_expected_output("parse_browser_open", "opened", OutputMatcher::IsBool);
         }
         DagVizMode::Diff { .. } => {
             spec = spec
                 // Git ops
                 .node_example(
                     NodeExample::new("prepare_current_branch")
+                        .input("repo_path", Value::Str(".".into()))
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares git rev-parse request for current branch"),
                 )
@@ -315,8 +388,6 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                     NodeExample::new("prepare_gist")
                         .input("content", Value::Str("# Mock diff".into()))
                         .input("branch", Value::Str("main".into()))
-                        .input("ext", Value::Str("md".into()))
-                        .input("prefix", Value::Str("dag-diff".into()))
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares gist upload shell request"),
                 )
@@ -336,6 +407,7 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                 // Git ops
                 .node_example(
                     NodeExample::new("prepare_current_branch")
+                        .input("repo_path", Value::Str(".".into()))
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares git rev-parse request for current branch"),
                 )
@@ -350,6 +422,7 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                 )
                 .node_example(
                     NodeExample::new("prepare_rev_list")
+                        .input("repo_path", Value::Str(".".into()))
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares git rev-list request for recent commit"),
                 )
@@ -390,8 +463,6 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                     NodeExample::new("prepare_gist")
                         .input("content", Value::Str("# Mock diff".into()))
                         .input("branch", Value::Str("main".into()))
-                        .input("ext", Value::Str("md".into()))
-                        .input("prefix", Value::Str("dag-recent".into()))
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares gist upload shell request"),
                 )

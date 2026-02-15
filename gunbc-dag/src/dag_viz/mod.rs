@@ -51,7 +51,7 @@ pub use graph::{build_dag_viz_graph, dag_viz_signature, DagVizGraphOp, DagVizMod
     mock_spec = "gunbc_dag::dag_viz::graph_mock::dag_viz_snapshot_mock_spec()",
     package = "dag",
     binary = "dag-viz",
-    entrypoints = r#"[{"port_name":"format","type_id":"String","short":"f","default":"html","help":"Output format: html (default) or md","make_var":"FMT"}]"#,
+    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path","make_var":"REPO"},{"port_name":"format","type_id":"String","short":"f","default":"html","help":"Output format: html (default) or md","make_var":"FMT"}]"#,
     has_invocation,
     returns_result
 )]
@@ -67,7 +67,7 @@ pub fn dag_viz_snapshot_tool() {}
     mock_spec = "gunbc_dag::dag_viz::graph_mock::dag_viz_diff_mock_spec()",
     package = "dag",
     binary = "dag-viz-diff",
-    entrypoints = r#"[{"port_name":"format","type_id":"String","short":"f","default":"html","help":"Output format: html (default) or md","make_var":"FMT"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff","make_var":"BASE"}]"#,
+    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path","make_var":"REPO"},{"port_name":"format","type_id":"String","short":"f","default":"html","help":"Output format: html (default) or md","make_var":"FMT"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff","make_var":"BASE"}]"#,
     has_invocation,
     returns_result
 )]
@@ -83,7 +83,7 @@ pub fn dag_viz_diff_tool() {}
     mock_spec = "gunbc_dag::dag_viz::graph_mock::dag_viz_recent_mock_spec()",
     package = "dag",
     binary = "dag-viz-recent",
-    entrypoints = r#"[{"port_name":"format","type_id":"String","short":"f","default":"html","help":"Output format: html (default) or md","make_var":"FMT"}]"#,
+    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path","make_var":"REPO"},{"port_name":"format","type_id":"String","short":"f","default":"html","help":"Output format: html (default) or md","make_var":"FMT"}]"#,
     has_invocation,
     returns_result
 )]
