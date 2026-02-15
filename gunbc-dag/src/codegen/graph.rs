@@ -89,7 +89,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
         CodegenGraphOp::Codegen(CodegenOp::PrepareCodegenExists),
         CodegenGraphOp::Codegen(CodegenOp::ParseCodegenExists(mode)),
         CodegenGraphOp::Transport(TransportOps::Execute),
-        None,
+        Some(&fs_env),
     )?;
 
     // ========================================================================
@@ -240,11 +240,23 @@ mod tests {
     #[test]
     fn test_graph_has_transport_nodes() {
         let dag = build_codegen_graph().expect("graph should build");
-        for node_id in [
-            "execute_codegen_exists",
-            "execute_codegen",
-            "execute_stamp_write",
-        ] {
+        // execute_codegen_exists is inside codegen_exists SubDag
+        let codegen_exists = dag
+            .get_node(&"codegen_exists".into())
+            .expect("missing codegen_exists SubDag");
+        if let NodeBody::SubDag(ref inner) = codegen_exists.body {
+            let node = inner
+                .get_node(&"execute_codegen_exists".into())
+                .expect("missing execute_codegen_exists inside SubDag");
+            assert!(
+                matches!(node.body, NodeBody::Opaque(CodegenGraphOp::Transport(_))),
+                "execute_codegen_exists should be a transport node"
+            );
+        } else {
+            panic!("codegen_exists should be a SubDag");
+        }
+        // Top-level transport nodes
+        for node_id in ["execute_codegen", "execute_stamp_write"] {
             let node = dag
                 .get_node(&node_id.into())
                 .unwrap_or_else(|| panic!("missing transport node: {}", node_id));

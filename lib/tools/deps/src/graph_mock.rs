@@ -80,7 +80,7 @@ pub fn deps_mock_spec() -> MockSpec {
         .expect("platform mock should match type")
         // Transport: load manifest
         .transport_response(
-            "execute_load_manifest",
+            "load_manifest/execute_load_manifest",
             "response",
             TransportResponse::File(FileResponse {
                 path: "deps.toml".into(),
@@ -94,21 +94,21 @@ pub fn deps_mock_spec() -> MockSpec {
         .expect("execute_load_manifest response should match type")
         // Transport: execute installs
         .transport_response(
-            "execute_installs",
+            "execute_installs/execute_installs",
             "response",
             TransportResponse::Shell(ShellResponse::ok("Dependencies installed")),
         )
         .expect("execute_installs response should match type")
         // Boundary: parse_manifest outputs (terminal)
-        .boundary_int("parse_manifest", "dep_count", 1)
+        .boundary_int("load_manifest/parse_manifest", "dep_count", 1)
         .expect("parse_manifest dep_count should match type")
         .boundary(
-            "parse_manifest",
+            "load_manifest/parse_manifest",
             "dep_names",
             Value::str_list(vec!["ripgrep".into()]),
         )
         .expect("parse_manifest dep_names should match type")
-        .boundary_str("parse_manifest", "manifest_path", "deps.toml")
+        .boundary_str("load_manifest/parse_manifest", "manifest_path", "deps.toml")
         .expect("parse_manifest manifest_path should match type")
         // Boundary: generate_scripts outputs (terminal)
         .boundary(
@@ -126,22 +126,22 @@ pub fn deps_mock_spec() -> MockSpec {
         .boundary_str("generate_scripts", "platform", "linux")
         .expect("generate_scripts platform should match type")
         // Boundary: parse_execute_result outputs (terminal)
-        .boundary_bool("parse_execute_result", "executed", true)
+        .boundary_bool("execute_installs/parse_execute_result", "executed", true)
         .expect("parse_execute_result executed should match type")
-        .boundary_bool("parse_execute_result", "success", true)
+        .boundary_bool("execute_installs/parse_execute_result", "success", true)
         .expect("parse_execute_result success should match type")
-        .boundary_str("parse_execute_result", "script", "echo install")
+        .boundary_str("execute_installs/parse_execute_result", "script", "echo install")
         .expect("parse_execute_result script should match type")
-        .boundary_str("parse_execute_result", "stdout", "installed\n")
+        .boundary_str("execute_installs/parse_execute_result", "stdout", "installed\n")
         .expect("parse_execute_result stdout should match type")
-        .boundary_str("parse_execute_result", "stderr", "")
+        .boundary_str("execute_installs/parse_execute_result", "stderr", "")
         .expect("parse_execute_result stderr should match type")
         // Build spec (pure terminal outputs are computed; boundary mocks provided for tests)
         .build_unchecked()
         // Input expectations (via legacy API post-build)
         .expects_input("manifest_path", InputConstraint::Any)
         .input_mock(
-            "prepare_load_manifest",
+            "load_manifest/prepare_load_manifest",
             "manifest_path",
             Value::Str("deps.toml".into()),
         )
@@ -159,7 +159,7 @@ pub fn deps_mock_spec() -> MockSpec {
                 .description("Detects host platform as a string"),
         )
         .node_example(
-            NodeExample::new("prepare_load_manifest")
+            NodeExample::new("load_manifest/prepare_load_manifest")
                 .input("manifest_path", Value::Str("deps.toml".into()))
                 .output("request", OutputMatcher::IsRequest)
                 .output(
@@ -169,7 +169,7 @@ pub fn deps_mock_spec() -> MockSpec {
                 .description("Prepares file read request for deps.toml"),
         )
         .node_example(
-            NodeExample::new("parse_manifest")
+            NodeExample::new("load_manifest/parse_manifest")
                 .input(
                     "response",
                     Value::Response(
@@ -210,7 +210,7 @@ pub fn deps_mock_spec() -> MockSpec {
                 .description("Generates install script and plan for linux"),
         )
         .node_example(
-            NodeExample::new("prepare_execute_installs")
+            NodeExample::new("execute_installs/prepare_execute_installs")
                 .input("install_script", Value::Str("echo install".into()))
                 .output("request", OutputMatcher::IsRequest)
                 .output(
@@ -220,7 +220,7 @@ pub fn deps_mock_spec() -> MockSpec {
                 .description("Prepares shell request for install script"),
         )
         .node_example(
-            NodeExample::new("parse_execute_result")
+            NodeExample::new("execute_installs/parse_execute_result")
                 .input(
                     "response",
                     Value::Response(ShellResponse::ok("installed\n").into()),
@@ -240,7 +240,7 @@ pub fn deps_mock_spec() -> MockSpec {
                 .description("Parses install execution result"),
         )
         // Probe-observer: terminal needs chain-safe observer
-        .live_expected_output("parse_execute_result", "success", OutputMatcher::IsBool)
+        .live_expected_output("execute_installs/parse_execute_result", "success", OutputMatcher::IsBool)
 }
 
 /// Mock spec for testing sudo elevation scenarios.
@@ -268,7 +268,7 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
         .expect("platform mock should match type")
         // Transport: load manifest (succeeds)
         .transport_response(
-            "execute_load_manifest",
+            "load_manifest/execute_load_manifest",
             "response",
             TransportResponse::File(FileResponse {
                 path: "deps.toml".into(),
@@ -282,7 +282,7 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
         .expect("execute_load_manifest response should match type")
         // Transport: execute installs (fails)
         .transport_response(
-            "execute_installs",
+            "execute_installs/execute_installs",
             "response",
             TransportResponse::Shell(ShellResponse::failed(
                 1,
@@ -294,7 +294,7 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
         .build_unchecked()
         .expects_input("manifest_path", InputConstraint::Any)
         .input_mock(
-            "prepare_load_manifest",
+            "load_manifest/prepare_load_manifest",
             "manifest_path",
             Value::Str("deps.toml".into()),
         )

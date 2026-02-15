@@ -153,7 +153,7 @@ fn find_credential_nodes<T>(dag: &Dag<T>) -> Vec<String> {
         .collect()
 }
 
-/// Find pure nodes (not transport executors, not tool env, not tool consumers).
+/// Find pure nodes (not transport executors, not tool env, not tool consumers, not SubDags).
 fn find_pure_nodes<T>(
     dag: &Dag<T>,
     transport_executors: &[String],
@@ -163,7 +163,9 @@ fn find_pure_nodes<T>(
         .iter()
         .filter(|n| {
             let id = &n.id.0;
-            !transport_executors.contains(id)
+            // SubDag nodes are composite — not pure opaque nodes.
+            n.is_opaque()
+                && !transport_executors.contains(id)
                 && !tool_env_nodes.contains(id)
                 && !n.inputs.iter().any(|p| p.type_id.0 == "ToolHandle")
         })

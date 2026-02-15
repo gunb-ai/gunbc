@@ -18,10 +18,20 @@ use gunbc_exec::{
     optional_int_strict, optional_str_list_strict, optional_str_strict, propagate_skipped,
     require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
 };
+use gunbc_ir::build::{list, optional, port, resource, scalar, AccessMode};
+use gunbc_ir::dag::{Dag, Edge};
+use gunbc_ir::node::Node;
+use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{Timestamp, Value};
+use gunbc_lib_cloud_ops::{
+    build_cloud_secret_manager_credential_graph_from_config, CloudOps,
+    CloudSecretManagerGraphOp,
+};
+use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::filename;
+use gunbc_primitives::{ClockEnv, FsEnv};
 use std::collections::HashMap;
 use std::time::SystemTime;
 
@@ -347,6 +357,266 @@ pub fn extract_gist_url(response: &TransportResponse) -> String {
             .unwrap_or_else(|| "unknown".to_string()),
         _ => "unknown".to_string(),
     }
+}
+
+// ============================================================================
+// GistUploadOp — composite op type for the gist upload SubDag
+// ============================================================================
+
+/// Operation type for the gist upload SubDag.
+///
+/// Wraps all operations needed for the gist upload pipeline:
+/// - Cloud credential lifecycle (IAM, secret resolution)
+/// - Gist request preparation and response parsing
+/// - Transport boundaries (actual I/O)
+/// - Resource acquisition (filesystem, clock)
+/// - Auth resolution (hardcoded GitHub gist credentials)
+///
+/// Consumers `map_ops` this into their own graph-op enum, exactly
+/// like `CloudSecretManagerGraphOp` is lifted into consumer enums.
+#[derive(Debug, Clone)]
+pub enum GistUploadOp {
+    /// Gist operations (PURE — request preparation, response parsing).
+    Gist(GistOps),
+    /// Cloud credential lifecycle operations.
+    Cloud(CloudSecretManagerGraphOp),
+    /// Transport boundary (actual I/O).
+    Transport(TransportOps),
+    /// Filesystem environment (resource acquisition).
+    FsEnv(FsEnv),
+    /// Clock environment (timestamp snapshot).
+    ClockEnv(ClockEnv),
+    /// Hardcoded GitHub gist auth resolution (PURE).
+    ResolveAuth,
+}
+
+impl Executable for GistUploadOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        match self {
+            GistUploadOp::Gist(op) => op.execute(inputs),
+            GistUploadOp::Cloud(op) => op.execute(inputs),
+            GistUploadOp::Transport(op) => op.execute(inputs),
+            GistUploadOp::FsEnv(op) => op.execute(inputs),
+            GistUploadOp::ClockEnv(op) => op.execute(inputs),
+            GistUploadOp::ResolveAuth => execute_gist_resolve_auth(inputs),
+        }
+    }
+}
+
+/// Hardcoded auth resolution for GitHub Gist operations.
+///
+/// Uses `GistRequest::credential_intent()` to derive the auth contract.
+fn execute_gist_resolve_auth(
+    _inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let intent = GistRequest::new().credential_intent();
+    intent
+        .validate()
+        .map_err(|e| ExecError::new(format!("invalid gist credential contract: {e}")))?;
+
+    let mut out = OutputMap::new()
+        .str("service", intent.service)
+        .str("scheme", intent.scheme)
+        .str("header_name", intent.header_name)
+        .str_list("required_scopes", intent.required_scopes)
+        .bool("interactive_allowed", intent.interactive_allowed)
+        .int("lifetime_seconds", 3600);
+
+    if let Some(secret_name) = intent.secret_name {
+        out = out.str("secret_name", secret_name);
+    }
+
+    out.ok()
+}
+
+// ============================================================================
+// SubDag builder — gist upload pipeline
+// ============================================================================
+
+/// Build a self-contained gist upload SubDag.
+///
+/// The SubDag encapsulates the complete gist upload pipeline:
+///
+/// ```text
+///   fs_env ──────────────────────────────────────────────────┐
+///   clock_env ───────────────────────────────────────────┐   │
+///   cloud_env ──────────────────────────────┐            │   │
+///   resolve_auth ──────────────┐            │            │   │
+///                  bind_secret ──> cloud_credential      │   │
+///                       │               │                │   │
+///                  scope_preflight       │                │   │
+///                       │               │                │   │
+///   prepare_gist_request ────────> execute_gist ──> parse_gist_response
+/// ```
+///
+/// **Interface (auto-inferred from entrypoints/boundaries):**
+/// - Inputs: `markdown: String`, `branch: OptionalString`,
+///   `remote_branch: OptionalString`, `base_ref: OptionalString`
+/// - Outputs: `url: String` (plus `ok: Bool` from cloud credential on some configs)
+///
+/// The credential chain is fully self-contained — consumers don't need to
+/// understand cloud credentials at all. They just wire `markdown` in and get
+/// `url` out.
+pub fn build_gist_upload_subdag(
+    config: CloudSecretConfig,
+    public: bool,
+) -> Dag<GistUploadOp> {
+    let mut dag = Dag::new();
+
+    // ========================================================================
+    // Environment nodes (roots — no inputs)
+    // ========================================================================
+
+    dag.add_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
+        GistUploadOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+    ));
+
+    dag.add_node(Node::opaque(
+        "clock_env",
+        vec![],
+        vec![port("clock", "Timestamp")],
+        GistUploadOp::ClockEnv(ClockEnv),
+    ));
+
+    dag.add_node(Node::opaque(
+        "cloud_env",
+        vec![],
+        vec![
+            port("config", "CloudSecretConfig"),
+            optional("request_url", "OptionalString"),
+            optional("request_token", "OptionalString"),
+        ],
+        GistUploadOp::Cloud(CloudSecretManagerGraphOp::Cloud(
+            CloudOps::ConstCloudConfig {
+                config: config.clone(),
+            },
+        )),
+    ));
+
+    dag.add_node(Node::opaque(
+        "resolve_auth",
+        vec![],
+        vec![
+            port("service", "String"),
+            optional("secret_name", "OptionalString"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+            list("required_scopes", "String"),
+            port("interactive_allowed", "Bool"),
+            optional("lifetime_seconds", "OptionalInt"),
+        ],
+        GistUploadOp::ResolveAuth,
+    ));
+
+    // ========================================================================
+    // Credential chain
+    // ========================================================================
+
+    dag.add_node(Node::opaque(
+        "bind_secret",
+        vec![
+            port("config", "CloudSecretConfig"),
+            port("service", "String"),
+            optional("secret_name", "OptionalString"),
+        ],
+        vec![port("config", "CloudSecretConfig")],
+        GistUploadOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
+    ));
+
+    let cloud_subdag = build_cloud_secret_manager_credential_graph_from_config(&config)
+        .map_ops(&mut GistUploadOp::Cloud);
+    dag.add_node(Node::subdag("cloud_credential", cloud_subdag));
+
+    dag.add_node(Node::opaque(
+        "scope_preflight",
+        vec![list("required_scopes", "String")],
+        vec![scalar("scope_verified", "Bool")],
+        GistUploadOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ScopePreflight)),
+    ));
+
+    // ========================================================================
+    // Gist request pipeline
+    // ========================================================================
+
+    dag.add_node(Node::opaque(
+        "prepare_gist_request",
+        vec![
+            scalar("markdown", "String"),
+            optional("branch", "OptionalString"),
+            optional("remote_branch", "OptionalString"),
+            resource("file", "FilesystemHandle", AccessMode::Read),
+            resource("clock", "Timestamp", AccessMode::Read),
+            optional("credential_expires_in", "OptionalInt"),
+            list("required_scopes", "String"),
+            optional("base_ref", "OptionalString"),
+        ],
+        vec![
+            scalar("request", "TransportRequest"),
+            scalar("skip", "Bool"),
+        ],
+        GistUploadOp::Gist(GistOps::PrepareRequest { public }),
+    ));
+
+    dag.add_node(Node::opaque(
+        "execute_gist",
+        vec![
+            scalar("request", "TransportRequest"),
+            scalar("skip", "Bool"),
+            optional("scope_verified", "OptionalBool"),
+            resource("credential", "Credential", AccessMode::Read),
+        ],
+        vec![scalar("response", "TransportResponse")],
+        GistUploadOp::Transport(TransportOps::Execute),
+    ));
+
+    dag.add_node(Node::opaque(
+        "parse_gist_response",
+        vec![scalar("response", "TransportResponse")],
+        vec![scalar("url", "String")],
+        GistUploadOp::Gist(GistOps::ParseGistResponse),
+    ));
+
+    // ========================================================================
+    // Edges: credential chain
+    // ========================================================================
+
+    dag.add_edge(Edge::new("cloud_env", "config", "bind_secret", "config"));
+    dag.add_edge(Edge::new("resolve_auth", "service", "bind_secret", "service"));
+    dag.add_edge(Edge::new("resolve_auth", "secret_name", "bind_secret", "secret_name"));
+    dag.add_edge(Edge::new("bind_secret", "config", "cloud_credential", "config"));
+    dag.add_edge(Edge::new("resolve_auth", "service", "cloud_credential", "source_id"));
+    dag.add_edge(Edge::new("resolve_auth", "scheme", "cloud_credential", "scheme"));
+    dag.add_edge(Edge::new("resolve_auth", "header_name", "cloud_credential", "header_name"));
+    dag.add_edge(Edge::new("resolve_auth", "lifetime_seconds", "cloud_credential", "lifetime_seconds"));
+    dag.add_edge(Edge::new("resolve_auth", "interactive_allowed", "cloud_credential", "interactive_allowed"));
+    dag.add_edge(Edge::new("resolve_auth", "required_scopes", "cloud_credential", "required_scopes"));
+    dag.add_edge(Edge::new("cloud_env", "request_url", "cloud_credential", "request_url"));
+    dag.add_edge(Edge::new("cloud_env", "request_token", "cloud_credential", "request_token"));
+
+    // ========================================================================
+    // Edges: scope preflight
+    // ========================================================================
+
+    dag.add_edge(Edge::new("resolve_auth", "required_scopes", "scope_preflight", "required_scopes"));
+
+    // ========================================================================
+    // Edges: gist request pipeline
+    // ========================================================================
+
+    dag.add_edge(Edge::new("fs_env", FsEnv::WRITE_PORT, "prepare_gist_request", "res:file"));
+    dag.add_edge(Edge::new("clock_env", "clock", "prepare_gist_request", "res:clock"));
+    dag.add_edge(Edge::new("cloud_credential", "expires_in", "prepare_gist_request", "credential_expires_in"));
+    dag.add_edge(Edge::new("resolve_auth", "required_scopes", "prepare_gist_request", "required_scopes"));
+    dag.add_edge(Edge::new("prepare_gist_request", "request", "execute_gist", "request"));
+    dag.add_edge(Edge::new("prepare_gist_request", "skip", "execute_gist", "skip"));
+    dag.add_edge(Edge::new("scope_preflight", "scope_verified", "execute_gist", "scope_verified"));
+    dag.add_edge(Edge::new("cloud_credential", "credential", "execute_gist", "res:credential"));
+    dag.add_edge(Edge::new("execute_gist", "response", "parse_gist_response", "response"));
+
+    dag
 }
 
 // ============================================================================

@@ -91,7 +91,7 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
         BuildGraphOp::Build(BuildOp::PrepareBuild),
         BuildGraphOp::Build(BuildOp::ParseBuild),
         BuildGraphOp::Transport(TransportOps::Execute),
-        None,
+        Some(&fs_env),
     )?;
 
     // ========================================================================
@@ -112,7 +112,7 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
         BuildGraphOp::Build(BuildOp::PrepareTest),
         BuildGraphOp::Build(BuildOp::ParseTest),
         BuildGraphOp::Transport(TransportOps::Execute),
-        &build.parse,
+        &build,
     )?;
 
     // ========================================================================
@@ -133,7 +133,7 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
         BuildGraphOp::Build(BuildOp::PrepareClippy),
         BuildGraphOp::Build(BuildOp::ParseClippy),
         BuildGraphOp::Transport(TransportOps::Execute),
-        &build.parse,
+        &build,
     )?;
 
     // ========================================================================
@@ -154,7 +154,7 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
             vec![port("overall_success", "Bool"), port("report", "String")],
             BuildGraphOp::Build(BuildOp::Summary),
         ),
-        &[&test.parse, &clippy.parse],
+        &[&test, &clippy],
     )?;
 
     // ========================================================================
@@ -163,46 +163,46 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
 
     // Test stage — build feeds prepare
     builder.add_edge(
-        build.parse.out("build_success"),
-        test.prepare.in_port("build_success"),
+        build.out("build_success"),
+        test.in_port("build_success"),
     )?;
 
     // Clippy stage — build feeds prepare
     builder.add_edge(
-        build.parse.out("build_success"),
-        clippy.prepare.in_port("build_success"),
+        build.out("build_success"),
+        clippy.in_port("build_success"),
     )?;
 
     // Summary stage
     builder.add_edge(
-        build.parse.out("build_success"),
+        build.out("build_success"),
         summary.in_port("build_success"),
     )?;
     builder.add_edge(
-        test.parse.out("test_success"),
+        test.out("test_success"),
         summary.in_port("test_success"),
     )?;
     builder.add_edge(
-        clippy.parse.out("clippy_success"),
+        clippy.out("clippy_success"),
         summary.in_port("clippy_success"),
     )?;
     builder.add_edge(
-        build.parse.out("build_stderr"),
+        build.out("build_stderr"),
         summary.in_port("build_stderr"),
     )?;
     builder.add_edge(
-        test.parse.out("test_stderr"),
+        test.out("test_stderr"),
         summary.in_port("test_stderr"),
     )?;
     builder.add_edge(
-        clippy.parse.out("clippy_stderr"),
+        clippy.out("clippy_stderr"),
         summary.in_port("clippy_stderr"),
     )?;
 
     // Resource wiring
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), build.execute.in_port("res:file"))?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), test.execute.in_port("res:file"))?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), clippy.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), build.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), test.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), clippy.in_port("res:file"))?;
 
     Ok(builder.build())
 }
@@ -215,40 +215,43 @@ mod tests {
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_build_graph().expect("graph should build");
-        let expected_nodes = [
-            "prepare_build",
-            "execute_build",
-            "parse_build",
-            "prepare_test",
-            "execute_test",
-            "parse_test",
-            "prepare_clippy",
-            "execute_clippy",
-            "parse_clippy",
-            "summary",
-        ];
-
-        for node_id in expected_nodes {
-            assert!(
-                dag.get_node(&node_id.into()).is_some(),
-                "missing node: {}",
-                node_id
-            );
+        // Transport triplets are now SubDag nodes
+        for subdag_name in ["build", "test", "clippy"] {
+            let node = dag
+                .get_node(&subdag_name.into())
+                .unwrap_or_else(|| panic!("missing SubDag node: {}", subdag_name));
+            assert!(node.is_subdag(), "{} should be a SubDag", subdag_name);
         }
+        // Non-SubDag nodes
+        assert!(
+            dag.get_node(&"summary".into()).is_some(),
+            "missing node: summary"
+        );
     }
 
     #[test]
     fn test_graph_has_transport_nodes() {
         let dag = build_build_graph().expect("graph should build");
-        for node_id in ["execute_build", "execute_test", "execute_clippy"] {
-            let node = dag
-                .get_node(&node_id.into())
-                .unwrap_or_else(|| panic!("missing transport node: {}", node_id));
-            assert!(
-                matches!(node.body, NodeBody::Opaque(BuildGraphOp::Transport(_))),
-                "{} should be a transport node",
-                node_id
-            );
+        for (subdag_name, execute_name) in [
+            ("build", "execute_build"),
+            ("test", "execute_test"),
+            ("clippy", "execute_clippy"),
+        ] {
+            let subdag_node = dag
+                .get_node(&subdag_name.into())
+                .unwrap_or_else(|| panic!("missing SubDag: {}", subdag_name));
+            if let NodeBody::SubDag(ref inner) = subdag_node.body {
+                let execute_node = inner
+                    .get_node(&execute_name.into())
+                    .unwrap_or_else(|| panic!("missing transport node {} inside {}", execute_name, subdag_name));
+                assert!(
+                    matches!(execute_node.body, NodeBody::Opaque(BuildGraphOp::Transport(_))),
+                    "{} should be a transport node",
+                    execute_name
+                );
+            } else {
+                panic!("{} should be a SubDag", subdag_name);
+            }
         }
     }
 
@@ -263,20 +266,20 @@ mod tests {
     #[test]
     fn test_graph_has_parallel_stages() {
         let dag = build_build_graph().expect("graph should build");
-        // prepare_test and prepare_clippy should both depend on parse_build
+        // test and clippy SubDags should both depend on the build SubDag
         let test_parents: Vec<_> = dag
             .edges
             .iter()
-            .filter(|e| e.to_node == "prepare_test".into())
+            .filter(|e| e.to_node == "test".into())
             .map(|e| &e.from_node)
             .collect();
         let clippy_parents: Vec<_> = dag
             .edges
             .iter()
-            .filter(|e| e.to_node == "prepare_clippy".into())
+            .filter(|e| e.to_node == "clippy".into())
             .map(|e| &e.from_node)
             .collect();
-        assert!(test_parents.iter().any(|n| n.0 == "parse_build"));
-        assert!(clippy_parents.iter().any(|n| n.0 == "parse_build"));
+        assert!(test_parents.iter().any(|n| n.0 == "build"));
+        assert!(clippy_parents.iter().any(|n| n.0 == "build"));
     }
 }

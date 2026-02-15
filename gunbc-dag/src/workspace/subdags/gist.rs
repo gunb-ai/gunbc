@@ -4,9 +4,10 @@
 
 use crate::workspace::convert::convert_dag;
 use crate::workspace::WorkspaceOp;
-use gunbc_gist::{build_gist_graph_with_config, GistGraphOp, GistMode, GistOps};
+use gunbc_gist::{build_gist_graph_with_config, GistGraphOp, GistMode};
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::Node;
+use gunbc_lib_gist_ops::GistOps;
 
 /// Convert a GistGraphOp to WorkspaceOp.
 ///
@@ -17,7 +18,9 @@ use gunbc_ir::Node;
 /// for structural traversal (e.g., Mermaid rendering, node counting).
 fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
     match op {
-        GistGraphOp::Gist(gist_op) => WorkspaceOp::Gist(gist_op),
+        GistGraphOp::GistUpload(gunbc_lib_gist_ops::GistUploadOp::Gist(gist_op)) => {
+            WorkspaceOp::Gist(gist_op)
+        }
         GistGraphOp::Transport(t) => WorkspaceOp::Transport(t),
         // Internal ops — structurally present but never directly executed
         // in workspace context (SubDag executor dispatches them).
@@ -94,7 +97,8 @@ mod tests {
 
         match &node.body {
             NodeBody::SubDag(dag) => {
-                for node_id in ["execute_list_files", "execute_gist"] {
+                // list_files is still top-level; gist_upload is a SubDag wrapping execute_gist
+                for node_id in ["list_files", "gist_upload"] {
                     assert!(
                         dag.get_node(&node_id.into()).is_some(),
                         "missing node: {}",

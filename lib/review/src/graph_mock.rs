@@ -164,6 +164,8 @@ pub fn inline_review_mock_spec() -> MockSpec {
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "review-inline")
+        // Delegate cloud_credential internal mocks to include_prefixed_runtime_mocks
+        .exclude_prefix("cloud_credential/gcp_wif_secret")
         // Cloud env + credential boundaries
         .boundary("cloud_env", "config", mock_cloud_config())
         .expect("cloud_env config should match type")
@@ -179,16 +181,16 @@ pub fn inline_review_mock_spec() -> MockSpec {
             Value::Str("mock-oidc-token".into()),
         )
         .expect("cloud_env request_token should match type")
-        .boundary("cloud_credential", "credential", mock_credential())
-        .expect("cloud_credential should match type")
-        .boundary("cloud_credential", "expires_in", Value::Int(3_600))
+        .boundary("cloud_credential/gcp_wif_secret/build_credential", "credential", mock_credential())
+        .expect("cloud_credential credential should match type")
+        .boundary("cloud_credential/gcp_wif_secret/local_auth_upsert/merge_auth_result", "expires_in", Value::Int(3_600))
         .expect("cloud_credential expires_in should match type")
-        .boundary("cloud_credential", "ok", Value::Bool(true))
+        .boundary("cloud_credential/gcp_wif_secret/parse_set_iam", "ok", Value::Bool(true))
         .expect("cloud_credential ok should match type")
         .boundary("bind_secret", "config", mock_cloud_config())
         .expect("bind_secret config should match type")
         // Transport: execute_llm (LLM API call)
-        .transport_response("execute_llm", "response", llm_response.into())
+        .transport_response("llm/execute_llm", "response", llm_response.into())
         .expect("execute_llm response should match type")
         // Build spec (pure terminal outputs like parse_response are computed, not mocked)
         .build_unchecked()
@@ -205,12 +207,13 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .input_mock("prepare_prompt", "criteria", criteria_json.clone())
         .input_mock("parse_response", "criteria", criteria_json.clone())
         .input_mock(
-            "prepare_llm",
+            "llm/prepare_llm",
             "content",
             Value::Str("fn main() { let x: Option<i32> = None; x.unwrap(); }".into()),
         )
-        .input_mock("prepare_llm", "provider", Value::Str("openai".into()))
-        .input_mock("prepare_llm", "model", Value::Str("gpt-4o".into()))
+        .input_mock("llm/prepare_llm", "provider", Value::Str("openai".into()))
+        .input_mock("resolve_auth", "provider", Value::Str("openai".into()))
+        .input_mock("llm/prepare_llm", "model", Value::Str("gpt-4o".into()))
         .expects_input("artifact", InputConstraint::NonEmpty)
         .expects_input("criteria", InputConstraint::NonEmpty)
         .expects_input("provider", InputConstraint::NonEmpty)
@@ -224,7 +227,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
                 .description("builds prompt text from artifact + criteria"),
         )
         .node_example(
-            NodeExample::new("prepare_llm")
+            NodeExample::new("llm/prepare_llm")
                 .input("content", Value::Str("fn main() {}".into()))
                 .input("question", Value::Str("Review this code".into()))
                 .input("provider", Value::Str("openai".into()))
@@ -248,7 +251,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
                 .description("resolves OpenAI auth scheme and header"),
         )
         .node_example(
-            NodeExample::new("parse_llm")
+            NodeExample::new("llm/parse_llm")
                 .input("provider", Value::Str("openai".into()))
                 .input(
                     "response",
@@ -334,6 +337,8 @@ diff --git a/src/main.rs b/src/main.rs
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "review-diff")
+        // Delegate cloud_credential internal mocks to include_prefixed_runtime_mocks
+        .exclude_prefix("cloud_credential/gcp_wif_secret")
         // Filesystem env (git diff access)
         .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
@@ -352,23 +357,23 @@ diff --git a/src/main.rs b/src/main.rs
             Value::Str("mock-oidc-token".into()),
         )
         .expect("cloud_env request_token should match type")
-        .boundary("cloud_credential", "credential", mock_credential())
-        .expect("cloud_credential should match type")
-        .boundary("cloud_credential", "expires_in", Value::Int(3_600))
+        .boundary("cloud_credential/gcp_wif_secret/build_credential", "credential", mock_credential())
+        .expect("cloud_credential credential should match type")
+        .boundary("cloud_credential/gcp_wif_secret/local_auth_upsert/merge_auth_result", "expires_in", Value::Int(3_600))
         .expect("cloud_credential expires_in should match type")
-        .boundary("cloud_credential", "ok", Value::Bool(true))
+        .boundary("cloud_credential/gcp_wif_secret/parse_set_iam", "ok", Value::Bool(true))
         .expect("cloud_credential ok should match type")
         .boundary("bind_secret", "config", mock_cloud_config())
         .expect("bind_secret config should match type")
         // Transport: execute_diff (git diff command)
         .transport_response(
-            "execute_diff",
+            "diff/execute_diff",
             "response",
             TransportResponse::Shell(ShellResponse::ok(diff_output)),
         )
         .expect("execute_diff response should match type")
         // Transport: execute_llm (LLM API call)
-        .transport_response("execute_llm", "response", llm_response.into())
+        .transport_response("llm/execute_llm", "response", llm_response.into())
         .expect("execute_llm response should match type")
         // Build spec (pure terminal outputs are computed, not mocked)
         .build_unchecked()
@@ -377,7 +382,7 @@ diff --git a/src/main.rs b/src/main.rs
             &gunbc_lib_gcp_ops::graph_mock::gcp_local_mock_spec(),
         )
         // Input mocks / expectations (repo_path is a required entrypoint)
-        .input_mock("prepare_diff", "repo_path", Value::Str(".".into()))
+        .input_mock("diff/prepare_diff", "repo_path", Value::Str(".".into()))
         .expects_input("repo_path", InputConstraint::Any)
         // No input mocks needed — provider, model, criteria come from config node
         .node_example(
@@ -391,14 +396,14 @@ diff --git a/src/main.rs b/src/main.rs
                 .description("emits pipeline config constants"),
         )
         .node_example(
-            NodeExample::new("prepare_diff")
+            NodeExample::new("diff/prepare_diff")
                 .input("base_ref", Value::Str("main".into()))
                 .input("repo_path", Value::Str(".".into()))
                 .output("request", OutputMatcher::Any)
                 .description("builds git diff request"),
         )
         .node_example(
-            NodeExample::new("parse_diff")
+            NodeExample::new("diff/parse_diff")
                 .input(
                     "response",
                     Value::Response(TransportResponse::Shell(ShellResponse::ok(diff_output))),
@@ -432,7 +437,7 @@ diff --git a/src/main.rs b/src/main.rs
                 .description("builds prompt text from diff artifact"),
         )
         .node_example(
-            NodeExample::new("prepare_llm")
+            NodeExample::new("llm/prepare_llm")
                 .input("content", Value::Str("diff artifact".into()))
                 .input("question", Value::Str("Review the diff".into()))
                 .input("provider", Value::Str("openai".into()))
@@ -456,7 +461,7 @@ diff --git a/src/main.rs b/src/main.rs
                 .description("resolves OpenAI auth scheme and header"),
         )
         .node_example(
-            NodeExample::new("parse_llm")
+            NodeExample::new("llm/parse_llm")
                 .input("provider", Value::Str("openai".into()))
                 .input(
                     "response",

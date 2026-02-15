@@ -136,7 +136,7 @@ pub fn ci_mock_spec() -> MockSpec {
     //
     // Parse nodes now test both real transport responses AND skip propagation.
     .node_example(
-        NodeExample::new("parse_deps_exists")
+        NodeExample::new("deps_exists/parse_deps_exists")
             .input(
                 "response",
                 Value::Response(
@@ -158,19 +158,19 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("File exists: deps.toml found → deps_exists true"),
     )
     .node_example(
-        NodeExample::new("parse_deps_exists")
+        NodeExample::new("deps_exists/parse_deps_exists")
             .input("response", Value::Skipped)
             .output("deps_checked", OutputMatcher::Any)
             .description("Handles skipped transport response gracefully"),
     )
     .node_example(
-        NodeExample::new("parse_codegen_exists")
+        NodeExample::new("codegen_exists/parse_codegen_exists")
             .input("response", Value::Response(ShellResponse::ok("").into()))
             .output("codegen_needed", OutputMatcher::Any)
             .description("Shell exists check success → parses codegen_needed"),
     )
     .node_example(
-        NodeExample::new("parse_codegen_exists")
+        NodeExample::new("codegen_exists/parse_codegen_exists")
             .input("response", Value::Skipped)
             .output("codegen_needed", OutputMatcher::Any)
             .description("Handles skipped transport response gracefully"),
@@ -202,21 +202,21 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Prep success → stamp write request"),
     )
     .node_example(
-        NodeExample::new("prepare_bootstrap")
+        NodeExample::new("bootstrap/prepare_bootstrap")
             .input("prep_success", Value::Bool(true))
             .output("request", OutputMatcher::non_empty())
             .output("skip", OutputMatcher::exact(Value::Bool(false)))
             .description("Prep success → bootstrap request"),
     )
     .node_example(
-        NodeExample::new("prepare_pragma")
+        NodeExample::new("pragma/prepare_pragma")
             .input("prep_success", Value::Bool(true))
             .output("request", OutputMatcher::non_empty())
             .output("skip", OutputMatcher::exact(Value::Bool(false)))
             .description("Prep success → pragma request"),
     )
     .node_example(
-        NodeExample::new("parse_testgen")
+        NodeExample::new("testgen/parse_testgen")
             .input(
                 "response",
                 Value::Response(ShellResponse::ok("Generated tests").into()),
@@ -226,7 +226,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Testgen shell success → testgen_success true"),
     )
     .node_example(
-        NodeExample::new("parse_testgen")
+        NodeExample::new("testgen/parse_testgen")
             .input("skip", Value::Bool(true))
             .input(
                 "skip_reason",
@@ -236,7 +236,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Skip path: testgen skipped → success false"),
     )
     .node_example(
-        NodeExample::new("parse_bootstrap")
+        NodeExample::new("bootstrap/parse_bootstrap")
             .input(
                 "response",
                 Value::Response(ShellResponse::ok("Generated bootstrap files").into()),
@@ -246,7 +246,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Bootstrap shell success → bootstrap_success true"),
     )
     .node_example(
-        NodeExample::new("parse_bootstrap")
+        NodeExample::new("bootstrap/parse_bootstrap")
             .input("skip", Value::Bool(true))
             .input(
                 "skip_reason",
@@ -259,7 +259,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Skip path: bootstrap skipped → success false"),
     )
     .node_example(
-        NodeExample::new("parse_pragma")
+        NodeExample::new("pragma/parse_pragma")
             .input(
                 "response",
                 Value::Response(ShellResponse::ok("Generated pragma files").into()),
@@ -269,7 +269,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Pragma shell success → pragma_success true"),
     )
     .node_example(
-        NodeExample::new("parse_pragma")
+        NodeExample::new("pragma/parse_pragma")
             .input("skip", Value::Bool(true))
             .input(
                 "skip_reason",
@@ -279,7 +279,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Skip path: pragma skipped → success false"),
     )
     .node_example(
-        NodeExample::new("parse_build")
+        NodeExample::new("build/parse_build")
             .input(
                 "response",
                 Value::Response(
@@ -293,7 +293,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Build shell success → build_success true"),
     )
     .node_example(
-        NodeExample::new("parse_build")
+        NodeExample::new("build/parse_build")
             .input("skip", Value::Bool(true))
             .input(
                 "skip_reason",
@@ -304,7 +304,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Skip path: build skipped → success false, skipped true"),
     )
     .node_example(
-        NodeExample::new("parse_test")
+        NodeExample::new("test/parse_test")
             .input(
                 "response",
                 Value::Response(
@@ -318,7 +318,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Test shell success → test_success true"),
     )
     .node_example(
-        NodeExample::new("parse_test")
+        NodeExample::new("test/parse_test")
             .input("skip", Value::Bool(true))
             .input(
                 "skip_reason",
@@ -329,7 +329,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Skip path: test skipped → success false, skipped true"),
     )
     .node_example(
-        NodeExample::new("prepare_codegen_exists")
+        NodeExample::new("codegen_exists/prepare_codegen_exists")
             .output("request", OutputMatcher::non_empty())
             .description("Prepares file-exists check for codegen dir"),
     )
@@ -340,33 +340,33 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Codegen command prepare emits skip flag"),
     )
     .node_example(
-        NodeExample::new("prepare_testgen")
+        NodeExample::new("testgen/prepare_testgen")
             .input("prep_success", Value::Bool(true))
             .output("skip", OutputMatcher::IsBool)
             .description("Testgen prepare emits skip flag"),
     )
     .node_example(
-        NodeExample::new("prepare_build")
+        NodeExample::new("build/prepare_build")
             .input("prep_success", Value::Bool(true))
             .input("testgen_success", Value::Bool(true))
             .output("skip", OutputMatcher::IsBool)
             .description("Build prepare emits skip flag"),
     )
     .node_example(
-        NodeExample::new("prepare_test")
+        NodeExample::new("test/prepare_test")
             .input("build_success", Value::Bool(true))
             .output("skip", OutputMatcher::IsBool)
             .description("Test prepare emits skip flag"),
     )
     .node_example(
-        NodeExample::new("prepare_guardrail_check")
+        NodeExample::new("guardrail_check/prepare_guardrail_check")
             .input("testgen_success", Value::Bool(true))
             .input("pragma_success", Value::Bool(true))
             .output("skip", OutputMatcher::IsBool)
             .description("Guardrail prepare emits skip flag"),
     )
     .node_example(
-        NodeExample::new("prepare_clippy_lint")
+        NodeExample::new("clippy_lint/prepare_clippy_lint")
             .input("build_success", Value::Bool(true))
             .input("pragma_success", Value::Bool(true))
             .output("request", OutputMatcher::non_empty())
@@ -374,14 +374,14 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Build success → clippy not skipped, request emitted"),
     )
     .node_example(
-        NodeExample::new("prepare_clippy_lint")
+        NodeExample::new("clippy_lint/prepare_clippy_lint")
             .input("build_success", Value::Bool(false))
             .input("pragma_success", Value::Bool(true))
             .output("skip", OutputMatcher::exact(Value::Bool(true)))
             .description("Build failure → clippy skipped"),
     )
     .node_example(
-        NodeExample::new("parse_clippy_lint")
+        NodeExample::new("clippy_lint/parse_clippy_lint")
             .input("skip", Value::Bool(false))
             .input(
                 "response",
@@ -392,14 +392,14 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Clippy result parse produces success/skipped flags"),
     )
     .node_example(
-        NodeExample::new("parse_guardrail_check")
+        NodeExample::new("guardrail_check/parse_guardrail_check")
             .input("skip", Value::Bool(false))
             .input("response", Value::Response(ShellResponse::ok("OK").into()))
             .output("guardrail_success", OutputMatcher::exact(Value::Bool(true)))
             .description("Guardrail check success → guardrail_success true"),
     )
     .node_example(
-        NodeExample::new("prepare_verify_makegen_check")
+        NodeExample::new("verify_makegen_check/prepare_verify_makegen_check")
             .input("prep_success", Value::Bool(true))
             .input("bootstrap_success", Value::Bool(true))
             .input("testgen_success", Value::Bool(true))
@@ -408,7 +408,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Verify prepare emits skip flag"),
     )
     .node_example(
-        NodeExample::new("parse_verify_makegen_check")
+        NodeExample::new("verify_makegen_check/parse_verify_makegen_check")
             .input("skip", Value::Bool(false))
             .input(
                 "response",
@@ -421,7 +421,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Verify check success → verify_makegen_success true"),
     )
     .node_example(
-        NodeExample::new("prepare_verify_deps_config_check")
+        NodeExample::new("verify_deps_config_check/prepare_verify_deps_config_check")
             .input("prep_success", Value::Bool(true))
             .input("bootstrap_success", Value::Bool(true))
             .input("testgen_success", Value::Bool(true))
@@ -430,7 +430,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Verify deps-config prepare emits skip flag"),
     )
     .node_example(
-        NodeExample::new("parse_verify_deps_config_check")
+        NodeExample::new("verify_deps_config_check/parse_verify_deps_config_check")
             .input("skip", Value::Bool(false))
             .input(
                 "response",
@@ -443,7 +443,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Verify deps-config check success → verify_deps_config_success true"),
     )
     .node_example(
-        NodeExample::new("prepare_verify_bootstrap_check")
+        NodeExample::new("verify_bootstrap_check/prepare_verify_bootstrap_check")
             .input("prep_success", Value::Bool(true))
             .input("bootstrap_success", Value::Bool(true))
             .input("testgen_success", Value::Bool(true))
@@ -452,7 +452,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Verify bootstrap prepare emits skip flag"),
     )
     .node_example(
-        NodeExample::new("parse_verify_bootstrap_check")
+        NodeExample::new("verify_bootstrap_check/parse_verify_bootstrap_check")
             .input("skip", Value::Bool(false))
             .input(
                 "response",
@@ -465,7 +465,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Verify bootstrap check success → verify_bootstrap_success true"),
     )
     .node_example(
-        NodeExample::new("prepare_verify_testgen_check")
+        NodeExample::new("verify_testgen_check/prepare_verify_testgen_check")
             .input("prep_success", Value::Bool(true))
             .input("bootstrap_success", Value::Bool(true))
             .input("testgen_success", Value::Bool(true))
@@ -474,7 +474,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Verify testgen prepare emits skip flag"),
     )
     .node_example(
-        NodeExample::new("parse_verify_testgen_check")
+        NodeExample::new("verify_testgen_check/parse_verify_testgen_check")
             .input("skip", Value::Bool(false))
             .input(
                 "response",
@@ -487,7 +487,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Verify testgen check success → verify_testgen_success true"),
     )
     .node_example(
-        NodeExample::new("prepare_verify_pragma_check")
+        NodeExample::new("verify_pragma_check/prepare_verify_pragma_check")
             .input("prep_success", Value::Bool(true))
             .input("bootstrap_success", Value::Bool(true))
             .input("testgen_success", Value::Bool(true))
@@ -496,7 +496,7 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Verify pragma prepare emits skip flag"),
     )
     .node_example(
-        NodeExample::new("parse_verify_pragma_check")
+        NodeExample::new("verify_pragma_check/parse_verify_pragma_check")
             .input("skip", Value::Bool(false))
             .input(
                 "response",
@@ -527,9 +527,9 @@ pub fn ci_mock_spec() -> MockSpec {
     .live_expected_output("report", "overall_success", OutputMatcher::IsBool)
     .live_expected_output("report", "report", OutputMatcher::NonEmpty)
     // Primitive nodes — tested in their own crates
-    .skip_node_example("prepare_deps_exists")
+    .skip_node_example("deps_exists/prepare_deps_exists")
     // I/O node — transport execute, tested via DryRun
-    .skip_node_example("execute_clippy_lint")
+    .skip_node_example("clippy_lint/execute_clippy_lint")
 }
 
 /// Mock spec for testing test failure.
@@ -543,7 +543,7 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
         extract_mock_requirements(&dag, "ci")
         // Transport: execute_deps_exists (success)
         .transport_response(
-            "execute_deps_exists",
+            "deps_exists/execute_deps_exists",
             "response",
             TransportResponse::File(FileResponse {
                 path: "deps.toml".into(),
@@ -557,7 +557,7 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
         .expect("execute_deps_exists response should match type")
         // Transport: execute_codegen_exists (success)
         .transport_response(
-            "execute_codegen_exists",
+            "codegen_exists/execute_codegen_exists",
             "response",
             TransportResponse::Shell(ShellResponse::ok("")),
         )
@@ -585,31 +585,31 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
         .expect("execute_stamp_write skip should match type")
         // Transport: execute_testgen (success)
         .transport_response(
-            "execute_testgen",
+            "testgen/execute_testgen",
             "response",
             TransportResponse::Shell(ShellResponse::ok("Generated tests")),
         )
         .expect("execute_testgen response should match type")
-        .boundary_bool("execute_testgen", "skip", false)
+        .boundary_bool("testgen/execute_testgen", "skip", false)
         .expect("execute_testgen skip should match type")
-        .boundary_str("execute_testgen", "skip_reason", "")
+        .boundary_str("testgen/execute_testgen", "skip_reason", "")
         .expect("execute_testgen skip_reason should match type")
         // Transport: execute_build (success)
         .transport_response(
-            "execute_build",
+            "build/execute_build",
             "response",
             TransportResponse::Shell(ShellResponse::ok(
                 "Compiling gunbc v0.1.0\n    Finished dev target(s)",
             )),
         )
         .expect("execute_build response should match type")
-        .boundary_bool("execute_build", "skip", false)
+        .boundary_bool("build/execute_build", "skip", false)
         .expect("execute_build skip should match type")
-        .boundary_str("execute_build", "skip_reason", "")
+        .boundary_str("build/execute_build", "skip_reason", "")
         .expect("execute_build skip_reason should match type")
         // Transport: execute_test (FAILS)
         .transport_response(
-            "execute_test",
+            "test/execute_test",
             "response",
             TransportResponse::Shell(ShellResponse::failed(
                 1,
@@ -617,71 +617,71 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
             )),
         )
         .expect("execute_test response should match type")
-        .boundary_bool("execute_test", "skip", false)
+        .boundary_bool("test/execute_test", "skip", false)
         .expect("execute_test skip should match type")
-        .boundary_str("execute_test", "skip_reason", "")
+        .boundary_str("test/execute_test", "skip_reason", "")
         .expect("execute_test skip_reason should match type")
         // Transport: execute_guardrail_check (success)
         .transport_response(
-            "execute_guardrail_check",
+            "guardrail_check/execute_guardrail_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("OK")),
         )
         .expect("execute_guardrail_check response should match type")
-        .boundary_bool("execute_guardrail_check", "skip", false)
+        .boundary_bool("guardrail_check/execute_guardrail_check", "skip", false)
         .expect("execute_guardrail_check skip should match type")
-        .boundary_str("execute_guardrail_check", "skip_reason", "")
+        .boundary_str("guardrail_check/execute_guardrail_check", "skip_reason", "")
         .expect("execute_guardrail_check skip_reason should match type")
         // Transport: verify checks (success)
         .transport_response(
-            "execute_verify_makegen_check",
+            "verify_makegen_check/execute_verify_makegen_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_makegen_check response should match type")
-        .boundary_bool("execute_verify_makegen_check", "skip", false)
+        .boundary_bool("verify_makegen_check/execute_verify_makegen_check", "skip", false)
         .expect("execute_verify_makegen_check skip should match type")
-        .boundary_str("execute_verify_makegen_check", "skip_reason", "")
+        .boundary_str("verify_makegen_check/execute_verify_makegen_check", "skip_reason", "")
         .expect("execute_verify_makegen_check skip_reason should match type")
         .transport_response(
-            "execute_verify_deps_config_check",
+            "verify_deps_config_check/execute_verify_deps_config_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_deps_config_check response should match type")
-        .boundary_bool("execute_verify_deps_config_check", "skip", false)
+        .boundary_bool("verify_deps_config_check/execute_verify_deps_config_check", "skip", false)
         .expect("execute_verify_deps_config_check skip should match type")
-        .boundary_str("execute_verify_deps_config_check", "skip_reason", "")
+        .boundary_str("verify_deps_config_check/execute_verify_deps_config_check", "skip_reason", "")
         .expect("execute_verify_deps_config_check skip_reason should match type")
         .transport_response(
-            "execute_verify_bootstrap_check",
+            "verify_bootstrap_check/execute_verify_bootstrap_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_bootstrap_check response should match type")
-        .boundary_bool("execute_verify_bootstrap_check", "skip", false)
+        .boundary_bool("verify_bootstrap_check/execute_verify_bootstrap_check", "skip", false)
         .expect("execute_verify_bootstrap_check skip should match type")
-        .boundary_str("execute_verify_bootstrap_check", "skip_reason", "")
+        .boundary_str("verify_bootstrap_check/execute_verify_bootstrap_check", "skip_reason", "")
         .expect("execute_verify_bootstrap_check skip_reason should match type")
         .transport_response(
-            "execute_verify_testgen_check",
+            "verify_testgen_check/execute_verify_testgen_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_testgen_check response should match type")
-        .boundary_bool("execute_verify_testgen_check", "skip", false)
+        .boundary_bool("verify_testgen_check/execute_verify_testgen_check", "skip", false)
         .expect("execute_verify_testgen_check skip should match type")
-        .boundary_str("execute_verify_testgen_check", "skip_reason", "")
+        .boundary_str("verify_testgen_check/execute_verify_testgen_check", "skip_reason", "")
         .expect("execute_verify_testgen_check skip_reason should match type")
         .transport_response(
-            "execute_verify_pragma_check",
+            "verify_pragma_check/execute_verify_pragma_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_pragma_check response should match type")
-        .boundary_bool("execute_verify_pragma_check", "skip", false)
+        .boundary_bool("verify_pragma_check/execute_verify_pragma_check", "skip", false)
         .expect("execute_verify_pragma_check skip should match type")
-        .boundary_str("execute_verify_pragma_check", "skip_reason", "")
+        .boundary_str("verify_pragma_check/execute_verify_pragma_check", "skip_reason", "")
         .expect("execute_verify_pragma_check skip_reason should match type"),
         true,
         CLIPPY_STDOUT_OK,
@@ -705,7 +705,7 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
         extract_mock_requirements(&dag, "ci")
             // Transport: execute_deps_exists (success)
             .transport_response(
-                "execute_deps_exists",
+                "deps_exists/execute_deps_exists",
                 "response",
                 TransportResponse::File(FileResponse {
                     path: "deps.toml".into(),
@@ -719,7 +719,7 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
             .expect("execute_deps_exists response should match type")
             // Transport: execute_codegen_exists (success)
             .transport_response(
-                "execute_codegen_exists",
+                "codegen_exists/execute_codegen_exists",
                 "response",
                 TransportResponse::Shell(ShellResponse::ok("")),
             )
@@ -747,18 +747,18 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
             .expect("execute_stamp_write skip should match type")
             // Transport: execute_testgen (success)
             .transport_response(
-                "execute_testgen",
+                "testgen/execute_testgen",
                 "response",
                 TransportResponse::Shell(ShellResponse::ok("Generated tests")),
             )
             .expect("execute_testgen response should match type")
-            .boundary_bool("execute_testgen", "skip", false)
+            .boundary_bool("testgen/execute_testgen", "skip", false)
             .expect("execute_testgen skip should match type")
-            .boundary_str("execute_testgen", "skip_reason", "")
+            .boundary_str("testgen/execute_testgen", "skip_reason", "")
             .expect("execute_testgen skip_reason should match type")
             // Transport: execute_build (FAILS)
             .transport_response(
-                "execute_build",
+                "build/execute_build",
                 "response",
                 TransportResponse::Shell(ShellResponse::failed(
                     1,
@@ -766,78 +766,78 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
                 )),
             )
             .expect("execute_build response should match type")
-            .boundary_bool("execute_build", "skip", false)
+            .boundary_bool("build/execute_build", "skip", false)
             .expect("execute_build skip should match type")
-            .boundary_str("execute_build", "skip_reason", "")
+            .boundary_str("build/execute_build", "skip_reason", "")
             .expect("execute_build skip_reason should match type")
             // Transport: execute_test (skipped due to build failure)
-            .boundary("execute_test", "response", Value::Skipped)
+            .boundary("test/execute_test", "response", Value::Skipped)
             .expect("execute_test response should match type")
-            .boundary_bool("execute_test", "skip", true)
+            .boundary_bool("test/execute_test", "skip", true)
             .expect("execute_test skip should match type")
-            .boundary_str("execute_test", "skip_reason", "Build failed")
+            .boundary_str("test/execute_test", "skip_reason", "Build failed")
             .expect("execute_test skip_reason should match type")
             // Transport: execute_guardrail_check (success)
             .transport_response(
-                "execute_guardrail_check",
+                "guardrail_check/execute_guardrail_check",
                 "response",
                 TransportResponse::Shell(ShellResponse::ok("OK")),
             )
             .expect("execute_guardrail_check response should match type")
-            .boundary_bool("execute_guardrail_check", "skip", false)
+            .boundary_bool("guardrail_check/execute_guardrail_check", "skip", false)
             .expect("execute_guardrail_check skip should match type")
-            .boundary_str("execute_guardrail_check", "skip_reason", "")
+            .boundary_str("guardrail_check/execute_guardrail_check", "skip_reason", "")
             .expect("execute_guardrail_check skip_reason should match type")
             // Transport: verify checks (success - parallel with build, depends on codegen)
             .transport_response(
-                "execute_verify_makegen_check",
+                "verify_makegen_check/execute_verify_makegen_check",
                 "response",
                 TransportResponse::Shell(ShellResponse::ok("All checks passed")),
             )
             .expect("execute_verify_makegen_check response should match type")
-            .boundary_bool("execute_verify_makegen_check", "skip", false)
+            .boundary_bool("verify_makegen_check/execute_verify_makegen_check", "skip", false)
             .expect("execute_verify_makegen_check skip should match type")
-            .boundary_str("execute_verify_makegen_check", "skip_reason", "")
+            .boundary_str("verify_makegen_check/execute_verify_makegen_check", "skip_reason", "")
             .expect("execute_verify_makegen_check skip_reason should match type")
             .transport_response(
-                "execute_verify_deps_config_check",
+                "verify_deps_config_check/execute_verify_deps_config_check",
                 "response",
                 TransportResponse::Shell(ShellResponse::ok("All checks passed")),
             )
             .expect("execute_verify_deps_config_check response should match type")
-            .boundary_bool("execute_verify_deps_config_check", "skip", false)
+            .boundary_bool("verify_deps_config_check/execute_verify_deps_config_check", "skip", false)
             .expect("execute_verify_deps_config_check skip should match type")
-            .boundary_str("execute_verify_deps_config_check", "skip_reason", "")
+            .boundary_str("verify_deps_config_check/execute_verify_deps_config_check", "skip_reason", "")
             .expect("execute_verify_deps_config_check skip_reason should match type")
             .transport_response(
-                "execute_verify_bootstrap_check",
+                "verify_bootstrap_check/execute_verify_bootstrap_check",
                 "response",
                 TransportResponse::Shell(ShellResponse::ok("All checks passed")),
             )
             .expect("execute_verify_bootstrap_check response should match type")
-            .boundary_bool("execute_verify_bootstrap_check", "skip", false)
+            .boundary_bool("verify_bootstrap_check/execute_verify_bootstrap_check", "skip", false)
             .expect("execute_verify_bootstrap_check skip should match type")
-            .boundary_str("execute_verify_bootstrap_check", "skip_reason", "")
+            .boundary_str("verify_bootstrap_check/execute_verify_bootstrap_check", "skip_reason", "")
             .expect("execute_verify_bootstrap_check skip_reason should match type")
             .transport_response(
-                "execute_verify_testgen_check",
+                "verify_testgen_check/execute_verify_testgen_check",
                 "response",
                 TransportResponse::Shell(ShellResponse::ok("All checks passed")),
             )
             .expect("execute_verify_testgen_check response should match type")
-            .boundary_bool("execute_verify_testgen_check", "skip", false)
+            .boundary_bool("verify_testgen_check/execute_verify_testgen_check", "skip", false)
             .expect("execute_verify_testgen_check skip should match type")
-            .boundary_str("execute_verify_testgen_check", "skip_reason", "")
+            .boundary_str("verify_testgen_check/execute_verify_testgen_check", "skip_reason", "")
             .expect("execute_verify_testgen_check skip_reason should match type")
             .transport_response(
-                "execute_verify_pragma_check",
+                "verify_pragma_check/execute_verify_pragma_check",
                 "response",
                 TransportResponse::Shell(ShellResponse::ok("All checks passed")),
             )
             .expect("execute_verify_pragma_check response should match type")
-            .boundary_bool("execute_verify_pragma_check", "skip", false)
+            .boundary_bool("verify_pragma_check/execute_verify_pragma_check", "skip", false)
             .expect("execute_verify_pragma_check skip should match type")
-            .boundary_str("execute_verify_pragma_check", "skip_reason", "")
+            .boundary_str("verify_pragma_check/execute_verify_pragma_check", "skip_reason", "")
             .expect("execute_verify_pragma_check skip_reason should match type"),
         false,
         "",
@@ -859,7 +859,7 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
         extract_mock_requirements(&dag, "ci")
             // Transport: execute_deps_exists (success)
             .transport_response(
-                "execute_deps_exists",
+                "deps_exists/execute_deps_exists",
                 "response",
                 TransportResponse::File(FileResponse {
                     path: "deps.toml".into(),
@@ -873,7 +873,7 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
             .expect("execute_deps_exists response should match type")
             // Transport: execute_codegen_exists (codegen needed)
             .transport_response(
-                "execute_codegen_exists",
+                "codegen_exists/execute_codegen_exists",
                 "response",
                 TransportResponse::Shell(ShellResponse::failed(1, "missing")),
             )
@@ -896,71 +896,71 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
             .boundary_bool("execute_stamp_write", "skip", true)
             .expect("execute_stamp_write skip should match type")
             // Transport: execute_testgen (skipped due to prep failure)
-            .boundary("execute_testgen", "response", Value::Skipped)
+            .boundary("testgen/execute_testgen", "response", Value::Skipped)
             .expect("execute_testgen response should match type")
-            .boundary_bool("execute_testgen", "skip", true)
+            .boundary_bool("testgen/execute_testgen", "skip", true)
             .expect("execute_testgen skip should match type")
-            .boundary_str("execute_testgen", "skip_reason", "Prep failed")
+            .boundary_str("testgen/execute_testgen", "skip_reason", "Prep failed")
             .expect("execute_testgen skip_reason should match type")
             // Transport: execute_build (skipped)
-            .boundary("execute_build", "response", Value::Skipped)
+            .boundary("build/execute_build", "response", Value::Skipped)
             .expect("execute_build response should match type")
-            .boundary_bool("execute_build", "skip", true)
+            .boundary_bool("build/execute_build", "skip", true)
             .expect("execute_build skip should match type")
-            .boundary_str("execute_build", "skip_reason", "Prep failed")
+            .boundary_str("build/execute_build", "skip_reason", "Prep failed")
             .expect("execute_build skip_reason should match type")
             // Transport: execute_test (skipped)
-            .boundary("execute_test", "response", Value::Skipped)
+            .boundary("test/execute_test", "response", Value::Skipped)
             .expect("execute_test response should match type")
-            .boundary_bool("execute_test", "skip", true)
+            .boundary_bool("test/execute_test", "skip", true)
             .expect("execute_test skip should match type")
-            .boundary_str("execute_test", "skip_reason", "Prep failed")
+            .boundary_str("test/execute_test", "skip_reason", "Prep failed")
             .expect("execute_test skip_reason should match type")
             // Transport: execute_guardrail_check (skipped due to testgen failure)
-            .boundary("execute_guardrail_check", "response", Value::Skipped)
+            .boundary("guardrail_check/execute_guardrail_check", "response", Value::Skipped)
             .expect("execute_guardrail_check response should match type")
-            .boundary_bool("execute_guardrail_check", "skip", true)
+            .boundary_bool("guardrail_check/execute_guardrail_check", "skip", true)
             .expect("execute_guardrail_check skip should match type")
             .boundary_str(
-                "execute_guardrail_check",
+                "guardrail_check/execute_guardrail_check",
                 "skip_reason",
                 "Skipped due to testgen failure",
             )
             .expect("execute_guardrail_check skip_reason should match type")
             // Transport: verify checks (skipped due to prep failure)
-            .boundary("execute_verify_makegen_check", "response", Value::Skipped)
+            .boundary("verify_makegen_check/execute_verify_makegen_check", "response", Value::Skipped)
             .expect("execute_verify_makegen_check response should match type")
-            .boundary_bool("execute_verify_makegen_check", "skip", true)
+            .boundary_bool("verify_makegen_check/execute_verify_makegen_check", "skip", true)
             .expect("execute_verify_makegen_check skip should match type")
-            .boundary_str("execute_verify_makegen_check", "skip_reason", "Prep failed")
+            .boundary_str("verify_makegen_check/execute_verify_makegen_check", "skip_reason", "Prep failed")
             .expect("execute_verify_makegen_check skip_reason should match type")
-            .boundary("execute_verify_deps_config_check", "response", Value::Skipped)
+            .boundary("verify_deps_config_check/execute_verify_deps_config_check", "response", Value::Skipped)
             .expect("execute_verify_deps_config_check response should match type")
-            .boundary_bool("execute_verify_deps_config_check", "skip", true)
+            .boundary_bool("verify_deps_config_check/execute_verify_deps_config_check", "skip", true)
             .expect("execute_verify_deps_config_check skip should match type")
-            .boundary_str("execute_verify_deps_config_check", "skip_reason", "Prep failed")
+            .boundary_str("verify_deps_config_check/execute_verify_deps_config_check", "skip_reason", "Prep failed")
             .expect("execute_verify_deps_config_check skip_reason should match type")
-            .boundary("execute_verify_bootstrap_check", "response", Value::Skipped)
+            .boundary("verify_bootstrap_check/execute_verify_bootstrap_check", "response", Value::Skipped)
             .expect("execute_verify_bootstrap_check response should match type")
-            .boundary_bool("execute_verify_bootstrap_check", "skip", true)
+            .boundary_bool("verify_bootstrap_check/execute_verify_bootstrap_check", "skip", true)
             .expect("execute_verify_bootstrap_check skip should match type")
             .boundary_str(
-                "execute_verify_bootstrap_check",
+                "verify_bootstrap_check/execute_verify_bootstrap_check",
                 "skip_reason",
                 "Prep failed",
             )
             .expect("execute_verify_bootstrap_check skip_reason should match type")
-            .boundary("execute_verify_testgen_check", "response", Value::Skipped)
+            .boundary("verify_testgen_check/execute_verify_testgen_check", "response", Value::Skipped)
             .expect("execute_verify_testgen_check response should match type")
-            .boundary_bool("execute_verify_testgen_check", "skip", true)
+            .boundary_bool("verify_testgen_check/execute_verify_testgen_check", "skip", true)
             .expect("execute_verify_testgen_check skip should match type")
-            .boundary_str("execute_verify_testgen_check", "skip_reason", "Prep failed")
+            .boundary_str("verify_testgen_check/execute_verify_testgen_check", "skip_reason", "Prep failed")
             .expect("execute_verify_testgen_check skip_reason should match type")
-            .boundary("execute_verify_pragma_check", "response", Value::Skipped)
+            .boundary("verify_pragma_check/execute_verify_pragma_check", "response", Value::Skipped)
             .expect("execute_verify_pragma_check response should match type")
-            .boundary_bool("execute_verify_pragma_check", "skip", true)
+            .boundary_bool("verify_pragma_check/execute_verify_pragma_check", "skip", true)
             .expect("execute_verify_pragma_check skip should match type")
-            .boundary_str("execute_verify_pragma_check", "skip_reason", "Prep failed")
+            .boundary_str("verify_pragma_check/execute_verify_pragma_check", "skip_reason", "Prep failed")
             .expect("execute_verify_pragma_check skip_reason should match type"),
         false,
         "",
@@ -981,7 +981,7 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
         extract_mock_requirements(&dag, "ci")
         // Transport: execute_deps_exists (success)
         .transport_response(
-            "execute_deps_exists",
+            "deps_exists/execute_deps_exists",
             "response",
             TransportResponse::File(FileResponse {
                 path: "deps.toml".into(),
@@ -995,7 +995,7 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
         .expect("execute_deps_exists response should match type")
         // Transport: execute_codegen_exists (success)
         .transport_response(
-            "execute_codegen_exists",
+            "codegen_exists/execute_codegen_exists",
             "response",
             TransportResponse::Shell(ShellResponse::ok("")),
         )
@@ -1023,102 +1023,102 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
         .expect("execute_stamp_write skip should match type")
         // Transport: execute_testgen (success)
         .transport_response(
-            "execute_testgen",
+            "testgen/execute_testgen",
             "response",
             TransportResponse::Shell(ShellResponse::ok("Generated tests")),
         )
         .expect("execute_testgen response should match type")
-        .boundary_bool("execute_testgen", "skip", false)
+        .boundary_bool("testgen/execute_testgen", "skip", false)
         .expect("execute_testgen skip should match type")
-        .boundary_str("execute_testgen", "skip_reason", "")
+        .boundary_str("testgen/execute_testgen", "skip_reason", "")
         .expect("execute_testgen skip_reason should match type")
         // Transport: execute_build (success)
         .transport_response(
-            "execute_build",
+            "build/execute_build",
             "response",
             TransportResponse::Shell(ShellResponse::ok(
                 "Compiling gunbc v0.1.0\n    Finished dev target(s)",
             )),
         )
         .expect("execute_build response should match type")
-        .boundary_bool("execute_build", "skip", false)
+        .boundary_bool("build/execute_build", "skip", false)
         .expect("execute_build skip should match type")
-        .boundary_str("execute_build", "skip_reason", "")
+        .boundary_str("build/execute_build", "skip_reason", "")
         .expect("execute_build skip_reason should match type")
         // Transport: execute_test (success)
         .transport_response(
-            "execute_test",
+            "test/execute_test",
             "response",
             TransportResponse::Shell(ShellResponse::ok(
                 "running 42 tests\ntest result: ok. 42 passed",
             )),
         )
         .expect("execute_test response should match type")
-        .boundary_bool("execute_test", "skip", false)
+        .boundary_bool("test/execute_test", "skip", false)
         .expect("execute_test skip should match type")
-        .boundary_str("execute_test", "skip_reason", "")
+        .boundary_str("test/execute_test", "skip_reason", "")
         .expect("execute_test skip_reason should match type")
         // Transport: execute_guardrail_check (success)
         .transport_response(
-            "execute_guardrail_check",
+            "guardrail_check/execute_guardrail_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("OK")),
         )
         .expect("execute_guardrail_check response should match type")
-        .boundary_bool("execute_guardrail_check", "skip", false)
+        .boundary_bool("guardrail_check/execute_guardrail_check", "skip", false)
         .expect("execute_guardrail_check skip should match type")
-        .boundary_str("execute_guardrail_check", "skip_reason", "")
+        .boundary_str("guardrail_check/execute_guardrail_check", "skip_reason", "")
         .expect("execute_guardrail_check skip_reason should match type")
         // Transport: verify checks (success)
         .transport_response(
-            "execute_verify_makegen_check",
+            "verify_makegen_check/execute_verify_makegen_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_makegen_check response should match type")
-        .boundary_bool("execute_verify_makegen_check", "skip", false)
+        .boundary_bool("verify_makegen_check/execute_verify_makegen_check", "skip", false)
         .expect("execute_verify_makegen_check skip should match type")
-        .boundary_str("execute_verify_makegen_check", "skip_reason", "")
+        .boundary_str("verify_makegen_check/execute_verify_makegen_check", "skip_reason", "")
         .expect("execute_verify_makegen_check skip_reason should match type")
         .transport_response(
-            "execute_verify_deps_config_check",
+            "verify_deps_config_check/execute_verify_deps_config_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_deps_config_check response should match type")
-        .boundary_bool("execute_verify_deps_config_check", "skip", false)
+        .boundary_bool("verify_deps_config_check/execute_verify_deps_config_check", "skip", false)
         .expect("execute_verify_deps_config_check skip should match type")
-        .boundary_str("execute_verify_deps_config_check", "skip_reason", "")
+        .boundary_str("verify_deps_config_check/execute_verify_deps_config_check", "skip_reason", "")
         .expect("execute_verify_deps_config_check skip_reason should match type")
         .transport_response(
-            "execute_verify_bootstrap_check",
+            "verify_bootstrap_check/execute_verify_bootstrap_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_bootstrap_check response should match type")
-        .boundary_bool("execute_verify_bootstrap_check", "skip", false)
+        .boundary_bool("verify_bootstrap_check/execute_verify_bootstrap_check", "skip", false)
         .expect("execute_verify_bootstrap_check skip should match type")
-        .boundary_str("execute_verify_bootstrap_check", "skip_reason", "")
+        .boundary_str("verify_bootstrap_check/execute_verify_bootstrap_check", "skip_reason", "")
         .expect("execute_verify_bootstrap_check skip_reason should match type")
         .transport_response(
-            "execute_verify_testgen_check",
+            "verify_testgen_check/execute_verify_testgen_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_testgen_check response should match type")
-        .boundary_bool("execute_verify_testgen_check", "skip", false)
+        .boundary_bool("verify_testgen_check/execute_verify_testgen_check", "skip", false)
         .expect("execute_verify_testgen_check skip should match type")
-        .boundary_str("execute_verify_testgen_check", "skip_reason", "")
+        .boundary_str("verify_testgen_check/execute_verify_testgen_check", "skip_reason", "")
         .expect("execute_verify_testgen_check skip_reason should match type")
         .transport_response(
-            "execute_verify_pragma_check",
+            "verify_pragma_check/execute_verify_pragma_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_pragma_check response should match type")
-        .boundary_bool("execute_verify_pragma_check", "skip", false)
+        .boundary_bool("verify_pragma_check/execute_verify_pragma_check", "skip", false)
         .expect("execute_verify_pragma_check skip should match type")
-        .boundary_str("execute_verify_pragma_check", "skip_reason", "")
+        .boundary_str("verify_pragma_check/execute_verify_pragma_check", "skip_reason", "")
         .expect("execute_verify_pragma_check skip_reason should match type"),
         false,
         "",
@@ -1160,11 +1160,11 @@ fn add_clippy_lint_mocks(
     if skip {
         // When skipped, the execute node gets skip=true from prepare and emits
         // Skipped response + skip=true + skip_reason
-        reqs.boundary("execute_clippy_lint", "response", Value::Skipped)
+        reqs.boundary("clippy_lint/execute_clippy_lint", "response", Value::Skipped)
             .expect("execute_clippy_lint response should match type")
-            .boundary_bool("execute_clippy_lint", "skip", true)
+            .boundary_bool("clippy_lint/execute_clippy_lint", "skip", true)
             .expect("execute_clippy_lint skip should match type")
-            .boundary_str("execute_clippy_lint", "skip_reason", "Skipped")
+            .boundary_str("clippy_lint/execute_clippy_lint", "skip_reason", "Skipped")
             .expect("execute_clippy_lint skip_reason should match type")
     } else {
         let response = if success {
@@ -1181,14 +1181,14 @@ fn add_clippy_lint_mocks(
             }
         };
         reqs.transport_response(
-            "execute_clippy_lint",
+            "clippy_lint/execute_clippy_lint",
             "response",
             TransportResponse::Shell(response),
         )
         .expect("execute_clippy_lint response should match type")
-        .boundary_bool("execute_clippy_lint", "skip", false)
+        .boundary_bool("clippy_lint/execute_clippy_lint", "skip", false)
         .expect("execute_clippy_lint skip should match type")
-        .boundary_str("execute_clippy_lint", "skip_reason", "")
+        .boundary_str("clippy_lint/execute_clippy_lint", "skip_reason", "")
         .expect("execute_clippy_lint skip_reason should match type")
     }
 }
@@ -1203,7 +1203,7 @@ fn with_ci_typed_mocks(reqs: gunbc_test::MockRequirements) -> gunbc_test::MockRe
         .expect("fs_env should match type")
         // Transport: execute_deps_exists (check deps.toml)
         .transport_response(
-            "execute_deps_exists",
+            "deps_exists/execute_deps_exists",
             "response",
             TransportResponse::File(FileResponse {
                 path: "deps.toml".into(),
@@ -1217,7 +1217,7 @@ fn with_ci_typed_mocks(reqs: gunbc_test::MockRequirements) -> gunbc_test::MockRe
         .expect("execute_deps_exists response should match type")
         // Transport: execute_codegen_exists (check codegen output)
         .transport_response(
-            "execute_codegen_exists",
+            "codegen_exists/execute_codegen_exists",
             "response",
             TransportResponse::Shell(ShellResponse::ok("")),
         )
@@ -1245,123 +1245,123 @@ fn with_ci_typed_mocks(reqs: gunbc_test::MockRequirements) -> gunbc_test::MockRe
         .expect("execute_stamp_write skip should match type")
         // Transport: execute_bootstrap (succeeds)
         .transport_response(
-            "execute_bootstrap",
+            "bootstrap/execute_bootstrap",
             "response",
             TransportResponse::Shell(ShellResponse::ok("Generated bootstrap files")),
         )
         .expect("execute_bootstrap response should match type")
-        .boundary_bool("execute_bootstrap", "skip", false)
+        .boundary_bool("bootstrap/execute_bootstrap", "skip", false)
         .expect("execute_bootstrap skip should match type")
-        .boundary_str("execute_bootstrap", "skip_reason", "")
+        .boundary_str("bootstrap/execute_bootstrap", "skip_reason", "")
         .expect("execute_bootstrap skip_reason should match type")
         // Transport: execute_pragma (succeeds)
         .transport_response(
-            "execute_pragma",
+            "pragma/execute_pragma",
             "response",
             TransportResponse::Shell(ShellResponse::ok("Generated pragma files")),
         )
         .expect("execute_pragma response should match type")
-        .boundary_bool("execute_pragma", "skip", false)
+        .boundary_bool("pragma/execute_pragma", "skip", false)
         .expect("execute_pragma skip should match type")
-        .boundary_str("execute_pragma", "skip_reason", "")
+        .boundary_str("pragma/execute_pragma", "skip_reason", "")
         .expect("execute_pragma skip_reason should match type")
         // Transport: execute_testgen (succeeds)
         .transport_response(
-            "execute_testgen",
+            "testgen/execute_testgen",
             "response",
             TransportResponse::Shell(ShellResponse::ok("Generated tests")),
         )
         .expect("execute_testgen response should match type")
-        .boundary_bool("execute_testgen", "skip", false)
+        .boundary_bool("testgen/execute_testgen", "skip", false)
         .expect("execute_testgen skip should match type")
-        .boundary_str("execute_testgen", "skip_reason", "")
+        .boundary_str("testgen/execute_testgen", "skip_reason", "")
         .expect("execute_testgen skip_reason should match type")
         // Transport: execute_build (succeeds)
         .transport_response(
-            "execute_build",
+            "build/execute_build",
             "response",
             TransportResponse::Shell(ShellResponse::ok(
                 "Compiling gunbc v0.1.0\n    Finished dev target(s)",
             )),
         )
         .expect("execute_build response should match type")
-        .boundary_bool("execute_build", "skip", false)
+        .boundary_bool("build/execute_build", "skip", false)
         .expect("execute_build skip should match type")
-        .boundary_str("execute_build", "skip_reason", "")
+        .boundary_str("build/execute_build", "skip_reason", "")
         .expect("execute_build skip_reason should match type")
         // Transport: execute_test (succeeds)
         .transport_response(
-            "execute_test",
+            "test/execute_test",
             "response",
             TransportResponse::Shell(ShellResponse::ok(
                 "running 42 tests\ntest result: ok. 42 passed",
             )),
         )
         .expect("execute_test response should match type")
-        .boundary_bool("execute_test", "skip", false)
+        .boundary_bool("test/execute_test", "skip", false)
         .expect("execute_test skip should match type")
-        .boundary_str("execute_test", "skip_reason", "")
+        .boundary_str("test/execute_test", "skip_reason", "")
         .expect("execute_test skip_reason should match type")
         // Transport: execute_guardrail_check (succeeds)
         .transport_response(
-            "execute_guardrail_check",
+            "guardrail_check/execute_guardrail_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("OK")),
         )
         .expect("execute_guardrail_check response should match type")
-        .boundary_bool("execute_guardrail_check", "skip", false)
+        .boundary_bool("guardrail_check/execute_guardrail_check", "skip", false)
         .expect("execute_guardrail_check skip should match type")
-        .boundary_str("execute_guardrail_check", "skip_reason", "")
+        .boundary_str("guardrail_check/execute_guardrail_check", "skip_reason", "")
         .expect("execute_guardrail_check skip_reason should match type")
         // Transport: verify checks (succeed)
         .transport_response(
-            "execute_verify_makegen_check",
+            "verify_makegen_check/execute_verify_makegen_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_makegen_check response should match type")
-        .boundary_bool("execute_verify_makegen_check", "skip", false)
+        .boundary_bool("verify_makegen_check/execute_verify_makegen_check", "skip", false)
         .expect("execute_verify_makegen_check skip should match type")
-        .boundary_str("execute_verify_makegen_check", "skip_reason", "")
+        .boundary_str("verify_makegen_check/execute_verify_makegen_check", "skip_reason", "")
         .expect("execute_verify_makegen_check skip_reason should match type")
         .transport_response(
-            "execute_verify_deps_config_check",
+            "verify_deps_config_check/execute_verify_deps_config_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_deps_config_check response should match type")
-        .boundary_bool("execute_verify_deps_config_check", "skip", false)
+        .boundary_bool("verify_deps_config_check/execute_verify_deps_config_check", "skip", false)
         .expect("execute_verify_deps_config_check skip should match type")
-        .boundary_str("execute_verify_deps_config_check", "skip_reason", "")
+        .boundary_str("verify_deps_config_check/execute_verify_deps_config_check", "skip_reason", "")
         .expect("execute_verify_deps_config_check skip_reason should match type")
         .transport_response(
-            "execute_verify_bootstrap_check",
+            "verify_bootstrap_check/execute_verify_bootstrap_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_bootstrap_check response should match type")
-        .boundary_bool("execute_verify_bootstrap_check", "skip", false)
+        .boundary_bool("verify_bootstrap_check/execute_verify_bootstrap_check", "skip", false)
         .expect("execute_verify_bootstrap_check skip should match type")
-        .boundary_str("execute_verify_bootstrap_check", "skip_reason", "")
+        .boundary_str("verify_bootstrap_check/execute_verify_bootstrap_check", "skip_reason", "")
         .expect("execute_verify_bootstrap_check skip_reason should match type")
         .transport_response(
-            "execute_verify_testgen_check",
+            "verify_testgen_check/execute_verify_testgen_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_testgen_check response should match type")
-        .boundary_bool("execute_verify_testgen_check", "skip", false)
+        .boundary_bool("verify_testgen_check/execute_verify_testgen_check", "skip", false)
         .expect("execute_verify_testgen_check skip should match type")
-        .boundary_str("execute_verify_testgen_check", "skip_reason", "")
+        .boundary_str("verify_testgen_check/execute_verify_testgen_check", "skip_reason", "")
         .expect("execute_verify_testgen_check skip_reason should match type")
         .transport_response(
-            "execute_verify_pragma_check",
+            "verify_pragma_check/execute_verify_pragma_check",
             "response",
             TransportResponse::Shell(ShellResponse::ok("All checks passed")),
         )
         .expect("execute_verify_pragma_check response should match type")
-        .boundary_bool("execute_verify_pragma_check", "skip", false)
+        .boundary_bool("verify_pragma_check/execute_verify_pragma_check", "skip", false)
         .expect("execute_verify_pragma_check skip should match type")
-        .boundary_str("execute_verify_pragma_check", "skip_reason", "")
+        .boundary_str("verify_pragma_check/execute_verify_pragma_check", "skip_reason", "")
         .expect("execute_verify_pragma_check skip_reason should match type")
 }

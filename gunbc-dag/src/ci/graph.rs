@@ -239,6 +239,25 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     ))?;
 
     // ========================================================================
+    // Prep Stage: Inline Codegen DAG (needed for fs_env)
+    // ========================================================================
+
+    let codegen_nodes = inline_codegen_dag(&mut builder, mode)?;
+    let parse_codegen_result = codegen_nodes
+        .get(&NodeId::from("parse_codegen_result"))
+        .ok_or_else(|| {
+            BuilderError::InternalInvariant(
+                "codegen DAG should include parse_codegen_result".to_string(),
+            )
+        })?;
+    let fs_env = codegen_nodes
+        .get(&NodeId::from("fs_env"))
+        .ok_or_else(|| {
+            BuilderError::InternalInvariant("codegen DAG should include fs_env".to_string())
+        })?
+        .clone();
+
+    // ========================================================================
     // SetupDeps Stage: Check if deps.toml exists
     // ========================================================================
 
@@ -256,27 +275,8 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::PrepareFileExists(EmbeddedFileExistsOp::new(DEFAULT_MANIFEST_FILENAME)),
         CIGraphOp::CI(CIOp::ParseDepsExists),
         CIGraphOp::Transport(TransportOps::Execute),
-        None,
+        Some(&fs_env),
     )?;
-
-    // ========================================================================
-    // Prep Stage: Inline Codegen DAG
-    // ========================================================================
-
-    let codegen_nodes = inline_codegen_dag(&mut builder, mode)?;
-    let parse_codegen_result = codegen_nodes
-        .get(&NodeId::from("parse_codegen_result"))
-        .ok_or_else(|| {
-            BuilderError::InternalInvariant(
-                "codegen DAG should include parse_codegen_result".to_string(),
-            )
-        })?;
-    let fs_env = codegen_nodes
-        .get(&NodeId::from("fs_env"))
-        .ok_or_else(|| {
-            BuilderError::InternalInvariant("codegen DAG should include fs_env".to_string())
-        })?
-        .clone();
 
     // ========================================================================
     // Bootstrap Stage
@@ -359,7 +359,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::CI(CIOp::PrepareBuildCommand),
         CIGraphOp::CI(CIOp::ParseBuildResult),
         CIGraphOp::Transport(TransportOps::Execute),
-        &testgen.parse,
+        &testgen,
     )?;
 
     // ========================================================================
@@ -380,7 +380,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::CI(CIOp::PrepareTestCommand),
         CIGraphOp::CI(CIOp::ParseTestResult),
         CIGraphOp::Transport(TransportOps::Execute),
-        &build.parse,
+        &build,
     )?;
 
     // ========================================================================
@@ -404,7 +404,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::CI(CIOp::PrepareClippyLint),
         CIGraphOp::CI(CIOp::ParseClippyLintResult),
         CIGraphOp::Transport(TransportOps::Execute),
-        &build.parse,
+        &build,
     )?;
 
     // ========================================================================
@@ -427,7 +427,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::CI(CIOp::PrepareGuardrailCheck),
         CIGraphOp::CI(CIOp::ParseGuardrailResult),
         CIGraphOp::Transport(TransportOps::Execute),
-        &testgen.parse,
+        &testgen,
     )?;
 
     // ========================================================================
@@ -451,7 +451,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::CI(CIOp::PrepareVerifyMakegenCheck),
         CIGraphOp::CI(CIOp::ParseVerifyMakegenResult),
         CIGraphOp::Transport(TransportOps::Execute),
-        &bootstrap.parse,
+        &bootstrap,
     )?;
     let verify_deps_config = add_skippable_transport_triplet(
         &mut builder,
@@ -470,7 +470,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::CI(CIOp::PrepareVerifyDepsConfigCheck),
         CIGraphOp::CI(CIOp::ParseVerifyDepsConfigResult),
         CIGraphOp::Transport(TransportOps::Execute),
-        &bootstrap.parse,
+        &bootstrap,
     )?;
     let verify_bootstrap = add_skippable_transport_triplet(
         &mut builder,
@@ -489,7 +489,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::CI(CIOp::PrepareVerifyBootstrapCheck),
         CIGraphOp::CI(CIOp::ParseVerifyBootstrapResult),
         CIGraphOp::Transport(TransportOps::Execute),
-        &bootstrap.parse,
+        &bootstrap,
     )?;
     let verify_testgen = add_skippable_transport_triplet(
         &mut builder,
@@ -508,7 +508,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::CI(CIOp::PrepareVerifyTestgenCheck),
         CIGraphOp::CI(CIOp::ParseVerifyTestgenResult),
         CIGraphOp::Transport(TransportOps::Execute),
-        &bootstrap.parse,
+        &bootstrap,
     )?;
     let verify_pragma = add_skippable_transport_triplet(
         &mut builder,
@@ -527,7 +527,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::CI(CIOp::PrepareVerifyPragmaCheck),
         CIGraphOp::CI(CIOp::ParseVerifyPragmaResult),
         CIGraphOp::Transport(TransportOps::Execute),
-        &bootstrap.parse,
+        &bootstrap,
     )?;
     let verify = builder.add_node_after_all(
         Node::opaque(
@@ -551,11 +551,11 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
             CIGraphOp::CI(CIOp::AggregateVerifyResults),
         ),
         &[
-            &verify_makegen.parse,
-            &verify_deps_config.parse,
-            &verify_bootstrap.parse,
-            &verify_testgen.parse,
-            &verify_pragma.parse,
+            &verify_makegen,
+            &verify_deps_config,
+            &verify_bootstrap,
+            &verify_testgen,
+            &verify_pragma,
         ],
     )?;
 
@@ -595,7 +595,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
             vec![port("overall_success", "Bool"), port("report", "String")],
             CIGraphOp::CI(CIOp::Report),
         ),
-        &[&test.parse, &lint.parse, &guardrail.parse, &verify],
+        &[&test, &lint, &guardrail, &verify],
     )?;
 
     // ========================================================================
@@ -608,250 +608,250 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     // Bootstrap stage — codegen result feeds prepare
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
-        bootstrap.prepare.in_port("prep_success"),
+        bootstrap.in_port("prep_success"),
     )?;
 
     // Pragma stage — codegen result feeds prepare
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
-        pragma.prepare.in_port("prep_success"),
+        pragma.in_port("prep_success"),
     )?;
 
     // Testgen stage — codegen result feeds prepare
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
-        testgen.prepare.in_port("prep_success"),
+        testgen.in_port("prep_success"),
     )?;
 
     // Build stage — codegen + testgen feed prepare
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
-        build.prepare.in_port("prep_success"),
+        build.in_port("prep_success"),
     )?;
     builder.add_edge(
-        testgen.parse.out("testgen_success"),
-        build.prepare.in_port("testgen_success"),
+        testgen.out("testgen_success"),
+        build.in_port("testgen_success"),
     )?;
 
     // Test stage — build feeds prepare
     builder.add_edge(
-        build.parse.out("build_success"),
-        test.prepare.in_port("build_success"),
+        build.out("build_success"),
+        test.in_port("build_success"),
     )?;
 
     // Lint stage (parallel with test, both depend on build)
     builder.add_edge(
-        build.parse.out("build_success"),
-        lint.prepare.in_port("build_success"),
+        build.out("build_success"),
+        lint.in_port("build_success"),
     )?;
     builder.add_edge(
-        pragma.parse.out("pragma_success"),
-        lint.prepare.in_port("pragma_success"),
+        pragma.out("pragma_success"),
+        lint.in_port("pragma_success"),
     )?;
 
     // Guardrails stage — testgen feeds prepare
     builder.add_edge(
-        testgen.parse.out("testgen_success"),
-        guardrail.prepare.in_port("testgen_success"),
+        testgen.out("testgen_success"),
+        guardrail.in_port("testgen_success"),
     )?;
     builder.add_edge(
-        pragma.parse.out("pragma_success"),
-        guardrail.prepare.in_port("pragma_success"),
+        pragma.out("pragma_success"),
+        guardrail.in_port("pragma_success"),
     )?;
 
     // Verify stage — codegen feeds prepare
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
-        verify_makegen.prepare.in_port("prep_success"),
+        verify_makegen.in_port("prep_success"),
     )?;
     builder.add_edge(
-        bootstrap.parse.out("bootstrap_success"),
-        verify_makegen.prepare.in_port("bootstrap_success"),
+        bootstrap.out("bootstrap_success"),
+        verify_makegen.in_port("bootstrap_success"),
     )?;
     builder.add_edge(
-        testgen.parse.out("testgen_success"),
-        verify_makegen.prepare.in_port("testgen_success"),
+        testgen.out("testgen_success"),
+        verify_makegen.in_port("testgen_success"),
     )?;
     builder.add_edge(
-        pragma.parse.out("pragma_success"),
-        verify_makegen.prepare.in_port("pragma_success"),
-    )?;
-    builder.add_edge(
-        parse_codegen_result.out("prep_success"),
-        verify_deps_config.prepare.in_port("prep_success"),
-    )?;
-    builder.add_edge(
-        bootstrap.parse.out("bootstrap_success"),
-        verify_deps_config.prepare.in_port("bootstrap_success"),
-    )?;
-    builder.add_edge(
-        testgen.parse.out("testgen_success"),
-        verify_deps_config.prepare.in_port("testgen_success"),
-    )?;
-    builder.add_edge(
-        pragma.parse.out("pragma_success"),
-        verify_deps_config.prepare.in_port("pragma_success"),
+        pragma.out("pragma_success"),
+        verify_makegen.in_port("pragma_success"),
     )?;
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
-        verify_bootstrap.prepare.in_port("prep_success"),
+        verify_deps_config.in_port("prep_success"),
     )?;
     builder.add_edge(
-        bootstrap.parse.out("bootstrap_success"),
-        verify_bootstrap.prepare.in_port("bootstrap_success"),
+        bootstrap.out("bootstrap_success"),
+        verify_deps_config.in_port("bootstrap_success"),
     )?;
     builder.add_edge(
-        testgen.parse.out("testgen_success"),
-        verify_bootstrap.prepare.in_port("testgen_success"),
+        testgen.out("testgen_success"),
+        verify_deps_config.in_port("testgen_success"),
     )?;
     builder.add_edge(
-        pragma.parse.out("pragma_success"),
-        verify_bootstrap.prepare.in_port("pragma_success"),
-    )?;
-    builder.add_edge(
-        parse_codegen_result.out("prep_success"),
-        verify_testgen.prepare.in_port("prep_success"),
-    )?;
-    builder.add_edge(
-        bootstrap.parse.out("bootstrap_success"),
-        verify_testgen.prepare.in_port("bootstrap_success"),
-    )?;
-    builder.add_edge(
-        testgen.parse.out("testgen_success"),
-        verify_testgen.prepare.in_port("testgen_success"),
-    )?;
-    builder.add_edge(
-        pragma.parse.out("pragma_success"),
-        verify_testgen.prepare.in_port("pragma_success"),
+        pragma.out("pragma_success"),
+        verify_deps_config.in_port("pragma_success"),
     )?;
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
-        verify_pragma.prepare.in_port("prep_success"),
+        verify_bootstrap.in_port("prep_success"),
     )?;
     builder.add_edge(
-        bootstrap.parse.out("bootstrap_success"),
-        verify_pragma.prepare.in_port("bootstrap_success"),
+        bootstrap.out("bootstrap_success"),
+        verify_bootstrap.in_port("bootstrap_success"),
     )?;
     builder.add_edge(
-        testgen.parse.out("testgen_success"),
-        verify_pragma.prepare.in_port("testgen_success"),
+        testgen.out("testgen_success"),
+        verify_bootstrap.in_port("testgen_success"),
     )?;
     builder.add_edge(
-        pragma.parse.out("pragma_success"),
-        verify_pragma.prepare.in_port("pragma_success"),
+        pragma.out("pragma_success"),
+        verify_bootstrap.in_port("pragma_success"),
     )?;
     builder.add_edge(
-        verify_makegen.parse.out("verify_makegen_success"),
+        parse_codegen_result.out("prep_success"),
+        verify_testgen.in_port("prep_success"),
+    )?;
+    builder.add_edge(
+        bootstrap.out("bootstrap_success"),
+        verify_testgen.in_port("bootstrap_success"),
+    )?;
+    builder.add_edge(
+        testgen.out("testgen_success"),
+        verify_testgen.in_port("testgen_success"),
+    )?;
+    builder.add_edge(
+        pragma.out("pragma_success"),
+        verify_testgen.in_port("pragma_success"),
+    )?;
+    builder.add_edge(
+        parse_codegen_result.out("prep_success"),
+        verify_pragma.in_port("prep_success"),
+    )?;
+    builder.add_edge(
+        bootstrap.out("bootstrap_success"),
+        verify_pragma.in_port("bootstrap_success"),
+    )?;
+    builder.add_edge(
+        testgen.out("testgen_success"),
+        verify_pragma.in_port("testgen_success"),
+    )?;
+    builder.add_edge(
+        pragma.out("pragma_success"),
+        verify_pragma.in_port("pragma_success"),
+    )?;
+    builder.add_edge(
+        verify_makegen.out("verify_makegen_success"),
         verify.in_port("verify_makegen_success"),
     )?;
     builder.add_edge(
-        verify_makegen.parse.out("verify_makegen_stderr"),
+        verify_makegen.out("verify_makegen_stderr"),
         verify.in_port("verify_makegen_stderr"),
     )?;
     builder.add_edge(
-        verify_deps_config.parse.out("verify_deps_config_success"),
+        verify_deps_config.out("verify_deps_config_success"),
         verify.in_port("verify_deps_config_success"),
     )?;
     builder.add_edge(
-        verify_deps_config.parse.out("verify_deps_config_stderr"),
+        verify_deps_config.out("verify_deps_config_stderr"),
         verify.in_port("verify_deps_config_stderr"),
     )?;
     builder.add_edge(
-        verify_bootstrap.parse.out("verify_bootstrap_success"),
+        verify_bootstrap.out("verify_bootstrap_success"),
         verify.in_port("verify_bootstrap_success"),
     )?;
     builder.add_edge(
-        verify_bootstrap.parse.out("verify_bootstrap_stderr"),
+        verify_bootstrap.out("verify_bootstrap_stderr"),
         verify.in_port("verify_bootstrap_stderr"),
     )?;
     builder.add_edge(
-        verify_testgen.parse.out("verify_testgen_success"),
+        verify_testgen.out("verify_testgen_success"),
         verify.in_port("verify_testgen_success"),
     )?;
     builder.add_edge(
-        verify_testgen.parse.out("verify_testgen_stderr"),
+        verify_testgen.out("verify_testgen_stderr"),
         verify.in_port("verify_testgen_stderr"),
     )?;
     builder.add_edge(
-        verify_pragma.parse.out("verify_pragma_success"),
+        verify_pragma.out("verify_pragma_success"),
         verify.in_port("verify_pragma_success"),
     )?;
     builder.add_edge(
-        verify_pragma.parse.out("verify_pragma_stderr"),
+        verify_pragma.out("verify_pragma_stderr"),
         verify.in_port("verify_pragma_stderr"),
     )?;
 
     // Report — success flags and stderr for failure details
     builder.add_edge(
-        build.parse.out("build_success"),
+        build.out("build_success"),
         report.in_port("build_success"),
     )?;
     builder.add_edge(
-        test.parse.out("test_success"),
+        test.out("test_success"),
         report.in_port("test_success"),
     )?;
     builder.add_edge(
-        lint.parse.out("lint_success"),
+        lint.out("lint_success"),
         report.in_port("lint_success"),
     )?;
     builder.add_edge(
-        testgen.parse.out("testgen_success"),
+        testgen.out("testgen_success"),
         report.in_port("testgen_success"),
     )?;
     builder.add_edge(
-        bootstrap.parse.out("bootstrap_success"),
+        bootstrap.out("bootstrap_success"),
         report.in_port("bootstrap_success"),
     )?;
     builder.add_edge(
-        pragma.parse.out("pragma_success"),
+        pragma.out("pragma_success"),
         report.in_port("pragma_success"),
     )?;
     builder.add_edge(
-        guardrail.parse.out("guardrail_success"),
+        guardrail.out("guardrail_success"),
         report.in_port("guardrail_success"),
     )?;
     builder.add_edge(
-        build.parse.out("build_stderr"),
+        build.out("build_stderr"),
         report.in_port("build_stderr"),
     )?;
     builder.add_edge(
-        build.parse.out("build_stdout"),
+        build.out("build_stdout"),
         report.in_port("build_stdout"),
     )?;
     builder.add_edge(
-        testgen.parse.out("testgen_stderr"),
+        testgen.out("testgen_stderr"),
         report.in_port("testgen_stderr"),
     )?;
     builder.add_edge(
-        testgen.parse.out("testgen_stdout"),
+        testgen.out("testgen_stdout"),
         report.in_port("testgen_stdout"),
     )?;
     builder.add_edge(
-        bootstrap.parse.out("bootstrap_stderr"),
+        bootstrap.out("bootstrap_stderr"),
         report.in_port("bootstrap_stderr"),
     )?;
     builder.add_edge(
-        bootstrap.parse.out("bootstrap_stdout"),
+        bootstrap.out("bootstrap_stdout"),
         report.in_port("bootstrap_stdout"),
     )?;
     builder.add_edge(
-        pragma.parse.out("pragma_stderr"),
+        pragma.out("pragma_stderr"),
         report.in_port("pragma_stderr"),
     )?;
     builder.add_edge(
-        pragma.parse.out("pragma_stdout"),
+        pragma.out("pragma_stdout"),
         report.in_port("pragma_stdout"),
     )?;
-    builder.add_edge(test.parse.out("test_stdout"), report.in_port("test_stdout"))?;
-    builder.add_edge(test.parse.out("test_stderr"), report.in_port("test_stderr"))?;
-    builder.add_edge(lint.parse.out("lint_stderr"), report.in_port("lint_stderr"))?;
-    builder.add_edge(lint.parse.out("lint_stdout"), report.in_port("lint_stdout"))?;
+    builder.add_edge(test.out("test_stdout"), report.in_port("test_stdout"))?;
+    builder.add_edge(test.out("test_stderr"), report.in_port("test_stderr"))?;
+    builder.add_edge(lint.out("lint_stderr"), report.in_port("lint_stderr"))?;
+    builder.add_edge(lint.out("lint_stdout"), report.in_port("lint_stdout"))?;
     builder.add_edge(
-        guardrail.parse.out("guardrail_stderr"),
+        guardrail.out("guardrail_stderr"),
         report.in_port("guardrail_stderr"),
     )?;
     builder.add_edge(
-        guardrail.parse.out("guardrail_stdout"),
+        guardrail.out("guardrail_stdout"),
         report.in_port("guardrail_stdout"),
     )?;
     builder.add_edge(
@@ -867,58 +867,93 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     // Resource wiring (filesystem handle for transport nodes)
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        _deps_exists.execute.in_port("res:file"),
+        _deps_exists.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        bootstrap.execute.in_port("res:file"),
+        bootstrap.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        pragma.execute.in_port("res:file"),
+        pragma.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        testgen.execute.in_port("res:file"),
+        testgen.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        build.execute.in_port("res:file"),
+        build.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        test.execute.in_port("res:file"),
+        test.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        lint.execute.in_port("res:file"),
+        lint.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        guardrail.execute.in_port("res:file"),
+        guardrail.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        verify_makegen.execute.in_port("res:file"),
+        verify_makegen.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        verify_deps_config.execute.in_port("res:file"),
+        verify_deps_config.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        verify_bootstrap.execute.in_port("res:file"),
+        verify_bootstrap.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        verify_testgen.execute.in_port("res:file"),
+        verify_testgen.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        verify_pragma.execute.in_port("res:file"),
+        verify_pragma.in_port("res:file"),
     )?;
 
     Ok(builder.build())
+}
+
+/// Recursively map a `Dag<CodegenGraphOp>` → `Dag<CIGraphOp>`.
+fn map_codegen_dag(dag: &Dag<CodegenGraphOp>) -> Dag<CIGraphOp> {
+    let mut mapped = Dag::new();
+    for node in &dag.nodes {
+        mapped.add_node(map_codegen_node(node));
+    }
+    for edge in &dag.edges {
+        mapped.add_edge(edge.clone());
+    }
+    mapped
+}
+
+/// Map a single node, recursing into SubDags.
+fn map_codegen_node(node: &Node<CodegenGraphOp>) -> Node<CIGraphOp> {
+    match &node.body {
+        NodeBody::Opaque(op) => {
+            let mapped = match op {
+                CodegenGraphOp::Codegen(op) => CIGraphOp::Codegen(op.clone()),
+                CodegenGraphOp::FsEnv(op) => CIGraphOp::FsEnv(op.clone()),
+                CodegenGraphOp::Transport(op) => CIGraphOp::Transport(op.clone()),
+            };
+            Node::opaque(
+                node.id.clone(),
+                node.inputs.clone(),
+                node.outputs.clone(),
+                mapped,
+            )
+        }
+        NodeBody::SubDag(inner) => {
+            let mapped_inner = map_codegen_dag(inner);
+            Node::subdag(node.id.clone(), mapped_inner)
+        }
+    }
 }
 
 fn inline_codegen_dag(
@@ -940,25 +975,7 @@ fn inline_codegen_dag(
     for node in &dag.nodes {
         let deps = incoming.get(&node.id).cloned().unwrap_or_default();
 
-        let op = match &node.body {
-            NodeBody::Opaque(op) => op,
-            NodeBody::SubDag(_) => {
-                unreachable!("codegen DAG should not contain sub-dags");
-            }
-        };
-
-        let mapped = match op {
-            CodegenGraphOp::Codegen(op) => CIGraphOp::Codegen(op.clone()),
-            CodegenGraphOp::FsEnv(op) => CIGraphOp::FsEnv(op.clone()),
-            CodegenGraphOp::Transport(op) => CIGraphOp::Transport(op.clone()),
-        };
-
-        let mapped_node = Node::opaque(
-            node.id.clone(),
-            node.inputs.clone(),
-            node.outputs.clone(),
-            mapped,
-        );
+        let mapped_node = map_codegen_node(node);
 
         let node_ref = if deps.is_empty() {
             builder.add_root_node(mapped_node)?
@@ -1023,24 +1040,36 @@ mod tests {
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_ci_graph().expect("graph should build");
-        let expected_nodes = [
+        // Transport triplets are now SubDag nodes
+        let expected_subdags = [
+            "deps_exists",
+            "bootstrap",
+            "pragma",
+            "testgen",
+            "build",
+            "test",
+            "clippy_lint",
+            "guardrail_check",
+            "verify_makegen_check",
+            "verify_deps_config_check",
+            "verify_bootstrap_check",
+            "verify_testgen_check",
+            "verify_pragma_check",
+        ];
+        for subdag_name in expected_subdags {
+            assert!(
+                dag.get_node(&subdag_name.into()).is_some(),
+                "missing SubDag node: {}",
+                subdag_name
+            );
+        }
+        // Non-SubDag nodes
+        for node_id in [
             "cloud_env_status",
-            "execute_deps_exists",
             "execute_codegen",
             "execute_stamp_write",
-            "execute_build",
-            "execute_test",
-            "execute_clippy_lint",
-            "execute_guardrail_check",
-            "execute_verify_makegen_check",
-            "execute_verify_deps_config_check",
-            "execute_verify_bootstrap_check",
-            "execute_verify_testgen_check",
-            "execute_verify_pragma_check",
             "report",
-        ];
-
-        for node_id in expected_nodes {
+        ] {
             assert!(
                 dag.get_node(&node_id.into()).is_some(),
                 "missing node: {}",
@@ -1053,22 +1082,40 @@ mod tests {
     fn test_graph_has_transport_nodes() {
         let dag = build_ci_graph().expect("graph should build");
 
-        for node_id in [
-            "execute_deps_exists",
-            "execute_codegen",
-            "execute_stamp_write",
-            "execute_bootstrap",
-            "execute_pragma",
-            "execute_testgen",
-            "execute_build",
-            "execute_test",
-            "execute_guardrail_check",
-            "execute_verify_makegen_check",
-            "execute_verify_deps_config_check",
-            "execute_verify_bootstrap_check",
-            "execute_verify_testgen_check",
-            "execute_verify_pragma_check",
+        // Transport executor nodes inside SubDags
+        for (subdag_name, execute_name) in [
+            ("deps_exists", "execute_deps_exists"),
+            ("bootstrap", "execute_bootstrap"),
+            ("pragma", "execute_pragma"),
+            ("testgen", "execute_testgen"),
+            ("build", "execute_build"),
+            ("test", "execute_test"),
+            ("clippy_lint", "execute_clippy_lint"),
+            ("guardrail_check", "execute_guardrail_check"),
+            ("verify_makegen_check", "execute_verify_makegen_check"),
+            ("verify_deps_config_check", "execute_verify_deps_config_check"),
+            ("verify_bootstrap_check", "execute_verify_bootstrap_check"),
+            ("verify_testgen_check", "execute_verify_testgen_check"),
+            ("verify_pragma_check", "execute_verify_pragma_check"),
         ] {
+            let subdag_node = dag
+                .get_node(&subdag_name.into())
+                .unwrap_or_else(|| panic!("missing SubDag: {}", subdag_name));
+            if let NodeBody::SubDag(ref inner) = subdag_node.body {
+                let node = inner
+                    .get_node(&execute_name.into())
+                    .unwrap_or_else(|| panic!("missing transport node {} inside {}", execute_name, subdag_name));
+                assert!(
+                    matches!(node.body, NodeBody::Opaque(CIGraphOp::Transport(_))),
+                    "{} should be a transport node",
+                    execute_name
+                );
+            } else {
+                panic!("{} should be a SubDag", subdag_name);
+            }
+        }
+        // Top-level transport nodes (from inlined codegen DAG)
+        for node_id in ["execute_codegen", "execute_stamp_write"] {
             let node = dag
                 .get_node(&node_id.into())
                 .unwrap_or_else(|| panic!("missing transport node: {}", node_id));
@@ -1084,33 +1131,42 @@ mod tests {
     fn test_graph_has_clippy_lint_triplet() {
         let dag = build_ci_graph().expect("graph should build");
 
-        // Verify the clippy lint transport triplet exists
-        for node_id in [
-            "prepare_clippy_lint",
-            "execute_clippy_lint",
-            "parse_clippy_lint",
-        ] {
-            assert!(
-                dag.get_node(&node_id.into()).is_some(),
-                "missing clippy lint triplet node: {}",
-                node_id
-            );
-        }
+        // clippy_lint is now a SubDag
+        let clippy_lint = dag
+            .get_node(&"clippy_lint".into())
+            .expect("missing clippy_lint SubDag");
+        assert!(clippy_lint.is_subdag(), "clippy_lint should be a SubDag");
 
-        // Verify execute node is a Transport op with TransportRequest input
-        let execute_node = dag.get_node(&"execute_clippy_lint".into()).unwrap();
-        assert!(
-            matches!(execute_node.body, NodeBody::Opaque(CIGraphOp::Transport(_))),
-            "execute_clippy_lint should be a transport node"
-        );
-        let has_request_input = execute_node
-            .inputs
-            .iter()
-            .any(|p| p.type_id.0 == "TransportRequest");
-        assert!(
-            has_request_input,
-            "execute_clippy_lint should have TransportRequest input"
-        );
+        if let NodeBody::SubDag(ref inner) = clippy_lint.body {
+            for node_id in [
+                "prepare_clippy_lint",
+                "execute_clippy_lint",
+                "parse_clippy_lint",
+            ] {
+                assert!(
+                    inner.get_node(&node_id.into()).is_some(),
+                    "missing clippy lint triplet node: {}",
+                    node_id
+                );
+            }
+
+            // Verify execute node is a Transport op with TransportRequest input
+            let execute_node = inner.get_node(&"execute_clippy_lint".into()).unwrap();
+            assert!(
+                matches!(execute_node.body, NodeBody::Opaque(CIGraphOp::Transport(_))),
+                "execute_clippy_lint should be a transport node"
+            );
+            let has_request_input = execute_node
+                .inputs
+                .iter()
+                .any(|p| p.type_id.0 == "TransportRequest");
+            assert!(
+                has_request_input,
+                "execute_clippy_lint should have TransportRequest input"
+            );
+        } else {
+            panic!("clippy_lint should be a SubDag");
+        }
     }
 
     #[test]
@@ -1126,21 +1182,31 @@ mod tests {
     fn test_transport_nodes_are_visible() {
         let dag = build_ci_graph().expect("graph should build");
 
-        // Find execute_build node
-        let execute_build = dag.get_node(&"execute_build".into());
-        assert!(execute_build.is_some(), "execute_build node should exist");
+        // execute_build is inside the build SubDag
+        let build_subdag = dag
+            .get_node(&"build".into())
+            .expect("build SubDag should exist");
+        assert!(build_subdag.is_subdag(), "build should be a SubDag");
 
-        // Verify it's a Transport op
-        if let Some(node) = execute_build {
-            // The node should have TransportRequest as input type
-            let has_request_input = node
-                .inputs
-                .iter()
-                .any(|p| p.type_id.0 == "TransportRequest");
+        if let NodeBody::SubDag(ref inner) = build_subdag.body {
+            let execute_build = inner.get_node(&"execute_build".into());
             assert!(
-                has_request_input,
-                "execute_build should have TransportRequest input"
+                execute_build.is_some(),
+                "execute_build should exist inside build SubDag"
             );
+
+            if let Some(node) = execute_build {
+                let has_request_input = node
+                    .inputs
+                    .iter()
+                    .any(|p| p.type_id.0 == "TransportRequest");
+                assert!(
+                    has_request_input,
+                    "execute_build should have TransportRequest input"
+                );
+            }
+        } else {
+            panic!("build should be a SubDag");
         }
     }
 

@@ -108,11 +108,12 @@ pub fn openai_mock_spec() -> MockSpec {
     let response = mock::mock_openai_response("The code looks good. No issues found.");
 
     with_cloud_env(MockSpec::new("llm-openai"))
-        // Input mocks for DAG entry points (dangling inputs on prepare node)
-        .input_mock("prepare", "provider", Value::Str("openai".into()))
-        .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
+        // Input mocks for DAG entry points (dangling inputs on prepare node and resolve_auth)
+        .input_mock("chat_completion/prepare", "provider", Value::Str("openai".into()))
+        .input_mock("resolve_auth", "provider", Value::Str("openai".into()))
+        .input_mock("chat_completion/prepare", "model", Value::Str("gpt-4o".into()))
         .input_mock(
-            "prepare",
+            "chat_completion/prepare",
             "messages",
             Value::Json(serde_json::json!([
                 {"role": "user", "content": "Review this code: fn main() {}"}
@@ -120,7 +121,7 @@ pub fn openai_mock_spec() -> MockSpec {
         )
         // Transport mock: execute node response (DryRun interception)
         .transport_mock(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(
                 response.clone(),
@@ -128,20 +129,20 @@ pub fn openai_mock_spec() -> MockSpec {
         )
         // Boundary: execute (transport) outputs (for documentation/chain validation)
         .boundary(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(response)),
         )
         // Boundary: parse outputs (what downstream consumers see)
         .boundary(
-            "parse",
+            "chat_completion/parse",
             "content",
             Value::Str("The code looks good. No issues found.".into()),
         )
-        .boundary("parse", "model", Value::Str("gpt-4o".into()))
-        .boundary("parse", "finish_reason", Value::Str("Stop".into()))
-        .boundary("parse", "input_tokens", Value::Int(10))
-        .boundary("parse", "output_tokens", Value::Int(20))
+        .boundary("chat_completion/parse", "model", Value::Str("gpt-4o".into()))
+        .boundary("chat_completion/parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary("chat_completion/parse", "input_tokens", Value::Int(10))
+        .boundary("chat_completion/parse", "output_tokens", Value::Int(20))
         // Input expectations
         .expects_input(
             "provider",
@@ -151,7 +152,7 @@ pub fn openai_mock_spec() -> MockSpec {
         .expects_input("messages", InputConstraint::NonEmpty)
         // Node I/O examples: verify pure node behavior
         .node_example(
-            NodeExample::new("prepare")
+            NodeExample::new("chat_completion/prepare")
                 .input("provider", Value::Str("openai".into()))
                 .input("model", Value::Str("gpt-4o".into()))
                 .input("messages", Value::Str("Hello".into()))
@@ -174,7 +175,7 @@ pub fn openai_mock_spec() -> MockSpec {
                 .description("Resolve auth maps OpenAI provider to API key env var"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("openai".into()))
                 .input(
                     "response",
@@ -196,7 +197,7 @@ pub fn openai_mock_spec() -> MockSpec {
                 .description("OpenAI parse extracts content, model, tokens from REST response"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("openai".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
@@ -232,15 +233,16 @@ pub fn anthropic_mock_spec() -> MockSpec {
     );
 
     with_cloud_env(MockSpec::new("llm-anthropic"))
-        // Input mocks for DAG entry points (dangling inputs on prepare node)
-        .input_mock("prepare", "provider", Value::Str("anthropic".into()))
+        // Input mocks for DAG entry points (dangling inputs on prepare node and resolve_auth)
+        .input_mock("chat_completion/prepare", "provider", Value::Str("anthropic".into()))
+        .input_mock("resolve_auth", "provider", Value::Str("anthropic".into()))
         .input_mock(
-            "prepare",
+            "chat_completion/prepare",
             "model",
             Value::Str("claude-sonnet-4-20250514".into()),
         )
         .input_mock(
-            "prepare",
+            "chat_completion/prepare",
             "messages",
             Value::Json(serde_json::json!([
                 {"role": "user", "content": "Review this function for edge cases"}
@@ -248,7 +250,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
         )
         // Transport mock: execute node response (DryRun interception)
         .transport_mock(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(
                 response.clone(),
@@ -256,26 +258,26 @@ pub fn anthropic_mock_spec() -> MockSpec {
         )
         // Boundary: execute (transport) outputs (for documentation/chain validation)
         .boundary(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(response)),
         )
         // Boundary: parse outputs
         .boundary(
-            "parse",
+            "chat_completion/parse",
             "content",
             Value::Str(
                 "The function handles edge cases well. Consider adding a doc comment.".into(),
             ),
         )
         .boundary(
-            "parse",
+            "chat_completion/parse",
             "model",
             Value::Str("claude-sonnet-4-20250514".into()),
         )
-        .boundary("parse", "finish_reason", Value::Str("Stop".into()))
-        .boundary("parse", "input_tokens", Value::Int(10))
-        .boundary("parse", "output_tokens", Value::Int(20))
+        .boundary("chat_completion/parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary("chat_completion/parse", "input_tokens", Value::Int(10))
+        .boundary("chat_completion/parse", "output_tokens", Value::Int(20))
         // Input expectations
         .expects_input(
             "provider",
@@ -285,7 +287,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
         .expects_input("messages", InputConstraint::NonEmpty)
         // Node I/O examples: verify pure node behavior
         .node_example(
-            NodeExample::new("prepare")
+            NodeExample::new("chat_completion/prepare")
                 .input("provider", Value::Str("anthropic".into()))
                 .input("model", Value::Str("claude-sonnet-4-20250514".into()))
                 .input("messages", Value::Str("Hello".into()))
@@ -311,7 +313,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
                 .description("Resolve auth maps Anthropic provider to header auth"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("anthropic".into()))
                 .input(
                     "response",
@@ -336,7 +338,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
                 .description("Anthropic parse extracts content, model, tokens from REST response"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("anthropic".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
@@ -379,38 +381,39 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
 
     with_cloud_env(MockSpec::new("llm-code-review"))
         // Input mocks for DAG entry points
-        .input_mock("prepare", "provider", Value::Str("openai".into()))
-        .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
-        .input_mock("prepare", "messages", Value::Json(serde_json::json!([
+        .input_mock("chat_completion/prepare", "provider", Value::Str("openai".into()))
+        .input_mock("resolve_auth", "provider", Value::Str("openai".into()))
+        .input_mock("chat_completion/prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock("chat_completion/prepare", "messages", Value::Json(serde_json::json!([
             {"role": "system", "content": "You are a code reviewer. Review the following code."},
             {"role": "user", "content": "fn main() { let x = Some(1); x.unwrap(); }"}
         ])))
         // Transport mock: execute node response
         .transport_mock(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(response.clone())),
         )
         .boundary(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(response)),
         )
         .boundary(
-            "parse",
+            "chat_completion/parse",
             "content",
             Value::Str(review_content.into()),
         )
-        .boundary("parse", "model", Value::Str("gpt-4o".into()))
-        .boundary("parse", "finish_reason", Value::Str("Stop".into()))
-        .boundary("parse", "input_tokens", Value::Int(150))
-        .boundary("parse", "output_tokens", Value::Int(85))
+        .boundary("chat_completion/parse", "model", Value::Str("gpt-4o".into()))
+        .boundary("chat_completion/parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary("chat_completion/parse", "input_tokens", Value::Int(150))
+        .boundary("chat_completion/parse", "output_tokens", Value::Int(85))
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         .expects_input("messages", InputConstraint::NonEmpty)
         // Node I/O examples: verify pure node behavior
         .node_example(
-            NodeExample::new("prepare")
+            NodeExample::new("chat_completion/prepare")
                 .input("provider", Value::Str("openai".into()))
                 .input("model", Value::Str("gpt-4o".into()))
                 .input("messages", Value::Str("Review this code".into()))
@@ -433,7 +436,7 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
                 .description("Resolve auth maps OpenAI provider to bearer auth"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("openai".into()))
                 .input("response", Value::Response(
                     gunbc_ir::transport::TransportResponse::Rest(
@@ -445,7 +448,7 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
                 .description("Code review parse extracts content from REST response"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("openai".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
@@ -479,10 +482,11 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
 
     with_cloud_env(MockSpec::new("llm-secrets"))
         // Input mocks for DAG entry points
-        .input_mock("prepare", "provider", Value::Str("openai".into()))
-        .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock("chat_completion/prepare", "provider", Value::Str("openai".into()))
+        .input_mock("resolve_auth", "provider", Value::Str("openai".into()))
+        .input_mock("chat_completion/prepare", "model", Value::Str("gpt-4o".into()))
         .input_mock(
-            "prepare",
+            "chat_completion/prepare",
             "messages",
             Value::Json(serde_json::json!([
                 {"role": "user", "content": "Hello with auth"}
@@ -490,33 +494,33 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
         )
         // Transport mock: execute node response
         .transport_mock(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(
                 response.clone(),
             )),
         )
         .boundary(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(response)),
         )
         .boundary(
-            "parse",
+            "chat_completion/parse",
             "content",
             Value::Str("Response with secret auth.".into()),
         )
-        .boundary("parse", "model", Value::Str("gpt-4o".into()))
-        .boundary("parse", "finish_reason", Value::Str("Stop".into()))
-        .boundary("parse", "input_tokens", Value::Int(10))
-        .boundary("parse", "output_tokens", Value::Int(10))
+        .boundary("chat_completion/parse", "model", Value::Str("gpt-4o".into()))
+        .boundary("chat_completion/parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary("chat_completion/parse", "input_tokens", Value::Int(10))
+        .boundary("chat_completion/parse", "output_tokens", Value::Int(10))
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         // API key resource: lease-based (keys can expire)
         .resource_lease("api:openai_key", 3_600_000) // 1 hour
         // Node I/O examples: verify pure node behavior
         .node_example(
-            NodeExample::new("prepare")
+            NodeExample::new("chat_completion/prepare")
                 .input("provider", Value::Str("openai".into()))
                 .input("model", Value::Str("gpt-4o".into()))
                 .input("messages", Value::Str("Hello".into()))
@@ -536,7 +540,7 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
                 .description("Resolve auth maps OpenAI provider to bearer auth"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("openai".into()))
                 .input(
                     "response",
@@ -552,7 +556,7 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
                 .description("Secret auth parse extracts content from REST response"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("openai".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
@@ -577,10 +581,11 @@ pub fn rate_limited_mock_spec() -> MockSpec {
 
     with_cloud_env(MockSpec::new("llm-rate-limited"))
         // Input mocks for DAG entry points
-        .input_mock("prepare", "provider", Value::Str("openai".into()))
-        .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock("chat_completion/prepare", "provider", Value::Str("openai".into()))
+        .input_mock("resolve_auth", "provider", Value::Str("openai".into()))
+        .input_mock("chat_completion/prepare", "model", Value::Str("gpt-4o".into()))
         .input_mock(
-            "prepare",
+            "chat_completion/prepare",
             "messages",
             Value::Json(serde_json::json!([
                 {"role": "user", "content": "This request will be rate limited"}
@@ -588,14 +593,14 @@ pub fn rate_limited_mock_spec() -> MockSpec {
         )
         // Transport mock: execute node returns error response
         .transport_mock(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(
                 error_response.clone(),
             )),
         )
         .boundary(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(error_response)),
         )
@@ -651,10 +656,11 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
 
     with_cloud_env(MockSpec::new("llm-credential-lifecycle"))
         // Input mocks for DAG entry points
-        .input_mock("prepare", "provider", Value::Str("openai".into()))
-        .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock("chat_completion/prepare", "provider", Value::Str("openai".into()))
+        .input_mock("resolve_auth", "provider", Value::Str("openai".into()))
+        .input_mock("chat_completion/prepare", "model", Value::Str("gpt-4o".into()))
         .input_mock(
-            "prepare",
+            "chat_completion/prepare",
             "messages",
             Value::Json(serde_json::json!([
                 {"role": "user", "content": "Credential lifecycle test"}
@@ -662,32 +668,32 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
         )
         // Transport mock
         .transport_mock(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(
                 response.clone(),
             )),
         )
         .boundary(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(response)),
         )
         .boundary(
-            "parse",
+            "chat_completion/parse",
             "content",
             Value::Str("Credential lifecycle test response.".into()),
         )
-        .boundary("parse", "model", Value::Str("gpt-4o".into()))
-        .boundary("parse", "finish_reason", Value::Str("Stop".into()))
-        .boundary("parse", "input_tokens", Value::Int(10))
-        .boundary("parse", "output_tokens", Value::Int(20))
+        .boundary("chat_completion/parse", "model", Value::Str("gpt-4o".into()))
+        .boundary("chat_completion/parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary("chat_completion/parse", "input_tokens", Value::Int(10))
+        .boundary("chat_completion/parse", "output_tokens", Value::Int(20))
         // Live expectations: LLM returns non-empty content
-        .live_expected_output("parse", "content", OutputMatcher::non_empty())
-        .live_expected_output("parse", "model", OutputMatcher::IsString)
-        .live_expected_output("parse", "finish_reason", OutputMatcher::IsString)
-        .live_expected_output("parse", "input_tokens", OutputMatcher::IntGe(0))
-        .live_expected_output("parse", "output_tokens", OutputMatcher::IntGe(0))
+        .live_expected_output("chat_completion/parse", "content", OutputMatcher::non_empty())
+        .live_expected_output("chat_completion/parse", "model", OutputMatcher::IsString)
+        .live_expected_output("chat_completion/parse", "finish_reason", OutputMatcher::IsString)
+        .live_expected_output("chat_completion/parse", "input_tokens", OutputMatcher::IntGe(0))
+        .live_expected_output("chat_completion/parse", "output_tokens", OutputMatcher::IntGe(0))
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         // Credential resource: basic (acquire + timeout)
@@ -696,7 +702,7 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
         .resource_credential_refreshable("credential:openai:refreshable", 3_600_000, 3_600_000)
         // Node I/O examples
         .node_example(
-            NodeExample::new("prepare")
+            NodeExample::new("chat_completion/prepare")
                 .input("provider", Value::Str("openai".into()))
                 .input("model", Value::Str("gpt-4o".into()))
                 .input("messages", Value::Str("Credential lifecycle test".into()))
@@ -719,7 +725,7 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
                 .description("Resolve auth maps OpenAI provider to bearer auth"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("openai".into()))
                 .input(
                     "response",
@@ -735,7 +741,7 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
                 .description("Credential lifecycle parse extracts content from REST response"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("openai".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
@@ -778,14 +784,15 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
 
     with_cloud_env(MockSpec::new("llm-credential-lifecycle-anthropic"))
         // Input mocks for DAG entry points
-        .input_mock("prepare", "provider", Value::Str("anthropic".into()))
+        .input_mock("chat_completion/prepare", "provider", Value::Str("anthropic".into()))
+        .input_mock("resolve_auth", "provider", Value::Str("anthropic".into()))
         .input_mock(
-            "prepare",
+            "chat_completion/prepare",
             "model",
             Value::Str("claude-sonnet-4-20250514".into()),
         )
         .input_mock(
-            "prepare",
+            "chat_completion/prepare",
             "messages",
             Value::Json(serde_json::json!([
                 {"role": "user", "content": "Credential lifecycle test"}
@@ -794,36 +801,36 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
         // Env: resolved auth token
         // Transport mock
         .transport_mock(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(
                 response.clone(),
             )),
         )
         .boundary(
-            "execute",
+            "chat_completion/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(response)),
         )
         .boundary(
-            "parse",
+            "chat_completion/parse",
             "content",
             Value::Str("Credential lifecycle test response.".into()),
         )
         .boundary(
-            "parse",
+            "chat_completion/parse",
             "model",
             Value::Str("claude-sonnet-4-20250514".into()),
         )
-        .boundary("parse", "finish_reason", Value::Str("Stop".into()))
-        .boundary("parse", "input_tokens", Value::Int(10))
-        .boundary("parse", "output_tokens", Value::Int(20))
+        .boundary("chat_completion/parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary("chat_completion/parse", "input_tokens", Value::Int(10))
+        .boundary("chat_completion/parse", "output_tokens", Value::Int(20))
         // Live expectations: LLM returns non-empty content
-        .live_expected_output("parse", "content", OutputMatcher::non_empty())
-        .live_expected_output("parse", "model", OutputMatcher::IsString)
-        .live_expected_output("parse", "finish_reason", OutputMatcher::IsString)
-        .live_expected_output("parse", "input_tokens", OutputMatcher::IntGe(0))
-        .live_expected_output("parse", "output_tokens", OutputMatcher::IntGe(0))
+        .live_expected_output("chat_completion/parse", "content", OutputMatcher::non_empty())
+        .live_expected_output("chat_completion/parse", "model", OutputMatcher::IsString)
+        .live_expected_output("chat_completion/parse", "finish_reason", OutputMatcher::IsString)
+        .live_expected_output("chat_completion/parse", "input_tokens", OutputMatcher::IntGe(0))
+        .live_expected_output("chat_completion/parse", "output_tokens", OutputMatcher::IntGe(0))
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         // Credential resource: basic (acquire + timeout)
@@ -832,7 +839,7 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
         .resource_credential_refreshable("credential:anthropic:refreshable", 3_600_000, 3_600_000)
         // Node I/O examples
         .node_example(
-            NodeExample::new("prepare")
+            NodeExample::new("chat_completion/prepare")
                 .input("provider", Value::Str("anthropic".into()))
                 .input("model", Value::Str("claude-sonnet-4-20250514".into()))
                 .input("messages", Value::Str("Credential lifecycle test".into()))
@@ -858,7 +865,7 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
                 .description("Resolve auth maps Anthropic provider to header auth"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("anthropic".into()))
                 .input(
                     "response",
@@ -877,7 +884,7 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
                 .description("Credential lifecycle parse extracts content from REST response"),
         )
         .node_example(
-            NodeExample::new("parse")
+            NodeExample::new("chat_completion/parse")
                 .input("provider", Value::Str("anthropic".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)

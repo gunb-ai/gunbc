@@ -16,21 +16,17 @@ use gunbc_exec::{
 };
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
-use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{FileOp, FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::{
     add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
     WorkflowSignature,
 };
-use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_from_config, graph_cloud_config, CloudOps,
-    CloudSecretManagerGraphOp,
-};
-use gunbc_lib_gist_ops::GistOps;
-use gunbc_lib_git_ops::GitOps;
+use gunbc_lib_cloud_ops::graph_cloud_config;
+use gunbc_lib_gist_ops::{build_gist_upload_subdag, GistOps, GistUploadOp};
+use gunbc_lib_git_ops::{build_branch_resolution_subdag, BranchResolutionOp, GitOps};
 use gunbc_lib_markdown::MarkdownOp;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{filename, ClockEnv, FsEnv};
+use gunbc_primitives::{filename, FsEnv};
 use std::collections::{BTreeMap, HashMap};
 
 /// Gist content acquisition mode.
@@ -85,12 +81,6 @@ pub enum GistGraphOp {
     // ========================================================================
     /// Filesystem environment (resource acquisition)
     FsEnv(FsEnv),
-    /// Clock environment (timestamp snapshot)
-    ClockEnv(ClockEnv),
-    /// Cloud credential lifecycle operations
-    Cloud(CloudSecretManagerGraphOp),
-    /// Resolve auth contract for gist actions.
-    ResolveAuth,
 
     // ========================================================================
     // ReadFiles chain (batch): PrepareReadFiles -> Execute -> ParseReadFiles
@@ -121,8 +111,6 @@ pub enum GistGraphOp {
     // ========================================================================
     /// Markdown operations
     Markdown(MarkdownOp),
-    /// Gist operations (PrepareRequest is pure, ExecuteTransport will be removed)
-    Gist(GistOps),
 
     // ========================================================================
     // Pattern operations (for LoopBuilder integration)
@@ -135,6 +123,20 @@ pub enum GistGraphOp {
     // ========================================================================
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
+
+    // ========================================================================
+    // SubDag wrappers (shared library SubDags)
+    // ========================================================================
+    /// Gist upload pipeline (credential chain + request + response).
+    ///
+    /// Self-contained SubDag — includes its own `fs_env`, `clock_env`,
+    /// cloud credential chain, and gist upload pipeline.
+    GistUpload(GistUploadOp),
+
+    /// Branch resolution (current_branch + remote_branches).
+    ///
+    /// Wraps the two-triplet branch resolution SubDag from git-ops.
+    BranchResolution(BranchResolutionOp),
 }
 
 impl From<PatternOp> for GistGraphOp {
@@ -151,9 +153,6 @@ impl Executable for GistGraphOp {
 
             // Environment ops (resource acquisition)
             GistGraphOp::FsEnv(op) => op.execute(inputs),
-            GistGraphOp::ClockEnv(op) => op.execute(inputs),
-            GistGraphOp::Cloud(op) => op.execute(inputs),
-            GistGraphOp::ResolveAuth => execute_resolve_auth(inputs),
 
             // ReadFiles chain - batch (pure)
             GistGraphOp::PrepareReadFiles => execute_prepare_read_files(inputs),
@@ -169,11 +168,13 @@ impl Executable for GistGraphOp {
 
             // Library ops
             GistGraphOp::Markdown(op) => op.execute(inputs),
-            GistGraphOp::Gist(op) => op.execute(inputs),
 
             // Transport boundary
             GistGraphOp::Transport(op) => op.execute(inputs),
 
+            // SubDag wrappers (delegated to shared libraries)
+            GistGraphOp::GistUpload(op) => op.execute(inputs),
+            GistGraphOp::BranchResolution(op) => op.execute(inputs),
         }
     }
 }
@@ -435,33 +436,6 @@ fn execute_collect_file_contents(
     OutputMap::new().map_str_str("contents", contents).ok()
 }
 
-/// Resolve auth requirements from the gist interface scope contract.
-///
-/// This is intentionally strict: credentialed actions without a valid scope
-/// contract fail before any transport execute node can run.
-fn execute_resolve_auth(
-    _inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    let intent = GistRequest::new().credential_intent();
-    intent
-        .validate()
-        .map_err(|e| ExecError::new(format!("invalid gist credential contract: {e}")))?;
-
-    let mut out = OutputMap::new()
-        .str("service", intent.service)
-        .str("scheme", intent.scheme)
-        .str("header_name", intent.header_name)
-        .str_list("required_scopes", intent.required_scopes)
-        .bool("interactive_allowed", intent.interactive_allowed)
-        .int("lifetime_seconds", 3600);
-
-    if let Some(secret_name) = intent.secret_name {
-        out = out.str("secret_name", secret_name);
-    }
-
-    out.ok()
-}
-
 // ============================================================================
 // LoopBuilder body DAG
 // ============================================================================
@@ -542,8 +516,9 @@ pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
         // cloud_credential subdag exposes ok from IAM ensure chain (LocalDev only)
         .with_output("ok", "Bool", Cardinality::ONE);
 
-    // base_ref is an entrypoint only in diff mode.
-    if matches!(mode, GistMode::Diff { .. }) {
+    // base_ref is an entrypoint from gist_upload SubDag in snapshot and diff modes
+    // (in recent mode it's wired from rev_list, so it's not an entrypoint)
+    if !matches!(mode, GistMode::Recent) {
         sig = sig.with_input("base_ref", "OptionalString", Cardinality::ZERO_OR_ONE);
     }
 
@@ -577,9 +552,19 @@ pub fn build_gist_graph(
 
 /// Build the gist graph with an explicit `CloudSecretConfig`.
 ///
-/// The graph uses `ConstCloudConfig` to emit the pre-resolved config
-/// and selects the credential sub-DAG based on the config's
-/// provider/runtime.
+/// The graph uses shared SubDags for branch resolution and gist upload:
+///
+/// ```text
+///   fs_env ──────> content_acquisition ──> render_markdown ──┐
+///                                                            │
+///   branch_resolution ───────────────────────────────────┐   │
+///                                                        │   │
+///   gist_upload <────── markdown + branch + remote + base_ref
+/// ```
+///
+/// The `gist_upload` SubDag is self-contained: it includes its own
+/// credential chain, filesystem/clock environments, and gist request
+/// pipeline. Consumers just wire `markdown` in and get `url` out.
 pub fn build_gist_graph_with_config(
     mode: GistMode,
     extensions: Vec<String>,
@@ -589,7 +574,7 @@ pub fn build_gist_graph_with_config(
     let mut builder = DagBuilder::new();
 
     // ========================================================================
-    // Environment: filesystem + clock + cloud credential context
+    // Environment: filesystem (for content acquisition transport boundaries)
     // ========================================================================
 
     let fs_env = builder.add_root_node(Node::opaque(
@@ -599,69 +584,11 @@ pub fn build_gist_graph_with_config(
         GistGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
-    let clock_env = builder.add_root_node(Node::opaque(
-        "clock_env",
-        vec![],
-        vec![port("clock", "Timestamp")],
-        GistGraphOp::ClockEnv(ClockEnv),
-    ))?;
-
-    let cloud_env = builder.add_root_node(Node::opaque(
-        "cloud_env",
-        vec![],
-        vec![
-            port("config", "CloudSecretConfig"),
-            optional("request_url", "OptionalString"),
-            optional("request_token", "OptionalString"),
-        ],
-        GistGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-            CloudOps::ConstCloudConfig {
-                config: cloud_config.clone(),
-            },
-        )),
-    ))?;
-
-    let resolve_auth = builder.add_root_node(Node::opaque(
-        "resolve_auth",
-        vec![],
-        vec![
-            port("service", "String"),
-            optional("secret_name", "OptionalString"),
-            port("scheme", "String"),
-            port("header_name", "String"),
-            list("required_scopes", "String"),
-            port("interactive_allowed", "Bool"),
-            optional("lifetime_seconds", "OptionalInt"),
-        ],
-        GistGraphOp::ResolveAuth,
-    ))?;
-
-    let bind_secret = builder.add_node_after_all(
-        Node::opaque(
-            "bind_secret",
-            vec![
-                port("config", "CloudSecretConfig"),
-                port("service", "String"),
-                optional("secret_name", "OptionalString"),
-            ],
-            vec![port("config", "CloudSecretConfig")],
-            GistGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
-        ),
-        &[&cloud_env, &resolve_auth],
-    )?;
-
-    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(
-        &cloud_config,
-    ));
-    let cloud_credential =
-        builder.add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)?;
-
     // ========================================================================
     // Content acquisition (mode-dependent)
     // ========================================================================
     // Both modes produce a render_markdown node handle that outputs "markdown".
 
-    let is_recent_mode = matches!(mode, GistMode::Recent);
     let (render_markdown, recent_parse_rev_list) = match &mode {
         GistMode::Snapshot => (
             build_snapshot_acquire(&mut builder, &fs_env, extensions)?,
@@ -678,218 +605,54 @@ pub fn build_gist_graph_with_config(
     };
 
     // ========================================================================
-    // Branch name acquisition (parallel to content acquisition)
+    // Branch resolution SubDag (parallel to content acquisition)
     // ========================================================================
 
-    let current_branch = add_transport_triplet(
-        &mut builder,
-        "current_branch",
-        vec![port("repo_path", "String")],
-        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![optional("branch", "OptionalString")],
-        GistGraphOp::Git(GitOps::PrepareCurrentBranch),
-        GistGraphOp::Git(GitOps::ParseCurrentBranch),
-        GistGraphOp::Transport(TransportOps::Execute),
-        None,
+    let branch_dag = lift_branch_dag(build_branch_resolution_subdag());
+    let branch_resolution = builder.add_node_after(
+        Node::subdag("branch_resolution", branch_dag),
+        &fs_env,
+    )?;
+
+    // Wire filesystem handle to branch resolution
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        branch_resolution.in_port("res:file"),
     )?;
 
     // ========================================================================
-    // Remote branch resolution (parallel — for detached HEAD)
+    // Gist upload SubDag (self-contained credential chain + upload)
     // ========================================================================
 
-    let remote_branches = add_transport_triplet(
-        &mut builder,
-        "remote_branches",
-        vec![port("repo_path", "String")],
-        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![optional("remote_branch", "OptionalString")],
-        GistGraphOp::Git(GitOps::PrepareRemoteBranchesAtHead),
-        GistGraphOp::Git(GitOps::ParseRemoteBranchesAtHead),
-        GistGraphOp::Transport(TransportOps::Execute),
-        None,
-    )?;
-
-    // ========================================================================
-    // Shared gist creation tail
-    // ========================================================================
-
-    // Node: PrepareGistRequest (PURE)
-    let mut gist_prepare_inputs = vec![
-        scalar("markdown", "String"),
-        optional("branch", "OptionalString"),
-        optional("remote_branch", "OptionalString"),
-        resource("file", "FilesystemHandle", AccessMode::Read),
-        resource("clock", "Timestamp", AccessMode::Read),
-        optional("credential_expires_in", "OptionalInt"),
-        list("required_scopes", "String"),
-    ];
-    if is_recent_mode {
-        gist_prepare_inputs.push(optional("base_ref", "OptionalString"));
-    }
-
-    let prepare_gist_request = builder.add_node_after(
-        Node::opaque(
-            "prepare_gist_request",
-            gist_prepare_inputs,
-            vec![
-                scalar("request", "TransportRequest"),
-                scalar("skip", "Bool"),
-            ],
-            GistGraphOp::Gist(GistOps::PrepareRequest { public }),
-        ),
+    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(cloud_config, public));
+    let gist_upload = builder.add_node_after(
+        Node::subdag("gist_upload", gist_dag),
         &render_markdown,
     )?;
 
-    // Node: ScopePreflight (PURE - fails fast on invalid/empty scopes)
-    let scope_preflight = builder.add_node_after(
-        Node::opaque(
-            "scope_preflight",
-            vec![list("required_scopes", "String")],
-            vec![scalar("scope_verified", "Bool")],
-            GistGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ScopePreflight)),
-        ),
-        &resolve_auth,
-    )?;
-
-    // Node: ExecuteGist (BOUNDARY - actual I/O)
-    let execute_gist = builder.add_node_after_all(
-        Node::opaque(
-            "execute_gist",
-            vec![
-                scalar("request", "TransportRequest"),
-                scalar("skip", "Bool"),
-                optional("scope_verified", "OptionalBool"),
-                resource("credential", "Credential", AccessMode::Read),
-            ],
-            vec![scalar("response", "TransportResponse")],
-            GistGraphOp::Transport(TransportOps::Execute),
-        ),
-        &[&prepare_gist_request, &scope_preflight],
-    )?;
-
-    // Node: ParseGistResponse (PURE - extracts URL)
-    let parse_gist_response = builder.add_node_after(
-        Node::opaque(
-            "parse_gist_response",
-            vec![scalar("response", "TransportResponse")],
-            vec![scalar("url", "String")],
-            GistGraphOp::Gist(GistOps::ParseGistResponse),
-        ),
-        &execute_gist,
-    )?;
-
-    // Wire gist tail
+    // Wire: content → gist_upload.markdown
     builder.add_edge(
         render_markdown.out("markdown"),
-        prepare_gist_request.in_port("markdown"),
+        gist_upload.in_port("markdown"),
+    )?;
+
+    // Wire: branch_resolution → gist_upload
+    builder.add_edge(
+        branch_resolution.out("branch"),
+        gist_upload.in_port("branch"),
     )?;
     builder.add_edge(
-        current_branch.out("branch"),
-        prepare_gist_request.in_port("branch"),
+        branch_resolution.out("remote_branch"),
+        gist_upload.in_port("remote_branch"),
     )?;
-    builder.add_edge(
-        remote_branches.out("remote_branch"),
-        prepare_gist_request.in_port("remote_branch"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        prepare_gist_request.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        clock_env.out("clock"),
-        prepare_gist_request.in_port("res:clock"),
-    )?;
-    builder.add_edge(cloud_env.out("config"), bind_secret.in_port("config"))?;
-    builder.add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))?;
-    builder.add_edge(
-        resolve_auth.out("secret_name"),
-        bind_secret.in_port("secret_name"),
-    )?;
-    builder.add_edge(
-        bind_secret.out("config"),
-        cloud_credential.in_port("config"),
-    )?;
-    builder.add_edge(
-        resolve_auth.out("service"),
-        cloud_credential.in_port("source_id"),
-    )?;
-    builder.add_edge(
-        resolve_auth.out("scheme"),
-        cloud_credential.in_port("scheme"),
-    )?;
-    builder.add_edge(
-        resolve_auth.out("header_name"),
-        cloud_credential.in_port("header_name"),
-    )?;
-    builder.add_edge(
-        resolve_auth.out("lifetime_seconds"),
-        cloud_credential.in_port("lifetime_seconds"),
-    )?;
-    builder.add_edge(
-        resolve_auth.out("interactive_allowed"),
-        cloud_credential.in_port("interactive_allowed"),
-    )?;
-    builder.add_edge(
-        resolve_auth.out("required_scopes"),
-        cloud_credential.in_port("required_scopes"),
-    )?;
-    builder.add_edge(
-        cloud_env.out("request_url"),
-        cloud_credential.in_port("request_url"),
-    )?;
-    builder.add_edge(
-        cloud_credential.out("expires_in"),
-        prepare_gist_request.in_port("credential_expires_in"),
-    )?;
-    builder.add_edge(
-        resolve_auth.out("required_scopes"),
-        prepare_gist_request.in_port("required_scopes"),
-    )?;
-    builder.add_edge(
-        resolve_auth.out("required_scopes"),
-        scope_preflight.in_port("required_scopes"),
-    )?;
-    builder.add_edge(
-        cloud_env.out("request_token"),
-        cloud_credential.in_port("request_token"),
-    )?;
+
     // Wire commit range (recent mode only) so filename reflects the diff range
     if let Some(ref parse_rev_list) = recent_parse_rev_list {
         builder.add_edge(
             parse_rev_list.out("base_ref"),
-            prepare_gist_request.in_port("base_ref"),
+            gist_upload.in_port("base_ref"),
         )?;
     }
-    builder.add_edge(
-        prepare_gist_request.out("request"),
-        execute_gist.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_gist_request.out("skip"),
-        execute_gist.in_port("skip"),
-    )?;
-    builder.add_edge(
-        scope_preflight.out("scope_verified"),
-        execute_gist.in_port("scope_verified"),
-    )?;
-    builder.add_edge(
-        cloud_credential.out("credential"),
-        execute_gist.in_port("res:credential"),
-    )?;
-    builder.add_edge(
-        execute_gist.out("response"),
-        parse_gist_response.in_port("response"),
-    )?;
-
-    // Resource wiring
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        current_branch.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        remote_branches.in_port("res:file"),
-    )?;
 
     let dag = builder.build();
     if let Some(unwired) = gunbc_ir::validate_resource_wiring(&dag).first() {
@@ -918,7 +681,7 @@ fn build_snapshot_acquire(
         GistGraphOp::Git(GitOps::PrepareLsFiles { extensions }),
         GistGraphOp::Git(GitOps::ParseLsFiles),
         GistGraphOp::Transport(TransportOps::Execute),
-        None,
+        Some(fs_env),
     )?;
 
     builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), list_files.in_port("res:file"))?;
@@ -1005,7 +768,7 @@ fn build_diff_acquire(
         }),
         GistGraphOp::Git(GitOps::ParseDiff),
         GistGraphOp::Transport(TransportOps::Execute),
-        None,
+        Some(fs_env),
     )?;
 
     builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), diff.in_port("res:file"))?;
@@ -1068,7 +831,7 @@ fn build_recent_acquire(
         }),
         GistGraphOp::Git(GitOps::ParseRevListBefore),
         GistGraphOp::Transport(TransportOps::Execute),
-        None,
+        Some(fs_env),
     )?;
 
     builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), rev_list.in_port("res:file"))?;
@@ -1125,8 +888,12 @@ fn build_recent_acquire(
     Ok((render_markdown, rev_list))
 }
 
-fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<GistGraphOp> {
-    dag.map_ops(&mut GistGraphOp::Cloud)
+fn lift_gist_upload_dag(dag: Dag<GistUploadOp>) -> Dag<GistGraphOp> {
+    dag.map_ops(&mut GistGraphOp::GistUpload)
+}
+
+fn lift_branch_dag(dag: Dag<BranchResolutionOp>) -> Dag<GistGraphOp> {
+    dag.map_ops(&mut GistGraphOp::BranchResolution)
 }
 
 // Mockable implementation for test generation
@@ -1157,7 +924,8 @@ impl Mockable for GistGraphOp {
                     | GitOps::PrepareDiffNameOnly { .. }
                     | GitOps::PrepareCurrentBranch
                     | GitOps::PrepareRemoteBranchesAtHead
-                    | GitOps::PrepareRevListBefore { .. } => OutputMap::new()
+                    | GitOps::PrepareRevListBefore { .. }
+                    | GitOps::PrepareGitShow { .. } => OutputMap::new()
                         .request(
                             "request",
                             ShellRequest::new("git")
@@ -1177,6 +945,9 @@ impl Mockable for GistGraphOp {
                     }
                     GitOps::ParseRevListBefore => {
                         OutputMap::new().str("base_ref", "abc123def456").build()
+                    }
+                    GitOps::ParseGitShow => {
+                        OutputMap::new().str("content", "{}").build()
                     }
                 }
             }
@@ -1235,52 +1006,11 @@ impl Mockable for GistGraphOp {
 
             // Environment ops
             GistGraphOp::FsEnv(op) => op.mock_outputs(),
-            GistGraphOp::ClockEnv(op) => op.mock_outputs(),
-            GistGraphOp::Cloud(_) => OutputMap::new()
-                .value(
-                    "credential",
-                    Value::Map(std::collections::BTreeMap::from([
-                        (
-                            "token".to_string(),
-                            Value::Secret(gunbc_ir::SecretString::new("<MOCK_GITHUB_TOKEN>")),
-                        ),
-                        ("source_type".to_string(), Value::Str("static".to_string())),
-                        ("scheme".to_string(), Value::Str("bearer".to_string())),
-                        (
-                            "cap".to_string(),
-                            Value::Secret(gunbc_ir::SecretString::new("capability")),
-                        ),
-                    ])),
-                )
-                .int("expires_in", 3600)
-                .build(),
-            GistGraphOp::ResolveAuth => OutputMap::new()
-                .str("service", "github")
-                .str("scheme", "bearer")
-                .str("header_name", "")
-                .str_list("required_scopes", vec!["gist:write".to_string()])
-                .bool("interactive_allowed", true)
-                .int("lifetime_seconds", 3600)
-                .build(),
 
             // Pure ops
             GistGraphOp::Markdown(_) => OutputMap::new()
                 .str("markdown", "# Code Snapshot\n```rust\nfn main() {}\n```")
                 .build(),
-            GistGraphOp::Gist(op) => match op {
-                GistOps::PrepareRequest { .. } => OutputMap::new()
-                    .request(
-                        "request",
-                        ShellRequest::new("gh")
-                            .args(["gist", "create"])
-                            .into_transport_request(),
-                    )
-                    .bool("skip", false)
-                    .build(),
-                GistOps::ParseGistResponse => OutputMap::new()
-                    .str("url", "https://gist.github.com/mock/123")
-                    .build(),
-            },
 
             // Transport boundary
             GistGraphOp::Transport(_) => OutputMap::new()
@@ -1292,7 +1022,94 @@ impl Mockable for GistGraphOp {
                 )
                 .build(),
 
+            // SubDag wrappers — delegate to inner op's mock outputs
+            GistGraphOp::GistUpload(op) => mock_gist_upload_op(op),
+            GistGraphOp::BranchResolution(op) => mock_branch_resolution_op(op),
         }
+    }
+}
+
+/// Mock outputs for gist upload SubDag operations.
+fn mock_gist_upload_op(op: &GistUploadOp) -> HashMap<String, Value> {
+    match op {
+        GistUploadOp::Gist(gist_op) => match gist_op {
+            GistOps::PrepareRequest { .. } => OutputMap::new()
+                .request(
+                    "request",
+                    ShellRequest::new("gh")
+                        .args(["gist", "create"])
+                        .into_transport_request(),
+                )
+                .bool("skip", false)
+                .build(),
+            GistOps::ParseGistResponse => OutputMap::new()
+                .str("url", "https://gist.github.com/mock/123")
+                .build(),
+        },
+        GistUploadOp::Cloud(_) => OutputMap::new()
+            .value(
+                "credential",
+                Value::Map(std::collections::BTreeMap::from([
+                    (
+                        "token".to_string(),
+                        Value::Secret(gunbc_ir::SecretString::new("<MOCK_GITHUB_TOKEN>")),
+                    ),
+                    ("source_type".to_string(), Value::Str("static".to_string())),
+                    ("scheme".to_string(), Value::Str("bearer".to_string())),
+                    (
+                        "cap".to_string(),
+                        Value::Secret(gunbc_ir::SecretString::new("capability")),
+                    ),
+                ])),
+            )
+            .int("expires_in", 3600)
+            .build(),
+        GistUploadOp::Transport(_) => OutputMap::new()
+            .response(
+                "response",
+                TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(
+                    "https://gist.github.com/mock/123\n",
+                )),
+            )
+            .build(),
+        GistUploadOp::FsEnv(op) => op.mock_outputs(),
+        GistUploadOp::ClockEnv(op) => op.mock_outputs(),
+        GistUploadOp::ResolveAuth => OutputMap::new()
+            .str("service", "github")
+            .str("scheme", "bearer")
+            .str("header_name", "")
+            .str_list("required_scopes", vec!["gist:write".to_string()])
+            .bool("interactive_allowed", true)
+            .int("lifetime_seconds", 3600)
+            .build(),
+    }
+}
+
+/// Mock outputs for branch resolution SubDag operations.
+fn mock_branch_resolution_op(op: &BranchResolutionOp) -> HashMap<String, Value> {
+    match op {
+        BranchResolutionOp::Git(git_op) => match git_op {
+            GitOps::PrepareCurrentBranch | GitOps::PrepareRemoteBranchesAtHead => OutputMap::new()
+                .request(
+                    "request",
+                    ShellRequest::new("git")
+                        .arg("mock")
+                        .into_transport_request(),
+                )
+                .bool("skip", false)
+                .build(),
+            GitOps::ParseCurrentBranch => OutputMap::new().str("branch", "main").build(),
+            GitOps::ParseRemoteBranchesAtHead => {
+                OutputMap::new().str("remote_branch", "main").build()
+            }
+            _ => HashMap::new(),
+        },
+        BranchResolutionOp::Transport(_) => OutputMap::new()
+            .response(
+                "response",
+                TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok("main\n")),
+            )
+            .build(),
     }
 }
 
@@ -1309,11 +1126,12 @@ mod tests {
     fn test_snapshot_graph_has_transport_boundaries() {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
 
-        assert!(dag.get_node(&"execute_list_files".into()).is_some());
+        // Content acquisition SubDag wrappers
+        assert!(dag.get_node(&"list_files".into()).is_some());
         assert!(dag.get_node(&"read_files_loop".into()).is_some());
-        assert!(dag.get_node(&"execute_current_branch".into()).is_some());
-        assert!(dag.get_node(&"execute_remote_branches".into()).is_some());
-        assert!(dag.get_node(&"execute_gist".into()).is_some());
+        // Branch resolution and gist upload are now SubDags
+        assert!(dag.get_node(&"branch_resolution".into()).is_some());
+        assert!(dag.get_node(&"gist_upload".into()).is_some());
     }
 
     #[test]
@@ -1321,12 +1139,11 @@ mod tests {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
-        assert!(entrypoints.is_entrypoint_port(&"prepare_list_files".into(), &"repo_path".into()));
+        // Content acquisition entrypoints
+        assert!(entrypoints.is_entrypoint_port(&"list_files".into(), &"repo_path".into()));
+        // Branch resolution exposes repo_path
         assert!(
-            entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
-        );
-        assert!(
-            entrypoints.is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
+            entrypoints.is_entrypoint_port(&"branch_resolution".into(), &"repo_path".into())
         );
     }
 
@@ -1335,34 +1152,32 @@ mod tests {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
         let boundaries = detect_boundaries(&dag);
 
-        assert!(!boundaries.is_boundary_node(&"prepare_list_files".into()));
-        assert!(!boundaries.is_boundary_node(&"parse_list_files".into()));
+        // Pure/intermediate nodes should not be boundaries
         assert!(!boundaries.is_boundary_node(&"collect_file_contents".into()));
         assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_current_branch".into()));
-        assert!(!boundaries.is_boundary_node(&"parse_current_branch".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_remote_branches".into()));
-        assert!(!boundaries.is_boundary_node(&"parse_remote_branches".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_gist_request".into()));
-        // parse_gist_response is a terminal node, so it's a boundary
-        assert!(boundaries.is_boundary_node(&"parse_gist_response".into()));
+        // gist_upload is terminal → boundary (outputs url, ok)
+        assert!(boundaries.is_boundary_node(&"gist_upload".into()));
     }
 
     #[test]
     fn test_snapshot_transport_nodes_have_correct_ports() {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
 
-        let execute_list = dag.get_node(&"execute_list_files".into()).unwrap();
-        assert!(execute_list
-            .inputs
-            .iter()
-            .any(|p| p.type_id.0 == "TransportRequest"));
-        assert!(execute_list
-            .outputs
-            .iter()
-            .any(|p| p.type_id.0 == "TransportResponse"));
+        // list_files is a SubDag — check its interface ports
+        let list_files = dag.get_node(&"list_files".into()).unwrap();
+        assert!(list_files.inputs.iter().any(|p| p.name.0 == "repo_path"));
+        assert!(list_files.outputs.iter().any(|p| p.name.0 == "files"));
 
-        // read_files_loop is a SubDag (LoopBuilder) — transport node is inside
+        // branch_resolution is a SubDag — check its interface ports
+        let branch = dag.get_node(&"branch_resolution".into()).unwrap();
+        assert!(branch.inputs.iter().any(|p| p.name.0 == "repo_path"));
+        assert!(branch.outputs.iter().any(|p| p.name.0 == "branch"));
+        assert!(branch.outputs.iter().any(|p| p.name.0 == "remote_branch"));
+
+        // gist_upload is a SubDag — check its interface ports
+        let gist = dag.get_node(&"gist_upload".into()).unwrap();
+        assert!(gist.inputs.iter().any(|p| p.name.0 == "markdown"));
+        assert!(gist.outputs.iter().any(|p| p.name.0 == "url"));
     }
 
     // Signature validation tests are generated by testgen (via graph_mock).
@@ -1382,10 +1197,9 @@ mod tests {
         )
         .expect("diff graph should build");
 
-        assert!(dag.get_node(&"execute_diff".into()).is_some());
-        assert!(dag.get_node(&"execute_current_branch".into()).is_some());
-        assert!(dag.get_node(&"execute_remote_branches".into()).is_some());
-        assert!(dag.get_node(&"execute_gist".into()).is_some());
+        assert!(dag.get_node(&"diff".into()).is_some());
+        assert!(dag.get_node(&"branch_resolution".into()).is_some());
+        assert!(dag.get_node(&"gist_upload".into()).is_some());
     }
 
     #[test]
@@ -1400,13 +1214,10 @@ mod tests {
         .expect("diff graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
-        assert!(entrypoints.is_entrypoint_port(&"prepare_diff".into(), &"repo_path".into()));
-        assert!(entrypoints.is_entrypoint_port(&"prepare_diff".into(), &"base_ref".into()));
+        assert!(entrypoints.is_entrypoint_port(&"diff".into(), &"repo_path".into()));
+        assert!(entrypoints.is_entrypoint_port(&"diff".into(), &"base_ref".into()));
         assert!(
-            entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
-        );
-        assert!(
-            entrypoints.is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
+            entrypoints.is_entrypoint_port(&"branch_resolution".into(), &"repo_path".into())
         );
     }
 
@@ -1421,20 +1232,12 @@ mod tests {
         )
         .expect("diff graph should build");
 
+        // Top-level nodes: content acquisition + branch_resolution + gist_upload
         let expected_nodes = vec![
-            "prepare_diff",
-            "execute_diff",
-            "parse_diff",
+            "diff",
             "render_markdown",
-            "prepare_current_branch",
-            "execute_current_branch",
-            "parse_current_branch",
-            "prepare_remote_branches",
-            "execute_remote_branches",
-            "parse_remote_branches",
-            "prepare_gist_request",
-            "execute_gist",
-            "parse_gist_response",
+            "branch_resolution",
+            "gist_upload",
         ];
 
         for name in expected_nodes {
@@ -1458,16 +1261,9 @@ mod tests {
         .expect("diff graph should build");
         let boundaries = detect_boundaries(&dag);
 
-        assert!(!boundaries.is_boundary_node(&"prepare_diff".into()));
-        assert!(!boundaries.is_boundary_node(&"parse_diff".into()));
         assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_current_branch".into()));
-        assert!(!boundaries.is_boundary_node(&"parse_current_branch".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_remote_branches".into()));
-        assert!(!boundaries.is_boundary_node(&"parse_remote_branches".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_gist_request".into()));
-        // parse_gist_response is terminal → boundary
-        assert!(boundaries.is_boundary_node(&"parse_gist_response".into()));
+        // gist_upload is terminal → boundary
+        assert!(boundaries.is_boundary_node(&"gist_upload".into()));
     }
 
     // ========================================================================
@@ -1489,18 +1285,8 @@ mod tests {
         let recent =
             build_gist_graph(GistMode::Recent, vec![], false).expect("recent should build");
 
-        // All must have the same gist tail + branch/remote acquisition nodes
-        for node_id in &[
-            "prepare_current_branch",
-            "execute_current_branch",
-            "parse_current_branch",
-            "prepare_remote_branches",
-            "execute_remote_branches",
-            "parse_remote_branches",
-            "prepare_gist_request",
-            "execute_gist",
-            "parse_gist_response",
-        ] {
+        // All must have the shared SubDags
+        for node_id in &["branch_resolution", "gist_upload"] {
             assert!(
                 snap.get_node(&(*node_id).into()).is_some(),
                 "snapshot missing {}",
@@ -1524,22 +1310,18 @@ mod tests {
         let dag =
             build_gist_graph(GistMode::Snapshot, vec![], false).expect("snapshot should build");
 
-        assert!(dag.get_node(&"cloud_env".into()).is_some());
-        assert!(dag.get_node(&"resolve_auth".into()).is_some());
-        assert!(dag.get_node(&"bind_secret".into()).is_some());
-        assert!(dag.get_node(&"cloud_credential".into()).is_some());
-        assert!(
-            dag.get_node(&"credential_env".into()).is_none(),
-            "legacy credential_env node should be removed"
-        );
+        // Credential chain is inside the gist_upload SubDag
+        assert!(dag.get_node(&"gist_upload".into()).is_some());
+        // These are now inside gist_upload, not top-level
+        assert!(dag.get_node(&"cloud_env".into()).is_none());
+        assert!(dag.get_node(&"resolve_auth".into()).is_none());
     }
 
     #[test]
     fn test_snapshot_has_no_diff_nodes() {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
 
-        assert!(dag.get_node(&"prepare_diff".into()).is_none());
-        assert!(dag.get_node(&"execute_diff".into()).is_none());
+        assert!(dag.get_node(&"diff".into()).is_none());
     }
 
     #[test]
@@ -1553,8 +1335,7 @@ mod tests {
         )
         .expect("graph should build");
 
-        assert!(dag.get_node(&"prepare_list_files".into()).is_none());
-        assert!(dag.get_node(&"execute_list_files".into()).is_none());
+        assert!(dag.get_node(&"list_files".into()).is_none());
         assert!(dag.get_node(&"read_files_loop".into()).is_none());
     }
 
@@ -1567,11 +1348,10 @@ mod tests {
         let dag =
             build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
 
-        assert!(dag.get_node(&"execute_rev_list".into()).is_some());
-        assert!(dag.get_node(&"execute_diff".into()).is_some());
-        assert!(dag.get_node(&"execute_current_branch".into()).is_some());
-        assert!(dag.get_node(&"execute_remote_branches".into()).is_some());
-        assert!(dag.get_node(&"execute_gist".into()).is_some());
+        assert!(dag.get_node(&"rev_list".into()).is_some());
+        assert!(dag.get_node(&"diff".into()).is_some());
+        assert!(dag.get_node(&"branch_resolution".into()).is_some());
+        assert!(dag.get_node(&"gist_upload".into()).is_some());
     }
 
     #[test]
@@ -1580,12 +1360,9 @@ mod tests {
             build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
-        assert!(entrypoints.is_entrypoint_port(&"prepare_rev_list".into(), &"repo_path".into()));
+        assert!(entrypoints.is_entrypoint_port(&"rev_list".into(), &"repo_path".into()));
         assert!(
-            entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
-        );
-        assert!(
-            entrypoints.is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
+            entrypoints.is_entrypoint_port(&"branch_resolution".into(), &"repo_path".into())
         );
     }
 
@@ -1595,22 +1372,11 @@ mod tests {
             build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
 
         let expected_nodes = vec![
-            "prepare_rev_list",
-            "execute_rev_list",
-            "parse_rev_list",
-            "prepare_diff",
-            "execute_diff",
-            "parse_diff",
+            "rev_list",
+            "diff",
             "render_markdown",
-            "prepare_current_branch",
-            "execute_current_branch",
-            "parse_current_branch",
-            "prepare_remote_branches",
-            "execute_remote_branches",
-            "parse_remote_branches",
-            "prepare_gist_request",
-            "execute_gist",
-            "parse_gist_response",
+            "branch_resolution",
+            "gist_upload",
         ];
 
         for name in expected_nodes {
@@ -1628,14 +1394,9 @@ mod tests {
             build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
         let boundaries = detect_boundaries(&dag);
 
-        assert!(!boundaries.is_boundary_node(&"prepare_rev_list".into()));
-        assert!(!boundaries.is_boundary_node(&"parse_rev_list".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_diff".into()));
-        assert!(!boundaries.is_boundary_node(&"parse_diff".into()));
         assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_gist_request".into()));
-        // parse_gist_response is terminal → boundary
-        assert!(boundaries.is_boundary_node(&"parse_gist_response".into()));
+        // gist_upload is terminal → boundary
+        assert!(boundaries.is_boundary_node(&"gist_upload".into()));
     }
 
     // Signature validation tests are generated by testgen (via graph_mock).
@@ -1645,8 +1406,7 @@ mod tests {
         let dag =
             build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
 
-        assert!(dag.get_node(&"prepare_list_files".into()).is_none());
-        assert!(dag.get_node(&"execute_list_files".into()).is_none());
+        assert!(dag.get_node(&"list_files".into()).is_none());
         assert!(dag.get_node(&"read_files_loop".into()).is_none());
     }
 
@@ -1655,9 +1415,8 @@ mod tests {
         let dag =
             build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
 
-        assert!(dag.get_node(&"prepare_rev_list".into()).is_some());
-        assert!(dag.get_node(&"execute_rev_list".into()).is_some());
-        assert!(dag.get_node(&"parse_rev_list".into()).is_some());
+        // rev_list is a SubDag wrapper
+        assert!(dag.get_node(&"rev_list".into()).is_some());
     }
 
     #[test]

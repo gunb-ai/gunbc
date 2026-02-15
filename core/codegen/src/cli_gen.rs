@@ -1202,7 +1202,7 @@ mod tests {
         let code = generate_cli(&tool, &entrypoints);
         // Verify IR-based imports are rendered (not embedded in Raw string)
         assert!(code.contains("use gunbc_exec::{"));
-        assert!(code.contains("use gunbc_ir::{"));
+        assert!(code.contains("use gunbc_ir::"));
         assert!(code.contains("use std::env;"));
         assert!(code.contains("use std::process;"));
         // Verify functions are rendered as proper fn definitions

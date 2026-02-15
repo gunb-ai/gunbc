@@ -457,6 +457,7 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-cloud-ops",
  "gunbc-lib-transport",
  "gunbc-primitives",
  "gunbc-test",
@@ -468,6 +469,7 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-transport",
  "gunbc-test",
 ]
 

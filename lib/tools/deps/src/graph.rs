@@ -126,7 +126,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         DepsGraphOp::Deps(DepsOp::PrepareLoadManifest),
         DepsGraphOp::Deps(DepsOp::ParseManifest),
         DepsGraphOp::Transport(TransportOps::Execute),
-        None,
+        Some(&fs_env),
     )?;
 
     // ========================================================================
@@ -400,16 +400,13 @@ mod tests {
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_deps_graph().expect("graph should build");
+        // Top-level nodes: env nodes, SubDag wrappers, and pure nodes
         let expected_nodes = [
             "platform_env",
             "fs_env",
-            "prepare_load_manifest",
-            "execute_load_manifest",
-            "parse_manifest",
+            "load_manifest",
             "generate_scripts",
-            "prepare_execute_installs",
             "execute_installs",
-            "parse_execute_result",
         ];
 
         for node_id in expected_nodes {
@@ -425,8 +422,8 @@ mod tests {
     fn test_graph_has_transport_boundaries() {
         let dag = build_deps_graph().expect("graph should build");
 
-        // Verify transport nodes exist
-        assert!(dag.get_node(&"execute_load_manifest".into()).is_some());
+        // Verify SubDag transport nodes exist
+        assert!(dag.get_node(&"load_manifest".into()).is_some());
         assert!(dag.get_node(&"execute_installs".into()).is_some());
     }
 
@@ -435,18 +432,18 @@ mod tests {
         let dag = build_deps_graph().expect("graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
-        // manifest_path is an entrypoint
+        // manifest_path is an entrypoint on the load_manifest SubDag
         assert!(entrypoints
-            .is_entrypoint_port(&"prepare_load_manifest".into(), &"manifest_path".into()));
+            .is_entrypoint_port(&"load_manifest".into(), &"manifest_path".into()));
     }
 
     #[test]
-    fn test_pure_nodes_not_boundaries() {
+    fn test_env_nodes_not_boundaries() {
         let dag = build_deps_graph().expect("graph should build");
         let boundaries = detect_boundaries(&dag);
 
-        // Pure nodes should not be boundaries (except terminal ones)
-        assert!(!boundaries.is_boundary_node(&"prepare_load_manifest".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_execute_installs".into()));
+        // Environment nodes provide resources to other nodes — not boundaries
+        assert!(!boundaries.is_boundary_node(&"platform_env".into()));
+        assert!(!boundaries.is_boundary_node(&"fs_env".into()));
     }
 }

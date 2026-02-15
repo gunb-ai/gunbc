@@ -872,26 +872,15 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         };
 
         // Imports
-        if self.mock_spec_fn.is_some() && self.config.window_max_nodes.unwrap_or(usize::MAX) >= 2 {
-            file.imports.push(Import {
-                path: vec!["gunbc_exec".to_string()],
-                items: vec![
-                    "execute_with_mode".to_string(),
-                    "lower".to_string(),
-                    "BoundaryMocks".to_string(),
-                    "ExecutionMode".to_string(),
-                ],
-            });
-        } else {
-            file.imports.push(Import {
-                path: vec!["gunbc_exec".to_string()],
-                items: vec![
-                    "execute_with_mode".to_string(),
-                    "BoundaryMocks".to_string(),
-                    "ExecutionMode".to_string(),
-                ],
-            });
-        }
+        file.imports.push(Import {
+            path: vec!["gunbc_exec".to_string()],
+            items: vec![
+                "execute_with_mode".to_string(),
+                "lower".to_string(),
+                "BoundaryMocks".to_string(),
+                "ExecutionMode".to_string(),
+            ],
+        });
 
         file.imports.push(Import {
             path: vec!["gunbc_ir".to_string()],
@@ -3965,7 +3954,14 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     ) -> Option<TestSection> {
         let mut tests = Vec::new();
 
-        let mocks_expr = self.dryrun_mocks_expr(analysis, "boundary mockability tests");
+        // Use lowered DAG for boundary analysis so node IDs match lowered MockSpec IDs.
+        // SubDag nodes in the un-lowered DAG become flattened, prefixed nodes after lowering;
+        // the MockSpec uses these lowered IDs since the executor operates on the lowered DAG.
+        let lowered_result = gunbc_exec::lower(self.dag).ok();
+        let lowered_analysis = lowered_result.as_ref().map(|lr| analyze_dag(&lr.dag));
+        let boundary_analysis = lowered_analysis.as_ref().unwrap_or(analysis);
+
+        let mocks_expr = self.dryrun_mocks_expr(boundary_analysis, "boundary mockability tests");
 
         tests.push(TestFn {
             name: "test_boundaries_mockable".to_string(),
@@ -3990,13 +3986,13 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             ],
         });
 
-        for boundary_node in &analysis.boundaries.boundary_nodes {
-            let total_outputs = analysis
+        for boundary_node in &boundary_analysis.boundaries.boundary_nodes {
+            let total_outputs = boundary_analysis
                 .port_cardinalities
                 .iter()
                 .filter(|p| p.node_id == boundary_node.0 && !p.is_input)
                 .count();
-            let boundary_outputs = analysis
+            let boundary_outputs = boundary_analysis
                 .boundaries
                 .boundary_ports
                 .iter()
@@ -4014,11 +4010,21 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             );
             let node_name = &boundary_node.0;
 
+            // Per-node boundary tests lower the DAG at runtime since the MockSpec
+            // and executor both operate on lowered (flattened) node IDs.
             let mut body = vec![
                 Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                 Stmt::let_bind(
+                    "lowered",
+                    Expr::call("lower", vec![Expr::var("dag").ref_of()])
+                        .method("expect", vec![Expr::Str("lowering should succeed".into())]),
+                ),
+                Stmt::let_bind(
                     "boundaries",
-                    Expr::call("detect_boundaries", vec![Expr::var("dag").ref_of()]),
+                    Expr::call(
+                        "detect_boundaries",
+                        vec![Expr::var("lowered").field("dag").ref_of()],
+                    ),
                 ),
                 Stmt::Assert(Assert::True {
                     expr: Expr::var("boundaries").method(
@@ -4031,9 +4037,9 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 Stmt::let_mut("mocks", mocks_expr.clone()),
             ];
 
-            for (node_id, port_name) in &analysis.boundaries.boundary_ports {
+            for (node_id, port_name) in &boundary_analysis.boundaries.boundary_ports {
                 if node_id == boundary_node {
-                    let (type_id, cardinality) = analysis
+                    let (type_id, cardinality) = boundary_analysis
                         .port_cardinalities
                         .iter()
                         .find(|p| {

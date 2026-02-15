@@ -4,13 +4,8 @@ use gunbc_ir::transport::cloud::{
     CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
 };
 use gunbc_ir::transport::rest::RestResponse;
-use gunbc_ir::{AuthScheme, Credential, Secret, Value};
+use gunbc_ir::Value;
 use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
-
-fn mock_credential() -> Value {
-    let cred = Credential::new(Secret::static_value("ghp_mock_token"), AuthScheme::Bearer);
-    cred.into()
-}
 
 fn mock_cloud_config() -> Value {
     CloudSecretConfig {
@@ -92,30 +87,29 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
             "config",
             mock_cloud_config_with_secret("github"),
         )
-        .boundary("cloud_credential", "credential", mock_credential())
-        // Transport mock
+        // Transport mock (lowered SubDag path)
         .transport_mock(
-            "execute",
+            "credential_check/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(
                 response.clone(),
             )),
         )
         .boundary(
-            "execute",
+            "credential_check/execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(response)),
         )
-        // Parse outputs (status + ok)
-        .boundary("parse_status", "status", Value::Int(200))
-        .boundary("parse_status", "ok", Value::Bool(true))
+        // Parse outputs (lowered SubDag path)
+        .boundary("credential_check/parse_status", "status", Value::Int(200))
+        .boundary("credential_check/parse_status", "ok", Value::Bool(true))
         // Live expectations: should authenticate successfully
         .live_expected_output(
-            "parse_status",
+            "credential_check/parse_status",
             "ok",
             OutputMatcher::exact(Value::Bool(true)),
         )
-        .live_expected_output("parse_status", "status", OutputMatcher::IntGe(200))
+        .live_expected_output("credential_check/parse_status", "status", OutputMatcher::IntGe(200))
         // Credential resource: basic (acquire + timeout)
         .resource_credential("credential:github", Some(3_600_000))
         // Credential resource: refreshable (acquire + timeout + refresh)
@@ -132,7 +126,7 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
                 .description("Resolve auth maps GitHub to bearer auth"),
         )
         .node_example(
-            NodeExample::new("prepare_request")
+            NodeExample::new("credential_check/prepare_request")
                 .output("request", OutputMatcher::non_empty())
                 .output("skip", OutputMatcher::exact(Value::Bool(false)))
                 .description("Prepare request builds GitHub REST rate_limit call"),
@@ -147,7 +141,7 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
                 .description("Scope preflight validates required scope declarations"),
         )
         .node_example(
-            NodeExample::new("parse_status")
+            NodeExample::new("credential_check/parse_status")
                 .input(
                     "response",
                     Value::Response(gunbc_ir::transport::TransportResponse::Rest(

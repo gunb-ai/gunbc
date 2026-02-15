@@ -36,10 +36,10 @@ fn gist_request_description(req: &gunbc_ir::transport::rest::RestRequest) -> Str
         .to_string()
 }
 
-/// Helper: mock for execute_current_branch boundary.
+/// Helper: mock for execute_current_branch boundary (inside current_branch SubDag).
 fn mock_current_branch(mocks: &mut BoundaryMocks, branch: &str) {
     mocks.set_value(
-        "execute_current_branch",
+        "branch_resolution/execute_current_branch",
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok(format!(
             "{}\n",
@@ -48,13 +48,13 @@ fn mock_current_branch(mocks: &mut BoundaryMocks, branch: &str) {
     );
 }
 
-/// Helper: mock for execute_remote_branches boundary.
+/// Helper: mock for execute_remote_branches boundary (inside remote_branches SubDag).
 ///
 /// Simulates `git branch -r --points-at HEAD` output.
 /// Pass empty string to simulate no remote branches at HEAD.
 fn mock_remote_branches(mocks: &mut BoundaryMocks, remote_output: &str) {
     mocks.set_value(
-        "execute_remote_branches",
+        "branch_resolution/execute_remote_branches",
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok(remote_output))),
     );
@@ -63,8 +63,11 @@ fn mock_remote_branches(mocks: &mut BoundaryMocks, remote_output: &str) {
 fn mock_env(mocks: &mut BoundaryMocks) {
     let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
     mocks.set_value("fs_env", "file:write", fs.into());
+    // Gist upload SubDag internal environments
+    let fs_upload = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    mocks.set_value("gist_upload/fs_env", "file:write", fs_upload.into());
     let clock = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
-    mocks.set_value("clock_env", "clock", clock.into());
+    mocks.set_value("gist_upload/clock_env", "clock", clock.into());
 
     let cloud_config = CloudSecretConfig {
         provider: CloudProviderKind::Gcp,
@@ -81,18 +84,18 @@ fn mock_env(mocks: &mut BoundaryMocks) {
         impersonate_account_or_role: None,
     };
 
-    mocks.set_value("cloud_env", "config", cloud_config.clone().into());
+    mocks.set_value("gist_upload/cloud_env", "config", cloud_config.clone().into());
     mocks.set_value(
-        "cloud_env",
+        "gist_upload/cloud_env",
         "request_url",
         Value::Str("https://example.com/oidc".to_string()),
     );
     mocks.set_value(
-        "cloud_env",
+        "gist_upload/cloud_env",
         "request_token",
         Value::Str("mock-oidc-token".to_string()),
     );
-    mocks.set_value("bind_secret", "config", cloud_config.into());
+    mocks.set_value("gist_upload/bind_secret", "config", cloud_config.into());
 
     let credential = Value::Map(std::collections::BTreeMap::from([
         (
@@ -106,8 +109,8 @@ fn mock_env(mocks: &mut BoundaryMocks) {
             Value::Secret(SecretString::new("capability")),
         ),
     ]));
-    mocks.set_value("cloud_credential", "credential", credential);
-    mocks.set_value("cloud_credential", "expires_in", Value::Int(3_600));
+    mocks.set_value("gist_upload/cloud_credential", "credential", credential);
+    mocks.set_value("gist_upload/cloud_credential", "expires_in", Value::Int(3_600));
     // local_auth_upsert sub-DAG mocks (local-dev path)
     let adc_path = "/tmp/mock-adc.json";
     let mock_adc_json = serde_json::json!({
@@ -118,26 +121,26 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     })
     .to_string();
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/local_auth_upsert/net_env",
-        "net",
+        "gist_upload/cloud_credential/gcp_wif_secret/local_auth_upsert/net_env",
+        "api:network",
         gunbc_primitives::NetworkHandle.into(),
     );
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_check",
+        "gist_upload/cloud_credential/gcp_wif_secret/local_auth_upsert/execute_check",
         "response",
         Value::Response(TransportResponse::File(
             gunbc_ir::transport::file::FileResponse::exists_result(adc_path, true),
         )),
     );
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_read_adc",
+        "gist_upload/cloud_credential/gcp_wif_secret/local_auth_upsert/execute_read_adc",
         "response",
         Value::Response(TransportResponse::File(
             gunbc_ir::transport::file::FileResponse::read_ok(adc_path, mock_adc_json),
         )),
     );
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_oauth2",
+        "gist_upload/cloud_credential/gcp_wif_secret/local_auth_upsert/execute_oauth2",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(serde_json::json!({
@@ -149,23 +152,23 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     );
     // Re-auth branch boundaries (skipped in happy path)
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_gcloud_auth",
+        "gist_upload/cloud_credential/gcp_wif_secret/local_auth_upsert/execute_gcloud_auth",
         "response",
         Value::Skipped,
     );
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_reread_adc",
+        "gist_upload/cloud_credential/gcp_wif_secret/local_auth_upsert/execute_reread_adc",
         "response",
         Value::Skipped,
     );
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_retry_oauth2",
+        "gist_upload/cloud_credential/gcp_wif_secret/local_auth_upsert/execute_retry_oauth2",
         "response",
         Value::Skipped,
     );
     // IAM ensure (local dev only) — REST-based check + conditional set
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/execute_get_iam",
+        "gist_upload/cloud_credential/gcp_wif_secret/execute_get_iam",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(serde_json::json!({
@@ -179,24 +182,24 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     );
     // setIamPolicy is skipped (binding already exists in mock)
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/execute_set_iam",
+        "gist_upload/cloud_credential/gcp_wif_secret/execute_set_iam",
         "response",
         Value::Skipped,
     );
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/net_env",
-        "net",
+        "gist_upload/cloud_credential/gcp_wif_secret/net_env",
+        "api:network",
         gunbc_primitives::NetworkHandle.into(),
     );
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/execute_github_oidc",
+        "gist_upload/cloud_credential/gcp_wif_secret/execute_github_oidc",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(serde_json::json!({"value":"mock-oidc-token"})),
         )),
     );
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/execute_sts",
+        "gist_upload/cloud_credential/gcp_wif_secret/execute_sts",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(serde_json::json!({
@@ -206,7 +209,7 @@ fn mock_env(mocks: &mut BoundaryMocks) {
         )),
     );
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/execute_impersonate",
+        "gist_upload/cloud_credential/gcp_wif_secret/execute_impersonate",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(serde_json::json!({
@@ -216,7 +219,7 @@ fn mock_env(mocks: &mut BoundaryMocks) {
         )),
     );
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/execute_secret_access",
+        "gist_upload/cloud_credential/gcp_wif_secret/execute_secret_access",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(serde_json::json!({
@@ -225,7 +228,7 @@ fn mock_env(mocks: &mut BoundaryMocks) {
         )),
     );
     mocks.set_value(
-        "cloud_credential/gcp_wif_secret/build_credential",
+        "gist_upload/cloud_credential/gcp_wif_secret/build_credential",
         "credential",
         Value::Map(std::collections::BTreeMap::from([
             (
@@ -241,21 +244,16 @@ fn mock_env(mocks: &mut BoundaryMocks) {
         ])),
     );
 
-    // Entry inputs (repo_path) for all gist modes
-    mocks.set_input("prepare_list_files", "repo_path", Value::Str(".".into()));
+    // Entry inputs (repo_path) for all gist modes — SubDag wrappers are the entrypoints
+    mocks.set_input("list_files", "repo_path", Value::Str(".".into()));
     mocks.set_input("read_files_loop", "repo_path", Value::Str(".".into()));
     mocks.set_input(
-        "prepare_current_branch",
+        "branch_resolution",
         "repo_path",
         Value::Str(".".into()),
     );
-    mocks.set_input(
-        "prepare_remote_branches",
-        "repo_path",
-        Value::Str(".".into()),
-    );
-    mocks.set_input("prepare_diff", "repo_path", Value::Str(".".into()));
-    mocks.set_input("prepare_rev_list", "repo_path", Value::Str(".".into()));
+    mocks.set_input("diff", "repo_path", Value::Str(".".into()));
+    mocks.set_input("rev_list", "repo_path", Value::Str(".".into()));
     // Loop body transport nodes are auto-mocked by execute_loop_body in DryRun mode.
 }
 
@@ -289,7 +287,7 @@ fn test_dry_run_intercepts_transport() {
 
     // Mock for execute_list_files (list files transport)
     mocks.set_value(
-        "execute_list_files",
+        "list_files/execute_list_files",
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok(
             "src/main.rs\nREADME.md\n",
@@ -305,7 +303,7 @@ fn test_dry_run_intercepts_transport() {
 
     // Mock for execute_gist (gist creation transport - only has response output now)
     mocks.set_value(
-        "execute_gist",
+        "gist_upload/execute_gist",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(
@@ -318,7 +316,7 @@ fn test_dry_run_intercepts_transport() {
 
     // Verify all transport nodes were intercepted
     let list_entry = log
-        .get("execute_list_files")
+        .get("list_files/execute_list_files")
         .expect("execute_list_files should be in log");
     assert!(
         list_entry.was_intercepted,
@@ -326,7 +324,7 @@ fn test_dry_run_intercepts_transport() {
     );
 
     let branch_entry = log
-        .get("execute_current_branch")
+        .get("branch_resolution/execute_current_branch")
         .expect("execute_current_branch should be in log");
     assert!(
         branch_entry.was_intercepted,
@@ -334,7 +332,7 @@ fn test_dry_run_intercepts_transport() {
     );
 
     let gist_entry = log
-        .get("execute_gist")
+        .get("gist_upload/execute_gist")
         .expect("execute_gist should be in log");
     assert!(
         gist_entry.was_intercepted,
@@ -343,7 +341,7 @@ fn test_dry_run_intercepts_transport() {
 
     // Verify parse_gist_response extracted the URL
     let parse_gist_entry = log
-        .get("parse_gist_response")
+        .get("gist_upload/parse_gist_response")
         .expect("parse_gist_response should be in log");
     match parse_gist_entry.outputs.get("url") {
         Some(Value::Str(url)) => assert!(
@@ -355,7 +353,7 @@ fn test_dry_run_intercepts_transport() {
 
     // Verify pure nodes were NOT intercepted
     let prepare_list_entry = log
-        .get("prepare_list_files")
+        .get("list_files/prepare_list_files")
         .expect("prepare_list_files should be in log");
     assert!(
         !prepare_list_entry.was_intercepted,
@@ -363,7 +361,7 @@ fn test_dry_run_intercepts_transport() {
     );
 
     let prepare_gist_entry = log
-        .get("prepare_gist_request")
+        .get("gist_upload/prepare_gist_request")
         .expect("prepare_gist_request should be in log");
     assert!(
         !prepare_gist_entry.was_intercepted,
@@ -382,15 +380,12 @@ fn test_boundary_detection() {
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     let boundaries = detect_boundaries(&dag);
 
-    // parse_gist_response is the terminal boundary (outputs url)
-    assert!(boundaries.is_boundary_node(&"parse_gist_response".into()));
+    // gist_upload is a terminal SubDag (contains parse_gist_response which outputs url)
+    assert!(boundaries.is_boundary_node(&"gist_upload".into()));
 
     // Pure intermediate nodes should not be boundaries
-    assert!(!boundaries.is_boundary_node(&"prepare_list_files".into()));
-    assert!(!boundaries.is_boundary_node(&"parse_list_files".into()));
     assert!(!boundaries.is_boundary_node(&"collect_file_contents".into()));
     assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
-    assert!(!boundaries.is_boundary_node(&"prepare_gist_request".into()));
 }
 
 /// Test that the gist graph passes the boundary mockable test.
@@ -409,7 +404,7 @@ fn test_gist_graph_boundary_mockable() {
 
     // Mock execute_list_files
     mocks.set_value(
-        "execute_list_files",
+        "list_files/execute_list_files",
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
@@ -423,7 +418,7 @@ fn test_gist_graph_boundary_mockable() {
 
     // Mock execute_gist (only has response output now)
     mocks.set_value(
-        "execute_gist",
+        "gist_upload/execute_gist",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(
@@ -439,16 +434,8 @@ fn test_gist_graph_boundary_mockable() {
         "Gist graph should be boundary-mockable: {:?}",
         result.error
     );
-    // execute_gist is a transport executor boundary
-    assert!(result.boundary_nodes.contains(&"execute_gist".to_string()));
-    // execute_current_branch is also a transport boundary
-    assert!(result
-        .boundary_nodes
-        .contains(&"execute_current_branch".to_string()));
-    // execute_remote_branches is also a transport boundary
-    assert!(result
-        .boundary_nodes
-        .contains(&"execute_remote_branches".to_string()));
+    // gist_upload and branch_resolution are SubDag boundary nodes at the top level.
+    // Their internal transport boundaries are handled by the SubDag executor.
 }
 
 /// Test that real mode does NOT intercept boundaries.
@@ -467,7 +454,7 @@ fn test_real_mode_no_interception() {
         Ok(log) => {
             // If it succeeded, verify no interception happened for pure nodes
             for entry in &log.entries {
-                if !entry.node_id.starts_with("execute_") {
+                if !entry.node_id.contains("execute_") {
                     assert!(
                         !entry.was_intercepted,
                         "{} should not be intercepted",
@@ -504,7 +491,7 @@ fn test_branch_name_in_gist_filename() {
     mock_env(&mut mocks);
 
     mocks.set_value(
-        "execute_list_files",
+        "list_files/execute_list_files",
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
@@ -513,7 +500,7 @@ fn test_branch_name_in_gist_filename() {
     mock_current_branch(&mut mocks, "claude/improve-gist-filename");
     mock_remote_branches(&mut mocks, "");
     mocks.set_value(
-        "execute_gist",
+        "gist_upload/execute_gist",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(
@@ -526,7 +513,7 @@ fn test_branch_name_in_gist_filename() {
 
     // Verify prepare_gist_request received the branch name and produced a sanitized filename
     let prepare_gist = log
-        .get("prepare_gist_request")
+        .get("gist_upload/prepare_gist_request")
         .expect("prepare_gist_request should be in log");
     match prepare_gist.outputs.get("request") {
         Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {
@@ -587,7 +574,7 @@ fn test_platform_challenging_branch_names() {
         let mut mocks = BoundaryMocks::new();
         mock_env(&mut mocks);
         mocks.set_value(
-            "execute_list_files",
+            "list_files/execute_list_files",
             "response",
             Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
         );
@@ -595,7 +582,7 @@ fn test_platform_challenging_branch_names() {
         mock_current_branch(&mut mocks, branch);
         mock_remote_branches(&mut mocks, "");
         mocks.set_value(
-            "execute_gist",
+            "gist_upload/execute_gist",
             "response",
             Value::Response(TransportResponse::Rest(
                 gunbc_ir::transport::RestResponse::ok(
@@ -607,7 +594,7 @@ fn test_platform_challenging_branch_names() {
         let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
 
         let prepare_gist = log
-            .get("prepare_gist_request")
+            .get("gist_upload/prepare_gist_request")
             .expect("prepare_gist_request should be in log");
         match prepare_gist.outputs.get("request") {
             Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {
@@ -652,7 +639,7 @@ fn test_detached_head_uses_remote_branch_name() {
     mock_env(&mut mocks);
 
     mocks.set_value(
-        "execute_list_files",
+        "list_files/execute_list_files",
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
@@ -664,7 +651,7 @@ fn test_detached_head_uses_remote_branch_name() {
     mock_remote_branches(&mut mocks, "  origin/main\n");
 
     mocks.set_value(
-        "execute_gist",
+        "gist_upload/execute_gist",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(
@@ -676,7 +663,7 @@ fn test_detached_head_uses_remote_branch_name() {
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
 
     let prepare_gist = log
-        .get("prepare_gist_request")
+        .get("gist_upload/prepare_gist_request")
         .expect("prepare_gist_request should be in log");
     match prepare_gist.outputs.get("request") {
         Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {
@@ -717,7 +704,7 @@ fn test_recent_mode_dry_run() {
 
     // Mock execute_rev_list: return a SHA (repo is older than 3 days)
     mocks.set_value(
-        "execute_rev_list",
+        "rev_list/execute_rev_list",
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok(
             "abc123def456\n",
@@ -726,7 +713,7 @@ fn test_recent_mode_dry_run() {
 
     // Mock execute_diff: return sample diff
     mocks.set_value(
-        "execute_diff",
+        "diff/execute_diff",
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok("diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n"))),
     );
@@ -735,7 +722,7 @@ fn test_recent_mode_dry_run() {
     mock_remote_branches(&mut mocks, "");
 
     mocks.set_value(
-        "execute_gist",
+        "gist_upload/execute_gist",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(
@@ -748,7 +735,7 @@ fn test_recent_mode_dry_run() {
 
     // Verify rev-list was intercepted
     let rev_list_entry = log
-        .get("execute_rev_list")
+        .get("rev_list/execute_rev_list")
         .expect("execute_rev_list should be in log");
     assert!(
         rev_list_entry.was_intercepted,
@@ -757,7 +744,7 @@ fn test_recent_mode_dry_run() {
 
     // Verify diff was intercepted
     let diff_entry = log
-        .get("execute_diff")
+        .get("diff/execute_diff")
         .expect("execute_diff should be in log");
     assert!(
         diff_entry.was_intercepted,
@@ -766,7 +753,7 @@ fn test_recent_mode_dry_run() {
 
     // Verify the parsed rev-list SHA flowed to prepare_diff as base_ref
     let parse_rev_list = log
-        .get("parse_rev_list")
+        .get("rev_list/parse_rev_list")
         .expect("parse_rev_list should be in log");
     match parse_rev_list.outputs.get("base_ref") {
         Some(Value::Str(sha)) => assert_eq!(sha, "abc123def456"),
@@ -775,7 +762,7 @@ fn test_recent_mode_dry_run() {
 
     // Verify gist URL was produced
     let parse_gist = log
-        .get("parse_gist_response")
+        .get("gist_upload/parse_gist_response")
         .expect("parse_gist_response should be in log");
     match parse_gist.outputs.get("url") {
         Some(Value::Str(url)) => assert!(url.contains("mock"), "expected mock URL"),
@@ -784,7 +771,7 @@ fn test_recent_mode_dry_run() {
 
     // Verify commit range appears in gist filename
     let prepare_gist = log
-        .get("prepare_gist_request")
+        .get("gist_upload/prepare_gist_request")
         .expect("prepare_gist_request should be in log");
     match prepare_gist.outputs.get("request") {
         Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {
@@ -826,14 +813,14 @@ fn test_recent_mode_young_repo() {
 
     // Mock execute_rev_list: empty output (repo < 3 days old)
     mocks.set_value(
-        "execute_rev_list",
+        "rev_list/execute_rev_list",
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok(""))),
     );
 
     // Mock execute_diff: empty diff (HEAD...HEAD produces nothing)
     mocks.set_value(
-        "execute_diff",
+        "diff/execute_diff",
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok(""))),
     );
@@ -842,7 +829,7 @@ fn test_recent_mode_young_repo() {
     mock_remote_branches(&mut mocks, "");
 
     mocks.set_value(
-        "execute_gist",
+        "gist_upload/execute_gist",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(
@@ -855,7 +842,7 @@ fn test_recent_mode_young_repo() {
 
     // parse_rev_list should produce no base_ref (empty output)
     let parse_rev_list = log
-        .get("parse_rev_list")
+        .get("rev_list/parse_rev_list")
         .expect("parse_rev_list should be in log");
     assert!(
         !parse_rev_list.outputs.contains_key("base_ref"),
@@ -864,7 +851,7 @@ fn test_recent_mode_young_repo() {
 
     // Gist should still complete (empty diff is valid)
     let parse_gist = log
-        .get("parse_gist_response")
+        .get("gist_upload/parse_gist_response")
         .expect("parse_gist_response should be in log");
     assert!(
         parse_gist.outputs.contains_key("url"),
@@ -873,7 +860,7 @@ fn test_recent_mode_young_repo() {
 
     // Young repo has no base_ref → falls back to snapshot-style filename
     let prepare_gist = log
-        .get("prepare_gist_request")
+        .get("gist_upload/prepare_gist_request")
         .expect("prepare_gist_request should be in log");
     match prepare_gist.outputs.get("request") {
         Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {
@@ -914,7 +901,7 @@ fn test_detached_head_no_remote_uses_snapshot() {
     mock_env(&mut mocks);
 
     mocks.set_value(
-        "execute_list_files",
+        "list_files/execute_list_files",
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
@@ -926,7 +913,7 @@ fn test_detached_head_no_remote_uses_snapshot() {
     mock_remote_branches(&mut mocks, "");
 
     mocks.set_value(
-        "execute_gist",
+        "gist_upload/execute_gist",
         "response",
         Value::Response(TransportResponse::Rest(
             gunbc_ir::transport::RestResponse::ok(
@@ -938,7 +925,7 @@ fn test_detached_head_no_remote_uses_snapshot() {
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
 
     let prepare_gist = log
-        .get("prepare_gist_request")
+        .get("gist_upload/prepare_gist_request")
         .expect("prepare_gist_request should be in log");
     match prepare_gist.outputs.get("request") {
         Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {

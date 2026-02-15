@@ -74,7 +74,7 @@ pub use window::{
 ///
 /// This is the shared implementation for the `test_typed_builder_rejects_wrong_slot`
 /// test that appears in every `graph_mock.rs`.
-pub fn assert_typed_builder_rejects_invalid_slot<T>(dag: &gunbc_ir::Dag<T>, name: &str) {
+pub fn assert_typed_builder_rejects_invalid_slot<T: Clone>(dag: &gunbc_ir::Dag<T>, name: &str) {
     let reqs = extract_mock_requirements(dag, name);
     let result = reqs.boundary_str("nonexistent_node", "nonexistent_port", "value");
     assert!(

@@ -156,7 +156,7 @@ fn add_docgen_read_triplet(
             allow_missing: target.allow_missing,
         }),
         DocgenGraphOp::Transport(TransportOps::Execute),
-        None,
+        Some(fs_env),
     )?;
 
     builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), triplet.in_port("res:file"))?;

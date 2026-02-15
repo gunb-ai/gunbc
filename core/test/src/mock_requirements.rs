@@ -177,6 +177,10 @@ pub struct MockRequirements {
     transport_mocks: Vec<TransportMock>,
     node_examples: Vec<NodeExample>,
     skipped_examples: Vec<String>,
+    /// Node ID prefixes whose slots are delegated to runtime composition
+    /// (e.g. via `MockSpec::include_prefixed_runtime_mocks`).
+    /// Slots matching these prefixes are not required at build time.
+    excluded_prefixes: Vec<String>,
 }
 
 impl MockRequirements {
@@ -190,7 +194,19 @@ impl MockRequirements {
             transport_mocks: Vec::new(),
             node_examples: Vec::new(),
             skipped_examples: Vec::new(),
+            excluded_prefixes: Vec::new(),
         }
+    }
+
+    /// Exclude slots whose node IDs start with the given prefix from completeness checks.
+    ///
+    /// Use this when mocks for a SubDag prefix will be provided later via
+    /// `MockSpec::include_prefixed_runtime_mocks`. The slots are still created
+    /// (so they can be filled if desired) but they won't cause `build()` to fail
+    /// if left unfilled.
+    pub fn exclude_prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.excluded_prefixes.push(prefix.into());
+        self
     }
 
     /// Add a required mock slot.
@@ -452,6 +468,10 @@ impl MockRequirements {
                     && !self
                         .filled
                         .contains(&(s.node_id.clone(), s.port_name.clone()))
+                    && !self
+                        .excluded_prefixes
+                        .iter()
+                        .any(|prefix| s.node_id.0.starts_with(prefix.as_str()))
             })
             .collect()
     }
@@ -533,9 +553,18 @@ impl MockRequirements {
 ///     .build()
 ///     .expect("all mocks provided");
 /// ```
-pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockRequirements {
+pub fn extract_mock_requirements<T: Clone>(
+    dag: &gunbc_ir::Dag<T>,
+    name: &str,
+) -> MockRequirements {
     use gunbc_ir::detect_boundaries;
     use std::collections::HashSet;
+
+    // Lower the DAG to flatten SubDags so transport executors inside SubDags
+    // are visible and boundary analysis uses lowered node IDs.
+    let lowered = gunbc_exec::lower(dag)
+        .unwrap_or_else(|e| panic!("extract_mock_requirements: lower failed: {e}"));
+    let dag = &lowered.dag;
 
     let boundaries = detect_boundaries(dag);
 

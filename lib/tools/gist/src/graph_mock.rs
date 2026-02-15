@@ -117,32 +117,35 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
 
     // Extract typed requirements from DAG structure
     let mut reqs = extract_mock_requirements(&dag, "gist")
-        // Environment: filesystem + clock
+        // Delegate cloud_credential internal mocks to include_prefixed_runtime_mocks
+        .exclude_prefix("gist_upload/cloud_credential/gcp_wif_secret")
+        // Top-level environment: filesystem (for content acquisition)
         .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("file:write mock should match type")
-        .boundary("clock_env", "clock", mock_clock())
+        // Gist upload SubDag internal environment nodes
+        .boundary("gist_upload/fs_env", "file:write", mock_fs_handle())
+        .expect("gist_upload file:write mock should match type")
+        .boundary("gist_upload/clock_env", "clock", mock_clock())
         .expect("clock mock should match type")
-        .boundary("cloud_env", "config", mock_cloud_config())
+        .boundary("gist_upload/cloud_env", "config", mock_cloud_config())
         .expect("cloud_env config should match type")
         .boundary(
-            "cloud_env",
+            "gist_upload/cloud_env",
             "request_url",
             Value::Str("https://example.com/oidc".into()),
         )
         .expect("cloud_env request_url should match type")
         .boundary(
-            "cloud_env",
+            "gist_upload/cloud_env",
             "request_token",
             Value::Str("mock-oidc-token".into()),
         )
         .expect("cloud_env request_token should match type")
-        .boundary("bind_secret", "config", mock_cloud_config())
+        .boundary("gist_upload/bind_secret", "config", mock_cloud_config())
         .expect("bind_secret config should match type")
-        .boundary("cloud_credential", "credential", mock_credential())
+        .boundary("gist_upload/cloud_credential/gcp_wif_secret/build_credential", "credential", mock_credential())
         .expect("cloud_credential credential should match type")
-        .boundary("cloud_credential", "expires_in", Value::Int(3_600))
-        .expect("cloud_credential expires_in should match type")
-        .boundary("cloud_credential", "ok", Value::Bool(true))
+        .boundary("gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam", "ok", Value::Bool(true))
         .expect("cloud_credential ok should match type");
 
     // Mode-specific transport mocks
@@ -151,7 +154,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
             reqs = reqs
                 // execute_list_files transport response
                 .transport_response(
-                    "execute_list_files",
+                    "list_files/execute_list_files",
                     "response",
                     // Empty list in DryRun to avoid loop-body transport mocks.
                     TransportResponse::Shell(ShellResponse::ok("")),
@@ -162,7 +165,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
             reqs = reqs
                 // execute_diff transport response
                 .transport_response(
-                    "execute_diff",
+                    "diff/execute_diff",
                     "response",
                     TransportResponse::Shell(ShellResponse::ok(mock_diff_response())),
                 )
@@ -172,14 +175,14 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
             reqs = reqs
                 // execute_rev_list transport response (SHA of commit 3 days ago)
                 .transport_response(
-                    "execute_rev_list",
+                    "rev_list/execute_rev_list",
                     "response",
                     TransportResponse::Shell(ShellResponse::ok("abc123def456\n")),
                 )
                 .expect("execute_rev_list response should match type")
                 // execute_diff transport response
                 .transport_response(
-                    "execute_diff",
+                    "diff/execute_diff",
                     "response",
                     TransportResponse::Shell(ShellResponse::ok(mock_diff_response())),
                 )
@@ -187,28 +190,28 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         }
     }
 
-    // Shared: current branch acquisition
+    // Shared: current branch acquisition (inside branch_resolution SubDag)
     reqs = reqs
         .transport_response(
-            "execute_current_branch",
+            "branch_resolution/execute_current_branch",
             "response",
             TransportResponse::Shell(ShellResponse::ok("main\n")),
         )
         .expect("execute_current_branch response should match type");
 
-    // Shared: remote branch resolution (for detached HEAD)
+    // Shared: remote branch resolution (inside branch_resolution SubDag)
     reqs = reqs
         .transport_response(
-            "execute_remote_branches",
+            "branch_resolution/execute_remote_branches",
             "response",
             TransportResponse::Shell(ShellResponse::ok("  origin/main\n")),
         )
         .expect("execute_remote_branches response should match type");
 
-    // Shared: gist creation
+    // Shared: gist creation (inside gist_upload SubDag)
     reqs = reqs
         .transport_response(
-            "execute_gist",
+            "gist_upload/execute_gist",
             "response",
             TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(
                 serde_json::from_str::<serde_json::Value>(&mock_gist_response_json())
@@ -217,10 +220,10 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         )
         .expect("execute_gist response should match type");
 
-    // Terminal boundary: parse_gist_response.url
+    // Terminal boundary: parse_gist_response.url (inside gist_upload SubDag)
     reqs = reqs
         .boundary_str(
-            "parse_gist_response",
+            "gist_upload/parse_gist_response",
             "url",
             "https://gist.github.com/mock/abc123def456",
         )
@@ -228,7 +231,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
 
     // Build spec (with input expectations added via legacy API)
     let mut spec = reqs.build_unchecked().include_prefixed_runtime_mocks(
-        "cloud_credential/gcp_wif_secret",
+        "gist_upload/cloud_credential/gcp_wif_secret",
         &gunbc_lib_gcp_ops::graph_mock::gcp_local_mock_spec(),
     );
 
@@ -236,28 +239,28 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     // Provide a default repo_path for entrypoint injection in DryRun tests.
     spec = spec
         .input_mock(
-            "prepare_current_branch",
+            "branch_resolution/prepare_current_branch",
             "repo_path",
             Value::Str(".".into()),
         )
         .input_mock(
-            "prepare_remote_branches",
+            "branch_resolution/prepare_remote_branches",
             "repo_path",
             Value::Str(".".into()),
         );
     match mode {
         GistMode::Snapshot => {
             spec = spec
-                .input_mock("prepare_list_files", "repo_path", Value::Str(".".into()))
+                .input_mock("list_files/prepare_list_files", "repo_path", Value::Str(".".into()))
                 .input_mock("read_files_loop", "repo_path", Value::Str(".".into()));
         }
         GistMode::Diff { .. } => {
-            spec = spec.input_mock("prepare_diff", "repo_path", Value::Str(".".into()));
+            spec = spec.input_mock("diff/prepare_diff", "repo_path", Value::Str(".".into()));
         }
         GistMode::Recent => {
             spec = spec
-                .input_mock("prepare_rev_list", "repo_path", Value::Str(".".into()))
-                .input_mock("prepare_diff", "repo_path", Value::Str(".".into()));
+                .input_mock("rev_list/prepare_rev_list", "repo_path", Value::Str(".".into()))
+                .input_mock("diff/prepare_diff", "repo_path", Value::Str(".".into()));
         }
     }
     if matches!(mode, GistMode::Diff { .. }) {
@@ -269,21 +272,26 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .node_example(
             NodeExample::new("fs_env")
                 .output("file:write", OutputMatcher::Any)
+                .description("Provides filesystem handle for content acquisition"),
+        )
+        .node_example(
+            NodeExample::new("gist_upload/fs_env")
+                .output("file:write", OutputMatcher::Any)
                 .description("Provides filesystem handle for gist filename generation"),
         )
         .node_example(
-            NodeExample::new("clock_env")
+            NodeExample::new("gist_upload/clock_env")
                 .output("clock", OutputMatcher::IsInt)
                 .description("Provides timestamp for gist filename generation"),
         )
         .node_example(
-            NodeExample::new("prepare_current_branch")
+            NodeExample::new("branch_resolution/prepare_current_branch")
                 .input("repo_path", Value::Str(".".into()))
                 .output("request", OutputMatcher::IsRequest)
                 .description("Prepares git rev-parse request for current branch"),
         )
         .node_example(
-            NodeExample::new("parse_current_branch")
+            NodeExample::new("branch_resolution/parse_current_branch")
                 .input(
                     "response",
                     Value::Response(ShellResponse::ok("main\n").into()),
@@ -292,13 +300,13 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .description("Parses current branch name from git output"),
         )
         .node_example(
-            NodeExample::new("prepare_remote_branches")
+            NodeExample::new("branch_resolution/prepare_remote_branches")
                 .input("repo_path", Value::Str(".".into()))
                 .output("request", OutputMatcher::IsRequest)
                 .description("Prepares git branch -r --points-at HEAD request"),
         )
         .node_example(
-            NodeExample::new("parse_remote_branches")
+            NodeExample::new("branch_resolution/parse_remote_branches")
                 .input(
                     "response",
                     Value::Response(ShellResponse::ok("  origin/main\n").into()),
@@ -310,7 +318,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .description("Parses remote branch name from git output"),
         )
         .node_example(
-            NodeExample::new("resolve_auth")
+            NodeExample::new("gist_upload/resolve_auth")
                 .output("service", OutputMatcher::exact(Value::Str("github".into())))
                 .output(
                     "secret_name",
@@ -328,7 +336,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .description("Resolves typed gist scope contract into auth intent"),
         )
         .node_example(
-            NodeExample::new("prepare_gist_request")
+            NodeExample::new("gist_upload/prepare_gist_request")
                 .input("markdown", Value::Str("# Example".into()))
                 .input("branch", Value::Str("main".into()))
                 .input("res:file", mock_fs_handle())
@@ -337,7 +345,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .description("Builds gist creation request from markdown"),
         )
         .node_example(
-            NodeExample::new("parse_gist_response")
+            NodeExample::new("gist_upload/parse_gist_response")
                 .input(
                     "response",
                     Value::Response(TransportResponse::Rest(
@@ -351,16 +359,16 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .description("Extracts gist URL from response JSON"),
         )
         // Probe-observer: terminals need chain-safe observers
-        .live_expected_output("parse_gist_response", "url", OutputMatcher::NonEmpty)
+        .live_expected_output("gist_upload/parse_gist_response", "url", OutputMatcher::NonEmpty)
         .live_expected_output(
-            "cloud_credential/gcp_wif_secret/parse_set_iam",
+            "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
             "ok",
             OutputMatcher::IsBool,
         )
-        .skip_node_example("cloud_env")
-        .skip_node_example("cloud_credential")
-        .skip_node_example("bind_secret")
-        .skip_node_example("scope_preflight");
+        .skip_node_example("gist_upload/cloud_env")
+        .skip_node_example("gist_upload/cloud_credential")
+        .skip_node_example("gist_upload/bind_secret")
+        .skip_node_example("gist_upload/scope_preflight");
 
     // Mode-specific node examples
     match mode {
@@ -368,13 +376,13 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
             spec = spec
                 .skip_node_example("read_files_loop")
                 .node_example(
-                    NodeExample::new("prepare_list_files")
+                    NodeExample::new("list_files/prepare_list_files")
                         .input("repo_path", Value::Str(".".into()))
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares git ls-files request"),
                 )
                 .node_example(
-                    NodeExample::new("parse_list_files")
+                    NodeExample::new("list_files/parse_list_files")
                         .input(
                             "response",
                             Value::Response(ShellResponse::ok("src/main.rs\nREADME.md\n").into()),
@@ -420,14 +428,14 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         GistMode::Diff { .. } => {
             spec = spec
                 .node_example(
-                    NodeExample::new("prepare_diff")
+                    NodeExample::new("diff/prepare_diff")
                         .input("repo_path", Value::Str(".".into()))
                         .input("base_ref", Value::Str("main".into()))
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares git diff request"),
                 )
                 .node_example(
-                    NodeExample::new("parse_diff")
+                    NodeExample::new("diff/parse_diff")
                         .input(
                             "response",
                             Value::Response(ShellResponse::ok(mock_diff_response()).into()),
@@ -447,13 +455,13 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         GistMode::Recent => {
             spec = spec
                 .node_example(
-                    NodeExample::new("prepare_rev_list")
+                    NodeExample::new("rev_list/prepare_rev_list")
                         .input("repo_path", Value::Str(".".into()))
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares git rev-list request for recent commit"),
                 )
                 .node_example(
-                    NodeExample::new("parse_rev_list")
+                    NodeExample::new("rev_list/parse_rev_list")
                         .input(
                             "response",
                             Value::Response(ShellResponse::ok("abc123def456\n").into()),
@@ -465,14 +473,14 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                         .description("Parses rev-list output into base_ref"),
                 )
                 .node_example(
-                    NodeExample::new("prepare_diff")
+                    NodeExample::new("diff/prepare_diff")
                         .input("repo_path", Value::Str(".".into()))
                         .input("base_ref", Value::Str("abc123def456".into()))
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares git diff request for recent changes"),
                 )
                 .node_example(
-                    NodeExample::new("parse_diff")
+                    NodeExample::new("diff/parse_diff")
                         .input(
                             "response",
                             Value::Response(ShellResponse::ok(mock_diff_response()).into()),

@@ -4,7 +4,7 @@
 //! not silently reintroduce duplicate compile paths or drift from verify mode.
 
 use gunbc_dag::build_ci_graph_with_mode;
-use gunbc_exec::{execute_single_node, ExecutionMode};
+use gunbc_exec::{execute_single_node, lower, ExecutionMode};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{ShellRequest, TransportRequest};
 use gunbc_ir::Value;
@@ -22,7 +22,8 @@ fn prepare_shell_request(
     inputs: HashMap<String, Value>,
 ) -> Result<ShellRequest, Box<dyn std::error::Error>> {
     let dag = build_ci_graph_with_mode(ExecMode::Ensure)?;
-    let outputs = execute_single_node(&dag, node, inputs, ExecutionMode::Real)?;
+    let lowered = lower(&dag)?;
+    let outputs = execute_single_node(&lowered.dag, node, inputs, ExecutionMode::Real)?;
     let request = outputs
         .get("request")
         .and_then(|v| v.as_request())
@@ -39,8 +40,9 @@ fn prepare_outputs(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, Box<dyn std::error::Error>> {
     let dag = build_ci_graph_with_mode(ExecMode::Ensure)?;
+    let lowered = lower(&dag)?;
     Ok(execute_single_node(
-        &dag,
+        &lowered.dag,
         node,
         inputs,
         ExecutionMode::Real,
@@ -50,7 +52,7 @@ fn prepare_outputs(
 #[test]
 fn ci_build_stage_compiles_tests_without_running_them() {
     let shell = prepare_shell_request(
-        "prepare_build",
+        "build/prepare_build",
         bool_inputs(&[("prep_success", true), ("testgen_success", true)]),
     )
     .expect("prepare_build should produce shell request");
@@ -62,7 +64,7 @@ fn ci_build_stage_compiles_tests_without_running_them() {
 
 #[test]
 fn ci_test_stage_runs_tests_after_build() {
-    let shell = prepare_shell_request("prepare_test", bool_inputs(&[("build_success", true)]))
+    let shell = prepare_shell_request("test/prepare_test", bool_inputs(&[("build_success", true)]))
         .expect("prepare_test should produce shell request");
 
     assert_eq!(shell.command, "cargo");
@@ -72,7 +74,7 @@ fn ci_test_stage_runs_tests_after_build() {
 
 #[test]
 fn ci_test_stage_skips_when_build_fails() {
-    let outputs = prepare_outputs("prepare_test", bool_inputs(&[("build_success", false)]))
+    let outputs = prepare_outputs("test/prepare_test", bool_inputs(&[("build_success", false)]))
         .expect("prepare_test should execute");
 
     assert_eq!(outputs.get("skip").and_then(|v| v.as_bool()), Some(true));
@@ -87,7 +89,7 @@ fn ci_test_stage_skips_when_build_fails() {
 #[test]
 fn ci_guardrail_stage_runs_disallowed_methods_and_resource_purity_checks() {
     let shell = prepare_shell_request(
-        "prepare_guardrail_check",
+        "guardrail_check/prepare_guardrail_check",
         bool_inputs(&[("testgen_success", true), ("pragma_success", true)]),
     )
     .expect("prepare_guardrail_check should produce shell request");
@@ -108,7 +110,7 @@ fn ci_guardrail_stage_runs_disallowed_methods_and_resource_purity_checks() {
 #[test]
 fn ci_guardrail_stage_skips_when_upstream_fails() {
     let outputs = prepare_outputs(
-        "prepare_guardrail_check",
+        "guardrail_check/prepare_guardrail_check",
         bool_inputs(&[("testgen_success", false), ("pragma_success", true)]),
     )
     .expect("prepare_guardrail_check should execute");
@@ -125,7 +127,7 @@ fn ci_guardrail_stage_skips_when_upstream_fails() {
 #[test]
 fn ci_verify_stage_uses_verify_mode_commands() {
     let shell = prepare_shell_request(
-        "prepare_verify_makegen_check",
+        "verify_makegen_check/prepare_verify_makegen_check",
         bool_inputs(&[
             ("prep_success", true),
             ("bootstrap_success", true),
@@ -154,7 +156,7 @@ fn ci_verify_stage_uses_verify_mode_commands() {
 #[test]
 fn ci_verify_stage_skips_when_prep_fails() {
     let outputs = prepare_outputs(
-        "prepare_verify_makegen_check",
+        "verify_makegen_check/prepare_verify_makegen_check",
         bool_inputs(&[
             ("prep_success", false),
             ("bootstrap_success", true),

@@ -203,6 +203,7 @@ fn review_scope_contract_is_valid() {
 #[test]
 fn gist_has_canonical_credential_chain() {
     use gunbc_gist::{build_gist_graph, GistMode};
+    use gunbc_ir::NodeBody;
 
     for mode in [
         GistMode::Snapshot,
@@ -213,8 +214,19 @@ fn gist_has_canonical_credential_chain() {
     ] {
         let label = format!("gist({:?})", mode);
         let dag = build_gist_graph(mode, vec![], false).expect("gist graph should build");
-        assert_canonical_chain(&dag, &label);
-        assert_chain_edges(&dag, &label);
+
+        // Credential chain is now inside the gist_upload SubDag
+        let gist_upload = dag
+            .get_node(&"gist_upload".into())
+            .unwrap_or_else(|| panic!("{label}: missing gist_upload SubDag node"));
+
+        match &gist_upload.body {
+            NodeBody::SubDag(inner_dag) => {
+                assert_canonical_chain(inner_dag, &format!("{label}/gist_upload"));
+                assert_chain_edges(inner_dag, &format!("{label}/gist_upload"));
+            }
+            _ => panic!("{label}: gist_upload is not a SubDag"),
+        }
     }
 }
 

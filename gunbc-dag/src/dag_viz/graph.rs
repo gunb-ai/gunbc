@@ -48,6 +48,9 @@ use gunbc_ir::{
     add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
     WorkflowSignature,
 };
+use gunbc_lib_cloud_ops::graph_cloud_config;
+use gunbc_lib_gist_ops::{build_gist_upload_subdag, GistUploadOp};
+use gunbc_lib_git_ops::{build_branch_resolution_subdag, BranchResolutionOp};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 use gunbc_test::Mockable;
@@ -132,37 +135,15 @@ pub enum DagVizGraphOp {
     /// Outputs: `content` (String), `ext` (String)
     RenderSnapshot,
 
-    /// Prepare git show request for base topology (PURE).
+    /// Parse git show response for DagTopology (PURE).
     ///
-    /// Inputs: `base_ref` (String)
-    /// Outputs: `request` (TransportRequest), `skip` (Bool)
-    PrepareGitShow {
-        /// Default base ref (can be overridden at runtime).
-        base_ref: String,
-    },
-
-    /// Parse git show response (PURE).
+    /// Validates the response as DagTopology JSON. On failure, returns
+    /// an empty topology. This is dag-viz-specific because it validates
+    /// and defaults to empty DagTopology.
     ///
     /// Inputs: `response` (TransportResponse)
     /// Outputs: `topology_json` (String)
-    ParseGitShow,
-
-    /// Prepare gist upload request (PURE).
-    ///
-    /// Inputs: `content` (String), `branch` (String), `ext` (String, only when not defaulted)
-    /// Outputs: `request` (TransportRequest), `skip` (Bool)
-    PrepareGistUpload {
-        /// Filename prefix (e.g., "dag-snapshot", "dag-diff").
-        prefix: String,
-        /// Default extension (e.g., "md"). If None, `ext` input port is used.
-        default_ext: Option<String>,
-    },
-
-    /// Parse gist upload response (PURE).
-    ///
-    /// Inputs: `response` (TransportResponse)
-    /// Outputs: `url` (String)
-    ParseGistUpload,
+    ParseGitShowTopology,
 
     /// Prepare write-snapshot file request (PURE).
     ///
@@ -204,6 +185,20 @@ pub enum DagVizGraphOp {
     /// Inputs: `response` (TransportResponse)
     /// Outputs: `opened` (Bool)
     ParseBrowserOpen,
+
+    // ========================================================================
+    // SubDag wrappers (shared library SubDags)
+    // ========================================================================
+    /// Gist upload pipeline (credential chain + request + response).
+    ///
+    /// Self-contained SubDag — replaces the inline `gh gist create` approach
+    /// with the proper REST API + cloud credential chain.
+    GistUpload(GistUploadOp),
+
+    /// Branch resolution (current_branch + remote_branches).
+    ///
+    /// Wraps the two-triplet branch resolution SubDag from git-ops.
+    BranchResolution(BranchResolutionOp),
 }
 
 // ============================================================================
@@ -221,15 +216,7 @@ impl Executable for DagVizGraphOp {
             DagVizGraphOp::ParseBaseTopology => execute_parse_base_topology(inputs),
             DagVizGraphOp::DiffAndRender => execute_diff_and_render(inputs),
             DagVizGraphOp::RenderSnapshot => execute_render_snapshot(inputs),
-            DagVizGraphOp::PrepareGitShow { base_ref } => {
-                execute_prepare_git_show(inputs, base_ref)
-            }
-            DagVizGraphOp::ParseGitShow => execute_parse_git_show(inputs),
-            DagVizGraphOp::PrepareGistUpload {
-                prefix,
-                default_ext,
-            } => execute_prepare_gist_upload(inputs, prefix, default_ext.as_deref()),
-            DagVizGraphOp::ParseGistUpload => execute_parse_gist_upload(inputs),
+            DagVizGraphOp::ParseGitShowTopology => execute_parse_git_show_topology(inputs),
             DagVizGraphOp::PrepareWriteSnapshot => execute_prepare_write_snapshot(inputs),
             DagVizGraphOp::ParseWriteResult => execute_parse_write_result(inputs),
             DagVizGraphOp::PrepareLocalSave { output_dir } => {
@@ -238,6 +225,10 @@ impl Executable for DagVizGraphOp {
             DagVizGraphOp::ParseLocalSave => execute_parse_local_save(inputs),
             DagVizGraphOp::OpenBrowser => execute_open_browser(inputs),
             DagVizGraphOp::ParseBrowserOpen => execute_parse_browser_open(inputs),
+
+            // SubDag wrappers (delegated to shared libraries)
+            DagVizGraphOp::GistUpload(op) => op.execute(inputs),
+            DagVizGraphOp::BranchResolution(op) => op.execute(inputs),
         }
     }
 }
@@ -292,8 +283,10 @@ fn execute_diff_and_render(
 ) -> Result<HashMap<String, Value>, ExecError> {
     let current_json = gunbc_exec::require_str(&inputs, "current_json")?;
     let base_json = gunbc_exec::require_str(&inputs, "base_json")?;
-    let branch = gunbc_exec::require_str(&inputs, "branch")?;
-    let base_ref = gunbc_exec::require_str(&inputs, "base_ref")?;
+    let branch = gunbc_exec::optional_str_strict(&inputs, "branch")?
+        .unwrap_or("unknown");
+    let base_ref = gunbc_exec::optional_str_strict(&inputs, "base_ref")?
+        .unwrap_or("HEAD~1");
 
     let current: DagTopology = serde_json::from_str(current_json).map_err(|e| {
         ExecError::new(format!("Failed to parse current topology: {}", e))
@@ -320,7 +313,8 @@ fn execute_render_snapshot(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let topology_json = gunbc_exec::require_str(&inputs, "topology_json")?;
-    let branch = gunbc_exec::require_str(&inputs, "branch")?;
+    let branch = gunbc_exec::optional_str_strict(&inputs, "branch")?
+        .unwrap_or("unknown");
     let format = gunbc_exec::require_str(&inputs, "format")?;
 
     let topo: DagTopology = serde_json::from_str(topology_json).map_err(|e| {
@@ -340,120 +334,30 @@ fn execute_render_snapshot(
     OutputMap::new().str("content", content).str("ext", ext).ok()
 }
 
-/// Prepare git show request for base topology file.
-fn execute_prepare_git_show(
-    inputs: HashMap<String, Value>,
-    default_base_ref: &str,
-) -> Result<HashMap<String, Value>, ExecError> {
-    let base_ref = inputs
-        .get("base_ref")
-        .and_then(|v| match v {
-            Value::Str(s) if !s.is_empty() => Some(s.clone()),
-            _ => None,
-        })
-        .unwrap_or_else(|| default_base_ref.to_string());
-
-    let git_path = format!("{}:.dag-snapshots/workspace.json", base_ref);
-    let request = ShellRequest::new("git")
-        .args(["show", &git_path])
-        .into_transport_request();
-
-    OutputMap::new()
-        .request("request", request)
-        .bool("skip", false)
-        .ok()
-}
-
-/// Parse git show response into topology JSON.
-fn execute_parse_git_show(
-    inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    let response = gunbc_exec::require_response(&inputs, "response")?;
-
-    match response {
-        TransportResponse::Shell(ref shell) if shell.success() => {
-            let json = shell.stdout.trim().to_string();
-            if json.is_empty() {
-                // No snapshot at base ref — return empty topology
-                let empty = DagTopology {
-                    nodes: vec![],
-                    edges: vec![],
-                };
-                let empty_json = serde_json::to_string(&empty).unwrap();
-                OutputMap::new().str("topology_json", empty_json).ok()
-            } else {
-                // Validate JSON parses as DagTopology
-                let _: DagTopology = serde_json::from_str(&json).map_err(|e| {
-                    ExecError::new(format!("Invalid base topology JSON: {}", e))
-                })?;
-                OutputMap::new().str("topology_json", json).ok()
-            }
-        }
-        _ => {
-            // Git show failed — base ref has no snapshot, use empty topology
-            let empty = DagTopology {
-                nodes: vec![],
-                edges: vec![],
-            };
-            let empty_json = serde_json::to_string(&empty).unwrap();
-            OutputMap::new().str("topology_json", empty_json).ok()
-        }
-    }
-}
-
-/// Prepare gist upload shell request.
+/// Parse git show response into topology JSON (dag-viz specific).
 ///
-/// Uses `gh gist create` with stdin piping to avoid writing temp files.
-fn execute_prepare_gist_upload(
+/// Validates the response as DagTopology. On failure or empty content,
+/// returns an empty DagTopology.
+fn execute_parse_git_show_topology(
     inputs: HashMap<String, Value>,
-    prefix: &str,
-    default_ext: Option<&str>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let content = gunbc_exec::require_str(&inputs, "content")?;
-    let branch = gunbc_exec::require_str(&inputs, "branch")?;
-    let ext = match default_ext {
-        Some(e) => e,
-        None => gunbc_exec::require_str(&inputs, "ext")?,
-    };
 
-    let filename = format!("{}_{}.{}", prefix, branch.replace('/', "_"), ext);
-    let description = format!("DAG visualization of {} created by gunbc-dag-viz", branch);
-
-    let request = ShellRequest::new("gh")
-        .args([
-            "gist",
-            "create",
-            "--filename",
-            &filename,
-            "--desc",
-            &description,
-            "-", // read from stdin
-        ])
-        .stdin(content)
-        .into_transport_request();
-
-    OutputMap::new()
-        .request("request", request)
-        .bool("skip", false)
-        .ok()
-}
-
-/// Parse gist upload response.
-fn execute_parse_gist_upload(
-    inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    let response = gunbc_exec::require_response(&inputs, "response")?;
-
-    match response {
-        TransportResponse::Shell(ref shell) if shell.success() => {
-            let url = shell.stdout.trim().to_string();
-            OutputMap::new().str("url", url).ok()
-        }
-        TransportResponse::Shell(ref shell) => Err(ExecError::new(format!(
-            "Gist creation failed (exit {}): {}",
-            shell.exit_code, shell.stderr
-        ))),
-        _ => Err(ExecError::new("Unexpected response type for gist upload")),
+    let json = content.trim().to_string();
+    if json.is_empty() {
+        // No snapshot at base ref — return empty topology
+        let empty = DagTopology {
+            nodes: vec![],
+            edges: vec![],
+        };
+        let empty_json = serde_json::to_string(&empty).unwrap();
+        OutputMap::new().str("topology_json", empty_json).ok()
+    } else {
+        // Validate JSON parses as DagTopology
+        let _: DagTopology = serde_json::from_str(&json).map_err(|e| {
+            ExecError::new(format!("Invalid base topology JSON: {}", e))
+        })?;
+        OutputMap::new().str("topology_json", json).ok()
     }
 }
 
@@ -608,6 +512,18 @@ fn execute_parse_browser_open(
 }
 
 // ============================================================================
+// SubDag lifters
+// ============================================================================
+
+fn lift_gist_upload_dag(dag: Dag<GistUploadOp>) -> Dag<DagVizGraphOp> {
+    dag.map_ops(&mut DagVizGraphOp::GistUpload)
+}
+
+fn lift_branch_dag(dag: Dag<BranchResolutionOp>) -> Dag<DagVizGraphOp> {
+    dag.map_ops(&mut DagVizGraphOp::BranchResolution)
+}
+
+// ============================================================================
 // Workflow Signature
 // ============================================================================
 
@@ -618,20 +534,33 @@ pub fn dag_viz_signature(mode: &DagVizMode) -> WorkflowSignature {
     match mode {
         DagVizMode::Snapshot => {
             sig = sig
+                .with_input("repo_path", "String", Cardinality::ONE)
                 .with_input("format", "String", Cardinality::ONE)
+                .with_input("base_ref", "OptionalString", Cardinality::ZERO_OR_ONE)
                 .with_output("url", "String", Cardinality::ONE)
-                .with_output("file_path", "String", Cardinality::ONE);
+                .with_output("node_count", "Int", Cardinality::ONE)
+                .with_output("total_node_count", "Int", Cardinality::ONE)
+                .with_output("opened", "Bool", Cardinality::ONE)
+                .with_output("ok", "Bool", Cardinality::ONE);
         }
         DagVizMode::Diff { .. } => {
             sig = sig
-                .with_input("format", "String", Cardinality::ONE)
-                .with_input("base_ref", "String", Cardinality::ONE)
-                .with_output("url", "String", Cardinality::ONE);
+                .with_input("repo_path", "String", Cardinality::ONE)
+                .with_input("base_ref", "OptionalString", Cardinality::ZERO_OR_ONE)
+                .with_output("url", "String", Cardinality::ONE)
+                .with_output("node_count", "Int", Cardinality::ONE)
+                .with_output("total_node_count", "Int", Cardinality::ONE)
+                .with_output("is_empty", "Bool", Cardinality::ONE)
+                .with_output("ok", "Bool", Cardinality::ONE);
         }
         DagVizMode::Recent => {
             sig = sig
-                .with_input("format", "String", Cardinality::ONE)
-                .with_output("url", "String", Cardinality::ONE);
+                .with_input("repo_path", "String", Cardinality::ONE)
+                .with_output("url", "String", Cardinality::ONE)
+                .with_output("node_count", "Int", Cardinality::ONE)
+                .with_output("total_node_count", "Int", Cardinality::ONE)
+                .with_output("is_empty", "Bool", Cardinality::ONE)
+                .with_output("ok", "Bool", Cardinality::ONE);
         }
         DagVizMode::SaveSnapshot => {
             sig = sig.with_output("summary", "String", Cardinality::ONE);
@@ -701,28 +630,21 @@ pub fn build_dag_viz_graph(mode: DagVizMode) -> Result<Dag<DagVizGraphOp>, Build
 // Mode-Specific Graph Builders
 // ============================================================================
 
-/// Snapshot mode: BuildTopology + CurrentBranch → RenderSnapshot → Gist upload.
+/// Snapshot mode: BuildTopology + BranchResolution → RenderSnapshot → GistUpload + LocalSave + BrowserOpen.
 fn build_snapshot_graph(
     builder: &mut DagBuilder<DagVizGraphOp>,
     fs_env: &gunbc_ir::builder::NodeRef<DagVizGraphOp>,
     build_topology: &gunbc_ir::builder::NodeRef<DagVizGraphOp>,
 ) -> Result<(), BuilderError> {
-    // Git: current branch
-    let current_branch = add_transport_triplet(
-        builder,
-        "current_branch",
-        vec![port("repo_path", "String")],
-        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![optional("branch", "OptionalString")],
-        DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::PrepareCurrentBranch),
-        DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::ParseCurrentBranch),
-        DagVizGraphOp::Transport(TransportOps::Execute),
-        None,
+    // Branch resolution SubDag
+    let branch_dag = lift_branch_dag(build_branch_resolution_subdag());
+    let branch_resolution = builder.add_node_after(
+        Node::subdag("branch_resolution", branch_dag),
+        fs_env,
     )?;
-
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        current_branch.in_port("res:file"),
+        branch_resolution.in_port("res:file"),
     )?;
 
     // Render snapshot
@@ -737,7 +659,7 @@ fn build_snapshot_graph(
             vec![scalar("content", "String"), scalar("ext", "String")],
             DagVizGraphOp::RenderSnapshot,
         ),
-        &[build_topology, &current_branch],
+        &[build_topology, &branch_resolution],
     )?;
 
     builder.add_edge(
@@ -745,42 +667,28 @@ fn build_snapshot_graph(
         render_snapshot.in_port("topology_json"),
     )?;
     builder.add_edge(
-        current_branch.out("branch"),
+        branch_resolution.out("branch"),
         render_snapshot.in_port("branch"),
     )?;
 
-    // Gist upload triplet
-    let gist = add_transport_triplet(
-        builder,
-        "gist",
-        vec![
-            scalar("content", "String"),
-            optional("branch", "OptionalString"),
-            scalar("ext", "String"),
-        ],
-        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![scalar("url", "String")],
-        DagVizGraphOp::PrepareGistUpload {
-            prefix: "dag-snapshot".to_string(),
-            default_ext: None, // ext comes from render_snapshot
-        },
-        DagVizGraphOp::ParseGistUpload,
-        DagVizGraphOp::Transport(TransportOps::Execute),
-        Some(&render_snapshot),
+    // Gist upload SubDag (replaces gh gist create shell approach)
+    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false));
+    let gist_upload = builder.add_node_after(
+        Node::subdag("gist_upload", gist_dag),
+        &render_snapshot,
     )?;
 
     builder.add_edge(
         render_snapshot.out("content"),
-        gist.in_port("content"),
+        gist_upload.in_port("markdown"),
     )?;
     builder.add_edge(
-        current_branch.out("branch"),
-        gist.in_port("branch"),
+        branch_resolution.out("branch"),
+        gist_upload.in_port("branch"),
     )?;
-    builder.add_edge(render_snapshot.out("ext"), gist.in_port("ext"))?;
     builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        gist.in_port("res:file"),
+        branch_resolution.out("remote_branch"),
+        gist_upload.in_port("remote_branch"),
     )?;
 
     // Local save + browser open (parallel to gist upload)
@@ -836,49 +744,58 @@ fn build_snapshot_graph(
     Ok(())
 }
 
-/// Diff mode: BuildTopology + GitShow(base) → DiffTopologies → RenderDiff → Gist upload.
+/// Diff mode: BuildTopology + BranchResolution + GitShow(base) → DiffAndRender → GistUpload.
 fn build_diff_graph(
     builder: &mut DagBuilder<DagVizGraphOp>,
     fs_env: &gunbc_ir::builder::NodeRef<DagVizGraphOp>,
     build_topology: &gunbc_ir::builder::NodeRef<DagVizGraphOp>,
     base_ref: &str,
 ) -> Result<(), BuilderError> {
-    // Git: current branch
-    let current_branch = add_transport_triplet(
-        builder,
-        "current_branch",
-        vec![port("repo_path", "String")],
-        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![optional("branch", "OptionalString")],
-        DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::PrepareCurrentBranch),
-        DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::ParseCurrentBranch),
-        DagVizGraphOp::Transport(TransportOps::Execute),
-        None,
+    // Branch resolution SubDag
+    let branch_dag = lift_branch_dag(build_branch_resolution_subdag());
+    let branch_resolution = builder.add_node_after(
+        Node::subdag("branch_resolution", branch_dag),
+        fs_env,
     )?;
-
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        current_branch.in_port("res:file"),
+        branch_resolution.in_port("res:file"),
     )?;
 
-    // Git show: load base topology
+    // Git show: load base topology (generic git show triplet + dag-viz-specific parsing)
     let git_show = add_transport_triplet(
         builder,
         "git_show_base",
         vec![optional("base_ref", "OptionalString")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![scalar("topology_json", "String")],
-        DagVizGraphOp::PrepareGitShow {
-            base_ref: base_ref.to_string(),
-        },
-        DagVizGraphOp::ParseGitShow,
+        vec![scalar("content", "String")],
+        DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::PrepareGitShow {
+            default_ref: base_ref.to_string(),
+            path: ".dag-snapshots/workspace.json".to_string(),
+        }),
+        DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::ParseGitShow),
         DagVizGraphOp::Transport(TransportOps::Execute),
-        None,
+        Some(fs_env),
     )?;
 
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
         git_show.in_port("res:file"),
+    )?;
+
+    // Parse git show content as DagTopology (dag-viz-specific validation)
+    let parse_base_topology = builder.add_node_after(
+        Node::opaque(
+            "parse_base_topology",
+            vec![scalar("content", "String")],
+            vec![scalar("topology_json", "String")],
+            DagVizGraphOp::ParseGitShowTopology,
+        ),
+        &git_show,
+    )?;
+    builder.add_edge(
+        git_show.out("content"),
+        parse_base_topology.in_port("content"),
     )?;
 
     // Diff + render (combined to avoid serializing DagDiffResult)
@@ -889,12 +806,12 @@ fn build_diff_graph(
                 scalar("current_json", "String"),
                 scalar("base_json", "String"),
                 optional("branch", "OptionalString"),
-                scalar("base_ref", "String"),
+                optional("base_ref", "OptionalString"),
             ],
             vec![scalar("content", "String"), scalar("is_empty", "Bool")],
             DagVizGraphOp::DiffAndRender,
         ),
-        &[build_topology, &git_show, &current_branch],
+        &[build_topology, &parse_base_topology, &branch_resolution],
     )?;
 
     builder.add_edge(
@@ -902,71 +819,52 @@ fn build_diff_graph(
         diff_and_render.in_port("current_json"),
     )?;
     builder.add_edge(
-        git_show.out("topology_json"),
+        parse_base_topology.out("topology_json"),
         diff_and_render.in_port("base_json"),
     )?;
     builder.add_edge(
-        current_branch.out("branch"),
+        branch_resolution.out("branch"),
         diff_and_render.in_port("branch"),
     )?;
 
-    // Gist upload
-    let gist = add_transport_triplet(
-        builder,
-        "gist",
-        vec![
-            scalar("content", "String"),
-            optional("branch", "OptionalString"),
-        ],
-        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![scalar("url", "String")],
-        DagVizGraphOp::PrepareGistUpload {
-            prefix: "dag-diff".to_string(),
-            default_ext: Some("md".to_string()),
-        },
-        DagVizGraphOp::ParseGistUpload,
-        DagVizGraphOp::Transport(TransportOps::Execute),
-        Some(&diff_and_render),
+    // Gist upload SubDag
+    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false));
+    let gist_upload = builder.add_node_after(
+        Node::subdag("gist_upload", gist_dag),
+        &diff_and_render,
     )?;
 
     builder.add_edge(
         diff_and_render.out("content"),
-        gist.in_port("content"),
+        gist_upload.in_port("markdown"),
     )?;
     builder.add_edge(
-        current_branch.out("branch"),
-        gist.in_port("branch"),
+        branch_resolution.out("branch"),
+        gist_upload.in_port("branch"),
     )?;
     builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        gist.in_port("res:file"),
+        branch_resolution.out("remote_branch"),
+        gist_upload.in_port("remote_branch"),
     )?;
 
     Ok(())
 }
 
-/// Recent mode: RevList → GitShow → DiffTopologies → RenderDiff → Gist upload.
+/// Recent mode: BranchResolution + RevList → GitShow → ParseBaseTopology → DiffAndRender → GistUpload.
 fn build_recent_graph(
     builder: &mut DagBuilder<DagVizGraphOp>,
     fs_env: &gunbc_ir::builder::NodeRef<DagVizGraphOp>,
     build_topology: &gunbc_ir::builder::NodeRef<DagVizGraphOp>,
 ) -> Result<(), BuilderError> {
-    // Git: current branch
-    let current_branch = add_transport_triplet(
-        builder,
-        "current_branch",
-        vec![port("repo_path", "String")],
-        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![optional("branch", "OptionalString")],
-        DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::PrepareCurrentBranch),
-        DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::ParseCurrentBranch),
-        DagVizGraphOp::Transport(TransportOps::Execute),
-        None,
+    // Branch resolution SubDag
+    let branch_dag = lift_branch_dag(build_branch_resolution_subdag());
+    let branch_resolution = builder.add_node_after(
+        Node::subdag("branch_resolution", branch_dag),
+        fs_env,
     )?;
-
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        current_branch.in_port("res:file"),
+        branch_resolution.in_port("res:file"),
     )?;
 
     // Rev-list: find commit from 3 days ago
@@ -981,7 +879,7 @@ fn build_recent_graph(
         }),
         DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::ParseRevListBefore),
         DagVizGraphOp::Transport(TransportOps::Execute),
-        None,
+        Some(fs_env),
     )?;
 
     builder.add_edge(
@@ -989,17 +887,18 @@ fn build_recent_graph(
         rev_list.in_port("res:file"),
     )?;
 
-    // Git show: load base topology (after rev-list resolves)
+    // Git show: load base topology (generic git show triplet + dag-viz-specific parsing)
     let git_show = add_transport_triplet(
         builder,
         "git_show_base",
         vec![optional("base_ref", "OptionalString")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![scalar("topology_json", "String")],
-        DagVizGraphOp::PrepareGitShow {
-            base_ref: "HEAD".to_string(),
-        },
-        DagVizGraphOp::ParseGitShow,
+        vec![scalar("content", "String")],
+        DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::PrepareGitShow {
+            default_ref: "HEAD".to_string(),
+            path: ".dag-snapshots/workspace.json".to_string(),
+        }),
+        DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::ParseGitShow),
         DagVizGraphOp::Transport(TransportOps::Execute),
         Some(&rev_list),
     )?;
@@ -1015,6 +914,21 @@ fn build_recent_graph(
         git_show.in_port("base_ref"),
     )?;
 
+    // Parse git show content as DagTopology (dag-viz-specific validation)
+    let parse_base_topology = builder.add_node_after(
+        Node::opaque(
+            "parse_base_topology",
+            vec![scalar("content", "String")],
+            vec![scalar("topology_json", "String")],
+            DagVizGraphOp::ParseGitShowTopology,
+        ),
+        &git_show,
+    )?;
+    builder.add_edge(
+        git_show.out("content"),
+        parse_base_topology.in_port("content"),
+    )?;
+
     // Diff + render (combined)
     let diff_and_render = builder.add_node_after_all(
         Node::opaque(
@@ -1028,7 +942,7 @@ fn build_recent_graph(
             vec![scalar("content", "String"), scalar("is_empty", "Bool")],
             DagVizGraphOp::DiffAndRender,
         ),
-        &[build_topology, &git_show, &current_branch, &rev_list],
+        &[build_topology, &parse_base_topology, &branch_resolution, &rev_list],
     )?;
 
     builder.add_edge(
@@ -1036,11 +950,11 @@ fn build_recent_graph(
         diff_and_render.in_port("current_json"),
     )?;
     builder.add_edge(
-        git_show.out("topology_json"),
+        parse_base_topology.out("topology_json"),
         diff_and_render.in_port("base_json"),
     )?;
     builder.add_edge(
-        current_branch.out("branch"),
+        branch_resolution.out("branch"),
         diff_and_render.in_port("branch"),
     )?;
     builder.add_edge(
@@ -1048,36 +962,29 @@ fn build_recent_graph(
         diff_and_render.in_port("base_ref"),
     )?;
 
-    // Gist upload
-    let gist = add_transport_triplet(
-        builder,
-        "gist",
-        vec![
-            scalar("content", "String"),
-            optional("branch", "OptionalString"),
-        ],
-        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![scalar("url", "String")],
-        DagVizGraphOp::PrepareGistUpload {
-            prefix: "dag-recent".to_string(),
-            default_ext: Some("md".to_string()),
-        },
-        DagVizGraphOp::ParseGistUpload,
-        DagVizGraphOp::Transport(TransportOps::Execute),
-        Some(&diff_and_render),
+    // Gist upload SubDag
+    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false));
+    let gist_upload = builder.add_node_after(
+        Node::subdag("gist_upload", gist_dag),
+        &diff_and_render,
     )?;
 
     builder.add_edge(
         diff_and_render.out("content"),
-        gist.in_port("content"),
+        gist_upload.in_port("markdown"),
     )?;
     builder.add_edge(
-        current_branch.out("branch"),
-        gist.in_port("branch"),
+        branch_resolution.out("branch"),
+        gist_upload.in_port("branch"),
     )?;
     builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        gist.in_port("res:file"),
+        branch_resolution.out("remote_branch"),
+        gist_upload.in_port("remote_branch"),
+    )?;
+    // Wire rev-list base_ref → gist_upload for Recent mode
+    builder.add_edge(
+        rev_list.out("base_ref"),
+        gist_upload.in_port("base_ref"),
     )?;
 
     Ok(())
@@ -1173,7 +1080,8 @@ impl Mockable for DagVizGraphOp {
         match self {
             DagVizGraphOp::Git(op) => match op {
                 gunbc_lib_git_ops::GitOps::PrepareCurrentBranch
-                | gunbc_lib_git_ops::GitOps::PrepareRevListBefore { .. } => OutputMap::new()
+                | gunbc_lib_git_ops::GitOps::PrepareRevListBefore { .. }
+                | gunbc_lib_git_ops::GitOps::PrepareGitShow { .. } => OutputMap::new()
                     .request(
                         "request",
                         ShellRequest::new("git")
@@ -1187,6 +1095,9 @@ impl Mockable for DagVizGraphOp {
                 }
                 gunbc_lib_git_ops::GitOps::ParseRevListBefore => {
                     OutputMap::new().str("base_ref", "abc123").build()
+                }
+                gunbc_lib_git_ops::GitOps::ParseGitShow => {
+                    OutputMap::new().str("content", r#"{"nodes":[],"edges":[]}"#).build()
                 }
                 _ => HashMap::new(),
             },
@@ -1220,33 +1131,12 @@ impl Mockable for DagVizGraphOp {
                 .str("ext", "html")
                 .build(),
 
-            DagVizGraphOp::PrepareGitShow { .. } => OutputMap::new()
-                .request(
-                    "request",
-                    ShellRequest::new("git")
-                        .args(["show", "main:.dag-snapshots/workspace.json"])
-                        .into_transport_request(),
-                )
-                .bool("skip", false)
-                .build(),
-
-            DagVizGraphOp::ParseGitShow => OutputMap::new()
+            DagVizGraphOp::ParseGitShowTopology => OutputMap::new()
                 .str("topology_json", r#"{"nodes":[],"edges":[]}"#)
                 .build(),
 
-            DagVizGraphOp::PrepareGistUpload { .. } => OutputMap::new()
-                .request(
-                    "request",
-                    ShellRequest::new("gh")
-                        .args(["gist", "create"])
-                        .into_transport_request(),
-                )
-                .bool("skip", false)
-                .build(),
-
-            DagVizGraphOp::ParseGistUpload => OutputMap::new()
-                .str("url", "https://gist.github.com/mock/123")
-                .build(),
+            DagVizGraphOp::GistUpload(op) => mock_gist_upload_op(op),
+            DagVizGraphOp::BranchResolution(op) => mock_branch_resolution_op(op),
 
             DagVizGraphOp::PrepareWriteSnapshot => OutputMap::new()
                 .request(
@@ -1296,6 +1186,92 @@ impl Mockable for DagVizGraphOp {
                 .bool("opened", true)
                 .build(),
         }
+    }
+}
+
+/// Mock outputs for gist upload SubDag operations.
+fn mock_gist_upload_op(op: &GistUploadOp) -> HashMap<String, Value> {
+    use gunbc_lib_gist_ops::GistOps;
+    match op {
+        GistUploadOp::Gist(gist_op) => match gist_op {
+            GistOps::PrepareRequest { .. } => OutputMap::new()
+                .request(
+                    "request",
+                    ShellRequest::new("gh")
+                        .args(["gist", "create"])
+                        .into_transport_request(),
+                )
+                .bool("skip", false)
+                .build(),
+            GistOps::ParseGistResponse => OutputMap::new()
+                .str("url", "https://gist.github.com/mock/123")
+                .build(),
+        },
+        GistUploadOp::Cloud(_) => OutputMap::new()
+            .value(
+                "credential",
+                Value::Map(std::collections::BTreeMap::from([
+                    (
+                        "token".to_string(),
+                        Value::Secret(gunbc_ir::SecretString::new("<MOCK_GITHUB_TOKEN>")),
+                    ),
+                    ("source_type".to_string(), Value::Str("static".to_string())),
+                    ("scheme".to_string(), Value::Str("bearer".to_string())),
+                    (
+                        "cap".to_string(),
+                        Value::Secret(gunbc_ir::SecretString::new("capability")),
+                    ),
+                ])),
+            )
+            .int("expires_in", 3600)
+            .build(),
+        GistUploadOp::Transport(_) => OutputMap::new()
+            .response(
+                "response",
+                TransportResponse::Shell(ShellResponse::ok(
+                    "https://gist.github.com/mock/123\n",
+                )),
+            )
+            .build(),
+        GistUploadOp::FsEnv(op) => op.mock_outputs(),
+        GistUploadOp::ClockEnv(op) => op.mock_outputs(),
+        GistUploadOp::ResolveAuth => OutputMap::new()
+            .str("service", "github")
+            .str("scheme", "bearer")
+            .str("header_name", "")
+            .str_list("required_scopes", vec!["gist:write".to_string()])
+            .bool("interactive_allowed", true)
+            .int("lifetime_seconds", 3600)
+            .build(),
+    }
+}
+
+/// Mock outputs for branch resolution SubDag operations.
+fn mock_branch_resolution_op(op: &BranchResolutionOp) -> HashMap<String, Value> {
+    use gunbc_lib_git_ops::GitOps;
+    match op {
+        BranchResolutionOp::Git(git_op) => match git_op {
+            GitOps::PrepareCurrentBranch | GitOps::PrepareRemoteBranchesAtHead => OutputMap::new()
+                .request(
+                    "request",
+                    ShellRequest::new("git")
+                        .arg("mock")
+                        .into_transport_request(),
+                )
+                .bool("skip", false)
+                .build(),
+            GitOps::ParseCurrentBranch => OutputMap::new().str("branch", "main").build(),
+            GitOps::ParseRemoteBranchesAtHead => {
+                OutputMap::new().str("remote_branch", "main").build()
+            }
+            _ => HashMap::new(),
+        },
+        BranchResolutionOp::Transport(_) => OutputMap::new()
+            .response(
+                "response",
+                TransportResponse::Shell(ShellResponse::ok("main\n")),
+            )
+            .build(),
     }
 }
 

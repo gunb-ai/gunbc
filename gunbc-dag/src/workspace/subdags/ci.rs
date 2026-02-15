@@ -58,10 +58,10 @@ mod tests {
         match &node.body {
             NodeBody::SubDag(dag) => {
                 for node_id in [
-                    "execute_build",
-                    "execute_test",
-                    "execute_verify_makegen_check",
-                    "execute_clippy_lint",
+                    "build",
+                    "test",
+                    "verify_makegen_check",
+                    "clippy_lint",
                 ] {
                     assert!(
                         dag.get_node(&node_id.into()).is_some(),

@@ -14,7 +14,7 @@
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
-    add_transport_execute_parse_named_with_passthrough, build::*, Dag, DagBuilder, Node, Value,
+    add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, Value,
 };
 use gunbc_lib_cloud_ops::{
     build_cloud_secret_manager_credential_graph_from_config, graph_cloud_config, CloudOps,
@@ -51,19 +51,20 @@ impl Executable for LlmGraphOp {
 /// Build a chat completion DAG.
 ///
 /// The resulting DAG has these entrypoints (unconnected inputs):
-/// - `prepare.provider`: String — provider ID ("openai", "anthropic")
-/// - `prepare.model`: String — model identifier
-/// - `prepare.messages`: JSON array of {role, content}
-/// - `prepare.system_prompt`: Optional string
-/// - `prepare.temperature`: Optional f64
-/// - `prepare.max_tokens`: Optional i64
+/// - `chat_completion.provider`: String — provider ID ("openai", "anthropic")
+/// - `chat_completion.model`: String — model identifier
+/// - `chat_completion.messages`: JSON array of {role, content}
+/// - `chat_completion.system_prompt`: Optional string
+/// - `chat_completion.temperature`: Optional f64
+/// - `chat_completion.max_tokens`: Optional i64
+/// - `resolve_auth.provider`: String — provider ID (same value as above)
 ///
 /// And these boundaries (unconnected outputs):
-/// - `parse.content`: String — generated text
-/// - `parse.model`: String — model that responded
-/// - `parse.finish_reason`: String
-/// - `parse.input_tokens`: Int
-/// - `parse.output_tokens`: Int
+/// - `chat_completion.content`: String — generated text
+/// - `chat_completion.model`: String — model that responded
+/// - `chat_completion.finish_reason`: String
+/// - `chat_completion.input_tokens`: Int
+/// - `chat_completion.output_tokens`: Int
 pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
     build_chat_completion_graph_with_config(graph_cloud_config())
 }
@@ -90,44 +91,20 @@ pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) 
         ))
         .expect("cloud_env node");
 
-    // Node 1: PrepareChatRequest (pure)
-    let prepare = builder
-        .add_root_node(Node::opaque(
-            "prepare",
-            vec![
-                port("provider", "String"),
-                port("model", "String"),
-                port("messages", "Json"),
-                optional("system_prompt", "OptionalString"),
-                optional("temperature", "OptionalJson"),
-                optional("max_tokens", "OptionalInt"),
-            ],
-            vec![
-                port("request", "TransportRequest"),
-                port("provider", "String"),
-                port("skip", "Bool"),
-            ],
-            LlmGraphOp::Llm(LlmOps::PrepareChatRequest),
-        ))
-        .expect("prepare node");
-
-    // Node 2: Resolve auth requirements (pure)
+    // Node 1: Resolve auth requirements (pure)
     let resolve_auth = builder
-        .add_node_after(
-            Node::opaque(
-                "resolve_auth",
-                vec![port("provider", "String")],
-                vec![
-                    port("service", "String"),
-                    port("scheme", "String"),
-                    port("header_name", "String"),
-                    list("required_scopes", "String"),
-                    port("interactive_allowed", "Bool"),
-                ],
-                LlmGraphOp::Llm(LlmOps::ResolveAuth),
-            ),
-            &prepare,
-        )
+        .add_root_node(Node::opaque(
+            "resolve_auth",
+            vec![port("provider", "String")],
+            vec![
+                port("service", "String"),
+                port("scheme", "String"),
+                port("header_name", "String"),
+                list("required_scopes", "String"),
+                port("interactive_allowed", "Bool"),
+            ],
+            LlmGraphOp::Llm(LlmOps::ResolveAuth),
+        ))
         .expect("resolve_auth node");
 
     // Node 3: Bind secret name onto cloud config
@@ -168,17 +145,26 @@ pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) 
         )
         .expect("scope_preflight node");
 
-    // Nodes 6-7: Execute transport + ParseChatResponse
-    let llm_triplet = add_transport_execute_parse_named_with_passthrough(
+    // Chat completion transport triplet (prepare + execute + parse).
+    let llm_triplet = add_transport_triplet_named_with_passthrough(
         &mut builder,
-        &prepare,
+        "chat_completion",
+        "prepare",
         "execute",
         "parse",
-        vec![port("provider", "String")],
+        vec![
+            port("provider", "String"),
+            port("model", "String"),
+            port("messages", "Json"),
+            optional("system_prompt", "OptionalString"),
+            optional("temperature", "OptionalJson"),
+            optional("max_tokens", "OptionalInt"),
+        ],
         vec![
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
+        vec![port("provider", "String")],
         vec![
             port("content", "String"),
             port("model", "String"),
@@ -186,16 +172,14 @@ pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) 
             port("input_tokens", "Int"),
             port("output_tokens", "Int"),
         ],
+        LlmGraphOp::Llm(LlmOps::PrepareChatRequest),
         LlmGraphOp::Llm(LlmOps::ParseChatResponse),
         LlmGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
     )
     .expect("llm triplet");
 
-    // Edges: prepare -> resolve_auth -> bind_secret -> cloud_credential -> execute -> parse
-    builder
-        .add_edge(prepare.out("provider"), resolve_auth.in_port("provider"))
-        .expect("prepare.provider -> resolve_auth.provider");
+    // Edges: resolve_auth -> bind_secret -> cloud_credential -> triplet
     builder
         .add_edge(
             resolve_auth.out("required_scopes"),
@@ -205,7 +189,7 @@ pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) 
     builder
         .add_edge(
             scope_preflight.out("scope_verified"),
-            llm_triplet.execute.in_port("scope_verified"),
+            llm_triplet.in_port("scope_verified"),
         )
         .expect("scope_preflight.scope_verified -> execute.scope_verified");
     builder
@@ -265,7 +249,7 @@ pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) 
     builder
         .add_edge(
             cloud_credential.out("credential"),
-            llm_triplet.execute.in_port("res:credential"),
+            llm_triplet.in_port("res:credential"),
         )
         .expect("cloud_credential -> execute.res:credential");
 
@@ -286,10 +270,10 @@ mod tests {
         let dag = build_chat_completion_graph();
         let boundaries = detect_boundaries(&dag);
 
-        // The parse node's outputs are boundaries (no downstream)
+        // The chat_completion SubDag's outputs are boundaries (no downstream)
         assert!(
-            boundaries.is_boundary_node(&"parse".into()),
-            "parse should be a boundary"
+            boundaries.is_boundary_node(&"chat_completion".into()),
+            "chat_completion should be a boundary"
         );
 
         // execute node's response feeds into parse, so not a boundary output
@@ -301,10 +285,10 @@ mod tests {
         let dag = build_chat_completion_graph();
         let entrypoints = detect_entrypoints(&dag);
 
-        // prepare node's inputs are entrypoints
+        // chat_completion SubDag's inputs are entrypoints
         assert!(
-            entrypoints.is_entrypoint_node(&"prepare".into()),
-            "prepare should have entrypoints"
+            entrypoints.is_entrypoint_node(&"chat_completion".into()),
+            "chat_completion should have entrypoints"
         );
     }
 }

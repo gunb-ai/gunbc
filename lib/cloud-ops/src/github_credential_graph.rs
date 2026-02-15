@@ -14,7 +14,7 @@ use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
 use gunbc_ir::transport::github::api::github_rest_request;
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::{
-    add_transport_execute_parse_named_with_passthrough, AccessMode, Dag, DagBuilder, Node, Value,
+    add_transport_triplet_named_with_passthrough, AccessMode, Dag, DagBuilder, Node, Value,
 };
 use gunbc_lib_transport::TransportOps;
 use std::collections::HashMap;
@@ -214,19 +214,6 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
         )
         .expect("cloud_env.request_token -> cloud_credential.request_token");
 
-    // GitHub rate limit request (pure).
-    let prepare = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_request",
-                vec![],
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::PrepareRateLimit),
-            ),
-            &cloud_credential,
-        )
-        .expect("prepare_request node");
-
     // Scope preflight: fail fast on invalid/missing required scope declarations.
     let scope_preflight = builder
         .add_node_after(
@@ -248,10 +235,11 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
         )
         .expect("resolve_auth.required_scopes -> scope_preflight.required_scopes");
 
-    // Execute transport + ParseStatus.
-    let triplet = add_transport_execute_parse_named_with_passthrough(
+    // GitHub rate limit transport triplet.
+    let triplet = add_transport_triplet_named_with_passthrough(
         &mut builder,
-        &prepare,
+        "credential_check",
+        "prepare_request",
         "execute",
         "parse_status",
         vec![],
@@ -259,7 +247,9 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
+        vec![],
         vec![port("status", "Int"), port("ok", "Bool")],
+        GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::PrepareRateLimit),
         GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::ParseStatus),
         GitHubCredentialGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
@@ -268,14 +258,14 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
     builder
         .add_edge(
             scope_preflight.out("scope_verified"),
-            triplet.execute.in_port("scope_verified"),
+            triplet.in_port("scope_verified"),
         )
         .expect("scope_preflight.scope_verified -> execute.scope_verified");
 
     builder
         .add_edge(
             cloud_credential.out("credential"),
-            triplet.execute.in_port("res:credential"),
+            triplet.in_port("res:credential"),
         )
         .expect("cloud_credential -> execute.res:credential");
 

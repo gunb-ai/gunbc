@@ -13,7 +13,6 @@
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
-    add_transport_execute_parse_named_with_passthrough,
     add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, NodeRef, Value,
 };
 use gunbc_lib_blob::BlobOps;
@@ -347,30 +346,7 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
     // LLM Interaction
     // ========================================================================
 
-    // Node 5: PrepareSimpleRequest - builds LLM request
-    let prepare_llm = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_llm",
-                vec![
-                    port("content", "String"),
-                    port("question", "String"),
-                    port("provider", "String"),
-                    port("model", "String"),
-                    optional("system_prompt", "OptionalString"),
-                ],
-                vec![
-                    port("request", "TransportRequest"),
-                    port("provider", "String"),
-                    port("skip", "Bool"),
-                ],
-                ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-            ),
-            &prepare_prompt,
-        )
-        .expect("prepare_llm node");
-
-    // Node 6: Resolve auth requirements (pure)
+    // Resolve auth requirements (pure)
     let resolve_auth = builder
         .add_node_after(
             Node::opaque(
@@ -385,27 +361,36 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
                 ],
                 ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
             ),
-            &prepare_llm,
+            &prepare_prompt,
         )
         .expect("resolve_auth node");
 
-    // Node 7: Cloud credential acquisition (resolves provider credentials)
+    // Cloud credential acquisition (resolves provider credentials)
     let cloud_credential =
         add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
     let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
 
-    // Nodes 8-10: ScopePreflight -> Execute LLM + ParseSimpleResponse
-    let llm_triplet = add_transport_execute_parse_named_with_passthrough(
+    // LLM triplet SubDag: prepare_llm → execute_llm → parse_llm
+    let llm_triplet = add_transport_triplet_named_with_passthrough(
         &mut builder,
-        &prepare_llm,
+        "llm",
+        "prepare_llm",
         "execute_llm",
         "parse_llm",
-        vec![port("provider", "String")],
+        vec![
+            port("content", "String"),
+            port("question", "String"),
+            port("provider", "String"),
+            port("model", "String"),
+            optional("system_prompt", "OptionalString"),
+        ],
         vec![
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
+        vec![port("provider", "String")],
         vec![port("answer", "String")],
+        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
@@ -414,7 +399,7 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
     builder
         .add_edge(
             scope_preflight.out("scope_verified"),
-            llm_triplet.execute.in_port("scope_verified"),
+            llm_triplet.in_port("scope_verified"),
         )
         .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
 
@@ -422,7 +407,7 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
     // Review Response Parsing
     // ========================================================================
 
-    // Node 10: ParseReviewResponse - converts answer to ReviewOutput
+    // ParseReviewResponse - converts answer to ReviewOutput
     let parse_response = builder
         .add_node_after(
             Node::opaque(
@@ -431,7 +416,7 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
                 vec![port("output", "Json"), port("errors", "Json")],
                 ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
             ),
-            &llm_triplet.parse,
+            &llm_triplet,
         )
         .expect("parse_response node");
 
@@ -466,35 +451,29 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
     builder
         .add_edge(
             prepare_prompt.out("question"),
-            prepare_llm.in_port("question"),
+            llm_triplet.in_port("question"),
         )
-        .expect("prepare_prompt.question -> prepare_llm.question");
+        .expect("prepare_prompt.question -> llm.question");
     builder
         .add_edge(
             prepare_prompt.out("system_prompt"),
-            prepare_llm.in_port("system_prompt"),
+            llm_triplet.in_port("system_prompt"),
         )
-        .expect("prepare_prompt.system_prompt -> prepare_llm.system_prompt");
-    builder
-        .add_edge(
-            prepare_llm.out("provider"),
-            resolve_auth.in_port("provider"),
-        )
-        .expect("prepare_llm.provider -> resolve_auth.provider");
+        .expect("prepare_prompt.system_prompt -> llm.system_prompt");
     builder
         .add_edge(
             cloud_credential.out("credential"),
-            llm_triplet.execute.in_port("res:credential"),
+            llm_triplet.in_port("res:credential"),
         )
-        .expect("cloud_credential -> execute_llm.res:credential");
+        .expect("cloud_credential -> llm.res:credential");
 
     // Response parsing
     builder
         .add_edge(
-            llm_triplet.parse.out("answer"),
+            llm_triplet.out("answer"),
             parse_response.in_port("answer"),
         )
-        .expect("parse_llm.answer -> parse_response.answer");
+        .expect("llm.answer -> parse_response.answer");
     // criteria is an entrypoint, flows to both prepare_prompt and parse_response
 
     builder.build()
@@ -540,30 +519,7 @@ pub fn build_inline_review_graph_with_config(
         ))
         .expect("prepare_prompt node");
 
-    // Node 2: PrepareSimpleRequest
-    let prepare_llm = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_llm",
-                vec![
-                    port("content", "String"),
-                    port("question", "String"),
-                    port("provider", "String"),
-                    port("model", "String"),
-                    optional("system_prompt", "OptionalString"),
-                ],
-                vec![
-                    port("request", "TransportRequest"),
-                    port("provider", "String"),
-                    port("skip", "Bool"),
-                ],
-                ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-            ),
-            &prepare_prompt,
-        )
-        .expect("prepare_llm node");
-
-    // Node 3: Resolve auth requirements (pure)
+    // Resolve auth requirements (pure)
     let resolve_auth = builder
         .add_node_after(
             Node::opaque(
@@ -578,27 +534,36 @@ pub fn build_inline_review_graph_with_config(
                 ],
                 ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
             ),
-            &prepare_llm,
+            &prepare_prompt,
         )
         .expect("resolve_auth node");
 
-    // Node 4: Cloud credential acquisition (resolves provider credentials)
+    // Cloud credential acquisition (resolves provider credentials)
     let cloud_credential =
         add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
     let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
 
-    // Nodes 5-6: Execute LLM + ParseSimpleResponse
-    let llm_triplet = add_transport_execute_parse_named_with_passthrough(
+    // LLM triplet SubDag: prepare_llm → execute_llm → parse_llm
+    let llm_triplet = add_transport_triplet_named_with_passthrough(
         &mut builder,
-        &prepare_llm,
+        "llm",
+        "prepare_llm",
         "execute_llm",
         "parse_llm",
-        vec![port("provider", "String")],
+        vec![
+            port("content", "String"),
+            port("question", "String"),
+            port("provider", "String"),
+            port("model", "String"),
+            optional("system_prompt", "OptionalString"),
+        ],
         vec![
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
+        vec![port("provider", "String")],
         vec![port("answer", "String")],
+        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
@@ -607,11 +572,11 @@ pub fn build_inline_review_graph_with_config(
     builder
         .add_edge(
             scope_preflight.out("scope_verified"),
-            llm_triplet.execute.in_port("scope_verified"),
+            llm_triplet.in_port("scope_verified"),
         )
         .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
 
-    // Node 7: ParseReviewResponse
+    // ParseReviewResponse
     let parse_response = builder
         .add_node_after(
             Node::opaque(
@@ -620,7 +585,7 @@ pub fn build_inline_review_graph_with_config(
                 vec![port("output", "Json"), port("errors", "Json")],
                 ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
             ),
-            &llm_triplet.parse,
+            &llm_triplet,
         )
         .expect("parse_response node");
 
@@ -628,33 +593,27 @@ pub fn build_inline_review_graph_with_config(
     builder
         .add_edge(
             prepare_prompt.out("question"),
-            prepare_llm.in_port("question"),
+            llm_triplet.in_port("question"),
         )
-        .expect("prepare_prompt.question -> prepare_llm.question");
+        .expect("prepare_prompt.question -> llm.question");
     builder
         .add_edge(
             prepare_prompt.out("system_prompt"),
-            prepare_llm.in_port("system_prompt"),
+            llm_triplet.in_port("system_prompt"),
         )
-        .expect("prepare_prompt.system_prompt -> prepare_llm.system_prompt");
-    builder
-        .add_edge(
-            prepare_llm.out("provider"),
-            resolve_auth.in_port("provider"),
-        )
-        .expect("prepare_llm.provider -> resolve_auth.provider");
+        .expect("prepare_prompt.system_prompt -> llm.system_prompt");
     builder
         .add_edge(
             cloud_credential.out("credential"),
-            llm_triplet.execute.in_port("res:credential"),
+            llm_triplet.in_port("res:credential"),
         )
-        .expect("cloud_credential -> execute_llm.res:credential");
+        .expect("cloud_credential -> llm.res:credential");
     builder
         .add_edge(
-            llm_triplet.parse.out("answer"),
+            llm_triplet.out("answer"),
             parse_response.in_port("answer"),
         )
-        .expect("parse_llm.answer -> parse_response.answer");
+        .expect("llm.answer -> parse_response.answer");
 
     builder.build()
 }
@@ -756,6 +715,7 @@ pub fn build_diff_review_graph_with_cloud_config(
     // the optional port allows CLI override.
     let diff_triplet = add_transport_triplet_named_with_passthrough(
         &mut builder,
+        "diff",
         "prepare_diff",
         "execute_diff",
         "parse_diff",
@@ -772,7 +732,7 @@ pub fn build_diff_review_graph_with_cloud_config(
         }),
         ReviewGraphOp::Git(GitOps::ParseDiff),
         ReviewGraphOp::Transport(TransportOps::Execute),
-        None,
+        Some(&fs_env),
     )
     .expect("diff triplet");
 
@@ -788,7 +748,7 @@ pub fn build_diff_review_graph_with_cloud_config(
                 vec![port("artifact", "String")],
                 ReviewGraphOp::Review(ReviewOps::FormatDiffArtifact),
             ),
-            &diff_triplet.parse,
+            &diff_triplet,
         )
         .expect("format_artifact node");
 
@@ -816,28 +776,6 @@ pub fn build_diff_review_graph_with_cloud_config(
     // LLM Interaction
     // ========================================================================
 
-    let prepare_llm = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_llm",
-                vec![
-                    port("content", "String"),
-                    port("question", "String"),
-                    port("provider", "String"),
-                    port("model", "String"),
-                    optional("system_prompt", "OptionalString"),
-                ],
-                vec![
-                    port("request", "TransportRequest"),
-                    port("provider", "String"),
-                    port("skip", "Bool"),
-                ],
-                ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-            ),
-            &prepare_prompt,
-        )
-        .expect("prepare_llm node");
-
     let resolve_auth = builder
         .add_node_after(
             Node::opaque(
@@ -852,7 +790,7 @@ pub fn build_diff_review_graph_with_cloud_config(
                 ],
                 ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
             ),
-            &prepare_llm,
+            &prepare_prompt,
         )
         .expect("resolve_auth node");
 
@@ -860,17 +798,27 @@ pub fn build_diff_review_graph_with_cloud_config(
         add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
     let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
 
-    let llm_triplet = add_transport_execute_parse_named_with_passthrough(
+    // LLM triplet SubDag: prepare_llm → execute_llm → parse_llm
+    let llm_triplet = add_transport_triplet_named_with_passthrough(
         &mut builder,
-        &prepare_llm,
+        "llm",
+        "prepare_llm",
         "execute_llm",
         "parse_llm",
-        vec![port("provider", "String")],
+        vec![
+            port("content", "String"),
+            port("question", "String"),
+            port("provider", "String"),
+            port("model", "String"),
+            optional("system_prompt", "OptionalString"),
+        ],
         vec![
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
+        vec![port("provider", "String")],
         vec![port("answer", "String")],
+        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
@@ -879,7 +827,7 @@ pub fn build_diff_review_graph_with_cloud_config(
     builder
         .add_edge(
             scope_preflight.out("scope_verified"),
-            llm_triplet.execute.in_port("scope_verified"),
+            llm_triplet.in_port("scope_verified"),
         )
         .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
 
@@ -895,7 +843,7 @@ pub fn build_diff_review_graph_with_cloud_config(
                 vec![port("output", "Json"), port("errors", "Json")],
                 ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
             ),
-            &llm_triplet.parse,
+            &llm_triplet,
         )
         .expect("parse_response node");
 
@@ -905,11 +853,11 @@ pub fn build_diff_review_graph_with_cloud_config(
 
     // Config → downstream consumers
     builder
-        .add_edge(config_node.out("provider"), prepare_llm.in_port("provider"))
-        .expect("config.provider -> prepare_llm.provider");
+        .add_edge(config_node.out("provider"), llm_triplet.in_port("provider"))
+        .expect("config.provider -> llm.provider");
     builder
-        .add_edge(config_node.out("model"), prepare_llm.in_port("model"))
-        .expect("config.model -> prepare_llm.model");
+        .add_edge(config_node.out("model"), llm_triplet.in_port("model"))
+        .expect("config.model -> llm.model");
     builder
         .add_edge(
             config_node.out("criteria"),
@@ -932,16 +880,16 @@ pub fn build_diff_review_graph_with_cloud_config(
     // Diff → artifact formatting
     builder
         .add_edge(
-            diff_triplet.parse.out("diff_files"),
+            diff_triplet.out("diff_files"),
             format_artifact.in_port("diff_files"),
         )
-        .expect("parse_diff.diff_files -> format_artifact.diff_files");
+        .expect("diff.diff_files -> format_artifact.diff_files");
     builder
         .add_edge(
             fs_env.out(FsEnv::WRITE_PORT),
-            diff_triplet.execute.in_port("res:file"),
+            diff_triplet.in_port("res:file"),
         )
-        .expect("fs_env -> execute_diff.res:file");
+        .expect("fs_env -> diff.res:file");
 
     // Artifact → review prompt + LLM content
     builder
@@ -953,37 +901,37 @@ pub fn build_diff_review_graph_with_cloud_config(
     builder
         .add_edge(
             format_artifact.out("artifact"),
-            prepare_llm.in_port("content"),
+            llm_triplet.in_port("content"),
         )
-        .expect("format_artifact.artifact -> prepare_llm.content");
+        .expect("format_artifact.artifact -> llm.content");
 
     // LLM flow
     builder
         .add_edge(
             prepare_prompt.out("question"),
-            prepare_llm.in_port("question"),
+            llm_triplet.in_port("question"),
         )
-        .expect("prepare_prompt.question -> prepare_llm.question");
+        .expect("prepare_prompt.question -> llm.question");
     builder
         .add_edge(
             prepare_prompt.out("system_prompt"),
-            prepare_llm.in_port("system_prompt"),
+            llm_triplet.in_port("system_prompt"),
         )
-        .expect("prepare_prompt.system_prompt -> prepare_llm.system_prompt");
+        .expect("prepare_prompt.system_prompt -> llm.system_prompt");
     builder
         .add_edge(
             cloud_credential.out("credential"),
-            llm_triplet.execute.in_port("res:credential"),
+            llm_triplet.in_port("res:credential"),
         )
-        .expect("cloud_credential -> execute_llm.res:credential");
+        .expect("cloud_credential -> llm.res:credential");
 
     // Response parsing
     builder
         .add_edge(
-            llm_triplet.parse.out("answer"),
+            llm_triplet.out("answer"),
             parse_response.in_port("answer"),
         )
-        .expect("parse_llm.answer -> parse_response.answer");
+        .expect("llm.answer -> parse_response.answer");
 
     builder.build()
 }
@@ -1079,28 +1027,6 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         )
         .expect("prepare_prompt node");
 
-    let prepare_llm = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_llm",
-                vec![
-                    port("content", "String"),
-                    port("question", "String"),
-                    port("provider", "String"),
-                    port("model", "String"),
-                    optional("system_prompt", "OptionalString"),
-                ],
-                vec![
-                    port("request", "TransportRequest"),
-                    port("provider", "String"),
-                    port("skip", "Bool"),
-                ],
-                ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-            ),
-            &prepare_prompt,
-        )
-        .expect("prepare_llm node");
-
     let resolve_auth = builder
         .add_node_after(
             Node::opaque(
@@ -1115,7 +1041,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
                 ],
                 ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
             ),
-            &prepare_llm,
+            &prepare_prompt,
         )
         .expect("resolve_auth node");
 
@@ -1123,17 +1049,27 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
     let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
 
-    let llm_triplet = add_transport_execute_parse_named_with_passthrough(
+    // LLM triplet SubDag: prepare_llm → execute_llm → parse_llm
+    let llm_triplet = add_transport_triplet_named_with_passthrough(
         &mut builder,
-        &prepare_llm,
+        "llm",
+        "prepare_llm",
         "execute_llm",
         "parse_llm",
-        vec![port("provider", "String")],
+        vec![
+            port("content", "String"),
+            port("question", "String"),
+            port("provider", "String"),
+            port("model", "String"),
+            optional("system_prompt", "OptionalString"),
+        ],
         vec![
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
+        vec![port("provider", "String")],
         vec![port("answer", "String")],
+        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
@@ -1142,7 +1078,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
     builder
         .add_edge(
             scope_preflight.out("scope_verified"),
-            llm_triplet.execute.in_port("scope_verified"),
+            llm_triplet.in_port("scope_verified"),
         )
         .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
 
@@ -1154,7 +1090,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
                 vec![port("output", "Json"), port("errors", "Json")],
                 ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
             ),
-            &llm_triplet.parse,
+            &llm_triplet,
         )
         .expect("parse_response node");
 
@@ -1180,11 +1116,11 @@ pub fn build_multi_source_review_graph_with_cloud_config(
 
     // Config → downstream consumers
     builder
-        .add_edge(config_node.out("provider"), prepare_llm.in_port("provider"))
-        .expect("config.provider -> prepare_llm.provider");
+        .add_edge(config_node.out("provider"), llm_triplet.in_port("provider"))
+        .expect("config.provider -> llm.provider");
     builder
-        .add_edge(config_node.out("model"), prepare_llm.in_port("model"))
-        .expect("config.model -> prepare_llm.model");
+        .add_edge(config_node.out("model"), llm_triplet.in_port("model"))
+        .expect("config.model -> llm.model");
     builder
         .add_edge(
             config_node.out("criteria"),
@@ -1208,27 +1144,27 @@ pub fn build_multi_source_review_graph_with_cloud_config(
     builder
         .add_edge(
             prepare_prompt.out("question"),
-            prepare_llm.in_port("question"),
+            llm_triplet.in_port("question"),
         )
-        .expect("prepare_prompt.question -> prepare_llm.question");
+        .expect("prepare_prompt.question -> llm.question");
     builder
         .add_edge(
             prepare_prompt.out("system_prompt"),
-            prepare_llm.in_port("system_prompt"),
+            llm_triplet.in_port("system_prompt"),
         )
-        .expect("prepare_prompt.system_prompt -> prepare_llm.system_prompt");
+        .expect("prepare_prompt.system_prompt -> llm.system_prompt");
     builder
         .add_edge(
             cloud_credential.out("credential"),
-            llm_triplet.execute.in_port("res:credential"),
+            llm_triplet.in_port("res:credential"),
         )
-        .expect("cloud_credential -> execute_llm.res:credential");
+        .expect("cloud_credential -> llm.res:credential");
     builder
         .add_edge(
-            llm_triplet.parse.out("answer"),
+            llm_triplet.out("answer"),
             parse_response.in_port("answer"),
         )
-        .expect("parse_llm.answer -> parse_response.answer");
+        .expect("llm.answer -> parse_response.answer");
 
     // Review output → merge (list port collects fan-in automatically)
     builder
@@ -1282,10 +1218,10 @@ mod tests {
             "prepare_prompt should have entrypoints"
         );
 
-        // prepare_llm has provider/model as entrypoints
+        // llm SubDag has provider/model/content as entrypoints
         assert!(
-            entrypoints.is_entrypoint_node(&"prepare_llm".into()),
-            "prepare_llm should have entrypoints"
+            entrypoints.is_entrypoint_node(&"llm".into()),
+            "llm should have entrypoints"
         );
     }
 
@@ -1311,10 +1247,10 @@ mod tests {
             "prepare_prompt should have entrypoints"
         );
 
-        // prepare_llm has provider/model/content as entrypoints
+        // llm SubDag has provider/model/content as entrypoints
         assert!(
-            entrypoints.is_entrypoint_node(&"prepare_llm".into()),
-            "prepare_llm should have entrypoints"
+            entrypoints.is_entrypoint_node(&"llm".into()),
+            "llm should have entrypoints"
         );
     }
 
@@ -1353,10 +1289,10 @@ mod tests {
             "parse_response should be a boundary"
         );
 
-        // stats from parse_diff is also an unconnected output
+        // stats from diff SubDag is also an unconnected output
         assert!(
-            boundaries.is_boundary_node(&"parse_diff".into()),
-            "parse_diff.stats should be a boundary"
+            boundaries.is_boundary_node(&"diff".into()),
+            "diff.stats should be a boundary"
         );
     }
 
@@ -1365,16 +1301,16 @@ mod tests {
         let dag = build_diff_review_graph();
         let entrypoints = detect_entrypoints(&dag);
 
-        // prepare_diff has base_ref (optional) and repo_path (required) entrypoints
+        // diff SubDag has base_ref (optional) and repo_path (required) entrypoints
         assert!(
-            entrypoints.is_entrypoint_node(&"prepare_diff".into()),
-            "prepare_diff should have entrypoints"
+            entrypoints.is_entrypoint_node(&"diff".into()),
+            "diff should have entrypoints"
         );
 
         // provider, model are NOT entrypoints — config node provides them
         assert!(
-            !entrypoints.is_entrypoint_node(&"prepare_llm".into()),
-            "prepare_llm should NOT have entrypoints (config provides provider/model)"
+            !entrypoints.is_entrypoint_node(&"llm".into()),
+            "llm should NOT have entrypoints (config provides provider/model)"
         );
 
         // prepare_prompt.context is optional and unconnected → entrypoint.
@@ -1390,18 +1326,15 @@ mod tests {
     }
 
     #[test]
-    fn test_diff_review_graph_has_two_transport_boundaries() {
+    fn test_diff_review_graph_has_two_transport_subdags() {
         let dag = build_diff_review_graph();
-        for node_id in ["execute_diff", "execute_llm"] {
+        for node_id in ["diff", "llm"] {
             let node = dag
                 .get_node(&node_id.into())
-                .unwrap_or_else(|| panic!("missing transport node: {}", node_id));
+                .unwrap_or_else(|| panic!("missing subdag node: {}", node_id));
             assert!(
-                matches!(
-                    node.body,
-                    gunbc_ir::NodeBody::Opaque(ReviewGraphOp::Transport(_))
-                ),
-                "{} should be a transport node",
+                node.is_subdag(),
+                "{} should be a subdag node",
                 node_id
             );
         }
@@ -1433,10 +1366,10 @@ mod tests {
             "prepare_prompt should have entrypoints (artifact)"
         );
 
-        // provider/model/content on prepare_llm — only content is an entrypoint
+        // provider/model/content on llm SubDag — only content is an entrypoint
         assert!(
-            entrypoints.is_entrypoint_node(&"prepare_llm".into()),
-            "prepare_llm should have content as entrypoint"
+            entrypoints.is_entrypoint_node(&"llm".into()),
+            "llm should have content as entrypoint"
         );
     }
 }

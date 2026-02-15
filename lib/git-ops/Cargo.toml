@@ -8,6 +8,7 @@ description = "Git operations library for gunbc DAGs"
 [dependencies]
 gunbc-ir = { path = "../../core/ir" }
 gunbc-exec = { path = "../../core/exec" }
+gunbc-lib-transport = { path = "../transport" }
 
 [dev-dependencies]
 gunbc-test = { path = "../../core/test" }
