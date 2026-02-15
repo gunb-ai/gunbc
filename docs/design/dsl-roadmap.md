@@ -122,11 +122,22 @@ For each discrete workflow (gist, ci, review, auth, makegen, clippy, deps, ...):
 
 Each phase is anchored on a canonical workflow from the [scenario inventory](./dsl-design.md#j2-scenario-inventory). Each phase proves a language slice by compiling a real workflow end-to-end.
 
+### Development philosophy: visualize before you implement
+
+> Before writing code for any phase, you should be able to **see** the DAG shape you're targeting, the ProgressManifest it produces, and the modeling changes implied. Visualization is the feedback loop that lets you constantly reassess whether the IR, progress model, and rendering are complementary — before decisions are baked in.
+
+This means:
+1. **Visualization tooling lands in Phase 0** (before any workflow is compiled)
+2. **Every phase starts by writing the `.dag` file and visualizing it** — confirm the DAG shape, the manifest, the test obligations, and the transport triplets *before* implementing the compiler pass that produces them
+3. **Modeling changes are documented before code** — each phase has a "modeling preview" step: write the `.dag`, run `dag viz` / `dag expand` / `dag manifest`, compare to the existing builder output, identify the gaps, then implement
+
+This inverts the usual "implement then visualize" flow. You see what you're building before you build it.
+
 ---
 
-### Phase 0: Compiler Scaffolding
+### Phase 0: Compiler Scaffolding + Visualization Tooling
 
-> **Goal**: Make the DSL a first-class producer of *gunbc's existing IR* (`Dag`/`Node`/`Port`/`Edge`), not a parallel system.
+> **Goal**: Make the DSL a first-class producer of *gunbc's existing IR* (`Dag`/`Node`/`Port`/`Edge`), and give yourself the tools to see what the compiler produces at every step.
 
 | Deliverable | Description |
 |---|---|
@@ -136,6 +147,60 @@ Each phase is anchored on a canonical workflow from the [scenario inventory](./d
 | Parity harness | Framework to prove compiled `.dag` output is equivalent to existing hand-wired builders (see Part 2, Workstream A) |
 | IR serialization + snapshot tests | Stable IR serialization format; snapshot tests detect accidental semantic changes |
 | DSL versioning | `dsl_version` in project manifest so semantics can evolve safely |
+| **`dag viz` CLI** | **ASCII DAG visualization from compiled IR (static, pre-execution). Shows nodes, edges, ports, SubDag boundaries, waves.** |
+| **`dag expand` CLI** | **Show lowered GraphIR: every Node, Edge, Port after pattern expansion and lowering.** |
+| **`dag manifest` CLI** | **Show derived ProgressManifest: topology, SubDag boundaries, parallel groups, scatter points, labels.** |
+| **`dag modules` CLI** | **Show the discovered module graph: all `.dag` files, their imports, dependency order.** |
+
+**Visualization examples (what Phase 0 should produce)**:
+
+`dag viz tools/makegen.dag`:
+```
+  fs_env ──────┐
+               ├──→ render_makefile ──→ prepare_read ──→ execute_read
+  load_registry┘                                              │
+                                                              ▼
+                                          prepare_write ←── compare
+                                              │
+                                              ▼
+                                         execute_write
+```
+
+`dag manifest tools/makegen.dag`:
+```
+ProgressManifest:
+  total_nodes: 8
+  waves:
+    [0] fs_env, load_registry
+    [1] render_makefile, prepare_read
+    [2] execute_read
+    [3] compare, prepare_write
+    [4] execute_write
+  subdag_boundaries: (none)
+  parallel_groups:
+    [0] {fs_env, load_registry}
+  scatter_points: (none)
+  interactive_nodes: (none)
+```
+
+`dag expand tools/makegen.dag`:
+```
+Node  fs_env                    Opaque(FsEnv)           ports: [] → [FilesystemHandle]
+Node  load_registry             Opaque(LoadRegistry)    ports: [] → [ToolRegistry]
+Node  render_makefile           Fn(render_makefile)     ports: [ToolRegistry] → [String]
+Node  prepare_read_makegen      Opaque(PrepareFileRead) ports: [FilesystemHandle] → [ReadSpec]
+Node  execute_read_makegen      Transport(Execute)      ports: [ReadSpec] → [FileContent]
+Node  compare_makegen_content   Fn(compare_content)     ports: [String, FileContent] → [Bool]
+Node  prepare_write_makegen     Opaque(PrepareFileWrite) ports: [String, FilesystemHandle] → [WriteSpec]
+Node  execute_makegen_transport Transport(Execute)      ports: [WriteSpec] → [Written]
+
+Edge  fs_env.FilesystemHandle       → prepare_read_makegen.FilesystemHandle
+Edge  fs_env.FilesystemHandle       → prepare_write_makegen.FilesystemHandle
+Edge  load_registry.ToolRegistry    → render_makefile.ToolRegistry
+Edge  render_makefile.String        → compare_makegen_content.String
+Edge  render_makefile.String        → prepare_write_makegen.String
+...
+```
 
 **Acceptance Gates**
 
@@ -143,8 +208,46 @@ Each phase is anchored on a canonical workflow from the [scenario inventory](./d
 - [ ] Can compile one `.dag` file into a valid gunbc IR structure (even with stubby node bodies)
 - [ ] Parity harness can canonicalize and diff two IR graphs
 - [ ] IR snapshot test passes for at least one compiled `.dag` file
+- [ ] **`dag viz` produces ASCII graph for at least one `.dag` file**
+- [ ] **`dag expand` produces full node/edge/port listing matching the existing builder IR**
+- [ ] **`dag manifest` produces ProgressManifest matching expected topology**
+- [ ] **`dag modules` shows the discovered module graph**
 
-**Why first**: gunbc already has a strong IR and strong enforcement patterns ("everything is a DAG," I/O only at boundaries). The DSL should be a *front-end* that closes modeling gaps, not a replacement runtime.
+**Why first**: visualization is not a nice-to-have that ships later. It's the development tool that makes every subsequent phase implementable. If you can't see the DAG, the manifest, and the lowered IR, you're implementing blind. The design doc's Appendix M explicitly says "essential for trust and debugging from day one."
+
+---
+
+### Phase 0.5: Modeling Preview (before Phase 1 code)
+
+> **Goal**: Write `.dag` files for the first few workflows, visualize them against the existing builders, and document the modeling changes *before* implementing the compiler passes.
+
+For each workflow being targeted in Phases 1-2:
+
+1. **Write the `.dag` file** (even if the compiler can't fully process it yet — the parser should handle the syntax)
+2. **Run `dag viz`** on the existing builder IR (from the parity harness) to see the current shape
+3. **Sketch `dag viz`** for the `.dag` version to see the target shape
+4. **Compare the two** and document:
+   - Nodes that map 1:1
+   - Nodes the compiler will insert (resource acquisition, pattern expansion, transport triplets)
+   - Modeling gaps (semantics that exist in the builder but not in the `.dag`, or vice versa)
+   - Progress model differences (SubDag boundaries, parallel groups, scatter points)
+5. **Write a one-page "modeling preview"** per workflow: current shape → target shape → gaps → plan
+
+| Workflow | `.dag` file to write | Visualization comparison |
+|---|---|---|
+| makegen | `tools/makegen.dag` | 8 nodes, 10 edges — simplest; validates `content_upsert` pattern expansion |
+| clippy | `tools/clippy.dag` | `upsert` pattern; validates guard/skip nodes |
+| credential | `cloud/gcp/credential.dag` | 8 transport triplets; validates service → triplet expansion |
+| gist | `tools/gist.dag` | Loop nodes, SubDag composition; validates nested manifest |
+
+**Deliverables**:
+- [ ] `.dag` files written for at least makegen + one other workflow
+- [ ] Side-by-side `dag viz` comparison (existing builder vs target `.dag` shape)
+- [ ] Modeling preview document per workflow (gaps, insertions, manifest differences)
+- [ ] `dag show-triplets` works (shows service call → prepare/execute/parse expansion)
+- [ ] `dag obligations` works (shows 4-bucket test obligations derived from DAG)
+
+**Why this step**: you surface modeling gaps *before* you've committed to an implementation. If the `.dag` shape doesn't match the builder shape, or the manifest is missing information the renderer needs, you catch it here — not after weeks of compiler work.
 
 ---
 
@@ -270,14 +373,471 @@ Each phase is anchored on a canonical workflow from the [scenario inventory](./d
 ### Phase Summary
 
 ```
-Phase   Proving Workflow          Language Slice                        Key Risk
+Phase   Proving Workflow          Deliverables                          Key Risk
 ─────   ─────────────────         ─────────────────────────────         ─────────────────────────
-  0     (none — scaffolding)      Discover + Parse + Module Graph       IR integration boundary
+  0     (scaffolding)             Discover + Parse + Module Graph       IR integration boundary
+                                  + dag viz/expand/manifest/modules
+  0.5   (modeling preview)        .dag files + side-by-side viz         Gaps found too late
+                                  + modeling preview docs
   1     makegen (S1)              types, journey, pattern, resource     Pattern expansion fidelity
+                                  + plain/inline renderers
   2     acquire_gcp_secret (S2)   service, match/when, resource LC      Generic IR chokepoint
   3     gist_snapshot (S4)        for, composition, scatter progress    TUI renderer integration
+                                  + nested SubDag rendering
   4     CI pipeline (S5)          pipeline, stage, parallel, aggregate  Bootstrap constraint
+                                  + JSONL renderer + Go backend
 ```
+
+---
+
+## Backend Architecture and Rendering Model
+
+> Define all backends and the rendering structure **upfront** — not as an afterthought. Rendering is a first-class concern because it's how users understand what the system is doing. The nested composition model from the-gunbai must be preserved and enhanced.
+
+### Two kinds of rendering
+
+The system has two completely different rendering concerns that share the word "rendering" but are architecturally separate:
+
+| Concern | What it is | Who does it | Where it lives |
+|---|---|---|---|
+| **Content rendering** | Producing artifacts: Makefiles, YAML, markdown, CLI output | Functors (`fn`) — pure transforms in the DAG | The `.dag` file, compiled by `CodegenBackend` |
+| **Progress rendering** | Showing DAG execution: sections, spinners, status, error boxes | The framework — manifest-driven, per-mode renderers | The engine runtime, driven by `ProgressManifest` |
+
+Content rendering is "just more functors" — no special system needed (this was Appendix G's insight: rendering doesn't need 13 systems, it needs typed pure functions). Progress rendering IS special — it's the framework's job, reading a compiler-derived manifest.
+
+### CodegenBackend interface (updated for functor protocol)
+
+Each codegen backend (Rust, Go, Python, TypeScript) implements one trait:
+
+```
+trait CodegenBackend {
+  // Types
+  fn emit_type(ty: &TypeDef) -> String                    // record, enum, alias
+  fn emit_fn(f: &FnDef) -> String                         // pure functor → target language function
+
+  // DAG wiring
+  fn emit_transport(spec: &TransportSpec) -> String        // HTTP client, shell exec, file I/O
+  fn emit_journey(j: &JourneyDef) -> String                // DAG execution orchestrator
+  fn emit_pipeline(p: &PipelineDef) -> String              // staged multi-journey orchestrator
+
+  // Testing
+  fn emit_test(obligation: &TestObligation) -> String      // 4-bucket testgen
+  fn emit_mock_spec(spec: &MockSpec) -> String             // from service declarations
+
+  // Entrypoints
+  fn emit_cli(entrypoints: &[Port]) -> String              // arg parsing from DAG entry ports
+  fn emit_makefile_target(module: &Module) -> String        // per-tool make target
+
+  // Progress (all renderers, manifest-driven)
+  fn emit_progress_manifest(m: &ProgressManifest) -> String // static manifest for renderers
+  fn emit_capture_buffer() -> String                        // per-node output capture
+  fn emit_renderer(mode: RenderMode) -> String              // plain/inline/TUI/JSONL
+}
+```
+
+**Key change from design doc's §9.2**: `emit_node_stub` is gone — replaced by `emit_fn` which emits a complete, compilable function (not a stub), because functor bodies are in the DSL.
+
+### ProgressManifest: the shared contract
+
+All renderers read the same manifest. The manifest describes **what exists** (topology), not **how to display it** (rendering decisions). This is the key structural contract:
+
+```
+type ProgressManifest {
+  // Topology
+  total_nodes: Int
+  topology: List<TopologyNode>
+
+  // Labels (from DSL identifiers)
+  labels: Map<NodeId, String>
+
+  // Nested composition (the-gunbai's key capability)
+  subdag_boundaries: List<SubDagBoundary>    // journey/pattern calls → sections
+  parallel_groups: List<ParallelGroup>       // siblings at same depth → grouped counters
+  scatter_points: List<NodeId>               // loop expansions → scatter groups [n/N]
+
+  // Capture modes
+  interactive_nodes: List<NodeId>            // @interactive → passthrough
+  capture_modes: Map<NodeId, CaptureMode>    // Captured | Passthrough | Streamed
+
+  // Stage groups (pipeline only)
+  stage_groups: List<StageGroup>             // pipeline stages → collapsible sections
+
+  // Resource context
+  resources: Map<NodeId, List<ResourceUsage>>
+}
+
+type SubDagBoundary {
+  node_id: NodeId
+  label: String                              // "Authentication", "Fetching Secrets"
+  inner_nodes: List<NodeId>                  // nodes inside — for expansion/collapse
+  parent: NodeId?                            // for nesting: SubDag inside SubDag
+}
+
+type ParallelGroup {
+  nodes: List<NodeId>
+  depth: Int
+  parent_subdag: NodeId?                     // which section this group belongs to
+}
+```
+
+### Nested composition model (preserving the-gunbai)
+
+This is the core rendering capability that gunbc lost and the DSL must restore. SubDags nest arbitrarily, and renderers must handle this:
+
+```
+journey login {
+  auth = authenticate()          // SubDag → "› Authentication" section
+  secrets = fetch_secrets(...)   // SubDag → "› Fetching Secrets" section
+}
+
+journey authenticate {
+  cache = clear_cache()          // node inside "Authentication"
+  env = detect_env()
+  tokens = check_tokens()
+  cred = credential_chain(...)   // nested SubDag inside "Authentication"!
+}
+```
+
+The manifest captures the nesting via `SubDagBoundary.parent`:
+
+```
+SubDagBoundary { label: "Authentication", parent: None }
+SubDagBoundary { label: "credential_chain", parent: Some("Authentication") }
+SubDagBoundary { label: "Fetching Secrets", parent: None }
+```
+
+Each renderer decides how to handle nesting:
+
+| Renderer | How it handles nested SubDags |
+|---|---|
+| **plain** | Indented sections: `› Authentication` then `  › credential_chain` (deeper indent) |
+| **inline** | Collapsed chips: `[✓ auth [✓ cred]] [◐ secrets]` — nested brackets |
+| **TUI** | Expandable boxes: click to drill into a SubDag, see its inner nodes |
+| **JSONL** | Flat events with `parent` field for consumers to reconstruct hierarchy |
+
+### Four rendering backends
+
+| Backend | Input | Output | When | Composition |
+|---|---|---|---|---|
+| **`plain`** | ProgressManifest + node state | Sections + status lines (gunb.ai style) | CI, non-TTY, piped | SubDags → `›` section headers; parallel → no special treatment; loops → `[n/N]` counter |
+| **`inline`** | ProgressManifest + node state | Compact progress bar + chips (the-gunbai style) | Default TTY | SubDags → chips `[✓ auth]`; parallel → grouped in chip; loops → scatter count in chip |
+| **`TUI`** | ProgressManifest + node state | Full DAG with boxes, edge pulses, wave layout (the-gunbai style) | Explicit opt-in | SubDags → expandable bordered boxes; parallel → same wave column; loops → expand/collapse |
+| **`JSONL`** | ProgressManifest + node state | Structured event stream | Machine consumption | Flat events with `subdag_id` + `parent` fields; consumers reconstruct hierarchy |
+
+### Rendering lifecycle (runtime protocol)
+
+The engine drives renderers through a minimal event protocol:
+
+```
+type ProgressEvent
+  = NodeStarted { id: NodeId, timestamp: Instant }
+  | NodeSucceeded { id: NodeId, duration: Duration }
+  | NodeFailed { id: NodeId, duration: Duration, captured_stderr: String }
+  | NodeSkipped { id: NodeId, reason: SkipReason }
+  | InteractivePause { id: NodeId }           // renderer clears, yields terminal
+  | InteractiveResume { id: NodeId }          // renderer resumes display
+  | ScatterProgress { id: NodeId, completed: Int, total: Int }  // loop iteration progress
+```
+
+Renderers implement:
+
+```
+trait ProgressRenderer {
+  fn init(manifest: &ProgressManifest)        // receive static topology at start
+  fn handle(event: ProgressEvent)             // update display per event
+  fn finalize(summary: &RunSummary)           // show completion / error summary
+}
+```
+
+The manifest is static (from compiler). Events are dynamic (from engine). Renderers combine both.
+
+### Visual design specification (exact values, from gunb.ai → gunbc → DSL)
+
+These are already proven and should be locked:
+
+| Element | Value | Source |
+|---|---|---|
+| Section marker | `›` (U+203A) | gunb.ai |
+| Spinner | Braille: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, 80ms tick | gunb.ai |
+| Colors | Success=`\033[38;5;34m`, Active=`\033[38;5;208m`, Error=`\033[38;5;196m`, Info=`\033[38;5;39m`, Dim=`\033[2m`, Calm=`\033[38;5;75m` | gunb.ai → gunbc |
+| Status icons | `✓` success, `◐` running, `○` pending, `✖` failed, `◌` skipped | gunb.ai → gunbc |
+| Error boxes | `╭─ Error: node-name ─╮` with captured stderr | gunb.ai |
+| Preamble boxes | `╭─ tool-name ──╮` with description + args | gunb.ai |
+| Completion animals | Random emoji on success | gunb.ai |
+| Node line format | `   {icon} {name} ({duration})` — 3-space indent | gunb.ai |
+| Duration format | `1ms`, `50ms`, `0.5s`, `3.4s`, `1m30s` | gunb.ai |
+| Box border chars | `╭ ╮ ╰ ╯ │ ─`, width 60, min 40 | gunb.ai → gunbc |
+
+### Terminal crate (harvestable from gunbc)
+
+A single `terminal` crate containing ~2,271 lines harvested directly from gunbc:
+
+| Component | Lines | Source | Status |
+|---|---|---|---|
+| `symbols.rs` (SemanticColor, SymbolId, tier resolution) | ~750 | gunbc | 95% standalone |
+| `render_ir.rs` (frame rendering primitives) | ~580 | gunbc | Remove IR trait stubs |
+| `box_draw.rs` (bordered boxes for errors/preamble) | ~427 | gunbc | Standalone |
+| `frame_write.rs` (terminal write operations) | ~314 | gunbc | Standalone |
+| `terminal.rs` (detection, viewport, capabilities) | ~200 | gunbc | Standalone |
+| TUI module (ratatui + crossterm: edge pulses, DAG layout) | ~1,500 | the-gunbai | Optional `tui` feature flag |
+
+### What the compiler emits per backend
+
+For each `.dag` module, the `Emit` phase produces:
+
+```
+tools/makegen.dag
+  │
+  ├── types/          Type definitions (records, enums)
+  ├── fn/             Pure functors (render_makefile, etc.)
+  ├── transport/      Transport wiring (HTTP, shell, file)
+  ├── journey/        DAG orchestrator (topo-scheduled execution)
+  ├── cli/            CLI entrypoint (arg parsing from journey inputs)
+  ├── test/           Test harness (4-bucket obligations)
+  ├── mock/           MockSpec (from service declarations)
+  ├── manifest/       ProgressManifest (static, from topology)
+  └── makefile/       Makefile target (from module metadata)
+```
+
+The progress renderers are NOT per-module — they're framework code emitted once for the whole project, reading any module's manifest.
+
+### Rendering phasing (when each capability lands)
+
+| Phase | Rendering capability | What it proves |
+|---|---|---|
+| 0 | ProgressManifest type definition; terminal crate harvested | Structural foundation |
+| 1 | `plain` renderer: sections from SubDag boundaries, status lines | gunb.ai-style output for `makegen` |
+| 1 | `inline` renderer: compact bar + chips | the-gunbai-style default for TTY |
+| 2 | `CaptureMode` on transport nodes; `@interactive` → passthrough | Auth flow terminal handling |
+| 3 | Scatter groups from loops; nested SubDag rendering; `TUI` renderer | the-gunbai's nested composition restored for `gist` |
+| 3 | Error boxes with captured stderr | gunb.ai's error display |
+| 4 | Stage groups from pipelines; `JSONL` renderer | CI-scale progress with machine-consumable output |
+
+---
+
+## Key Decision: Typed Functor Protocol for Pure Logic
+
+> The DSL includes a **constrained, typed functor protocol** for pure transforms — not a general-purpose language, not an "expression language + escape hatch," and not host-language stubs.
+
+### The model: MapReduce, applied to DAGs
+
+In MapReduce, you provide two functors (`map` and `reduce`) with specific typed signatures. The framework handles distribution, scheduling, fault tolerance. You write pure functions. The framework does everything else.
+
+The DAG language follows the same model:
+
+- The **shell** (`journey`, `pipeline`, `service` calls) defines the DAG: ordering, I/O, resources, concurrency. This is the "framework."
+- The **functors** (`fn`) are pure transforms with typed signatures. No I/O, no mutation, no side effects. This is "your code."
+- The **compiler** handles everything else: transport wiring, test generation, progress manifests, multi-target emission, CLI entrypoints.
+
+The constraint is the feature. If functors were arbitrary, the compiler couldn't reason about them — testgen breaks, multi-target emission breaks, refactoring becomes partial. By constraining functors to a small set of portable constructs, the compiler sees *everything*, which is what makes the "for free" features possible.
+
+### Options considered
+
+| Option | What the DSL covers | Verdict |
+|---|---|---|
+| **A: Structure-only** (stubs in host language) | DAG shape, types, services. Pure logic reimplemented per target language. | Rejected — "language-agnostic" promise is hollow; logic isn't portable. |
+| **B: Expression language + escape hatch** | Structure + constrained expressions. `@custom` for complex cases. | Rejected — two half-languages, cliff problem, escape hatch becomes dominant. |
+| **C: Unrestricted `fn` language** | Full computation language. Turing-complete. | Rejected — scope explosion; arbitrary functors undermine compiler guarantees. |
+| **D: Typed functor protocol** | Constrained pure functions (~12 constructs). Intentionally limited to the intersection of mainstream languages. Compiler sees all code. | **Selected.** |
+
+### Why constrained is better than arbitrary
+
+| If functors are arbitrary... | If functors are constrained... |
+|---|---|
+| Compiler can't generate tests for function bodies | Compiler generates property-based tests from type signatures + function structure |
+| Multi-target emission requires reimplementing complex logic per language | Every construct has a mechanical 1:1 translation to Rust/Go/Python/TS |
+| Dead code detection is impossible (opaque bodies) | Compiler sees all paths, all references |
+| Refactoring is partial (can't rename inside opaque bodies) | Refactoring is global across all backends |
+| People write complex, untestable, unportable logic | The constraint forces simplicity — which is what makes "for free" work |
+
+### The functor protocol: 12 constructs
+
+The `fn` body language is the **semantic intersection** of Rust, Go, Python, and TypeScript at the pure-function level. Every construct has a direct, mechanical translation to all targets.
+
+| # | Construct | Example |
+|:---:|---|---|
+| 1 | `let` bindings (immutable) | `let x = expr` |
+| 2 | String interpolation | `"{branch}-snapshot.md"` |
+| 3 | `match` (exhaustive) | `match scheme { Bearer => "Bearer {t}" }` |
+| 4 | `if / else` | `if x > 0 { a } else { b }` |
+| 5 | `for` (map sugar) | `for f in files { f.name }` |
+| 6 | Pipe `\|>` | `list \|> filter(f => f.ok) \|> count` |
+| 7 | Function calls | `join(targets, "\n")` |
+| 8 | Record construction | `Report { passed, failed, total }` |
+| 9 | Field access | `result.payload.name` |
+| 10 | Arithmetic | `+ - * / %` |
+| 11 | Comparison | `== != < > <= >=` |
+| 12 | Boolean logic | `&& \|\| !` |
+
+**Not included** (and this is intentional):
+
+| Excluded | Why |
+|---|---|
+| Mutation / `let mut` | Prevents portable compilation; forces value semantics |
+| I/O of any kind | Purity enforced by grammar — there are no I/O primitives to call |
+| General recursion | Totality: functors always terminate. Collection ops (`map`, `filter`, `fold`) cover the need. |
+| Classes / traits / interfaces | Unnecessary complexity for pure transforms. Types are records + enums. |
+| Generics beyond `List<T>`, `Map<K,V>`, `Option<T>` | Keep the type system simple. The std lib is generic; user functors typically aren't. |
+| Closures as values | Lambdas appear only inline in `\|>` chains and `for`. Not assignable to variables. |
+| Async / concurrency | The DAG shell handles this. Functors are synchronous and sequential. |
+| Error handling syntax | The DAG propagates node failures. Functors return values, not `Result<T, E>`. |
+
+### Concrete examples
+
+**Render a Makefile** (makegen functor):
+
+```
+fn render_makefile(registry: ToolRegistry) -> String {
+  let header = "# Generated by makegen"
+  let targets = for tool in registry.tools {
+    "{tool.name}:\n\t{tool.command}"
+  }
+  "{header}\n\n{targets |> join("\n\n")}\n"
+}
+```
+
+**Format auth header** (credential chain functor):
+
+```
+fn format_auth_header(token: String, scheme: AuthScheme) -> String {
+  match scheme {
+    Bearer            => "Bearer {token}"
+    Header { name }   => "{name}: {token}"
+    Basic { username } => "Basic {base64("{username}:{token}")}"
+  }
+}
+```
+
+**Aggregate CI results** (CI functor):
+
+```
+fn aggregate_results(results: List<StepResult>) -> AggregateReport {
+  let passed = results |> filter(r => r.success) |> count
+  let failed = results |> filter(r => !r.success) |> count
+  let failures = results
+    |> filter(r => !r.success)
+    |> map(r => FailureDetail { step: r.name, error: r.error })
+  AggregateReport { passed, failed, total: results |> count, failures }
+}
+```
+
+### Multi-target emission: mechanical translation
+
+Every construct maps directly. No cleverness required.
+
+| DSL | Rust | Go | Python |
+|---|---|---|---|
+| `let x = expr` | `let x = expr;` | `x := expr` | `x = expr` |
+| `"{x}-{y}"` | `format!("{}-{}", x, y)` | `fmt.Sprintf("%s-%s", x, y)` | `f"{x}-{y}"` |
+| `match e { A => ... }` | `match e { A => ... }` | `switch e { case A: ... }` | `match e: case A: ...` |
+| `for x in list { body }` | `list.iter().map(\|x\| body).collect()` | `for _, x := range list { ... }` | `[body for x in list]` |
+| `list \|> filter(f)` | `list.iter().filter(f).collect()` | `for range` + `if` | `[x for x in list if f(x)]` |
+| `Record { a, b }` | `Record { a, b }` | `Record{A: a, B: b}` | `Record(a=a, b=b)` |
+
+### Complete `.dag` file — shell + functors in one
+
+```
+module tools.gist
+
+import services.git
+import services.github.gist
+import std.patterns { credential_chain }
+
+// --- Functors: pure transforms (no I/O possible) ---
+
+fn gist_filename(branch: String, base_ref: String?) -> String {
+  match base_ref {
+    Some(ref) => "{branch}-vs-{ref}.md"
+    None      => "{branch}-snapshot.md"
+  }
+}
+
+fn render_snapshot(files: List<FileContent>, branch: String) -> String {
+  let header = "# Snapshot: {branch}"
+  let sections = for f in files {
+    "## {f.path}\n```\n{f.content}\n```"
+  }
+  "{header}\n\n{sections |> join("\n\n")}"
+}
+
+// --- Shell: DAG with I/O at boundaries ---
+
+journey gist_snapshot {
+  input { base_ref: String? }
+  output { url: String }
+  uses fs: Filesystem(mode: Read)
+
+  branch = git.Core.CurrentBranch()
+  files = git.Core.LsFiles()
+  contents = for file in files.files { fs.read(path: file) }
+
+  // Functor calls — compiler knows these are pure
+  markdown = render_snapshot(files: contents, branch: branch.name)
+  filename = gist_filename(branch: branch.name, base_ref: base_ref)
+
+  // Service calls — compiler inserts transport triplets
+  cred = credential_chain(runtime: detect_runtime())
+  result = github.Gist.Create(
+    description: "Snapshot from {branch.name}",
+    files: { filename: markdown },
+    credential: cred.credential
+  )
+
+  return { url: result.url }
+}
+```
+
+### What the compiler gains from seeing functor bodies
+
+Because functors are constrained and the compiler sees all code:
+
+| Capability | How |
+|---|---|
+| **Property-based tests for pure functions** | Generate test inputs from type signatures; verify `render_snapshot` produces valid markdown for all `List<FileContent>` inputs |
+| **Dead code detection** | `gist_filename` is never called → compiler warns |
+| **Cross-backend equivalence tests** | Emit the same functor to Rust and Go; run both on same inputs; assert outputs match |
+| **Inline optimization** | Trivial functors (single expression) inlined into DAG nodes |
+| **Documentation generation** | Compiler generates docs showing what `render_snapshot` does, with example inputs/outputs from type-driven generation |
+| **Mutation testing** | Systematically mutate functor bodies; verify tests catch the mutations |
+| **Exhaustiveness checking** | `match` on `AuthScheme` missing a variant → compile error |
+
+### Standard library (~30 functions, grows per phase)
+
+| Category | Functions |
+|---|---|
+| **String** | `join`, `split`, `trim`, `contains`, `starts_with`, `ends_with`, `replace`, `to_upper`, `to_lower`, `regex_match` |
+| **Collection** | `map`, `filter`, `fold`, `flat_map`, `count`, `sort_by`, `group_by`, `first`, `last`, `take`, `skip`, `any`, `all` |
+| **Encoding** | `base64`, `url_encode`, `json_stringify`, `json_parse` |
+| **Math** | `min`, `max`, `abs`, `round`, `floor`, `ceil` |
+| **Formatting** | `pad_left`, `pad_right`, `truncate` |
+
+### Impact on the design doc principles
+
+**P9 revision**: "The language is total. `fn` functors are pure and operate on finite data (no general recursion, no I/O primitives). Journeys and pipelines are the imperative shell that sequences I/O through services and resources. Compilation always terminates."
+
+**P10 stays**: "`.dag` files are the single source of truth for structure AND behavior. Codegen backends emit complete, runnable code in any target language."
+
+**The 95/5 split becomes 100/0** for most workflows. `@custom` exists only for the rare case of host-language-specific SDKs with no REST/shell equivalent.
+
+### Compiler cost (bounded)
+
+| Component | Effort | Phase |
+|---|---|---|
+| Parser for `fn` bodies (12 constructs) | 2-3 weeks | Phase 0 |
+| Type checker (records, enums, `List<T>`, `Option<T>`) | 4-6 weeks | Phase 0-1 |
+| Rust codegen backend | 3-4 weeks | Phase 1 |
+| Go codegen backend | 3-4 weeks | Phase 4 |
+| Standard library (~30 functions) | Ongoing | Incremental per phase |
+
+### How it stages
+
+| Phase | Functor features needed | Proving on |
+|---|---|---|
+| 0 | Parser, basic type checker, `let`, string interpolation | (scaffolding) |
+| 1 | `match`, `if/else`, function calls, record construction | `render_makefile` (makegen) |
+| 2 | Pipe `\|>`, `filter`, `map`, enum matching | `format_auth_header` (credential) |
+| 3 | `for`, `fold`, `flat_map`, richer std lib | `render_snapshot` (gist) |
+| 4 | Go backend, `group_by`, `sort_by`, polish std lib | `aggregate_results` (CI) |
 
 ---
 
@@ -441,11 +1001,11 @@ The "generic IR chokepoint" fixes, safe to do now because `.dag` files are the s
 ### Migration Timeline
 
 ```
-         Part 0           Phase 0          Phase 1         Phase 2         Phase 3         Phase 4
-        ┌──────────┐     ┌──────┐        ┌──────┐        ┌──────┐        ┌──────┐        ┌──────┐
-        │Contracts │────▶│Scaff.│───────▶│Core  │───────▶│Svc + │───────▶│Comp +│───────▶│Pipe +│
-        │+ Fixtures│     │      │        │      │        │Res   │        │Loop  │        │Stage │
-        └──────────┘     └──────┘        └──────┘        └──────┘        └──────┘        └──────┘
+         Part 0           Phase 0        Phase 0.5        Phase 1         Phase 2         Phase 3         Phase 4
+        ┌──────────┐     ┌──────┐       ┌──────────┐    ┌──────┐        ┌──────┐        ┌──────┐        ┌──────┐
+        │Contracts │────▶│Scaff.│──────▶│Model     │───▶│Core  │───────▶│Svc + │───────▶│Comp +│───────▶│Pipe +│
+        │+ Fixtures│     │+ Viz │       │Preview   │    │      │        │Res   │        │Loop  │        │Stage │
+        └──────────┘     └──────┘       └──────────┘    └──────┘        └──────┘        └──────┘        └──────┘
                                                 │               │               │               │
                                                 ▼               ▼               ▼               ▼
 Migration:                           ┌──────────────────────────────────────────────────────────────┐
@@ -679,17 +1239,36 @@ The effort lands cleanly when all six criteria are met:
 
 ## Immediate Next Steps
 
-Concrete actions that advance the roadmap without committing to a full rewrite.
+Concrete actions in priority order. Visualization and modeling previews come first — before compiler implementation.
 
 ### 0. Inventory workflow contracts (Part 0)
 
-> The foundation everything else builds on. Do this first.
+> The foundation everything else builds on.
 
 - [ ] Fill out the workflow matrix for all 7-8 discrete workflows (entry points, inputs, semantics, outputs, error model, side effects)
 - [ ] Create at least one golden fixture per workflow (representative config + expected behavior snapshot)
 - [ ] Wire golden fixture checks into CI (even if they just assert "old builder produces expected output" for now)
 
-### 1. Add the parity harness (Workstream A)
+### 1. Build visualization tooling (Phase 0 — before compiler implementation)
+
+> You need to see the DAGs before you build the compiler that produces them.
+
+- [ ] Implement `dag viz` — ASCII DAG from existing builder IR (so you can see current shapes immediately)
+- [ ] Implement `dag expand` — full node/edge/port dump from existing builder IR
+- [ ] Implement `dag manifest` — ProgressManifest derivation from existing builder IR
+- [ ] Implement `dag modules` — discovered module graph display
+- [ ] Run these against every existing builder to produce a baseline visualization set
+
+### 2. Write `.dag` files + modeling previews (Phase 0.5 — before compiler implementation)
+
+> See the target shape, compare to current shape, document the gaps.
+
+- [ ] Write `tools/makegen.dag`, `tools/clippy.dag`, `cloud/gcp/credential.dag`, `tools/gist.dag`
+- [ ] Produce side-by-side `dag viz` comparisons (existing builder vs target `.dag` shape)
+- [ ] Write modeling preview documents: current → target → gaps → plan per workflow
+- [ ] Implement `dag show-triplets` and `dag obligations` to preview test and transport implications
+
+### 3. Add the parity harness (Workstream A)
 
 > Turns "one big refactor" into a safe, bounded final step.
 
