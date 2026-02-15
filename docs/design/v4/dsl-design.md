@@ -57,6 +57,19 @@ We need a language for authoring causal DAGs that:
 
 6. **Generates 100% of the host-language code** — the compiler emits types, pure function implementations (from `fn` functor bodies), transport wiring, test harnesses, CLI entrypoints, progress renderers, and Makefile/CI YAML. The developer writes everything in `.dag` files.
 
+### Requirements Traceability
+
+Each requirement maps to language constructs, a compiler pass, and a concrete output artifact.
+
+| Requirement | Language mechanism | Compiler pass | Output artifact |
+|---|---|---|---|
+| 1. Compress graph authoring | `journey`, `pattern`, implicit edges, `fn` | PatternExpand → Lower | GraphIR (same Nodes/Edges as hand-wired builders) |
+| 2. Structural progress | SubDag boundaries, loop expansion points, `@interactive` | Derive | ProgressManifest (topology, groups, scatter points) |
+| 3. Discovery by construction | Filesystem module graph, `dag.toml` manifest | Discover | ModuleGraph = workspace catalog of journeys/tools |
+| 4. Resources with lifecycle | `resource`, `uses`, conflict keys, `@auth` | TypeCheck → Lower → Validate | Acquire/release nodes, conflict errors, mock specs |
+| 5. Language-agnostic | Target-independent IR, `CodegenBackend` trait | Emit | Rust / Go / Python / TypeScript code |
+| 6. 100% generated host code | Functor protocol (`fn`), service descriptors, `@mock_response` | Emit | Types, transports, CLI, tests, progress, Makefile/CI YAML |
+
 ---
 
 ## 2. Three Generations of Evidence
@@ -136,7 +149,7 @@ pub fn build_workspace_dag() -> Result<Dag<WorkspaceOp>, BuilderError> {
     dag.add_node(clippy::build_clippy_lint_all_subdag());
     dag.add_node(deps::build_deps_install_subdag()?);
     // ... manually listed
-    // dag-viz is NOT here — dag-viz can't see itself
+    // New tools must be manually added here — e.g., dag-viz isn't in this list
 }
 ```
 
@@ -176,6 +189,40 @@ pub fn build_workspace_dag() -> Result<Dag<WorkspaceOp>, BuilderError> {
 
 **P10: Language-agnostic.** `.dag` files are like `.proto` files. The IR is the contract. Codegen backends are plugins. The semantics (node = pure function, transport = syscall, edge = data flow) map to any execution model.
 
+### Graph Invariants (from gunbc `overview.md`)
+
+These invariants define what makes a well-formed graph. They are **carried forward** from gunbc into the DSL — the DSL compiler must enforce all of them.
+
+**I1: Node Purity.** Every node is either pure (deterministic, no side effects) or a transport execute node (the designated I/O boundary). Pure nodes can be memoized, parallelized, and reasoned about locally. In the DSL: `fn` nodes and prepare/parse nodes are pure; `service` operations compile to transport execute nodes.
+
+**I2: Transport Boundary.** All world I/O flows through `TransportRequest → Execute → TransportResponse`. Domain ops construct requests (pure). Transport executes them (I/O boundary). Result processing parses responses (pure). The DSL's `@rest`/`@shell`/`@file` annotations compile to this triplet.
+
+**I3: Observable I/O.** All I/O operations are visible as explicit nodes in the graph structure. DryRun can intercept any transport. Visualization shows I/O nodes explicitly. Composition can wrap I/O in retry/circuit breaker. Hidden I/O inside opaque nodes is forbidden.
+
+**I4: Minimal Graph.** Workflows use the minimum nodes necessary, with maximum reuse of canonical patterns. No redundant/dead nodes. Use patterns (`upsert`, `content_upsert`, `transaction`) instead of ad-hoc equivalents.
+
+**I5: Deterministic Ordering.** Fan-in produces deterministic collection order via canonical edge ordering. Sort key: `(from_node_id, from_port_name, edge_index)`. Same DAG always produces the same collection order.
+
+**I6: No Escape Hatches.** The system cannot be bypassed. If I/O must go through transport, there is no function to skip it. "Just this once" exceptions don't exist.
+
+**I7: No Fallbacks.** Operations either succeed or fail. No silent degradation. No default values when something is missing — fail. No "best effort." Fail fast. (Exception: explicit `match` arms that model alternative paths.)
+
+**I8: No Runtime Warnings.** At runtime, errors are clear signals, not optional advisories. If something is wrong, the operation fails — it doesn't print a warning and continue. `#[allow(warnings)]`-style suppression doesn't exist. (The *compiler* may emit warnings for style/lint issues like redundant imports or naming conventions. These are advisory and do not affect runtime behavior. Runtime behavior is errors or success — never "warning but proceed.")
+
+### The Erasure Lemma
+
+This principle makes the "no meta-annotations" ban operational:
+
+> **Metadata erasure is semantics-preserving:** removing all non-semantic metadata (display names, docs, tags, source spans, visualization hints) does not change the workflow's observable behavior (given the same transport results).
+
+| Class | Allowed? | Rule | Examples |
+|---|---|---|---|
+| **Descriptive** | Yes | Must be erasable without behavior change | Display names, docs, tags, ownership, version, source spans, logging labels |
+| **Optimization hints** | Yes (with rule) | Must not change functional results | Cost estimates, parallelism hints, cache hints |
+| **Semantic modifiers** | Banned | Must be modeled structurally | Guards that skip required values, implicit resource edges |
+
+If an annotation can change results, it is not a hint — it must be modeled structurally (nodes/edges/types). This is the test for whether C1 (below) is satisfied.
+
 ### Compiler-Enforced Policies
 
 These are normative invariants enforced by the compiler. They are the primary anti-drift mechanism — each prevents a class of gunbc failure mode (see Appendix K).
@@ -202,6 +249,24 @@ These are normative invariants enforced by the compiler. They are the primary an
 
 **C11: Compatibility rules.** Adding an optional field with a default is non-breaking. Removing, renaming, or retyping a field is breaking. Changing a refinement constraint is breaking unless it only loosens. Transport bindings (`@rest` path/method, `@shell` argv) are part of the compatibility surface.
 
+### Policy Traceability Matrix
+
+Each policy maps to a compiler pass that enforces it, an artifact that proves it, and a concrete consequence if violated.
+
+| Policy | Enforced in | Artifact | "Free" test / check | If violated |
+|---|---|---|---|---|
+| **C1** Annotations → structure | Lower | IR fields on nodes | `dag expand` shows structural form | Annotations become opaque magic; runtime behavior diverges from spec |
+| **C2** Stable identities | Resolve | `NodeId` derived from fq path | Replay stability test; `dag manifest` diff | Progress replay breaks; generated code diffs are noisy |
+| **C3** Deterministic compilation | All passes | Byte-identical output | CI: `dag emit --check` (no diff) | "Why did this file change?" churn; flaky generated tests |
+| **C4** Effects boundary-only | Lower + Validate | Execute nodes tagged as boundaries | Bucket A: `TransportInterceptable` | DryRun can't intercept; CI becomes flaky or needs real I/O |
+| **C5** Control edges explicit | Resolve + Lower | `after` edges in GraphIR | `dag viz` shows all ordering edges | "Happened to work because of insertion order" bugs; patterns like `upsert` silently wrong |
+| **C6** Shell is structured | Lower | `ShellSpec { argv }` in IR | Hermetic shell tests pass cross-platform | Quoting bugs; shell injection; different behavior per OS |
+| **C7** REST encoding defined | Emit | Canonical URL + JSON in transport | Mock comparison uses canonical form | Test fixtures break on key reordering; path encoding bugs |
+| **C8** Hermeticity explicit | Lower + Validate | `io_scope` field on execute node | Bucket D: test categorization (hermetic vs external) | CI accidentally runs external ops; slow/flaky tests |
+| **C9** Secrets redacted | Emit + Runtime | `Secret` type never serialized to output | CI mode rejects `reveal()`; JSONL scan | Credential leakage in logs, progress output, or event streams |
+| **C10** Repetition bounded | Validate | Compile error on unbounded loops | Totality check passes | Non-terminating compilation or execution; P9 violated |
+| **C11** Compatibility rules | TypeCheck (incremental) | Breaking-change report | `dag compat --check` CI gate | Silent breaking changes; downstream consumers fail at runtime |
+
 ---
 
 ## 4. Language Constructs
@@ -222,7 +287,7 @@ module      — namespace, visibility, discovery metadata
 ### 4.1 Types
 
 ```
-// Primitives (built-in):
+// Primitives (defined in std/types.dag, composed from structural primitives):
 // Unit, Bool, String, Int, Float, Bytes, Json, Secret
 
 // Records
@@ -266,9 +331,119 @@ type SecretValue = Secret @non_empty
 // @length(min, max)  — string/list length bounds
 ```
 
-Design choice: no cardinality algebra. `T` is required-one, `T?` is optional, `List<T>` is zero-or-more. This is sufficient — gunbc's interval math (`Cardinality { min, max }`) was over-engineered for actual usage.
+Design choice: the **DSL surface** keeps cardinality simple — `T` is required-one, `T?` is optional, `List<T>` is zero-or-more. Authors never write interval math. But the **compiler's internal type model** retains the full cardinality algebra (`Cardinality { min, max }` with join/meet/product/satisfies) because it powers coercion checking, automatic test generation, and boundary-value coverage. The surface is simple; the compiler is precise.
 
 Design choice: refinement types constrain primitives with structural metadata that the compiler uses for three purposes: (1) validation at type-check time, (2) auto-generation of test inputs at derive time (see Appendix N), and (3) documentation of expected shapes for service consumers. Per Appendix K.6 guardrail G1, refinement annotations desugar to structural constraints — `@pattern` compiles to a validation predicate in the type's DAG representation, not opaque metadata.
+
+#### Types ARE DAGs — same infrastructure, same composition rules
+
+This is not a metaphor. In gunbc, a type like `Url` is literally a `Dag<TypeOp>` — a causal chain of validation operations:
+
+```
+String (raw) → [NonEmpty check] → [URL pattern check] → Url (validated)
+```
+
+Type validation IS a causal chain. Using `Dag<TypeOp>` makes this explicit and reuses all DAG infrastructure (composition, lowering, validation). The DSL inherits and extends this.
+
+**TypeOp — the operations in a type DAG:**
+
+```
+TypeOp = Identity              // pass-through (base of every type)
+       | Validate(Predicate)   // check a condition (NonEmpty, Matches, InRange, ...)
+       | Transform(Coercion)   // safe type conversion (Int → Json, Url → String)
+       | Wrap(WrapperKind)     // Optional, List, Set, NonEmptyList, Map
+       | Unwrap(WrapperKind)   // extract from container
+```
+
+**Building types from composition:**
+
+```
+// Primitives — identity DAGs (single node, no validation)
+String  = Dag { Identity("String") }
+Int     = Dag { Identity("Int") }
+Bool    = Dag { Identity("Bool") }
+
+// Refined types — validation chains
+Url     = Dag { Identity("String") → Validate(NonEmpty) → Validate(Matches("^https?://...")) }
+Email   = Dag { Identity("String") → Validate(NonEmpty) → Validate(Matches("^[^@]+@...")) }
+Port    = Dag { Identity("Int") → Validate(InRange(1, 65535)) }
+
+// Container types — wrapper nodes with inner type DAGs as SubDags
+List<Url>       = Dag { Wrap(List) → SubDag(Url) }
+Optional<Email> = Dag { Wrap(Optional) → SubDag(Email) }
+Set<String>     = Dag { Wrap(Set) → SubDag(String) }
+Map<String, V>  = Dag { Wrap(Map) → SubDag(V) }
+
+// Compound types compose freely
+NonEmpty<List<Url>> = Dag { Wrap(NonEmptyList) → Validate(NonEmpty) → SubDag(Url) }
+```
+
+**Three-level coercion lattice (already implemented in gunbc):**
+
+Every type has three structural properties the compiler reasons about:
+
+| Level | Property | Example | Safe direction (upcast) |
+|---|---|---|---|
+| L1 | Cardinality | `[1,1]` → `[0,∞)` | Wider interval |
+| L2 | Base type | `Int` → `Json`, `Url` → `String` | More general base |
+| L3 | Predicates | `NonEmpty ∧ Matches(url)` → `NonEmpty` | Fewer predicates |
+
+A coercion `A → B` is safe when all three levels widen:
+
+```
+can_safely_coerce(source, target) =
+    source.cardinality ⊆ target.cardinality   -- L1: interval containment
+  ∧ source.base_type ≤ target.base_type       -- L2: base type lattice
+  ∧ source.predicates ⊇ target.predicates     -- L3: predicate entailment
+```
+
+**Base type lattice:**
+
+```
+        Json (top — accepts any structured value)
+       / | \
+    Int Bool String
+               |
+              Url (refined String)
+
+    Unit (bottom — no value)
+```
+
+Upcasts are safe: `Url → String → Json`. Narrowing (e.g., `String → Url`) is never implicit — it requires an explicit validation node. This prevents "meaning leaking" at the type level.
+
+**Cardinality algebra (lattice + semiring):**
+
+Cardinality is modeled as a closed interval `[min, max]` on ℕ ∪ {∞} with full algebraic structure:
+
+- **Join** (least upper bound): `[1,1] ∨ [0,1] = [0,1]` — what can hold either
+- **Meet** (greatest lower bound): `[0,1] ∧ [1,∞) = [1,1]` — what satisfies both
+- **Product** (nested iteration): `[1,∞) × [1,1] = [1,∞)` — flattened result
+- **Satisfies** (subset containment): `[1,1] ⊆ [0,∞)` — can this output feed that input?
+
+These operations are property-tested for algebraic laws (reflexivity, transitivity, commutativity, associativity, idempotence, absorption) via proptest. The five standard cardinalities (`Zero`, `One`, `ZeroOrOne`, `ZeroOrMore`, `OneOrMore`) are named constants, but arbitrary intervals like `[2, 5]` work without code changes.
+
+**Predicate entailment:**
+
+Predicates form their own partial order: `Predicate::entails(&self, other)` checks whether `self` is at least as strict as `other`. Key rules:
+
+- `InRange(0, 100)` entails `InRange(0, 200)` (tighter range)
+- `Equals(5)` entails `InRange(0, 10)` (specific value in range)
+- `And(A, B)` entails `A` (conjunction is stricter)
+- `NonEmpty` entails nothing about `Matches` (unrelated predicates)
+
+**What this gives the DSL compiler:**
+
+1. **Structural subtyping via DAG traversal.** When a `fn` takes `String` and the caller passes `CommitSha`, the compiler walks the type DAG: `CommitSha` → base type is `String` → safe upcast (dropping the `@pattern` predicate). No explicit cast rules needed.
+
+2. **Automatic coercion insertion.** When an edge connects incompatible types, the compiler checks `can_safely_coerce_to()`. If L1/L2/L3 all widen, the coercion is inserted as a `Transform` node. If any level narrows, it's a compile error with a diagnostic: "output might be empty (min=0) but input requires at least 1 element."
+
+3. **Test generation from type structure.** The type DAG tells the fuzzer how to generate values at every level. `Cardinality::boundary_values()` produces edge cases from the interval (e.g., `[2,5]` → test with `{1, 2, 3, 5, 6}`). `Predicate` constraints generate valid/invalid examples. Container types recurse into their element type DAGs.
+
+4. **Cardinality-aware obligation generation.** The testgen system uses `Cardinality::test_cases()` to generate boundary-value coverage for every port: a `ZeroOrOne` port gets tests with 0 and 1 elements; a `OneOrMore` port gets tests with 1 and 2 elements.
+
+**The standard library defines the type foundation.** `std/types.dag` provides primitive types, common refinements (Url, Email, FilePath, Port), and container constructors. User-defined types extend the same DAG. The `TypeRegistry` stores named type DAGs and resolves references during compilation.
+
+**What this is NOT:** This is not a dependent type system or a proof assistant. The type DAG is a finite, acyclic composition graph with no type-level computation. The compiler uses it for structural reasoning (compatibility, coercion, generation), not for theorem proving. This preserves P9 (totality) — type resolution always terminates because the type DAG is finite and acyclic.
 
 ### 4.2 Pure Functions (Typed Functor Protocol)
 
@@ -357,16 +532,20 @@ resource Network {
 }
 
 resource Clock {
-  kind: Observation         // snapshot, no side effect
+  kind: Observation         // snapshot, no mutation
   mode: Read
-  acquire { @pure }
+  acquire { @hermetic }     // no-op — clock is always available
   release {}
 
   capability now {
     input {}
     output { timestamp: String }
-    @pure
+    @hermetic                // reads system time (no network, no filesystem)
   }
+  // Note: Clock.now() is deterministic in tests (seeded from run_id).
+  // In production it reads the system clock — a hermetic, read-only
+  // side effect. It is NOT @pure (pure nodes have no effects at all).
+  // Test mocks override Clock.now() to return a fixed timestamp.
 }
 
 resource AuthContext {
@@ -534,13 +713,12 @@ pattern credential_chain {
     audience: audience
   )
 
-  node impersonated = when service_account {
-    gcp.IAM.GenerateAccessToken(
+  node impersonated = match service_account {
+    Some(sa) => gcp.IAM.GenerateAccessToken(
       access_token: access.token,
-      target_sa: service_account
+      target_sa: sa
     )
-  } else {
-    access
+    None => access
   }
 
   node secret = gcp.SecretManager.AccessVersion(
@@ -721,8 +899,9 @@ The renderer CAN create arbitrary groupings for visualization (collapsing parall
 **Journey vs Pattern expansion boundaries:**
 
 - **Journey calls** create SubDag boundaries. They appear as expandable/collapsible sections in progress (e.g., `› credential` can expand to show inner nodes). Journey boundaries are meaningful to the user — they represent named workflows.
-- **Patterns** are compile-time expansion and do NOT create runtime SubDag boundaries by default. `content_upsert` expands inline into the calling journey's node list. This keeps progress stable and author-meaningful rather than cluttered with implementation details.
-- A pattern MAY opt into boundary creation via `@boundary` on its definition, but this is rare.
+- **Small patterns** (`content_upsert`, `upsert`) are compile-time expansion and do NOT create runtime SubDag boundaries by default. They expand inline into the calling journey's node list. This keeps progress stable and author-meaningful rather than cluttered with implementation details.
+- **Large patterns** that represent significant self-contained workflows (e.g., `credential_chain` — which internally has 8+ transport triplets, branching, and its own resource lifecycle) should be defined as **journeys**, not patterns, precisely because they warrant a progress boundary. The rule: if the expanded nodes are meaningful to the user as a group, it's a journey; if they're implementation detail, it's a pattern.
+- A pattern MAY opt into boundary creation via `@boundary` on its definition for edge cases, but this is rare — prefer making it a journey if it needs a boundary.
 - `dag expand` tooling can show pattern expansion in its output even though it doesn't create runtime boundaries.
 
 **Pure vs boundary node distinction:** Prepare/parse nodes are pure. Execute nodes are the only transport boundaries where effects occur and the only nodes that receive capture buffers. This is a compiler invariant and simplifies test categorization: only execute nodes need mocking.
@@ -873,11 +1052,14 @@ type ProgressManifest {
   labels: Map<NodeId, String>
 
   // Structural features (for renderers to use as they see fit)
-  subdag_boundaries: List<SubDagBoundary>  // journey/pattern calls
+  subdag_boundaries: List<SubDagBoundary>  // journey calls (patterns expand inline unless @boundary)
   parallel_groups: List<ParallelGroup>     // siblings at same depth
   scatter_points: List<NodeId>             // loop expansion points
   interactive_nodes: List<NodeId>          // @interactive transport nodes
   capture_modes: Map<NodeId, CaptureMode>  // per-node output handling
+
+  // Pipeline-specific (present only for pipeline constructs)
+  stage_groups: List<StageGroup>           // pipeline stages → collapsible sections
 
   // Resource context
   resources: Map<NodeId, List<ResourceUsage>>
@@ -908,7 +1090,42 @@ type ParallelGroup {
 - The `tui` renderer might show SubDags as expandable boxes
 - All three read the SAME manifest — they just make different rendering choices
 
-### 6.6 Rendering Modes
+### 6.6 JSONL Event Protocol (from the-gunbai `progress-contract.md`)
+
+The `jsonl` rendering mode emits a formal event stream that enables replay, remote rendering, and machine consumption. The protocol is defined here because it is **normative** — all renderers (plain, inline, tui) are pure functions over the same event stream.
+
+**Envelope:** Every event has a versioned envelope:
+
+```
+{ schema: "gunbai.progress.v1", seq: Int, ts_ms: Int, run_id: String?, event_type: String, data: {...} }
+```
+
+- `seq` is monotonic per run (required for deterministic replay).
+- `ts_ms` is informational; ordering uses `seq` only.
+- Renderers must ignore out-of-order events (`seq <= last_seq`).
+
+**Event types:**
+
+| Event | Data | Purpose |
+|---|---|---|
+| `run_started` | `{ graph_id, nodes: Int, edges: Int }` | Begin execution |
+| `graph_snapshot` | `{ graph: GraphSnapshot }` | Initial topology (nodes + edges + metadata) |
+| `graph_patch` | `{ add_nodes, add_edges, remove_nodes?, remove_edges? }` | Dynamic expansion (scatter/loop fan-out) |
+| `node_state` | `{ node_id, state, message?, error? }` | State transition (queued → running → succeeded/failed/skipped/cancelled) |
+| `node_progress` | `{ node_id, fraction?, message?, detail? }` | Incremental progress within a node |
+| `node_output` | `{ node_id, stream, chunk, truncated? }` | Captured stdout/stderr/log |
+| `run_completed` | `{ success: Bool }` | Execution finished |
+
+**Graph patches** handle dynamic expansion: when a `for` loop's collection size is known at runtime, the executor emits a `graph_patch` adding instance nodes. Renderers update their layout incrementally. This is the mechanism behind scatter group progress like `read 8/8`.
+
+**Renderer contract:**
+
+- `apply_event(state, event) → state` — pure, deterministic. Must handle `graph_snapshot` before any `node_state`.
+- `render_frame(state, now_ms) → Frame` — pure, deterministic. Tick-driven renderers call this on a timer.
+
+**Output capture policy:** Per-node, determined by `CaptureMode` (§6.2). `Captured` → bounded buffer, shown only on error. `Passthrough` → no buffer, terminal inherits stdout/stderr directly. `Streamed` → bounded buffer + live `node_output` events emitted as chunks arrive. In SubDag contexts, inner nodes inherit the parent's capture mode unless overridden. Runtime enforces bounded buffers and sets `truncated: true` when data is dropped.
+
+### 6.7 Rendering Modes
 
 | Mode | Description | When |
 |------|------------|------|
@@ -949,7 +1166,7 @@ login ─ 8/12 ━━━━━━━━━━━━░░░░ 67% [✓ auth 6/
 ╰────────────────────────────╯  ╰───────────────────────╯
 ```
 
-### 6.7 Failure Output
+### 6.8 Failure Output
 
 When a node fails, the CaptureBuffer contents are shown in an error box (gunb.ai pattern):
 
@@ -974,11 +1191,11 @@ When a node fails, the CaptureBuffer contents are shown in an error box (gunb.ai
 
 The captured stderr appears ONLY on failure. On success, it's silently discarded. This prevents the double-printing problem where subprocess output would interleave with progress indicators.
 
-### 6.8 Visual Design Specification
+### 6.9 Visual Design Specification
 
 The visual design is inherited from gunb.ai and already ported to gunbc's symbol system. The exact values (ANSI 256 color codes, braille spinner frames at 80ms tick, Unicode/ASCII/Emoji icon tiers, box-drawing characters, section marker `›`, completion animals, prompt status icons) are documented in the terminal crate spec. gunbc's `symbols.rs`, `box_draw.rs`, `frame_write.rs`, and `render_ir.rs` (~2,271 lines total, 95% standalone) form the harvestable terminal crate for the new repo. The ratatui-based TUI from the-gunbai is harvested separately behind a `tui` cargo feature flag.
 
-### 6.9 How Progress Compiles
+### 6.10 How Progress Compiles
 
 The progress model touches three compiler phases:
 
@@ -1020,7 +1237,7 @@ journey write_config {
 3. **Detects conflicts** — parallel Write+Write on same resource with overlapping keys = compile error (see 7.4).
 4. **Generates mock specs** — DryRun substitutes resources with mocks.
 5. **Derives test obligations** — Bucket D (Resource Hygiene) from testgen.
-6. **Tracks lifecycle** — acquire before first use, release after last use.
+6. **Tracks lifecycle** — acquire before first use, release after last use. "Last use" is the topologically last node that holds a reference to the resource handle (computed from the edge graph, not declaration order). In conditional DAGs, release runs when the last reachable user completes or is skipped. Release failure is a node failure — it propagates downstream like any other failure (§8.1).
 
 ### 7.3 Conflict Detection (Keyed Resources)
 
@@ -1045,7 +1262,22 @@ When a journey calls a pattern that declares resources, the caller must declare 
 - If two callees use different aliases for the same resource type, the compiler requires the caller to declare `uses` explicitly to resolve the ambiguity.
 - If the caller declares `uses fs: Filesystem(mode: Read)` but a callee needs `ReadWrite`, it is a compile error (not automatic escalation). The fix is for the caller to declare the stronger mode.
 
-### 7.5 What This Replaces
+### 7.5 Resource Handles Are Opaque (Non-Forgeable)
+
+Resource capability handles (`FilesystemHandle`, `NetworkHandle`, `ToolHandle`, `Credential`) are **opaque tokens** that cannot be constructed by user code. This is a normative invariant — it makes the resource model closed.
+
+**Rules:**
+
+1. Only `acquire` nodes (compiler-emitted from resource lifecycle declarations) and environment nodes can mint capability handles. No user-authored node may construct a handle.
+2. Handles are opaque at the IR level. The `Value` representation includes a capability marker that is validated on use. Constructing a `Value` that looks like a handle from raw data is a runtime error.
+3. In the DSL, handles never appear as user-visible types. The author writes `uses fs: Filesystem(mode: Write)` and calls `fs.write(...)`. The compiler threads the handle through edges. The author never holds, inspects, or constructs the handle.
+4. Test mocks for resource handles are provided by the compiler (from `resource` declarations), not hand-constructed. The mock handle satisfies the capability marker check but routes to a test backend.
+
+**Why this matters:** If handles were forgeable, a node could bypass resource acquisition (and its lifecycle, conflict detection, and policy enforcement) by constructing a fake handle from a `Value`. This would undermine I3 (Observable I/O), I6 (No Escape Hatches), and the entire resource conflict model (§7.3).
+
+**gunbc implementation status:** Partially mitigated via a capability marker pattern (`CAPABILITY_MARKER` in `core/ir/src/resource/mod.rs`) and per-process secrets (`PROCESS_SECRET` in `handle.rs`). The DSL compiler should enforce this structurally — handles are never in the user-visible type namespace, so forgery is impossible at the language level.
+
+### 7.6 What This Replaces
 
 ```rust
 // gunbc today: manual environment nodes + resource wiring
@@ -1087,9 +1319,9 @@ Recovery is structural, not exceptional:
 
 - **Retry**: `@retry(max: 3, backoff: exponential(1000))` on a service operation. The compiler emits retry logic in the transport execute node. Retries are transparent to the DAG.
 - **Transaction**: `transaction { begin: ..., body: ..., commit: ..., rollback: ... }` pattern — rollback arm runs when body fails.
-- **Fallback**: `match` arms with guard conditions — alternative paths when a branch fails.
+- **Fallback**: `match` arms on explicit output values — alternative paths based on what a node *returned*, not whether it *failed*. A service that returns `{ ok: Bool, error_code: Int? }` can be matched on `ok` to choose a fallback path. This is value-level branching, not exception catching.
 
-There is no `try/catch`. If you need to branch on error type, model the error as an output field (`{ ok: Bool, error_code: Int? }`) and use `when` / `match` on it.
+There is no `try/catch`. Runtime failure (node crashed, transport error) is out-of-band — it skips downstream nodes (§8.1). It cannot be "caught." If you need to handle error *types*, the service must model them as output fields, and you branch on those values with `match`. The distinction: **failure is a runtime state transition (invisible to the DAG); error codes are output values (visible and matchable).**
 
 ### 8.3 Control Dependencies (`after`)
 
@@ -1107,6 +1339,15 @@ node resolve [after check, after install]: tool.Version()
 - `after x` when `x` is skipped (due to a failed or skipped upstream): the current node still runs. The `after` edge only ensures ordering, not that `x` succeeded.
 - Guards (`when`) do NOT imply ordering. `node x [when cond]` does not create an edge from the node that produces `cond` unless `cond` is also referenced as a value. In practice, the reference in `when !check.exists` does create a data edge from `check`, but `after` makes the intent explicit and handles cases where the guard references a different node than the ordering source.
 - `after` is the **only** non-data dependency mechanism. There is no implicit ordering from declaration position.
+
+**Rule of thumb for `after` vs value edges:** If correctness depends on *what* the upstream node produced (its output value or whether it succeeded), use a value edge (reference the output). Use `after` only when you need ordering for side-effect sequencing (e.g., "install before run," "write before read") where the downstream node doesn't consume the upstream's output. A node with *only* `after` deps and no value deps is a lint warning — it usually means either the ordering is unnecessary or a value dependency was forgotten.
+
+**`when` vs `match` — two different things:**
+
+- **`when` is a guard** (on a node). It skips the node if the condition is false. The node either runs or is skipped — there is no "else" branch. Lowering: the node gets a `GuardedPort` that suppresses execution. Downstream nodes see `Skipped` if the guard is false.
+- **`match` is a conditional expression** (produces a value). It selects between branches and always produces exactly one output. Lowering: the compiler emits a `BranchBuilder` with one arm per case and a merge node that collects the result.
+
+`when` never has an `else`. If you need an alternative path, use `match`. This avoids the ambiguity of "guard with fallback" which has unclear lowering semantics.
 
 ### 8.4 Scheduling Semantics
 
@@ -1163,7 +1404,47 @@ tools.gist/gist_snapshot/cred_chain/token — node inside expanded SubDag
 - SubDag expansion preserves parent path: `journey/subdag_name/inner_name`
 - Collisions are compile errors (two nodes in the same journey cannot have the same binding name)
 
-### 8.8 Recursion
+### 8.8 Fan-In/Fan-Out Semantics
+
+When an output port connects to multiple downstream inputs (**fan-out**), each downstream node receives the same value — broadcast semantics.
+
+When multiple upstream outputs connect to a single downstream input (**fan-in**), behavior depends on the input port's cardinality:
+
+| Scenario | Semantics |
+|---|---|
+| Fan-out: `One` output → multiple inputs | Broadcast — each input gets the same value |
+| Fan-in: multiple `One` outputs → `One` input | **Compile error** — ambiguous which value |
+| Fan-in: multiple `One` outputs → `List<T>` input | Collect into list (canonical order) |
+| Fan-in: `List<T>` + `One` outputs → `List<T>` | Concatenate (canonical order) |
+
+**Canonical edge ordering** (required for determinism): Collection order must be deterministic across compilations. Sort key: `(from_node_id, from_port_name, edge_index)`. This ensures the same DAG always produces the same collection order, matching gunbc's `canonical_edge_order()`.
+
+**Map merge:** When fan-in produces a `Map<K, V>`, the default merge strategy is `ErrorOnDuplicate` — the compiler rejects fan-in that could produce duplicate keys. `LastWriteWins` and `CombineValues` are available as explicit annotations if the author accepts the semantics.
+
+**Invariant:** Any implicit aggregation must be justified by a derivable combining law; otherwise fan-in is a compile error.
+
+### 8.9 Workflow Signatures
+
+Every journey has a **workflow signature** — a declared contract of typed inputs and outputs — that is verified against the inferred signature (computed from unconnected ports).
+
+```
+journey gist_snapshot {
+  input { extensions: List<String> }     // declared input
+  output { url: String }                 // declared output
+  ...
+}
+```
+
+**Invariant:** `DeclaredSignature == InferredSignature`. This catches:
+
+- **Silent interface drift**: Forgot to wire an edge? Now it's a new public input/output.
+- **Wiring bugs**: Intended `A → B` but forgot the edge — validation fails instead of silently exposing ports.
+- **Cardinality drift**: Changed `T?` to `T`? Signature check catches it.
+- **Dead work**: Pure nodes not contributing to any output can be flagged.
+
+The compiler infers the signature from unconnected ports and compares it to the declared `input`/`output` blocks. Mismatches are compile errors. Tool ports (framework-provided capabilities like `tool:<id>`) are excluded from the user-facing signature.
+
+### 8.10 Recursion
 
 The journey/pattern call graph must be acyclic. The compiler rejects recursive calls at compile time. If a journey `A` calls `B` which calls `A`, this is a compile error. There is no fixpoint construct — unbounded recursion violates P9 (totality).
 
@@ -1206,7 +1487,7 @@ The journey/pattern call graph must be acyclic. The compiler rejects recursive c
    ▼
 [Emit] ──────→ Per-backend codegen
                  - Type definitions
-                 - Node stubs (pure function signatures for developer to fill)
+                 - Pure function implementations (compiled from `fn` functor bodies)
                  - Transport wiring (HTTP client, shell exec, file I/O)
                  - Test harness (4-bucket testgen)
                  - CLI entrypoint (args from DAG entrypoints)
@@ -1246,19 +1527,31 @@ trait CodegenBackend {
 }
 ```
 
-### 10.3 The 100% / 0% Split (Functor Protocol)
+### 10.3 Emission Targets (Unifying gunbc's 13 Rendering Islands)
 
-With the Typed Functor Protocol (§4.2), the developer writes everything in `.dag` files — including pure transformation logic via `fn` declarations. The compiler generates all host-language code:
+gunbc's `docs/design/unified-emission.md` catalogued 13 separate rendering systems with 4 different IR/trait patterns. The DSL Emit phase must unify them under one pipeline: `Derive → IR → Renderer → Output`. The table below defines every emission target, its IR, and its renderer trait.
 
-- Type definitions (structs, enums)
-- Pure function implementations (compiled from `fn` functor bodies)
-- Transport wiring (HTTP client setup, shell exec, file I/O)
-- Test harnesses (DryRun completion, transport interception, scenario coverage, resource hygiene)
-- Property-based fuzz tests (from `fn` type signatures + refinement constraints)
-- CLI entrypoints (argument parsing from DAG entrypoint ports)
-- Progress renderers (manifest-driven frame building)
-- Makefile / CI YAML (from module graph)
-- MockSpec fixtures (from `@mock_response` annotations)
+| # | Target | IR produced by Derive | Renderer | Output |
+|---|---|---|---|---|
+| 1 | **Type definitions** | `TypeDef` (structs, enums, aliases) | `CodegenBackend::emit_type` | Rust structs, Go types, Python dataclasses |
+| 2 | **Pure functions** | `FnDef` (functor AST) | `CodegenBackend::emit_fn` | Compiled function bodies per target language |
+| 3 | **Transport wiring** | `TransportSpec` (triplet templates) | `CodegenBackend::emit_transport` | HTTP client setup, shell exec, file I/O |
+| 4 | **Test harness** | `TestFile` / `TestFn` / `Stmt` / `Assert` | `TestRenderer` trait (per-language) | Rust `#[test]` functions, Python pytest, Go `TestX` |
+| 5 | **Mock fixtures** | `MockManifest` (from `@mock_response` + refinement types) | `TestRenderer` (same trait) | MockSpec construction, fixture files |
+| 6 | **CLI entrypoints** | `CliSpec` (args from DAG entrypoint ports) | `CodegenBackend::emit_cli` | Clap/argparse/cobra wiring |
+| 7 | **Progress renderer** | `ProgressManifest` (topology, boundaries, groups) | `ProgressRenderer` trait | Frame building, JSONL emission |
+| 8 | **Makefile** | `MakefileIR` (targets, deps, rules) | `MakefileRenderer` | Makefile + .gitignore |
+| 9 | **CI YAML** | `SharedStep[]` (checkout, run, dag-step) | `CiRenderer` trait (per-provider) | GitHub Actions YAML, GitLab CI YAML |
+| 10 | **Terminal layout** | `DagLayout` (wave columns, edge routes) | `TerminalRenderer` (standard/compact) | ANSI terminal output |
+| 11 | **JSONL events** | Event envelope (§6.6 protocol) | `JsonlRenderer` | Structured event stream |
+| 12 | **Content hash manifest** | `ManifestEntry` (input hash, file count) | — (serialized directly) | `.manifest.json` for freshness |
+| 13 | **Obligation report** | `ObligationSummary` (discharged/testable counts) | `CodegenBackend::emit_test` header | Comment block in generated test files |
+
+**Key principle (from gunbc testgen, the "gold standard"):** IR before rendering. The Derive phase builds language-neutral IRs. The Emit phase maps IRs to target-specific output through renderer traits. Adding a new language backend requires implementing `CodegenBackend` + `TestRenderer` — zero changes to Derive.
+
+### 10.4 The 100% / 0% Split (Functor Protocol)
+
+With the Typed Functor Protocol (§4.2), the developer writes everything in `.dag` files — including pure transformation logic via `fn` declarations. The compiler generates all host-language code across all 13 emission targets above.
 
 The developer writes nothing in the host language for the common case. A `@custom` transport annotation is available for operations that don't fit `@rest` / `@shell` — the developer implements only the execute step, preserving all structural guarantees.
 
@@ -1299,6 +1592,31 @@ The developer writes nothing in the host language for the common case. A `@custo
 - Move transport out of `core/ir/src/transport/` into transport crate
 - Replace all registration macros with filesystem discovery
 - Unify the-gunbai's TUI + gunbc's FrameRenderer into manifest-driven system
+
+### Known Risk: Transport Executor Is a Testing Blind Spot
+
+The transport executor (`lib/transport/src/executor.rs`) sits **outside** the DAG system — testgen generates tests for Prepare and Parse nodes (pure functions) and DryRun-intercepts Execute nodes with mocks, but nothing tests what happens inside `execute_transport()` itself.
+
+| Function | Lines | Test coverage |
+|---|---|---|
+| `execute_rest` | ~45 | 0 (via tool integration tests only) |
+| `execute_http` | ~55 | 0 (via REST wrapper) |
+| `execute_file` | ~180 | Good (30+ unit tests) |
+| `execute_tcp` | ~35 | **Zero** |
+| `execute_shell` | ~40 | 2 (basic happy-path) |
+
+**Concrete bug this missed:** A swapped-timeout bug in `execute_tcp` — `connect_timeout_ms` was used for `set_read_timeout` and `read_timeout_ms` for `set_write_timeout` — survived because TCP has zero test coverage and the executor sits outside where testgen operates.
+
+**Why this matters for the DSL:** The DSL compiles service declarations to transport triplets (Prepare → Execute → Parse). Prepare and Parse are pure and testable. But Execute is the actual I/O boundary, and its internals remain opaque. "DSL-ifying" workflows while keeping the riskiest wiring outside the model is incomplete victory.
+
+**Migration plan (from `TODO/TODO_transport_dag_migration.md`):**
+
+1. **Phase 1 (immediate):** Fill the testing gap — unit tests for all 5 executor functions, especially TCP.
+2. **Phase 2:** Typed port decomposition — decompose opaque `TransportRequest` into named scalar ports so field routing is compiler-verified (prevents the swapped-timeout class of bugs).
+3. **Phase 3:** Transport behavioral specs — declarative `TransportBehavior` specs that integrate with testgen to generate behavioral tests.
+4. **Phase 4 (if needed):** Full sub-DAG modeling of transport internals.
+
+The DSL does not need to wait for this migration to be useful — the triplet model is correct at the DAG level. But the transport executor should be brought under testgen coverage as a parallel workstream.
 
 ---
 
@@ -1971,8 +2289,8 @@ ProgressManifest {
     { id: "clippy", depth: 3, parent: None }
     { id: "aggregate", depth: 4, parent: None }
   ]
-  // Stage groups are pipeline-specific metadata, derived by renderers from
-  // pipeline stage declarations + topology. Not in the base manifest schema.
+  // Stage groups are derived from pipeline stage declarations + topology.
+  // They are in the manifest (pipeline structure is execution structure, not display metadata).
   subdag_boundaries: []
   parallel_groups: [
     { nodes: ["bootstrap", "pragma", "testgen"], depth: 1 }
@@ -2151,7 +2469,7 @@ pattern credential_chain {
 
   node token = match runtime { ... }
   node access = gcp.STS.Exchange(subject_token: token.token)
-  node impersonated = when service_account { ... } else { access }
+  node impersonated = match service_account { Some(sa) => ... None => access }
   node secret = gcp.SecretManager.AccessVersion(...)
 
   output { token: AccessToken }
@@ -2468,7 +2786,7 @@ Each gunbc pain point mapped to the DSL construct that eliminates it and the com
 | 10 | Boundary mocks defined in two places | Semantic duplication (C) | MockSpec derived from service declarations | Derive | `unified-registration.md` §4 |
 | 11 | Resource lifecycle implicit | Incomplete resource model | `resource` with acquire/use/release | Lower + Validate | `dsl-design.md` §7 |
 | 12 | Progress rebuilt from scratch (lost TUI quality) | No progress model | `ProgressManifest` at compile time | Derive | `dsl-design.md` §6 |
-| 13 | dag-viz can't see itself | Discovery doesn't include meta-tools | Module graph IS workspace DAG | Discover | `dsl-design.md` §5 |
+| 13 | New tools require manual addition to `build_workspace_dag()` | Discovery doesn't include meta-tools | Module graph IS workspace DAG | Discover | `dsl-design.md` §5 |
 | 14 | Manual MockSpec per tool | Test infrastructure not generated | Compiler generates MockSpec from service declarations | Derive | `dsl-design.md` §8 |
 | 15 | `Value`/`ValueExpr` parallel hierarchies | Emission leaked into IR | Codegen works from IR + types; no runtime value expressions | Emit | `architecture-debt.md` |
 
@@ -2933,7 +3251,49 @@ There is a hard line between what auto-fuzzing can and cannot do:
 - Generate semantically meaningful API responses without `@mock_response` — a random string won't parse as GitHub JSON
 - Test network-level failure modes (timeouts, partial responses, rate limiting) — these require explicit `@error_response` annotations (see N.7)
 
-## N.5 Integration with Existing Testgen Buckets
+## N.5 Seed Policy Matrix (Structural vs Semantic Carriers)
+
+The distinction between "type-valid" and "semantically meaningful" test inputs is not just a fuzzing concern — it is a **correctness invariant** that caused a real auth regression in gunbc (see `TODO/TODO_testgen_seed_policy_postmortem.md`).
+
+**The problem:** A generated test seeded a `TransportResponse` input with a shape-valid placeholder (correct type, empty/mock content). The downstream parser expected a real auth token inside the response body. The test passed structurally but produced a semantically wrong execution path.
+
+**Root cause:** The generator conflated structural validity (correct outer type) with semantic validity (meaningful for the operation). For auth/transport carrier types, these are not equivalent.
+
+**The rule (already implemented in gunbc `core/ir/src/types.rs`):**
+
+Every type is classified into one of two seed classes:
+
+| Seed class | Types | Placeholder generation |
+|---|---|---|
+| `StructuralGeneratable` | Primitives (`String`, `Bool`, `Int`, `Json`), refined primitives (`Url`, `Email`, `FilePath`), common wrappers (`OptionalString`, `StringList`) | Safe — synthetic placeholders produce valid test inputs |
+| `SemanticCarrier` | `TransportRequest`, `TransportResponse`, `Credential`, `Secret`, `FilesystemHandle`, `NetworkHandle`, `ToolHandle`, and all unknown types | **Explicit seed required** — synthetic values are shape-valid but semantically wrong |
+
+The policy is **fail-closed**: unknown/new types default to `ExplicitSeedRequired`.
+
+**Seed provenance priority:**
+
+1. **Explicit** — authored mock/example (`@mock_response`, `@node_example`)
+2. **Witness** — contract/type-derived (from refinement constraints)
+3. **Synthetic fallback** — only for `StructuralGeneratable` types
+
+**Key invariant:** Semantic-carrier inputs are never silently satisfied by synthetic fallback in contexts where behavior correctness is being asserted.
+
+**What this means for the DSL compiler:**
+
+- When generating Bucket B (pure node fuzzing) tests, the compiler classifies each input port's type. `StructuralGeneratable` ports get auto-generated values from refinement constraints. `SemanticCarrier` ports require values from `@mock_response`, `@node_example`, or explicit test fixtures.
+- If a semantic-carrier input has no explicit seed source, the compiler emits a **compile error** (not a skipped test, not a synthetic placeholder). This is the "No Skips" policy (N.11) applied at the seed level.
+- The `@mock_response` annotation on service operations is the primary mechanism for providing explicit seeds for transport carrier types. Without it, the service's transport boundary tests cannot be generated.
+
+**Target (not yet fully implemented):** A full seed policy matrix keyed by `(type_class, test_context)`:
+
+| | `RealSingleNodeRequiredInput` | `DryRunBoundaryMock` | `LiveFlowInput` |
+|---|---|---|---|
+| `StructuralGeneratable` | Generated | Generated | Generated |
+| `SemanticCarrier` | **Explicit required** | Witness OK | **Explicit required** |
+
+Currently only the `RealSingleNodeRequiredInput` context is implemented. The DSL compiler should implement all three contexts as testgen matures.
+
+## N.6 Integration with Existing Testgen Buckets
 
 The three tiers map to the four testgen buckets:
 
@@ -2944,7 +3304,7 @@ The three tiers map to the four testgen buckets:
 | **C: Scenario Coverage** | All-succeed, per-failure, guard branches. Values from manual MockSpec. | Same scenarios. Values from `@mock_response`. **Per-failure scenarios can also inject `@error_response` templates.** |
 | **D: Resource Hygiene** | Resource connectivity, conflict absence. Values from manual MockSpec. | Same checks. Resource mock values generated from `resource` type definitions. **No manual resource MockSpec needed.** |
 
-## N.6 Compiler Pipeline Integration
+## N.7 Compiler Pipeline Integration
 
 The auto-generation work happens in two compiler passes:
 
@@ -3013,7 +3373,7 @@ fn fuzz_render_snapshot() {
 }
 ```
 
-## N.7 Deterministic Generation for Reproducible Tests
+## N.8 Deterministic Generation for Reproducible Tests
 
 Auto-generated ids, UUIDs, and fuzz inputs must be reproducible across runs and backends to prevent test flakiness.
 
@@ -3034,7 +3394,7 @@ A DAG with 20 pure `fn` nodes at 100 iterations = 2,000 fuzz tests, which is man
 
 - **Cross-field invariants**: acknowledged as outside the scope of auto-fuzzing. The compiler generates a note in the test output: `// NOTE: cross-field invariants (e.g., start_date < end_date) require manual test cases or runtime guards`. Authors add these via explicit `@test` annotations on the journey.
 
-## N.8 Error Response Templates (Failure Scenario Mocking)
+## N.9 Error Response Templates (Failure Scenario Mocking)
 
 For Bucket C's per-failure scenarios, the compiler needs to generate realistic error responses. A new `@error_response` annotation provides this:
 
@@ -3064,7 +3424,7 @@ The compiler uses `@mock_response` for the all-succeed scenario and `@error_resp
 
 Without `@error_response`, the compiler falls back to a generic transport error (connection refused, timeout) — which tests error propagation but not API-specific error handling.
 
-## N.9 The End-State Developer Workflow
+## N.10 The End-State Developer Workflow
 
 ### Without auto-generation (gunbc today)
 
@@ -3094,7 +3454,7 @@ Without `@error_response`, the compiler falls back to a generic transport error 
 
 The `MockSpec` moves from a per-tool authoring burden to a compiler output.
 
-## N.10 Relationship to gunbc's Existing Simulator Infrastructure
+## N.11 Relationship to gunbc's Existing Simulator Infrastructure
 
 gunbc already has the seeds of this system in `core/test/`:
 
@@ -3108,7 +3468,21 @@ gunbc already has the seeds of this system in `core/test/`:
 
 The DSL compiler doesn't invent new testing infrastructure — it drives the existing `Simulator` / `IoContract` / `MockSpec` / `OutputMatcher` types from declarative metadata instead of manual construction.
 
-## N.11 Guardrail Compliance
+## N.12 No-Skips Test Policy (from the-gunbai `mockable-integrations.md`)
+
+If a test is generated, it **must** run. There are no silent skips.
+
+**Rules:**
+
+1. Every transport boundary node must have a `@mock_response` annotation OR the compiler generates a generic transport error mock. Missing mocks for transport boundaries produce a **compile error**, not a skipped test.
+2. Generated tests are hermetic — they never require live credentials, network access, or external services.
+3. `#[ignore]` / `@skip` is reserved only for explicitly user-marked tests (via `@skip_test` annotation on the journey). The compiler never generates ignored tests.
+4. DAG-level failure propagation tests cover every node: for each transport boundary, the compiler generates a scenario where that node fails, verifying that downstream nodes are skipped and no global "success" is reported.
+5. If a resource mock is required (e.g., `resource Credential` with `acquire` logic), the compiler derives it from the resource definition's lifecycle specification. Missing resource mocks are compile errors.
+
+This policy ensures that the CI obligation count (e.g., "133 obligations, 58 discharged, 75 testable") is real — every "testable" obligation has a runnable test with no silent gaps.
+
+## N.13 Guardrail Compliance (C1/G1-G3)
 
 Per Appendix K.6:
 
@@ -3118,7 +3492,7 @@ Per Appendix K.6:
 
 **G3 (Kill manual bottlenecks):** The manual MockSpec is one of the three remaining manual bottlenecks (alongside graph builders and registration). Auto-generation eliminates it, reducing the per-tool manual cost from ~380 lines to ~40 lines.
 
-## N.12 Phasing
+## N.14 Phasing
 
 | Phase | What's automated | Requires |
 |---|---|---|
@@ -3129,3 +3503,100 @@ Per Appendix K.6:
 | **Phase 4** (Multi-target) | Fuzz tests emitted in target language (Rust proptest, Python hypothesis, Go rapid) | Codegen backend trait extended |
 
 The progression is deliberate: Phase 1 eliminates the worst of the manual MockSpec burden (safe defaults). Phase 2 eliminates it entirely for well-annotated services. Phase 3 makes Bucket B exhaustive. Phase 4 makes it multi-language.
+
+---
+
+# Appendix O: Future Considerations (Cross-Repository Review)
+
+This appendix captures features and ideas from the three repos (gunb.ai, the-gunbai, gunbc) that are **not yet incorporated** into the normative DSL spec but should be reviewed before the design is finalized. Each item includes its source, a brief description, and a recommendation.
+
+## O.1 Risk Levels and Envelope Semantics (the-gunbai `spec.md` §1.4)
+
+**What it is:** Every node has a risk level (Low/Medium/High/Critical) that drives policy-driven wrapping. The executor selects an "envelope" (BestEffort, Retryable, ApprovalGate, DryRunFirst, Saga) based on risk + graph policy. Policies are per-environment (CI may accept Medium; production may gate everything above Low).
+
+**Why it matters:** The DSL has `@hermeticity` and `@auth` annotations but no general risk classification. As workflows touch production systems, a risk model prevents "deploy to production" from running without approval gates.
+
+**Recommendation:** Defer to post-Phase 2. Once services and resources are stable, add `@risk(high)` as an annotation that desugars to envelope selection (C1-compliant). The envelope patterns (retry, approval gate, dry-run-first) already exist as DSL patterns — risk classification just selects which one to apply.
+
+## O.2 Caching Model — Lenses, Snapshots, ContextID (the-gunbai `spec.md` §2.3)
+
+**What it is:** A principled caching model where Snapshots represent world-state, Lenses define what you observe, and ContextID = hash(snapshot + lens + params) serves as a cache key. Invalidation is explicit: if lens inputs or logic change, cache is invalidated.
+
+**Why it matters:** The DSL doesn't address caching. As workflows grow, re-executing unchanged subgraphs is wasteful. Deterministic NodeIds (§8.7) and content hashing (`core/infra`) are prerequisites.
+
+**Recommendation:** Defer to post-Phase 3. The DSL's deterministic NodeIds and content hashing infrastructure provide the foundation. A `@cacheable` annotation on journeys (with explicit cache key from input ports) would compose with the freshness model. Key rule: "if you cannot describe what invalidates a result, you must not cache it."
+
+## O.3 Requirements Propagation (the-gunbai `spec.md` §2.4)
+
+**What it is:** A requirement declared by a node propagates to its dependents. Every dependent must acknowledge, exclude, or propagate it. Enforcement levels: Advisory, Warning, Enforced, Deprecated.
+
+**Why it matters:** This enables behavioral contracts to flow from infrastructure to application code. Example: a database service declares `@requires(backup_strategy)` — every journey using it must acknowledge or propagate this requirement.
+
+**Recommendation:** Consider for Phase 4 (pipelines). Requirements are most useful for multi-team workflows where pipeline stages cross ownership boundaries. The DSL's type system handles many requirement-like concerns (e.g., `@auth` is effectively a requirement). A general `@requires` mechanism would complement this.
+
+## O.4 Prerequisites and Auto-Satisfaction (the-gunbai `spec.md` §2.5)
+
+**What it is:** Named conditions that must be true before a node runs. The compiler auto-satisfies prerequisites by finding existing providers, injecting from a registry, or verifying external conditions.
+
+**Why it matters:** The DSL's `resource` construct with `acquire` blocks handles the main case (tool installation, credential acquisition). Prerequisites generalize this: "ensure workspace lock acquired," "ensure schema migration complete."
+
+**Recommendation:** The DSL's resource model covers 80% of prerequisite use cases. The remaining 20% (cross-journey preconditions) could be modeled as `resource` types with `Persistent` lifecycle. Defer general prerequisite syntax unless resource modeling proves insufficient.
+
+## O.5 ExecutionContext — Infrastructure-Derived Requirements (the-gunbai `spec.md` §2.6)
+
+**What it is:** Properties of the execution environment (Preemptible, NetworkPartitionable, DiskEphemeral, CostModel) that automatically derive behavioral requirements. Example: `Preemptible=true` → node must be idempotent and checkpointable.
+
+**Why it matters:** Enables the compiler to insert reliability wrappers (checkpointing, retry, budget tracking) based on where code runs, not what code does.
+
+**Recommendation:** Defer to post-Phase 4. This is a "deployment-time" concern that becomes relevant when the DSL targets multiple execution environments. The DSL's `@hermeticity` annotation is a simple version of this concept.
+
+## O.6 Additional Patterns (the-gunbai `docs/design/behavior-patterns.md`)
+
+Patterns modeled in the-gunbai but not yet in the DSL pattern catalog:
+
+| Pattern | Phases | Use case | Priority |
+|---|---|---|---|
+| **Watch** | Subscribe → Receive → Unsubscribe | Event streaming, webhooks | Low — requires async/streaming model |
+| **Lock** | Acquire → Hold → Release | Mutual exclusion on shared resources | Medium — resource model may suffice |
+| **Cache** | Check → Fetch → Store | Read-through caching | Medium — pairs with O.2 |
+| **CRUD** | Create, Read, Update, Delete | Resource lifecycle | Low — upsert covers most cases |
+| **Saga** | Compensating actions on failure | Distributed transactions | Medium — extends transaction pattern |
+| **Circuit Breaker** | Closed → Open → Half-Open | Failure threshold protection | Low — can be modeled as retry variant |
+
+**Recommendation:** Lock and Saga are the highest priority additions. Lock maps to resource conflict detection with time-bounded exclusivity. Saga extends the existing `transaction` pattern with compensation actions. Others can be added as patterns are encountered in real workflows.
+
+## O.7 Demand-Driven Codegen / Consumer Tracking (the-gunbai `docs/design/demand-driven-codegen.md`)
+
+**What it is:** Tracking which downstream targets consume which generated artifacts, with freshness requirements. Enables "regenerate only what changed" instead of "regenerate everything."
+
+**Why it matters:** As the DSL generates more artifacts (13 emission targets per §10.3), full regeneration becomes expensive. Consumer tracking enables incremental compilation.
+
+**Recommendation:** Defer to Phase 3+. The DSL's deterministic compilation (C3) and content hashing provide the foundation. Incremental compilation is an optimization — get correctness first, then speed.
+
+## O.8 the-gunbai Inline DAG Visualization (Implemented, PV1-PV4)
+
+**What it is:** The-gunbai built a complete inline progress visualization system through four phases: compact inline progress (PV2), expanded DAG rendering with box drawing (PV3), and interactive toggle between compact/expanded views (PV4). Design decisions: crossterm for terminal control, hybrid compact/expanded approach, responsive width thresholds, accessibility modes.
+
+**Why it matters:** This is **working code** that should be harvested for the DSL's `inline` and `tui` rendering modes (§6.7). Key files: `gunbai-runtime/src/progress/inline/layout.rs` (wave-based layout), `gunbai-runtime/src/progress/inline/render.rs` (box drawing, edge routing), `gunbai-runtime/src/progress/inline/input.rs` (interactive toggle).
+
+**Recommendation:** Harvest into Phase 1 (§11 "What to Harvest" already lists the-gunbai's terminal crate). This is existing, tested implementation that directly maps to the DSL's `ProgressManifest` → renderer pipeline.
+
+## O.9 gunbc Unified Registration Plan (`docs/design/unified-registration.md`)
+
+**What it is:** gunbc has 6 registration islands (testgen targets, tool definitions, graph builders, boundary mocks, resource defs, graph builder IDs). Only testgen uses the `inventory` auto-discovery pattern; the rest are hardcoded lists.
+
+**Why it matters:** The DSL's filesystem discovery (P7) eliminates ALL registration islands. But during the migration period (when both `.dag` files and Rust builders coexist), the parity harness needs to discover both. The unified registration plan provides the bridge.
+
+**Recommendation:** Relevant only during migration (Workstream A/B from the roadmap). Not a DSL language feature — it's an implementation detail of the parity harness.
+
+## O.10 gunbc Unified Emission Plan (`docs/design/unified-emission.md`)
+
+**What it is:** A 1,400-line audit of gunbc's 13 rendering systems documenting exactly where each one deviates from the "IR → Renderer → Output" gold standard (testgen). Identifies which systems have proper IR, which have renderer traits, and which are raw string concatenation.
+
+**Why it matters:** This is the **map** for implementing §10.3's emission targets. Each entry identifies what IR to create, what renderer trait to define, and what gunbc code to harvest or replace.
+
+**Recommendation:** Use as implementation guide during Phase 1-2. The audit is already done — follow it.
+
+---
+
+**Review checklist:** Before finalizing the DSL spec, revisit each item above and decide: incorporate now, defer with a specific phase target, or explicitly out-of-scope. Items O.1-O.5 are architectural; items O.6-O.10 are implementation guidance.

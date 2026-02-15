@@ -435,7 +435,7 @@ trait CodegenBackend {
 }
 ```
 
-**Key change from design doc's §9.2**: `emit_node_stub` is gone — replaced by `emit_fn` which emits a complete, compilable function (not a stub), because functor bodies are in the DSL.
+**Note**: `emit_fn` emits a complete, compilable function (not a stub), because functor bodies are in the DSL. The design doc's compiler pipeline (§9) reflects this.
 
 ### ProgressManifest: the shared contract
 
@@ -451,7 +451,7 @@ type ProgressManifest {
   labels: Map<NodeId, String>
 
   // Nested composition (the-gunbai's key capability)
-  subdag_boundaries: List<SubDagBoundary>    // journey/pattern calls → sections
+  subdag_boundaries: List<SubDagBoundary>    // journey calls → sections (patterns expand inline)
   parallel_groups: List<ParallelGroup>       // siblings at same depth → grouped counters
   scatter_points: List<NodeId>               // loop expansions → scatter groups [n/N]
 
@@ -1395,7 +1395,6 @@ Track these during migration to measure progress:
 ## References
 
 - [DSL Design Document](./dsl-design.md) — full language specification and worked examples
-- [Consolidation Plan](./consolidation-plan.md) — internal reconciliation and refactor tracking
-- [Unified Registration](./unified-registration.md) — discovery unification design
-- [Unified Emission](./unified-emission.md) — emission system consolidation design
+- [Unified Registration](../unified-registration.md) — discovery unification design
+- [Unified Emission](../unified-emission.md) — emission system consolidation design
 - [Handbook](../handbook.md) — pipeline invariants and pattern catalog
