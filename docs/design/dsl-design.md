@@ -31,6 +31,10 @@
 - [H. Pattern Catalog](#appendix-h-pattern-catalog)
 - [I. Inspiration Targets](#appendix-i-inspiration-targets)
 - [J. Cross-Repository Capability Matrix](#appendix-j-cross-repository-capability-matrix)
+- [K. Root Cause Analysis — Why gunbc Got Out of Control](#appendix-k-root-cause-analysis--why-gunbc-got-out-of-control)
+- [L. A/B Workflow Comparisons and Handbook Reference](#appendix-l-ab-workflow-comparisons-and-handbook-reference)
+- [M. Competitive Landscape and Alternatives Analysis](#appendix-m-competitive-landscape-and-alternatives-analysis)
+- [N. Model-Based Testing and Auto-Generated Mocks](#appendix-n-model-based-testing-and-auto-generated-mocks)
 
 ---
 
@@ -214,7 +218,27 @@ type Platform = Linux | MacOS | Windows
 // Map<K, V>  — key-value pairs
 ```
 
+// Refinement types (constraints on primitives — enables auto-fuzzing)
+// See Appendix N for full model-based testing implications.
+type CommitSha = String @pattern("^[a-f0-9]{40}$")
+type RetryCount = Int @range(min: 1, max: 5)
+type HttpStatus = Int @range(min: 100, max: 599)
+type Email = String @pattern("^[^@]+@[^@]+\\.[^@]+$")
+type Port = Int @range(min: 1, max: 65535)
+type GistId = String @format(uuid)
+type SecretValue = Secret @non_empty
+
+// @pattern(regex)    — string must match regex
+// @range(min, max)   — numeric bounds (inclusive)
+// @format(preset)    — well-known format (uuid, uri, iso8601, semver)
+// @non_empty         — string/list must have length > 0
+// @one_of(values)    — value must be one of the listed literals
+// @length(min, max)  — string/list length bounds
+```
+
 Design choice: no cardinality algebra. `T` is required-one, `T?` is optional, `List<T>` is zero-or-more. This is sufficient — gunbc's interval math (`Cardinality { min, max }`) was over-engineered for actual usage.
+
+Design choice: refinement types constrain primitives with structural metadata that the compiler uses for three purposes: (1) validation at type-check time, (2) auto-generation of test inputs at derive time (see Appendix N), and (3) documentation of expected shapes for service consumers. Per Appendix K.6 guardrail G1, refinement annotations desugar to structural constraints — `@pattern` compiles to a validation predicate in the type's DAG representation, not opaque metadata.
 
 ### 4.2 Resources
 
@@ -331,14 +355,20 @@ service github.Gist {
       files: Map<String, String>
       public: Bool = false
     }
-    output { url: String, id: String }
+    output { url: String, id: GistId }
     @rest(POST, "https://api.github.com/gists")
     @permissions(["gist"])
+    @mock_response(
+      status: 201,
+      body: { "html_url": "https://gist.github.com/mock/{id}", "id": "{id}" }
+    )
   }
 }
 ```
 
 Key: services are pure declarations. Every service call in a journey compiles to a transport triplet (prepare/execute/parse). The author never sees the triplet — the compiler emits it.
+
+The `@mock_response` annotation is optional. When present, the compiler uses it to auto-generate `MockSpec` boundary values for Bucket A and Bucket C tests — eliminating hand-written mock fixtures for that operation. Output fields with refinement types (like `GistId = String @format(uuid)`) are populated by the compiler's type-aware generator. See Appendix N for the full model-based testing design.
 
 ### 4.4 Concepts and Providers
 
@@ -2686,3 +2716,1249 @@ workflow orchestration.    can generate integration     73% generated tests,    
 ```
 
 Each generation's "free" capabilities compound: the DSL gets parallel execution from gunb.ai + codegen from the-gunbai + structural proofs from gunbc + language-level compression from the new compiler. Nothing is thrown away — everything is harvested, formalized, and made available through the `.dag` surface syntax.
+
+---
+
+# Appendix K: Root Cause Analysis — Why gunbc Got Out of Control
+
+This appendix documents the precise failure modes that caused gunbc's codebase to accumulate glue, drift, and rework pressure — and traces each failure mode to the DSL construct that eliminates it.
+
+The framing draws on internal postmortem documents: `TODO/TODONE/refactor-pressure.md` (2026-02-05), `TODO/TODONE/architecture-debt.md` (2026-02-05), `docs/design/consolidation-plan.md`, `docs/design/unified-registration.md`, and `docs/design/unified-emission.md`.
+
+## K.1 The Precise Diagnosis
+
+gunbc's IR is strong and ambitious. The design philosophy — "Everything is a DAG," behavior must be representable structurally, semantic meta-annotations are banned — is a very high bar for modeling. The core IR (`Node<T>`, `Dag<T>`, `Port`, `Edge`, cardinality algebra, transport boundaries, pattern library) is proven correct and heavily tested.
+
+**The failure was not "lack of modeling." It was incomplete modeling: the IR layer was modeled aggressively, while the spec/registry/discovery/emission/progress layers often weren't, so meaning leaked into glue.**
+
+From `architecture-debt.md` (2026-02-05 Weekly Signal):
+
+> When a concept lacks a typed, structural home (IR/model/registry/resource), it leaks into templates, env access, string IDs, and ad-hoc rules — and then we refactor later to pull it back into structure.
+
+And from `refactor-pressure.md`:
+
+> We keep refactoring because the system still allows key behavior and meaning to exist outside the model (DAG/resources/types/IR), and the resulting duplicate sources of truth drift until they force a structural cleanup.
+
+## K.2 Four Root Causes (from Internal Postmortem)
+
+### A) Model is not closed — behavior exists outside the DAG
+
+Code reached out to the environment implicitly: `std::env::var()`, `SystemTime::now()`, `Platform::detect()`, `FilesystemHandle::new()`. These calls happened inside opaque nodes, breaking DryRun interception, testability, and dependency reasoning.
+
+**Leak → Fix dynamic (completed 2026-02-05):**
+
+| Leak | Fixed with | Phase |
+|---|---|---|
+| Inline `SystemTime::now()` | `ClockEnv` node with explicit env port | Resource Phase 2 |
+| Inline `Platform::detect()` | `PlatformEnv` node with explicit env port | Resource Phase 3 |
+| Inline `FilesystemHandle::new()` | `FsEnv` node with explicit resource port | Resource Phase 1 |
+| `std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL")` | Explicit input ports on graph root | Resource Phase 4 |
+| `GUNBC_EXEC_MODE` global | Exec mode via DAG edge | Resource Phase 5 |
+
+**DSL fix:** `uses fs: Filesystem(mode: Write)` / `uses clock: Clock` / `uses net: Network`. Resources are declared, not accessed implicitly. The compiler inserts acquisition nodes and threads resources through edges. No code path can reach the environment without a declaration.
+
+### B) Invariants are not enforced by construction — policy exists but allows escape hatches
+
+The system had policies ("all I/O through transport boundaries," "no hidden env access") but allowed escape hatches. Churn happened when code violated policies and only discovered the violation during review, lint, or runtime.
+
+**Examples:**
+- `execute_transport()` was public — any opaque node could call it directly, bypassing the transport boundary model. **Fixed:** removed from public API; only `TransportOps::Execute` can perform I/O.
+- `clippy.toml` banned `std::fs` and `std::process::Command`, but pragmas could disable the ban. **Fixed:** pragma audit with explicit exception list.
+- Generated code could trigger lint warnings. **Policy:** if generated file triggers lint, fix the IR or clippy config — never add `#[allow]` in generated output.
+
+**DSL fix:** The language itself prevents escape hatches. You cannot express I/O in a `.dag` file — the only way to do I/O is through a `service` operation with a `@rest` / `@shell` / `@file` annotation, which the compiler expands to a transport triplet. Escape hatches are not available in the surface syntax.
+
+### C) Semantics are duplicated across layers — same meaning lives in two places
+
+When the same concept exists in two places, they drift until cleanup becomes necessary.
+
+**Documented examples:**
+
+| Duplicate concept | Where it lived | Drift consequence |
+|---|---|---|
+| Boundary mocks | `registry.rs` AND `graph_mock.rs` | Mock values could disagree; tests might pass with stale mocks |
+| Tool definitions | `all_tools()` vec AND `CliToolDef` constants | Forgot to add to `all_tools()` = tool exists but isn't discoverable |
+| Hash logic | Per-crate implementations | Different crates computed different hashes for same content |
+| Cardinality | Port cardinality AND type contract predicates | `Optional<T>` + `One` cardinality = contradictory claims |
+| Graph builder identity | `GraphBuilderId` enum AND string templates | Rename builder function → string silently emits wrong name → runtime failure |
+
+**DSL fix:** Single source of truth by construction. A `service` declaration IS the boundary mock source (the compiler generates MockSpec from `@rest` annotations). A `.dag` file IS the tool definition AND the graph builder AND the registry entry. Filesystem discovery eliminates all manual lists.
+
+### D) Cross-cutting concerns appear before they have a home
+
+Shared concerns (hashing, registry metadata, build artifact policy, resource dependency rules) got wedged into convenient places until third duplication forced a refactor.
+
+**The pattern:** hashing appeared in three crates before `gunbc-infra::hash` was extracted. Freshness checking appeared in two crates before `gunbc-infra::freshness`. Rendering appeared in 13 places before the emission unification design was written.
+
+**DSL fix:** The compiler pipeline has explicit homes for every cross-cutting concern: `Discover` phase for registry, `Derive` phase for progress manifest, `Emit` phase for rendering, `Validate` phase for resource conflicts. Concerns are modeled in the compiler, not discovered ad-hoc across crates.
+
+## K.3 The "Generic IR Chokepoint" Problem
+
+Beyond the four root causes, gunbc forced too much meaning through a generic IR chokepoint, and some semantics weren't preserved across that boundary.
+
+**The canonical example: hermeticity.**
+
+From `TODO/consolidation.md` (Integration Test Gap Analysis):
+
+> **Design Problem: `TransportRequest` doesn't encode hermeticity.**
+>
+> We want test categories derived from the transport type system: **integration** (hermetic, local-only) vs **external** (non-hermetic, network/auth). But `TransportRequest` variant alone doesn't determine this.
+>
+> The problem is `Shell`. Higher-level domain types know whether they're hermetic, but that information is erased when they convert to `TransportRequest::Shell`:
+>
+> ```
+> GitRequest::LsFiles.to_shell_request()    → Shell { ... }   // hermetic
+> GistRequest::new().to_shell_request()     → Shell { ... }    // non-hermetic
+> CargoCommand::Build.to_shell_request()    → Shell { ... }    // hermetic
+> ```
+>
+> After conversion, these are indistinguishable at the transport layer. The executor sees `Shell(ShellRequest {...})` and has no way to know whether it hits the network.
+
+This is the "IR-only" failure mode in a nutshell:
+- The IR is too generic at the transport layer
+- You lower into `TransportRequest::Shell` early
+- You lose distinctions that matter for execution, policy, and test classification
+
+**DSL fix:** Transport is late-bound (Design Principle P5). Service declarations carry semantic metadata (`@rest`, `@shell`, `@permissions`, `@idempotent`, `@readonly`) that the compiler preserves through lowering. The compiler can classify `git.Core.LsFiles()` as hermetic (local shell, no network annotation) vs `github.Gist.Create()` as non-hermetic (`@rest` with `@permissions`) — because the service declaration IS the source of truth, not a generic `Shell` variant.
+
+## K.4 What Is NOT a Failure (Correcting Overstatements)
+
+The internal reconciliation notes (`consolidation-plan.md`) explicitly correct some "redundancy claims" that were wrong or overstated:
+
+| Claimed redundancy | Actual status |
+|---|---|
+| "Dual-source boundary mocks" | Not actually dual-sourced — MockSpec.to_boundary_mocks() is the single source |
+| "CliToolDef/ToolDef duplication" | Intentional separation: platform satisfiability (ToolDef) vs runtime acquisition (CliToolDef) |
+| "Type/cardinality duplication" | Already unified via TypeRegistry.infer_cardinality() |
+
+The lesson: not all apparent duplication is harmful. Some "duplicate" structures serve distinct purposes and should remain separate.
+
+## K.5 Root Causes → DSL Features Traceability Matrix
+
+Each gunbc pain point mapped to the DSL construct that eliminates it and the compiler pass that enforces it.
+
+| # | Pain Point | Root Cause | DSL Construct | Compiler Pass | Evidence |
+|---|---|---|---|---|---|
+| 1 | 7,000+ lines of hand-wired builders | No front-end language | `.dag` files with journey/pattern syntax | Parse → Lower | `dsl-design.md` §1 |
+| 2 | 6 registration islands | No unified discovery | Filesystem as registry | Discover | `unified-registration.md` |
+| 3 | `all_tools()` hardcoded vec (360 lines) | Manual bottleneck | Every `.dag` file auto-discovered | Discover | `unified-registration.md` §3 |
+| 4 | `GraphBuilderId` string coupling | Meaning outside model (C) | Function pointers from module graph | Discover + Resolve | `consolidation-plan.md` §3 |
+| 5 | 13 rendering systems, 5 traits | No emission model (D) | `ProgressManifest` + renderer trait | Derive + Emit | `unified-emission.md` |
+| 6 | Hidden env access in opaque nodes | Model not closed (A) | `uses` declarations + compiler-inserted env nodes | Lower | `refactor-pressure.md` §A |
+| 7 | `execute_transport()` escape hatch | No construction enforcement (B) | Service ops → compiler-emitted triplets | Lower | `refactor-pressure.md` §B |
+| 8 | `format!()` codegen constructing source | No emission IR (D) | TestFile IR + TestRenderer trait | Emit | `architecture-debt.md` |
+| 9 | Hermeticity erased at transport layer | Generic IR chokepoint | Service annotations preserved through lowering | Lower + Validate | `consolidation.md` §8 |
+| 10 | Boundary mocks defined in two places | Semantic duplication (C) | MockSpec derived from service declarations | Derive | `unified-registration.md` §4 |
+| 11 | Resource lifecycle implicit | Incomplete resource model | `resource` with acquire/use/release | Lower + Validate | `dsl-design.md` §7 |
+| 12 | Progress rebuilt from scratch (lost TUI quality) | No progress model | `ProgressManifest` at compile time | Derive | `dsl-design.md` §6 |
+| 13 | dag-viz can't see itself | Discovery doesn't include meta-tools | Module graph IS workspace DAG | Discover | `dsl-design.md` §5 |
+| 14 | Manual MockSpec per tool | Test infrastructure not generated | Compiler generates MockSpec from service declarations | Derive | `dsl-design.md` §8 |
+| 15 | `Value`/`ValueExpr` parallel hierarchies | Emission leaked into IR | Codegen works from IR + types; no runtime value expressions | Emit | `architecture-debt.md` |
+
+## K.6 Guardrails for the DSL (Preventing Re-Creation of Failure Modes)
+
+The feedback raises an important concern: how do we prevent re-creating gunbc's failure modes *inside* the DSL? Three specific guardrails:
+
+### G1: Annotations must desugar to structure
+
+Design Principle P9 ("The language is total") and the IR philosophy's ban on semantic meta-annotations must apply to the DSL surface syntax. `@interactive`, `@rest`, `@idempotent`, etc. must **desugar into explicit structural nodes/fields** in the lowered IR, not remain as opaque annotations that modify behavior outside the model.
+
+**Test:** Can you delete the annotation and get a compile error or behavior change that's visible in the IR? If the annotation has no structural representation, it's a semantic meta-annotation and violates P9.
+
+### G2: Preserve producer-level semantics through lowering
+
+Hermeticity is the canonical example. If the DSL keeps a generic transport layer (it does — Design Principle P5), it must carry semantic properties from the service declaration through compilation and execution.
+
+**Options from `consolidation.md`:**
+- Field on `TransportRequest` (e.g., `hermetic: bool`)
+- Split `Shell` variant into `LocalShell` / `NetworkShell`
+- Node-level annotation that survives lowering
+
+**Recommendation:** The DSL compiler should propagate `@rest` / `@shell` / `@idempotent` / `@readonly` / `@permissions` as metadata on the lowered transport node, so the executor and test categorizer can access them without re-deriving them from string inspection.
+
+### G3: Kill manual bottlenecks first
+
+The internal docs identify `all_tools()` as the #1 source of silent omission bugs. The DSL's filesystem discovery eliminates this entirely — but the Phase 1 implementation must verify this is true end-to-end: every `.dag` file in the `paths` directories must appear in the module graph, and the module graph must be the sole source for downstream automation (Makefile targets, CLI generation, testgen registration).
+
+**Metric (from `refactor-pressure.md`):**
+- Manual tool registrations → 0
+- Stringly `GraphBuilderId` references → 0
+- Rendering systems without IR/trait → 0
+- `format!()` constructing source code → 0
+
+---
+
+# Appendix L: A/B Workflow Comparisons and Handbook Reference
+
+This appendix consolidates key material from `docs/ab-writing-workflows.md` and `docs/handbook.md` to serve as a self-contained reference within this design document.
+
+## L.1 The A/B Comparison Framework
+
+The A/B comparison shows the same workflow written in three traditional styles (imperative, OO, functional) and then as a gunbc DAG, highlighting what each approach proves and what must be tested manually.
+
+**Core difference:** Traditional code makes workflow structure implicit (ordering, wiring, I/O boundaries, skip paths live in control flow and conventions). gunbc makes the workflow explicit as a typed DAG (wiring, boundaries, and dataflow are first-class objects).
+
+### What gunbc validation proves that traditional compilers cannot:
+
+| Property | Rust/Java/Haskell compiler proves | gunbc additionally proves |
+|---|---|---|
+| Type safety | Types match at call sites | Types match at DAG edges (across node boundaries) |
+| Acyclicity | N/A (not a concept) | DAG structure is acyclic by construction |
+| Cardinality | N/A (not a concept) | `One`/`ZeroOrOne`/`ZeroOrMore` are compatible across edges |
+| SubDag interfaces | N/A | Inner DAG ports match outer node usage |
+| I/O isolation | N/A | All I/O goes through transport boundaries (DryRun intercepts them) |
+| Resource conflicts | N/A | No unordered accesses to the same resource |
+
+## L.2 Minimal Tool: Clippy Upsert (Four Styles)
+
+### Imperative (Rust)
+
+```rust
+fn run_clippy(args: &[&str]) -> Result<()> {
+    if !clippy_installed()? {
+        install_clippy()?;
+    }
+    run_clippy_command(args)?;
+    Ok(())
+}
+```
+
+You must ensure manually: the check/install/run wiring is consistent and complete, the "already installed" fast path is correct.
+
+### gunbc DAG
+
+```rust
+pub fn build_clippy_upsert(args: &[&str]) -> Node<CliToolOp> {
+    build_cli_upsert(&cli::CLIPPY, args)
+}
+```
+
+Produces a SubDag:
+
+```
++------------------------- clippy (SubDag) --------------------------+
+| [check]   (is clippy installed?)                                   |
+|    | exists = false                                                |
+| [create]  (rustup component add clippy)    [guard: !check.exists]  |
+|    |                                                               |
+| [resolve] (cargo clippy {args...})                                 |
+|    ^                                                               |
+|    +-- exists = true: skip create ---------------------------------+
++--------------------------------------------------------------------+
+```
+
+What gunbc proves beyond the Rust compiler:
+- The upsert flow is acyclic and structurally complete
+- All edges are type-compatible and cardinality-compatible
+- The SubDag interface matches how the parent graph uses it
+
+### DSL
+
+```
+journey install_clippy {
+  output { handle: String }
+  result = upsert {
+    check:   shell("which clippy-driver") -> { exists: Bool }
+    create:  shell("rustup component add clippy")
+    resolve: shell("clippy-driver --version") -> { handle: String }
+  }
+  return { handle: result.handle }
+}
+```
+
+What the DSL adds beyond gunbc: the 5-line journey replaces ~186 lines of Rust builders. The compiler expands `upsert` to the same SubDag, with the same structural guarantees, plus generates MockSpec and test obligations automatically.
+
+## L.3 Real Workflow: Gist Snapshot (Four Styles)
+
+### Imperative (Rust)
+
+```rust
+fn run_gist_snapshot(repo_path: &Path, public: bool) -> Result<String> {
+    let files = git_ls_files(repo_path)?;
+    let mut contents = BTreeMap::new();
+    for file in files {
+        let text = std::fs::read_to_string(repo_path.join(&file))?;
+        contents.insert(file, text);
+    }
+    let markdown = render_code_snapshot(&contents);
+    let branch = git_current_branch(repo_path)?;
+    let remote_branch = git_remote_branches_at_head(repo_path)?;
+    let request = prepare_gist_request(markdown, branch, remote_branch, None, public)?;
+    let response = execute_transport(request)?;
+    let url = parse_gist_response(response)?;
+    Ok(url)
+}
+```
+
+You must ensure manually: workflow is acyclic and complete, I/O boundaries are isolated/mocked/tested, optional inputs and skip paths are handled consistently.
+
+### gunbc DAG (simplified)
+
+```
++------------------ List + Read ------------------+
+| prepare_list_files → execute_list_files → parse  |
+| parse → read_files_loop (SubDag)                 |
+| loop → collect → render_markdown                 |
++--------------------------------------------------+
+
++------------------ Branch Inputs ------------------+
+| prepare_branch → execute_branch → parse_branch    |
+| prepare_remote → execute_remote → parse_remote    |
++---------------------------------------------------+
+
+[fs_env] ──fs:write──→ prepare_gist_request
+[clock_env] ──clock──→ prepare_gist_request
+render_markdown ──markdown──→ prepare_gist_request
+prepare_gist_request → execute_gist → parse_gist_response → url
+```
+
+1,449 lines of Rust builder code. Every transport node (execute_list_files, execute_branch, execute_remote, execute_gist, execute_read_file) is interceptable by DryRun. Testgen generates ~50 tests from the graph structure.
+
+### DSL
+
+```
+journey gist_snapshot {
+  input { base_ref: String? }
+  output { url: String }
+  uses fs: Filesystem(mode: Read)
+
+  branch = git.Core.CurrentBranch()
+  files = git.Core.LsFiles()
+
+  contents = for file in files.files {
+    fs.read(path: file)
+  }
+
+  markdown = render_snapshot(files: contents)
+  result = gist_upload(markdown: markdown, branch: branch.branch, base_ref: base_ref)
+
+  return { url: result.url }
+}
+```
+
+~80 lines across 3 journeys (snapshot + diff + recent) vs 1,449 lines of Rust builders. Same IR, same tests, same DryRun behavior.
+
+## L.4 Handbook Pattern Catalog (Reference)
+
+The following patterns from the gunbc handbook (`docs/handbook.md`) are preserved here as reference for the DSL's pattern library.
+
+### Structural Patterns
+
+| Pattern | Intent | gunbc Builder | DSL Equivalent |
+|---|---|---|---|
+| **Fractal SubDag** | Reusable subgraphs as nodes | `Node::subdag(inner_dag)` | Journey/pattern call (implicit SubDag) |
+| **Upsert** | Check → Create → Resolve | `UpsertBuilder::new(id)` | `upsert { check: ..., create: ..., resolve: ... }` |
+| **Transaction** | Begin → Body → Commit/Rollback | `TransactionBuilder` | `transaction { begin: ..., body: ..., commit: ..., rollback: ... }` |
+| **Atomic** | Precondition → Op → Postcondition | `AtomicBuilder` | `atomic { pre: ..., op: ..., post: ... }` |
+| **Content Upsert** | Render → Read → Compare → Write | `add_content_upsert_chain()` | `content_upsert(content: ..., path: ...)` |
+| **Branch** | Conditional execution with merge | `BranchBuilder` / `IfBuilder` | `match cond { A => ..., B => ... }` / `when flag { ... }` |
+| **Loop** | Iterate over collections | `LoopBuilder` | `for item in collection { ... }` |
+| **Retry** | Re-execute on failure | `RetryBuilder` | `@retry(max: 3, backoff: exponential(1000))` |
+| **While** | Loop while condition holds | `WhileBuilder` | `while cond { ... }` |
+| **Poll** | Periodic execution until success | `PollBuilder` | `poll(interval: 5s, timeout: 60s) { ... }` |
+
+### System Patterns
+
+| Pattern | Intent | gunbc Implementation | DSL Equivalent |
+|---|---|---|---|
+| **Transport Boundary** | All I/O through request/response | `TransportOps::Execute` node | Service call with `@rest`/`@shell` → compiler-emitted triplet |
+| **Registration** | Auto-discovery of registrable units | `#[testgen_target]` + inventory | Filesystem discovery (`.dag` files) |
+| **Emission** | IR → Renderer → Output | `TestFile` IR + `TestRenderer` trait | Compiler `Emit` phase with `CodegenBackend` trait |
+| **Resource Acquisition** | Typed resources with conflict detection | `ResourceAccess` + `detect_conflicts()` | `uses` declarations + compiler-inserted lifecycle |
+| **Credential Lifecycle** | Provider → acquire → Credential | `CredentialProvider` trait | `resource Credential { ... }` with lifecycle |
+| **Mock Specification** | Declarative test fixtures | `MockSpec::new(name).boundary(...)` | Compiler-generated from service declarations |
+| **Content Hashing** | Deterministic content-addressed hashing | `gunbc-infra::hash` | Standard library utility |
+| **Freshness Check** | Mtime fast-path before full hash | `gunbc-infra::freshness` | Compiler-managed (emitted with content_upsert) |
+
+## L.5 End-to-End Pipeline (from Handbook Appendix B)
+
+The complete lifecycle of a tool from definition to generated tests, preserved here as reference for the DSL compiler's target output.
+
+### Pipeline (gunbc current)
+
+```
++-------------------------------+
+| 1. Define DAG                 |   graph.rs
+|    Node::opaque / DagBuilder  |   prepare → execute → parse
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 2. Write MockSpec             |   graph_mock.rs
+|    extract_mock_requirements  |   type-checked against DAG structure
+|    .boundary() / .transport() |
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 3. Register with testgen      |   #[testgen_target(name, output, builder)]
+|    proc macro + inventory      |   auto-discovered at build time
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 4. Analyze DAG                |   analyze.rs
+|    boundaries, transport,     |   structural facts + proof obligations
+|    cardinalities, resources   |
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 5. Generate tests             |   codegen.rs
+|    TestGenerator + buckets    |   A: execution, B: contracts,
+|    (only for Unknown proofs)  |   C: scenarios, D: resources
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 6. Output: generated_tests.rs |   content-hash header
+|    make testgen regenerates   |   50-150+ tests per DAG
++-------------------------------+
+```
+
+### Pipeline (DSL target)
+
+```
++-------------------------------+
+| 1. Author .dag file           |   tools/format.dag
+|    journey + service + pattern |   5-50 lines
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 2. Discover                   |   Filesystem scan
+|    Module graph built from    |   All .dag files in paths
+|    project manifest           |
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 3. Parse → Resolve → TypeCheck|   AST → Resolved AST → Typed AST
+|    Imports linked, names      |   Types validated, resources checked
+|    resolved                   |
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 4. PatternExpand → Lower      |   patterns → sub-DAG templates
+|    Service calls → triplets   |   resources → lifecycle nodes
+|    Implicit edges → explicit  |   for → LoopBuilder, match → Branch
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 5. Validate                   |   SPEC.md invariants
+|    + resource conflicts       |   + hermeticity classification
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 6. Derive                     |   ProgressManifest
+|    + TestObligations          |   + MockSpec (from service decls)
+|    + ToolMetadata             |
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 7. Emit (per backend)         |   Type definitions
+|    Node stubs (developer fills)|   Transport wiring
+|    Test harness (4-bucket)    |   CLI entrypoint
+|    Progress renderer          |   Makefile / CI YAML
++-------------------------------+
+```
+
+**Key difference:** Steps 2-3 in the gunbc pipeline (MockSpec + Registration) are manual. In the DSL pipeline, they're compiler-derived (steps 6-7). The developer writes step 1 only.
+
+## L.6 Generated Test Obligation Example (from Handbook)
+
+For the LLM credential lifecycle graph (5 nodes), testgen produces:
+
+**Header:**
+```rust
+// Generated tests for llm_credential_lifecycle_generated_tests DAG.
+// Obligations: 23 obligations (9 discharged, 14 testable: A=6, B=5, C=3, D=0)
+// Content-Hash: 04affa725267b9dd...
+```
+
+**Bucket A — Execution Semantics:**
+```rust
+#[test]
+fn test_dryrun_completion() {
+    let dag = build_chat_completion_graph();
+    let log = execute_with_mode(&dag,
+        ExecutionMode::DryRun(mock_spec().to_boundary_mocks()))
+        .expect("DryRun should complete without crash");
+    assert!(!log.entries.is_empty());
+}
+```
+
+**Bucket C — Scenario Coverage:**
+```rust
+#[test]
+fn test_scenario_all_succeed() {
+    let dag = build_chat_completion_graph();
+    let log = execute_with_mode(&dag,
+        ExecutionMode::DryRun(mock_spec().to_boundary_mocks()))
+        .expect("all-succeed scenario should complete");
+    let entry = log.get("execute").expect("'execute' should be in log");
+    assert!(entry.was_intercepted);
+}
+
+#[test]
+fn test_skip_propagation_execute() {
+    let dag = build_chat_completion_graph();
+    let mut mocks = mock_spec().to_boundary_mocks();
+    mocks.set_value("execute", "response", Value::Skipped);
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))
+        .expect("skip propagation should not crash");
+    assert!(log.get("parse").is_some());
+}
+```
+
+**Obligation stats for the CI graph (largest):**
+```
+Obligations: 133 obligations (58 discharged, 75 testable: A=27, B=30, C=16, D=2)
+Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
+```
+
+58 obligations proven statically (no test needed), 75 tests generated across 4 buckets. In the DSL, the same obligation model runs against the compiler's output — identical tests, but derived from a 10-100x smaller source.
+
+## L.7 Consolidation Status (Living Reference)
+
+Current status of the six work streams from `docs/design/consolidation-plan.md`, included here so the DSL design can track which gunbc issues are already fixed vs still need to be addressed by the language.
+
+| Stream | Problem | Status | DSL Eliminates? |
+|---|---|---|---|
+| **1. Registration Unification** | 6 registration islands, manual `all_tools()` vec | R1-R2 complete (tool-registry crate + annotations) | Yes — filesystem discovery |
+| **2. Emission Unification** | 13 rendering systems, 5 traits, 8 with no trait | Design complete, implementation not started | Yes — `Emit` phase with `CodegenBackend` |
+| **3. String-Coupled Dispatch** | `GraphBuilderId::as_str()` breaks at runtime | Absorbed by Stream 1 Phase R2 | Yes — function pointers from module graph |
+| **4. Documentation Consistency** | Handbook contradictions (e.g., "I/O enforcement complete" vs migration table) | Pending | Yes — this document IS the consolidated doc |
+| **5. CI Verification Gaps** | `make verify` not in CI, generated files not verified | `make verify` exists, not yet in CI | Yes — compiler verifies `.dag` → generated output |
+| **6. CliToolDef/ToolDef Alignment** | Two tool types with field overlap | Intentional separation, no action | N/A — DSL has `resource` + service ops |
+
+## L.8 Reference: Key File Paths
+
+For navigating between this design doc and the source material it consolidates:
+
+| Document | Path | Key Content |
+|---|---|---|
+| DSL Design (this doc) | `docs/design/dsl-design.md` | Language spec, all appendices |
+| Handbook | `docs/handbook.md` | Pattern catalog, E2E examples, repo map |
+| A/B Workflows | `docs/ab-writing-workflows.md` | Imperative/OO/functional vs gunbc DAG comparisons |
+| Design Overview | `docs/design/overview.md` | Philosophy, invariants, formal model |
+| Testgen | `docs/design/testgen.md` | Obligation model, 4 buckets, anti-tautology rule |
+| Unified Registration | `docs/design/unified-registration.md` | 6 registration islands → unified discovery |
+| Unified Emission | `docs/design/unified-emission.md` | 13 rendering systems → OutputMedium hierarchy |
+| Consolidation Plan | `docs/design/consolidation-plan.md` | 6 work streams, reconciliation status |
+| Refactor Pressure | `TODO/TODONE/refactor-pressure.md` | Root causes A-D, decision rules, quick scans |
+| Architecture Debt | `TODO/TODONE/architecture-debt.md` | Meta-root-cause, leak→fix table |
+| IR Spec | `SPEC.md` | Formal IR specification |
+| Agent Guide | `AGENT.md` | Onboarding, guardrails |
+
+---
+
+# Appendix M: Competitive Landscape and Alternatives Analysis
+
+This appendix positions the DSL against the real alternatives people use to avoid hand-wiring graphs and integrations, identifies gaps, and documents paths-not-taken.
+
+## M.1 What the DSL Actually Competes With
+
+The DSL is not competing with Lombok or ORMs directly. It competes with three alternative ways people avoid hand-wiring:
+
+| Category | Examples | What they do |
+|---|---|---|
+| **Host-language metaprogramming** | Java annotation processors / Lombok, Rust proc-macros, Python decorators | Generate boilerplate within one language |
+| **Runtime orchestration frameworks** | LangGraph, LangChain, CrewAI, Temporal, Airflow, Dagster | Execute workflows at runtime with framework conventions |
+| **IDLs that generate clients + models** | OpenAPI, Smithy, protobuf/gRPC, Thrift | Describe interfaces, generate multi-language code |
+
+The DSL is a **hybrid of IDL + workflow compilation**: service/operation/type declarations (like Smithy/protobuf) plus workflow compilation into a typed DAG IR with transport boundaries, test derivations, and progress manifests. This hybrid is the distinguishing position — neither pure IDL nor pure orchestrator.
+
+## M.2 What the DSL Provides That Alternatives Don't
+
+Four capabilities that are first-class compiler output, not conventions:
+
+| Capability | What it means | Closest alternative | Gap in alternative |
+|---|---|---|---|
+| **Transport triplets as structural primitive** | Service calls expand to prepare → execute → parse with skip wiring. Authors never see the triplet. | Smithy generates client stubs | No DAG structure, no skip wiring, no DryRun interception |
+| **Proof-obligation test generation** | Tests derived from graph properties (4 buckets), discharged structurally or generated. Anti-tautology rule. | Dagster has `@asset` testing, but manual | No structural obligation model, no mechanical derivation |
+| **Progress as derived topology view** | ProgressManifest computed at compile time from DAG structure. Renderers are pluggable views. | LangGraph has runtime streaming/tracing | Runtime-only, no compile-time manifest, no multi-renderer architecture |
+| **Debuggable execution modes** | DryRun intercepts transport nodes, Simulate with timing. Step-by-step possible. | LangGraph has interrupt/resume | No compile-time boundary classification, no mock-spec derivation |
+
+## M.3 Comparison: Host-Language Metaprogramming (Lombok / Proc-Macros)
+
+### What Lombok provides
+
+Compile-time code generation within Java. `@Data` generates getters/setters/toString/equals. `@Builder` generates a builder API.
+
+```java
+@Data @Builder
+public class Credential {
+    private final String token;
+    private final String scheme;
+}
+```
+
+### Overlap and divergence
+
+| Dimension | Lombok | DSL |
+|---|---|---|
+| Core mechanism | Declarative metadata → generated code | Declarative metadata → generated code |
+| Scope of generation | Methods on classes | Entire workflow program (graph, transports, tests, progress, CLI) |
+| Language binding | Java only | Language-agnostic (Rust/Go/Python/TS/MIPS) |
+| Side-effect modeling | None | Transport boundaries, resource lifecycle, DryRun interception |
+| Test derivation | None | 4-bucket proof obligations from graph structure |
+
+### The Rust proc-macro alternative (path-not-taken)
+
+A Lombok-style approach within Rust would look like:
+
+```rust
+#[dag]
+fn makegen(registry: ToolRegistry) -> Written {
+    let content = render_makefile(registry);
+    content_upsert(content, "Makefile")
+}
+```
+
+The macro would emit the gunbc builder + IR.
+
+**Pros:** Stays in Rust (IDE support, type checking, refactoring tools work). No new parser or type checker to build and maintain.
+
+**Cons:** Kills the biggest goal — multi-target emission and ".dag as contract." A proc-macro is bound to the host language. You cannot emit Go or Python from a Rust proc-macro, and the "contract" is Rust source code, not a language-agnostic manifest.
+
+**Decision:** The proc-macro approach is a valid local optimum if the commitment is "Rust forever." It is a dead-end if ".dag like .proto" is the target. Since Design Principle P10 (Language-agnostic) is a core commitment, the proc-macro path was rejected.
+
+### What to steal from Lombok anyway
+
+Lombok has a first-class "delombok" command that expands annotations to generated source code. The DSL should have an equivalent:
+
+```
+dag expand tools/makegen.dag        # show lowered IR
+dag show-triplets tools/makegen.dag  # show transport triplet expansion
+dag obligations tools/makegen.dag    # show derived test obligations
+dag manifest tools/makegen.dag       # show ProgressManifest
+```
+
+This "show me what the compiler meant" tooling is essential for debugging and trust. Lomboked code that you can't inspect is frustrating; the same applies to `.dag` compilation.
+
+## M.4 Comparison: ORMs (Hibernate/JPA)
+
+### Overlap
+
+Both use declarative metadata to drive generated/reflective behavior, have a notion of resources and lifecycle (transactions, sessions), and aim to eliminate stringly-typed glue by centralizing metadata.
+
+### Divergence
+
+| Dimension | ORM | DSL |
+|---|---|---|
+| What's modeled | Data persistence mapping (object graph ↔ relational schema) | Causal execution graphs (dataflow + ordering + boundaries) |
+| Correctness guarantee | Runtime exceptions (lazy loading, N+1 queries, schema mismatch) | Compile-time structural proof (acyclicity, type/cardinality compatibility) |
+| Code generation | Persistence behavior within one runtime | Multi-language workflow programs |
+
+### ORM lessons that apply to the DSL
+
+ORMs learned (painfully) that declarative metadata needs:
+
+1. **Clear versioning/evolution rules.** `.dag` types and service operations will change over time. The compiler needs a migration/compatibility story. Protobuf's field numbering and wire compatibility rules are the model here (already listed in Appendix I as an inspiration target).
+
+2. **Escape hatches for unusual cases.** Some APIs will not fit `@rest` or `@shell` annotations cleanly. The DSL needs a "manual transport hook" — a way to declare a service operation that the author implements directly rather than having the compiler generate a triplet. Without this, people will work around the compiler, recreating the escape-hatch problem from gunbc (Appendix K, Root Cause B).
+
+3. **"Show me the generated SQL" equivalence.** ORM users constantly need to see what SQL the framework generates. DSL users will constantly need to see what IR the compiler produces. The `dag expand` / `dag show-triplets` commands from M.3 address this.
+
+## M.5 Comparison: LangGraph
+
+LangGraph is the closest real alternative. Both model workflows as graphs with explicit nodes and edges.
+
+### LangGraph `review_diff` (concrete Python)
+
+```python
+from typing_extensions import TypedDict
+from langgraph.graph import StateGraph, START, END
+
+class State(TypedDict, total=False):
+    base_ref: str
+    diff: str
+    prompt: list[dict]
+    review: str
+
+def get_diff(state: State) -> dict:
+    return {"diff": run_git_diff(state["base_ref"])}
+
+def build_prompt(state: State) -> dict:
+    return {"prompt": [
+        {"role": "system", "content": "You are a code reviewer."},
+        {"role": "user", "content": state["diff"]},
+    ]}
+
+def call_llm(state: State) -> dict:
+    resp = ChatOpenAI(model="gpt-4", temperature=0.3).invoke(state["prompt"])
+    return {"review": resp.content}
+
+builder = StateGraph(State)
+builder.add_node("get_diff", get_diff)
+builder.add_node("build_prompt", build_prompt)
+builder.add_node("call_llm", call_llm)
+builder.add_edge(START, "get_diff")
+builder.add_edge("get_diff", "build_prompt")
+builder.add_edge("build_prompt", "call_llm")
+builder.add_edge("call_llm", END)
+
+graph = builder.compile()
+out = graph.invoke({"base_ref": "origin/main"})
+```
+
+### DSL `review_diff`
+
+```
+journey review_diff {
+  input { base_ref: String }
+  output { review: String }
+  uses net: Network
+
+  diff = git.Core.Diff(base: base_ref)
+  prompt = build_review_prompt(diff: diff.diff)
+  result = llm.OpenAI.ChatCompletion(messages: prompt)
+
+  return { review: result.content }
+}
+```
+
+### Where each is stronger
+
+| Dimension | DSL | LangGraph |
+|---|---|---|
+| Graph typing | Explicit typed ports, cardinality, compile-time validation | Shared state dict with optional type hints (TypedDict) |
+| I/O boundaries | Structural: service calls → transport triplets, DryRun intercepts | Convention: side effects live in node functions, mocking is manual |
+| Test derivation | Compiler-derived: 4-bucket obligations, MockSpec from service declarations | Manual: write your own tests and mocks |
+| Progress | Compile-time ProgressManifest → pluggable renderers | Runtime streaming/tracing callbacks |
+| Multi-language | Core goal: Rust/Go/Python/TS backends | Python and TypeScript only |
+| **Durability/HITL** | **Not core (yet)** | **Core feature: interrupt/resume, checkpointing, human approval** |
+| **Dynamic fan-out** | `for` loops in IR, scatter groups | `Send` objects for map-reduce, reducer annotations |
+| **Agentic patterns** | Not modeled (deterministic orchestration) | First-class: tool calling, dynamic routing, memory |
+
+### The durability/HITL gap
+
+LangGraph's first-class durability semantics (interrupt at any node, persist state, resume later, human-in-the-loop approval patterns) represent a genuine capability the DSL does not currently address.
+
+**Options:**
+
+1. **Ignore it.** The DSL targets deterministic workflow orchestration, not agentic HITL systems. Different problems.
+
+2. **Model it structurally.** Add a `@durable` annotation on journeys that compiles to checkpointing infrastructure (state serialization at each transport boundary, resume from checkpoint). This extends the resource model — durable state becomes a resource with lifecycle.
+
+3. **Treat LangGraph as an execution backend.** The DSL's Python codegen backend could emit LangGraph `StateGraph` code instead of raw Python. This borrows LangGraph's runtime (durability, HITL, tracing) while keeping the DSL's compile-time guarantees (typed ports, test derivation, progress manifest). The `.dag` file remains the contract; LangGraph is the execution engine.
+
+**Recommendation:** Option 3 is the strongest near-term path. It preserves the DSL's unique value (typed, portable, test/progress derivations) while borrowing runtime capabilities where LangGraph is genuinely better. This aligns with Design Principle P10 (Language-agnostic) — execution backends are plugins.
+
+## M.6 Comparison: LangChain (LCEL)
+
+LangChain's core abstraction is `RunnableSequence` — output of each step feeds the next, with sync/async/batch.
+
+### LangChain LCEL `review_diff`
+
+```python
+from langchain_core.runnables import RunnableLambda
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+
+diff_fn = RunnableLambda(lambda inp: run_git_diff(inp["base_ref"]))
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a code reviewer."),
+    ("user", "{diff}")
+])
+llm = ChatOpenAI(model="gpt-4", temperature=0.3)
+
+chain = (
+    {"diff": diff_fn, "base_ref": RunnableLambda(lambda x: x["base_ref"])}
+    | prompt
+    | llm
+)
+result = chain.invoke({"base_ref": "origin/main"})
+```
+
+### Assessment
+
+LangChain is optimized for **mostly-linear LLM pipelines** with some branching. It provides no concept of:
+- Compile-time structural proof
+- Topology-derived progress
+- Test obligation derivation
+- Multi-language codegen
+
+The DSL subsumes LangChain's capabilities: any linear chain is expressible as a journey, and the compiler provides strictly more guarantees. LangChain's value is in its ecosystem (hundreds of integrations, prompt templates, output parsers) — which the DSL could consume via service declarations wrapping LangChain's existing connectors.
+
+## M.7 Comparison: CrewAI
+
+CrewAI models workflows as **agents + tasks + processes** rather than explicit DAG edges:
+
+```python
+from crewai import Agent, Task, Crew
+
+agent = Agent(
+    role="Code Reviewer",
+    goal="Review diffs for bugs and style issues",
+    backstory="You are a senior engineer.",
+)
+task = Task(description="Review the diff in {diff}", agent=agent)
+crew = Crew(agents=[agent], tasks=[task])
+result = crew.kickoff(inputs={"diff": diff_text})
+```
+
+### Assessment
+
+CrewAI is designed for **agentic, non-deterministic workflows** where an LLM decides next steps dynamically. The DSL is designed for **deterministic orchestration** where the graph structure is known at compile time.
+
+| Dimension | DSL | CrewAI |
+|---|---|---|
+| Execution model | Deterministic: graph structure fixed at compile time | Non-deterministic: agent decides tool use and delegation |
+| Dataflow | Typed ports and edges | Context passed between tasks (untyped) |
+| Test strategy | Structural obligations + DryRun | Manual tests (framework support evolving) |
+| Progress | Compile-time manifest | Verbose logs/streaming |
+
+CrewAI is the right choice when the system is primarily **agentic** (delegation, memory, non-deterministic tool choice). The DSL is the right choice when the system is primarily **deterministic orchestration + codegen**.
+
+These are complementary, not competing: a DSL journey could invoke a CrewAI agent as a service operation (`@crewai` annotation on a service), treating the non-deterministic agent call as a transport boundary that the DSL models structurally.
+
+## M.8 Side-by-Side Summary
+
+| Dimension | `.dag` DSL + compiler | LangGraph | LangChain | CrewAI |
+|---|---|---|---|---|
+| Authoring | Declarative `.dag` + patterns | Python/TS graph builder | Python/TS runnable composition | YAML/Python agents + tasks |
+| Graph semantics | Explicit typed DAG IR, compile-time invariants | Stateful graph over shared state | Mostly linear chains | Task process model (seq/hierarchical) |
+| Dynamic fan-out | `for` loops → scatter groups in IR | `Send` map-reduce patterns | Manual Python loops | `kickoff_for_each` + custom code |
+| Progress model | Derived manifest + pluggable renderers | Runtime streaming/tracing | Callbacks/tracing | Verbose logs/streaming |
+| Testing | Structural obligations + DryRun intercept | Manual tests + mocks | Manual tests + mocks | Manual tests |
+| Multi-language | Explicit goal (Rust/Go/Python/TS/MIPS) | No (Python/TS only) | Partial (Python/JS) | No (Python only) |
+| Durability/HITL | Not core (addressable via LangGraph backend) | Core feature set | Not core | Available via processes |
+| Agentic patterns | Not modeled (invoke as service boundary) | First-class | First-class | Core design |
+
+## M.9 The "Are We Going in the Right Direction?" Test
+
+**Build the DSL if** the goal is:
+- Compress authoring (stop writing 7,000+ lines of builders)
+- Keep structural guarantees (acyclicity, typing, saturation)
+- Keep transport boundaries mockable (DryRun / interception)
+- Keep or improve progress UX (topology-derived rendering)
+- Support multi-target emission
+- Make the workflow description a portable contract (".dag like .proto")
+
+**Use LangGraph/Temporal directly if** the goal is:
+- Long-lived, stateful, human-in-the-loop agent platform
+- LLM decides next steps dynamically
+- Checkpointing/resume as core requirement
+- Python/TS ecosystem integration is more important than multi-language codegen
+
+**The reconciliation:** These are not mutually exclusive. The `.dag` file is the canonical contract. Execution backends are pluggable. A LangGraph backend for Python emission would borrow durability/HITL capabilities while preserving the DSL's compile-time guarantees. A Temporal backend would provide distributed execution. The DSL's value is in what happens *before* execution: structural proof, test derivation, progress manifests, multi-target code generation.
+
+## M.10 Gaps and Tooling Needs Identified
+
+From the competitive analysis, three concrete gaps and tooling needs:
+
+### Gap 1: Durability/HITL
+
+**Current state:** Not addressed.
+**Recommendation:** Model as execution backend plugin (M.5 Option 3). LangGraph backend for Python. For Rust, consider Temporal-compatible codegen.
+**Timeline:** Phase 4+ (after core language + multi-target emission).
+
+### Gap 2: Schema evolution
+
+**Current state:** Not addressed. ORM lesson (M.4): types and service operations will change.
+**Recommendation:** Adopt protobuf-style compatibility rules. Service operations must have stable wire format. Type fields can be added (with defaults) but not removed or retyped without a version bump.
+**Timeline:** Phase 2 (when services are introduced).
+
+### Gap 3: "Show me what the compiler meant" tooling
+
+**Current state:** Not addressed. Lombok and ORM lesson: users need to see generated output.
+**Recommendation:** First-class CLI commands:
+
+```
+dag expand <file.dag>          # show lowered GraphIR (Node/Dag/Port/Edge)
+dag show-triplets <file.dag>   # show transport triplet expansion for each service call
+dag obligations <file.dag>     # show derived TestObligations by bucket
+dag manifest <file.dag>        # show ProgressManifest (waves, groups, scatter points)
+dag viz <file.dag>             # ASCII DAG visualization (pre-execution)
+```
+
+**Timeline:** Phase 1 (essential for trust and debugging from day one).
+
+### Gap 4: Escape hatch for unusual APIs
+
+**Current state:** Not addressed. ORM lesson: some APIs won't fit `@rest` / `@shell`.
+**Recommendation:** A `@custom` transport annotation that tells the compiler "I will implement this transport myself." The compiler still emits the triplet structure (prepare/execute/parse) and generates test obligations, but the execute node delegates to a developer-provided function instead of a generated transport executor.
+
+```
+service unusual.Api {
+  operation WeirdCall {
+    input { payload: Bytes }
+    output { result: Json }
+    @custom("my_transport_impl")  // developer implements the execute step
+  }
+}
+```
+
+This preserves structural guarantees (the triplet exists, DryRun can intercept it, tests are generated) while allowing escape from the annotation-driven transport generation.
+
+**Timeline:** Phase 2 (when services are introduced).
+
+---
+
+# Appendix N: Model-Based Testing and Auto-Generated Mocks
+
+This appendix describes how the DSL's type system, service declarations, and testgen model combine to enable **model-based testing**: the compiler generates not just test *structure* (which tests to run) but test *data* (what mock values to use), eliminating the manual `MockSpec` fixture burden that accounts for a significant portion of gunbc's per-tool authoring cost.
+
+## N.1 The Current State: MockSpec Is Half-Automated
+
+In gunbc, `extract_mock_requirements()` automatically determines *what needs to be mocked* by analyzing the DAG structure — which nodes are transport boundaries, what output ports they have, what types those ports declare. This is the structural half.
+
+But the developer still supplies the concrete *values*:
+
+```rust
+// gunbc today: structure is derived, values are manual
+MockSpec::new("gist")
+    .boundary("fs_env", "fs:write", mock_fs_handle())          // manual value
+    .transport_response("execute_gist", "response",
+        TransportResponse::Rest(mock_gist_response_json()))     // manual value
+    .boundary_str("parse_gist_response", "url",
+        "https://gist.github.com/mock/abc123")                  // manual value
+```
+
+For a typical tool with 5 transport nodes, this is 20-40 lines of hand-written mock fixtures. For the full repo (8+ tools), it's hundreds of lines that must be maintained in sync with service APIs.
+
+## N.2 The Goal: Compiler-Generated Mock Values
+
+The DSL should close the gap so the developer workflow becomes:
+
+```
+1. Write the .dag file
+2. Write the pure transformation logic (5% of code)
+3. Stop.
+```
+
+The compiler:
+- Builds the graph (Parse → Lower)
+- Proves structural soundness (Validate)
+- Derives test obligations (Derive — already designed)
+- **Generates mock values from type constraints and service annotations** (Derive — new)
+- Generates test harnesses with those values (Emit — already designed)
+- Fuzzes pure nodes with generated inputs (Emit — new)
+
+## N.3 Three Tiers of Auto-Generation
+
+### Tier 1: Type-Driven Generation (Refinement Types)
+
+When a type has refinement constraints, the compiler can generate valid and invalid values mechanically.
+
+```
+type CommitSha = String @pattern("^[a-f0-9]{40}$")
+type RetryCount = Int @range(min: 1, max: 5)
+type GistId = String @format(uuid)
+type HttpStatus = Int @range(min: 100, max: 599)
+```
+
+The compiler's type-aware generator produces:
+
+| Type | Valid examples | Edge cases | Invalid examples |
+|---|---|---|---|
+| `CommitSha` | `"a" * 40`, random hex strings | Empty string, 39 chars, 41 chars | `"ZZZZ..."`, non-hex chars |
+| `RetryCount` | 1, 3, 5 | 1 (min), 5 (max) | 0, 6, -1, MAX_INT |
+| `GistId` | Random UUIDs | Nil UUID (`00000000-...`) | Empty string, malformed |
+| `HttpStatus` | 200, 404, 500 | 100 (min), 599 (max) | 99, 600, 0, -1 |
+
+For unconstrained primitives (`String`, `Int`, `Bool`), the compiler uses safe defaults:
+
+| Primitive | Default valid | Default edge cases |
+|---|---|---|
+| `String` | `"test_value"` | `""`, very long string |
+| `Int` | `42` | `0`, `MAX_INT`, `MIN_INT` |
+| `Bool` | `true` | `false` |
+| `Bytes` | `[0x00]` | `[]`, large buffer |
+| `Json` | `{}` | `null`, deeply nested |
+| `Secret` | `Secret("mock_secret")` | `Secret("")` |
+
+Records are generated by composing field generators:
+
+```
+type Credential {
+  token: Secret
+  scheme: AuthScheme
+  expires_at: String?
+}
+
+// Compiler generates:
+// valid: Credential { token: Secret("mock"), scheme: Bearer, expires_at: None }
+// valid: Credential { token: Secret("mock"), scheme: Bearer, expires_at: Some("2026-01-01") }
+// edge:  Credential { token: Secret(""), scheme: Header { name: "" }, expires_at: None }
+```
+
+### Tier 2: Service-Driven Generation (`@mock_response`)
+
+For transport boundaries, type constraints alone aren't sufficient. A randomly generated JSON string won't parse as a valid GitHub API response. The `@mock_response` annotation provides the semantic template:
+
+```
+service github.Gist {
+  operation Create {
+    input {
+      description: String
+      files: Map<String, String>
+      public: Bool = false
+    }
+    output { url: String, id: GistId }
+    @rest(POST, "https://api.github.com/gists")
+    @mock_response(
+      status: 201,
+      body: { "html_url": "https://gist.github.com/mock/{id}", "id": "{id}" }
+    )
+  }
+}
+```
+
+The compiler:
+1. Sees `@mock_response` on the operation
+2. Generates a `GistId` value using the refinement type generator (`String @format(uuid)` → `"550e8400-e29b-41d4-a716-446655440000"`)
+3. Interpolates into the template: `{ "html_url": "https://gist.github.com/mock/550e8400-...", "id": "550e8400-..." }`
+4. Wraps as `TransportResponse::Rest(RestResponse { status: 201, body: ... })`
+5. Wires into the generated `MockSpec` for this operation's execute node
+
+The result: **zero hand-written mock fixtures** for operations that have `@mock_response`.
+
+For operations *without* `@mock_response`, the compiler falls back to Tier 1 type-driven generation for the output fields. This works for simple cases (`output { branch: String }` → mock value `"mock_branch"`) but may not produce semantically meaningful responses for complex APIs.
+
+**Design choice:** `@mock_response` is optional. Operations without it still get structurally correct tests (DryRun completion, transport interception) using type-derived fallback values. Operations *with* it get semantically correct tests (the parse node receives a realistic response and can exercise the happy path).
+
+### Tier 3: Property-Based Fuzzing (Pure Nodes)
+
+Pure nodes (prepare, parse, render) are deterministic functions with no side effects. They are ideal targets for property-based fuzzing: generate thousands of valid inputs, verify the node never panics, and optionally verify output invariants.
+
+The compiler can isolate every pure node and fuzz it:
+
+```
+// For a pure node:
+//   input { diff: String, system: String? }
+//   output { messages: List<Message> }
+
+// Compiler generates:
+#[test]
+fn fuzz_build_review_prompt() {
+    use proptest::prelude::*;
+    proptest!(|(
+        diff in ".*",
+        system in proptest::option::of(".*"),
+    )| {
+        let inputs = inputs! { "diff" => Value::Str(diff), "system" => opt(system) };
+        let result = execute_single_node("build_review_prompt", inputs);
+        // Property: never panics
+        prop_assert!(result.is_ok());
+        // Property: output has correct shape
+        let outputs = result.unwrap();
+        prop_assert!(outputs.contains_key("messages"));
+    });
+}
+```
+
+When the input ports have refinement types, the fuzzer respects them:
+
+```
+// input { sha: CommitSha, count: RetryCount }
+// CommitSha = String @pattern("^[a-f0-9]{40}$")
+// RetryCount = Int @range(min: 1, max: 5)
+
+// Compiler generates:
+proptest!(|(
+    sha in "[a-f0-9]{40}",          // from @pattern
+    count in 1..=5i64,               // from @range
+)| {
+    // ...
+});
+```
+
+This closes the gap for **Bucket B (Contract Obligations)**: `NodeContractCompliance` evolves from "does the node produce correct output for one example?" to "does the node produce correct output for *any* valid input?"
+
+## N.4 The Syntactic vs Semantic Fuzzing Boundary
+
+There is a hard line between what auto-fuzzing can and cannot do:
+
+| Tier | What it tests | Fully automated? | Requires |
+|---|---|---|---|
+| **Tier 1: Type-driven** | Pure nodes don't panic on valid/invalid inputs | Yes | Refinement types on input ports |
+| **Tier 2: Service-driven** | Happy-path pipeline with realistic API responses | Yes | `@mock_response` on service operations |
+| **Tier 3: Property-based** | Output invariants hold for all valid inputs | Partially | Developer-written output invariants (optional) |
+
+**What auto-fuzzing cannot do:**
+- Verify business logic correctness (e.g., "this prompt template produces good reviews") — that requires human judgment
+- Generate semantically meaningful API responses without `@mock_response` — a random string won't parse as GitHub JSON
+- Test network-level failure modes (timeouts, partial responses, rate limiting) — these require explicit `@error_response` annotations (see N.7)
+
+## N.5 Integration with Existing Testgen Buckets
+
+The three tiers map to the four testgen buckets:
+
+| Bucket | Current (gunbc) | With auto-generation (DSL) |
+|---|---|---|
+| **A: Execution Semantics** | DryRun + transport interception. Values from manual MockSpec. | DryRun + transport interception. Values from `@mock_response` or type-driven fallback. **No manual MockSpec needed.** |
+| **B: Contract Obligations** | `NodeContractCompliance` with one example input per node. | Property-based fuzzing: thousands of inputs per pure node, crash-freedom and shape-correctness guaranteed. **Bucket B becomes exhaustive.** |
+| **C: Scenario Coverage** | All-succeed, per-failure, guard branches. Values from manual MockSpec. | Same scenarios. Values from `@mock_response`. **Per-failure scenarios can also inject `@error_response` templates.** |
+| **D: Resource Hygiene** | Resource connectivity, conflict absence. Values from manual MockSpec. | Same checks. Resource mock values generated from `resource` type definitions. **No manual resource MockSpec needed.** |
+
+## N.6 Compiler Pipeline Integration
+
+The auto-generation work happens in two compiler passes:
+
+### Derive phase (existing, extended)
+
+Currently derives `ProgressManifest` and `TestObligations`. Extended to also derive:
+
+```
+type MockManifest {
+  boundary_mocks: Map<NodeId, Map<PortName, GeneratedValue>>
+  transport_mocks: Map<NodeId, GeneratedTransportResponse>
+  resource_mocks: Map<ResourceId, GeneratedResourceValue>
+  fuzz_targets: List<FuzzTarget>
+}
+
+type GeneratedValue {
+  source: TypeDriven | MockResponseTemplate | FallbackDefault
+  value: Value
+  edge_cases: List<Value>
+}
+
+type FuzzTarget {
+  node_id: NodeId
+  input_generators: Map<PortName, Generator>
+  output_invariants: List<Invariant>    // from refinement types on output ports
+}
+```
+
+### Emit phase (existing, extended)
+
+Currently emits type definitions, transport wiring, test harnesses, CLI. Extended to emit:
+
+- `MockSpec` construction from `MockManifest` (replaces hand-written `graph_mock.rs`)
+- Property-based test functions for each `FuzzTarget`
+- Edge-case test functions for each refined input port
+
+The generated test file gains new sections:
+
+```rust
+// === Auto-generated MockSpec (from @mock_response + type generators) ===
+fn mock_spec() -> MockSpec {
+    MockSpec::new("gist")
+        .boundary("fs_env", "fs:write",
+            Value::Map(/* generated from Filesystem resource type */))
+        .transport_response("execute_gist", "response",
+            TransportResponse::Rest(RestResponse {
+                status: 201,
+                body: json!({"html_url": "https://gist.github.com/mock/550e8400-...", "id": "550e8400-..."}),
+            }))
+        .boundary("parse_gist_response", "url",
+            Value::Str("https://gist.github.com/mock/550e8400-...".into()))
+}
+
+// === Property-based fuzz tests (Bucket B, Tier 3) ===
+#[test]
+fn fuzz_render_snapshot() {
+    proptest!(|(
+        files in prop::collection::vec((".*", ".*"), 0..20),
+    )| {
+        let inputs = inputs! { "files" => Value::List(/* ... */) };
+        let result = execute_single_node("render_snapshot", inputs);
+        prop_assert!(result.is_ok(), "render_snapshot panicked on valid input");
+        let outputs = result.unwrap();
+        prop_assert!(outputs.contains_key("markdown"), "missing 'markdown' output");
+    });
+}
+```
+
+## N.7 Error Response Templates (Failure Scenario Mocking)
+
+For Bucket C's per-failure scenarios, the compiler needs to generate realistic error responses. A new `@error_response` annotation provides this:
+
+```
+service gcp.SecretManager {
+  operation AccessVersion {
+    input { project: String, secret: String, version: String = "latest" }
+    output { payload: Bytes, name: String }
+    @rest(GET, "/v1/projects/{project}/secrets/{secret}/versions/{version}:access")
+    @mock_response(
+      status: 200,
+      body: { "payload": { "data": "bW9ja19zZWNyZXQ=" }, "name": "projects/p/secrets/s/versions/1" }
+    )
+    @error_response(
+      status: 404,
+      body: { "error": { "code": 404, "message": "Secret not found", "status": "NOT_FOUND" } }
+    )
+    @error_response(
+      status: 403,
+      body: { "error": { "code": 403, "message": "Permission denied", "status": "PERMISSION_DENIED" } }
+    )
+  }
+}
+```
+
+The compiler uses `@mock_response` for the all-succeed scenario and `@error_response` for per-failure scenarios. When a transport node is the "failing" node in a Bucket C single-failure test, the compiler injects the error response instead of the success response.
+
+Without `@error_response`, the compiler falls back to a generic transport error (connection refused, timeout) — which tests error propagation but not API-specific error handling.
+
+## N.8 The End-State Developer Workflow
+
+### Without auto-generation (gunbc today)
+
+```
+1. Define DAG builder               (~200 lines Rust)
+2. Write op enum + implementations  (~80 lines)
+3. Write MockSpec with manual values (~40 lines, must match API schemas)
+4. Register with testgen             (~10 lines)
+5. Write pure node logic             (~50 lines)
+   Total manual: ~380 lines
+   Total generated: ~60 lines (testgen)
+   Manual %: ~86%
+```
+
+### With auto-generation (DSL target)
+
+```
+1. Write .dag file                   (~20 lines)
+   - service declarations with @mock_response (if needed)
+   - journey with pattern composition
+   - refinement types on domain types (if needed)
+2. Write pure transformation logic   (~20 lines Rust/Go/Python)
+   Total manual: ~40 lines
+   Total generated: ~350+ lines (types, transports, MockSpec, tests, CLI, progress)
+   Manual %: ~10%
+```
+
+The `MockSpec` moves from a per-tool authoring burden to a compiler output.
+
+## N.9 Relationship to gunbc's Existing Simulator Infrastructure
+
+gunbc already has the seeds of this system in `core/test/`:
+
+| Existing infrastructure | How it evolves in the DSL |
+|---|---|
+| `Simulator { generator, validator }` | Becomes the runtime representation of refinement type generators |
+| `IoContract { input: Map<Simulator>, output: Map<Simulator> }` | Compiler-derived from journey port types + refinement constraints |
+| `non_empty_string()`, `boolean()`, `exit_code()`, `int_range()` | Become built-in generator presets mapped from `@non_empty`, `@range`, etc. |
+| `MockSpec::node_example(NodeExample { inputs, outputs })` | Compiler generates `NodeExample` from refinement types + `@mock_response` |
+| `OutputMatcher::Exact`, `Contains`, `NonEmpty` | Compiler generates matchers from output port refinement types |
+
+The DSL compiler doesn't invent new testing infrastructure — it drives the existing `Simulator` / `IoContract` / `MockSpec` / `OutputMatcher` types from declarative metadata instead of manual construction.
+
+## N.10 Guardrail Compliance
+
+Per Appendix K.6:
+
+**G1 (Annotations must desugar to structure):** Refinement annotations desugar to structural predicates. `@pattern("^[a-f0-9]{40}$")` compiles to a `Predicate::Regex` node in the type's DAG representation. `@range(min: 1, max: 5)` compiles to `Predicate::IntRange { min: 1, max: 5 }`. `@mock_response` compiles to a `MockTemplate` in the `MockManifest`. None of these are opaque metadata that survives into the runtime without structural representation.
+
+**G2 (Preserve producer-level semantics):** `@mock_response` and `@error_response` are producer-level annotations that survive through lowering. The compiler preserves them in the `MockManifest` and uses them during the `Emit` phase to generate test fixtures. They are not erased when the service call is lowered to a transport triplet.
+
+**G3 (Kill manual bottlenecks):** The manual MockSpec is one of the three remaining manual bottlenecks (alongside graph builders and registration). Auto-generation eliminates it, reducing the per-tool manual cost from ~380 lines to ~40 lines.
+
+## N.11 Phasing
+
+| Phase | What's automated | Requires |
+|---|---|---|
+| **Phase 1** (Language Core) | Type-driven fallback values for `MockSpec` (safe defaults for primitives) | Type system (§4.1) |
+| **Phase 2** (Services) | `@mock_response` → generated `MockSpec` for transport boundaries | Service declarations (§4.3) |
+| **Phase 2** (Services) | `@error_response` → generated failure scenarios for Bucket C | Service declarations (§4.3) |
+| **Phase 3** (Composition) | Property-based fuzzing for pure nodes (Bucket B exhaustive) | Refinement types + `execute_single_node` harness |
+| **Phase 4** (Multi-target) | Fuzz tests emitted in target language (Rust proptest, Python hypothesis, Go rapid) | Codegen backend trait extended |
+
+The progression is deliberate: Phase 1 eliminates the worst of the manual MockSpec burden (safe defaults). Phase 2 eliminates it entirely for well-annotated services. Phase 3 makes Bucket B exhaustive. Phase 4 makes it multi-language.
