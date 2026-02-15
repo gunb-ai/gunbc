@@ -253,12 +253,7 @@ fn execute_build_topology(
     let dag = build_workspace_dag().map_err(|e| {
         ExecError::new(format!("Failed to build workspace DAG: {}", e))
     })?;
-    let mut topo = dag.topology();
-
-    // Group transport triplets (prepare_X / execute_X / parse_X) into SubDag
-    // nodes at every nesting level, adding an intermediate expansion tier in
-    // the interactive viewer.
-    topo.group_transport_triplets();
+    let topo = dag.topology();
 
     let node_count = topo.node_count();
     let total_node_count = topo.total_node_count();
@@ -727,7 +722,7 @@ fn build_snapshot_graph(
 
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        current_branch.execute.in_port("res:file"),
+        current_branch.in_port("res:file"),
     )?;
 
     // Render snapshot
@@ -742,7 +737,7 @@ fn build_snapshot_graph(
             vec![scalar("content", "String"), scalar("ext", "String")],
             DagVizGraphOp::RenderSnapshot,
         ),
-        &[build_topology, &current_branch.parse],
+        &[build_topology, &current_branch],
     )?;
 
     builder.add_edge(
@@ -750,7 +745,7 @@ fn build_snapshot_graph(
         render_snapshot.in_port("topology_json"),
     )?;
     builder.add_edge(
-        current_branch.parse.out("branch"),
+        current_branch.out("branch"),
         render_snapshot.in_port("branch"),
     )?;
 
@@ -776,16 +771,16 @@ fn build_snapshot_graph(
 
     builder.add_edge(
         render_snapshot.out("content"),
-        gist.prepare.in_port("content"),
+        gist.in_port("content"),
     )?;
     builder.add_edge(
-        current_branch.parse.out("branch"),
-        gist.prepare.in_port("branch"),
+        current_branch.out("branch"),
+        gist.in_port("branch"),
     )?;
-    builder.add_edge(render_snapshot.out("ext"), gist.prepare.in_port("ext"))?;
+    builder.add_edge(render_snapshot.out("ext"), gist.in_port("ext"))?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        gist.execute.in_port("res:file"),
+        gist.in_port("res:file"),
     )?;
 
     // Local save + browser open (parallel to gist upload)
@@ -805,15 +800,15 @@ fn build_snapshot_graph(
 
     builder.add_edge(
         render_snapshot.out("content"),
-        local_save.prepare.in_port("content"),
+        local_save.in_port("content"),
     )?;
     builder.add_edge(
         render_snapshot.out("ext"),
-        local_save.prepare.in_port("ext"),
+        local_save.in_port("ext"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        local_save.execute.in_port("res:file"),
+        local_save.in_port("res:file"),
     )?;
 
     // Open in browser after local save
@@ -826,16 +821,16 @@ fn build_snapshot_graph(
         DagVizGraphOp::OpenBrowser,
         DagVizGraphOp::ParseBrowserOpen,
         DagVizGraphOp::Transport(TransportOps::Execute),
-        Some(&local_save.parse),
+        Some(&local_save),
     )?;
 
     builder.add_edge(
-        local_save.parse.out("file_path"),
-        browser_open.prepare.in_port("file_path"),
+        local_save.out("file_path"),
+        browser_open.in_port("file_path"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        browser_open.execute.in_port("res:file"),
+        browser_open.in_port("res:file"),
     )?;
 
     Ok(())
@@ -863,7 +858,7 @@ fn build_diff_graph(
 
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        current_branch.execute.in_port("res:file"),
+        current_branch.in_port("res:file"),
     )?;
 
     // Git show: load base topology
@@ -883,7 +878,7 @@ fn build_diff_graph(
 
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        git_show.execute.in_port("res:file"),
+        git_show.in_port("res:file"),
     )?;
 
     // Diff + render (combined to avoid serializing DagDiffResult)
@@ -899,7 +894,7 @@ fn build_diff_graph(
             vec![scalar("content", "String"), scalar("is_empty", "Bool")],
             DagVizGraphOp::DiffAndRender,
         ),
-        &[build_topology, &git_show.parse, &current_branch.parse],
+        &[build_topology, &git_show, &current_branch],
     )?;
 
     builder.add_edge(
@@ -907,11 +902,11 @@ fn build_diff_graph(
         diff_and_render.in_port("current_json"),
     )?;
     builder.add_edge(
-        git_show.parse.out("topology_json"),
+        git_show.out("topology_json"),
         diff_and_render.in_port("base_json"),
     )?;
     builder.add_edge(
-        current_branch.parse.out("branch"),
+        current_branch.out("branch"),
         diff_and_render.in_port("branch"),
     )?;
 
@@ -936,15 +931,15 @@ fn build_diff_graph(
 
     builder.add_edge(
         diff_and_render.out("content"),
-        gist.prepare.in_port("content"),
+        gist.in_port("content"),
     )?;
     builder.add_edge(
-        current_branch.parse.out("branch"),
-        gist.prepare.in_port("branch"),
+        current_branch.out("branch"),
+        gist.in_port("branch"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        gist.execute.in_port("res:file"),
+        gist.in_port("res:file"),
     )?;
 
     Ok(())
@@ -971,7 +966,7 @@ fn build_recent_graph(
 
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        current_branch.execute.in_port("res:file"),
+        current_branch.in_port("res:file"),
     )?;
 
     // Rev-list: find commit from 3 days ago
@@ -991,7 +986,7 @@ fn build_recent_graph(
 
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        rev_list.execute.in_port("res:file"),
+        rev_list.in_port("res:file"),
     )?;
 
     // Git show: load base topology (after rev-list resolves)
@@ -1006,18 +1001,18 @@ fn build_recent_graph(
         },
         DagVizGraphOp::ParseGitShow,
         DagVizGraphOp::Transport(TransportOps::Execute),
-        Some(&rev_list.parse),
+        Some(&rev_list),
     )?;
 
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        git_show.execute.in_port("res:file"),
+        git_show.in_port("res:file"),
     )?;
 
-    // Wire rev-list base_ref → git_show prepare
+    // Wire rev-list base_ref → git_show
     builder.add_edge(
-        rev_list.parse.out("base_ref"),
-        git_show.prepare.in_port("base_ref"),
+        rev_list.out("base_ref"),
+        git_show.in_port("base_ref"),
     )?;
 
     // Diff + render (combined)
@@ -1033,7 +1028,7 @@ fn build_recent_graph(
             vec![scalar("content", "String"), scalar("is_empty", "Bool")],
             DagVizGraphOp::DiffAndRender,
         ),
-        &[build_topology, &git_show.parse, &current_branch.parse, &rev_list.parse],
+        &[build_topology, &git_show, &current_branch, &rev_list],
     )?;
 
     builder.add_edge(
@@ -1041,15 +1036,15 @@ fn build_recent_graph(
         diff_and_render.in_port("current_json"),
     )?;
     builder.add_edge(
-        git_show.parse.out("topology_json"),
+        git_show.out("topology_json"),
         diff_and_render.in_port("base_json"),
     )?;
     builder.add_edge(
-        current_branch.parse.out("branch"),
+        current_branch.out("branch"),
         diff_and_render.in_port("branch"),
     )?;
     builder.add_edge(
-        rev_list.parse.out("base_ref"),
+        rev_list.out("base_ref"),
         diff_and_render.in_port("base_ref"),
     )?;
 
@@ -1074,15 +1069,15 @@ fn build_recent_graph(
 
     builder.add_edge(
         diff_and_render.out("content"),
-        gist.prepare.in_port("content"),
+        gist.in_port("content"),
     )?;
     builder.add_edge(
-        current_branch.parse.out("branch"),
-        gist.prepare.in_port("branch"),
+        current_branch.out("branch"),
+        gist.in_port("branch"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        gist.execute.in_port("res:file"),
+        gist.in_port("res:file"),
     )?;
 
     Ok(())

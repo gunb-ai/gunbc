@@ -784,11 +784,11 @@ pub fn build_gist_graph_with_config(
         prepare_gist_request.in_port("markdown"),
     )?;
     builder.add_edge(
-        current_branch.parse.out("branch"),
+        current_branch.out("branch"),
         prepare_gist_request.in_port("branch"),
     )?;
     builder.add_edge(
-        remote_branches.parse.out("remote_branch"),
+        remote_branches.out("remote_branch"),
         prepare_gist_request.in_port("remote_branch"),
     )?;
     builder.add_edge(
@@ -884,11 +884,11 @@ pub fn build_gist_graph_with_config(
     // Resource wiring
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        current_branch.execute.in_port("res:file"),
+        current_branch.in_port("res:file"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        remote_branches.execute.in_port("res:file"),
+        remote_branches.in_port("res:file"),
     )?;
 
     let dag = builder.build();
@@ -921,7 +921,7 @@ fn build_snapshot_acquire(
         None,
     )?;
 
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), list_files.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), list_files.in_port("res:file"))?;
 
     // Node: LoopBuilder for per-file reading
     use gunbc_ir::patterns::{LoopBuilder, ResourceInput};
@@ -935,7 +935,7 @@ fn build_snapshot_acquire(
         .with_output("contents", "String")
         .build();
 
-    let read_files_loop = builder.add_node_after(loop_node, &list_files.parse)?;
+    let read_files_loop = builder.add_node_after(loop_node, &list_files)?;
     builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), read_files_loop.in_port("res:file"))?;
 
     // Node: CollectFileContents (PURE - zips filenames + contents into Map)
@@ -962,11 +962,11 @@ fn build_snapshot_acquire(
 
     // Wire snapshot pipeline (internal triplet edges handled by helper)
     builder.add_edge(
-        list_files.parse.out("files"),
+        list_files.out("files"),
         read_files_loop.in_port("files"),
     )?;
     builder.add_edge(
-        list_files.parse.out("files"),
+        list_files.out("files"),
         collect_file_contents.in_port("filenames"),
     )?;
     builder.add_edge(
@@ -1008,7 +1008,7 @@ fn build_diff_acquire(
         None,
     )?;
 
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), diff.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), diff.in_port("res:file"))?;
 
     // Node: RenderDiffSnapshot (PURE)
     let render_markdown = builder.add_node_after(
@@ -1021,15 +1021,15 @@ fn build_diff_acquire(
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
         ),
-        &diff.parse,
+        &diff,
     )?;
 
     // Wire diff → render (internal triplet edges handled by helper)
     builder.add_edge(
-        diff.parse.out("diff_files"),
+        diff.out("diff_files"),
         render_markdown.in_port("diff_files"),
     )?;
-    builder.add_edge(diff.parse.out("stats"), render_markdown.in_port("stats"))?;
+    builder.add_edge(diff.out("stats"), render_markdown.in_port("stats"))?;
 
     Ok(render_markdown)
 }
@@ -1071,7 +1071,7 @@ fn build_recent_acquire(
         None,
     )?;
 
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), rev_list.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), rev_list.in_port("res:file"))?;
 
     // ========================================================================
     // Diff chain: diff against the resolved base_ref
@@ -1092,10 +1092,10 @@ fn build_recent_acquire(
         }),
         GistGraphOp::Git(GitOps::ParseDiff),
         GistGraphOp::Transport(TransportOps::Execute),
-        Some(&rev_list.parse),
+        Some(&rev_list),
     )?;
 
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), diff.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), diff.in_port("res:file"))?;
 
     // Node: RenderDiffSnapshot (PURE)
     let render_markdown = builder.add_node_after(
@@ -1108,21 +1108,21 @@ fn build_recent_acquire(
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
         ),
-        &diff.parse,
+        &diff,
     )?;
 
     // Wire cross-triplet edges (internal triplet edges handled by helpers)
     builder.add_edge(
-        rev_list.parse.out("base_ref"),
-        diff.prepare.in_port("base_ref"),
+        rev_list.out("base_ref"),
+        diff.in_port("base_ref"),
     )?;
     builder.add_edge(
-        diff.parse.out("diff_files"),
+        diff.out("diff_files"),
         render_markdown.in_port("diff_files"),
     )?;
-    builder.add_edge(diff.parse.out("stats"), render_markdown.in_port("stats"))?;
+    builder.add_edge(diff.out("stats"), render_markdown.in_port("stats"))?;
 
-    Ok((render_markdown, rev_list.parse))
+    Ok((render_markdown, rev_list))
 }
 
 fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<GistGraphOp> {

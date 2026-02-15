@@ -106,7 +106,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
             ],
             CodegenGraphOp::Codegen(CodegenOp::PrepareCodegenCommand),
         ),
-        &codegen_exists.parse,
+        &codegen_exists,
     )?;
 
     let execute_codegen = builder.add_node_after(
@@ -182,7 +182,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
     // ========================================================================
 
     builder.add_edge(
-        codegen_exists.parse.out("codegen_needed"),
+        codegen_exists.out("codegen_needed"),
         prepare_codegen_command.in_port("codegen_needed"),
     )?;
 
@@ -221,7 +221,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
     // Resource wiring
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        codegen_exists.execute.in_port("res:file"),
+        codegen_exists.in_port("res:file"),
     )?;
     builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), execute_codegen.in_port("res:file"))?;
     builder.add_edge(

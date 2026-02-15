@@ -106,6 +106,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
 
     let load_manifest = add_transport_triplet_named_with_passthrough(
         &mut builder,
+        "load_manifest",
         "prepare_load_manifest",
         "execute_load_manifest",
         "parse_manifest",
@@ -148,7 +149,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             ],
             DepsGraphOp::Deps(DepsOp::GenerateScripts),
         ),
-        &load_manifest.parse,
+        &load_manifest,
     )?;
 
     // ========================================================================
@@ -158,6 +159,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     // Node: PrepareExecuteInstalls (PURE)
     let execute_installs = add_transport_triplet_named_with_passthrough(
         &mut builder,
+        "execute_installs",
         "prepare_execute_installs",
         "execute_installs",
         "parse_execute_result",
@@ -184,7 +186,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     // LoadManifest chain
     // To GenerateScripts (now receives manifest_content instead of path)
     builder.add_edge(
-        load_manifest.parse.out("manifest_content"),
+        load_manifest.out("manifest_content"),
         generate_scripts.in_port("manifest_content"),
     )?;
     builder.add_edge(
@@ -195,16 +197,16 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     // ExecuteInstalls chain
     builder.add_edge(
         generate_scripts.out("install_script"),
-        execute_installs.prepare.in_port("install_script"),
+        execute_installs.in_port("install_script"),
     )?;
 
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        load_manifest.execute.in_port("res:file:deps.toml"),
+        load_manifest.in_port("res:file:deps.toml"),
     )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
-        execute_installs.execute.in_port("res:file"),
+        execute_installs.in_port("res:file"),
     )?;
 
     let dag = builder.build();

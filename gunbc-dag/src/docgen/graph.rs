@@ -159,9 +159,9 @@ fn add_docgen_read_triplet(
         None,
     )?;
 
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), triplet.execute.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), triplet.in_port("res:file"))?;
 
-    Ok(triplet.parse)
+    Ok(triplet)
 }
 
 /// Build the docgen graph.
