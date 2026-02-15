@@ -54,6 +54,9 @@ pub mod coerce;
 pub mod compose;
 pub mod contract;
 pub mod dag;
+pub mod dag_diff;
+pub mod dag_mermaid;
+pub mod dag_topology;
 pub mod entrypoint;
 pub mod git;
 pub mod language;
@@ -102,6 +105,11 @@ pub use coerce::{
 };
 pub use contract::{BoundaryWitness, TypeContract};
 pub use dag::{build, canonical_edge_order, edges_to_port, Dag, Edge, Port};
+pub use dag_diff::{diff_topologies, DagDiffResult, NodeChangeSummary, NodeDiffStatus, PortChange};
+pub use dag_mermaid::{
+    render_changelog, to_mermaid_expanded_diff, to_mermaid_overview_diff, to_mermaid_snapshot,
+};
+pub use dag_topology::{DagTopology, EdgeTopology, NodeTopology, PortTopology};
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};
 pub use git::GitConfig;
 pub use layout::{

@@ -152,6 +152,205 @@ pub fn detect_language(filename: &str) -> &'static str {
 }
 
 // ============================================================================
+// DAG visualization rendering
+// ============================================================================
+
+/// Render a DAG diff as a markdown document with embedded Mermaid diagrams.
+///
+/// The document has two tiers:
+/// 1. **Workspace Overview**: Top-level nodes colored by diff status.
+/// 2. **Per-Changed-Tool Detail**: Expanded diagrams for each changed tool.
+///
+/// Unchanged tools are listed at the bottom without diagrams.
+pub fn render_dag_diff_snapshot(
+    title: &str,
+    new_topo: &gunbc_ir::DagTopology,
+    diff: &gunbc_ir::DagDiffResult,
+    old_topo: &gunbc_ir::DagTopology,
+) -> String {
+    use gunbc_ir::{dag_mermaid, dag_topology::NodeTopology};
+
+    let mut md = String::new();
+
+    // Header
+    write!(md, "# {}\n\n", title).unwrap();
+
+    // Stats summary
+    let changed_tool_count = diff.added_nodes.len() + diff.removed_nodes.len() + diff.changed_nodes.len();
+    let total_tools = new_topo.node_count()
+        + diff
+            .removed_nodes
+            .iter()
+            .filter(|id| old_topo.get_node(id).is_some())
+            .count();
+    write!(
+        md,
+        "> {} across {} of {} workflows\n\n",
+        diff.stats_summary(),
+        changed_tool_count,
+        total_tools,
+    )
+    .unwrap();
+
+    // Tier 1: Workspace Overview
+    md.push_str("## Workspace Overview\n\n");
+
+    let removed_nodes: Vec<&NodeTopology> = old_topo
+        .nodes
+        .iter()
+        .filter(|n| diff.removed_nodes.contains(&n.id))
+        .collect();
+
+    let overview = dag_mermaid::to_mermaid_overview_diff(new_topo, diff, &removed_nodes);
+    md.push_str("```mermaid\n");
+    md.push_str(&overview);
+    md.push_str("```\n\n");
+
+    md.push_str("---\n\n");
+
+    // Tier 2: Per-changed-tool detail
+    // Added tools
+    for id in &diff.added_nodes {
+        if let Some(node) = new_topo.get_node(id) {
+            write!(md, "## `{}` (new)\n\n", id.0).unwrap();
+
+            if let Some(ref children) = node.children {
+                let snapshot = dag_mermaid::to_mermaid_snapshot(&id.0, children);
+                md.push_str("```mermaid\n");
+                md.push_str(&snapshot);
+                md.push_str("```\n\n");
+            }
+
+            md.push_str("---\n\n");
+        }
+    }
+
+    // Changed tools
+    for change in &diff.changed_nodes {
+        write!(md, "## `{}` (changed)\n\n", change.id.0).unwrap();
+
+        // Changelog
+        md.push_str("### Changes\n\n");
+        if let Some(ref child_diff) = change.child_diff {
+            md.push_str(&dag_mermaid::render_changelog(child_diff));
+        } else {
+            // Port-level changes only (no SubDag internals)
+            let single_node_diff = gunbc_ir::DagDiffResult {
+                changed_nodes: vec![change.clone()],
+                ..Default::default()
+            };
+            md.push_str(&dag_mermaid::render_changelog(&single_node_diff));
+        }
+        md.push_str("\n\n");
+
+        // Expanded diagram
+        if let Some(node) = new_topo.get_node(&change.id) {
+            if let Some(ref children) = node.children {
+                if let Some(ref child_diff) = change.child_diff {
+                    let expanded = dag_mermaid::to_mermaid_expanded_diff(
+                        &change.id.0,
+                        children,
+                        child_diff,
+                        &[],
+                    );
+                    md.push_str("```mermaid\n");
+                    md.push_str(&expanded);
+                    md.push_str("```\n\n");
+                }
+            }
+        }
+
+        md.push_str("---\n\n");
+    }
+
+    // Removed tools
+    for id in &diff.removed_nodes {
+        write!(md, "## `{}` (removed)\n\n", id.0).unwrap();
+        md.push_str("This workflow was removed.\n\n");
+        md.push_str("---\n\n");
+    }
+
+    // Unchanged tools
+    if !diff.unchanged_nodes.is_empty() {
+        md.push_str("## Unchanged workflows\n\n");
+        let names: Vec<&str> = diff.unchanged_nodes.iter().map(|id| id.0.as_str()).collect();
+        md.push_str(&names.join(", "));
+        md.push('\n');
+    }
+
+    md
+}
+
+/// Render a DAG snapshot (non-diff) as a markdown document with embedded Mermaid.
+///
+/// Shows all workspace tools as Mermaid diagrams. Used by `make dag-viz`.
+/// Each diagram includes both a fenced mermaid block (for GitHub rendering)
+/// and a mermaid.ink image link (for proper zoom/pan in browsers).
+pub fn render_dag_snapshot(title: &str, topo: &gunbc_ir::DagTopology) -> String {
+    let mut md = String::new();
+
+    write!(md, "# {}\n\n", title).unwrap();
+    write!(
+        md,
+        "> {} workflows, {} total nodes\n\n",
+        topo.node_count(),
+        topo.total_node_count(),
+    )
+    .unwrap();
+
+    // Legend — matches SemanticColor palette used in dag_mermaid
+    md.push_str("**Legend**: ");
+    md.push_str("🔵 env/resource · ");
+    md.push_str("🟠 execute/transport · ");
+    md.push_str("⚪ logic · ");
+    md.push_str("`-->` data flow · ");
+    md.push_str("`-.->` resource flow\n\n");
+
+    // Overview diagram
+    md.push_str("## Overview\n\n");
+    let overview = gunbc_ir::dag_mermaid::to_mermaid_snapshot("workspace", topo);
+    embed_mermaid_with_image(&mut md, &overview, "overview");
+
+    // Per-tool diagrams
+    for node in &topo.nodes {
+        write!(md, "## `{}`\n\n", node.id.0).unwrap();
+
+        if let Some(ref children) = node.children {
+            write!(md, "{} nodes\n\n", children.total_node_count()).unwrap();
+            let diagram = gunbc_ir::dag_mermaid::to_mermaid_snapshot(&node.id.0, children);
+            embed_mermaid_with_image(&mut md, &diagram, &node.id.0);
+        } else {
+            md.push_str("Opaque node (no internal structure).\n\n");
+        }
+    }
+
+    md
+}
+
+/// Embed a Mermaid diagram with both fenced code block and an image link.
+///
+/// The fenced block renders inline on GitHub. The image link provides a
+/// fallback with proper browser zoom/scroll/pan via mermaid.ink.
+fn embed_mermaid_with_image(md: &mut String, mermaid_code: &str, label: &str) {
+    // Fenced mermaid block (GitHub native rendering)
+    md.push_str("```mermaid\n");
+    md.push_str(mermaid_code);
+    md.push_str("```\n\n");
+
+    // mermaid.ink image link (proper zoom/pan) — only if diagram is small enough
+    if let Some(url) = gunbc_ir::dag_mermaid::mermaid_ink_url(mermaid_code) {
+        write!(
+            md,
+            "<details><summary>Open zoomable image ({})</summary>\n\n",
+            label
+        )
+        .unwrap();
+        write!(md, "![{}]({})\n\n", label, url).unwrap();
+        md.push_str("</details>\n\n");
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

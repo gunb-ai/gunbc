@@ -663,7 +663,7 @@ fn tool_target_deps(tool: &ToolInfo, config: &BuildConfig) -> Vec<Cow<'static, s
         if !tool.needs_generated_cli {
             deps.push(Cow::Borrowed("preflight-fix"));
         }
-        deps.push(Cow::Borrowed("build-release-bins"));
+        deps.push(Cow::Borrowed("ensure-codegen"));
         deps
     } else if tool.short_name == "pragma" {
         vec!["preflight-fix".into()]
@@ -676,15 +676,6 @@ fn tool_target_deps(tool: &ToolInfo, config: &BuildConfig) -> Vec<Cow<'static, s
 
 fn tool_command(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -> String {
     let cli_args = render_cli_args(&tool.entrypoints);
-
-    if config.build_system == BuildSystem::Cargo {
-        let mut cmd = format!("@target/release/{}", tool.binary_name());
-        if dry_run {
-            cmd.push_str(" --dry-run");
-        }
-        cmd.push_str(&cli_args);
-        return cmd;
-    }
 
     let warning_prefix = if config.warnings == Warnings::Deny {
         "RUSTFLAGS=\"-D warnings\" "
@@ -954,8 +945,15 @@ mod tests {
         assert!(
             makefile.contains("RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins")
         );
-        assert!(makefile.contains("@target/release/gunbc-gist"));
-        assert!(makefile.contains("@target/release/gunbc-gist --dry-run"));
+        // Tool targets use cargo run (dev mode); release build is a freshness step
+        assert!(
+            makefile.contains("RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-gist --bin gunbc-gist --"),
+            "tool targets should use cargo run with RUSTFLAGS"
+        );
+        assert!(
+            makefile.contains("cargo run -p gunbc-gist --bin gunbc-gist -- --dry-run"),
+            "dry-run targets should pass --dry-run to the binary"
+        );
     }
 
     #[test]
@@ -1095,7 +1093,8 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        // Tool targets with generated CLI should depend on release binary build.
+        // Tool targets with generated CLI should depend on ensure-codegen only.
+        // Release build is handled by the freshness system inside the binary.
         let generated_cli_tools: Vec<_> = registry
             .tools
             .iter()
@@ -1103,11 +1102,11 @@ mod tests {
             .collect();
 
         for tool in &generated_cli_tools {
-            let expected = format!("{}: build-release-bins", tool.short_name);
+            let expected = format!("{}: ensure-codegen", tool.short_name);
             assert!(
                 makefile.contains(&expected),
-                "tool '{}' should depend on build-release-bins (minimal), got something else.\n\
-                 lint-upsert is for maintenance targets only.",
+                "tool '{}' should depend on ensure-codegen (minimal). \
+                 Release build is a freshness step inside the binary.",
                 tool.short_name
             );
         }

@@ -23,7 +23,7 @@ use gunbc_ir::resource::{load_manifest_default, save_manifest_default, ManagedRe
 /// - The repo is already fresh (manifest check passes)
 ///
 /// Returns `Some(steps)` if the repo needs freshening, where steps are
-/// the sequential chain: codegen-dag → testgen → pragma → clippy → test-compile.
+/// the sequential chain: codegen-dag → testgen → pragma → clippy → test-compile → build-release.
 pub fn check_and_plan_freshness() -> Option<Vec<FreshnessStep>> {
     // Recursion prevention: if we're already inside a freshness context, skip.
     if std::env::var(FRESHNESS_ACTIVE_ENV).is_ok() {
@@ -78,6 +78,7 @@ pub fn update_freshness_manifest() -> Result<(), String> {
 /// 3. pragma: process pragma directives
 /// 4. clippy: lint check (with auto-fix)
 /// 5. test-compile: compile lib tests without running
+/// 6. build-release: build workspace release binaries
 fn freshness_steps() -> Vec<FreshnessStep> {
     vec![
         FreshnessStep {
@@ -138,6 +139,16 @@ fn freshness_steps() -> Vec<FreshnessStep> {
                 "--workspace".into(),
                 "--lib".into(),
                 "--no-run".into(),
+            ],
+        },
+        FreshnessStep {
+            id: "build-release".into(),
+            command: vec![
+                "cargo".into(),
+                "build".into(),
+                "--workspace".into(),
+                "--release".into(),
+                "--bins".into(),
             ],
         },
     ]

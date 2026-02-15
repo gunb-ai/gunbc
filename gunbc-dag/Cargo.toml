@@ -18,6 +18,7 @@ gunbc-primitives = { path = "../lib/primitives" }
 gunbc-lib-transport = { path = "../lib/transport" }
 gunbc-lib-blob = { path = "../lib/blob" }
 gunbc-lib-gist-ops = { path = "../lib/gist-ops" }
+gunbc-lib-git-ops = { path = "../lib/git-ops" }
 gunbc-lib-cloud-ops = { path = "../lib/cloud-ops" }
 gunbc-lib-gcp-ops = { path = "../lib/gcp-ops" }
 
@@ -25,6 +26,7 @@ gunbc-lib-gcp-ops = { path = "../lib/gcp-ops" }
 gunbc-deps = { path = "../lib/tools/deps" }
 gunbc-gist = { path = "../lib/tools/gist" }
 gunbc-clippy = { path = "../lib/tools/clippy" }
+gunbc-lib-markdown = { path = "../lib/markdown" }
 gunbc-lib-llm-ops = { path = "../lib/llm-ops" }
 gunbc-testgen-registry = { path = "../core/testgen-registry" }
 gunbc-testgen-registry-macros = { path = "../core/testgen-registry-macros" }
@@ -81,3 +83,19 @@ path = "src/bin/docgen.rs"
 [[bin]]
 name = "gunbc-deps-config"
 path = "src/bin/deps_config.rs"
+
+[[bin]]
+name = "gunbc-dag-viz"
+path = "../target/codegen/bin/dag-viz/main.rs"
+
+[[bin]]
+name = "gunbc-dag-viz-diff"
+path = "../target/codegen/bin/dag-viz-diff/main.rs"
+
+[[bin]]
+name = "gunbc-dag-viz-recent"
+path = "../target/codegen/bin/dag-viz-recent/main.rs"
+
+[[bin]]
+name = "gunbc-dag-snapshot"
+path = "../target/codegen/bin/dag-snapshot/main.rs"

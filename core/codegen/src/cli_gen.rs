@@ -280,7 +280,7 @@ pub fn generate_cli_with_import(
 // ============================================================================
 
 /// Build the import items for the generated CLI.
-fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bool) -> Vec<Item> {
+fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bool, has_entrypoints: bool) -> Vec<Item> {
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
 
     // gunbc_exec imports
@@ -305,7 +305,13 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
         }),
         Item::Use(Import {
             path: vec!["gunbc_ir".to_string()],
-            items: vec!["detect_entrypoints".to_string(), "Value".to_string()],
+            items: {
+                let mut ir_items = vec!["detect_entrypoints".to_string()];
+                if has_entrypoints {
+                    ir_items.push("Value".to_string());
+                }
+                ir_items
+            },
         }),
     ];
 
@@ -614,7 +620,7 @@ fn build_cli_source_file(
     entrypoints: &[CliEntrypoint],
     custom_import: Option<&str>,
 ) -> SourceFile {
-    let imports = build_cli_imports(tool, custom_import, false);
+    let imports = build_cli_imports(tool, custom_import, false, !entrypoints.is_empty());
 
     let main_fn = build_main_fn(tool, entrypoints);
     let help_fn = build_help_fn(tool, entrypoints);
@@ -728,7 +734,7 @@ fn build_step_mode_source_file(
     entrypoints: &[CliEntrypoint],
     custom_import: Option<&str>,
 ) -> SourceFile {
-    let imports = build_cli_imports(tool, custom_import, true);
+    let imports = build_cli_imports(tool, custom_import, true, !entrypoints.is_empty());
 
     let main_fn = build_step_main_fn();
     let run_full_fn = build_run_full_dag_fn(tool, entrypoints);
