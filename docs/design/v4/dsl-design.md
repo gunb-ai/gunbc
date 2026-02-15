@@ -492,6 +492,69 @@ fn aggregate_results(results: List<TestResult>) -> Summary {
 
 **Why constrained is better:** If functors were arbitrary, the compiler couldn't reason about them — property-based test generation breaks, multi-target emission breaks, dead code detection breaks. Constraint is the feature that makes "for free" possible.
 
+#### Two-tier model: scalar fn bodies, collection operations as IR nodes
+
+The `fn` construct has two tiers of operation that the **surface syntax treats identically** but the **compiler lowers differently**:
+
+**Tier 1 — Scalar operations** (compiled as a single pure IR node):
+`let`, `match`, field access, arithmetic, string interpolation, record construction. These are value-level transforms with no collection iteration.
+
+**Tier 2 — Collection operations** (lowered to dedicated IR collection nodes):
+`map`, `filter`, `fold`, `flat_map`, `group_by`, `sort_by`, `count`, `any`, `all`, `first`, `last`, `take`, `skip`, `join`. These are **not** compiled inside the fn body. Instead, the compiler extracts them into IR-level `CollectionNode` primitives, where the inner transform lambda becomes a Tier 1 scalar fn.
+
+```
+// Surface syntax (what the author writes):
+fn render_makefile(registry: ToolRegistry) -> String {
+  let header = "# Generated\n"
+  let targets = registry.tools
+    |> map(t => "{t.name}:\n\t{t.command}")
+    |> join("\n\n")
+  "{header}\n{targets}"
+}
+
+// What the compiler lowers to (IR):
+//
+//   [ScalarNode: extract_tools]      registry -> tools
+//       |
+//   [MapNode: format_target]         tools -> List<String>
+//       |                              inner_fn: (t) => "{t.name}:\n\t{t.command}"
+//   [ReduceNode: join]               List<String> -> String
+//       |                              separator: "\n\n"
+//   [ScalarNode: interpolate_header]  (header, joined) -> String
+```
+
+**Why this matters — parallelism for free:**
+
+Every collection operation is visible in the IR as a first-class node. The executor can:
+- **Parallelize** `MapNode` across workers when the collection is large
+- **Stream** `MapNode` → `FilterNode` → `ReduceNode` without materializing intermediates
+- **Fuse** adjacent trivial maps into a single pass (optimization, not correctness)
+- **Partition** `GroupByNode` for distributed reduce
+- **Prove** data-race freedom (all parallelism is structural, no shared mutable state)
+
+This makes the IR a complete dataflow graph — nothing is opaque. The same property that makes journey-level `for` loops parallelizable (the scheduler sees each iteration as an independent node) extends to every collection operation in every `fn` body.
+
+**The enforcement rule:** `fn` bodies may contain collection operations syntactically (the DSL surface is clean), but the compiler MUST lower them to IR collection nodes. A `fn` body that survives lowering as a single IR node contains only Tier 1 scalar operations.
+
+**IR Collection Node Types:**
+
+| IR Node | DSL syntax | Semantics | Parallelizable |
+|---|---|---|---|
+| `MapNode` | `list \|> map(f)` | Apply f to each element | Yes — each element independent |
+| `FilterNode` | `list \|> filter(p)` | Keep elements where p is true | Yes — each predicate independent |
+| `FoldNode` | `list \|> fold(init, f)` | Sequential accumulation | Associative f → parallel reduce |
+| `FlatMapNode` | `list \|> flat_map(f)` | Map then flatten | Yes |
+| `GroupByNode` | `list \|> group_by(key)` | Partition by key | Yes — shuffle + per-key reduce |
+| `SortNode` | `list \|> sort_by(key)` | Order by key | Yes — merge sort |
+| `TakeNode` | `list \|> take(n)` | First n elements | Sequential (short-circuit) |
+| `SkipNode` | `list \|> skip(n)` | Drop first n elements | Sequential (offset) |
+| `CountNode` | `list \|> count()` | Length | Parallel reduce (sum of 1s) |
+| `AnyNode` | `list \|> any(p)` | Exists | Parallel (short-circuit on true) |
+| `AllNode` | `list \|> all(p)` | Forall | Parallel (short-circuit on false) |
+| `JoinNode` | `list \|> join(sep)` | Concatenate strings | Sequential (order matters) |
+
+**Relationship to journey-level `for`:** Journey-level `for` loops (§8.6) handle **task-parallel** iteration where each iteration involves I/O (service calls, resource access). Collection IR nodes handle **data-parallel** iteration where each element is a pure transform. Both are visible in the IR; both can be parallelized. The distinction is that journey `for` creates SubDag instances with transport boundaries, while collection nodes operate on in-memory values.
+
 **Standard library** (~30 functions, grows per phase):
 
 | Category | Functions |
@@ -1369,9 +1432,11 @@ All repetition constructs must be explicitly bounded to preserve totality:
 
 The compiler verifies at compile time that no unbounded repetition exists in the expanded DAG.
 
-### 8.6 Loop Semantics
+### 8.6 Loop and Collection Semantics
 
-`for` loops iterate over a collection and return results in **input order**, regardless of whether iteration is parallel:
+There are two kinds of collection iteration in the DSL, both visible as IR nodes:
+
+**Task-parallel: journey-level `for`** — iterates over a collection with I/O per element. Each iteration expands to independent SubDag nodes. Used when the loop body contains service calls or resource access.
 
 ```
 contents = for file in files.files {
@@ -1383,6 +1448,22 @@ contents = for file in files.files {
 - Execution of loop iterations may be parallel (the executor decides).
 - The result `List<T>` preserves input index order — never completion order.
 - If any iteration fails, the loop fails. Completed iterations' results are discarded. Remaining iterations may or may not execute (executor-dependent).
+
+**Data-parallel: collection IR nodes** — pure transforms over in-memory values. Extracted from `fn` bodies during lowering (§4.2). The inner lambda is a scalar fn (no collection ops, no I/O).
+
+```
+// In a fn body:
+let names = tools |> map(t => t.name) |> filter(n => n != "") |> join(", ")
+
+// Lowered IR:
+//   tools → [MapNode: extract_name] → [FilterNode: non_empty] → [JoinNode: ", "] → names
+```
+
+Collection IR nodes follow the same ordering rule: output order matches input order. The executor MAY parallelize `MapNode` and `FilterNode` across workers. `FoldNode` with an associative reducer MAY be parallelized as a tree reduce. `JoinNode` and `SortNode` respect element order.
+
+**Fusion optimization:** The compiler MAY fuse adjacent collection nodes into a single pass when the inner transforms are trivial (e.g., `MapNode` → `FilterNode` with microsecond predicates). This is a performance optimization, not a semantic change — the fused result is identical to the unfused pipeline. The IR retains the unfused representation for analysis; fusion happens at emit time.
+
+**Why both exist:** Journey `for` and collection IR nodes serve different granularities. A `for` loop that calls `fs.read(path: file)` needs transport boundaries, resource threading, and failure handling per iteration — that's task-parallel. A `map(t => t.name)` over an in-memory list is data-parallel with no I/O. Making both IR-visible means the complete dataflow graph is available for scheduling, optimization, and correctness analysis. No computation is hidden inside opaque function bodies.
 
 ### 8.7 NodeId Stability
 
@@ -1475,7 +1556,9 @@ The journey/pattern call graph must be acyclic. The compiler rejects recursive c
    │             - service calls → transport triplets
    │             - implicit edges → explicit Edge values
    │             - resource uses → acquire/release lifecycle nodes
-   │             - for → LoopBuilder nodes
+   │             - for → LoopBuilder nodes (task-parallel)
+   │             - fn collection ops → CollectionNodes (data-parallel)
+   │               (map → MapNode, filter → FilterNode, fold → FoldNode, etc.)
    │             - match → BranchBuilder nodes
    │             - when → guarded ports
    ▼
@@ -1508,7 +1591,10 @@ The journey/pattern call graph must be acyclic. The compiler rejects recursive c
 | Transport | `reqwest`/`Command` | `net.http`/`exec` | `requests`/`subprocess` | `syscall` |
 | Guard | `if` | `if` | `if` | `beq` |
 | SubDag | `fn` (inlined) | `func` (inlined) | `def` (inlined) | `jal` (nested) |
-| Loop | `for .. in` | `for .. range` | `for .. in` | loop/`beq` |
+| Loop (task) | `for .. in` | `for .. range` | `for .. in` | loop/`beq` |
+| MapNode | `.iter().map(f)` | `slices.Map(f)` | `[f(x) for x in xs]` | loop/`jal` |
+| FilterNode | `.iter().filter(p)` | custom loop | `[x for x in xs if p(x)]` | loop/`beq` |
+| FoldNode | `.iter().fold(init,f)` | custom loop | `functools.reduce(f,xs)` | loop/accumulate |
 | Topo schedule | sequential | goroutine pool | `asyncio.gather` | instruction order |
 
 ### 10.2 Backend Interface

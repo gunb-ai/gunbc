@@ -1,0 +1,53 @@
+// services/git.dag -- Git CLI operations.
+//
+// All operations use @shell transport with argv-based argument passing.
+// Output parsing: single String field defaults to trim(stdout).
+// List<String> fields default to split(trim(stdout), "\n").
+//
+// Replaces: core/ir/src/ops/git.rs, core/ir/src/transport/git.rs
+
+module services.git
+
+service git.Core {
+  operation CurrentBranch {
+    input {}
+    output { branch: String }
+    @shell(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    @hermetic @readonly
+  }
+
+  operation RemoteBranches {
+    input {}
+    output { branches: List<String> }
+    @shell(["git", "branch", "-r", "--format=%(refname:short)"])
+    @hermetic @readonly
+  }
+
+  operation LsFiles {
+    input {}
+    output { files: List<String> }
+    @shell(["git", "ls-files"])
+    @hermetic @readonly
+  }
+
+  operation Diff {
+    input { base: String, head: String = "HEAD" }
+    output { diff: String }
+    @shell(["git", "diff", "{base}...{head}"])
+    @hermetic @readonly
+  }
+
+  operation RevList {
+    input { since: String }
+    output { commits: List<String> }
+    @shell(["git", "rev-list", "--since={since}", "HEAD"])
+    @hermetic @readonly
+  }
+
+  operation Show {
+    input { ref: String, path: String }
+    output { content: String }
+    @shell(["git", "show", "{ref}:{path}"])
+    @hermetic @readonly
+  }
+}

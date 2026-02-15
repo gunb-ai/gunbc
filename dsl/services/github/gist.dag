@@ -1,0 +1,28 @@
+// services/github/gist.dag -- GitHub Gist API.
+//
+// Replaces: core/ir/src/transport/gist.rs, core/ir/src/ops/gist.rs
+
+module services.github.gist
+
+service github.Gist {
+  @endpoint("https://api.github.com")
+  @auth(BearerToken)
+
+  operation Create {
+    input {
+      description: String
+      files: Map<String, String>
+      public: Bool = false
+    }
+    output {
+      url: String @json("html_url")
+      id: GistId
+    }
+    @rest(POST, "/gists")
+    @permissions(["gist"])
+    @mock_response(
+      status: 201,
+      body: { "html_url": "https://gist.github.com/mock/{id}", "id": "{id}" }
+    )
+  }
+}

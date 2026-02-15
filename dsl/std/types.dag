@@ -1,0 +1,155 @@
+// std/types.dag -- Base types and domain enums for the gunbc DSL.
+//
+// Primitives are structural (Identity DAGs). Refined types add validation
+// chains. Records and enums compose freely. The compiler's internal type
+// model uses a full cardinality algebra (Dag<TypeOp>), but the surface
+// syntax keeps cardinality simple: T, T?, List<T>.
+//
+// See dsl-design.md 4.1 for the type DAG model.
+
+module std.types
+
+// --- Primitives -------------------------------------------------------
+// These are Identity DAGs -- single-node, no validation.
+// Unit, Bool, String, Int, Float, Bytes, Json, Secret
+// (built-in to the compiler, listed here for documentation)
+
+// --- Refinement types -------------------------------------------------
+// Constraints on primitives -- the compiler uses these for:
+//   1. Validation at type-check time
+//   2. Auto-generation of test inputs (proptest)
+//   3. Documentation of expected shapes
+
+type CommitSha    = String @pattern("^[a-f0-9]{40}$")
+type RetryCount   = Int @range(min: 1, max: 5)
+type HttpStatus   = Int @range(min: 100, max: 599)
+type Email        = String @pattern("^[^@]+@[^@]+\\.[^@]+$")
+type Port         = Int @range(min: 1, max: 65535)
+type GistId       = String @format(uuid)
+type SecretValue  = Secret @non_empty
+type Url          = String @pattern("^https?://")
+type FilePath     = String @non_empty
+type SemVer       = String @pattern("^\\d+\\.\\d+\\.\\d+")
+type NonEmptyStr  = String @non_empty
+
+// --- Domain enums -----------------------------------------------------
+
+type CloudRuntime = GitHubActions | Metadata | LocalDev
+type Platform     = Linux | MacOS | Windows
+
+// --- Auth types -------------------------------------------------------
+
+type AuthScheme
+  = Bearer
+  | Header { name: String }
+  | Basic { username: String }
+
+type AccessToken {
+  token: Secret
+  scheme: AuthScheme
+  expires_at: String?
+}
+
+type CloudSecretConfig {
+  project: String
+  secret: String
+  version: String = "latest"
+  service_account: String?
+  audience: String = "sigstore"
+  scheme: AuthScheme = Bearer
+  header_name: String?
+  source_id: String
+  required_scopes: List<String>
+}
+
+type Credential {
+  token: Secret
+  scheme: AuthScheme
+  header_name: String?
+  source_id: String
+  required_scopes: List<String>
+  expires_in: Int?
+}
+
+// --- Test / CI types --------------------------------------------------
+
+type TestResult {
+  name: String
+  ok: Bool
+  stdout: String
+  stderr: String
+  duration_ms: Int
+}
+
+type Summary {
+  total: Int
+  passed: Int
+  failed: Int
+}
+
+type StageResult {
+  name: String
+  success: Bool
+  stdout: String
+  stderr: String
+  skipped: Bool
+}
+
+// --- Tool registry ----------------------------------------------------
+
+type ToolEntry {
+  name: String
+  command: String
+  description: String?
+}
+
+type ToolRegistry {
+  tools: List<ToolEntry>
+}
+
+// --- Dag visualization ------------------------------------------------
+
+type DagTopology {
+  nodes: List<TopologyNode>
+  edges: List<TopologyEdge>
+  subdag_boundaries: List<String>
+}
+
+type TopologyNode {
+  id: String
+  label: String
+  kind: String           // "pure" | "transport" | "subdag" | "env"
+  parent: String?        // SubDag parent id
+}
+
+type TopologyEdge {
+  from: String
+  to: String
+  port: String?
+}
+
+type DagDiff {
+  added: List<String>
+  removed: List<String>
+  changed: List<String>
+}
+
+// --- Codegen / pragma -------------------------------------------------
+
+type CodegenTarget {
+  name: String
+  path: FilePath
+}
+
+type PragmaDirective {
+  key: String
+  value: String
+  scope: String?
+}
+
+// --- Docgen -----------------------------------------------------------
+
+type DocSource {
+  path: FilePath
+  kind: String           // "template" | "generated" | "static"
+}

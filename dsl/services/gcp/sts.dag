@@ -1,0 +1,51 @@
+// services/gcp/sts.dag -- GCP Security Token Service.
+//
+// Replaces: lib/gcp-ops/src/services/iam.rs (STS section)
+
+module services.gcp.sts
+
+service gcp.STS {
+  @endpoint("https://sts.googleapis.com")
+
+  operation Exchange {
+    input {
+      subject_token: Secret
+      audience: String
+    }
+    output {
+      access_token: Secret @json("access_token")
+      expires_in: Int @json("expires_in")
+    }
+    @rest(POST, "/v1/token")
+    @idempotent
+    // Body includes grant_type and token_type fields -- the compiler
+    // generates the full OAuth2 token exchange request from these inputs.
+  }
+}
+
+// OIDC token providers -- these are not GCP services but are used
+// to acquire subject tokens for the STS exchange.
+
+service github.OIDC {
+  // Endpoint comes from ACTIONS_ID_TOKEN_REQUEST_URL env var at runtime.
+  @auth(BearerToken)   // uses ACTIONS_ID_TOKEN_REQUEST_TOKEN
+
+  operation GetToken {
+    input { audience: String }
+    output { subject_token: Secret @json("value") }
+    @rest(GET, "?audience={audience}")
+    @readonly
+  }
+}
+
+service gcp.Metadata {
+  @endpoint("http://metadata.google.internal")
+
+  operation GetIdentityToken {
+    input { audience: String }
+    output { subject_token: Secret }
+    @rest(GET, "/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}&format=full")
+    @readonly
+    // Response body IS the token (not JSON), parsed as raw string.
+  }
+}

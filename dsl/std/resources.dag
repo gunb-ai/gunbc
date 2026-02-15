@@ -1,0 +1,73 @@
+// std/resources.dag -- Resource declarations for the gunbc DSL.
+//
+// Resources are acquirable capabilities with lifecycle management.
+// The compiler inserts acquire/release nodes, threads resource edges,
+// checks conflicts (keyed by path), and derives test obligations.
+//
+// Resource handles are opaque (non-forgeable) -- only the compiler's
+// acquire nodes can mint them. User code cannot construct handles.
+//
+// See dsl-design.md 4.3 and 7 for the full resource model.
+
+module std.resources
+
+// --- Filesystem -------------------------------------------------------
+
+resource Filesystem {
+  kind: Capability
+  mode: ReadWrite
+  acquire {}
+  release {}
+
+  capability read {
+    input { path: String }
+    output { content: String }
+    @file(READ, "{path}")
+  }
+
+  capability write {
+    input { path: String, content: String }
+    output { written: Bool }
+    @file(WRITE, "{path}")
+  }
+}
+
+// --- Network ----------------------------------------------------------
+
+resource Network {
+  kind: Capability
+  mode: Read
+  acquire {}
+  release {}
+}
+
+// --- Clock ------------------------------------------------------------
+
+resource Clock {
+  kind: Observation
+  mode: Read
+  acquire { @hermetic }
+  release {}
+
+  capability now {
+    input {}
+    output { timestamp: String }
+    @hermetic
+  }
+  // Clock.now() is deterministic in tests (seeded from run_id).
+  // In production it reads the system clock -- a hermetic, read-only
+  // side effect. It is NOT @pure (pure nodes have no effects at all).
+}
+
+// --- AuthContext -------------------------------------------------------
+
+resource AuthContext {
+  kind: Capability
+  mode: Read
+  expires: true
+  acquire {
+    // Acquisition is itself a journey (see credential_chain pattern).
+    // The compiler wires credential_chain output to this resource.
+  }
+  release {}
+}

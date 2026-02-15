@@ -1,0 +1,154 @@
+// tools/gist.dag -- Gist creation tool (all 4 modes).
+//
+// Modes:
+//   gist_snapshot -- list files, read contents, render markdown, upload
+//   gist_diff     -- git diff, render markdown, upload
+//   gist_recent   -- rev-list since N days, diff each commit, upload
+//   gist_upload   -- shared upload journey (credential + GitHub API)
+//
+// Total: ~90 lines (vs. 1,449 lines in lib/tools/gist/src/graph.rs)
+//
+// Two kinds of parallelism:
+//   Task-parallel: `for file in files { fs.read(path: file) }` -> LoopBuilder
+//   Data-parallel: `|> map(...)` in fn bodies -> MapNode/JoinNode in IR
+//
+// Replaces: lib/tools/gist/src/graph.rs
+//           gunbc-dag/src/workspace/subdags/gist.rs
+
+module tools.gist
+
+import services.git
+import services.github.gist
+import std.patterns { credential_chain }
+import std.resources { Filesystem, Network, AuthContext, Clock }
+import std.types { CloudRuntime, AccessToken }
+
+// --- Pure functions ---------------------------------------------------
+
+fn gist_filename(branch: String, base_ref: String?, timestamp: String) -> String {
+  let suffix = match base_ref {
+    Some(ref) => "-vs-{ref}"
+    None      => ""
+  }
+  "snapshot-{branch}{suffix}-{timestamp}.md"
+}
+
+fn render_snapshot(files: List<{ path: String, content: String }>) -> String {
+  let header = "# Code Snapshot\n\n"
+  let sections = files
+    |> map(f => "## `{f.path}`\n\n```\n{f.content}\n```")
+    |> join("\n\n")
+  "{header}{sections}"
+}
+
+fn render_diff(diff: String) -> String {
+  "# Diff Snapshot\n\n```diff\n{diff}\n```"
+}
+
+fn render_recent(diffs: List<String>) -> String {
+  let header = "# Recent Changes\n\n"
+  let sections = diffs
+    |> map(d => "```diff\n{d}\n```")
+    |> join("\n\n---\n\n")
+  "{header}{sections}"
+}
+
+// --- Journeys ---------------------------------------------------------
+
+// Shared upload: acquires credential, calls GitHub Gist API
+journey gist_upload {
+  input {
+    markdown: String
+    branch: String
+    base_ref: String?
+  }
+  output { url: String }
+  uses net: Network
+  uses clock: Clock
+  uses auth: AuthContext
+
+  timestamp = clock.now()
+  filename = gist_filename(
+    branch: branch,
+    base_ref: base_ref,
+    timestamp: timestamp.timestamp
+  )
+
+  cred = credential_chain(
+    runtime: detect_runtime(),
+    audience: "sigstore",
+    project: "gunbc",
+    secret_name: "github-token",
+    source_id: "gist",
+    required_scopes: ["gist"],
+    service_account: None
+  )
+
+  result = github.Gist.Create(
+    description: "Snapshot from {branch}",
+    files: { filename: markdown }
+  )
+
+  return { url: result.url }
+}
+
+// Snapshot: list all tracked files, read contents, render, upload
+journey gist_snapshot {
+  input { base_ref: String? }
+  output { url: String }
+  uses fs: Filesystem(mode: Read)
+
+  branch = git.Core.CurrentBranch()
+  remote = git.Core.RemoteBranches()
+  files = git.Core.LsFiles()
+
+  contents = for file in files.files {
+    content = fs.read(path: file)
+    { path: file, content: content.content }
+  }
+
+  markdown = render_snapshot(files: contents)
+  result = gist_upload(
+    markdown: markdown,
+    branch: branch.branch,
+    base_ref: base_ref
+  )
+
+  return { url: result.url }
+}
+
+// Diff: compare against base ref
+journey gist_diff {
+  input { base_ref: String }
+  output { url: String }
+
+  branch = git.Core.CurrentBranch()
+  diff = git.Core.Diff(base: base_ref)
+  markdown = render_diff(diff: diff.diff)
+  result = gist_upload(
+    markdown: markdown,
+    branch: branch.branch,
+    base_ref: base_ref
+  )
+
+  return { url: result.url }
+}
+
+// Recent: changes since N days ago
+journey gist_recent {
+  input { since: String = "3.days.ago" }
+  output { url: String }
+
+  branch = git.Core.CurrentBranch()
+  commits = git.Core.RevList(since: since)
+  diffs = for commit in commits.commits {
+    git.Core.Diff(base: "{commit}~1", head: commit)
+  }
+  markdown = render_recent(diffs: diffs |> map(d => d.diff))
+  result = gist_upload(
+    markdown: markdown,
+    branch: branch.branch
+  )
+
+  return { url: result.url }
+}

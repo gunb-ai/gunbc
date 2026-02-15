@@ -1,0 +1,138 @@
+// pipelines/ci.dag -- Full CI pipeline.
+//
+// 12-stage pipeline composing all gunbc tools. This is the composition
+// test for the DSL -- it imports everything and wires it together with
+// stage dependencies, parallel groups, and aggregate reporting.
+//
+// Replaces: gunbc-dag/src/ci/graph.rs (~63 nodes)
+//
+// Dependency graph:
+//
+//   cloud_env (root)
+//       |
+//   codegen
+//       |
+//       +---> deps_check
+//       |
+//       +---> bootstrap --------+
+//       |                       |
+//       +---> pragma -----------+---> lint (clippy)
+//       |                       |
+//       +---> testgen ----------+---> build ---> test ---+
+//       |                       |                        |
+//       |                       +---> guardrails --------+
+//       |                       |                        |
+//       +---> verify (5 checks) +---> aggregate ---------+---> report
+
+module pipelines.ci
+
+import tools.makegen
+import tools.bootstrap
+import tools.codegen
+import tools.testgen
+import tools.pragma
+import tools.build
+import tools.clippy { clippy_lint }
+import tools.deps
+import std.types { Summary, StageResult }
+
+fn aggregate_ci_results(stages: List<StageResult>) -> Summary {
+  let passed = stages |> filter(s => s.success) |> count()
+  let failed = stages |> filter(s => !s.success && !s.skipped) |> count()
+  { total: stages |> count(), passed: passed, failed: failed }
+}
+
+fn format_ci_report(summary: Summary, stages: List<StageResult>) -> String {
+  let header = "# CI Report\n\nTotal: {summary.total}, Passed: {summary.passed}, Failed: {summary.failed}\n\n"
+  let details = stages
+    |> map(s => match s.success {
+      true  => "  [PASS] {s.name}"
+      false => match s.skipped {
+        true  => "  [SKIP] {s.name}"
+        false => "  [FAIL] {s.name}\n         {s.stderr}"
+      }
+    })
+    |> join("\n")
+  "{header}{details}\n"
+}
+
+pipeline ci {
+
+  // Stage 1: Cloud environment status check
+  stage cloud_env {
+    cloud_status = check_cloud_env()
+  }
+
+  // Stage 2: Codegen (conditional: check stamp, run if stale)
+  stage codegen_stage [after cloud_env] {
+    codegen_result = codegen()
+  }
+
+  // Stage 3: Dependency check
+  stage deps_check [after codegen_stage] {
+    deps_exists = check_deps_config()
+  }
+
+  // Stage 4: Parallel generation (bootstrap, pragma, testgen)
+  // All depend on codegen success, but are independent of each other.
+  stage generate [after codegen_stage, when codegen_result.success] {
+    parallel {
+      bootstrap_result = bootstrap()
+      pragma_result = pragma(directives: load_pragma_directives())
+      testgen_result = testgen(targets: discover_testgen_targets())
+    }
+  }
+
+  // Stage 5: Build (depends on codegen + testgen)
+  stage build_stage [after generate, when testgen_result.all_fresh || testgen_result.all_fresh == false] {
+    build_result = build_all()
+  }
+
+  // Stage 6: Test (depends on build success)
+  stage test_stage [after build_stage, when build_result.success] {
+    test_result = cargo.Build.Test()
+  }
+
+  // Stage 7: Lint (depends on build + pragma)
+  stage lint_stage [after build_stage, when build_result.success] {
+    lint_result = clippy_lint()
+  }
+
+  // Stage 8: Guardrails (depends on testgen + pragma)
+  stage guardrails [after generate] {
+    guardrail_result = run_guardrail_checks()
+  }
+
+  // Stage 9: Verify (5 parallel verification checks)
+  // Each verifies a generator's output matches expectations.
+  stage verify [after generate] {
+    parallel {
+      verify_makegen = verify_makegen_output()
+      verify_deps = verify_deps_config()
+      verify_bootstrap = verify_bootstrap_output()
+      verify_testgen = verify_testgen_output()
+      verify_pragma = verify_pragma_output()
+    }
+    verify_aggregate = aggregate_verify(
+      results: [verify_makegen, verify_deps, verify_bootstrap, verify_testgen, verify_pragma]
+    )
+  }
+
+  // Stage 10: Report (depends on everything)
+  stage report [after test_stage, after lint_stage, after guardrails, after verify] {
+    stages = [
+      { name: "codegen", success: codegen_result.success, stdout: "", stderr: "", skipped: false },
+      { name: "bootstrap", success: bootstrap_result.makefile_written || !bootstrap_result.makefile_written, stdout: "", stderr: "", skipped: false },
+      { name: "pragma", success: pragma_result.clippy_written || !pragma_result.clippy_written, stdout: "", stderr: "", skipped: false },
+      { name: "testgen", success: testgen_result.all_fresh || !testgen_result.all_fresh, stdout: "", stderr: "", skipped: false },
+      { name: "build", success: build_result.success, stdout: "", stderr: build_result.build_stderr, skipped: false },
+      { name: "test", success: test_result.success, stdout: test_result.stdout, stderr: test_result.stderr, skipped: !build_result.success },
+      { name: "lint", success: lint_result.clean, stdout: "", stderr: lint_result.findings, skipped: !build_result.success },
+      { name: "guardrails", success: guardrail_result.success, stdout: "", stderr: "", skipped: false },
+      { name: "verify", success: verify_aggregate.all_passed, stdout: "", stderr: "", skipped: false }
+    ]
+
+    summary = aggregate_ci_results(stages: stages)
+    report_text = format_ci_report(summary: summary, stages: stages)
+  }
+}

@@ -1,0 +1,66 @@
+// services/cargo.dag -- Cargo build system operations.
+//
+// All operations use @shell transport. The cargo commands enforce
+// RUSTFLAGS="-D warnings" to deny warnings at the transport level.
+//
+// Replaces: gunbc-dag/src/build/graph.rs (transport definitions)
+
+module services.cargo
+
+service cargo.Build {
+  operation Build {
+    input { all_targets: Bool = true }
+    output {
+      success: Bool
+      stdout: String
+      stderr: String
+    }
+    @shell(["cargo", "build", "--all-targets"])
+    @hermetic
+  }
+
+  operation Test {
+    input {}
+    output {
+      success: Bool
+      stdout: String
+      stderr: String
+    }
+    @shell(["cargo", "test"])
+    @hermetic
+  }
+
+  operation Clippy {
+    input { all_targets: Bool = true }
+    output {
+      success: Bool
+      stdout: String
+      stderr: String
+    }
+    @shell(["cargo", "clippy", "--all-targets", "--", "-D", "warnings"])
+    @hermetic
+  }
+
+  operation Doc {
+    input {}
+    output {
+      success: Bool
+      stdout: String
+      stderr: String
+    }
+    @shell(["cargo", "doc", "--no-deps"])
+    @hermetic
+  }
+
+  operation Run {
+    input { package: String, bin: String, args: List<String> }
+    output {
+      success: Bool
+      stdout: String
+      stderr: String
+    }
+    @shell(["cargo", "run", "-p", "{package}", "--bin", "{bin}", "--"])
+    // Note: args are appended to the command by the transport layer.
+    @hermetic
+  }
+}

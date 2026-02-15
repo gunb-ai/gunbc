@@ -1,0 +1,35 @@
+// tools/codegen.dag -- Conditional codegen execution.
+//
+// Checks if codegen outputs exist (stamp file). If stale/missing,
+// runs the codegen binary and writes a new stamp file.
+// Uses conditional execution (when) rather than content_upsert.
+//
+// Replaces: gunbc-dag/src/codegen/graph.rs (~9 nodes)
+
+module tools.codegen
+
+import std.resources { Filesystem }
+import services.shell { shell.Codegen }
+
+journey codegen {
+  input {}
+  output { success: Bool, ran: Bool }
+  uses fs: Filesystem(mode: ReadWrite)
+
+  // Check if codegen output is current
+  check = shell.Codegen.Check()
+
+  // Run codegen only if needed (stamp file missing/stale)
+  run = shell.Codegen.Run() [when !check.needed]
+
+  // Write stamp file after successful codegen
+  stamp [when run.success] = fs.write(
+    path: "target/codegen/.stamp",
+    content: "ok"
+  )
+
+  return {
+    success: check.needed || run.success,
+    ran: !check.needed
+  }
+}

@@ -1,0 +1,96 @@
+// services/shell.dag -- Shell utility operations.
+//
+// Operations that wrap specific CLI tools (gcloud, rustup, find, etc.)
+// Each gets its own service so the compiler can reason about their
+// transport properties independently.
+//
+// Replaces: various ops scattered across gunbc-dag/src/*/ops.rs
+
+module services.shell
+
+service gcloud.Auth {
+  operation Login {
+    input { update_adc: Bool = true }
+    output { ok: Bool }
+    @shell(["gcloud", "auth", "login", "--update-adc"])
+    @external   // requires user interaction (browser)
+  }
+
+  operation ReadADC {
+    input { path: String = "~/.config/gcloud/application_default_credentials.json" }
+    output {
+      client_id: String
+      client_secret: Secret
+      refresh_token: Secret
+    }
+    @file(READ, "{path}")
+    @hermetic @readonly
+    // Parses JSON: extracts client_id, client_secret, refresh_token
+  }
+}
+
+service oauth2.Google {
+  @endpoint("https://oauth2.googleapis.com")
+
+  operation Refresh {
+    input {
+      client_id: String
+      client_secret: Secret
+      refresh_token: Secret
+    }
+    output {
+      access_token: Secret @json("access_token")
+      expires_in: Int @json("expires_in")
+    }
+    @rest(POST, "/token")
+    @idempotent
+  }
+}
+
+service shell.Find {
+  operation ListDirs {
+    input { path: String, max_depth: Int = 1, min_depth: Int = 1 }
+    output { dirs: List<String> }
+    @shell(["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"])
+    @hermetic @readonly
+  }
+}
+
+service shell.Codegen {
+  operation Check {
+    input {}
+    output { needed: Bool }
+    // Checks if codegen output files exist / are stale
+    @shell(["test", "-f", "target/codegen/.stamp"])
+    @hermetic @readonly
+  }
+
+  operation Run {
+    input {}
+    output {
+      success: Bool
+      stdout: String
+      stderr: String
+    }
+    @shell(["cargo", "run", "-p", "gunbc-dag", "--bin", "gunbc-codegen", "--", "codegen"])
+    @hermetic
+  }
+}
+
+service rustup.Component {
+  operation Add {
+    input { component: String }
+    output { success: Bool }
+    @shell(["rustup", "component", "add", "{component}"])
+    @hermetic
+  }
+}
+
+service shell.Which {
+  operation Check {
+    input { command: String }
+    output { exists: Bool, path: String? }
+    @shell(["which", "{command}"])
+    @hermetic @readonly
+  }
+}

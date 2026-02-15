@@ -1,0 +1,48 @@
+// services/gcp/iam.dag -- GCP IAM Credentials and Resource Manager APIs.
+//
+// Replaces: lib/gcp-ops/src/services/iam.rs,
+//           lib/gcp-ops/src/services/resource_manager.rs
+
+module services.gcp.iam
+
+service gcp.IAM {
+  @endpoint("https://iamcredentials.googleapis.com")
+  @auth(BearerToken)
+
+  operation GenerateAccessToken {
+    input {
+      access_token: Secret
+      target_sa: String
+      lifetime_seconds: Int = 3600
+    }
+    output {
+      access_token: Secret @json("accessToken")
+      expire_time: String @json("expireTime")
+    }
+    @rest(POST, "/v1/projects/-/serviceAccounts/{target_sa}:generateAccessToken")
+    @idempotent
+    @permissions(["iam.serviceAccounts.getAccessToken"])
+  }
+}
+
+service gcp.ResourceManager {
+  @endpoint("https://cloudresourcemanager.googleapis.com")
+  @auth(BearerToken)
+
+  operation GetIamPolicy {
+    input { project: String }
+    output { bindings: Json, etag: String }
+    @rest(POST, "/v1/projects/{project}:getIamPolicy")
+    @readonly
+  }
+
+  operation SetIamPolicy {
+    input {
+      project: String
+      bindings: Json
+      etag: String
+    }
+    output { ok: Bool }
+    @rest(POST, "/v1/projects/{project}:setIamPolicy")
+  }
+}
