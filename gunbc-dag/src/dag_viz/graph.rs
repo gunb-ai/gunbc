@@ -253,7 +253,12 @@ fn execute_build_topology(
     let dag = build_workspace_dag().map_err(|e| {
         ExecError::new(format!("Failed to build workspace DAG: {}", e))
     })?;
-    let topo = dag.topology();
+    let mut topo = dag.topology();
+
+    // Group transport triplets (prepare_X / execute_X / parse_X) into SubDag
+    // nodes at every nesting level, adding an intermediate expansion tier in
+    // the interactive viewer.
+    topo.group_transport_triplets();
 
     let node_count = topo.node_count();
     let total_node_count = topo.total_node_count();
@@ -553,22 +558,39 @@ fn execute_parse_local_save(
 /// Prepare browser open command.
 ///
 /// Uses platform-appropriate open command:
-/// - Linux/WSL: `xdg-open`
+/// - WSL: `wslview` (opens in Windows default browser)
 /// - macOS: `open`
+/// - Linux: `xdg-open`
 fn execute_open_browser(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let file_path = gunbc_exec::require_str(&inputs, "file_path")?;
 
-    let open_cmd = if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
+    // Detect WSL via the WSL_DISTRO_NAME env var (always set on WSL2).
+    let is_wsl = std::env::var("WSL_DISTRO_NAME").is_ok();
 
-    let request = ShellRequest::new(open_cmd)
-        .arg(file_path)
-        .into_transport_request();
+    let request = if is_wsl {
+        // On WSL, convert to absolute path and use wslview to open in Windows browser
+        let abs_path = std::path::Path::new(file_path);
+        let abs_path = if abs_path.is_relative() {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(abs_path))
+                .unwrap_or_else(|_| abs_path.to_path_buf())
+        } else {
+            abs_path.to_path_buf()
+        };
+        ShellRequest::new("wslview")
+            .arg(abs_path.to_string_lossy().into_owned())
+            .into_transport_request()
+    } else if cfg!(target_os = "macos") {
+        ShellRequest::new("open")
+            .arg(file_path)
+            .into_transport_request()
+    } else {
+        ShellRequest::new("xdg-open")
+            .arg(file_path)
+            .into_transport_request()
+    };
 
     OutputMap::new()
         .request("request", request)
