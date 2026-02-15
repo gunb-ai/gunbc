@@ -109,6 +109,7 @@ fn request_to_value_expr(req: &TransportRequest) -> ValueExpr {
                 ("env".to_string(), str_map_expr(&s.env)),
                 ("cwd".to_string(), opt_str(&s.cwd)),
                 ("stdin".to_string(), opt_str(&s.stdin)),
+                ("passthrough".to_string(), ValueExpr::Bool(s.passthrough)),
             ],
         },
         TransportRequest::Rest(r) => ValueExpr::Struct {

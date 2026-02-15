@@ -400,13 +400,20 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
         cmd.env(key, value);
     }
 
-    // Handle stdin
+    // Handle stdin.
     if request.stdin.is_some() {
         cmd.stdin(Stdio::piped());
+    } else if request.passthrough {
+        cmd.stdin(Stdio::inherit());
     }
 
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
+    if request.passthrough {
+        cmd.stdout(Stdio::inherit());
+        cmd.stderr(Stdio::inherit());
+    } else {
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+    }
 
     let mut child = cmd
         .spawn()
@@ -416,6 +423,52 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
     if let Some(ref stdin_data) = request.stdin {
         if let Some(ref mut stdin) = child.stdin {
             stdin.write_all(stdin_data.as_bytes()).ok();
+        }
+    }
+
+    if request.passthrough {
+        if let Some(timeout_ms) = request.timeout_ms {
+            let deadline = Duration::from_millis(timeout_ms);
+            let start = std::time::Instant::now();
+
+            // Drop stdin first so the child can see EOF.
+            drop(child.stdin.take());
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        return Ok(ShellResponse {
+                            exit_code: status.code().unwrap_or(-1),
+                            stdout: String::new(),
+                            stderr: String::new(),
+                        });
+                    }
+                    Ok(None) => {
+                        if start.elapsed() >= deadline {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            return Err(TransportError::new(format!(
+                                "shell command timed out after {}ms: {} {}",
+                                timeout_ms,
+                                request.command,
+                                request.args.join(" "),
+                            )));
+                        }
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    Err(e) => {
+                        return Err(TransportError::new(format!("failed to wait: {}", e)));
+                    }
+                }
+            }
+        } else {
+            let status = child
+                .wait()
+                .map_err(|e| TransportError::new(format!("failed to wait: {}", e)))?;
+            return Ok(ShellResponse {
+                exit_code: status.code().unwrap_or(-1),
+                stdout: String::new(),
+                stderr: String::new(),
+            });
         }
     }
 
@@ -1023,6 +1076,20 @@ mod tests {
 
         assert_eq!(response.exit_code, 0);
         assert!(response.stdout.contains("fast"));
+    }
+
+    #[test]
+    fn test_shell_passthrough_streams_without_capture() {
+        if !guard_shell(stringify!(test_shell_passthrough_streams_without_capture)) {
+            return;
+        }
+
+        let request = ShellRequest::new("true").passthrough(true);
+        let response = execute_shell(&request).unwrap();
+
+        assert_eq!(response.exit_code, 0);
+        assert!(response.stdout.is_empty());
+        assert!(response.stderr.is_empty());
     }
 
     // ========================================================================

@@ -13,12 +13,14 @@
 //! existing DAG transport layer (prepare → execute → parse).
 
 pub mod iam;
+pub mod local_auth;
 pub mod resource_manager;
 pub mod secret_manager;
 pub mod storage;
 pub mod workload_identity;
 
 pub use iam::IamService;
+pub use local_auth::{GcloudCli, GcloudLoginOptions, LocalAuthService};
 pub use resource_manager::ResourceManagerService;
 pub use secret_manager::SecretManagerService;
 pub use storage::StorageService;

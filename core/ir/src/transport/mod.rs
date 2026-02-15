@@ -204,6 +204,12 @@ pub struct ShellRequest {
     /// and an error is returned. `None` means no timeout (wait forever).
     #[serde(default)]
     pub timeout_ms: Option<u64>,
+    /// Stream stdout/stderr directly to the terminal instead of capturing.
+    ///
+    /// Use this for interactive auth flows (e.g., `gcloud auth login`) that
+    /// require live prompts and browser URLs.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub passthrough: bool,
 }
 
 /// Shell command response.
@@ -227,6 +233,7 @@ impl ShellRequest {
             env: std::collections::HashMap::new(),
             stdin: None,
             timeout_ms: None,
+            passthrough: false,
         }
     }
 
@@ -270,6 +277,12 @@ impl ShellRequest {
         self
     }
 
+    /// Enable or disable stdio passthrough for interactive commands.
+    pub fn passthrough(mut self, enabled: bool) -> Self {
+        self.passthrough = enabled;
+        self
+    }
+
     /// Wrap this request in a [`TransportRequest::Shell`].
     pub fn into_transport_request(self) -> TransportRequest {
         TransportRequest::Shell(self)
@@ -304,6 +317,10 @@ impl ShellResponse {
     pub fn into_transport_response(self) -> TransportResponse {
         TransportResponse::Shell(self)
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 // ---------------------------------------------------------------------------
@@ -381,12 +398,14 @@ mod tests {
             .arg("-f")
             .arg("test.md")
             .cwd("/tmp")
-            .stdin("# Test");
+            .stdin("# Test")
+            .passthrough(true);
 
         assert_eq!(req.command, "gh");
         assert_eq!(req.args, vec!["gist", "create", "-f", "test.md"]);
         assert_eq!(req.cwd, Some("/tmp".to_string()));
         assert_eq!(req.stdin, Some("# Test".to_string()));
+        assert!(req.passthrough);
     }
 
     #[test]

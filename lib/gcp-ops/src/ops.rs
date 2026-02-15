@@ -9,6 +9,7 @@ use gunbc_ir::transport::rest::RestRequest;
 use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::{AuthScheme, Credential, Secret, SecretSource, Value};
 
+use crate::services::local_auth::{GcloudCli, GcloudLoginOptions, LocalAuthService};
 use crate::services::resource_manager::{ResourceManagerRest, ResourceManagerService};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -898,10 +899,7 @@ impl Executable for GcpOps {
                         .bool("skip", true)
                         .ok();
                 }
-                let req = ShellRequest::new("gcloud")
-                    .arg("auth")
-                    .arg("login")
-                    .arg("--update-adc");
+                let req = GcloudCli.login_update_adc(GcloudLoginOptions::from_env());
                 OutputMap::new()
                     .request("request", req.into())
                     .bool("skip", false)
@@ -926,14 +924,18 @@ impl Executable for GcpOps {
                 };
                 if shell.exit_code != 0 {
                     let stderr = shell.stderr.trim();
+                    let stdout = shell.stdout.trim();
+                    let detail = if !stderr.is_empty() {
+                        stderr.to_string()
+                    } else if !stdout.is_empty() {
+                        stdout.to_string()
+                    } else {
+                        "no captured output (interactive output may have streamed to terminal)"
+                            .to_string()
+                    };
                     return Err(ExecError::new(format!(
                         "gcloud auth login failed (exit {}): {}",
-                        shell.exit_code,
-                        if stderr.is_empty() {
-                            "no output"
-                        } else {
-                            stderr
-                        }
+                        shell.exit_code, detail
                     )));
                 }
                 OutputMap::new().bool("ok", true).ok()
@@ -1769,7 +1771,11 @@ mod tests {
         match outputs.get("request") {
             Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(s))) => {
                 assert_eq!(s.command, "gcloud");
-                assert_eq!(s.args, vec!["auth", "login", "--update-adc"]);
+                assert!(s.args.len() >= 3);
+                assert_eq!(s.args[0], "auth");
+                assert_eq!(s.args[1], "login");
+                assert_eq!(s.args[2], "--update-adc");
+                assert!(s.passthrough);
             }
             other => panic!("expected Shell request, got {:?}", other),
         }
@@ -1822,6 +1828,27 @@ mod tests {
             .expect_err("nonzero exit should fail");
         assert!(err.to_string().contains("gcloud auth login failed"));
         assert!(err.to_string().contains("gcloud crashed"));
+    }
+
+    #[test]
+    fn parse_gcloud_auth_nonzero_without_output_has_interactive_hint() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Shell(
+                gunbc_ir::transport::ShellResponse {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                },
+            )),
+        );
+        let err = GcpOps::ParseGcloudAuth
+            .execute(inputs)
+            .expect_err("nonzero exit should fail");
+        assert!(err
+            .to_string()
+            .contains("interactive output may have streamed"));
     }
 
     #[test]
