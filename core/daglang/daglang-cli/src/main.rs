@@ -38,26 +38,31 @@ fn main() {
 
     match args[1].as_str() {
         "viz" => {
-            if args.get(2).map(String::as_str) == Some("--self") {
-                if args.len() != 3 {
-                    exit_usage("viz --self");
+            match args.len() {
+                2 => exit_usage("viz <file.dag>|viz --self"),
+                3 if args[2] == "--self" => {
+                    let dag = build_pipeline_dag();
+                    println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
                 }
-                let dag = build_pipeline_dag();
-                println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
-            } else {
-                let context = build_context(args.get(2));
-                match compile_from_context(&context) {
-                    Ok(output) => {
-                        println!("{}", output.lowered_dag.to_mermaid("daglang-compiled"));
-                    }
-                    Err(error) => {
-                        eprintln!("{error}");
-                        std::process::exit(1);
+                3 => {
+                    let context = build_context(args.get(2));
+                    match compile_from_context(&context) {
+                        Ok(output) => {
+                            println!("{}", output.lowered_dag.to_mermaid("daglang-compiled"));
+                        }
+                        Err(error) => {
+                            eprintln!("{error}");
+                            std::process::exit(1);
+                        }
                     }
                 }
+                _ => exit_usage("viz <file.dag>|viz --self"),
             }
         }
         "expand" => {
+            if args.len() != 3 {
+                exit_usage("expand <file.dag>");
+            }
             let context = build_context(args.get(2));
             match compile_from_context(&context) {
                 Ok(output) => {
@@ -70,6 +75,9 @@ fn main() {
             }
         }
         "manifest" => {
+            if args.len() != 3 {
+                exit_usage("manifest <file.dag>");
+            }
             let context = build_context(args.get(2));
             match compile_from_context(&context) {
                 Ok(output) => {
@@ -138,6 +146,9 @@ fn main() {
             }
         }
         "compile" => {
+            if args.len() > 3 {
+                exit_usage("compile <file.dag|dir>");
+            }
             let context = build_context(args.get(2));
             match compile_from_context(&context) {
                 Ok(output) => {
