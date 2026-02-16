@@ -971,6 +971,74 @@ fn modules_command_output_is_deterministic_for_same_input() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn check_command_accepts_symlink_root_directory() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_root");
+    let real = root.join("real");
+    let link = root.join("link");
+    std::fs::create_dir_all(&real).expect("failed to create real root");
+    std::fs::write(real.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write source");
+    symlink(&real, &link).expect("failed to create root symlink");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on symlink root");
+
+    assert!(
+        output.status.success(),
+        "check should succeed for symlink root: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("OK: parsed 1 file(s)"),
+        "symlink-root check should parse exactly one file: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_symlink_root_without_module_decl_uses_path_fallback() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("modules_symlink_root_module_fallback");
+    let real = root.join("real");
+    let link = root.join("link");
+    std::fs::create_dir_all(real.join("nested")).expect("failed to create nested root");
+    std::fs::write(real.join("nested/no_module.dag"), "fn ok() -> Unit {}")
+        .expect("failed to write source");
+    symlink(&real, &link).expect("failed to create root symlink");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules on symlink root");
+
+    assert!(
+        output.status.success(),
+        "modules should succeed for symlink root: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("nested.no_module"),
+        "symlink-root module fallback should render path-derived module: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[test]
 fn modules_command_empty_directory_succeeds_without_diagnostics() {
     let root = unique_temp_dir("modules_empty_dir");
