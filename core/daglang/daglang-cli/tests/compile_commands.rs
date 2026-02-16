@@ -123,6 +123,54 @@ fn run() -> String { helper() }
 }
 
 #[test]
+fn compile_command_single_file_duplicate_service_does_not_report_ambiguous_service_call() {
+    let fixture = unique_temp_file("compile_single_file_duplicate_service_relaxed");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for duplicate-service fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on duplicate service definition"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate definition `FsStorage` in module `sample.single`"));
+    assert!(
+        !stderr.contains("ambiguous service call `FsStorage.read`"),
+        "single-file relaxed mode should not report ambiguous service-call diagnostics: {stderr}"
+    );
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_single_file_fails_on_duplicate_parameter() {
     let fixture = unique_temp_file("compile_single_file_duplicate_parameter");
     std::fs::write(
@@ -1194,6 +1242,52 @@ service FsStorage implements Storage {
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("duplicate definition `Storage` in module `sample.main`"));
     assert!(stderr.contains("`FsStorage` references ambiguous interface `Storage`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_duplicate_service_also_reports_ambiguous_service_call() {
+    let root = unique_temp_dir("duplicate_service_ambiguous_call");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on duplicate service definitions"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate definition `FsStorage` in module `sample.main`"));
+    assert!(stderr.contains("ambiguous service call `FsStorage.read` in `run`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
