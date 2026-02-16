@@ -378,6 +378,7 @@ fn collect_dag_files(
 }
 
 fn path_to_module_path(path: &Path, roots: &[PathBuf]) -> Vec<String> {
+    let canonical_path = fs::canonicalize(path).ok();
     for root in roots {
         if let Ok(relative) = path.strip_prefix(root) {
             return relative
@@ -393,6 +394,15 @@ fn path_to_module_path(path: &Path, roots: &[PathBuf]) -> Vec<String> {
                     .components()
                     .filter_map(|segment| segment.as_os_str().to_str().map(String::from))
                     .collect();
+            }
+            if let Some(canonical_path) = &canonical_path {
+                if let Ok(relative) = canonical_path.strip_prefix(&canonical_root) {
+                    return relative
+                        .with_extension("")
+                        .components()
+                        .filter_map(|segment| segment.as_os_str().to_str().map(String::from))
+                        .collect();
+                }
             }
         }
     }
@@ -1273,6 +1283,36 @@ mod tests {
             .expect_err("dangling symlink target file should fail");
         assert!(err.contains("failed to read"));
         assert!(err.contains("broken.dag"));
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn report_pipeline_target_file_symlink_derives_module_path_against_real_root() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("target_file_symlink_real_root_fallback");
+        let real_root = root.join("real");
+        let link_root = root.join("link");
+        let nested = real_root.join("nested");
+        fs::create_dir_all(&nested).expect("failed to create nested real root");
+        fs::write(nested.join("no_module.dag"), "fn ok() -> Unit {}")
+            .expect("failed to write source");
+        symlink(&real_root, &link_root).expect("failed to create root symlink");
+
+        let context = PipelineContext {
+            roots: vec![real_root],
+            target_file: Some(link_root.join("nested/no_module.dag")),
+        };
+        let result =
+            run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+        let report = result.report.expect("report output should be present");
+        assert!(
+            report.contains("nested.no_module"),
+            "target-file symlink fallback should derive nested module path via real root: {report}"
+        );
+        assert!(result.diagnostics.is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }

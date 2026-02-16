@@ -181,6 +181,7 @@ fn collect_dag_files(
 /// Derive a module path from a filesystem path relative to any root.
 /// `dsl/tools/makegen.dag` with root `dsl/` -> `["tools", "makegen"]`
 fn path_to_module_path(path: &Path, roots: &[PathBuf]) -> Vec<String> {
+    let canonical_path = std::fs::canonicalize(path).ok();
     for root in roots {
         if let Ok(rel) = path.strip_prefix(root) {
             return rel
@@ -196,6 +197,15 @@ fn path_to_module_path(path: &Path, roots: &[PathBuf]) -> Vec<String> {
                     .components()
                     .filter_map(|c| c.as_os_str().to_str().map(String::from))
                     .collect();
+            }
+            if let Some(canonical_path) = &canonical_path {
+                if let Ok(rel) = canonical_path.strip_prefix(&canonical_root) {
+                    return rel
+                        .with_extension("")
+                        .components()
+                        .filter_map(|c| c.as_os_str().to_str().map(String::from))
+                        .collect();
+                }
             }
         }
     }
