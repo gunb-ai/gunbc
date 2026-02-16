@@ -220,6 +220,71 @@ fn run() -> String { missing(value: "ok") }
 }
 
 #[test]
+fn compile_command_single_file_unresolved_service_interface_reports_typecheck_error() {
+    let fixture = unique_temp_file("compile_single_file_unresolved_service_interface");
+    std::fs::write(
+        &fixture,
+        r#"module sample.services
+service FsStorage implements MissingStorage {
+  operation read(path: String) -> { body: String }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for unresolved service-interface fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on unresolved service interface"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("`FsStorage` references unresolved interface `MissingStorage`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_single_file_unresolved_resource_interface_reports_typecheck_error() {
+    let fixture = unique_temp_file("compile_single_file_unresolved_resource_interface");
+    std::fs::write(
+        &fixture,
+        r#"module sample.resources
+resource Disk implements MissingStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for unresolved resource-interface fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on unresolved resource interface"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("`Disk` references unresolved interface `MissingStorage`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn expand_command_shows_lowered_nodes_and_edges() {
     let output = Command::new(daglang_bin())
         .arg("expand")
