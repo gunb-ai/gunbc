@@ -24,7 +24,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
-use daglang_syntax::ast::{Expr, Field, Item, Param, SourceFile, Stmt, TypeExpr};
+use daglang_syntax::ast::{Expr, Field, Item, Param, SourceFile, Stmt, TypeExpr, UsesClause};
 
 /// A typechecked project snapshot.
 #[derive(Debug)]
@@ -155,6 +155,12 @@ pub enum TypeError {
         callee: String,
         argument: String,
     },
+    /// `uses` clause references an unknown resource/interface type.
+    UnknownUsedResourceType {
+        item: String,
+        binding: String,
+        resource_type: String,
+    },
 }
 
 impl std::fmt::Display for TypeError {
@@ -239,6 +245,14 @@ impl std::fmt::Display for TypeError {
                 f,
                 "unknown named argument `{argument}` in call to `{callee}` within `{caller}`"
             ),
+            Self::UnknownUsedResourceType {
+                item,
+                binding,
+                resource_type,
+            } => write!(
+                f,
+                "unknown used resource type `{resource_type}` for binding `{binding}` in `{item}`"
+            ),
         }
     }
 }
@@ -256,6 +270,7 @@ pub fn typecheck_module_graph_with_options(
     let known_types = collect_known_types(&graph.modules);
     let callable_registry = collect_unique_callables(&graph.modules);
     let interface_registry = collect_interfaces(&graph.modules);
+    let resource_type_registry = collect_resource_types(&graph.modules);
     let available_modules = graph
         .modules
         .iter()
@@ -263,6 +278,13 @@ pub fn typecheck_module_graph_with_options(
         .collect::<HashSet<_>>();
     let mut errors = Vec::new();
     let mut typed_modules = Vec::with_capacity(graph.modules.len());
+    let context = TypecheckContext {
+        known_types: &known_types,
+        callable_registry: &callable_registry,
+        interface_registry: &interface_registry,
+        resource_type_registry: &resource_type_registry,
+        allow_unresolved_references: options.allow_unresolved_imports,
+    };
 
     for module in graph.modules {
         let imports = module
@@ -283,14 +305,7 @@ pub fn typecheck_module_graph_with_options(
                 }
             }
         }
-        let signatures = collect_signatures(
-            &module,
-            &known_types,
-            &callable_registry,
-            &interface_registry,
-            &module_name,
-            &mut errors,
-        );
+        let signatures = collect_signatures(&module, &context, &module_name, &mut errors);
         typed_modules.push(TypedModule {
             path: module.path,
             module_path: module.module_path,
@@ -309,15 +324,21 @@ pub fn typecheck_module_graph_with_options(
     }
 }
 
+struct TypecheckContext<'a> {
+    known_types: &'a HashSet<String>,
+    callable_registry: &'a HashMap<String, Option<CallableContract>>,
+    interface_registry: &'a InterfaceRegistry,
+    resource_type_registry: &'a ResourceTypeRegistry,
+    allow_unresolved_references: bool,
+}
+
 fn collect_signatures(
     module: &ResolvedModule,
-    known_types: &HashSet<String>,
-    callable_registry: &HashMap<String, Option<CallableContract>>,
-    interface_registry: &InterfaceRegistry,
+    context: &TypecheckContext<'_>,
     module_name: &str,
     errors: &mut Vec<TypeError>,
 ) -> Vec<TypedItemSignature> {
-    let mut module_known_types = known_types.clone();
+    let mut module_known_types = context.known_types.clone();
     for import in &module.ast.imports {
         if let Some(bindings) = &import.node.bindings {
             for binding in bindings {
@@ -358,7 +379,7 @@ fn collect_signatures(
                 validate_callable_body(
                     &def.name,
                     &def.body.stmts,
-                    callable_registry,
+                    context.callable_registry,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Fn(TypedCallableSignature {
@@ -378,10 +399,17 @@ fn collect_signatures(
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
                 validate_params(&def.name, &def.params, &module_known_types, errors);
                 validate_outputs(&def.name, &def.outputs, &module_known_types, errors);
+                validate_uses_clauses(
+                    &def.name,
+                    &def.uses,
+                    context.resource_type_registry,
+                    context.allow_unresolved_references,
+                    errors,
+                );
                 validate_callable_body(
                     &def.name,
                     &def.body.stmts,
-                    callable_registry,
+                    context.callable_registry,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Func(TypedCallableSignature {
@@ -408,10 +436,17 @@ fn collect_signatures(
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
                 validate_params(&def.name, &def.params, &module_known_types, errors);
                 validate_outputs(&def.name, &def.outputs, &module_known_types, errors);
+                validate_uses_clauses(
+                    &def.name,
+                    &def.uses,
+                    context.resource_type_registry,
+                    context.allow_unresolved_references,
+                    errors,
+                );
                 validate_callable_body(
                     &def.name,
                     &def.body.stmts,
-                    callable_registry,
+                    context.callable_registry,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Pattern(TypedCallableSignature {
@@ -436,7 +471,7 @@ fn collect_signatures(
             }
             Item::ServiceDef(def) => {
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
-                validate_service_interface_conformance(def, interface_registry, errors);
+                validate_service_interface_conformance(def, context.interface_registry, errors);
                 signatures.push(TypedItemSignature::Service {
                     name: def.name.clone(),
                     operations: def.operations.len(),
@@ -444,7 +479,7 @@ fn collect_signatures(
             }
             Item::ResourceDef(def) => {
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
-                validate_resource_interface_conformance(def, interface_registry, errors);
+                validate_resource_interface_conformance(def, context.interface_registry, errors);
                 signatures.push(TypedItemSignature::Resource {
                     name: def.name.clone(),
                     implements: def.implements.clone(),
@@ -525,6 +560,12 @@ struct InterfaceRegistry {
     short: HashMap<String, Option<InterfaceContract>>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct ResourceTypeRegistry {
+    full: HashSet<String>,
+    short: HashMap<String, Option<String>>,
+}
+
 fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
     let mut registry = InterfaceRegistry::default();
     for module in modules {
@@ -556,6 +597,34 @@ fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
                     }
                 })
                 .or_insert_with(|| Some(contract.clone()));
+        }
+    }
+    registry
+}
+
+fn collect_resource_types(modules: &[ResolvedModule]) -> ResourceTypeRegistry {
+    let mut registry = ResourceTypeRegistry::default();
+    for module in modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let name = match &item.node {
+                Item::InterfaceDef(interface) => interface.name.as_str(),
+                Item::ResourceDef(resource) => resource.name.as_str(),
+                _ => continue,
+            };
+            let full = format!("{module_name}.{name}");
+            registry.full.insert(full.clone());
+            registry
+                .short
+                .entry(name.to_string())
+                .and_modify(|existing| {
+                    if let Some(current) = existing {
+                        if current != &full {
+                            *existing = None;
+                        }
+                    }
+                })
+                .or_insert_with(|| Some(full));
         }
     }
     registry
@@ -649,6 +718,28 @@ fn validate_outputs(
             &format!("{}.{}", item_name, output.name),
             errors,
         );
+    }
+}
+
+fn validate_uses_clauses(
+    item_name: &str,
+    uses: &[UsesClause],
+    registry: &ResourceTypeRegistry,
+    allow_unresolved_references: bool,
+    errors: &mut Vec<TypeError>,
+) {
+    if allow_unresolved_references {
+        return;
+    }
+    for usage in uses {
+        let resource_type = canonical_type_name(&type_expr_to_string(&usage.resource_type));
+        if resolve_resource_type_name(&resource_type, registry).is_none() {
+            errors.push(TypeError::UnknownUsedResourceType {
+                item: item_name.to_string(),
+                binding: usage.binding.clone(),
+                resource_type,
+            });
+        }
     }
 }
 
@@ -855,7 +946,7 @@ fn resolve_interface_contract(
     implemented: &str,
     registry: &InterfaceRegistry,
 ) -> Option<InterfaceContract> {
-    let canonical = canonical_interface_name(implemented);
+    let canonical = canonical_type_name(implemented);
     if let Some(contract) = registry.full.get(&canonical) {
         return Some(contract.clone());
     }
@@ -864,6 +955,21 @@ fn resolve_interface_contract(
 }
 
 fn canonical_interface_name(name: &str) -> String {
+    canonical_type_name(name)
+}
+
+fn resolve_resource_type_name(
+    resource_type: &str,
+    registry: &ResourceTypeRegistry,
+) -> Option<String> {
+    if registry.full.contains(resource_type) {
+        return Some(resource_type.to_string());
+    }
+    let short = resource_type.rsplit('.').next().unwrap_or(resource_type);
+    registry.short.get(short).and_then(|entry| entry.clone())
+}
+
+fn canonical_type_name(name: &str) -> String {
     name.split('<').next().unwrap_or(name).trim().to_string()
 }
 
@@ -1320,5 +1426,38 @@ service FsStorage implements Storage {
                 && capability == "read"
                 && detail.contains("output field `body` expected `String` but found `Int`")
         )));
+    }
+
+    #[test]
+    fn strict_mode_reports_unknown_used_resource_type() {
+        let graph = module_graph_from_sources(&[(
+            "unknown_uses.dag",
+            "module sample.uses\nfunc run() -> { ok: Bool } uses fs: MissingResource { return { ok: true } }",
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for unknown used resource type");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnknownUsedResourceType {
+                item,
+                binding,
+                resource_type,
+            } if item == "run" && binding == "fs" && resource_type == "MissingResource"
+        )));
+    }
+
+    #[test]
+    fn relaxed_mode_allows_unknown_used_resource_type() {
+        let graph = module_graph_from_sources(&[(
+            "unknown_uses_relaxed.dag",
+            "module sample.uses\nfunc run() -> { ok: Bool } uses fs: MissingResource { return { ok: true } }",
+        )]);
+        let typed = typecheck_module_graph(graph).expect("relaxed mode should allow unknown uses");
+        assert_eq!(typed.modules.len(), 1);
     }
 }
