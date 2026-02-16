@@ -179,6 +179,16 @@ fn execute_transport(inputs: HashMap<String, Value>) -> Result<HashMap<String, V
     match request {
         TransportRequest::File(file_request) => {
             let response = execute_file_request(&file_request);
+            if file_request.operation == FileOp::Write && !response.success {
+                let error = response
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "unknown write failure".to_string());
+                return Err(ExecError::new(format!(
+                    "failed to write `{}`: {error}",
+                    file_request.path
+                )));
+            }
             let mut output = OutputMap::new()
                 .response("response", TransportResponse::File(response.clone()))
                 .bool("skip", false);
@@ -5110,6 +5120,45 @@ func run(path: String) -> { body: String } {
         );
 
         std::fs::remove_file(temp_path).expect("failed to remove temp output");
+    }
+
+    #[test]
+    fn compile_resolve_execute_makegen_reports_write_errors() {
+        let context = makegen_context();
+        let blocker_path = std::env::temp_dir().join(format!(
+            "daglang_compiled_makegen_write_blocker_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::write(&blocker_path, "block output parent")
+            .expect("failed to create write blocker file");
+        let blocked_output_path = blocker_path.join("Makefile");
+        let input_mocks =
+            makegen_entrypoint_mocks(blocked_output_path.to_string_lossy().as_ref(), false);
+
+        let error = compile_resolve_execute_from_context(
+            &context,
+            ExecutionMode::Real,
+            Some(&input_mocks),
+        )
+        .expect_err("execution should fail when write target parent is a file");
+        assert!(
+            error.contains("failed to write"),
+            "error should include write failure details: {error}"
+        );
+        assert!(
+            error.contains(blocked_output_path.to_string_lossy().as_ref()),
+            "error should include the blocked output path: {error}"
+        );
+        assert!(
+            !blocked_output_path.exists(),
+            "failed write should not create nested output path"
+        );
+
+        std::fs::remove_file(&blocker_path).expect("failed to remove write blocker file");
     }
 
     #[test]

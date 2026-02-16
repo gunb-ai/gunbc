@@ -30651,6 +30651,55 @@ fn run_with_empty_equals_output_value_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_unwritable_output_path_exits_nonzero_with_write_error() {
+    let blocker_path = std::env::temp_dir().join(format!(
+        "daglang_run_write_blocker_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    std::fs::write(&blocker_path, "block output parent")
+        .expect("failed to create write blocker file");
+    let blocked_output_path = blocker_path.join("Makefile");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output")
+        .arg(blocked_output_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with blocked output path");
+
+    assert!(
+        !output.status.success(),
+        "run with blocked output path should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with blocked output path should use failure exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("failed to write"),
+        "run should report write failure explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains(blocked_output_path.to_string_lossy().as_ref()),
+        "run should include blocked output path in error: {stderr}"
+    );
+    assert!(
+        !blocked_output_path.exists(),
+        "run should not create nested path under write blocker file"
+    );
+
+    std::fs::remove_file(&blocker_path).expect("failed to remove write blocker file");
+}
+
+#[test]
 fn run_command_writes_makefile_in_real_mode() {
     let output_path = unique_temp_output_file("run_real_mode");
     if output_path.exists() {
