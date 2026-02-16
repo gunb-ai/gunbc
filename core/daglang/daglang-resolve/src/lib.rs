@@ -285,9 +285,20 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
         }
     }
 
+    let mut old_to_new = vec![0usize; n];
+    for (new_idx, old_idx) in order.iter().enumerate() {
+        old_to_new[*old_idx] = new_idx;
+    }
+
     let mut tmp: Vec<Option<ResolvedModule>> = modules.drain(..).map(Some).collect();
-    for i in &order {
-        modules.push(tmp[*i].take().unwrap());
+    for old_idx in &order {
+        let mut module = tmp[*old_idx].take().unwrap();
+        for dep in &mut module.dependencies {
+            if *dep < n {
+                *dep = old_to_new[*dep];
+            }
+        }
+        modules.push(module);
     }
     Ok(())
 }

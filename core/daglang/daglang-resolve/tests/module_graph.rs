@@ -1,6 +1,7 @@
 use daglang_resolve::{ModuleGraph, ResolveError};
 use daglang_syntax::diagnostic::DiagnosticKind;
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -225,6 +226,35 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
     ]);
 
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn real_corpus_acyclic_dependencies_precede_dependents() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+    let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
+    let cyclic_modules: HashSet<&str> = HashSet::from([
+        "examples.deployment",
+        "shared.gist_modes",
+        "tools.dag_viz",
+        "tools.gist",
+    ]);
+
+    for (module_idx, module) in graph.modules.iter().enumerate() {
+        let module_name = module.module_path.join(".");
+        for dep_idx in &module.dependencies {
+            let dep_name = graph.modules[*dep_idx].module_path.join(".");
+            if cyclic_modules.contains(module_name.as_str())
+                || cyclic_modules.contains(dep_name.as_str())
+            {
+                continue;
+            }
+
+            assert!(
+                *dep_idx < module_idx,
+                "dependency should precede dependent for acyclic modules: {dep_name} (index {dep_idx}) should be before {module_name} (index {module_idx})"
+            );
+        }
+    }
 }
 
 #[test]

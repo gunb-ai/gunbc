@@ -567,9 +567,20 @@ fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) -> Vec<Vec<String>> {
         }
     }
 
+    let mut old_to_new = vec![0usize; n];
+    for (new_idx, old_idx) in order.iter().enumerate() {
+        old_to_new[*old_idx] = new_idx;
+    }
+
     let mut drained: Vec<Option<ResolvedModule>> = modules.drain(..).map(Some).collect();
-    for idx in order {
-        modules.push(drained[idx].take().expect("module should exist"));
+    for old_idx in order {
+        let mut module = drained[old_idx].take().expect("module should exist");
+        for dep in &mut module.dependencies {
+            if *dep < n {
+                *dep = old_to_new[*dep];
+            }
+        }
+        modules.push(module);
     }
     cycle_modules
 }
@@ -999,6 +1010,45 @@ mod tests {
                 NODE_BUILD.to_string(),
                 NODE_REPORT.to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn topo_sort_modules_remaps_dependency_indices_after_reorder() {
+        let ast_a = parser::parse("module a\nfn ok() -> Unit {}").expect("parse should succeed");
+        let ast_b = parser::parse("module b\nfn ok() -> Unit {}").expect("parse should succeed");
+        let ast_c = parser::parse("module c\nfn ok() -> Unit {}").expect("parse should succeed");
+
+        let mut modules = vec![
+            ResolvedModule {
+                path: PathBuf::from("a.dag"),
+                ast: ast_a,
+                module_path: vec!["a".into()],
+                dependencies: vec![2],
+            },
+            ResolvedModule {
+                path: PathBuf::from("b.dag"),
+                ast: ast_b,
+                module_path: vec!["b".into()],
+                dependencies: vec![],
+            },
+            ResolvedModule {
+                path: PathBuf::from("c.dag"),
+                ast: ast_c,
+                module_path: vec!["c".into()],
+                dependencies: vec![],
+            },
+        ];
+
+        let cycle_modules = topo_sort_modules(&mut modules);
+        assert!(cycle_modules.is_empty(), "expected acyclic ordering");
+        assert_eq!(modules[0].module_path, vec!["c".to_string()]);
+        assert_eq!(modules[1].module_path, vec!["b".to_string()]);
+        assert_eq!(modules[2].module_path, vec!["a".to_string()]);
+        assert_eq!(
+            modules[2].dependencies,
+            vec![0],
+            "dependency index should be remapped to new module positions"
         );
     }
 
