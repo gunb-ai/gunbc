@@ -19,18 +19,18 @@ pub struct CompileOutput {
     pub emitted: EmissionBundle,
 }
 
-pub fn build_context(input: Option<&String>) -> PipelineContext {
-    let parsed = input.map(|value| path_utils::normalize_cli_path(PathBuf::from(value)));
+pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
+    let parsed = input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
     let (roots, target_file) = match parsed {
         Some(path) if path_utils::has_dag_extension(&path) => {
             let root = path
                 .parent()
                 .map(PathBuf::from)
-                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
+                .unwrap_or_else(|| cwd.to_path_buf());
             (vec![root], Some(path))
         }
         Some(path) => (vec![path], None),
-        None => (vec![path_utils::resolve_default_root()], None),
+        None => (vec![path_utils::resolve_default_root(cwd)], None),
     };
 
     PipelineContext { roots, target_file }
@@ -286,7 +286,8 @@ mod tests {
         let input = root.join("sample").join(".").join("nested").join("..");
         let input_str = input.to_string_lossy().to_string();
 
-        let context = build_context(Some(&input_str));
+        let cwd = std::env::temp_dir();
+        let context = build_context(&cwd, Some(&input_str));
         assert_eq!(context.roots, vec![normalized_root.clone()]);
         assert!(context.target_file.is_none());
 
@@ -311,7 +312,8 @@ mod tests {
         let input = root.join("sample").join("nested").join("..").join("main.dag");
         let input_str = input.to_string_lossy().to_string();
 
-        let context = build_context(Some(&input_str));
+        let cwd = std::env::temp_dir();
+        let context = build_context(&cwd, Some(&input_str));
         assert_eq!(
             context.roots,
             vec![normalized_file
@@ -326,8 +328,15 @@ mod tests {
 
     #[test]
     fn build_context_default_root_is_cwd_dsl() {
-        let context = build_context(None);
-        let cwd = std::env::current_dir().expect("cwd should resolve");
+        let cwd = std::env::temp_dir().join(format!(
+            "daglang_build_context_default_root_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        let context = build_context(&cwd, None);
         assert_eq!(context.roots, vec![cwd.join("dsl")]);
         assert!(context.target_file.is_none());
     }

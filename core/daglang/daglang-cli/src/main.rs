@@ -23,6 +23,7 @@ use daglang_cli::pipeline::{build_pipeline_dag, run_pipeline, PipelineContext, P
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
     if args.len() < 2 {
         eprintln!("Usage: daglang <command> [args...]");
@@ -46,7 +47,7 @@ fn main() {
                     println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
                 }
                 3 => {
-                    let context = build_context(args.get(2));
+                    let context = build_context(&cwd, args.get(2));
                     match compile_from_context(&context) {
                         Ok(output) => {
                             println!("{}", output.lowered_dag.to_mermaid("daglang-compiled"));
@@ -64,7 +65,7 @@ fn main() {
             if args.len() != 3 {
                 exit_usage("expand <file.dag>");
             }
-            let context = build_context(args.get(2));
+            let context = build_context(&cwd, args.get(2));
             match compile_from_context(&context) {
                 Ok(output) => {
                     println!("{}", render_expand(&output.lowered_dag));
@@ -79,7 +80,7 @@ fn main() {
             if args.len() != 3 {
                 exit_usage("manifest <file.dag>");
             }
-            let context = build_context(args.get(2));
+            let context = build_context(&cwd, args.get(2));
             match compile_from_context(&context) {
                 Ok(output) => {
                     println!("{}", render_manifest(&output.derived));
@@ -94,7 +95,7 @@ fn main() {
             if args.len() > 3 {
                 exit_usage("modules [dir]");
             }
-            let roots = vec![resolve_root(args.get(2))];
+            let roots = vec![resolve_root(&cwd, args.get(2))];
             let context = PipelineContext {
                 roots,
                 target_file: None,
@@ -115,18 +116,20 @@ fn main() {
             if args.len() > 3 {
                 exit_usage("check <file.dag|dir>");
             }
-            let input = args.get(2).map(|value| path_utils::normalize_cli_path(PathBuf::from(value)));
+            let input = args
+                .get(2)
+                .map(|value| path_utils::normalize_cli_path(&cwd, &PathBuf::from(value)));
             let (roots, target_file) = match input {
                 Some(path) if path_utils::has_dag_extension(&path) && !path.is_dir() =>
                 {
                     let root = path
                         .parent()
                         .map(PathBuf::from)
-                        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
+                        .unwrap_or_else(|| cwd.clone());
                     (vec![root], Some(path))
                 }
                 Some(path) => (vec![path], None),
-                None => (vec![resolve_root(None)], None),
+                None => (vec![resolve_root(&cwd, None)], None),
             };
 
             let context = PipelineContext { roots, target_file };
@@ -151,7 +154,7 @@ fn main() {
             if args.len() > 3 {
                 exit_usage("compile <file.dag|dir>");
             }
-            let context = build_context(args.get(2));
+            let context = build_context(&cwd, args.get(2));
             match compile_from_context(&context) {
                 Ok(output) => {
                     println!(
@@ -177,12 +180,11 @@ fn main() {
     }
 }
 
-fn resolve_root(arg: Option<&String>) -> PathBuf {
+fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
     if let Some(path) = arg {
-        return path_utils::normalize_cli_path(PathBuf::from(path));
+        return path_utils::normalize_cli_path(cwd, &PathBuf::from(path));
     }
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    path_utils::default_root_from_cwd(&cwd)
+    path_utils::default_root_from_cwd(cwd)
 }
 
 fn exit_usage(command: &str) -> ! {
