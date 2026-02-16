@@ -787,6 +787,44 @@ fn check_command_mixed_segment_root_matches_plain_relative_output() {
 }
 
 #[test]
+fn check_command_double_separator_root_matches_plain_relative_output() {
+    let cwd = workspace_root();
+
+    let double_separator = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl//")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run double-separator-root daglang check");
+    assert!(
+        double_separator.status.success(),
+        "double-separator-root check should succeed: {}",
+        String::from_utf8_lossy(&double_separator.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative-root daglang check");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative-root check should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        double_separator.stdout, plain_relative.stdout,
+        "double-separator and plain-relative check stdout should match"
+    );
+    assert_eq!(
+        double_separator.stderr, plain_relative.stderr,
+        "double-separator and plain-relative check stderr should match"
+    );
+}
+
+#[test]
 fn check_command_curdir_segment_missing_root_matches_plain_relative_output() {
     let cwd = unique_temp_dir("check_curdir_segment_missing_root");
     std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
@@ -1445,6 +1483,57 @@ fn check_command_curdir_segment_invalid_single_file_target_matches_plain_relativ
             .contains(&format!("{}:2:3:", canonical_target.display())),
         "expected parse diagnostic with normalized path for curdir invalid target: {}",
         String::from_utf8_lossy(&curdir_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_double_separator_invalid_target_matches_plain_relative_output() {
+    let root = unique_temp_dir("check_double_separator_invalid_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let broken_file = root.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed dag source");
+
+    let double_separator = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//broken.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run double-separator invalid-target daglang check");
+    assert!(
+        !double_separator.status.success(),
+        "double-separator invalid-target check should fail for malformed source"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative invalid-target daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative invalid-target check should fail for malformed source"
+    );
+
+    assert_eq!(
+        double_separator.stdout, plain_relative.stdout,
+        "double-separator and plain-relative invalid-target stdout should match"
+    );
+    assert_eq!(
+        double_separator.stderr, plain_relative.stderr,
+        "double-separator and plain-relative invalid-target stderr should match"
+    );
+    let canonical_target = broken_file
+        .canonicalize()
+        .expect("broken file should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&double_separator.stderr)
+            .contains(&format!("{}:2:3:", canonical_target.display())),
+        "expected parse diagnostic with canonical path for double-separator invalid target: {}",
+        String::from_utf8_lossy(&double_separator.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -2248,6 +2337,44 @@ fn modules_command_mixed_segment_root_matches_plain_relative_output() {
     assert_eq!(
         mixed_segment.stderr, plain_relative.stderr,
         "mixed-segment and plain-relative modules stderr should match"
+    );
+}
+
+#[test]
+fn modules_command_double_separator_root_matches_plain_relative_output() {
+    let cwd = workspace_root();
+
+    let double_separator = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl//")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run double-separator-root daglang modules");
+    assert!(
+        double_separator.status.success(),
+        "double-separator-root modules should succeed: {}",
+        String::from_utf8_lossy(&double_separator.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative-root daglang modules");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative-root modules should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        double_separator.stdout, plain_relative.stdout,
+        "double-separator and plain-relative modules stdout should match"
+    );
+    assert_eq!(
+        double_separator.stderr, plain_relative.stderr,
+        "double-separator and plain-relative modules stderr should match"
     );
 }
 
