@@ -61,7 +61,7 @@ impl ModuleGraph {
         for path in &dag_files {
             let source = std::fs::read_to_string(path)
                 .map_err(|e| ResolveError::IoError(path.clone(), e))?;
-            match parser::parse(&source) {
+            match parser::parse_with_file_diagnostics(path, &source) {
                 Ok(ast) => {
                     let mod_path = ast
                         .module_path
@@ -75,11 +75,7 @@ impl ModuleGraph {
                         .collect();
                     parsed.push((path.clone(), mod_path, imports, ast));
                 }
-                Err(errs) => {
-                    let diagnostics = errs
-                        .iter()
-                        .map(|err| err.to_diagnostic(path, &source))
-                        .collect();
+                Err(diagnostics) => {
                     parse_errors.push((path.clone(), diagnostics));
                 }
             }

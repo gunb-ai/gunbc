@@ -78,6 +78,32 @@ pub fn parse(source: &str) -> Result<SourceFile, Vec<ParseError>> {
     p.parse_source_file()
 }
 
+pub fn parse_with_file_diagnostics(
+    file: &Path,
+    source: &str,
+) -> Result<SourceFile, Vec<Diagnostic>> {
+    let (tokens, lex_diagnostics) = Lexer::tokenize_with_diagnostics(source);
+    if !lex_diagnostics.is_empty() {
+        return Err(lex_diagnostics
+            .into_iter()
+            .map(|diagnostic| {
+                let diagnostic = diagnostic.with_file(file);
+                if let Some(span) = diagnostic.span {
+                    let (line, col) = byte_to_line_col(source, span.start);
+                    diagnostic.with_line_col(line, col)
+                } else {
+                    diagnostic
+                }
+            })
+            .collect());
+    }
+
+    let mut parser = Parser::new(tokens);
+    parser
+        .parse_source_file()
+        .map_err(|errors| errors.iter().map(|error| error.to_diagnostic(file, source)).collect())
+}
+
 pub fn parse_or_panic(source: &str) -> SourceFile {
     parse(source).unwrap_or_else(|errs| {
         for e in &errs {

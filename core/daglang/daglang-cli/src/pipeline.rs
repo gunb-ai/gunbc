@@ -237,7 +237,7 @@ fn execute_op(
             let mut parsed = Vec::new();
 
             for file in files {
-                match parser::parse(&file.source) {
+                match parser::parse_with_file_diagnostics(&file.path, &file.source) {
                     Ok(ast) => {
                         let module_path = ast
                             .module_path
@@ -258,12 +258,8 @@ fn execute_op(
                             ast,
                         });
                     }
-                    Err(errors) => {
-                    diagnostics.extend(
-                        errors
-                            .iter()
-                            .map(|error| error.to_diagnostic(&file.path, &file.source)),
-                    );
+                    Err(file_diagnostics) => {
+                        diagnostics.extend(file_diagnostics);
                     }
                 }
             }

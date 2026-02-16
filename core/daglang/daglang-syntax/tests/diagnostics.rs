@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use daglang_syntax::diagnostic::DiagnosticKind;
-use daglang_syntax::parser::{byte_to_line_col, parse};
+use daglang_syntax::parser::{byte_to_line_col, parse, parse_with_file_diagnostics};
 
 #[test]
 fn byte_to_line_col_handles_multiline_offsets_and_eof_clamp() {
@@ -44,4 +44,15 @@ fn parse_error_converts_to_parse_diagnostic() {
     assert_eq!(diagnostic.file.as_ref().and_then(|f| f.to_str()), Some("sample.dag"));
     assert!(diagnostic.span.is_some(), "parse diagnostic should carry span");
     assert_eq!(diagnostic.line, Some(2));
+}
+
+#[test]
+fn parse_with_file_diagnostics_preserves_lex_diagnostic_kind() {
+    let src = "module test\n$\n";
+    let diagnostics = parse_with_file_diagnostics(Path::new("sample.dag"), src)
+        .expect_err("source should fail with lexical diagnostic");
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].kind, DiagnosticKind::Lex);
+    assert_eq!(diagnostics[0].line, Some(2));
+    assert_eq!(diagnostics[0].column, Some(1));
 }
