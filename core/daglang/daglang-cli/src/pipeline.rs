@@ -1509,6 +1509,41 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn parse_pipeline_output_is_deterministic_in_directory_symlink_cycle_with_errors() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("dir_symlink_cycle_deterministic_errors");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("failed to create nested root");
+        fs::write(nested.join("broken.dag"), "module sample.broken\nfn")
+            .expect("failed to write invalid source");
+        symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.clone()],
+                target_file: None,
+            },
+            PipelineStop::Parse,
+        )
+        .expect("first pipeline run should complete");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.clone()],
+                target_file: None,
+            },
+            PipelineStop::Parse,
+        )
+        .expect("second pipeline run should complete");
+
+        assert_eq!(first.parsed_count, second.parsed_count);
+        assert_eq!(first.diagnostics, second.diagnostics);
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn parse_pipeline_deduplicates_diagnostics_from_symlink_and_real_roots() {
         use std::os::unix::fs::symlink;
 

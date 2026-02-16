@@ -691,6 +691,33 @@ fn discovery_deduplicates_parse_errors_in_directory_symlink_cycle() {
 
 #[cfg(unix)]
 #[test]
+fn discovery_parse_errors_are_deterministic_in_directory_symlink_cycle() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("dir_symlink_cycle_deterministic_parse_errors");
+    let nested = root.join("nested");
+    write_file(&nested.join("broken.dag"), "module sample.broken\nfn");
+    symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+    let first = ModuleGraph::discover(&[root.clone()])
+        .expect_err("first discover should return parse errors");
+    let second = ModuleGraph::discover(&[root.clone()])
+        .expect_err("second discover should return parse errors");
+
+    match (first, second) {
+        (ResolveError::ParseErrors(first_files), ResolveError::ParseErrors(second_files)) => {
+            assert_eq!(first_files, second_files);
+        }
+        (left, right) => panic!(
+            "expected ParseErrors for both runs, got left={left:?}, right={right:?}"
+        ),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[cfg(unix)]
+#[test]
 fn discovery_deduplicates_parse_errors_from_symlink_and_real_roots() {
     use std::os::unix::fs::symlink;
 

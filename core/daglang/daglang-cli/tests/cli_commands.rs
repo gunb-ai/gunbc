@@ -1140,6 +1140,41 @@ fn check_command_deduplicates_parse_errors_in_directory_symlink_cycle_root() {
 
 #[cfg(unix)]
 #[test]
+fn check_command_output_is_deterministic_in_directory_symlink_cycle_with_errors() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_cycle_deterministic_errors");
+    let nested = root.join("nested");
+    std::fs::create_dir_all(&nested).expect("failed to create nested root");
+    std::fs::write(nested.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write invalid source");
+    symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+    let first = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang check on symlink-cycle parse-error root");
+    let second = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang check on symlink-cycle parse-error root");
+
+    assert!(!first.status.success(), "first run should fail");
+    assert!(!second.status.success(), "second run should fail");
+    assert_eq!(
+        first.stderr, second.stderr,
+        "check stderr should be deterministic under symlink-cycle parse-error input"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn modules_command_symlink_root_without_module_decl_uses_path_fallback() {
     use std::os::unix::fs::symlink;
 
@@ -1200,6 +1235,41 @@ fn modules_command_deduplicates_parse_errors_in_directory_symlink_cycle_root() {
     assert_eq!(
         broken_hits, 1,
         "symlink-cycle traversal should not duplicate parse diagnostics in modules output: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_output_is_deterministic_in_directory_symlink_cycle_with_errors() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("modules_symlink_cycle_deterministic_errors");
+    let nested = root.join("nested");
+    std::fs::create_dir_all(&nested).expect("failed to create nested root");
+    std::fs::write(nested.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write invalid source");
+    symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+    let first = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang modules on symlink-cycle parse-error root");
+    let second = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang modules on symlink-cycle parse-error root");
+
+    assert!(first.status.success(), "first run should succeed");
+    assert!(second.status.success(), "second run should succeed");
+    assert_eq!(
+        first.stdout, second.stdout,
+        "modules stdout should be deterministic under symlink-cycle parse-error input"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
