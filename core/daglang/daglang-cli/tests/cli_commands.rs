@@ -24392,6 +24392,11 @@ fn check_command_dangling_symlink_single_file_target_exits_nonzero() {
         !output.status.success(),
         "check should fail for dangling symlink single-file target"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "dangling-symlink single-file check should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("failed to canonicalize"));
@@ -26101,6 +26106,11 @@ fn check_command_dangling_dag_symlink_in_root_exits_nonzero() {
         !output.status.success(),
         "check should fail when root contains dangling .dag symlink"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "dangling-symlink root check should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("failed to canonicalize"));
@@ -26133,6 +26143,11 @@ fn modules_command_dangling_dag_symlink_in_root_exits_nonzero() {
     assert!(
         !output.status.success(),
         "modules should fail when root contains dangling .dag symlink"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "dangling-symlink root modules should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
