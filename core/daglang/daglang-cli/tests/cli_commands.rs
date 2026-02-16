@@ -2787,6 +2787,168 @@ fn check_command_absolute_trailing_slash_missing_target_matches_canonical_output
 }
 
 #[test]
+fn check_command_absolute_double_separator_trailing_slash_single_file_target_matches_canonical_output(
+) {
+    let root = unique_temp_dir("check_absolute_double_separator_trailing_slash_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    let main_file = root.join("main.dag");
+    std::fs::write(&main_file, "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+    let absolute_double_separator_trailing =
+        PathBuf::from(format!("{}//main.dag/", root.display()));
+
+    let double_separator_trailing = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_double_separator_trailing)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run double-separator-trailing absolute single-file daglang check");
+    assert!(
+        double_separator_trailing.status.success(),
+        "double-separator-trailing absolute single-file check should succeed: {}",
+        String::from_utf8_lossy(&double_separator_trailing.stderr)
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&main_file)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute single-file daglang check");
+    assert!(
+        canonical.status.success(),
+        "canonical absolute single-file check should succeed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    assert_eq!(
+        double_separator_trailing.stdout, canonical.stdout,
+        "double-separator-trailing and canonical absolute single-file check stdout should match"
+    );
+    assert_eq!(
+        double_separator_trailing.stderr, canonical.stderr,
+        "double-separator-trailing and canonical absolute single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&double_separator_trailing.stdout),
+        expected_check_success_stdout(1),
+        "double-separator-trailing absolute single-file check should parse exactly one file"
+    );
+    assert!(
+        double_separator_trailing.stderr.is_empty(),
+        "double-separator-trailing absolute single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&double_separator_trailing.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_absolute_double_separator_trailing_slash_invalid_target_matches_canonical_output() {
+    let root = unique_temp_dir("check_absolute_double_separator_trailing_slash_invalid_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let broken_file = root.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed dag source");
+    let absolute_double_separator_trailing =
+        PathBuf::from(format!("{}//broken.dag/", root.display()));
+
+    let double_separator_trailing = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_double_separator_trailing)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run double-separator-trailing absolute invalid-target daglang check");
+    assert!(
+        !double_separator_trailing.status.success(),
+        "double-separator-trailing absolute invalid-target check should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&broken_file)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute invalid-target daglang check");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute invalid-target check should fail"
+    );
+
+    assert_eq!(
+        double_separator_trailing.stdout, canonical.stdout,
+        "double-separator-trailing and canonical absolute invalid-target stdout should match"
+    );
+    assert_eq!(
+        double_separator_trailing.stderr, canonical.stderr,
+        "double-separator-trailing and canonical absolute invalid-target stderr should match"
+    );
+    let canonical_target = broken_file
+        .canonicalize()
+        .expect("broken file should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&double_separator_trailing.stderr)
+            .contains(&format!("{}:2:3:", canonical_target.display())),
+        "expected parse diagnostic with canonicalized absolute path: {}",
+        String::from_utf8_lossy(&double_separator_trailing.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_absolute_double_separator_trailing_slash_missing_target_matches_canonical_output() {
+    let root = unique_temp_dir("check_absolute_double_separator_trailing_slash_missing_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing_target = root.join("missing.dag");
+    let absolute_double_separator_trailing =
+        PathBuf::from(format!("{}//missing.dag/", root.display()));
+
+    let double_separator_trailing = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_double_separator_trailing)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run double-separator-trailing absolute missing-target daglang check");
+    assert!(
+        !double_separator_trailing.status.success(),
+        "double-separator-trailing absolute missing-target check should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&missing_target)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute missing-target daglang check");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute missing-target check should fail"
+    );
+
+    assert_eq!(
+        double_separator_trailing.stdout, canonical.stdout,
+        "double-separator-trailing and canonical absolute missing-target stdout should match"
+    );
+    assert_eq!(
+        double_separator_trailing.stderr, canonical.stderr,
+        "double-separator-trailing and canonical absolute missing-target stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&double_separator_trailing.stderr).contains(&format!(
+            "failed to canonicalize {}",
+            missing_target.display()
+        )),
+        "missing-target diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&double_separator_trailing.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn check_command_absolute_mixed_segment_invalid_target_matches_canonical_output() {
     let root = unique_temp_dir("check_absolute_mixed_segment_invalid_target");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
