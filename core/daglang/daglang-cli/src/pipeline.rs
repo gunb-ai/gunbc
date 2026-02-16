@@ -1321,6 +1321,44 @@ mod tests {
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn report_pipeline_target_file_module_fallback_is_independent_of_symlink_alias_root_order() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("target_file_symlink_alias_root_order");
+        let real_root = root.join("real");
+        let link_root = root.join("link");
+        let nested = real_root.join("nested");
+        fs::create_dir_all(&nested).expect("failed to create nested real root");
+        fs::write(nested.join("no_module.dag"), "fn ok() -> Unit {}")
+            .expect("failed to write source");
+        symlink(&real_root, &link_root).expect("failed to create root symlink");
+        let target = link_root.join("nested/no_module.dag");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![real_root.clone(), link_root.clone()],
+                target_file: Some(target.clone()),
+            },
+            PipelineStop::Report,
+        )
+        .expect("first pipeline run should execute");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![link_root, real_root],
+                target_file: Some(target),
+            },
+            PipelineStop::Report,
+        )
+        .expect("second pipeline run should execute");
+
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.report, second.report);
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
     #[test]
     fn target_file_mode_ignores_directory_roots() {
         let valid_root = unique_temp_dir("target_file_ignores_roots");

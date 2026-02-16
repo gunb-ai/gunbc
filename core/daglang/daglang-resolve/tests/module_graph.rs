@@ -701,6 +701,36 @@ fn discovery_parse_errors_are_independent_of_symlink_alias_root_order() {
 
 #[cfg(unix)]
 #[test]
+fn discovery_fallback_module_path_is_independent_of_symlink_alias_root_order() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("symlink_alias_root_order_no_module");
+    let real = root.join("real");
+    let link = root.join("link");
+    write_file(&real.join("nested/no_module.dag"), "fn ok() -> Unit {}");
+    symlink(&real, &link).expect("failed to create root symlink");
+
+    let first = ModuleGraph::discover(&[real.clone(), link.clone()]).expect("first discover");
+    let second = ModuleGraph::discover(&[link, real]).expect("second discover");
+
+    let first_paths: Vec<String> = first
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    let second_paths: Vec<String> = second
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    assert_eq!(first_paths, second_paths);
+    assert_eq!(first_paths, vec!["nested.no_module".to_string()]);
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[cfg(unix)]
+#[test]
 fn discovery_handles_directory_symlink_cycle_without_recursing_forever() {
     use std::os::unix::fs::symlink;
 
