@@ -402,6 +402,55 @@ fn check_command_relative_and_absolute_missing_roots_are_equivalent() {
 }
 
 #[test]
+fn check_command_parent_segment_missing_root_is_normalized_and_equivalent() {
+    let parent = unique_temp_dir("check_parent_segment_missing_root");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let absolute_root = parent.join("missing_root");
+
+    let relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("../missing_root")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment relative missing-root daglang check");
+    assert!(
+        !relative.status.success(),
+        "parent-segment relative missing-root check should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute missing-root daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-root check should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "parent-segment relative and absolute missing-root check stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "parent-segment relative and absolute missing-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&relative.stderr).contains(&format!(
+            "input root does not exist: {}",
+            absolute_root.display()
+        )),
+        "missing-root diagnostic should contain normalized parent-segment path: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
 fn check_command_relative_and_absolute_non_directory_roots_are_equivalent() {
     let cwd = unique_temp_dir("check_relative_absolute_non_directory_root");
     std::fs::create_dir_all(&cwd).expect("failed to create temp directory");
@@ -820,6 +869,55 @@ fn modules_command_relative_and_absolute_missing_roots_are_equivalent() {
 }
 
 #[test]
+fn modules_command_parent_segment_missing_root_is_normalized_and_equivalent() {
+    let parent = unique_temp_dir("modules_parent_segment_missing_root");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let absolute_root = parent.join("missing_root");
+
+    let relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("../missing_root")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment relative missing-root daglang modules");
+    assert!(
+        !relative.status.success(),
+        "parent-segment relative missing-root modules should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute missing-root daglang modules");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-root modules should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "parent-segment relative and absolute missing-root modules stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "parent-segment relative and absolute missing-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&relative.stderr).contains(&format!(
+            "input root does not exist: {}",
+            absolute_root.display()
+        )),
+        "missing-root diagnostics should include normalized parent-segment path: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
 fn modules_command_relative_and_absolute_non_directory_roots_are_equivalent() {
     let cwd = unique_temp_dir("modules_relative_absolute_non_directory_root");
     std::fs::create_dir_all(&cwd).expect("failed to create temp directory");
@@ -1194,6 +1292,55 @@ fn check_command_relative_and_absolute_missing_single_file_targets_are_equivalen
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_parent_segment_missing_single_file_target_is_normalized_and_equivalent() {
+    let parent = unique_temp_dir("check_parent_segment_missing_single_file");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let missing_file = parent.join("missing.dag");
+
+    let relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("../missing.dag")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment relative missing-target daglang check");
+    assert!(
+        !relative.status.success(),
+        "parent-segment relative missing-target check should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&missing_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute missing-target daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-target check should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "parent-segment relative and absolute missing-target check stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "parent-segment relative and absolute missing-target check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&relative.stderr).contains(&format!(
+            "failed to canonicalize {}",
+            missing_file.display()
+        )),
+        "missing-target diagnostics should include normalized parent-segment path: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
 }
 
 #[test]
