@@ -124,6 +124,8 @@ pub enum TypeError {
     DuplicateOutputField { item: String, field: String },
     /// Import target does not exist in the available module graph.
     UnresolvedImport { module: String, target: String },
+    /// Resource declares an interface that cannot be resolved.
+    UnresolvedInterface { resource: String, interface: String },
     /// Call expression used wrong number of arguments.
     CallArityMismatch {
         caller: String,
@@ -180,6 +182,13 @@ impl std::fmt::Display for TypeError {
             Self::UnresolvedImport { module, target } => {
                 write!(f, "unresolved import `{target}` in module `{module}`")
             }
+            Self::UnresolvedInterface {
+                resource,
+                interface,
+            } => write!(
+                f,
+                "resource `{resource}` references unresolved interface `{interface}`"
+            ),
             Self::CallArityMismatch {
                 caller,
                 callee,
@@ -213,6 +222,7 @@ pub fn typecheck_module_graph_with_options(
 ) -> Result<TypedProject, Vec<TypeError>> {
     let known_types = collect_known_types(&graph.modules);
     let callable_registry = collect_unique_callables(&graph.modules);
+    let interface_registry = collect_interfaces(&graph.modules);
     let available_modules = graph
         .modules
         .iter()
@@ -244,6 +254,7 @@ pub fn typecheck_module_graph_with_options(
             &module,
             &known_types,
             &callable_registry,
+            &interface_registry,
             &module_name,
             &mut errors,
         );
@@ -269,6 +280,7 @@ fn collect_signatures(
     module: &ResolvedModule,
     known_types: &HashSet<String>,
     callable_registry: &HashMap<String, Option<CallableContract>>,
+    interface_registry: &InterfaceRegistry,
     module_name: &str,
     errors: &mut Vec<TypeError>,
 ) -> Vec<TypedItemSignature> {
@@ -398,6 +410,7 @@ fn collect_signatures(
             }
             Item::ResourceDef(def) => {
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
+                validate_resource_interface_conformance(def, interface_registry, errors);
                 signatures.push(TypedItemSignature::Resource {
                     name: def.name.clone(),
                     implements: def.implements.clone(),
@@ -470,6 +483,42 @@ fn collect_unique_callables(
         }
     }
     callables
+}
+
+#[derive(Debug, Clone, Default)]
+struct InterfaceRegistry {
+    full: HashMap<String, HashSet<String>>,
+    short: HashMap<String, Option<HashSet<String>>>,
+}
+
+fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
+    let mut registry = InterfaceRegistry::default();
+    for module in modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::InterfaceDef(interface) = &item.node else {
+                continue;
+            };
+            let capabilities = interface
+                .capabilities
+                .iter()
+                .map(|capability| capability.name.clone())
+                .collect::<HashSet<_>>();
+            let full_name = format!("{module_name}.{}", interface.name);
+            registry.full.insert(full_name, capabilities.clone());
+
+            registry
+                .short
+                .entry(interface.name.clone())
+                .and_modify(|existing| {
+                    if existing.is_some() {
+                        *existing = None;
+                    }
+                })
+                .or_insert_with(|| Some(capabilities.clone()));
+        }
+    }
+    registry
 }
 
 fn builtin_type_names() -> HashSet<String> {
@@ -582,6 +631,55 @@ fn validate_callable_body(
             }
         }
     }
+}
+
+fn validate_resource_interface_conformance(
+    resource: &daglang_syntax::ast::ResourceDef,
+    interface_registry: &InterfaceRegistry,
+    errors: &mut Vec<TypeError>,
+) {
+    let Some(implemented) = resource.implements.as_deref() else {
+        return;
+    };
+    let Some(required_capabilities) = resolve_interface_capabilities(implemented, interface_registry)
+    else {
+        errors.push(TypeError::UnresolvedInterface {
+            resource: resource.name.clone(),
+            interface: implemented.to_string(),
+        });
+        return;
+    };
+    let provided_capabilities = resource
+        .capabilities
+        .iter()
+        .map(|capability| capability.name.clone())
+        .collect::<HashSet<_>>();
+    let interface_name = canonical_interface_name(implemented);
+    for capability in required_capabilities {
+        if !provided_capabilities.contains(&capability) {
+            errors.push(TypeError::MissingCapability {
+                resource: resource.name.clone(),
+                interface: interface_name.clone(),
+                capability,
+            });
+        }
+    }
+}
+
+fn resolve_interface_capabilities(
+    implemented: &str,
+    registry: &InterfaceRegistry,
+) -> Option<HashSet<String>> {
+    let canonical = canonical_interface_name(implemented);
+    if let Some(required) = registry.full.get(&canonical) {
+        return Some(required.clone());
+    }
+    let short = canonical.rsplit('.').next().unwrap_or(canonical.as_str());
+    registry.short.get(short).and_then(|entry| entry.clone())
+}
+
+fn canonical_interface_name(name: &str) -> String {
+    name.split('<').next().unwrap_or(name).trim().to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -881,6 +979,54 @@ mod tests {
                 callee,
                 argument
             } if caller == "run" && callee == "fmt" && argument == "text"
+        )));
+    }
+
+    #[test]
+    fn resource_missing_interface_capability_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "missing_capability.dag",
+            r#"module sample.resources
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  capability write {
+    input { path: String, body: String }
+    output { ok: Bool }
+  }
+}
+resource Disk implements ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}"#,
+        )]);
+        let errors =
+            typecheck_module_graph(graph).expect_err("missing interface capability should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::MissingCapability {
+                resource,
+                interface,
+                capability
+            } if resource == "Disk" && interface == "ObjectStorage" && capability == "write"
+        )));
+    }
+
+    #[test]
+    fn unresolved_interface_on_resource_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "missing_interface.dag",
+            "module sample.resources\nresource Disk implements MissingStorage {}",
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("unknown interface should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnresolvedInterface { resource, interface }
+                if resource == "Disk" && interface == "MissingStorage"
         )));
     }
 }
