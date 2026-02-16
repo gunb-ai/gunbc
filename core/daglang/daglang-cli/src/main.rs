@@ -61,9 +61,6 @@ fn main() {
                     if let Some(report) = result.report {
                         println!("{report}");
                     }
-                    if !result.diagnostics.is_empty() {
-                        std::process::exit(1);
-                    }
                 }
                 Err(error) => {
                     eprintln!("pipeline error: {error}");

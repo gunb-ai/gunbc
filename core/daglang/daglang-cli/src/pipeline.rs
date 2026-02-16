@@ -373,12 +373,12 @@ fn build_module_graph(
     parsed_modules: Vec<ParsedModule>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ModuleGraph {
-    let mut modules = Vec::new();
-    let mut module_index = HashMap::new();
+    let mut unique_modules: Vec<ParsedModule> = Vec::new();
+    let mut module_index: HashMap<Vec<String>, usize> = HashMap::new();
     let mut seen_duplicates = HashSet::new();
 
-    for (idx, module) in parsed_modules.iter().enumerate() {
-        match module_index.insert(module.module_path.clone(), idx) {
+    for module in parsed_modules {
+        match module_index.get(&module.module_path).copied() {
             Some(_) => {
                 if seen_duplicates.insert(module.module_path.join(".")) {
                     diagnostics.push(
@@ -390,22 +390,34 @@ fn build_module_graph(
                     );
                 }
             }
-            None => {}
+            None => {
+                let idx = unique_modules.len();
+                module_index.insert(module.module_path.clone(), idx);
+                unique_modules.push(module);
+            }
         }
     }
 
-    for (idx, module) in parsed_modules.into_iter().enumerate() {
-        if module_index
-            .get(&module.module_path)
-            .is_some_and(|winner| *winner != idx)
-        {
-            continue;
+    let mut modules = Vec::with_capacity(unique_modules.len());
+    for module in unique_modules {
+        let mut dependencies = Vec::new();
+        for import in &module.imports {
+            if let Some(dep_idx) = module_index.get(import).copied() {
+                dependencies.push(dep_idx);
+            } else {
+                diagnostics.push(
+                    Diagnostic::new(
+                        DiagnosticKind::Resolve,
+                        format!(
+                            "unresolved import: {} -> {}",
+                            module.module_path.join("."),
+                            import.join(".")
+                        ),
+                    )
+                    .with_file(&module.path),
+                );
+            }
         }
-        let dependencies = module
-            .imports
-            .iter()
-            .filter_map(|import| module_index.get(import).copied())
-            .collect::<Vec<_>>();
         modules.push(ResolvedModule {
             path: module.path,
             ast: module.ast,
@@ -414,11 +426,24 @@ fn build_module_graph(
         });
     }
 
-    topo_sort_modules(&mut modules);
+    let cycle_modules = topo_sort_modules(&mut modules);
+    if !cycle_modules.is_empty() {
+        diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Resolve,
+            format!(
+                "cyclic dependencies detected among modules: {}",
+                cycle_modules
+                    .into_iter()
+                    .map(|module| module.join("."))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ));
+    }
     ModuleGraph { modules }
 }
 
-fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) {
+fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) -> Vec<Vec<String>> {
     let n = modules.len();
     let mut in_degree = vec![0usize; n];
     let mut adjacency = vec![Vec::new(); n];
@@ -447,6 +472,7 @@ fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) {
         queue.sort_unstable();
     }
 
+    let mut cycle_modules = Vec::new();
     if order.len() != n {
         let mut seen = vec![false; n];
         for idx in &order {
@@ -454,6 +480,7 @@ fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) {
         }
         for idx in 0..n {
             if !seen[idx] {
+                cycle_modules.push(modules[idx].module_path.clone());
                 order.push(idx);
             }
         }
@@ -463,6 +490,7 @@ fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) {
     for idx in order {
         modules.push(drained[idx].take().expect("module should exist"));
     }
+    cycle_modules
 }
 
 fn topological_order(dag: &Dag<CompilerOp>) -> Result<Vec<String>, String> {
@@ -709,6 +737,65 @@ mod tests {
         assert!(
             result.diagnostics.is_empty(),
             "target file mode should ignore sibling invalid files"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn report_pipeline_emits_unresolved_import_diagnostic() {
+        let root = unique_temp_dir("unresolved_import");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(
+            root.join("main.dag"),
+            "module sample.main\nimport missing.dep\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diag| diag.render().contains("unresolved import")),
+            "expected unresolved import diagnostic in report pipeline"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn report_pipeline_emits_cycle_diagnostic() {
+        let root = unique_temp_dir("cycle_diag");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(
+            root.join("a.dag"),
+            "module cycle.a\nimport cycle.b\nfn a() -> Unit {}",
+        )
+        .expect("failed to write source a");
+        fs::write(
+            root.join("b.dag"),
+            "module cycle.b\nimport cycle.a\nfn b() -> Unit {}",
+        )
+        .expect("failed to write source b");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diag| diag.render().contains("cyclic dependencies detected")),
+            "expected cycle diagnostic in report pipeline"
         );
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
