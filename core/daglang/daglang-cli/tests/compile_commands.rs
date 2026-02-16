@@ -556,6 +556,34 @@ func run() -> { ok: Bool, ok: Bool } {
 }
 
 #[test]
+fn compile_command_directory_mode_fails_on_duplicate_parameters() {
+    let root = unique_temp_dir("duplicate_parameters");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        "module sample.main\nfn run(a: String, a: Int) -> String { a }",
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on duplicate parameters"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate parameter `a` in `run`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_ambiguous_interface_reference() {
     let root = unique_temp_dir("ambiguous_interface_reference");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
