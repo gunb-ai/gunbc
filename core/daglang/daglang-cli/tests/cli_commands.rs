@@ -394,6 +394,105 @@ fn check_command_absolute_mixed_segment_root_matches_canonical_absolute_output()
 }
 
 #[test]
+fn check_command_absolute_mixed_segment_missing_root_matches_canonical_output() {
+    let cwd = unique_temp_dir("check_absolute_mixed_segment_missing_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let missing_root = cwd.join("missing_root");
+    let absolute_mixed = cwd.join(".").join("missing_root");
+
+    let mixed = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_mixed)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run mixed-segment absolute missing-root daglang check");
+    assert!(
+        !mixed.status.success(),
+        "mixed-segment absolute missing-root check should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&missing_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute missing-root daglang check");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute missing-root check should fail"
+    );
+
+    assert_eq!(
+        mixed.stdout, canonical.stdout,
+        "mixed-segment and canonical absolute missing-root check stdout should match"
+    );
+    assert_eq!(
+        mixed.stderr, canonical.stderr,
+        "mixed-segment and canonical absolute missing-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&mixed.stderr).contains(&format!(
+            "input root does not exist: {}",
+            missing_root.display()
+        )),
+        "missing-root diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&mixed.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn check_command_absolute_mixed_segment_non_directory_root_matches_canonical_output() {
+    let cwd = unique_temp_dir("check_absolute_mixed_segment_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+    let absolute_mixed = cwd.join(".").join("input.txt");
+
+    let mixed = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_mixed)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run mixed-segment absolute non-directory-root daglang check");
+    assert!(
+        !mixed.status.success(),
+        "mixed-segment absolute non-directory-root check should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute non-directory-root daglang check");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute non-directory-root check should fail"
+    );
+
+    assert_eq!(
+        mixed.stdout, canonical.stdout,
+        "mixed-segment and canonical absolute non-directory-root check stdout should match"
+    );
+    assert_eq!(
+        mixed.stderr, canonical.stderr,
+        "mixed-segment and canonical absolute non-directory-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&mixed.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&mixed.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
 fn check_command_parent_segment_root_matches_absolute_output() {
     let cwd = workspace_root().join("core");
     let absolute_root = workspace_root().join("dsl");
@@ -1513,6 +1612,156 @@ fn modules_command_absolute_mixed_segment_root_matches_canonical_absolute_output
         mixed.stderr, canonical.stderr,
         "mixed-segment and canonical absolute-root modules stderr should match"
     );
+}
+
+#[test]
+fn modules_command_absolute_mixed_segment_missing_root_matches_canonical_output() {
+    let cwd = unique_temp_dir("modules_absolute_mixed_segment_missing_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let missing_root = cwd.join("missing_root");
+    let absolute_mixed = cwd.join(".").join("missing_root");
+
+    let mixed = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_mixed)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run mixed-segment absolute missing-root daglang modules");
+    assert!(
+        !mixed.status.success(),
+        "mixed-segment absolute missing-root modules should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&missing_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute missing-root daglang modules");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute missing-root modules should fail"
+    );
+
+    assert_eq!(
+        mixed.stdout, canonical.stdout,
+        "mixed-segment and canonical absolute missing-root modules stdout should match"
+    );
+    assert_eq!(
+        mixed.stderr, canonical.stderr,
+        "mixed-segment and canonical absolute missing-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&mixed.stderr).contains(&format!(
+            "input root does not exist: {}",
+            missing_root.display()
+        )),
+        "missing-root diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&mixed.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_absolute_mixed_segment_non_directory_root_matches_canonical_output() {
+    let cwd = unique_temp_dir("modules_absolute_mixed_segment_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+    let absolute_mixed = cwd.join(".").join("input.txt");
+
+    let mixed = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_mixed)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run mixed-segment absolute non-directory-root daglang modules");
+    assert!(
+        !mixed.status.success(),
+        "mixed-segment absolute non-directory-root modules should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute non-directory-root daglang modules");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute non-directory-root modules should fail"
+    );
+
+    assert_eq!(
+        mixed.stdout, canonical.stdout,
+        "mixed-segment and canonical absolute non-directory-root modules stdout should match"
+    );
+    assert_eq!(
+        mixed.stderr, canonical.stderr,
+        "mixed-segment and canonical absolute non-directory-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&mixed.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&mixed.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_absolute_mixed_segment_single_file_root_matches_canonical_output() {
+    let cwd = unique_temp_dir("modules_absolute_mixed_segment_single_file_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let file_path = cwd.join("one.dag");
+    std::fs::write(&file_path, "module sample.one\nfn ok() -> Unit {}")
+        .expect("failed to write .dag file");
+    let absolute_mixed = cwd.join(".").join("one.dag");
+
+    let mixed = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_mixed)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run mixed-segment absolute single-file-root daglang modules");
+    assert!(
+        !mixed.status.success(),
+        "mixed-segment absolute single-file-root modules should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&file_path)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute single-file-root daglang modules");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute single-file-root modules should fail"
+    );
+
+    assert_eq!(
+        mixed.stdout, canonical.stdout,
+        "mixed-segment and canonical absolute single-file-root modules stdout should match"
+    );
+    assert_eq!(
+        mixed.stderr, canonical.stderr,
+        "mixed-segment and canonical absolute single-file-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&mixed.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            file_path.display()
+        )),
+        "single-file-root diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&mixed.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
 }
 
 #[test]
