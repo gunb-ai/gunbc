@@ -640,6 +640,39 @@ fn discovery_deduplicates_files_from_symlink_and_real_roots() {
 
 #[cfg(unix)]
 #[test]
+fn discovery_is_independent_of_symlink_alias_root_order() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("symlink_alias_root_order");
+    let real = root.join("real");
+    let link = root.join("link");
+    write_file(
+        &real.join("main.dag"),
+        "module sample.main\nfn ok() -> Unit {}",
+    );
+    symlink(&real, &link).expect("failed to create root symlink");
+
+    let first = ModuleGraph::discover(&[real.clone(), link.clone()]).expect("first discover");
+    let second = ModuleGraph::discover(&[link, real]).expect("second discover");
+
+    let first_paths: Vec<String> = first
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    let second_paths: Vec<String> = second
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    assert_eq!(first_paths, second_paths);
+    assert_eq!(first.display_tree(), second.display_tree());
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[cfg(unix)]
+#[test]
 fn discovery_handles_directory_symlink_cycle_without_recursing_forever() {
     use std::os::unix::fs::symlink;
 
