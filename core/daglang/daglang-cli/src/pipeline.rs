@@ -1328,6 +1328,23 @@ mod tests {
     }
 
     #[test]
+    fn report_pipeline_real_corpus_retains_parsed_count() {
+        let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+        let result = run_pipeline(
+            &PipelineContext {
+                roots: vec![dsl_root],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("pipeline should execute");
+        assert_eq!(
+            result.parsed_count, 42,
+            "report stop should retain parse-stage file count for real corpus"
+        );
+    }
+
+    #[test]
     fn report_pipeline_real_corpus_module_order_matches_expected_snapshot() {
         let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
         let result = run_pipeline(
