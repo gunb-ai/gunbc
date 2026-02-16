@@ -756,6 +756,30 @@ fn modules_command_non_directory_root_exits_nonzero() {
 }
 
 #[test]
+fn modules_command_single_dag_file_path_exits_nonzero() {
+    let file_path = unique_temp_file("modules_single_file_root");
+    std::fs::write(&file_path, "module sample.one\nfn ok() -> Unit {}")
+        .expect("failed to create .dag file");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&file_path)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules for single-file path");
+
+    assert!(
+        !output.status.success(),
+        "modules should fail when given a file path instead of directory root"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("input root is not a directory"));
+
+    std::fs::remove_file(file_path).expect("failed to cleanup .dag file");
+}
+
+#[test]
 fn unknown_command_exits_nonzero_with_message() {
     let output = Command::new(daglang_bin())
         .arg("unknown-cmd")
