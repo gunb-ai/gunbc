@@ -116,10 +116,5 @@ fn resolve_root(arg: Option<&String>) -> PathBuf {
         return PathBuf::from(path);
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let dsl = cwd.join("dsl");
-    if dsl.exists() {
-        dsl
-    } else {
-        PathBuf::from("dsl")
-    }
+    cwd.join("dsl")
 }
