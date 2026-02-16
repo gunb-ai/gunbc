@@ -760,9 +760,17 @@ fn collect_known_types(modules: &[ResolvedModule]) -> HashSet<String> {
     for module in modules {
         let module_prefix = module.module_path.join(".");
         for item in &module.ast.items {
-            if let Item::TypeDef(def) = &item.node {
-                known.insert(def.name.clone());
-                known.insert(format!("{module_prefix}.{}", def.name));
+            match &item.node {
+                Item::TypeDef(def) => {
+                    known.insert(def.name.clone());
+                    known.insert(format!("{module_prefix}.{}", def.name));
+                }
+                Item::ResourceDef(def) => {
+                    let config_name = format!("{}.Config", def.name);
+                    known.insert(config_name.clone());
+                    known.insert(format!("{module_prefix}.{config_name}"));
+                }
+                _ => {}
             }
         }
     }
@@ -782,6 +790,23 @@ fn collect_generic_arities(modules: &[ResolvedModule]) -> GenericArityRegistry {
             let (name, arity) = match &item.node {
                 Item::TypeDef(def) => (&def.name, def.params.len()),
                 Item::InterfaceDef(def) => (&def.name, def.type_params.len()),
+                Item::ResourceDef(def) => {
+                    let name = format!("{}.Config", def.name);
+                    let full_name = format!("{module_prefix}.{name}");
+                    registry.full.insert(full_name, 0);
+                    registry
+                        .short
+                        .entry(name)
+                        .and_modify(|existing| {
+                            if let Some(current) = existing {
+                                if *current != 0 {
+                                    *existing = None;
+                                }
+                            }
+                        })
+                        .or_insert(Some(0));
+                    continue;
+                }
                 _ => continue,
             };
             let full_name = format!("{module_prefix}.{name}");
@@ -807,26 +832,50 @@ fn collect_record_types(modules: &[ResolvedModule]) -> RecordTypeRegistry {
     for module in modules {
         let module_prefix = module.module_path.join(".");
         for item in &module.ast.items {
-            let Item::TypeDef(def) = &item.node else {
-                continue;
-            };
-            let daglang_syntax::ast::TypeBody::Record(fields) = &def.body else {
-                continue;
-            };
-            let signature = field_signature_map(fields);
-            let full_name = format!("{module_prefix}.{}", def.name);
-            registry.full.insert(full_name.clone(), signature);
-            registry
-                .short
-                .entry(def.name.clone())
-                .and_modify(|existing| {
-                    if let Some(current) = existing {
-                        if current != &full_name {
-                            *existing = None;
-                        }
-                    }
-                })
-                .or_insert(Some(full_name));
+            match &item.node {
+                Item::TypeDef(def) => {
+                    let daglang_syntax::ast::TypeBody::Record(fields) = &def.body else {
+                        continue;
+                    };
+                    let signature = field_signature_map(fields);
+                    let full_name = format!("{module_prefix}.{}", def.name);
+                    registry.full.insert(full_name.clone(), signature.clone());
+                    registry
+                        .full
+                        .entry(def.name.clone())
+                        .or_insert(signature);
+                    registry
+                        .short
+                        .entry(def.name.clone())
+                        .and_modify(|existing| {
+                            if let Some(current) = existing {
+                                if current != &full_name {
+                                    *existing = None;
+                                }
+                            }
+                        })
+                        .or_insert(Some(full_name));
+                }
+                Item::ResourceDef(def) if !def.config.is_empty() => {
+                    let signature = field_signature_map(&def.config);
+                    let config_name = format!("{}.Config", def.name);
+                    let full_name = format!("{module_prefix}.{config_name}");
+                    registry.full.insert(full_name.clone(), signature.clone());
+                    registry.full.insert(config_name.clone(), signature);
+                    registry
+                        .short
+                        .entry(config_name)
+                        .and_modify(|existing| {
+                            if let Some(current) = existing {
+                                if current != &full_name {
+                                    *existing = None;
+                                }
+                            }
+                        })
+                        .or_insert(Some(full_name));
+                }
+                _ => {}
+            }
         }
     }
     registry
@@ -1426,6 +1475,7 @@ fn builtin_type_names() -> HashSet<String> {
         "Float".to_string(),
         "String".to_string(),
         "Bytes".to_string(),
+        "Secret".to_string(),
         "Json".to_string(),
         "Record".to_string(),
         "List".to_string(),
@@ -1446,6 +1496,7 @@ fn builtin_type_arities() -> HashMap<String, usize> {
         ("Float".to_string(), 0),
         ("String".to_string(), 0),
         ("Bytes".to_string(), 0),
+        ("Secret".to_string(), 0),
         ("Json".to_string(), 0),
         ("Record".to_string(), 0),
         ("List".to_string(), 1),
@@ -1859,6 +1910,7 @@ fn validate_callable_body(
         .collect::<HashMap<_, _>>();
     let mut saw_explicit_return = false;
     let mut trailing_expr_type = None;
+    let mut trailing_expr = None;
     for stmt in stmts {
         match stmt {
             Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
@@ -1870,8 +1922,10 @@ fn validate_callable_body(
                 );
                 local_bindings.insert(name.clone(), inferred);
                 trailing_expr_type = None;
+                trailing_expr = None;
             }
             Stmt::Expr(expr) => {
+                trailing_expr = Some(expr);
                 trailing_expr_type = Some(infer_expr_type(
                     expr,
                     &local_bindings,
@@ -1882,6 +1936,7 @@ fn validate_callable_body(
             Stmt::Return(fields) => {
                 saw_explicit_return = true;
                 trailing_expr_type = None;
+                trailing_expr = None;
                 validate_return_stmt(
                     caller,
                     &return_contract,
@@ -1895,8 +1950,17 @@ fn validate_callable_body(
     }
     if !saw_explicit_return {
         if let ReturnContract::Single { ty } = &return_contract {
-            let inferred = trailing_expr_type
-                .unwrap_or_else(|| ValueType::Named("Unit".to_string()));
+            let inferred = match trailing_expr {
+                Some(expr) => infer_expr_type_for_expected_named_record(
+                    expr,
+                    ty,
+                    &local_bindings,
+                    &infer_context,
+                    errors,
+                ),
+                None => trailing_expr_type
+                    .unwrap_or_else(|| ValueType::Named("Unit".to_string())),
+            };
             push_type_mismatch_if_needed(ty, &inferred, errors);
         }
     }
@@ -1919,8 +1983,9 @@ fn validate_return_stmt(
                 });
                 return;
             }
-            let inferred = infer_expr_type(
+            let inferred = infer_expr_type_for_expected_named_record(
                 &fields[0].1,
+                ty,
                 local_bindings,
                 infer_context,
                 errors,
@@ -1945,6 +2010,53 @@ fn validate_return_stmt(
                 push_type_mismatch_if_needed(expected_ty, &inferred, errors);
             }
         }
+    }
+}
+
+fn infer_expr_type_for_expected_named_record(
+    expr: &Expr,
+    expected_type: &str,
+    local_bindings: &HashMap<String, ValueType>,
+    infer_context: &ExprInferenceContext<'_>,
+    errors: &mut Vec<TypeError>,
+) -> ValueType {
+    let Expr::Record(None, fields) = expr else {
+        return infer_expr_type(expr, local_bindings, infer_context, errors);
+    };
+
+    let Some(expected_fields) = resolve_record_fields(expected_type, infer_context.record_type_registry) else {
+        return infer_expr_type(expr, local_bindings, infer_context, errors);
+    };
+
+    let mut inferred_fields = HashMap::new();
+    let mut compatible = true;
+    for (name, value_expr) in fields {
+        let inferred = infer_expr_type(value_expr, local_bindings, infer_context, errors);
+        let inferred_name = inferred
+            .display_name()
+            .unwrap_or_else(|| "Any".to_string());
+        inferred_fields.insert(name.clone(), inferred_name.clone());
+        let Some(expected_field_ty) = expected_fields.get(name) else {
+            errors.push(TypeError::NoSuchField {
+                ty: expected_type.to_string(),
+                field: name.clone(),
+            });
+            compatible = false;
+            continue;
+        };
+        if !types_match(expected_field_ty, &inferred_name) {
+            errors.push(TypeError::TypeMismatch {
+                expected: expected_field_ty.clone(),
+                got: inferred_name,
+            });
+            compatible = false;
+        }
+    }
+
+    if compatible {
+        ValueType::Named(expected_type.to_string())
+    } else {
+        ValueType::Record(inferred_fields)
     }
 }
 
@@ -3430,6 +3542,73 @@ fn relay<T>(value: T) -> T {
             },
         )
         .expect("generic pattern type parameters should be treated as known types");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_accepts_untyped_record_literal_for_named_return() {
+        let graph = module_graph_from_sources(&[(
+            "sample/records.dag",
+            r#"module sample.records
+type StageResult {
+  success: Bool,
+  skipped: Bool
+}
+fn result() -> StageResult {
+  { success: true, skipped: false }
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("record literals should satisfy named-record return contracts");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_accepts_resource_config_named_type_returns() {
+        let graph = module_graph_from_sources(&[(
+            "sample/resources.dag",
+            r#"module sample.resources
+resource GcsBucket {
+  config {
+    name: String,
+    project: String
+  }
+}
+fn gcp_dev_storage() -> GcsBucket.Config {
+  { name: "gunbc-dev-artifacts", project: "gunbai-auto" }
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("resource config named types should be recognized in strict mode");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_accepts_secret_builtin_type() {
+        let graph = module_graph_from_sources(&[(
+            "sample/secret.dag",
+            r#"module sample.secret
+fn identity(value: Secret) -> Secret {
+  value
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("Secret should be recognized as builtin type");
         assert_eq!(typed.modules.len(), 1);
     }
 

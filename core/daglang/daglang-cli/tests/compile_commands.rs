@@ -12856,6 +12856,80 @@ fn relay<T>(value: T) -> T {
 }
 
 #[test]
+fn compile_command_directory_mode_accepts_named_record_literal_returns() {
+    let root = unique_temp_dir("named_record_literal_return");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+type StageResult {
+  success: Bool,
+  skipped: Bool
+}
+fn result() -> StageResult {
+  { success: true, skipped: false }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept named-record literal returns: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_accepts_resource_config_named_type_returns() {
+    let root = unique_temp_dir("resource_config_named_return");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+resource GcsBucket {
+  config {
+    name: String,
+    project: String
+  }
+}
+fn gcp_dev_storage() -> GcsBucket.Config {
+  { name: "gunbc-dev-artifacts", project: "gunbai-auto" }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept resource config named-type returns: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_unknown_named_call_argument_typecheck_error() {
     let root = unique_temp_dir("call_unknown_arg");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
