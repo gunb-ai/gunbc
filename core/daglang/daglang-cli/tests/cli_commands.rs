@@ -625,6 +625,56 @@ fn check_command_parent_segment_missing_root_is_normalized_and_equivalent() {
 }
 
 #[test]
+fn check_command_parent_segment_non_directory_root_matches_absolute_output() {
+    let parent = unique_temp_dir("check_parent_segment_non_directory_root");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = parent.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg("../input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment non-directory-root daglang check");
+    assert!(
+        !parent_segment.status.success(),
+        "parent-segment non-directory-root check should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute non-directory-root daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute non-directory-root check should fail"
+    );
+
+    assert_eq!(
+        parent_segment.stdout, absolute.stdout,
+        "parent-segment and absolute non-directory-root check stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, absolute.stderr,
+        "parent-segment and absolute non-directory-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_segment.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostics should include normalized parent-segment path: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
 fn check_command_relative_and_absolute_non_directory_roots_are_equivalent() {
     let cwd = unique_temp_dir("check_relative_absolute_non_directory_root");
     std::fs::create_dir_all(&cwd).expect("failed to create temp directory");
@@ -1470,6 +1520,107 @@ fn modules_command_parent_segment_missing_root_is_normalized_and_equivalent() {
         )),
         "missing-root diagnostics should include normalized parent-segment path: {}",
         String::from_utf8_lossy(&relative.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
+fn modules_command_parent_segment_non_directory_root_matches_absolute_output() {
+    let parent = unique_temp_dir("modules_parent_segment_non_directory_root");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = parent.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("../input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment non-directory-root daglang modules");
+    assert!(
+        !parent_segment.status.success(),
+        "parent-segment non-directory-root modules should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute non-directory-root daglang modules");
+    assert!(
+        !absolute.status.success(),
+        "absolute non-directory-root modules should fail"
+    );
+
+    assert_eq!(
+        parent_segment.stdout, absolute.stdout,
+        "parent-segment and absolute non-directory-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, absolute.stderr,
+        "parent-segment and absolute non-directory-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_segment.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostics should include normalized parent-segment path: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
+fn modules_command_parent_segment_single_file_root_matches_absolute_output() {
+    let parent = unique_temp_dir("modules_parent_segment_single_file_root");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let file_path = parent.join("one.dag");
+    std::fs::write(&file_path, "module sample.one\nfn ok() -> Unit {}")
+        .expect("failed to write .dag file");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("../one.dag")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment single-file-root daglang modules");
+    assert!(
+        !parent_segment.status.success(),
+        "parent-segment single-file-root modules should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&file_path)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute single-file-root daglang modules");
+    assert!(
+        !absolute.status.success(),
+        "absolute single-file-root modules should fail"
+    );
+
+    assert_eq!(
+        parent_segment.stdout, absolute.stdout,
+        "parent-segment and absolute single-file-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, absolute.stderr,
+        "parent-segment and absolute single-file-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_segment.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            file_path.display()
+        )),
+        "single-file-root diagnostics should include normalized parent-segment path: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
     );
 
     std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
