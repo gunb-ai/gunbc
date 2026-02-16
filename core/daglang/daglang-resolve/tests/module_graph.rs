@@ -1,4 +1,5 @@
 use daglang_resolve::{ModuleGraph, ResolveError};
+use daglang_syntax::diagnostic::DiagnosticKind;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -116,6 +117,36 @@ fn parse_error_contains_file_line_col_rendering() {
                 "expected diagnostic to include line/column: {:?}",
                 files[0].1
             );
+            assert!(
+                files[0]
+                    .1
+                    .iter()
+                    .all(|diag| diag.kind == DiagnosticKind::Parse),
+                "expected parser diagnostics for malformed syntax"
+            );
+        }
+        other => panic!("expected ParseErrors, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
+fn lex_error_is_reported_with_lex_diagnostic_kind() {
+    let root = unique_temp_dir("lex_error_location");
+    write_file(&root.join("broken.dag"), "module sample.broken\n$\n");
+
+    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected lex error");
+    match err {
+        ResolveError::ParseErrors(files) => {
+            assert_eq!(files.len(), 1);
+            assert_eq!(files[0].0.file_name().and_then(|n| n.to_str()), Some("broken.dag"));
+            let diag = files[0]
+                .1
+                .first()
+                .expect("expected a lexical diagnostic");
+            assert_eq!(diag.kind, DiagnosticKind::Lex);
+            assert!(diag.render().contains(":2:1:"));
         }
         other => panic!("expected ParseErrors, got {other:?}"),
     }
