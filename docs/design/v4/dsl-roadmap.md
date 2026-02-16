@@ -32,12 +32,15 @@ The strategy: (1) inventory workflow contracts, (2) build the DSL in slices prov
 │                                                                         │
 │  Phase 0         Phase 1          Phase 2          Phase 3    Phase 4   │
 │  Scaffolding     Language Core    Services +       Comp +     Pipelines │
-│                  + Discovery      Resources        Loops      + Backend │
+│                  + Discovery      Resources +      Loops +    + Backend │
+│                                   Multi-Cloud      Providers            │
 │  ─ compiler      ─ types          ─ service decl   ─ for      ─ stages  │
-│    entrypoint    ─ journeys       ─ @rest/@shell   ─ SubDag   ─ parall. │
+│    entrypoint    ─ funcs          ─ @rest/@shell   ─ SubDag   ─ parall. │
 │  ─ module graph  ─ patterns       ─ match/when     ─ scatter  ─ Go/Py   │
 │  ─ parity        ─ resources      ─ resource LC    ─ TUI                │
-│    harness       ─ manifest                                             │
+│    harness       ─ manifest       ─ interface      ─ AWS/Azure          │
+│                                   ─ implements     ─ cross-provider     │
+│                                   ─ collection ops                      │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                       MIGRATION (Part 2)                                │
 │                                                                         │
@@ -106,6 +109,9 @@ For each discrete workflow (gist, ci, review, auth, makegen, clippy, deps, ...):
 | **ci** | CLI, make | — | pipeline (staged) | retries, parallelism | build, test, lint | pass/fail + report |
 | **review** | CLI | diff, model | service + credential | — | LLM API call | review markdown |
 | **credential** | SubDag (internal) | runtime, project | `credential_chain` | token expiry | OIDC/STS/API calls | `Secret` token |
+| **credential (AWS)** | SubDag (internal) | runtime, role_arn | OIDC → STS | session expiry | AWS STS API calls | `AwsSessionCredentials` |
+| **credential (Azure)** | SubDag (internal) | runtime, tenant_id | federated identity | token expiry | Azure AD API calls | `AzureAccessToken` |
+| **infra bootstrap** | CLI | environment config | `resource` acquire | idempotent ensure | GCP/AWS/Azure APIs | `{ ready: Bool }` |
 | **clippy** | CLI, CI | workspace | `upsert` | skip-if-installed | shell (rustup) | lint results |
 | **auth** | CLI | provider | interactive | — | browser launch, OAuth | stored credential |
 | **deps** | CLI, CI | manifest | `upsert` | skip-if-satisfied | shell (cargo/npm) | installed deps |
@@ -258,7 +264,7 @@ For each workflow being targeted in Phases 1-2:
 | Construct | What it covers |
 |---|---|
 | Minimal type system | Records, enums/sums, `T?`, `List<T>`, `Map<K,V>` — sufficient to typecheck `makegen` |
-| `journey` syntax | Implicit edges via references |
+| `func` syntax | Implicit edges via references |
 | `pattern content_upsert` | Canonical render → read → compare → write chain |
 | Resource declarations | `uses fs: Filesystem(mode: Write)` with compiler-inserted acquire/use wiring |
 | ProgressManifest | Compiler-derived waves, topo depth, labels, SubDag boundaries |
@@ -281,24 +287,31 @@ For each workflow being targeted in Phases 1-2:
 
 ---
 
-### Phase 2: Services + Resources + Cloud Modeling
+### Phase 2: Services + Resources + Multi-Cloud Modeling
 
-> **Proving workflow**: `acquire_gcp_secret` (scenario S2 — most complex graph, canonical stress test)
+> **Proving workflows**: `acquire_gcp_secret` (scenario S2), `GcsBucket implements ObjectStorage` (scenario S8 — infra as resources), `store_artifact(uses store: ObjectStorage)` (abstract interface usage)
 
 | Construct | What it covers |
 |---|---|
 | `service` declarations | `operation input/output` with transport annotations (`@rest`, `@shell`) |
 | `match` / `when` | Runtime branching (GitHub Actions vs Metadata vs Local), guarded ports |
-| `resource` with lifecycle | `Credential`, `Network` — acquire/use/release |
+| `resource` with lifecycle | `Credential`, `Network`, `GcsBucket`, `ManagedSecret` — acquire/use/release |
+| `interface` declarations | Abstract infrastructure contracts (`ObjectStorage`, `Compute`, `SecretStore`, `Identity`, `Queue<T>`) with `@contract` behavioral annotations |
+| `resource X implements Y` | Concrete resources implementing abstract interfaces (GCP provider) |
+| `CloudConfig` sum type | Provider selection at compile time (`GcpConfig \| AwsConfig \| AzureConfig`) |
 | Late-bound transport | Semantic metadata survives lowering (avoids "generic IR chokepoint") |
+| Collection ops as IR nodes | `map`, `filter`, `fold` in `fn` bodies lower to `MapNode`, `FilterNode`, `FoldNode` — data-parallel execution |
 
 **Deliverables**
 
 | Deliverable | Artifact |
 |---|---|
-| `.dag` for credential chain | `cloud/gcp/credential.dag` + `cloud/gcp/secret_manager.dag` (scenario S2) |
+| `.dag` for credential chain | `cloud/gcp/credential.dag` (scenario S2) |
+| Abstract infra interfaces | `infra/core.dag`: `ObjectStorage`, `Compute`, `SecretStore`, `Identity`, `Queue<T>` |
+| GCP resource implementations | `infra/gcp/resources.dag`: `GcsBucket : ObjectStorage`, `CloudRunService : Compute`, etc. |
 | Transport triplet emission | Service calls → prepare/execute/parse, without authors ever writing triplets |
 | Semantics carrier | Service metadata (hermeticity, idempotency, permissions) survives to Derive/Validate |
+| Collection IR lowering | `fn` body `|> map/filter/fold` lowers to IR-level collection nodes for data-parallel execution |
 
 **Acceptance Gates**
 
@@ -306,27 +319,37 @@ For each workflow being targeted in Phases 1-2:
 - [ ] **Resource lifecycle**: acquisition/release nodes inserted by compiler; resource conflicts detected during validation
 - [ ] **IR parity**: compiled credential chain matches existing `lib/gcp-ops/src/graph.rs` shape
 - [ ] **Semantic preservation**: `@idempotent`, `@readonly`, `@permissions` annotations survive lowering and are accessible to test categorizer
+- [ ] **Interface resolution**: `uses store: ObjectStorage` resolves to `GcsBucket` when `CloudConfig = GcpConfig`
+- [ ] **Contract verification**: `@contract` annotations on `ObjectStorage` generate behavioral tests for `GcsBucket`
+- [ ] **Collection parallelism**: `list |> map(f)` inside `fn` compiles to `MapNode` in IR; executor can parallelize
 
-**Corresponds to**: [dsl-design.md Phase 2](./dsl-design.md#phase-2-services--resources--cloud-modeling), [Appendix B](./dsl-design.md#appendix-b-cloud-credential-acquisition-gcp)
+**Corresponds to**: [dsl-design.md Phase 2](./dsl-design.md#phase-2-services--resources--cloud-modeling), [Appendix B](./dsl-design.md#appendix-b-cloud-credential-acquisition-gcp), [§7.6](./dsl-design.md#76-infrastructure-as-resources-multi-cloud)
 
 ---
 
-### Phase 3: Composition + Loops + TUI-Capable Progress
+### Phase 3: Composition + Loops + Multi-Provider + TUI Progress
 
-> **Proving workflow**: `gist_snapshot` (scenario S4 — multi-service composition with loops)
+> **Proving workflows**: `gist_snapshot` (scenario S4 — multi-service composition with loops), `cross_cloud_pipeline` (scenario S9 — cross-provider composition)
 
 | Construct | What it covers |
 |---|---|
 | `for` loops | LoopBuilder equivalent |
-| Journey composition | SubDag expansion (journey calls become SubDag nodes) |
+| Func composition | SubDag expansion (func calls become SubDag nodes) |
 | Scatter points | ProgressManifest includes loop expansion points for grouped counters |
 | TUI progress | Manifest-driven rendering restores capabilities lost from the-gunbai |
+| AWS provider resources | `S3Bucket : ObjectStorage`, `LambdaFunction : Compute`, `AwsSecret : SecretStore`, `AwsIamRole : Identity`, `SqsQueue : Queue<String>` |
+| Azure provider resources | `BlobContainer : ObjectStorage`, `ContainerApp : Compute`, `KeyVaultSecret : SecretStore`, `AzureManagedIdentity : Identity`, `ServiceBusQueue : Queue<String>` |
+| Cross-provider composition | Funcs that `uses` resources from different providers (e.g., GCS + S3 + SQS) |
+| Multi-cloud credential chains | `cloud/aws/credential.dag` (OIDC → STS), `cloud/azure/credential.dag` (federated identity → AD) |
 
 **Deliverables**
 
 | Deliverable | Artifact |
 |---|---|
 | `.dag` for gist | `tools/gist.dag` (snapshot/diff/recent) compiles and runs |
+| AWS + Azure resources | `infra/aws/resources.dag` (5 resources), `infra/azure/resources.dag` (5 resources) |
+| AWS + Azure credentials | `cloud/aws/credential.dag`, `cloud/azure/credential.dag` |
+| Cross-provider example | `examples/deployment.dag` `cross_cloud_pipeline` compiles and tests |
 | Scatter progress | ProgressManifest includes scatter points; renderers show `read files [8/8]` |
 | Static DAG viz | Visualize graph before execution (from manifest, not runtime) |
 
@@ -336,8 +359,11 @@ For each workflow being targeted in Phases 1-2:
 - [ ] **Loop progress**: renderers display loop progress as grouped counter without manual configuration
 - [ ] **Composition**: SubDag calls work for credential chain reuse within gist workflow
 - [ ] **IR parity**: compiled gist graph matches existing builder shape for all 3 modes
+- [ ] **Provider portability**: `store_artifact(uses store: ObjectStorage)` compiles against all 3 providers
+- [ ] **Cross-provider auth**: each provider's credential chain resolves independently in a cross-provider func
+- [ ] **Contract tests**: `@contract` behavioral tests pass for AWS and Azure implementations
 
-**Corresponds to**: [dsl-design.md Phase 3](./dsl-design.md#phase-3-composition--tui-progress), [Appendix C](./dsl-design.md#appendix-c-service-composition-gist-snapshot)
+**Corresponds to**: [dsl-design.md Phase 3](./dsl-design.md#phase-3-composition--tui-progress), [Appendix C](./dsl-design.md#appendix-c-service-composition-gist-snapshot), [§7.6](./dsl-design.md#76-infrastructure-as-resources-multi-cloud)
 
 ---
 
@@ -379,11 +405,14 @@ Phase   Proving Workflow          Deliverables                          Key Risk
                                   + dag viz/expand/manifest/modules
   0.5   (modeling preview)        .dag files + side-by-side viz         Gaps found too late
                                   + modeling preview docs
-  1     makegen (S1)              types, journey, pattern, resource     Pattern expansion fidelity
+  1     makegen (S1)              types, func, pattern, resource        Pattern expansion fidelity
                                   + plain/inline renderers
   2     acquire_gcp_secret (S2)   service, match/when, resource LC      Generic IR chokepoint
+        GcsBucket:ObjectStorage   interface, implements, CloudConfig    Interface resolution
+        (S8)                      collection ops as IR nodes
   3     gist_snapshot (S4)        for, composition, scatter progress    TUI renderer integration
-                                  + nested SubDag rendering
+        cross_cloud (S9)          + nested SubDag rendering             Cross-provider auth
+                                  AWS + Azure providers
   4     CI pipeline (S5)          pipeline, stage, parallel, aggregate  Bootstrap constraint
                                   + JSONL renderer + Go backend
 ```
@@ -417,8 +446,8 @@ trait CodegenBackend {
 
   // DAG wiring
   fn emit_transport(spec: &TransportSpec) -> String        // HTTP client, shell exec, file I/O
-  fn emit_journey(j: &JourneyDef) -> String                // DAG execution orchestrator
-  fn emit_pipeline(p: &PipelineDef) -> String              // staged multi-journey orchestrator
+  fn emit_func(f: &FuncDef) -> String                       // DAG execution orchestrator
+  fn emit_pipeline(p: &PipelineDef) -> String              // staged multi-func orchestrator
 
   // Testing
   fn emit_test(obligation: &TestObligation) -> String      // 4-bucket testgen
@@ -451,7 +480,7 @@ type ProgressManifest {
   labels: Map<NodeId, String>
 
   // Nested composition (the-gunbai's key capability)
-  subdag_boundaries: List<SubDagBoundary>    // journey calls → sections (patterns expand inline)
+  subdag_boundaries: List<SubDagBoundary>    // func calls → sections (patterns expand inline)
   parallel_groups: List<ParallelGroup>       // siblings at same depth → grouped counters
   scatter_points: List<NodeId>               // loop expansions → scatter groups [n/N]
 
@@ -485,12 +514,12 @@ type ParallelGroup {
 This is the core rendering capability that gunbc lost and the DSL must restore. SubDags nest arbitrarily, and renderers must handle this:
 
 ```
-journey login {
+func login() -> { ok: Bool } {
   auth = authenticate()          // SubDag → "› Authentication" section
   secrets = fetch_secrets(...)   // SubDag → "› Fetching Secrets" section
 }
 
-journey authenticate {
+func authenticate() -> { token: Secret } {
   cache = clear_cache()          // node inside "Authentication"
   env = detect_env()
   tokens = check_tokens()
@@ -591,8 +620,8 @@ tools/makegen.dag
   ├── types/          Type definitions (records, enums)
   ├── fn/             Pure functors (render_makefile, etc.)
   ├── transport/      Transport wiring (HTTP, shell, file)
-  ├── journey/        DAG orchestrator (topo-scheduled execution)
-  ├── cli/            CLI entrypoint (arg parsing from journey inputs)
+  ├── func/           DAG orchestrator (topo-scheduled execution)
+  ├── cli/            CLI entrypoint (arg parsing from func inputs)
   ├── test/           Test harness (4-bucket obligations)
   ├── mock/           MockSpec (from service declarations)
   ├── manifest/       ProgressManifest (static, from topology)
@@ -625,7 +654,7 @@ In MapReduce, you provide two functors (`map` and `reduce`) with specific typed 
 
 The DAG language follows the same model:
 
-- The **shell** (`journey`, `pipeline`, `service` calls) defines the DAG: ordering, I/O, resources, concurrency. This is the "framework."
+- The **shell** (`func`, `pipeline`, `service` calls) defines the DAG: ordering, I/O, resources, concurrency. This is the "framework."
 - The **functors** (`fn`) are pure transforms with typed signatures. No I/O, no mutation, no side effects. This is "your code."
 - The **compiler** handles everything else: transport wiring, test generation, progress manifests, multi-target emission, CLI entrypoints.
 
@@ -668,6 +697,20 @@ The `fn` body language is the **semantic intersection** of Rust, Go, Python, and
 | 10 | Arithmetic | `+ - * / %` |
 | 11 | Comparison | `== != < > <= >=` |
 | 12 | Boolean logic | `&& \|\| !` |
+
+**Collection operations lower to IR nodes (data-parallel execution)**:
+
+Collection operations (`map`, `filter`, `fold`, `flat_map`, `join`, etc.) inside `fn` bodies are **not** compiled as opaque function calls. The compiler lowers them to IR-level collection nodes (`MapNode`, `FilterNode`, `FoldNode`, `JoinNode`, etc.) whose inner transforms are scalar functions. This means:
+
+- The executor can parallelize `MapNode` across workers
+- `MapNode → FilterNode` can stream without materializing intermediates
+- Adjacent trivial maps can be fused into single passes
+
+Two kinds of parallelism are visible in the IR:
+- **Task-parallel**: func-level `for` loops (each iteration has I/O)
+- **Data-parallel**: `fn`-level `|> map/filter/fold` (each element is a pure transform)
+
+This is the key design property that ensures "all programs can be efficiently parallelized for free."
 
 **Not included** (and this is intentional):
 
@@ -762,10 +805,9 @@ fn render_snapshot(files: List<FileContent>, branch: String) -> String {
 
 // --- Shell: DAG with I/O at boundaries ---
 
-journey gist_snapshot {
-  input { base_ref: String? }
-  output { url: String }
+func gist_snapshot(base_ref: String?) -> { url: String }
   uses fs: Filesystem(mode: Read)
+{
 
   branch = git.Core.CurrentBranch()
   files = git.Core.LsFiles()
@@ -813,7 +855,7 @@ Because functors are constrained and the compiler sees all code:
 
 ### Impact on the design doc principles
 
-**P9 revision**: "The language is total. `fn` functors are pure and operate on finite data (no general recursion, no I/O primitives). Journeys and pipelines are the imperative shell that sequences I/O through services and resources. Compilation always terminates."
+**P9 revision**: "The language is total. `fn` functors are pure and operate on finite data (no general recursion, no I/O primitives). Funcs and pipelines are the imperative shell that sequences I/O through services and resources. Compilation always terminates."
 
 **P10 stays**: "`.dag` files are the single source of truth for structure AND behavior. Codegen backends emit complete, runnable code in any target language."
 
@@ -826,6 +868,8 @@ Because functors are constrained and the compiler sees all code:
 | Parser for `fn` bodies (12 constructs) | 2-3 weeks | Phase 0 |
 | Type checker (records, enums, `List<T>`, `Option<T>`) | 4-6 weeks | Phase 0-1 |
 | Rust codegen backend | 3-4 weeks | Phase 1 |
+| `interface` / `implements` resolution | 2-3 weeks | Phase 2 |
+| Collection ops → IR nodes (`MapNode`, `FilterNode`, `FoldNode`) | 2-3 weeks | Phase 2 |
 | Go codegen backend | 3-4 weeks | Phase 4 |
 | Standard library (~30 functions) | Ongoing | Incremental per phase |
 
@@ -835,7 +879,7 @@ Because functors are constrained and the compiler sees all code:
 |---|---|---|
 | 0 | Parser, basic type checker, `let`, string interpolation | (scaffolding) |
 | 1 | `match`, `if/else`, function calls, record construction | `render_makefile` (makegen) |
-| 2 | Pipe `\|>`, `filter`, `map`, enum matching | `format_auth_header` (credential) |
+| 2 | Pipe `\|>`, `filter`, `map`, enum matching; **collection ops → IR nodes** (`MapNode`, `FilterNode`) | `format_auth_header` (credential), `storage_for_env` (infra) |
 | 3 | `for`, `fold`, `flat_map`, richer std lib | `render_snapshot` (gist) |
 | 4 | Go backend, `group_by`, `sort_by`, polish std lib | `aggregate_results` (CI) |
 
@@ -880,10 +924,12 @@ Port order follows the scenario inventory, because it progressively exercises th
 | 1 | **S1** Makegen | Phase 1 | `pattern content_upsert`, resource decl | ~200 | ~25 |
 | 2 | **S3** Tool install/upsert | Phase 1-2 | `pattern upsert`, shell boundaries | ~150 | ~30 |
 | 3 | **S2** Credential chain | Phase 2 | `service`, `match`/`when`, `resource` lifecycle | ~1,688 | ~50 |
-| 4 | **S4** Gist | Phase 3 | Composition, `for` loop, multi-service | ~1,449 | ~80 |
-| 5 | **S6** Review | Phase 2-3 | External API service, credential reuse | ~1,376 | ~50 |
-| 6 | **S7** Auth flow | Phase 3 | `@interactive` passthrough, browser/platform resource | ~400 | ~40 |
-| 7 | **S5** CI pipeline | Phase 4 | `pipeline`, `stage`, `parallel`, `aggregate` | ~920 | ~60 |
+| 4 | **S8** Infra bootstrap (GCP) | Phase 2 | `interface`, `implements`, `resource` acquire, `CloudConfig` | N/A (new) | ~60 |
+| 5 | **S4** Gist | Phase 3 | Composition, `for` loop, multi-service | ~1,449 | ~80 |
+| 6 | **S6** Review | Phase 2-3 | External API service, credential reuse | ~1,376 | ~50 |
+| 7 | **S7** Auth flow | Phase 3 | `@interactive` passthrough, browser/platform resource | ~400 | ~40 |
+| 8 | **S9** Cross-cloud deploy | Phase 3 | Cross-provider `uses`, AWS/Azure resources, multi-credential | N/A (new) | ~40 |
+| 9 | **S5** CI pipeline | Phase 4 | `pipeline`, `stage`, `parallel`, `aggregate` | ~920 | ~60 |
 
 **Why this order**: mirrors DSL phasing. You don't build pipeline syntax before service/resource semantics are stable. Each port builds on proven constructs from earlier ports.
 
@@ -1014,9 +1060,9 @@ Migration:                           ┌─────────────�
                                                 │               │               │               │
                                                 ▼               ▼               ▼               ▼
  Workstream B                        ┌─────────┐┌──────────────┐┌─────────────┐┌──────────────┐
- (port)                              │S1,S3    ││S2,S6         ││S4,S7        ││S5            │
+ (port)                              │S1,S3    ││S2,S6,S8      ││S4,S7,S9    ││S5            │
                                      │makegen  ││credential    ││gist, auth   ││CI pipeline   │
-                                     │clippy   ││review        ││             ││              │
+                                     │clippy   ││review, infra ││cross-cloud  ││              │
                                      └─────────┘└──────────────┘└─────────────┘└──────────────┘
                                                                                         │
                                                                                         ▼
@@ -1282,7 +1328,7 @@ Concrete actions in priority order. Visualization and modeling previews come fir
 > Exercises: pattern expansion (`content_upsert`), resource declaration, manifest derivation, minimal codegen. This is the "starting wedge" — the reference implementation that makes remaining ports mechanical.
 
 - [ ] Write `tools/makegen.dag` (target: ~5 lines of authoring surface)
-- [ ] Implement parser for minimal `journey` + `pattern` + `uses` syntax
+- [ ] Implement parser for minimal `func` + `pattern` + `uses` syntax
 - [ ] Implement `Lower` phase producing gunbc IR
 - [ ] Run parity harness against existing `build_makegen_graph()`
 - [ ] Verify golden fixture passes for compiled `.dag` output
@@ -1315,7 +1361,7 @@ For each workflow: what DSL constructs are required, what modeling gaps are like
 
 | Dimension | Details |
 |---|---|
-| **DSL constructs** | `type`, `pattern content_upsert`, `uses fs: Filesystem(mode: Write)`, `journey` |
+| **DSL constructs** | `type`, `pattern content_upsert`, `uses fs: Filesystem(mode: Write)`, `func` |
 | **Modeling gaps** | File resource mode (Write vs ReadWrite), skip-if-unchanged semantics at IR level |
 | **Parity gates** | 8 nodes, 10 edges, ProgressManifest with 4 waves, DryRun completes |
 | **Deletes in unify** | `gunbc-dag/src/makegen/graph.rs` (137 lines), makegen registration in `all_tools()` |
@@ -1342,8 +1388,8 @@ For each workflow: what DSL constructs are required, what modeling gaps are like
 
 | Dimension | Details |
 |---|---|
-| **DSL constructs** | `for file in files`, journey composition (SubDag), `service git.Core`, `service github.Gist` |
-| **Modeling gaps** | Loop scatter points in ProgressManifest, multi-mode journey variants |
+| **DSL constructs** | `for file in files`, func composition (SubDag), `service git.Core`, `service github.Gist` |
+| **Modeling gaps** | Loop scatter points in ProgressManifest, multi-mode func variants |
 | **Parity gates** | 3 modes compile, scatter progress renders, SubDag boundaries match |
 | **Deletes in unify** | `lib/tools/gist/` builder code (1,449 lines across 3 modes) |
 
@@ -1373,6 +1419,24 @@ For each workflow: what DSL constructs are required, what modeling gaps are like
 | **Modeling gaps** | Progress pause/resume during OAuth, platform resource modeling, stdin passthrough |
 | **Parity gates** | Interactive node correctly configured, progress display pauses, credential stored |
 | **Deletes in unify** | Manual progress group declarations, passthrough wiring code |
+
+### S8: Infra Bootstrap (Multi-Cloud Interfaces)
+
+| Dimension | Details |
+|---|---|
+| **DSL constructs** | `interface ObjectStorage { ... @contract }`, `resource GcsBucket implements ObjectStorage`, `CloudConfig` sum type, `resource` acquire blocks, `@mock_response` |
+| **Modeling gaps** | Interface-to-implementation resolution at compile time, `@contract` → behavioral test generation, `ResourceFingerprint` for drift detection |
+| **Parity gates** | Abstract interface resolves to concrete resource based on `CloudConfig`; `acquire` DAG produces correct check→create→resolve pattern; `@contract` tests generated and pass for GCP impl |
+| **Deletes in unify** | N/A (new capability — no existing Rust equivalent) |
+
+### S9: Cross-Cloud Deployment (Multi-Provider Composition)
+
+| Dimension | Details |
+|---|---|
+| **DSL constructs** | Cross-provider `uses` (GCS + S3 + SQS in one func), AWS credential chain (OIDC → STS), Azure credential chain (federated identity → AD), provider-specific `resource` acquire blocks |
+| **Modeling gaps** | Independent auth chain resolution per provider, cross-provider resource conflict detection, multi-provider test generation |
+| **Parity gates** | Cross-provider func compiles; each provider's auth chain resolves independently; `@contract` tests pass for all 3 providers' `ObjectStorage` implementations; mock-based hermetic tests run for cross-provider DAGs |
+| **Deletes in unify** | N/A (new capability) |
 
 ---
 

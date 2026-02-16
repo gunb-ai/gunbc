@@ -1,0 +1,10 @@
+[package]
+name = "daglang-derive"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Derives ProgressManifest, TestObligations, and ToolMetadata from validated GraphIR"
+
+[dependencies]
+daglang-lower = { path = "../daglang-lower" }
+gunbc-ir = { path = "../../ir" }

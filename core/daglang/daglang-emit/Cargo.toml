@@ -1,0 +1,11 @@
+[package]
+name = "daglang-emit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CodegenBackend trait and Rust backend — emits runnable code from GraphIR"
+
+[dependencies]
+daglang-derive = { path = "../daglang-derive" }
+daglang-lower = { path = "../daglang-lower" }
+gunbc-ir = { path = "../../ir" }

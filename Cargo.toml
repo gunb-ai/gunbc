@@ -13,6 +13,15 @@ members = [
     "core/tool-registry",
     "core/tool-registry-macros",
     
+    # DSL compiler (daglang)
+    "core/daglang/daglang-syntax",
+    "core/daglang/daglang-resolve",
+    "core/daglang/daglang-typecheck",
+    "core/daglang/daglang-lower",
+    "core/daglang/daglang-derive",
+    "core/daglang/daglang-emit",
+    "core/daglang/daglang-cli",
+    
     # Library crates (DAG op libraries)
     "lib/primitives",
     "lib/blob",

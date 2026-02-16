@@ -127,6 +127,63 @@ dependencies = [
 ]
 
 [[package]]
+name = "daglang-cli"
+version = "0.1.0"
+dependencies = [
+ "daglang-derive",
+ "daglang-emit",
+ "daglang-lower",
+ "daglang-resolve",
+ "daglang-syntax",
+ "daglang-typecheck",
+]
+
+[[package]]
+name = "daglang-derive"
+version = "0.1.0"
+dependencies = [
+ "daglang-lower",
+ "gunbc-ir",
+]
+
+[[package]]
+name = "daglang-emit"
+version = "0.1.0"
+dependencies = [
+ "daglang-derive",
+ "daglang-lower",
+ "gunbc-ir",
+]
+
+[[package]]
+name = "daglang-lower"
+version = "0.1.0"
+dependencies = [
+ "daglang-syntax",
+ "daglang-typecheck",
+ "gunbc-ir",
+]
+
+[[package]]
+name = "daglang-resolve"
+version = "0.1.0"
+dependencies = [
+ "daglang-syntax",
+]
+
+[[package]]
+name = "daglang-syntax"
+version = "0.1.0"
+
+[[package]]
+name = "daglang-typecheck"
+version = "0.1.0"
+dependencies = [
+ "daglang-resolve",
+ "daglang-syntax",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

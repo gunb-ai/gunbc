@@ -1,0 +1,9 @@
+[package]
+name = "daglang-resolve"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Import resolution and module graph construction for .dag files"
+
+[dependencies]
+daglang-syntax = { path = "../daglang-syntax" }

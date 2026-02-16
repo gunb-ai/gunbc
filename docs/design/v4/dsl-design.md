@@ -967,6 +967,78 @@ Note: predicate negation is **not** classical (`¬P` does not always yield `P �
 5. **Type resolution terminates.** Acyclic type DAG + no recursive types without explicit indirection (P9).
 6. **Generics preserve the model.** Type constructors are monotone functions on the lattice. Bounded generics restrict the domain but don't change the algebraic structure.
 7. **Brands extend cleanly.** Nominal disjointness adds partition structure on top of the subset lattice. The lattice laws still hold within each brand partition.
+8. **Referent-indexed types close domain gaps at I/O boundaries.** When a reference type (path, key, URL) carries a `@content` refinement describing properties of the referent, the compiler enforces classification before consumption, preventing runtime crashes from type-domain mismatches. See below.
+
+##### Referent-Indexed Types and Domain Narrowing
+
+The refinement types described above constrain the *value itself* — `@pattern` constrains the string, `@range` constrains the integer. But some operations have preconditions on what a value *refers to*, not the value itself. This is a distinct class of type-safety concern.
+
+**The general problem: reference vs referent mismatch.**
+
+A `FilePath` is a string that names a location. Its structural refinement (`@non_empty`) constrains the string. But `Filesystem.read` has an implicit precondition on the *file at that location*: its content must be valid UTF-8. The type system sees `FilePath → String` and checks out — but the runtime fails when the path points to a PDF.
+
+This generalizes beyond files:
+
+| Reference type | Referent property | Failing operation | Mismatch |
+|---|---|---|---|
+| `FilePath` | Content encoding (text vs binary) | `Filesystem.read → String` | Binary content ≠ Unicode |
+| `Url` | Reachability / content-type | `http.get → Json` | HTML page ≠ JSON |
+| `StorageKey` | Existence / value type | `store.get → Record` | Missing key / wrong schema |
+| `QueueName` | Message format | `queue.receive → Event` | Unexpected message shape |
+
+In each case, the *reference type* is structurally valid but the *referent* doesn't match the operation's domain. Structural refinements on the reference (path format, URL pattern) can't prevent this because the property lives outside the value.
+
+**The solution: referent-indexed types.**
+
+A referent-indexed type adds a `@content` refinement that describes a property of the referent, not the reference:
+
+```
+type TextFilePath   = FilePath @content(Text)     // referent is Σ* decodable
+type BinaryFilePath = FilePath @content(Binary)   // referent is {0..255}*
+type JsonUrl        = Url @content(Json)           // referent returns JSON
+type ExistingKey    = StorageKey @content(Exists)   // referent exists in store
+```
+
+Set-theoretically:
+
+```
+⟦TextFilePath⟧ ⊂ ⟦FilePath⟧
+⟦BinaryFilePath⟧ ⊂ ⟦FilePath⟧
+⟦TextFilePath⟧ ∩ ⟦BinaryFilePath⟧ = ∅     (disjoint — a file is one or the other)
+⟦TextFilePath⟧ ⊔ ⟦BinaryFilePath⟧ = ⟦FilePath⟧   (exhaustive partition)
+```
+
+This follows the same subset-comprehension model as structural refinements (§4.1 Level 1) — the `@content` predicate narrows the set. But unlike `@pattern` or `@range`, a `@content` predicate **cannot be checked at value-construction time.** It requires a **runtime classification step** that probes the referent.
+
+**How the compiler uses referent-indexed types:**
+
+1. **Compile-time rejection.** When a capability like `Filesystem.read` declares `input { path: TextFilePath }`, passing an unclassified `FilePath` is a type error: `⟦FilePath⟧ ⊄ ⟦TextFilePath⟧`. The compiler reports: *"cannot prove content is text — insert a classification step."*
+
+2. **Narrowing obligation.** To satisfy the type, the developer must insert an explicit classification step (analogous to `match` for enums). A `Filesystem.probe` capability returns `FileClassification { encoding: ContentEncoding }`, which enables the developer to narrow: `match encoding { UTF8 → TextFilePath, Binary → BinaryFilePath }`. The compiler verifies this classification node exists in the DAG before any consuming node.
+
+3. **Test generation from coproduct branches.** Once a classification step partitions `FilePath → TextFilePath | BinaryFilePath`, the test generator sees a **coproduct** — the same structure as a `match` on an enum. It must generate scenarios for both branches: "all text files," "mixed text and binary," "all binary files." This is not a new mechanism; it reuses the existing guard-path scenario generator (Bucket C).
+
+4. **Declarative classification rules.** The `@file_types` annotation in `std/types.dag` provides extension-to-encoding mappings that the compiler uses for: static narrowing (path literal `"foo.rs"` → `TextFilePath`), mock fixture diversity (generate file lists with both text and binary entries), and default classification in dry-run mode. These rules define the partitioning function: `classify: ⟦FilePath⟧ → TextFilePath ⊔ BinaryFilePath`.
+
+**How referent-indexed types compose with the existing type system:**
+
+- They extend Level 1 (refinements): `@content(P)` desugars to a `Validate(Content(P))` node in the type DAG, per guardrail G1 (annotations must desugar to structure).
+- They compose with brands: `TextFilePath @brand("SourceCode")` would be a text file that is also nominally distinct from `TextFilePath @brand("Config")`.
+- They compose with generics: `List<TextFilePath>` is a list of classified text paths — the generic container preserves the referent refinement.
+- They extend the coercion lattice: `TextFilePath → FilePath` is a safe upcast (dropping the `@content` predicate). `FilePath → TextFilePath` requires explicit validation (the classification step).
+
+**The general pattern (Domain Narrowing):**
+
+Whenever a producer's output domain is wider than a consumer's input domain, but the structural types don't capture the gap:
+
+1. **Model the gap** as a referent-indexed type (`T @content(P)` where `P` describes the relevant referent property).
+2. **Declare the consumer** with the narrower type (`input { x: T @content(P) }`).
+3. **Provide a classifier** — a capability that probes the referent and narrows `T → T @content(P) | T @content(¬P)`.
+4. **The compiler enforces** classification before consumption (compile error if missing) and **generates tests** for both branches of the classification coproduct.
+
+This turns invisible runtime crashes into compile-time type errors + generated test scenarios. The developer's code is forced to make an explicit decision at the domain boundary, and the test generator verifies that decision covers all branches.
+
+**Discovery:** This pattern was identified from a production failure in the `gist_snapshot` tool, where `git.Core.LsFiles()` returned all tracked files (including `docs/design/v4/ac.pdf`) and `Filesystem.read` crashed on the binary content. The type system saw `List<FilePath>` → loop → `fs.read(FilePath)` → `String` and approved it — all types checked out structurally. But the referent of the PDF path was `Bytes`, not `String`. Content-indexed types make this a compile error by requiring `TextFilePath` at the read boundary, forcing an explicit classification step that the original code was missing. See `std/types.dag` (`ContentEncoding`, `TextFilePath`, `@file_types`), `std/resources.dag` (`Filesystem.probe`), `std/patterns.dag` (`classify_files`, `read_text_files`), and `examples/integration_tests.dag` (content encoding test generation).
 
 ### 4.2 Pure Functions (Typed Functor Protocol)
 
@@ -2378,6 +2450,23 @@ The DSL does not need to wait for this migration to be useful — the triplet mo
 
 ## 12. Phasing
 
+### Phase 0: Compiler Scaffolding + Visualization
+
+**Target**: Make the DSL a first-class producer of gunbc's existing IR.
+
+```
+core/daglang/
+  daglang-syntax/     -- Lexer + parser → AST
+  daglang-resolve/    -- Import resolution, module graph
+  daglang-typecheck/  -- Type checking, refinement validation
+  daglang-lower/      -- AST → GraphIR (Dag/Node/Port/Edge)
+  daglang-derive/     -- ProgressManifest, TestObligations, ToolMetadata
+  daglang-emit/       -- CodegenBackend trait + Rust backend
+  daglang-cli/        -- dag viz, dag expand, dag manifest, dag modules
+```
+
+Proves: parser handles all `.dag` syntax, module graph resolves imports, parity harness can diff IR.
+
 ### Phase 1: Language Core + Module Discovery + Progress Manifest
 
 **Target**: Express `makegen` end-to-end.
@@ -2387,24 +2476,32 @@ tools/makegen.dag → discover → parse → typecheck → lower → validate
   → derive ProgressManifest → emit Rust → execute with inline progress
 ```
 
-Proves: parser, types, patterns (content_upsert), discovery, progress manifest, Rust backend.
+Proves: parser, types, patterns (content_upsert), `func` syntax, discovery, progress manifest, Rust backend.
 
-### Phase 2: Services + Resources + Cloud Modeling
+### Phase 2: Services + Resources + Multi-Cloud Modeling
 
-**Target**: Express `acquire_gcp_secret`.
+**Target**: Express `acquire_gcp_secret` + `GcsBucket implements ObjectStorage` + `store_artifact(uses store: ObjectStorage)`.
 
 - Provider-qualified service calls (`gcp.SecretManager.AccessVersion`)
 - `@rest` → transport generation
-- `resource AuthContext` with lifecycle
+- `resource` with lifecycle (`AuthContext`, `GcsBucket`, `ManagedSecret`)
 - `match` for runtime branching, `when` for guards
+- `interface` declarations with `@contract` behavioral annotations
+- `resource X implements Y` — concrete resources implementing abstract interfaces
+- `CloudConfig` sum type — provider selection at compile time
+- Collection ops (`map`, `filter`, `fold`) → IR-level `MapNode`, `FilterNode`, `FoldNode` for data-parallel execution
 
-### Phase 3: Composition + TUI Progress
+### Phase 3: Composition + Multi-Provider + TUI Progress
 
-**Target**: Express `gist_snapshot`.
+**Target**: Express `gist_snapshot` + `cross_cloud_pipeline` (cross-provider composition).
 
 - `for` loops, func composition, SubDag expansion
 - TUI progress renderer driven by ProgressManifest
 - Static DAG visualization (before execution)
+- AWS provider resources (`S3Bucket : ObjectStorage`, `LambdaFunction : Compute`, etc.)
+- Azure provider resources (`BlobContainer : ObjectStorage`, `ContainerApp : Compute`, etc.)
+- Cross-provider composition (funcs using resources from multiple providers)
+- AWS/Azure credential chains (`cloud/aws/credential.dag`, `cloud/azure/credential.dag`)
 
 ### Phase 4: Pipelines + Second Codegen Backend
 
@@ -3977,6 +4074,39 @@ There is a hard line between what auto-fuzzing can and cannot do:
 - Verify business logic correctness (e.g., "this prompt template produces good reviews") — that requires human judgment
 - Generate semantically meaningful API responses without `@mock_response` — a random string won't parse as GitHub JSON
 - Test network-level failure modes (timeouts, partial responses, rate limiting) — these require explicit `@error_response` annotations (see N.7)
+
+### N.4.1 Referent-Indexed Types Push the Boundary
+
+The boundary above assumes that semantic properties are inherently opaque to the type system. **Referent-indexed types** (§4.1, "Referent-Indexed Types and Domain Narrowing") challenge this: by modeling referent properties as type-level refinements, formerly semantic concerns become structural — and the test generator can see them.
+
+**Before:** `FilePath` is `StructuralGeneratable`. The fuzzer generates strings like `"test/file.txt"`. The mock for `git.Core.LsFiles` returns `["src/main.rs", "Cargo.toml"]`. All generated paths point to text files. A binary file (`ac.pdf`) never appears in any test. The runtime crash is invisible to all six test tiers.
+
+**After:** `FilePath` is partitioned by `@content` into `TextFilePath ⊔ BinaryFilePath`. The `classify_files` pattern introduces a **coproduct branch** (text vs binary). The test generator now treats this like any other coproduct — it must cover both arms:
+
+| Generated scenario | Mock file list | What it tests |
+|---|---|---|
+| `all_text_files` | `["src/main.rs", "Cargo.toml"]` | Happy path — all files readable |
+| `mixed_content` | `["src/main.rs", "docs/spec.pdf", "README.md"]` | Classification + filtering — binary files skipped |
+| `all_binary_files` | `["image.png", "data.wasm"]` | Edge case — no text files, `fs.read` never called |
+
+The `mixed_content` scenario is the one that catches the original bug. It is generated automatically because the test generator sees the `ContentEncoding` coproduct in `classify_files` and enumerates its branches, using `@file_types` extension rules to produce realistic mock paths for each branch.
+
+**The general principle:** Any referent property that is modeled as a type-level refinement moves from the "semantic" column to the "structural" column in the fuzzing boundary table. The compiler can then:
+
+1. Generate diverse mock values that exercise both sides of the partition (from `@file_types` or equivalent declarative rules)
+2. Generate scenario tests for each coproduct branch (reusing existing Bucket C guard-path machinery)
+3. Generate hygiene tests verifying that classification precedes consumption in the DAG topology (extending Bucket D)
+4. Generate repo-level integration tests that verify real-world data diversity matches the type model (extending Bucket E / Tier 5)
+
+This does **not** eliminate the syntactic-semantic boundary entirely — business logic correctness and API response semantics remain opaque. But it narrows the gap for a specific, high-impact class of bugs: **type-domain mismatches at I/O boundaries** where the structural type (`FilePath`) is wider than the operation's actual domain (`TextFilePath`).
+
+**Testgen bucket extensions from referent-indexed types:**
+
+| Bucket | Extension |
+|---|---|
+| **C: Scenario Coverage** | Coproduct branches from referent classification (e.g., text vs binary) become mandatory scenarios. Mock fixtures generated from `@file_types` or equivalent declarative rules. |
+| **D: Resource Hygiene** | New invariant: every `Filesystem.read` node must be preceded by a classification node when the path source is unclassified (`FilePath`). The compiler verifies `classify → read` ordering in the DAG. |
+| **E: Domain Coverage** (new) | When a loop iterates over a producer's output and feeds each element to a consumer with a narrower domain, the test generator produces adversarial mock data that exercises the domain boundary. |
 
 ## N.5 Seed Policy Matrix (Structural vs Semantic Carriers)
 

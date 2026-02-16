@@ -1,0 +1,11 @@
+[package]
+name = "daglang-lower"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lowers typed .dag AST to gunbc GraphIR (Dag/Node/Port/Edge)"
+
+[dependencies]
+daglang-syntax = { path = "../daglang-syntax" }
+daglang-typecheck = { path = "../daglang-typecheck" }
+gunbc-ir = { path = "../../ir" }
