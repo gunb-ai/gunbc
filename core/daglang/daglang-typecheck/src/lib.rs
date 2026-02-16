@@ -436,6 +436,8 @@ pub fn typecheck_module_graph_with_options(
     options: TypecheckOptions,
 ) -> Result<TypedProject, Vec<TypeError>> {
     let known_types = collect_known_types(&graph.modules);
+    let generic_arity_registry = collect_generic_arities(&graph.modules);
+    let record_type_registry = collect_record_types(&graph.modules);
     let callable_registry = collect_unique_callables(&graph.modules);
     let service_call_registry = collect_service_call_contracts(&graph.modules);
     let interface_registry = collect_interfaces(&graph.modules);
@@ -449,6 +451,8 @@ pub fn typecheck_module_graph_with_options(
     let mut typed_modules = Vec::with_capacity(graph.modules.len());
     let context = TypecheckContext {
         known_types: &known_types,
+        generic_arity_registry: &generic_arity_registry,
+        record_type_registry: &record_type_registry,
         callable_registry: &callable_registry,
         service_call_registry: &service_call_registry,
         interface_registry: &interface_registry,
@@ -496,6 +500,8 @@ pub fn typecheck_module_graph_with_options(
 
 struct TypecheckContext<'a> {
     known_types: &'a HashSet<String>,
+    generic_arity_registry: &'a GenericArityRegistry,
+    record_type_registry: &'a RecordTypeRegistry,
     callable_registry: &'a HashMap<String, Option<CallableContract>>,
     service_call_registry: &'a ServiceCallRegistry,
     interface_registry: &'a InterfaceRegistry,
@@ -520,6 +526,11 @@ fn collect_signatures(
 
     let mut seen_items = HashSet::new();
     let mut signatures = Vec::new();
+    let body_context = BodyInferenceContext {
+        record_type_registry: context.record_type_registry,
+        callable_registry: context.callable_registry,
+        service_call_registry: context.service_call_registry,
+    };
 
     for item in &module.ast.items {
         match &item.node {
@@ -536,10 +547,17 @@ fn collect_signatures(
             }
             Item::FnDef(def) => {
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
-                validate_params(&def.name, &def.params, &module_known_types, errors);
+                validate_params(
+                    &def.name,
+                    &def.params,
+                    &module_known_types,
+                    context.generic_arity_registry,
+                    errors,
+                );
                 validate_type_expr(
                     &def.return_type,
                     &module_known_types,
+                    context.generic_arity_registry,
                     &format!("{}.return", def.name),
                     errors,
                 );
@@ -549,9 +567,10 @@ fn collect_signatures(
                 }];
                 validate_callable_body(
                     &def.name,
+                    &def.params,
+                    ReturnContract::single(type_expr_to_string(&def.return_type)),
                     &def.body.stmts,
-                    context.callable_registry,
-                    context.service_call_registry,
+                    &body_context,
                     context.allow_unresolved_references,
                     errors,
                 );
@@ -570,8 +589,20 @@ fn collect_signatures(
             }
             Item::FuncDef(def) => {
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
-                validate_params(&def.name, &def.params, &module_known_types, errors);
-                validate_outputs(&def.name, &def.outputs, &module_known_types, errors);
+                validate_params(
+                    &def.name,
+                    &def.params,
+                    &module_known_types,
+                    context.generic_arity_registry,
+                    errors,
+                );
+                validate_outputs(
+                    &def.name,
+                    &def.outputs,
+                    &module_known_types,
+                    context.generic_arity_registry,
+                    errors,
+                );
                 validate_uses_clauses(
                     &def.name,
                     &def.uses,
@@ -589,9 +620,10 @@ fn collect_signatures(
                 validate_use_provide_binding_conflicts(&def.name, &def.uses, &def.provides, errors);
                 validate_callable_body(
                     &def.name,
+                    &def.params,
+                    ReturnContract::record(field_signature_map(&def.outputs)),
                     &def.body.stmts,
-                    context.callable_registry,
-                    context.service_call_registry,
+                    &body_context,
                     context.allow_unresolved_references,
                     errors,
                 );
@@ -617,8 +649,20 @@ fn collect_signatures(
             }
             Item::PatternDef(def) => {
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
-                validate_params(&def.name, &def.params, &module_known_types, errors);
-                validate_outputs(&def.name, &def.outputs, &module_known_types, errors);
+                validate_params(
+                    &def.name,
+                    &def.params,
+                    &module_known_types,
+                    context.generic_arity_registry,
+                    errors,
+                );
+                validate_outputs(
+                    &def.name,
+                    &def.outputs,
+                    &module_known_types,
+                    context.generic_arity_registry,
+                    errors,
+                );
                 validate_uses_clauses(
                     &def.name,
                     &def.uses,
@@ -628,9 +672,10 @@ fn collect_signatures(
                 );
                 validate_callable_body(
                     &def.name,
+                    &def.params,
+                    ReturnContract::record(field_signature_map(&def.outputs)),
                     &def.body.stmts,
-                    context.callable_registry,
-                    context.service_call_registry,
+                    &body_context,
                     context.allow_unresolved_references,
                     errors,
                 );
@@ -704,16 +749,81 @@ fn collect_known_types(modules: &[ResolvedModule]) -> HashSet<String> {
     known
 }
 
+fn collect_generic_arities(modules: &[ResolvedModule]) -> GenericArityRegistry {
+    let mut registry = GenericArityRegistry::default();
+    for (name, arity) in builtin_type_arities() {
+        registry.full.insert(name.clone(), arity);
+        registry.short.insert(name, Some(arity));
+    }
+
+    for module in modules {
+        let module_prefix = module.module_path.join(".");
+        for item in &module.ast.items {
+            let (name, arity) = match &item.node {
+                Item::TypeDef(def) => (&def.name, def.params.len()),
+                Item::InterfaceDef(def) => (&def.name, def.type_params.len()),
+                _ => continue,
+            };
+            let full_name = format!("{module_prefix}.{name}");
+            registry.full.insert(full_name.clone(), arity);
+            registry
+                .short
+                .entry(name.clone())
+                .and_modify(|existing| {
+                    if let Some(current) = existing {
+                        if *current != arity {
+                            *existing = None;
+                        }
+                    }
+                })
+                .or_insert(Some(arity));
+        }
+    }
+    registry
+}
+
+fn collect_record_types(modules: &[ResolvedModule]) -> RecordTypeRegistry {
+    let mut registry = RecordTypeRegistry::default();
+    for module in modules {
+        let module_prefix = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::TypeDef(def) = &item.node else {
+                continue;
+            };
+            let daglang_syntax::ast::TypeBody::Record(fields) = &def.body else {
+                continue;
+            };
+            let signature = field_signature_map(fields);
+            let full_name = format!("{module_prefix}.{}", def.name);
+            registry.full.insert(full_name.clone(), signature);
+            registry
+                .short
+                .entry(def.name.clone())
+                .and_modify(|existing| {
+                    if let Some(current) = existing {
+                        if current != &full_name {
+                            *existing = None;
+                        }
+                    }
+                })
+                .or_insert(Some(full_name));
+        }
+    }
+    registry
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CallableContract {
     arity: usize,
     params: HashSet<String>,
+    output: ValueType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ServiceCallContract {
     arity: usize,
     params: HashSet<String>,
+    outputs: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -748,15 +858,22 @@ fn collect_unique_callables(
     let mut callables = HashMap::<String, Option<CallableContract>>::new();
     for module in modules {
         for item in &module.ast.items {
-            let (name, params) = match &item.node {
-                Item::FnDef(def) => (&def.name, &def.params),
-                Item::FuncDef(def) => (&def.name, &def.params),
-                Item::PatternDef(def) => (&def.name, &def.params),
+            let (name, params, output) = match &item.node {
+                Item::FnDef(def) => (
+                    &def.name,
+                    &def.params,
+                    ValueType::Named(type_expr_to_string(&def.return_type)),
+                ),
+                Item::FuncDef(def) => (&def.name, &def.params, ValueType::Record(field_signature_map(&def.outputs))),
+                Item::PatternDef(def) => {
+                    (&def.name, &def.params, ValueType::Record(field_signature_map(&def.outputs)))
+                }
                 _ => continue,
             };
             let contract = CallableContract {
                 arity: params.len(),
                 params: params.iter().map(|param| param.name.clone()).collect(),
+                output,
             };
             callables
                 .entry(name.clone())
@@ -787,6 +904,7 @@ fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegi
                         .iter()
                         .map(|field| field.name.clone())
                         .collect(),
+                    outputs: field_signature_map(&operation.outputs),
                 };
                 let service_tail = service
                     .name
@@ -828,6 +946,48 @@ struct InterfaceRegistry {
 struct ResourceTypeRegistry {
     full: HashSet<String>,
     short: HashMap<String, Option<String>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct GenericArityRegistry {
+    full: HashMap<String, usize>,
+    short: HashMap<String, Option<usize>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RecordTypeRegistry {
+    full: HashMap<String, HashMap<String, String>>,
+    short: HashMap<String, Option<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ValueType {
+    Named(String),
+    Record(HashMap<String, String>),
+    Unknown,
+}
+
+#[derive(Debug, Clone)]
+enum ReturnContract {
+    Single { ty: String },
+    Record { fields: HashMap<String, String> },
+}
+
+impl ReturnContract {
+    fn single(ty: String) -> Self {
+        Self::Single { ty }
+    }
+
+    fn record(fields: HashMap<String, String>) -> Self {
+        Self::Record { fields }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct BodyInferenceContext<'a> {
+    record_type_registry: &'a RecordTypeRegistry,
+    callable_registry: &'a HashMap<String, Option<CallableContract>>,
+    service_call_registry: &'a ServiceCallRegistry,
 }
 
 fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
@@ -925,6 +1085,26 @@ fn builtin_type_names() -> HashSet<String> {
     ])
 }
 
+fn builtin_type_arities() -> HashMap<String, usize> {
+    HashMap::from([
+        ("Any".to_string(), 0),
+        ("Unit".to_string(), 0),
+        ("Bool".to_string(), 0),
+        ("Int".to_string(), 0),
+        ("Float".to_string(), 0),
+        ("String".to_string(), 0),
+        ("Bytes".to_string(), 0),
+        ("Json".to_string(), 0),
+        ("Record".to_string(), 0),
+        ("List".to_string(), 1),
+        ("Map".to_string(), 2),
+        ("Option".to_string(), 1),
+        ("Result".to_string(), 2),
+        ("Queue".to_string(), 1),
+        ("Self".to_string(), 0),
+    ])
+}
+
 fn record_duplicate_item_name(
     module_name: &str,
     item_name: &str,
@@ -943,6 +1123,7 @@ fn validate_params(
     item_name: &str,
     params: &[Param],
     known_types: &HashSet<String>,
+    generic_arity_registry: &GenericArityRegistry,
     errors: &mut Vec<TypeError>,
 ) {
     let mut seen = HashSet::new();
@@ -956,6 +1137,7 @@ fn validate_params(
         validate_type_expr(
             &param.ty,
             known_types,
+            generic_arity_registry,
             &format!("{}.{}", item_name, param.name),
             errors,
         );
@@ -966,6 +1148,7 @@ fn validate_outputs(
     item_name: &str,
     outputs: &[Field],
     known_types: &HashSet<String>,
+    generic_arity_registry: &GenericArityRegistry,
     errors: &mut Vec<TypeError>,
 ) {
     let mut seen = HashSet::new();
@@ -979,6 +1162,7 @@ fn validate_outputs(
         validate_type_expr(
             &output.ty,
             known_types,
+            generic_arity_registry,
             &format!("{}.{}", item_name, output.name),
             errors,
         );
@@ -1083,16 +1267,17 @@ fn validate_use_provide_binding_conflicts(
 
 fn validate_callable_body(
     caller: &str,
+    params: &[Param],
+    return_contract: ReturnContract,
     stmts: &[Stmt],
-    callable_registry: &HashMap<String, Option<CallableContract>>,
-    service_call_registry: &ServiceCallRegistry,
+    body_context: &BodyInferenceContext<'_>,
     allow_unresolved_references: bool,
     errors: &mut Vec<TypeError>,
 ) {
     let mut calls = Vec::new();
     collect_calls_from_stmts(stmts, &mut calls);
     for call in calls {
-        let contract = match callable_registry.get(&call.callee) {
+        let contract = match body_context.callable_registry.get(&call.callee) {
             Some(Some(contract)) => contract,
             Some(None) => {
                 if !allow_unresolved_references {
@@ -1145,7 +1330,8 @@ fn validate_callable_body(
     collect_service_calls_from_stmts(stmts, &mut service_calls);
     for call in service_calls {
         let service_call_name = call.path.join(".");
-        let contract = match resolve_service_call_contract(&call.path, service_call_registry) {
+        let contract =
+            match resolve_service_call_contract(&call.path, body_context.service_call_registry) {
             ServiceCallResolution::Resolved(contract) => contract,
             ServiceCallResolution::Ambiguous => {
                 if !allow_unresolved_references {
@@ -1193,6 +1379,339 @@ fn validate_callable_body(
             }
         }
     }
+
+    let mut local_bindings = params
+        .iter()
+        .map(|param| {
+            (
+                param.name.clone(),
+                ValueType::Named(type_expr_to_string(&param.ty)),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
+                let inferred = infer_expr_type(
+                    expr,
+                    &local_bindings,
+                    body_context,
+                    errors,
+                );
+                local_bindings.insert(name.clone(), inferred);
+            }
+            Stmt::Expr(expr) => {
+                infer_expr_type(
+                    expr,
+                    &local_bindings,
+                    body_context,
+                    errors,
+                );
+            }
+            Stmt::Return(fields) => {
+                validate_return_stmt(
+                    caller,
+                    &return_contract,
+                    fields,
+                    &local_bindings,
+                    body_context,
+                    errors,
+                );
+            }
+        }
+    }
+}
+
+fn validate_return_stmt(
+    caller: &str,
+    return_contract: &ReturnContract,
+    fields: &[(String, Expr)],
+    local_bindings: &HashMap<String, ValueType>,
+    body_context: &BodyInferenceContext<'_>,
+    errors: &mut Vec<TypeError>,
+) {
+    match return_contract {
+        ReturnContract::Single { ty } => {
+            if fields.len() != 1 {
+                errors.push(TypeError::TypeMismatch {
+                    expected: ty.clone(),
+                    got: "Record".to_string(),
+                });
+                return;
+            }
+            let inferred = infer_expr_type(
+                &fields[0].1,
+                local_bindings,
+                body_context,
+                errors,
+            );
+            push_type_mismatch_if_needed(ty, &inferred, errors);
+        }
+        ReturnContract::Record { fields: expected } => {
+            for (field, expr) in fields {
+                let Some(expected_ty) = expected.get(field) else {
+                    errors.push(TypeError::NoSuchField {
+                        ty: format!("{caller}.outputs"),
+                        field: field.clone(),
+                    });
+                    continue;
+                };
+                let inferred = infer_expr_type(
+                    expr,
+                    local_bindings,
+                    body_context,
+                    errors,
+                );
+                push_type_mismatch_if_needed(expected_ty, &inferred, errors);
+            }
+        }
+    }
+}
+
+fn infer_expr_type(
+    expr: &Expr,
+    local_bindings: &HashMap<String, ValueType>,
+    body_context: &BodyInferenceContext<'_>,
+    errors: &mut Vec<TypeError>,
+) -> ValueType {
+    match expr {
+        Expr::Literal(literal) => match literal {
+            daglang_syntax::ast::Literal::Int(_) => ValueType::Named("Int".to_string()),
+            daglang_syntax::ast::Literal::Float(_) => ValueType::Named("Float".to_string()),
+            daglang_syntax::ast::Literal::String(_) => ValueType::Named("String".to_string()),
+            daglang_syntax::ast::Literal::Bool(_) => ValueType::Named("Bool".to_string()),
+            daglang_syntax::ast::Literal::None => ValueType::Named("Unit".to_string()),
+        },
+        Expr::Ident(name) => local_bindings.get(name).cloned().unwrap_or(ValueType::Unknown),
+        Expr::FieldAccess(base, field) => {
+            let base_type = infer_expr_type(base, local_bindings, body_context, errors);
+            match base_type {
+                ValueType::Record(fields) => match fields.get(field) {
+                    Some(ty) => ValueType::Named(ty.clone()),
+                    None => {
+                        errors.push(TypeError::NoSuchField {
+                            ty: "Record".to_string(),
+                            field: field.clone(),
+                        });
+                        ValueType::Unknown
+                    }
+                },
+                ValueType::Named(name) => match resolve_record_fields(
+                    &name,
+                    body_context.record_type_registry,
+                ) {
+                    Some(fields) => match fields.get(field) {
+                        Some(ty) => ValueType::Named(ty.clone()),
+                        None => {
+                            errors.push(TypeError::NoSuchField {
+                                ty: name,
+                                field: field.clone(),
+                            });
+                            ValueType::Unknown
+                        }
+                    },
+                    None => ValueType::Unknown,
+                },
+                ValueType::Unknown => ValueType::Unknown,
+            }
+        }
+        Expr::Call(name, args) => {
+            for (_, arg) in args {
+                infer_expr_type(arg, local_bindings, body_context, errors);
+            }
+            body_context
+                .callable_registry
+                .get(name)
+                .and_then(|entry| entry.as_ref())
+                .map(|contract| contract.output.clone())
+                .unwrap_or(ValueType::Unknown)
+        }
+        Expr::ServiceCall(path, args) => {
+            for (_, arg) in args {
+                infer_expr_type(arg, local_bindings, body_context, errors);
+            }
+            match resolve_service_call_contract(path, body_context.service_call_registry) {
+                ServiceCallResolution::Resolved(contract) => ValueType::Record(contract.outputs),
+                ServiceCallResolution::Ambiguous | ServiceCallResolution::Missing => {
+                    ValueType::Unknown
+                }
+            }
+        }
+        Expr::BinOp(lhs, op, rhs) => {
+            let lhs_ty = infer_expr_type(lhs, local_bindings, body_context, errors);
+            let rhs_ty = infer_expr_type(rhs, local_bindings, body_context, errors);
+            match op {
+                daglang_syntax::ast::BinOp::Eq
+                | daglang_syntax::ast::BinOp::Ne
+                | daglang_syntax::ast::BinOp::Lt
+                | daglang_syntax::ast::BinOp::Gt
+                | daglang_syntax::ast::BinOp::Le
+                | daglang_syntax::ast::BinOp::Ge
+                | daglang_syntax::ast::BinOp::And
+                | daglang_syntax::ast::BinOp::Or => ValueType::Named("Bool".to_string()),
+                _ => match (lhs_ty, rhs_ty) {
+                    (ValueType::Named(lhs), ValueType::Named(rhs))
+                        if canonical_type_name(&lhs) == canonical_type_name(&rhs) =>
+                    {
+                        ValueType::Named(lhs)
+                    }
+                    _ => ValueType::Unknown,
+                },
+            }
+        }
+        Expr::UnaryOp(op, inner) => {
+            let inner_ty = infer_expr_type(inner, local_bindings, body_context, errors);
+            match op {
+                daglang_syntax::ast::UnaryOp::Not => ValueType::Named("Bool".to_string()),
+                daglang_syntax::ast::UnaryOp::Neg => inner_ty,
+            }
+        }
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let daglang_syntax::ast::StringPart::Expr(inner) = part {
+                    infer_expr_type(inner, local_bindings, body_context, errors);
+                }
+            }
+            ValueType::Named("String".to_string())
+        }
+        Expr::Record(type_name, fields) => {
+            for (_, value) in fields {
+                infer_expr_type(value, local_bindings, body_context, errors);
+            }
+            if let Some(name) = type_name {
+                ValueType::Named(name.clone())
+            } else {
+                ValueType::Record(
+                    fields
+                        .iter()
+                        .map(|(name, expr)| {
+                            (
+                                name.clone(),
+                                infer_expr_type(expr, local_bindings, body_context, errors)
+                                .display_name()
+                                .unwrap_or_else(|| "Any".to_string()),
+                            )
+                        })
+                        .collect(),
+                )
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            infer_expr_type(scrutinee, local_bindings, body_context, errors);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    infer_expr_type(guard, local_bindings, body_context, errors);
+                }
+                infer_expr_type(&arm.body, local_bindings, body_context, errors);
+            }
+            ValueType::Unknown
+        }
+        Expr::If(cond, then_expr, else_expr) => {
+            infer_expr_type(cond, local_bindings, body_context, errors);
+            let then_ty = infer_expr_type(then_expr, local_bindings, body_context, errors);
+            let else_ty = else_expr.as_ref().map(|otherwise| {
+                infer_expr_type(otherwise, local_bindings, body_context, errors)
+            });
+            match else_ty {
+                Some(otherwise)
+                    if then_ty.display_name().is_some()
+                        && then_ty.display_name() == otherwise.display_name() =>
+                {
+                    then_ty
+                }
+                _ => ValueType::Unknown,
+            }
+        }
+        Expr::For(_, iterable, body) => {
+            infer_expr_type(iterable, local_bindings, body_context, errors);
+            infer_expr_type(body, local_bindings, body_context, errors);
+            ValueType::Unknown
+        }
+        Expr::Pipe(lhs, rhs) => {
+            infer_expr_type(lhs, local_bindings, body_context, errors);
+            infer_expr_type(rhs, local_bindings, body_context, errors)
+        }
+        Expr::Lambda(_, body) => infer_expr_type(body, local_bindings, body_context, errors),
+        Expr::List(items) => {
+            for item in items {
+                infer_expr_type(item, local_bindings, body_context, errors);
+            }
+            ValueType::Named("List".to_string())
+        }
+        Expr::Map(entries) => {
+            for (key, value) in entries {
+                infer_expr_type(key, local_bindings, body_context, errors);
+                infer_expr_type(value, local_bindings, body_context, errors);
+            }
+            ValueType::Named("Map".to_string())
+        }
+        Expr::Guarded(inner, guard) => {
+            infer_expr_type(inner, local_bindings, body_context, errors);
+            infer_expr_type(guard, local_bindings, body_context, errors);
+            ValueType::Unknown
+        }
+        Expr::After(inner, _) => infer_expr_type(inner, local_bindings, body_context, errors),
+        Expr::Return(fields) => ValueType::Record(
+            fields
+                .iter()
+                .map(|(name, expr)| {
+                    (
+                        name.clone(),
+                        infer_expr_type(expr, local_bindings, body_context, errors)
+                        .display_name()
+                        .unwrap_or_else(|| "Any".to_string()),
+                    )
+                })
+                .collect(),
+        ),
+    }
+}
+
+impl ValueType {
+    fn display_name(&self) -> Option<String> {
+        match self {
+            Self::Named(name) => Some(name.clone()),
+            Self::Record(_) => Some("Record".to_string()),
+            Self::Unknown => None,
+        }
+    }
+}
+
+fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType, errors: &mut Vec<TypeError>) {
+    let Some(got) = inferred.display_name() else {
+        return;
+    };
+    if !types_match(expected, &got) {
+        errors.push(TypeError::TypeMismatch {
+            expected: expected.to_string(),
+            got,
+        });
+    }
+}
+
+fn types_match(expected: &str, got: &str) -> bool {
+    if expected == got {
+        return true;
+    }
+    let expected_canonical = canonical_type_name(expected);
+    let got_canonical = canonical_type_name(got);
+    expected_canonical == got_canonical
+        || expected_canonical.rsplit('.').next() == got_canonical.rsplit('.').next()
+}
+
+fn resolve_record_fields(
+    ty: &str,
+    registry: &RecordTypeRegistry,
+) -> Option<HashMap<String, String>> {
+    let canonical = canonical_type_name(ty);
+    if let Some(fields) = registry.full.get(&canonical) {
+        return Some(fields.clone());
+    }
+    let short = canonical.rsplit('.').next().unwrap_or(canonical.as_str());
+    let Some(Some(full_name)) = registry.short.get(short) else {
+        return None;
+    };
+    registry.full.get(full_name).cloned()
 }
 
 fn validate_resource_interface_conformance(
@@ -1681,6 +2200,7 @@ fn should_validate_call_name(name: &str) -> bool {
 fn validate_type_expr(
     ty: &TypeExpr,
     known_types: &HashSet<String>,
+    generic_arity_registry: &GenericArityRegistry,
     context: &str,
     errors: &mut Vec<TypeError>,
 ) {
@@ -1694,6 +2214,17 @@ fn validate_type_expr(
             }
         }
         TypeExpr::Generic(name, args) => {
+            if let Some(expected) =
+                resolve_generic_arity(name, generic_arity_registry, known_types)
+            {
+                if expected != args.len() {
+                    errors.push(TypeError::ArityMismatch {
+                        name: name.clone(),
+                        expected,
+                        got: args.len(),
+                    });
+                }
+            }
             if should_validate_named_type(name) && !known_types.contains(name) {
                 let tail = name.rsplit('.').next().unwrap_or(name);
                 if !known_types.contains(tail) {
@@ -1701,11 +2232,80 @@ fn validate_type_expr(
                 }
             }
             for arg in args {
-                validate_type_expr(arg, known_types, context, errors);
+                validate_type_expr(arg, known_types, generic_arity_registry, context, errors);
             }
         }
-        TypeExpr::Optional(inner) => validate_type_expr(inner, known_types, context, errors),
-        TypeExpr::Annotated(inner, _) => validate_type_expr(inner, known_types, context, errors),
+        TypeExpr::Optional(inner) => {
+            validate_type_expr(inner, known_types, generic_arity_registry, context, errors)
+        }
+        TypeExpr::Annotated(inner, annotations) => {
+            validate_type_expr(inner, known_types, generic_arity_registry, context, errors);
+            for annotation in annotations {
+                if annotation.name != "range" {
+                    continue;
+                }
+                let (min, max) = extract_range_bounds(&annotation.args);
+                if let (Some(min), Some(max)) = (min, max) {
+                    if min > max {
+                        errors.push(TypeError::UnsatisfiableRefinement {
+                            ty: type_expr_to_string(inner),
+                            constraint: format!("range min {min} exceeds max {max}"),
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn resolve_generic_arity(
+    name: &str,
+    registry: &GenericArityRegistry,
+    known_types: &HashSet<String>,
+) -> Option<usize> {
+    if let Some(arity) = registry.full.get(name) {
+        return Some(*arity);
+    }
+    let short = name.rsplit('.').next().unwrap_or(name);
+    if let Some(entry) = registry.short.get(short) {
+        return *entry;
+    }
+    if known_types.contains(name) || known_types.contains(short) {
+        return Some(0);
+    }
+    None
+}
+
+fn extract_range_bounds(args: &[Expr]) -> (Option<i64>, Option<i64>) {
+    let mut min = None;
+    let mut max = None;
+    for arg in args {
+        match arg {
+            Expr::Record(_, fields) => {
+                for (name, value) in fields {
+                    match name.as_str() {
+                        "min" => min = extract_int_literal(value),
+                        "max" => max = extract_int_literal(value),
+                        _ => {}
+                    }
+                }
+            }
+            _ => {
+                if min.is_none() {
+                    min = extract_int_literal(arg);
+                } else if max.is_none() {
+                    max = extract_int_literal(arg);
+                }
+            }
+        }
+    }
+    (min, max)
+}
+
+fn extract_int_literal(expr: &Expr) -> Option<i64> {
+    match expr {
+        Expr::Literal(daglang_syntax::ast::Literal::Int(value)) => Some(*value),
+        _ => None,
     }
 }
 
@@ -2562,6 +3162,71 @@ func run() -> { ok: Bool } uses io: Storage provides io: Storage {
             error,
             TypeError::UseProvideBindingConflict { item, binding }
                 if item == "run" && binding == "io"
+        )));
+    }
+
+    #[test]
+    fn type_mismatch_in_fn_return_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "type_mismatch_fn_return.dag",
+            r#"module sample.types
+fn run() -> String { return 42 }"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("type mismatch should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::TypeMismatch { expected, got }
+                if expected == "String" && got == "Int"
+        )));
+    }
+
+    #[test]
+    fn no_such_field_on_record_literal_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "no_such_field.dag",
+            r#"module sample.fields
+func run() -> { body: String } {
+  let payload = { body: "ok" }
+  return { body: payload.missing }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("no such field should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::NoSuchField { ty, field } if ty == "Record" && field == "missing"
+        )));
+    }
+
+    #[test]
+    fn unsatisfiable_refinement_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "unsat_refinement.dag",
+            r#"module sample.refinement
+fn run(value: Int @range(min: 5, max: 1)) -> Int { value }"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("unsatisfiable range should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnsatisfiableRefinement { ty, constraint }
+                if ty == "Int" && constraint.contains("min 5 exceeds max 1")
+        )));
+    }
+
+    #[test]
+    fn generic_arity_mismatch_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "generic_arity_mismatch.dag",
+            r#"module sample.generics
+fn run(items: Map<String>) -> Int { 1 }"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("generic arity mismatch should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::ArityMismatch {
+                name,
+                expected,
+                got,
+            } if name == "Map" && *expected == 2 && *got == 1
         )));
     }
 }

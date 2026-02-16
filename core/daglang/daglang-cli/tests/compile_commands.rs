@@ -1583,6 +1583,125 @@ fn run(input: MissingType) -> String { "ok" }
 }
 
 #[test]
+fn compile_command_reports_type_mismatch_typecheck_error() {
+    let fixture = unique_temp_file("type_mismatch");
+    std::fs::write(
+        &fixture,
+        r#"module sample.types
+fn run() -> String { return 42 }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on return type mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("type mismatch: expected `String`, got `Int`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_reports_no_such_field_typecheck_error() {
+    let fixture = unique_temp_file("no_such_field");
+    std::fs::write(
+        &fixture,
+        r#"module sample.types
+func run() -> { body: String } {
+  let payload = { body: "ok" }
+  return { body: payload.missing }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on missing record field access"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("type `Record` has no field `missing`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_reports_unsatisfiable_refinement_typecheck_error() {
+    let fixture = unique_temp_file("unsatisfiable_refinement");
+    std::fs::write(
+        &fixture,
+        r#"module sample.types
+fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on unsatisfiable refinement"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("unsatisfiable refinement on `Int`: range min 5 exceeds max 1"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_reports_generic_arity_mismatch_typecheck_error() {
+    let fixture = unique_temp_file("generic_arity_mismatch");
+    std::fs::write(
+        &fixture,
+        r#"module sample.types
+fn run(values: Map<String>) -> Int { 1 }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on generic arity mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("generic arity mismatch for `Map`: expected 2, got 1"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_reports_service_call_arity_typecheck_error() {
     let fixture = unique_temp_file("service_call_arity");
     std::fs::write(
