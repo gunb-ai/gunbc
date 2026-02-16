@@ -10607,6 +10607,37 @@ fn manifest_command_supports_json_output_format() {
 }
 
 #[test]
+fn manifest_json_output_is_deterministic_for_same_input() {
+    let run_manifest_json = || {
+        Command::new(daglang_bin())
+            .arg("manifest")
+            .arg("--format")
+            .arg("json")
+            .arg(makegen_file())
+            .current_dir(workspace_root())
+            .output()
+            .expect("failed to run daglang manifest --format json")
+    };
+
+    let first = run_manifest_json();
+    assert!(
+        first.status.success(),
+        "first manifest json run failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let second = run_manifest_json();
+    assert!(
+        second.status.success(),
+        "second manifest json run failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert_eq!(
+        first.stdout, second.stdout,
+        "manifest json output should be byte-stable across runs"
+    );
+}
+
+#[test]
 fn manifest_command_reports_non_zero_transport_and_lifecycle_obligations() {
     let fixture = unique_temp_file("manifest_obligations");
     std::fs::write(
