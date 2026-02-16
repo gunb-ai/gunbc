@@ -26,6 +26,18 @@ fn unique_temp_file(name: &str) -> PathBuf {
     ))
 }
 
+fn unique_temp_dir(name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "daglang_cli_compile_cmd_dir_{name}_{}_{}",
+        std::process::id(),
+        nanos
+    ))
+}
+
 #[test]
 fn compile_command_emits_summary_for_single_file() {
     let output = Command::new(daglang_bin())
@@ -123,4 +135,32 @@ fn compile_command_reports_diagnostics_for_invalid_file() {
     assert!(stderr.contains(":2:"));
 
     std::fs::remove_file(broken).expect("failed to remove temp broken source");
+}
+
+#[test]
+fn compile_command_directory_mode_fails_on_unresolved_imports() {
+    let root = unique_temp_dir("unresolved_import");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("main.dag"),
+        "module sample.main\nimport missing.dep\nfn run() -> Unit {}",
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on unresolved imports"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("unresolved import"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }

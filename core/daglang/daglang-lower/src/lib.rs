@@ -17,7 +17,7 @@
 //! ```
 
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
-use gunbc_ir::{Cardinality, Dag, Node, Port};
+use gunbc_ir::{diff_topologies, Cardinality, Dag, Node, Port};
 
 /// Lowered operation payload for daglang graph nodes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +32,30 @@ pub enum LoweredOp {
         name: String,
         stages: usize,
     },
+}
+
+/// Structural parity report between two DAGs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParityReport {
+    pub candidate_nodes: usize,
+    pub reference_nodes: usize,
+    pub candidate_edges: usize,
+    pub reference_edges: usize,
+    pub added_nodes: usize,
+    pub removed_nodes: usize,
+    pub changed_nodes: usize,
+    pub added_edges: usize,
+    pub removed_edges: usize,
+}
+
+impl ParityReport {
+    pub fn is_exact_match(&self) -> bool {
+        self.added_nodes == 0
+            && self.removed_nodes == 0
+            && self.changed_nodes == 0
+            && self.added_edges == 0
+            && self.removed_edges == 0
+    }
 }
 
 /// Kind of lowered callable declaration.
@@ -133,6 +157,30 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
     Ok(dag)
 }
 
+/// Compare a lowered daglang graph against a reference graph topology.
+///
+/// This enables incremental parity harness adoption:
+/// - exact parity: `report.is_exact_match() == true`
+/// - scaffold mode: report still gives deterministic deltas while lowering
+///   coverage grows.
+pub fn compare_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
+    let candidate_topology = candidate.topology();
+    let reference_topology = reference.topology();
+    let diff = diff_topologies(&reference_topology, &candidate_topology);
+
+    ParityReport {
+        candidate_nodes: candidate_topology.nodes.len(),
+        reference_nodes: reference_topology.nodes.len(),
+        candidate_edges: candidate_topology.edges.len(),
+        reference_edges: reference_topology.edges.len(),
+        added_nodes: diff.added_nodes.len(),
+        removed_nodes: diff.removed_nodes.len(),
+        changed_nodes: diff.changed_nodes.len(),
+        added_edges: diff.added_edges.len(),
+        removed_edges: diff.removed_edges.len(),
+    }
+}
+
 fn lower_callable(
     callable: &TypedCallableSignature,
     module_name: &str,
@@ -183,6 +231,7 @@ mod tests {
     use daglang_resolve::{ModuleGraph, ResolvedModule};
     use daglang_syntax::parser;
     use daglang_typecheck::typecheck_module_graph;
+    use gunbc_ir::{Edge, Port};
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -232,5 +281,132 @@ mod tests {
         )]);
         let error = lower_typed_project(&typed).expect_err("should fail without callable items");
         assert!(matches!(error, LowerError::NoLowerableItems));
+    }
+
+    #[test]
+    fn makegen_parity_report_is_deterministic() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dsl/tools/makegen.dag");
+        let source = fs::read_to_string(file).expect("should read makegen source");
+        let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
+        let lowered = lower_typed_project(&typed).expect("lowering should succeed");
+        let reference = reference_makegen_shape();
+
+        let report_a = compare_topology(&lowered, &reference);
+        let report_b = compare_topology(&lowered, &reference);
+        assert_eq!(report_a, report_b, "parity reports must be deterministic");
+        assert!(
+            !report_a.is_exact_match(),
+            "phase-1 scaffold should still report makegen parity deltas"
+        );
+        assert!(
+            report_a.reference_nodes > report_a.candidate_nodes,
+            "reference graph should currently be richer than scaffold lowering"
+        );
+    }
+
+    fn reference_makegen_shape() -> Dag<()> {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "fs_env",
+            vec![],
+            vec![Port::scalar("FilesystemHandle", "FilesystemHandle")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "load_registry",
+            vec![],
+            vec![Port::scalar("registry", "ToolRegistry")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "render_makefile",
+            vec![Port::scalar("registry", "ToolRegistry")],
+            vec![Port::scalar("makefile_content", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "prepare_read_makegen",
+            vec![
+                Port::scalar("path", "String"),
+                Port::scalar("res:file:Makefile", "FilesystemHandle"),
+            ],
+            vec![Port::scalar("request", "TransportRequest")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "execute_read_makegen",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "compare_makegen_content",
+            vec![
+                Port::scalar("expected_content", "String"),
+                Port::scalar("response", "TransportResponse"),
+            ],
+            vec![Port::scalar("fresh", "Bool"), Port::scalar("skip", "Bool")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "prepare_write_makegen",
+            vec![Port::scalar("content", "String"), Port::scalar("path", "String")],
+            vec![Port::scalar("request", "TransportRequest")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "execute_makegen_transport",
+            vec![
+                Port::scalar("request", "TransportRequest"),
+                Port::scalar("skip", "Bool"),
+            ],
+            vec![Port::scalar("makegen_response", "TransportResponse")],
+            (),
+        ));
+
+        dag.add_edge(Edge::new(
+            "load_registry",
+            "registry",
+            "render_makefile",
+            "registry",
+        ));
+        dag.add_edge(Edge::new(
+            "render_makefile",
+            "makefile_content",
+            "compare_makegen_content",
+            "expected_content",
+        ));
+        dag.add_edge(Edge::new(
+            "render_makefile",
+            "makefile_content",
+            "prepare_write_makegen",
+            "content",
+        ));
+        dag.add_edge(Edge::new(
+            "prepare_read_makegen",
+            "request",
+            "execute_read_makegen",
+            "request",
+        ));
+        dag.add_edge(Edge::new(
+            "execute_read_makegen",
+            "response",
+            "compare_makegen_content",
+            "response",
+        ));
+        dag.add_edge(Edge::new(
+            "prepare_write_makegen",
+            "request",
+            "execute_makegen_transport",
+            "request",
+        ));
+        dag.add_edge(Edge::new(
+            "compare_makegen_content",
+            "skip",
+            "execute_makegen_transport",
+            "skip",
+        ));
+        dag
     }
 }
