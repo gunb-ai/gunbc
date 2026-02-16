@@ -517,6 +517,10 @@ func run(path: String) -> { body: String } {
         "single-file compile should fail for unresolved service call"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("typecheck errors"),
+        "single-file unresolved service-call path should fail in lower stage: {stderr}"
+    );
     assert!(stderr.contains("lower error: unresolved service call"));
     assert!(stderr.contains("MissingStorage.read"));
 
@@ -548,6 +552,10 @@ func run() -> { ok: Bool } uses fs: MissingResource {
         "single-file compile should fail for unresolved uses binding"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("typecheck errors"),
+        "single-file unresolved uses path should fail in lower stage: {stderr}"
+    );
     assert!(stderr.contains("lower error: unresolved used resource"));
     assert!(stderr.contains("fs: MissingResource"));
 
@@ -579,6 +587,10 @@ func run() -> { ok: Bool } provides out: MissingResource {
         "single-file compile should fail for unresolved provides binding"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("typecheck errors"),
+        "single-file unresolved provides path should fail in lower stage: {stderr}"
+    );
     assert!(stderr.contains("lower error: unresolved provided resource"));
     assert!(stderr.contains("out: MissingResource"));
 
