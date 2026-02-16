@@ -95,6 +95,195 @@ fn compile_command_emits_summary_for_single_file() {
     assert!(stdout.contains("target/generated/rust/main.rs"));
 }
 
+#[cfg(unix)]
+#[test]
+fn compile_command_accepts_symlink_single_file_target() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("compile_symlink_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let real = root.join("real.dag");
+    let link = root.join("link.dag");
+    std::fs::write(&real, "module sample.real\nfn ok() -> Unit {}")
+        .expect("failed to write real source");
+    symlink(&real, &link).expect("failed to create symlinked target");
+
+    let real_output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&real)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run daglang compile on real target");
+    assert!(
+        real_output.status.success(),
+        "compile should succeed for real single-file target: {}",
+        String::from_utf8_lossy(&real_output.stderr)
+    );
+
+    let link_output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&link)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run daglang compile on symlinked target");
+    assert!(
+        link_output.status.success(),
+        "compile should succeed for symlinked single-file target: {}",
+        String::from_utf8_lossy(&link_output.stderr)
+    );
+
+    assert_eq!(
+        real_output.stdout, link_output.stdout,
+        "real and symlink single-file compile stdout should match"
+    );
+    assert_eq!(
+        real_output.stderr, link_output.stderr,
+        "real and symlink single-file compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&link_output.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn compile_command_accepts_symlink_root_directory() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("compile_symlink_root_directory");
+    let real_root = root.join("real_root");
+    std::fs::create_dir_all(real_root.join("sample")).expect("failed to create real root fixture");
+    std::fs::write(
+        real_root.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit { }",
+    )
+    .expect("failed to write real root dag");
+    let link_root = root.join("link_root");
+    symlink(&real_root, &link_root).expect("failed to create symlinked root");
+
+    let real_output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&real_root)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run daglang compile on real root");
+    assert!(
+        real_output.status.success(),
+        "compile should succeed for real root directory: {}",
+        String::from_utf8_lossy(&real_output.stderr)
+    );
+
+    let link_output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&link_root)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run daglang compile on symlinked root");
+    assert!(
+        link_output.status.success(),
+        "compile should succeed for symlinked root directory: {}",
+        String::from_utf8_lossy(&link_output.stderr)
+    );
+
+    assert_eq!(
+        real_output.stdout, link_output.stdout,
+        "real and symlink root compile stdout should match"
+    );
+    assert_eq!(
+        real_output.stderr, link_output.stderr,
+        "real and symlink root compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&link_output.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn compile_command_dangling_symlink_single_file_target_exits_nonzero() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("compile_dangling_symlink_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.dag");
+    let dangling_link = root.join("broken.dag");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink target");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&dangling_link)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run daglang compile on dangling symlink target");
+    assert!(
+        !output.status.success(),
+        "compile should fail for dangling symlink single-file target"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("failed to read"));
+    assert!(
+        stderr.contains("broken.dag"),
+        "dangling symlink compile failure should include offending path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn compile_command_relative_and_absolute_dangling_symlink_targets_are_equivalent() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("compile_relative_absolute_dangling_symlink_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.dag");
+    let dangling_link = root.join("broken.dag");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink target");
+
+    let relative = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("broken.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative dangling-target daglang compile");
+    assert!(
+        !relative.status.success(),
+        "relative dangling-target compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&dangling_link)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute dangling-target daglang compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute dangling-target compile should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute dangling-target compile stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute dangling-target compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&relative.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "failed to read {}",
+            dangling_link.display()
+        )),
+        "dangling-target compile diagnostics should include normalized absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[test]
 fn compile_command_relative_and_absolute_missing_roots_are_equivalent() {
     let root = unique_temp_dir("compile_relative_absolute_missing_root");
