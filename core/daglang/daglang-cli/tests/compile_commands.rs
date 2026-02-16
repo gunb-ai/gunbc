@@ -10798,6 +10798,93 @@ fn obligations_command_explicit_text_format_matches_default_output() {
 }
 
 #[test]
+fn obligations_command_reports_transport_free_graph_counts() {
+    let fixture = unique_temp_file("obligations_transport_free");
+    std::fs::write(
+        &fixture,
+        r#"module sample.obligations
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations");
+
+    assert!(
+        output.status.success(),
+        "obligations command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("transport_execution_targets: 0"));
+    assert!(stdout.contains("pure_node_determinism_targets: 1"));
+    assert!(stdout.contains("service_transport_prepare_targets: 0"));
+    assert!(stdout.contains("resource_acquire_targets: 0"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn obligations_command_json_reports_transport_free_graph_counts() {
+    let fixture = unique_temp_file("obligations_transport_free_json");
+    std::fs::write(
+        &fixture,
+        r#"module sample.obligations
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(&fixture)
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations --format json");
+
+    assert!(
+        output.status.success(),
+        "obligations --format json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout)
+        .expect("obligations --format json should emit valid JSON");
+    assert_eq!(
+        parsed
+            .get("transport_execution_targets")
+            .and_then(Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        parsed
+            .get("pure_node_determinism_targets")
+            .and_then(Value::as_u64),
+        Some(1)
+    );
+    assert_eq!(
+        parsed
+            .get("service_transport_prepare_targets")
+            .and_then(Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        parsed
+            .get("resource_acquire_targets")
+            .and_then(Value::as_u64),
+        Some(0)
+    );
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn show_triplets_command_shows_transport_expansion_for_makegen() {
     let output = Command::new(daglang_bin())
         .arg("show-triplets")
