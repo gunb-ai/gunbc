@@ -10846,6 +10846,72 @@ fn show_triplets_command_json_format_emits_triplet_list() {
 }
 
 #[test]
+fn show_triplets_command_reports_none_for_transport_free_graph() {
+    let fixture = unique_temp_file("show_triplets_none");
+    std::fs::write(
+        &fixture,
+        r#"module sample.triplets
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang show-triplets");
+
+    assert!(
+        output.status.success(),
+        "show-triplets command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("TransportTriplets:"));
+    assert!(stdout.contains("(none)"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn show_triplets_command_json_reports_empty_array_for_transport_free_graph() {
+    let fixture = unique_temp_file("show_triplets_json_none");
+    std::fs::write(
+        &fixture,
+        r#"module sample.triplets
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(&fixture)
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang show-triplets --format json");
+
+    assert!(
+        output.status.success(),
+        "show-triplets --format json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout)
+        .expect("show-triplets --format json should emit valid JSON");
+    let triplets = parsed
+        .get("triplets")
+        .and_then(Value::as_array)
+        .expect("triplets should be a JSON array");
+    assert!(triplets.is_empty(), "transport-free graph should have no triplets");
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn show_triplets_command_explicit_text_format_matches_default_output() {
     let default_output = Command::new(daglang_bin())
         .arg("show-triplets")
