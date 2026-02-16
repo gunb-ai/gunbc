@@ -692,8 +692,7 @@ impl Parser {
         self.expect(&TokenKind::Arrow)?;
         let return_type = self.parse_return_type_expr()?;
         let body = if self.eat(&TokenKind::LBrace) {
-            self.consume_brace_block_contents()?;
-            FnBody { stmts: Vec::new() }
+            self.parse_fn_body_lossy()?
         } else {
             FnBody { stmts: Vec::new() }
         };
@@ -720,8 +719,7 @@ impl Parser {
             annotations.push(self.parse_annotation()?);
         }
         self.expect(&TokenKind::LBrace)?;
-        self.consume_brace_block_contents()?;
-        let body = FuncBody { stmts: Vec::new() };
+        let body = self.parse_func_body_lossy()?;
         Ok(FuncDef {
             name,
             params,
@@ -744,8 +742,7 @@ impl Parser {
         let outputs = self.parse_output_fields()?;
         let (uses, _provides) = self.parse_uses_provides()?;
         self.expect(&TokenKind::LBrace)?;
-        self.consume_brace_block_contents()?;
-        let body = FuncBody { stmts: Vec::new() };
+        let body = self.parse_func_body_lossy()?;
         Ok(PatternDef {
             name,
             params,
@@ -934,15 +931,13 @@ impl Parser {
                 TokenKind::Acquire => {
                     self.advance();
                     self.expect(&TokenKind::LBrace)?;
-                    self.consume_brace_block_contents()?;
-                    let body = FuncBody { stmts: Vec::new() };
+                    let body = self.parse_func_body_lossy()?;
                     acquire = Some(body);
                 }
                 TokenKind::Release => {
                     self.advance();
                     self.expect(&TokenKind::LBrace)?;
-                    self.consume_brace_block_contents()?;
-                    let body = FuncBody { stmts: Vec::new() };
+                    let body = self.parse_func_body_lossy()?;
                     release = Some(body);
                 }
                 TokenKind::Capability => {
@@ -1187,8 +1182,7 @@ impl Parser {
             self.expect(&TokenKind::RBracket)?;
         }
         self.expect(&TokenKind::LBrace)?;
-        self.consume_brace_block_contents()?;
-        let body = FuncBody { stmts: Vec::new() };
+        let body = self.parse_func_body_lossy()?;
         Ok(StageDef { name, body, after })
     }
 
@@ -1207,6 +1201,40 @@ impl Parser {
         } else {
             Err(self.err("unterminated block".into()))
         }
+    }
+
+    fn parse_fn_body_lossy(&mut self) -> Result<FnBody, ParseError> {
+        let start_pos = self.pos;
+        let start_errors = self.errors.len();
+        let parsed = self.parse_fn_body();
+
+        let should_fallback = parsed.is_err() || self.errors.len() > start_errors;
+        if !should_fallback {
+            self.expect(&TokenKind::RBrace)?;
+            return parsed;
+        }
+
+        self.pos = start_pos;
+        self.errors.truncate(start_errors);
+        self.consume_brace_block_contents()?;
+        Ok(FnBody { stmts: Vec::new() })
+    }
+
+    fn parse_func_body_lossy(&mut self) -> Result<FuncBody, ParseError> {
+        let start_pos = self.pos;
+        let start_errors = self.errors.len();
+        let parsed = self.parse_func_body();
+
+        let should_fallback = parsed.is_err() || self.errors.len() > start_errors;
+        if !should_fallback {
+            self.expect(&TokenKind::RBrace)?;
+            return parsed;
+        }
+
+        self.pos = start_pos;
+        self.errors.truncate(start_errors);
+        self.consume_brace_block_contents()?;
+        Ok(FuncBody { stmts: Vec::new() })
     }
 
     // ── fields / params ────────────────────────────────────────────

@@ -16,8 +16,11 @@
 //! TypedAST → [daglang-lower] → GraphIR (gunbc Dag/Node/Port/Edge)
 //! ```
 
+use std::collections::{HashMap, HashSet};
+
+use daglang_syntax::ast::{Expr, Item, Stmt, StringPart};
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
-use gunbc_ir::{diff_topologies, Cardinality, Dag, Node, Port};
+use gunbc_ir::{diff_topologies, Cardinality, Dag, Edge, Node, Port};
 
 /// Lowered operation payload for daglang graph nodes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +69,12 @@ pub enum CallableKind {
     Pattern,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LoweredEndpoint {
+    node_id: String,
+    primary_output: String,
+}
+
 /// Errors during lowering.
 #[derive(Debug)]
 pub enum LowerError {
@@ -111,19 +120,47 @@ impl std::fmt::Display for LowerError {
 ///   lowered into executable graph nodes yet.
 pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, LowerError> {
     let mut dag = Dag::new();
+    let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
+    let mut endpoints_by_name = HashMap::<String, Option<LoweredEndpoint>>::new();
 
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for signature in &module.signatures {
             match signature {
                 TypedItemSignature::Fn(callable) => {
-                    dag.add_node(lower_callable(callable, &module_name, CallableKind::Fn));
+                    let (node, endpoint) = lower_callable(callable, &module_name, CallableKind::Fn);
+                    register_endpoint(
+                        &mut endpoints_by_full,
+                        &mut endpoints_by_name,
+                        &module_name,
+                        &callable.name,
+                        endpoint,
+                    );
+                    dag.add_node(node);
                 }
                 TypedItemSignature::Func(callable) => {
-                    dag.add_node(lower_callable(callable, &module_name, CallableKind::Func));
+                    let (node, endpoint) =
+                        lower_callable(callable, &module_name, CallableKind::Func);
+                    register_endpoint(
+                        &mut endpoints_by_full,
+                        &mut endpoints_by_name,
+                        &module_name,
+                        &callable.name,
+                        endpoint,
+                    );
+                    dag.add_node(node);
                 }
                 TypedItemSignature::Pattern(callable) => {
-                    dag.add_node(lower_callable(callable, &module_name, CallableKind::Pattern));
+                    let (node, endpoint) =
+                        lower_callable(callable, &module_name, CallableKind::Pattern);
+                    register_endpoint(
+                        &mut endpoints_by_full,
+                        &mut endpoints_by_name,
+                        &module_name,
+                        &callable.name,
+                        endpoint,
+                    );
+                    dag.add_node(node);
                 }
                 TypedItemSignature::Pipeline { name, stages } => {
                     let node_id = lowered_node_id(&module_name, name);
@@ -153,6 +190,8 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
     if dag.nodes.is_empty() {
         return Err(LowerError::NoLowerableItems);
     }
+
+    add_dependency_edges(&mut dag, project, &endpoints_by_full, &endpoints_by_name);
 
     Ok(dag)
 }
@@ -185,15 +224,20 @@ fn lower_callable(
     callable: &TypedCallableSignature,
     module_name: &str,
     kind: CallableKind,
-) -> Node<LoweredOp> {
+) -> (Node<LoweredOp>, LoweredEndpoint) {
     let node_id = lowered_node_id(module_name, &callable.name);
-    let inputs = callable
+    let mut inputs = callable
         .params
         .iter()
         .map(|binding| {
             Port::with_cardinality(binding.name.as_str(), binding.ty.as_str(), Cardinality::ONE)
         })
-        .collect();
+        .collect::<Vec<_>>();
+    inputs.push(Port::with_cardinality(
+        "__deps",
+        "Any",
+        Cardinality::ZERO_OR_MORE,
+    ));
     let outputs = if callable.outputs.is_empty() {
         vec![Port::with_cardinality("return", "Unit", Cardinality::ONE)]
     } else {
@@ -209,20 +253,212 @@ fn lower_callable(
             })
             .collect()
     };
-    Node::opaque(
-        node_id,
-        inputs,
-        outputs,
-        LoweredOp::Callable {
-            module: module_name.to_string(),
-            kind,
-            name: callable.name.clone(),
+    let primary_output = outputs
+        .first()
+        .map(|port| port.name.0.clone())
+        .unwrap_or_else(|| "return".to_string());
+    (
+        Node::opaque(
+            node_id.clone(),
+            inputs,
+            outputs,
+            LoweredOp::Callable {
+                module: module_name.to_string(),
+                kind,
+                name: callable.name.clone(),
+            },
+        ),
+        LoweredEndpoint {
+            node_id,
+            primary_output,
         },
     )
 }
 
 fn lowered_node_id(module_name: &str, item_name: &str) -> String {
     format!("{module_name}::{item_name}").replace([' ', '/'], "_")
+}
+
+fn register_endpoint(
+    by_full: &mut HashMap<(String, String), LoweredEndpoint>,
+    by_name: &mut HashMap<String, Option<LoweredEndpoint>>,
+    module_name: &str,
+    callable_name: &str,
+    endpoint: LoweredEndpoint,
+) {
+    by_full.insert(
+        (module_name.to_string(), callable_name.to_string()),
+        endpoint.clone(),
+    );
+    by_name
+        .entry(callable_name.to_string())
+        .and_modify(|existing| {
+            if let Some(current) = existing {
+                if current != &endpoint {
+                    *existing = None;
+                }
+            }
+        })
+        .or_insert(Some(endpoint));
+}
+
+fn add_dependency_edges(
+    dag: &mut Dag<LoweredOp>,
+    project: &TypedProject,
+    endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+) {
+    let mut seen_edges = HashSet::<(String, String, String, String)>::new();
+
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Some((item_name, stmts)) = item_callable_body(&item.node) else {
+                continue;
+            };
+            let Some(target) =
+                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            else {
+                continue;
+            };
+
+            let mut calls = HashSet::new();
+            collect_calls_from_stmts(stmts, &mut calls);
+            for call in calls {
+                let Some(Some(source)) = endpoints_by_name.get(&call) else {
+                    continue;
+                };
+                if source.node_id == target.node_id {
+                    continue;
+                }
+                let key = (
+                    source.node_id.clone(),
+                    source.primary_output.clone(),
+                    target.node_id.clone(),
+                    "__deps".to_string(),
+                );
+                if seen_edges.insert(key.clone()) {
+                    dag.add_edge(Edge::new(
+                        key.0.clone(),
+                        key.1.clone(),
+                        key.2.clone(),
+                        key.3.clone(),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn item_callable_body(item: &Item) -> Option<(&str, &[Stmt])> {
+    match item {
+        Item::FnDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
+        Item::FuncDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
+        Item::PatternDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
+        _ => None,
+    }
+}
+
+fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut HashSet<String>) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+                collect_calls_from_expr(expr, calls);
+            }
+            Stmt::Return(fields) => {
+                for (_, expr) in fields {
+                    collect_calls_from_expr(expr, calls);
+                }
+            }
+        }
+    }
+}
+
+fn collect_calls_from_expr(expr: &Expr, calls: &mut HashSet<String>) {
+    match expr {
+        Expr::Call(name, args) => {
+            if should_track_call(name) {
+                calls.insert(name.clone());
+            }
+            for (_, arg) in args {
+                collect_calls_from_expr(arg, calls);
+            }
+        }
+        Expr::ServiceCall(_, args) => {
+            for (_, arg) in args {
+                collect_calls_from_expr(arg, calls);
+            }
+        }
+        Expr::FieldAccess(base, _) => collect_calls_from_expr(base, calls),
+        Expr::BinOp(lhs, _, rhs) => {
+            collect_calls_from_expr(lhs, calls);
+            collect_calls_from_expr(rhs, calls);
+        }
+        Expr::UnaryOp(_, inner) => collect_calls_from_expr(inner, calls),
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let StringPart::Expr(inner) = part {
+                    collect_calls_from_expr(inner, calls);
+                }
+            }
+        }
+        Expr::Record(_, fields) => {
+            for (_, value) in fields {
+                collect_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            collect_calls_from_expr(scrutinee, calls);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_calls_from_expr(guard, calls);
+                }
+                collect_calls_from_expr(&arm.body, calls);
+            }
+        }
+        Expr::If(cond, then_expr, else_expr) => {
+            collect_calls_from_expr(cond, calls);
+            collect_calls_from_expr(then_expr, calls);
+            if let Some(otherwise) = else_expr {
+                collect_calls_from_expr(otherwise, calls);
+            }
+        }
+        Expr::For(_, iterable, body) => {
+            collect_calls_from_expr(iterable, calls);
+            collect_calls_from_expr(body, calls);
+        }
+        Expr::Pipe(lhs, rhs) => {
+            collect_calls_from_expr(lhs, calls);
+            collect_calls_from_expr(rhs, calls);
+        }
+        Expr::Lambda(_, body) => collect_calls_from_expr(body, calls),
+        Expr::List(items) => {
+            for item in items {
+                collect_calls_from_expr(item, calls);
+            }
+        }
+        Expr::Map(entries) => {
+            for (key, value) in entries {
+                collect_calls_from_expr(key, calls);
+                collect_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Guarded(inner, guard) => {
+            collect_calls_from_expr(inner, calls);
+            collect_calls_from_expr(guard, calls);
+        }
+        Expr::After(inner, _) => collect_calls_from_expr(inner, calls),
+        Expr::Return(fields) => {
+            for (_, value) in fields {
+                collect_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Literal(_) | Expr::Ident(_) => {}
+    }
+}
+
+fn should_track_call(name: &str) -> bool {
+    !matches!(name, "<expr>" | "as" | "with" | "fn")
 }
 
 #[cfg(test)]
@@ -271,6 +507,11 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(node_ids.contains(&"tools.makegen::render_makefile"));
         assert!(node_ids.contains(&"tools.makegen::makegen"));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "tools.makegen::render_makefile"
+                && edge.to_node.0 == "tools.makegen::makegen"
+                && edge.to_port.0 == "__deps"
+        }));
     }
 
     #[test]
