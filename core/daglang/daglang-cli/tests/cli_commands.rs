@@ -431,6 +431,45 @@ fn check_command_curdir_segment_root_matches_plain_relative_output() {
 }
 
 #[test]
+fn check_command_curdir_segment_missing_root_matches_plain_relative_output() {
+    let cwd = unique_temp_dir("check_curdir_segment_missing_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+
+    let curdir_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./missing_root")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run curdir-segment missing-root daglang check");
+    assert!(
+        !curdir_segment.status.success(),
+        "curdir-segment missing-root check should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing_root")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative missing-root daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative missing-root check should fail"
+    );
+
+    assert_eq!(
+        curdir_segment.stdout, plain_relative.stdout,
+        "curdir-segment and plain-relative missing-root check stdout should match"
+    );
+    assert_eq!(
+        curdir_segment.stderr, plain_relative.stderr,
+        "curdir-segment and plain-relative missing-root check stderr should match"
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
 fn check_command_relative_and_absolute_missing_roots_are_equivalent() {
     let missing_relative = unique_name("check_relative_absolute_missing_root");
     let cwd = workspace_root()
@@ -742,6 +781,45 @@ fn check_command_curdir_segment_single_file_target_matches_plain_relative_output
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_curdir_segment_missing_single_file_matches_plain_relative_output() {
+    let root = unique_temp_dir("check_curdir_segment_missing_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+
+    let curdir_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./missing.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment missing-target daglang check");
+    assert!(
+        !curdir_segment.status.success(),
+        "curdir-segment missing-target check should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative missing-target daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative missing-target check should fail"
+    );
+
+    assert_eq!(
+        curdir_segment.stdout, plain_relative.stdout,
+        "curdir-segment and plain-relative missing-target check stdout should match"
+    );
+    assert_eq!(
+        curdir_segment.stderr, plain_relative.stderr,
+        "curdir-segment and plain-relative missing-target check stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
 #[test]
@@ -1084,6 +1162,45 @@ fn modules_command_curdir_segment_root_matches_plain_relative_output() {
         curdir_segment.stderr, plain_relative.stderr,
         "curdir-segment and plain-relative modules stderr should match"
     );
+}
+
+#[test]
+fn modules_command_curdir_segment_missing_root_matches_plain_relative_output() {
+    let cwd = unique_temp_dir("modules_curdir_segment_missing_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+
+    let curdir_segment = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./missing_root")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run curdir-segment missing-root daglang modules");
+    assert!(
+        !curdir_segment.status.success(),
+        "curdir-segment missing-root modules should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("missing_root")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative missing-root daglang modules");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative missing-root modules should fail"
+    );
+
+    assert_eq!(
+        curdir_segment.stdout, plain_relative.stdout,
+        "curdir-segment and plain-relative missing-root modules stdout should match"
+    );
+    assert_eq!(
+        curdir_segment.stderr, plain_relative.stderr,
+        "curdir-segment and plain-relative missing-root modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
 }
 
 #[test]
