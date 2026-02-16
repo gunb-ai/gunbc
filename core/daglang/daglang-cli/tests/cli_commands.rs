@@ -788,9 +788,11 @@ fn check_command_accepts_symlink_single_file_target() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected_check_success_stdout(1));
     assert!(
-        stdout.contains("OK: parsed 1 file(s)"),
-        "symlinked single-file target should parse successfully: {stdout}"
+        output.stderr.is_empty(),
+        "symlinked single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -1221,7 +1223,12 @@ fn check_command_single_file_mode_ignores_sibling_broken_files() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("OK: parsed 1 file(s)"));
+    assert_eq!(stdout, expected_check_success_stdout(1));
+    assert!(
+        output.stderr.is_empty(),
+        "single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -1374,9 +1381,11 @@ fn check_command_empty_directory_succeeds_with_zero_files() {
         "check should succeed for an empty directory"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected_check_success_stdout(0));
     assert!(
-        stdout.contains("OK: parsed 0 file(s)"),
-        "expected empty directory to parse zero files: {stdout}"
+        output.stderr.is_empty(),
+        "empty-directory check should not emit stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
