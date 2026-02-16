@@ -2759,6 +2759,87 @@ func run(path: String) -> { body: String } {
     }
 
     #[test]
+    fn strict_mode_duplicate_service_definition_also_reports_ambiguous_service_call() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for duplicate service definition");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateDefinition { module, name }
+                if module == "sample.main" && name == "FsStorage"
+        )));
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousServiceCall {
+                caller,
+                service_call
+            } if caller == "run" && service_call == "FsStorage.read"
+        )));
+    }
+
+    #[test]
+    fn relaxed_mode_duplicate_service_definition_suppresses_ambiguous_service_call() {
+        let graph = module_graph_from_sources(&[(
+            "sample/single.dag",
+            r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph)
+            .expect_err("relaxed mode should still fail for duplicate service definition");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateDefinition { module, name }
+                if module == "sample.single" && name == "FsStorage"
+        )));
+        assert!(!errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousServiceCall {
+                caller,
+                service_call
+            } if caller == "run" && service_call == "FsStorage.read"
+        )));
+    }
+
+    #[test]
     fn relaxed_mode_allows_unresolved_service_call() {
         let graph = module_graph_from_sources(&[(
             "service_unresolved_call_relaxed.dag",
