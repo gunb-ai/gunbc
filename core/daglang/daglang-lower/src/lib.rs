@@ -309,6 +309,11 @@ fn add_dependency_edges(
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
 ) {
     let mut seen_edges = HashSet::<(String, String, String, String)>::new();
+    let mut seen_nodes = dag
+        .nodes
+        .iter()
+        .map(|node| node.id.0.clone())
+        .collect::<HashSet<_>>();
 
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -331,22 +336,342 @@ fn add_dependency_edges(
                 if source.node_id == target.node_id {
                     continue;
                 }
-                let key = (
+                let key = edge_key(
                     source.node_id.clone(),
                     source.primary_output.clone(),
                     target.node_id.clone(),
                     "__deps".to_string(),
                 );
-                if seen_edges.insert(key.clone()) {
-                    dag.add_edge(Edge::new(
-                        key.0.clone(),
-                        key.1.clone(),
-                        key.2.clone(),
-                        key.3.clone(),
-                    ));
+                add_edge_if_new(dag, &mut seen_edges, key);
+            }
+
+            expand_content_upsert_patterns(
+                dag,
+                &module_name,
+                item_name,
+                stmts,
+                target,
+                endpoints_by_name,
+                &mut seen_nodes,
+                &mut seen_edges,
+            );
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn expand_content_upsert_patterns(
+    dag: &mut Dag<LoweredOp>,
+    module_name: &str,
+    item_name: &str,
+    stmts: &[Stmt],
+    target: &LoweredEndpoint,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    seen_nodes: &mut HashSet<String>,
+    seen_edges: &mut HashSet<(String, String, String, String)>,
+) {
+    let mut bound_callables = HashMap::<String, String>::new();
+    let mut expansion_count = 0usize;
+
+    for stmt in stmts {
+        let maybe_binding = match stmt {
+            Stmt::Let(name, expr) | Stmt::Assign(name, expr) => Some((name, expr)),
+            Stmt::Expr(expr) => {
+                if let Expr::Call(name, args) = expr {
+                    if name == "content_upsert" {
+                        expansion_count += 1;
+                        expand_single_content_upsert(
+                            dag,
+                            module_name,
+                            item_name,
+                            expansion_count,
+                            args,
+                            target,
+                            &bound_callables,
+                            endpoints_by_name,
+                            seen_nodes,
+                            seen_edges,
+                        );
+                    }
+                }
+                None
+            }
+            Stmt::Return(_) => None,
+        };
+
+        let Some((binding, expr)) = maybe_binding else {
+            continue;
+        };
+        match expr {
+            Expr::Call(name, args) => {
+                if should_track_call(name) {
+                    bound_callables.insert(binding.clone(), name.clone());
+                }
+                if name == "content_upsert" {
+                    expansion_count += 1;
+                    expand_single_content_upsert(
+                        dag,
+                        module_name,
+                        item_name,
+                        expansion_count,
+                        args,
+                        target,
+                        &bound_callables,
+                        endpoints_by_name,
+                        seen_nodes,
+                        seen_edges,
+                    );
                 }
             }
+            Expr::Ident(source) => {
+                if let Some(origin) = bound_callables.get(source) {
+                    bound_callables.insert(binding.clone(), origin.clone());
+                }
+            }
+            _ => {}
         }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn expand_single_content_upsert(
+    dag: &mut Dag<LoweredOp>,
+    module_name: &str,
+    item_name: &str,
+    expansion_count: usize,
+    args: &[(Option<String>, Expr)],
+    target: &LoweredEndpoint,
+    bound_callables: &HashMap<String, String>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    seen_nodes: &mut HashSet<String>,
+    seen_edges: &mut HashSet<(String, String, String, String)>,
+) {
+    let suffix = expansion_suffix(item_name, expansion_count);
+    let prepare_read_id = format!("prepare_read_{suffix}");
+    let execute_read_id = format!("execute_read_{suffix}");
+    let compare_id = format!("compare_{suffix}_content");
+    let prepare_write_id = format!("prepare_write_{suffix}");
+    let execute_transport_id = format!("execute_{suffix}_transport");
+
+    add_node_if_missing(
+        dag,
+        seen_nodes,
+        Node::opaque(
+            prepare_read_id.clone(),
+            vec![
+                Port::scalar("path", "String"),
+                Port::scalar("res:file:Makefile", "FilesystemHandle"),
+            ],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: module_name.to_string(),
+                kind: CallableKind::Pattern,
+                name: format!("content_upsert::{prepare_read_id}"),
+            },
+        ),
+    );
+    add_node_if_missing(
+        dag,
+        seen_nodes,
+        Node::opaque(
+            execute_read_id.clone(),
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: module_name.to_string(),
+                kind: CallableKind::Pattern,
+                name: format!("content_upsert::{execute_read_id}"),
+            },
+        ),
+    );
+    add_node_if_missing(
+        dag,
+        seen_nodes,
+        Node::opaque(
+            compare_id.clone(),
+            vec![
+                Port::scalar("expected_content", "String"),
+                Port::scalar("response", "TransportResponse"),
+            ],
+            vec![
+                Port::scalar("fresh", "Bool"),
+                Port::scalar("skip", "Bool"),
+            ],
+            LoweredOp::Callable {
+                module: module_name.to_string(),
+                kind: CallableKind::Pattern,
+                name: format!("content_upsert::{compare_id}"),
+            },
+        ),
+    );
+    add_node_if_missing(
+        dag,
+        seen_nodes,
+        Node::opaque(
+            prepare_write_id.clone(),
+            vec![
+                Port::scalar("content", "String"),
+                Port::scalar("path", "String"),
+            ],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: module_name.to_string(),
+                kind: CallableKind::Pattern,
+                name: format!("content_upsert::{prepare_write_id}"),
+            },
+        ),
+    );
+    add_node_if_missing(
+        dag,
+        seen_nodes,
+        Node::opaque(
+            execute_transport_id.clone(),
+            vec![
+                Port::scalar("request", "TransportRequest"),
+                Port::scalar("skip", "Bool"),
+            ],
+            vec![Port::scalar("makegen_response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: module_name.to_string(),
+                kind: CallableKind::Pattern,
+                name: format!("content_upsert::{execute_transport_id}"),
+            },
+        ),
+    );
+
+    add_edge_if_new(
+        dag,
+        seen_edges,
+        edge_key(
+            prepare_read_id.clone(),
+            "request".to_string(),
+            execute_read_id.clone(),
+            "request".to_string(),
+        ),
+    );
+    add_edge_if_new(
+        dag,
+        seen_edges,
+        edge_key(
+            execute_read_id.clone(),
+            "response".to_string(),
+            compare_id.clone(),
+            "response".to_string(),
+        ),
+    );
+    add_edge_if_new(
+        dag,
+        seen_edges,
+        edge_key(
+            prepare_write_id.clone(),
+            "request".to_string(),
+            execute_transport_id.clone(),
+            "request".to_string(),
+        ),
+    );
+    add_edge_if_new(
+        dag,
+        seen_edges,
+        edge_key(
+            compare_id.clone(),
+            "skip".to_string(),
+            execute_transport_id.clone(),
+            "skip".to_string(),
+        ),
+    );
+    add_edge_if_new(
+        dag,
+        seen_edges,
+        edge_key(
+            execute_transport_id,
+            "makegen_response".to_string(),
+            target.node_id.clone(),
+            "__deps".to_string(),
+        ),
+    );
+
+    if let Some(source) = resolve_content_source(args, bound_callables, endpoints_by_name) {
+        add_edge_if_new(
+            dag,
+            seen_edges,
+            edge_key(
+                source.node_id.clone(),
+                source.primary_output.clone(),
+                compare_id.clone(),
+                "expected_content".to_string(),
+            ),
+        );
+        add_edge_if_new(
+            dag,
+            seen_edges,
+            edge_key(
+                source.node_id,
+                source.primary_output,
+                prepare_write_id,
+                "content".to_string(),
+            ),
+        );
+    }
+}
+
+fn resolve_content_source(
+    args: &[(Option<String>, Expr)],
+    bound_callables: &HashMap<String, String>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+) -> Option<LoweredEndpoint> {
+    let (_, content_expr) = args
+        .iter()
+        .find(|(name, _)| matches!(name.as_deref(), Some("content")))?;
+    let source_name = match content_expr {
+        Expr::Ident(name) => bound_callables
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| name.clone()),
+        Expr::Call(name, _) => name.clone(),
+        _ => return None,
+    };
+    endpoints_by_name.get(&source_name).and_then(|entry| entry.clone())
+}
+
+fn add_node_if_missing(
+    dag: &mut Dag<LoweredOp>,
+    seen_nodes: &mut HashSet<String>,
+    node: Node<LoweredOp>,
+) {
+    let node_id = node.id.0.clone();
+    if seen_nodes.insert(node_id) {
+        dag.add_node(node);
+    }
+}
+
+fn add_edge_if_new(
+    dag: &mut Dag<LoweredOp>,
+    seen_edges: &mut HashSet<(String, String, String, String)>,
+    key: (String, String, String, String),
+) {
+    if seen_edges.insert(key.clone()) {
+        dag.add_edge(Edge::new(key.0, key.1, key.2, key.3));
+    }
+}
+
+fn edge_key(
+    from_node: String,
+    from_port: String,
+    to_node: String,
+    to_port: String,
+) -> (String, String, String, String) {
+    (from_node, from_port, to_node, to_port)
+}
+
+fn expansion_suffix(item_name: &str, expansion_count: usize) -> String {
+    let base = item_name
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect::<String>();
+    if expansion_count <= 1 {
+        base
+    } else {
+        format!("{base}_{expansion_count}")
     }
 }
 
@@ -507,10 +832,20 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(node_ids.contains(&"tools.makegen::render_makefile"));
         assert!(node_ids.contains(&"tools.makegen::makegen"));
+        assert!(node_ids.contains(&"prepare_read_makegen"));
+        assert!(node_ids.contains(&"execute_read_makegen"));
+        assert!(node_ids.contains(&"compare_makegen_content"));
+        assert!(node_ids.contains(&"prepare_write_makegen"));
+        assert!(node_ids.contains(&"execute_makegen_transport"));
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == "tools.makegen::render_makefile"
                 && edge.to_node.0 == "tools.makegen::makegen"
                 && edge.to_port.0 == "__deps"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "tools.makegen::render_makefile"
+                && edge.to_node.0 == "compare_makegen_content"
+                && edge.to_port.0 == "expected_content"
         }));
     }
 
