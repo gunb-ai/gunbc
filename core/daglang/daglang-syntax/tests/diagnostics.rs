@@ -98,3 +98,22 @@ fn parse_with_file_diagnostics_aggregates_multiple_lex_diagnostics() {
     assert_eq!(diagnostics[1].line, Some(3));
     assert_eq!(diagnostics[1].column, Some(1));
 }
+
+#[test]
+fn parse_with_file_diagnostics_reports_utf8_adjacent_lex_column() {
+    let src = "é$\n";
+    let diagnostics = parse_with_file_diagnostics(Path::new("sample.dag"), src)
+        .expect_err("source should fail with lexical diagnostic");
+    assert!(!diagnostics.is_empty());
+    assert!(diagnostics.iter().all(|diag| diag.kind == DiagnosticKind::Lex));
+    let dollar = diagnostics
+        .iter()
+        .find(|diag| diag.message.contains("unexpected character '$'"))
+        .expect("expected diagnostic for '$' character");
+    assert_eq!(dollar.line, Some(1));
+    assert_eq!(
+        dollar.column,
+        Some(2),
+        "lexical column should account for multibyte UTF-8 characters"
+    );
+}
