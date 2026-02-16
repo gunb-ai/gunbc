@@ -64,13 +64,13 @@ pub fn byte_to_line_col(source: &str, byte_offset: usize) -> (usize, usize) {
 }
 
 pub fn parse(source: &str) -> Result<SourceFile, Vec<ParseError>> {
-    let (tokens, lex_errors) = Lexer::tokenize_with_errors(source);
-    if !lex_errors.is_empty() {
-        return Err(lex_errors
+    let (tokens, lex_diagnostics) = Lexer::tokenize_with_diagnostics(source);
+    if !lex_diagnostics.is_empty() {
+        return Err(lex_diagnostics
             .into_iter()
-            .map(|error| ParseError {
-                message: error.message,
-                span: error.span,
+            .map(|diagnostic| ParseError {
+                message: diagnostic.message,
+                span: diagnostic.span.unwrap_or(Span { start: 0, end: 0 }),
             })
             .collect());
     }

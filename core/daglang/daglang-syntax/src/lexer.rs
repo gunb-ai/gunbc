@@ -1,3 +1,4 @@
+use crate::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::span::Span;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,6 +74,12 @@ pub struct LexError {
     pub span: Span,
 }
 
+impl LexError {
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        Diagnostic::new(DiagnosticKind::Lex, self.message.clone()).with_span(self.span)
+    }
+}
+
 pub struct Lexer<'a> {
     source: &'a [u8],
     pos: usize,
@@ -93,6 +100,15 @@ impl<'a> Lexer<'a> {
     pub fn tokenize(source: &str) -> Vec<Token> {
         let (tokens, _) = Self::tokenize_with_errors(source);
         tokens
+    }
+
+    pub fn tokenize_with_diagnostics(source: &str) -> (Vec<Token>, Vec<Diagnostic>) {
+        let (tokens, errors) = Self::tokenize_with_errors(source);
+        let diagnostics = errors
+            .into_iter()
+            .map(|error| error.to_diagnostic())
+            .collect();
+        (tokens, diagnostics)
     }
 
     pub fn tokenize_with_errors(source: &str) -> (Vec<Token>, Vec<LexError>) {
@@ -445,5 +461,13 @@ mod tests {
         let (_tokens, errors) = Lexer::tokenize_with_errors("module test\n$");
         assert_eq!(errors.len(), 1);
         assert!(errors[0].message.contains("unexpected character '$'"));
+    }
+
+    #[test]
+    fn unknown_token_reports_lex_diagnostic() {
+        let (_tokens, diagnostics) = Lexer::tokenize_with_diagnostics("module test\n$");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].kind, DiagnosticKind::Lex);
+        assert!(diagnostics[0].message.contains("unexpected character '$'"));
     }
 }
