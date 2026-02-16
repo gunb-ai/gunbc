@@ -10616,6 +10616,194 @@ fn compile_command_reports_diagnostics_for_invalid_file() {
 }
 
 #[test]
+fn compile_command_reports_file_line_col_for_broken_file() {
+    let broken_file = unique_temp_file("compile_broken_line_col");
+    std::fs::write(
+        &broken_file,
+        "module tmp.bad\nfn broken( -> String {\n  \"oops\"\n}\n",
+    )
+    .expect("failed to create broken dag file");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&broken_file)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for broken file");
+
+    assert!(!output.status.success(), "broken file should fail compile");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    assert!(stderr.contains("compile diagnostics"));
+    assert!(
+        stderr.contains(":2:12:"),
+        "expected file:line:col in stderr, got: {stderr}"
+    );
+
+    std::fs::remove_file(broken_file).expect("failed to remove broken dag file");
+}
+
+#[test]
+fn compile_command_reports_lex_diagnostic_for_unknown_character() {
+    let broken_file = unique_temp_file("compile_lex_unknown_character");
+    std::fs::write(&broken_file, "module tmp.lex\n$\n").expect("failed to create lex-invalid file");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&broken_file)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for lex-invalid file");
+
+    assert!(!output.status.success(), "lex-invalid file should fail compile");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    assert!(stderr.contains("compile diagnostics"));
+    assert!(stderr.contains("unexpected character '$'"));
+    assert!(
+        stderr.contains(":2:1:"),
+        "expected lex diagnostic line/column in stderr, got: {stderr}"
+    );
+
+    std::fs::remove_file(broken_file).expect("failed to remove lex-invalid file");
+}
+
+#[test]
+fn compile_command_directory_mode_aggregates_multiple_file_diagnostics() {
+    let root = unique_temp_dir("compile_directory_mode_errors");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("broken_a.dag"), "module sample.a\nfn")
+        .expect("failed to write broken_a");
+    std::fs::write(root.join("broken_b.dag"), "module sample.b\nimport")
+        .expect("failed to write broken_b");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail when multiple files are invalid"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    assert!(stderr.contains("compile diagnostics"));
+    assert!(stderr.contains("broken_a.dag"));
+    assert!(stderr.contains("broken_b.dag"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_outputs_deterministic_diagnostic_order() {
+    let root = unique_temp_dir("compile_directory_mode_order");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("z_broken.dag"), "module sample.z\nfn")
+        .expect("failed to write z_broken");
+    std::fs::write(root.join("a_broken.dag"), "module sample.a\nfn")
+        .expect("failed to write a_broken");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail when files are invalid"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    let first_diagnostic_line = stderr
+        .lines()
+        .find(|line| line.contains(".dag:"))
+        .expect("expected at least one diagnostic line with file path");
+    assert!(
+        first_diagnostic_line.contains("a_broken.dag"),
+        "diagnostics should be deterministically sorted by path: {stderr}"
+    );
+    assert!(stderr.contains("z_broken.dag"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_diagnostic_output_is_deterministic_for_same_input() {
+    let root = unique_temp_dir("compile_output_deterministic");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("z_lex.dag"), "module sample.lex\n$\n")
+        .expect("failed to write z_lex");
+    std::fs::write(root.join("a_parse.dag"), "module sample.parse\nfn")
+        .expect("failed to write a_parse");
+
+    let first = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang compile");
+    assert!(!first.status.success(), "first compile run should fail");
+
+    let second = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang compile");
+    assert!(!second.status.success(), "second compile run should fail");
+
+    assert_eq!(
+        first.stderr, second.stderr,
+        "compile diagnostics should be deterministic for identical inputs"
+    );
+    assert_eq!(
+        first.stdout, second.stdout,
+        "compile stdout should be deterministic for identical inputs"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&first.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_single_file_mode_ignores_sibling_broken_files() {
+    let root = unique_temp_dir("compile_single_file_ignores_sibling_broken");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    let good_file = root.join("good.dag");
+    std::fs::write(&good_file, "module sample.good\nfn ok() -> Unit {}")
+        .expect("failed to write good file");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write broken sibling");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&good_file)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on single file");
+
+    assert!(
+        output.status.success(),
+        "single-file compile should succeed even with sibling broken file: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    assert!(
+        output.stderr.is_empty(),
+        "single-file compile should not emit stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn expand_command_reports_diagnostics_for_invalid_file() {
     let broken = unique_temp_file("expand_broken");
     std::fs::write(&broken, "module sample.broken\nfn broken( -> String {")
