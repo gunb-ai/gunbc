@@ -30667,6 +30667,75 @@ fn run_command_dry_run_does_not_write_makefile() {
 }
 
 #[test]
+fn run_command_supports_equals_output_flag_in_real_mode() {
+    let output_path = unique_temp_output_file("run_real_mode_equals_output");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale output before run");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with --output=<path> syntax");
+
+    assert!(
+        output.status.success(),
+        "run with --output=<path> should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output_path.exists(),
+        "real run should write output file at {}",
+        output_path.display()
+    );
+    std::fs::remove_file(&output_path).expect("failed to clean up equals-output file");
+}
+
+#[test]
+fn run_command_check_mode_preserves_existing_file_and_reports_not_written() {
+    let output_path = unique_temp_output_file("run_check_mode");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
+    }
+    let stale = "stale makefile content";
+    std::fs::write(&output_path, stale).expect("failed to seed stale check-mode file");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("--check-mode")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with --check-mode");
+
+    assert!(
+        output.status.success(),
+        "run with --check-mode should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=real"),
+        "check-mode run should still report real mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode run should report written=false when writes are skipped: {stdout}"
+    );
+    let after = std::fs::read_to_string(&output_path).expect("failed to read check-mode file");
+    assert_eq!(
+        after, stale,
+        "check-mode run should not overwrite existing output content"
+    );
+    std::fs::remove_file(&output_path).expect("failed to clean up check-mode output file");
+}
+
+#[test]
 fn compile_family_commands_execute_real_pipeline_paths() {
     for command in ["expand", "manifest", "obligations", "show-triplets", "compile"] {
         let output = Command::new(daglang_bin())

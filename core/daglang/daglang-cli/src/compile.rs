@@ -5015,6 +5015,10 @@ func run(path: String) -> { body: String } {
                 .expect("system clock should be after unix epoch")
                 .as_nanos()
         ));
+        if temp_path.exists() {
+            std::fs::remove_file(&temp_path)
+                .expect("failed to clear stale check-mode output path");
+        }
         let input_mocks = makegen_entrypoint_mocks(&temp_path.to_string_lossy(), true);
 
         let log = compile_resolve_execute_from_context(
@@ -5032,6 +5036,10 @@ func run(path: String) -> { body: String } {
             matches!(makegen_entry.outputs.get("written"), Some(Value::Bool(_))),
             "makegen wrapper should emit a boolean `written` output"
         );
+        if temp_path.exists() {
+            std::fs::remove_file(&temp_path)
+                .expect("failed to clean check-mode output file created by runtime");
+        }
     }
 
     #[test]

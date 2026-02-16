@@ -267,6 +267,17 @@ fn main() {
             };
             let context = build_context(Some(&run_args.file));
             let input_mocks = makegen_entrypoint_mocks(&run_args.output_path, run_args.check_mode);
+            let check_mode_snapshot = if run_args.check_mode && !run_args.dry_run {
+                match snapshot_output_file(&run_args.output_path) {
+                    Ok(snapshot) => Some(snapshot),
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                None
+            };
             let mode = if run_args.dry_run {
                 ExecutionMode::DryRun(makegen_dry_run_transport_mocks(&run_args.output_path))
             } else {
@@ -274,13 +285,17 @@ fn main() {
             };
             match compile_resolve_execute_from_context(&context, mode, Some(&input_mocks)) {
                 Ok(log) => {
-                    let written = log
-                        .entries
-                        .iter()
-                        .find(|entry| entry.node_id == "tools.makegen::makegen")
-                        .and_then(|entry| entry.outputs.get("written"))
-                        .and_then(|value| value.as_bool())
-                        .unwrap_or(false);
+                    let mut written = run_written_from_log(&log);
+                    if let Some(snapshot) = check_mode_snapshot {
+                        if let Err(error) = restore_output_file_from_snapshot(
+                            &run_args.output_path,
+                            snapshot,
+                        ) {
+                            eprintln!("{error}");
+                            std::process::exit(1);
+                        }
+                        written = false;
+                    }
                     println!(
                         "Run completed: nodes={}, output={}, written={written}, mode={}",
                         log.entries.len(),
@@ -297,6 +312,48 @@ fn main() {
         cmd => {
             eprintln!("Unknown command: {cmd}");
             exit_usage("<command> [args...]");
+        }
+    }
+}
+
+fn run_written_from_log(log: &gunbc_exec::ExecutionLog) -> bool {
+    if let Some(skip) = log
+        .entries
+        .iter()
+        .find(|entry| entry.node_id == "execute_makegen_transport")
+        .and_then(|entry| entry.outputs.get("skip"))
+        .and_then(|value| value.as_bool())
+    {
+        return !skip;
+    }
+    log.entries
+        .iter()
+        .find(|entry| entry.node_id == "tools.makegen::makegen")
+        .and_then(|entry| entry.outputs.get("written"))
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+fn snapshot_output_file(path: &str) -> Result<Option<String>, String> {
+    if !std::path::Path::new(path).exists() {
+        return Ok(None);
+    }
+    std::fs::read_to_string(path)
+        .map(Some)
+        .map_err(|error| format!("failed to read check-mode output snapshot `{path}`: {error}"))
+}
+
+fn restore_output_file_from_snapshot(path: &str, snapshot: Option<String>) -> Result<(), String> {
+    match snapshot {
+        Some(content) => std::fs::write(path, content)
+            .map_err(|error| format!("failed to restore check-mode output `{path}`: {error}")),
+        None => {
+            if std::path::Path::new(path).exists() {
+                std::fs::remove_file(path).map_err(|error| {
+                    format!("failed to remove check-mode output `{path}`: {error}")
+                })?;
+            }
+            Ok(())
         }
     }
 }
