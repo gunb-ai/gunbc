@@ -35,12 +35,7 @@ pub fn build_context(input: Option<&String>) -> PipelineContext {
 
 pub fn resolve_default_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let dsl = cwd.join("dsl");
-    if dsl.exists() {
-        dsl
-    } else {
-        PathBuf::from("dsl")
-    }
+    cwd.join("dsl")
 }
 
 pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, String> {

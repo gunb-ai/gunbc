@@ -18,7 +18,7 @@
 //! every `.dag` file in the configured directories is automatically part
 //! of the module graph.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use daglang_syntax::ast::SourceFile;
@@ -52,10 +52,32 @@ impl ModuleGraph {
     /// the module graph.
     pub fn discover(roots: &[PathBuf]) -> Result<Self, ResolveError> {
         let mut dag_files = Vec::new();
+        let mut visited_dirs = HashSet::new();
         for root in roots {
-            collect_dag_files(root, &mut dag_files)?;
+            if !root.exists() {
+                return Err(ResolveError::InvalidRootPath {
+                    path: root.clone(),
+                    reason: "does not exist".to_string(),
+                });
+            }
+            if !root.is_dir() {
+                return Err(ResolveError::InvalidRootPath {
+                    path: root.clone(),
+                    reason: "is not a directory".to_string(),
+                });
+            }
+            collect_dag_files(root, &mut dag_files, &mut visited_dirs)?;
         }
+        let mut canonical_dag_files = Vec::with_capacity(dag_files.len());
+        for path in dag_files {
+            let canonical = std::fs::canonicalize(&path)
+                .map_err(|e| ResolveError::IoError(path.clone(), e))?;
+            canonical_dag_files.push(canonical);
+        }
+        dag_files = canonical_dag_files;
         dag_files.sort();
+        dag_files.dedup();
+        let canonical_roots = canonicalize_roots(roots);
 
         let mut parsed: Vec<ParsedModuleRecord> = Vec::new();
         let mut parse_errors: Vec<(PathBuf, Vec<Diagnostic>)> = Vec::new();
@@ -63,13 +85,13 @@ impl ModuleGraph {
         for path in &dag_files {
             let source = std::fs::read_to_string(path)
                 .map_err(|e| ResolveError::IoError(path.clone(), e))?;
-            match parser::parse(&source) {
+            match parser::parse_with_file_diagnostics(path, &source) {
                 Ok(ast) => {
                     let mod_path = ast
                         .module_path
                         .as_ref()
                         .map(|mp| mp.node.segments.clone())
-                        .unwrap_or_else(|| path_to_module_path(path, roots));
+                        .unwrap_or_else(|| path_to_module_path(path, roots, &canonical_roots));
                     let imports: Vec<Vec<String>> = ast
                         .imports
                         .iter()
@@ -77,11 +99,7 @@ impl ModuleGraph {
                         .collect();
                     parsed.push((path.clone(), mod_path, imports, ast));
                 }
-                Err(errs) => {
-                    let diagnostics = errs
-                        .iter()
-                        .map(|err| err.to_diagnostic(path, &source))
-                        .collect();
+                Err(diagnostics) => {
                     parse_errors.push((path.clone(), diagnostics));
                 }
             }
@@ -136,8 +154,17 @@ impl ModuleGraph {
 }
 
 /// Recursively collect all `.dag` files under `dir`.
-fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), ResolveError> {
+fn collect_dag_files(
+    dir: &Path,
+    out: &mut Vec<PathBuf>,
+    visited_dirs: &mut HashSet<PathBuf>,
+) -> Result<(), ResolveError> {
     if !dir.is_dir() {
+        return Ok(());
+    }
+    let canonical_dir =
+        std::fs::canonicalize(dir).map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
+    if !visited_dirs.insert(canonical_dir) {
         return Ok(());
     }
     let entries =
@@ -146,7 +173,7 @@ fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), ResolveEr
         let entry = entry.map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
         let p = entry.path();
         if p.is_dir() {
-            collect_dag_files(&p, out)?;
+            collect_dag_files(&p, out, visited_dirs)?;
         } else if p.extension().and_then(|e| e.to_str()) == Some("dag") {
             out.push(p);
         }
@@ -156,15 +183,66 @@ fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), ResolveEr
 
 /// Derive a module path from a filesystem path relative to any root.
 /// `dsl/tools/makegen.dag` with root `dsl/` -> `["tools", "makegen"]`
-fn path_to_module_path(path: &Path, roots: &[PathBuf]) -> Vec<String> {
+fn relative_path_to_module_path(relative: &Path) -> Vec<String> {
+    relative
+        .with_extension("")
+        .components()
+        .filter_map(|component| component.as_os_str().to_str().map(String::from))
+        .collect()
+}
+
+fn choose_preferred_relative(current: Option<PathBuf>, candidate: &Path) -> Option<PathBuf> {
+    let candidate_buf = candidate.to_path_buf();
+    match current {
+        None => Some(candidate_buf),
+        Some(existing) => {
+            let existing_depth = existing.components().count();
+            let candidate_depth = candidate_buf.components().count();
+            if candidate_depth < existing_depth {
+                return Some(candidate_buf);
+            }
+            if candidate_depth > existing_depth {
+                return Some(existing);
+            }
+
+            let existing_key = existing.as_os_str().to_string_lossy();
+            let candidate_key = candidate_buf.as_os_str().to_string_lossy();
+            if candidate_key < existing_key {
+                Some(candidate_buf)
+            } else {
+                Some(existing)
+            }
+        }
+    }
+}
+
+fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
+    roots
+        .iter()
+        .filter_map(|root| std::fs::canonicalize(root).ok())
+        .collect()
+}
+
+fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
+    let canonical_path = std::fs::canonicalize(path).ok();
+    let mut best_relative: Option<PathBuf> = None;
     for root in roots {
         if let Ok(rel) = path.strip_prefix(root) {
-            return rel
-                .with_extension("")
-                .components()
-                .filter_map(|c| c.as_os_str().to_str().map(String::from))
-                .collect();
+            best_relative = choose_preferred_relative(best_relative, rel);
         }
+    }
+    for canonical_root in canonical_roots {
+        if let Ok(rel) = path.strip_prefix(canonical_root) {
+            best_relative = choose_preferred_relative(best_relative, rel);
+        }
+        if let Some(canonical_path) = &canonical_path {
+            if let Ok(rel) = canonical_path.strip_prefix(canonical_root) {
+                best_relative = choose_preferred_relative(best_relative, rel);
+            }
+        }
+    }
+    if let Some(relative) = best_relative {
+        return relative_path_to_module_path(&relative);
     }
     vec![path
         .file_stem()
@@ -187,6 +265,7 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
         }
     }
     let mut queue: Vec<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
+    queue.sort_unstable();
     let mut order = Vec::with_capacity(n);
     while let Some(idx) = queue.pop() {
         order.push(idx);
@@ -196,6 +275,7 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
                 queue.push(next);
             }
         }
+        queue.sort_unstable();
     }
     if order.len() != n {
         let mut seen = vec![false; n];
@@ -209,9 +289,20 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
         }
     }
 
+    let mut old_to_new = vec![0usize; n];
+    for (new_idx, old_idx) in order.iter().enumerate() {
+        old_to_new[*old_idx] = new_idx;
+    }
+
     let mut tmp: Vec<Option<ResolvedModule>> = modules.drain(..).map(Some).collect();
-    for i in &order {
-        modules.push(tmp[*i].take().unwrap());
+    for old_idx in &order {
+        let mut module = tmp[*old_idx].take().unwrap();
+        for dep in &mut module.dependencies {
+            if *dep < n {
+                *dep = old_to_new[*dep];
+            }
+        }
+        modules.push(module);
     }
     Ok(())
 }
@@ -232,6 +323,8 @@ pub enum ResolveError {
     CyclicDependency(Vec<Vec<String>>),
     /// Duplicate module path.
     DuplicateModule(Vec<String>),
+    /// Discovery root path is invalid.
+    InvalidRootPath { path: PathBuf, reason: String },
 }
 
 impl std::fmt::Display for ResolveError {
@@ -268,6 +361,9 @@ impl std::fmt::Display for ResolveError {
                 Ok(())
             }
             Self::DuplicateModule(path) => write!(f, "duplicate module: {}", path.join(".")),
+            Self::InvalidRootPath { path, reason } => {
+                write!(f, "invalid discovery root {}: {reason}", path.display())
+            }
         }
     }
 }

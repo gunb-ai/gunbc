@@ -13,10 +13,10 @@
 //! - `daglang check <file.dag>`    -- Parse + typecheck without lowering
 //! - `daglang compile <file.dag>`  -- Full compilation pipeline
 
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 use daglang_cli::compile::{
-    build_context, compile_from_context, render_expand, render_manifest, resolve_default_root,
+    build_context, compile_from_context, render_expand, render_manifest,
 };
 use daglang_cli::pipeline::{build_pipeline_dag, run_pipeline, PipelineContext, PipelineStop};
 
@@ -79,10 +79,7 @@ fn main() {
             }
         }
         "modules" => {
-            let roots = vec![args
-                .get(2)
-                .map(PathBuf::from)
-                .unwrap_or_else(resolve_default_root)];
+            let roots = vec![resolve_root(args.get(2))];
             let context = PipelineContext {
                 roots,
                 target_file: None,
@@ -100,7 +97,7 @@ fn main() {
             }
         }
         "check" => {
-            let input = args.get(2).map(PathBuf::from);
+            let input = args.get(2).map(|value| normalize_cli_path(PathBuf::from(value)));
             let (roots, target_file) = match input {
                 Some(path) if path.extension().and_then(|ext| ext.to_str()) == Some("dag") => {
                     let root = path
@@ -110,7 +107,7 @@ fn main() {
                     (vec![root], Some(path))
                 }
                 Some(path) => (vec![path], None),
-                None => (vec![resolve_default_root()], None),
+                None => (vec![resolve_root(None)], None),
             };
 
             let context = PipelineContext { roots, target_file };
@@ -155,5 +152,72 @@ fn main() {
             eprintln!("Unknown command: {cmd}");
             std::process::exit(1);
         }
+    }
+}
+
+fn resolve_root(arg: Option<&String>) -> PathBuf {
+    if let Some(path) = arg {
+        return normalize_cli_path(PathBuf::from(path));
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    cwd.join("dsl")
+}
+
+fn normalize_cli_path(path: PathBuf) -> PathBuf {
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        cwd.join(path)
+    };
+    normalize_path_components(&absolute)
+}
+
+fn normalize_path_components(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(Path::new(std::path::MAIN_SEPARATOR_STR)),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(segment) => normalized.push(segment),
+        }
+    }
+    normalized
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_path_components;
+    use std::path::{Path, PathBuf};
+
+    fn root_path() -> PathBuf {
+        PathBuf::from(Path::new(std::path::MAIN_SEPARATOR_STR))
+    }
+
+    #[test]
+    fn normalize_path_components_collapses_curdir_and_parent_segments() {
+        let path = root_path().join("workspace").join(".").join("core").join("..").join("dsl");
+        let normalized = normalize_path_components(&path);
+        let expected = root_path().join("workspace").join("dsl");
+        assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn normalize_path_components_keeps_root_when_parent_traversal_exceeds_depth() {
+        let path = root_path().join("..").join("..").join("workspace").join("dsl");
+        let normalized = normalize_path_components(&path);
+        let expected = root_path().join("workspace").join("dsl");
+        assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn normalize_path_components_preserves_clean_absolute_paths() {
+        let path = root_path().join("workspace").join("dsl").join("tools").join("makegen.dag");
+        let normalized = normalize_path_components(&path);
+        assert_eq!(normalized, path);
     }
 }
