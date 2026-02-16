@@ -30590,6 +30590,67 @@ fn run_with_unknown_flag_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_missing_output_value_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("--dry-run")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with missing output path value");
+
+    assert!(
+        !output.status.success(),
+        "run with missing --output value should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with missing --output value should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--output requires a non-empty path"),
+        "run should report missing output value explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run] [--check-mode]"),
+        "run should include usage for missing output value: {stderr}"
+    );
+}
+
+#[test]
+fn run_with_empty_equals_output_value_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output=")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with empty --output=<path> value");
+
+    assert!(
+        !output.status.success(),
+        "run with empty --output=<path> value should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with empty --output=<path> value should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--output requires a non-empty path"),
+        "run should report empty output value explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run] [--check-mode]"),
+        "run should include usage for empty output value: {stderr}"
+    );
+}
+
+#[test]
 fn run_command_writes_makefile_in_real_mode() {
     let output_path = unique_temp_output_file("run_real_mode");
     if output_path.exists() {

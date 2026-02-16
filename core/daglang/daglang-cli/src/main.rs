@@ -530,14 +530,21 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| "--output requires a path".to_string())?;
+                if value.is_empty() || value.starts_with("--") {
+                    return Err("--output requires a non-empty path".to_string());
+                }
                 output_path = value.clone();
                 index += 2;
             }
             _ if arg.starts_with("--output=") => {
-                output_path = arg
+                let value = arg
                     .strip_prefix("--output=")
                     .expect("prefix just checked")
                     .to_string();
+                if value.is_empty() {
+                    return Err("--output requires a non-empty path".to_string());
+                }
+                output_path = value;
                 index += 1;
             }
             _ if arg.starts_with("--") => return Err(format!("unknown run flag `{arg}`")),
@@ -906,6 +913,37 @@ mod tests {
         ];
         let error = parse_run_args(&args).expect_err("parse should fail");
         assert!(error.contains("unknown run flag"));
+    }
+
+    #[test]
+    fn parse_run_args_rejects_missing_output_path_value() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output".to_string(),
+            "--dry-run".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("--output requires a non-empty path"),
+            "expected clear missing-path output flag error, got: {error}"
+        );
+    }
+
+    #[test]
+    fn parse_run_args_rejects_empty_equals_output_path() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output=".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("--output requires a non-empty path"),
+            "expected clear empty output path error, got: {error}"
+        );
     }
 
     #[test]
