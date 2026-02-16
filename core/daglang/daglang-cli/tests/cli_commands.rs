@@ -434,6 +434,47 @@ fn check_command_absolute_parent_segment_root_matches_canonical_absolute_output(
 }
 
 #[test]
+fn check_command_absolute_parent_segment_double_separator_root_matches_canonical_absolute_output() {
+    let cwd = workspace_root().join("core");
+    let absolute_parent_segment_double_separator =
+        PathBuf::from(format!("{}//std/..", workspace_root().join("dsl").display()));
+    let absolute_canonical = workspace_root().join("dsl");
+
+    let parent_segment_double_separator = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_parent_segment_double_separator)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment-double-separator absolute-root daglang check");
+    assert!(
+        parent_segment_double_separator.status.success(),
+        "parent-segment-double-separator absolute-root check should succeed: {}",
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_canonical)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute-root daglang check");
+    assert!(
+        canonical.status.success(),
+        "canonical absolute-root check should succeed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    assert_eq!(
+        parent_segment_double_separator.stdout, canonical.stdout,
+        "parent-segment-double-separator and canonical absolute-root check stdout should match"
+    );
+    assert_eq!(
+        parent_segment_double_separator.stderr, canonical.stderr,
+        "parent-segment-double-separator and canonical absolute-root check stderr should match"
+    );
+}
+
+#[test]
 fn check_command_absolute_parent_segment_trailing_slash_root_matches_canonical_absolute_output() {
     let cwd = workspace_root().join("core");
     let absolute_parent_segment_trailing =
@@ -640,6 +681,57 @@ fn check_command_absolute_parent_segment_missing_root_matches_canonical_output()
         )),
         "missing-root diagnostics should include canonical absolute path: {}",
         String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn check_command_absolute_parent_segment_double_separator_missing_root_matches_canonical_output() {
+    let cwd = unique_temp_dir("check_absolute_parent_segment_double_separator_missing_root");
+    let anchor = cwd.join("anchor");
+    std::fs::create_dir_all(&anchor).expect("failed to create anchor directory");
+    let missing_root = cwd.join("missing_root");
+    let absolute_parent_segment_double_separator =
+        PathBuf::from(format!("{}//../missing_root", anchor.display()));
+
+    let parent_segment_double_separator = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_parent_segment_double_separator)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment-double-separator absolute missing-root daglang check");
+    assert!(
+        !parent_segment_double_separator.status.success(),
+        "parent-segment-double-separator absolute missing-root check should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&missing_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute missing-root daglang check");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute missing-root check should fail"
+    );
+
+    assert_eq!(
+        parent_segment_double_separator.stdout, canonical.stdout,
+        "parent-segment-double-separator and canonical absolute missing-root check stdout should match"
+    );
+    assert_eq!(
+        parent_segment_double_separator.stderr, canonical.stderr,
+        "parent-segment-double-separator and canonical absolute missing-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr).contains(&format!(
+            "input root does not exist: {}",
+            missing_root.display()
+        )),
+        "missing-root diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
@@ -890,6 +982,61 @@ fn check_command_absolute_parent_segment_non_directory_root_matches_canonical_ou
         )),
         "non-directory-root diagnostics should include canonical absolute path: {}",
         String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn check_command_absolute_parent_segment_double_separator_non_directory_root_matches_canonical_output(
+) {
+    let cwd = unique_temp_dir("check_absolute_parent_segment_double_separator_non_directory_root");
+    let anchor = cwd.join("anchor");
+    std::fs::create_dir_all(&anchor).expect("failed to create anchor directory");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+    let absolute_parent_segment_double_separator =
+        PathBuf::from(format!("{}//../input.txt", anchor.display()));
+
+    let parent_segment_double_separator = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_parent_segment_double_separator)
+        .current_dir(&cwd)
+        .output()
+        .expect(
+            "failed to run parent-segment-double-separator absolute non-directory-root daglang check",
+        );
+    assert!(
+        !parent_segment_double_separator.status.success(),
+        "parent-segment-double-separator absolute non-directory-root check should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute non-directory-root daglang check");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute non-directory-root check should fail"
+    );
+
+    assert_eq!(
+        parent_segment_double_separator.stdout, canonical.stdout,
+        "parent-segment-double-separator and canonical absolute non-directory-root check stdout should match"
+    );
+    assert_eq!(
+        parent_segment_double_separator.stderr, canonical.stderr,
+        "parent-segment-double-separator and canonical absolute non-directory-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
@@ -4399,6 +4546,66 @@ fn check_command_absolute_parent_segment_single_file_target_matches_canonical_ou
 }
 
 #[test]
+fn check_command_absolute_parent_segment_double_separator_single_file_target_matches_canonical_output(
+) {
+    let root = unique_temp_dir("check_absolute_parent_segment_double_separator_single_file");
+    let nested = root.join("nested");
+    std::fs::create_dir_all(&nested).expect("failed to create nested dir");
+    let main_file = root.join("main.dag");
+    std::fs::write(&main_file, "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+    let absolute_parent_segment_double_separator =
+        PathBuf::from(format!("{}//../main.dag", nested.display()));
+
+    let parent_segment_double_separator = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_parent_segment_double_separator)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run parent-segment-double-separator absolute single-file daglang check");
+    assert!(
+        parent_segment_double_separator.status.success(),
+        "parent-segment-double-separator absolute single-file check should succeed: {}",
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&main_file)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute single-file daglang check");
+    assert!(
+        canonical.status.success(),
+        "canonical absolute single-file check should succeed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    assert_eq!(
+        parent_segment_double_separator.stdout, canonical.stdout,
+        "parent-segment-double-separator and canonical absolute single-file check stdout should match"
+    );
+    assert_eq!(
+        parent_segment_double_separator.stderr, canonical.stderr,
+        "parent-segment-double-separator and canonical absolute single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&parent_segment_double_separator.stdout),
+        expected_check_success_stdout(1),
+        "parent-segment-double-separator absolute single-file check should parse exactly one file"
+    );
+    assert!(
+        parent_segment_double_separator.stderr.is_empty(),
+        "parent-segment-double-separator absolute single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_absolute_parent_segment_trailing_slash_single_file_target_matches_canonical_output(
 ) {
     let root = unique_temp_dir("check_absolute_parent_segment_trailing_slash_single_file");
@@ -4989,6 +5196,59 @@ fn check_command_absolute_parent_segment_invalid_target_matches_canonical_output
 }
 
 #[test]
+fn check_command_absolute_parent_segment_double_separator_invalid_target_matches_canonical_output() {
+    let root = unique_temp_dir("check_absolute_parent_segment_double_separator_invalid_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let broken_file = root.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed dag source");
+    let absolute_parent_segment_double_separator =
+        PathBuf::from(format!("{}//../broken.dag", root.join("nested").display()));
+
+    let parent_segment_double_separator = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_parent_segment_double_separator)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run parent-segment-double-separator absolute invalid-target daglang check");
+    assert!(
+        !parent_segment_double_separator.status.success(),
+        "parent-segment-double-separator absolute invalid-target check should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&broken_file)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute invalid-target daglang check");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute invalid-target check should fail"
+    );
+
+    assert_eq!(
+        parent_segment_double_separator.stdout, canonical.stdout,
+        "parent-segment-double-separator and canonical absolute invalid-target stdout should match"
+    );
+    assert_eq!(
+        parent_segment_double_separator.stderr, canonical.stderr,
+        "parent-segment-double-separator and canonical absolute invalid-target stderr should match"
+    );
+    let canonical_target = broken_file
+        .canonicalize()
+        .expect("broken file should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
+            .contains(&format!("{}:2:3:", canonical_target.display())),
+        "expected parse diagnostic with canonicalized absolute path: {}",
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn check_command_absolute_parent_segment_trailing_slash_invalid_target_matches_canonical_output() {
     let root = unique_temp_dir("check_absolute_parent_segment_trailing_slash_invalid_target");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -5085,6 +5345,56 @@ fn check_command_absolute_parent_segment_missing_target_matches_canonical_output
         )),
         "missing-target diagnostics should include canonical absolute path: {}",
         String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_absolute_parent_segment_double_separator_missing_target_matches_canonical_output() {
+    let root = unique_temp_dir("check_absolute_parent_segment_double_separator_missing_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing_target = root.join("missing.dag");
+    let absolute_parent_segment_double_separator =
+        PathBuf::from(format!("{}//../missing.dag", root.join("nested").display()));
+
+    let parent_segment_double_separator = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_parent_segment_double_separator)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run parent-segment-double-separator absolute missing-target daglang check");
+    assert!(
+        !parent_segment_double_separator.status.success(),
+        "parent-segment-double-separator absolute missing-target check should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&missing_target)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute missing-target daglang check");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute missing-target check should fail"
+    );
+
+    assert_eq!(
+        parent_segment_double_separator.stdout, canonical.stdout,
+        "parent-segment-double-separator and canonical absolute missing-target stdout should match"
+    );
+    assert_eq!(
+        parent_segment_double_separator.stderr, canonical.stderr,
+        "parent-segment-double-separator and canonical absolute missing-target stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr).contains(&format!(
+            "failed to canonicalize {}",
+            missing_target.display()
+        )),
+        "missing-target diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -5434,6 +5744,47 @@ fn modules_command_absolute_parent_segment_root_matches_canonical_absolute_outpu
 }
 
 #[test]
+fn modules_command_absolute_parent_segment_double_separator_root_matches_canonical_absolute_output() {
+    let cwd = workspace_root().join("core");
+    let absolute_parent_segment_double_separator =
+        PathBuf::from(format!("{}//std/..", workspace_root().join("dsl").display()));
+    let absolute_canonical = workspace_root().join("dsl");
+
+    let parent_segment_double_separator = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_parent_segment_double_separator)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment-double-separator absolute-root daglang modules");
+    assert!(
+        parent_segment_double_separator.status.success(),
+        "parent-segment-double-separator absolute-root modules should succeed: {}",
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_canonical)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute-root daglang modules");
+    assert!(
+        canonical.status.success(),
+        "canonical absolute-root modules should succeed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    assert_eq!(
+        parent_segment_double_separator.stdout, canonical.stdout,
+        "parent-segment-double-separator and canonical absolute-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_segment_double_separator.stderr, canonical.stderr,
+        "parent-segment-double-separator and canonical absolute-root modules stderr should match"
+    );
+}
+
+#[test]
 fn modules_command_absolute_parent_segment_trailing_slash_root_matches_canonical_absolute_output() {
     let cwd = workspace_root().join("core");
     let absolute_parent_segment_trailing =
@@ -5640,6 +5991,57 @@ fn modules_command_absolute_parent_segment_missing_root_matches_canonical_output
         )),
         "missing-root diagnostics should include canonical absolute path: {}",
         String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_absolute_parent_segment_double_separator_missing_root_matches_canonical_output() {
+    let cwd = unique_temp_dir("modules_absolute_parent_segment_double_separator_missing_root");
+    let anchor = cwd.join("anchor");
+    std::fs::create_dir_all(&anchor).expect("failed to create anchor directory");
+    let missing_root = cwd.join("missing_root");
+    let absolute_parent_segment_double_separator =
+        PathBuf::from(format!("{}//../missing_root", anchor.display()));
+
+    let parent_segment_double_separator = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_parent_segment_double_separator)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment-double-separator absolute missing-root daglang modules");
+    assert!(
+        !parent_segment_double_separator.status.success(),
+        "parent-segment-double-separator absolute missing-root modules should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&missing_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute missing-root daglang modules");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute missing-root modules should fail"
+    );
+
+    assert_eq!(
+        parent_segment_double_separator.stdout, canonical.stdout,
+        "parent-segment-double-separator and canonical absolute missing-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_segment_double_separator.stderr, canonical.stderr,
+        "parent-segment-double-separator and canonical absolute missing-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr).contains(&format!(
+            "input root does not exist: {}",
+            missing_root.display()
+        )),
+        "missing-root diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
@@ -5890,6 +6292,61 @@ fn modules_command_absolute_parent_segment_non_directory_root_matches_canonical_
         )),
         "non-directory-root diagnostics should include canonical absolute path: {}",
         String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_absolute_parent_segment_double_separator_non_directory_root_matches_canonical_output(
+) {
+    let cwd = unique_temp_dir("modules_absolute_parent_segment_double_separator_non_directory_root");
+    let anchor = cwd.join("anchor");
+    std::fs::create_dir_all(&anchor).expect("failed to create anchor directory");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+    let absolute_parent_segment_double_separator =
+        PathBuf::from(format!("{}//../input.txt", anchor.display()));
+
+    let parent_segment_double_separator = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_parent_segment_double_separator)
+        .current_dir(&cwd)
+        .output()
+        .expect(
+            "failed to run parent-segment-double-separator absolute non-directory-root daglang modules",
+        );
+    assert!(
+        !parent_segment_double_separator.status.success(),
+        "parent-segment-double-separator absolute non-directory-root modules should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute non-directory-root daglang modules");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute non-directory-root modules should fail"
+    );
+
+    assert_eq!(
+        parent_segment_double_separator.stdout, canonical.stdout,
+        "parent-segment-double-separator and canonical absolute non-directory-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_segment_double_separator.stderr, canonical.stderr,
+        "parent-segment-double-separator and canonical absolute non-directory-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
@@ -6150,6 +6607,60 @@ fn modules_command_absolute_parent_segment_single_file_root_matches_canonical_ou
         )),
         "single-file-root diagnostics should include canonical absolute path: {}",
         String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_absolute_parent_segment_double_separator_single_file_root_matches_canonical_output(
+) {
+    let cwd = unique_temp_dir("modules_absolute_parent_segment_double_separator_single_file_root");
+    let anchor = cwd.join("anchor");
+    std::fs::create_dir_all(&anchor).expect("failed to create anchor directory");
+    let file_path = cwd.join("one.dag");
+    std::fs::write(&file_path, "module sample.one\nfn ok() -> Unit {}")
+        .expect("failed to write .dag file");
+    let absolute_parent_segment_double_separator =
+        PathBuf::from(format!("{}//../one.dag", anchor.display()));
+
+    let parent_segment_double_separator = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_parent_segment_double_separator)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment-double-separator absolute single-file-root daglang modules");
+    assert!(
+        !parent_segment_double_separator.status.success(),
+        "parent-segment-double-separator absolute single-file-root modules should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&file_path)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute single-file-root daglang modules");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute single-file-root modules should fail"
+    );
+
+    assert_eq!(
+        parent_segment_double_separator.stdout, canonical.stdout,
+        "parent-segment-double-separator and canonical absolute single-file-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_segment_double_separator.stderr, canonical.stderr,
+        "parent-segment-double-separator and canonical absolute single-file-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            file_path.display()
+        )),
+        "single-file-root diagnostics should include canonical absolute path: {}",
+        String::from_utf8_lossy(&parent_segment_double_separator.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
