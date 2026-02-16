@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::lexer::{Lexer, Token, TokenKind};
 use crate::span::{Span, Spanned};
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
@@ -16,6 +17,42 @@ impl std::fmt::Display for ParseError {
             self.span.start, self.span.end, self.message
         )
     }
+}
+
+impl ParseError {
+    /// Convert the start byte of this error span to a 1-based line/column pair.
+    pub fn line_col(&self, source: &str) -> (usize, usize) {
+        byte_to_line_col(source, self.span.start)
+    }
+
+    /// Format this parse error with file + line/column information.
+    pub fn format_with_source(&self, file: &Path, source: &str) -> String {
+        let (line, col) = self.line_col(source);
+        format!("{}:{line}:{col}: {}", file.display(), self.message)
+    }
+}
+
+/// Convert a byte offset into a 1-based (line, column) pair.
+///
+/// Offsets beyond EOF are clamped to EOF.
+pub fn byte_to_line_col(source: &str, byte_offset: usize) -> (usize, usize) {
+    let clamped = byte_offset.min(source.len());
+    let mut line = 1usize;
+    let mut col = 1usize;
+
+    for (idx, ch) in source.char_indices() {
+        if idx >= clamped {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+
+    (line, col)
 }
 
 pub fn parse(source: &str) -> Result<SourceFile, Vec<ParseError>> {

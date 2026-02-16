@@ -55,7 +55,7 @@ impl ModuleGraph {
         dag_files.sort();
 
         let mut parsed: Vec<(PathBuf, Vec<String>, Vec<Vec<String>>, SourceFile)> = Vec::new();
-        let mut parse_errors: Vec<(PathBuf, Vec<parser::ParseError>)> = Vec::new();
+        let mut parse_errors: Vec<(PathBuf, Vec<String>)> = Vec::new();
 
         for path in &dag_files {
             let source = std::fs::read_to_string(path)
@@ -75,17 +75,17 @@ impl ModuleGraph {
                     parsed.push((path.clone(), mod_path, imports, ast));
                 }
                 Err(errs) => {
-                    parse_errors.push((path.clone(), errs));
+                    let formatted = errs
+                        .iter()
+                        .map(|err| err.format_with_source(path, &source))
+                        .collect();
+                    parse_errors.push((path.clone(), formatted));
                 }
             }
         }
 
         if !parse_errors.is_empty() {
-            let first = &parse_errors[0];
-            return Err(ResolveError::ParseErrors {
-                file: first.0.clone(),
-                errors: first.1.iter().map(|e| format!("{e}")).collect(),
-            });
+            return Err(ResolveError::ParseErrors(parse_errors));
         }
 
         let mod_index: HashMap<Vec<String>, usize> = parsed
@@ -204,8 +204,8 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) {
 pub enum ResolveError {
     /// A `.dag` file could not be read.
     IoError(PathBuf, std::io::Error),
-    /// Parse errors in a `.dag` file.
-    ParseErrors { file: PathBuf, errors: Vec<String> },
+    /// Parse errors in one or more `.dag` files.
+    ParseErrors(Vec<(PathBuf, Vec<String>)>),
     /// An import references a module that doesn't exist.
     UnresolvedImport {
         importing_module: Vec<String>,
@@ -221,10 +221,13 @@ impl std::fmt::Display for ResolveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::IoError(p, e) => write!(f, "I/O error reading {}: {e}", p.display()),
-            Self::ParseErrors { file, errors } => {
-                write!(f, "parse errors in {}:", file.display())?;
-                for e in errors {
-                    write!(f, "\n  {e}")?;
+            Self::ParseErrors(files) => {
+                write!(f, "parse errors encountered in {} file(s):", files.len())?;
+                for (file, errors) in files {
+                    write!(f, "\n  {}:", file.display())?;
+                    for e in errors {
+                        write!(f, "\n    {e}")?;
+                    }
                 }
                 Ok(())
             }
@@ -248,10 +251,6 @@ impl std::fmt::Display for ResolveError {
                 Ok(())
             }
             Self::DuplicateModule(path) => write!(f, "duplicate module: {}", path.join(".")),
-        }
-    }
-}
-:DuplicateModule(path) => write!(f, "duplicate module: {}", path.join(".")),
         }
     }
 }
