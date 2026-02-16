@@ -377,31 +377,27 @@ fn collect_dag_files(
     Ok(())
 }
 
+fn relative_path_to_module_path(relative: &Path) -> Vec<String> {
+    relative
+        .with_extension("")
+        .components()
+        .filter_map(|segment| segment.as_os_str().to_str().map(String::from))
+        .collect()
+}
+
 fn path_to_module_path(path: &Path, roots: &[PathBuf]) -> Vec<String> {
     let canonical_path = fs::canonicalize(path).ok();
     for root in roots {
         if let Ok(relative) = path.strip_prefix(root) {
-            return relative
-                .with_extension("")
-                .components()
-                .filter_map(|segment| segment.as_os_str().to_str().map(String::from))
-                .collect();
+            return relative_path_to_module_path(relative);
         }
         if let Ok(canonical_root) = fs::canonicalize(root) {
             if let Ok(relative) = path.strip_prefix(&canonical_root) {
-                return relative
-                    .with_extension("")
-                    .components()
-                    .filter_map(|segment| segment.as_os_str().to_str().map(String::from))
-                    .collect();
+                return relative_path_to_module_path(relative);
             }
             if let Some(canonical_path) = &canonical_path {
                 if let Ok(relative) = canonical_path.strip_prefix(&canonical_root) {
-                    return relative
-                        .with_extension("")
-                        .components()
-                        .filter_map(|segment| segment.as_os_str().to_str().map(String::from))
-                        .collect();
+                    return relative_path_to_module_path(relative);
                 }
             }
         }
