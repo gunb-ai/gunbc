@@ -469,6 +469,44 @@ fn check_command_trailing_slash_root_matches_plain_relative_output() {
 }
 
 #[test]
+fn check_command_mixed_segment_root_matches_plain_relative_output() {
+    let cwd = workspace_root();
+
+    let mixed_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl/./std/..")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run mixed-segment-root daglang check");
+    assert!(
+        mixed_segment.status.success(),
+        "mixed-segment-root check should succeed: {}",
+        String::from_utf8_lossy(&mixed_segment.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative-root daglang check");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative-root check should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        mixed_segment.stdout, plain_relative.stdout,
+        "mixed-segment and plain-relative check outputs should match"
+    );
+    assert_eq!(
+        mixed_segment.stderr, plain_relative.stderr,
+        "mixed-segment and plain-relative check stderr should match"
+    );
+}
+
+#[test]
 fn check_command_curdir_segment_missing_root_matches_plain_relative_output() {
     let cwd = unique_temp_dir("check_curdir_segment_missing_root");
     std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
@@ -1457,6 +1495,44 @@ fn modules_command_trailing_slash_root_matches_plain_relative_output() {
     assert_eq!(
         trailing_slash.stderr, plain_relative.stderr,
         "trailing-slash and plain-relative modules stderr should match"
+    );
+}
+
+#[test]
+fn modules_command_mixed_segment_root_matches_plain_relative_output() {
+    let cwd = workspace_root();
+
+    let mixed_segment = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl/./std/..")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run mixed-segment-root daglang modules");
+    assert!(
+        mixed_segment.status.success(),
+        "mixed-segment-root modules should succeed: {}",
+        String::from_utf8_lossy(&mixed_segment.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative-root daglang modules");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative-root modules should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        mixed_segment.stdout, plain_relative.stdout,
+        "mixed-segment and plain-relative modules stdout should match"
+    );
+    assert_eq!(
+        mixed_segment.stderr, plain_relative.stderr,
+        "mixed-segment and plain-relative modules stderr should match"
     );
 }
 
