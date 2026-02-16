@@ -140,9 +140,9 @@ fn compile_command_reports_diagnostics_for_invalid_file() {
 #[test]
 fn compile_command_directory_mode_fails_on_unresolved_imports() {
     let root = unique_temp_dir("unresolved_import");
-    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
     std::fs::write(
-        root.join("main.dag"),
+        root.join("sample/main.dag"),
         "module sample.main\nimport missing.dep\nfn run() -> Unit {}",
     )
     .expect("failed to write source");
@@ -161,6 +161,34 @@ fn compile_command_directory_mode_fails_on_unresolved_imports() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("unresolved import"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_reports_module_path_mismatch() {
+    let root = unique_temp_dir("path_mismatch");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("main.dag"),
+        "module wrong.name\nfn run() -> Unit {}",
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on mismatch directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on module path mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("module path mismatches"));
+    assert!(stderr.contains("declared `wrong.name`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }

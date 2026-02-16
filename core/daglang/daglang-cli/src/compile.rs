@@ -45,6 +45,9 @@ pub fn resolve_default_root() -> PathBuf {
 
 pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, String> {
     let module_graph = discover_module_graph_for_context(context)?;
+    if context.target_file.is_none() {
+        validate_module_path_consistency(&module_graph, &context.roots)?;
+    }
     let typed = typecheck_module_graph_with_options(
         module_graph,
         TypecheckOptions {
@@ -121,6 +124,52 @@ fn format_resolve_error(error: ResolveError) -> String {
         }
         other => format!("resolve error: {other}"),
     }
+}
+
+fn validate_module_path_consistency(
+    graph: &ModuleGraph,
+    roots: &[PathBuf],
+) -> Result<(), String> {
+    let mismatches = graph
+        .modules
+        .iter()
+        .filter_map(|module| {
+            let derived = derive_module_path(&module.path, roots)?;
+            (derived != module.module_path).then_some((
+                module.path.clone(),
+                module.module_path.join("."),
+                derived.join("."),
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    if mismatches.is_empty() {
+        return Ok(());
+    }
+
+    let mut message = String::from("module path mismatches:\n");
+    for (path, declared, derived) in mismatches {
+        message.push_str(&format!(
+            "  {}: declared `{declared}` but filesystem implies `{derived}`\n",
+            path.display()
+        ));
+    }
+    Err(message)
+}
+
+fn derive_module_path(path: &std::path::Path, roots: &[PathBuf]) -> Option<Vec<String>> {
+    for root in roots {
+        if let Ok(relative) = path.strip_prefix(root) {
+            return Some(
+                relative
+                    .with_extension("")
+                    .components()
+                    .filter_map(|segment| segment.as_os_str().to_str().map(String::from))
+                    .collect(),
+            );
+        }
+    }
+    None
 }
 
 pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
@@ -255,5 +304,33 @@ mod tests {
         assert!(error.contains(":2:"));
 
         std::fs::remove_file(broken_file).expect("failed to cleanup broken source");
+    }
+
+    #[test]
+    fn compile_directory_reports_module_path_mismatch() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_mismatch_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        std::fs::write(
+            root.join("main.dag"),
+            "module mismatch.main\nfn run() -> Unit {}",
+        )
+        .expect("failed to write source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert!(error.contains("module path mismatches"));
+        assert!(error.contains("main"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 }
