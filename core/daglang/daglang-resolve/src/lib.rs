@@ -51,6 +51,18 @@ impl ModuleGraph {
     pub fn discover(roots: &[PathBuf]) -> Result<Self, ResolveError> {
         let mut dag_files = Vec::new();
         for root in roots {
+            if !root.exists() {
+                return Err(ResolveError::InvalidRootPath {
+                    path: root.clone(),
+                    reason: "does not exist".to_string(),
+                });
+            }
+            if !root.is_dir() {
+                return Err(ResolveError::InvalidRootPath {
+                    path: root.clone(),
+                    reason: "is not a directory".to_string(),
+                });
+            }
             collect_dag_files(root, &mut dag_files)?;
         }
         dag_files.sort();
@@ -226,6 +238,8 @@ pub enum ResolveError {
     CyclicDependency(Vec<Vec<String>>),
     /// Duplicate module path.
     DuplicateModule(Vec<String>),
+    /// Discovery root path is invalid.
+    InvalidRootPath { path: PathBuf, reason: String },
 }
 
 impl std::fmt::Display for ResolveError {
@@ -262,6 +276,9 @@ impl std::fmt::Display for ResolveError {
                 Ok(())
             }
             Self::DuplicateModule(path) => write!(f, "duplicate module: {}", path.join(".")),
+            Self::InvalidRootPath { path, reason } => {
+                write!(f, "invalid discovery root {}: {reason}", path.display())
+            }
         }
     }
 }

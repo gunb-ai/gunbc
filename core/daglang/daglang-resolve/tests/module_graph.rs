@@ -60,6 +60,36 @@ fn duplicate_module_paths_are_rejected() {
 }
 
 #[test]
+fn missing_discovery_root_is_rejected() {
+    let root = unique_temp_dir("missing_root");
+    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected invalid root error");
+    match err {
+        ResolveError::InvalidRootPath { path, reason } => {
+            assert_eq!(path, root);
+            assert!(reason.contains("does not exist"));
+        }
+        other => panic!("expected InvalidRootPath, got {other:?}"),
+    }
+}
+
+#[test]
+fn non_directory_discovery_root_is_rejected() {
+    let root = unique_temp_dir("non_directory_root");
+    write_file(&root, "not a directory");
+
+    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected invalid root error");
+    match err {
+        ResolveError::InvalidRootPath { path, reason } => {
+            assert_eq!(path, root);
+            assert!(reason.contains("is not a directory"));
+        }
+        other => panic!("expected InvalidRootPath, got {other:?}"),
+    }
+
+    fs::remove_file(root).expect("failed to clean temp file");
+}
+
+#[test]
 fn unresolved_imports_are_tolerated_for_phase_zero_discovery() {
     let root = unique_temp_dir("unresolved");
     write_file(
