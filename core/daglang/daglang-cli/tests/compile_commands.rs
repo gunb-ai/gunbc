@@ -695,6 +695,15 @@ fn run() -> Unit {}
         "single-file compile should tolerate unresolved imports: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("typecheck errors"),
+        "relaxed unresolved-import path should not emit typecheck failures: {stderr}"
+    );
+    assert!(
+        !stderr.contains("lower error"),
+        "relaxed unresolved-import path should not emit lower-stage failures: {stderr}"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Compiled 1 module(s)"));
 
@@ -724,6 +733,15 @@ fn run() -> Unit { let x = 42 }
         "single-file compile should allow missing tail for Unit return: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("typecheck errors"),
+        "Unit-return success path should not emit typecheck failures: {stderr}"
+    );
+    assert!(
+        !stderr.contains("lower error"),
+        "Unit-return success path should not emit lower-stage failures: {stderr}"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Compiled 1 module(s)"));
 
@@ -752,6 +770,15 @@ fn run() -> String { missing(value: "ok") }
         output.status.success(),
         "single-file compile should tolerate unresolved call targets: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("typecheck errors"),
+        "relaxed unresolved-call path should not emit typecheck failures: {stderr}"
+    );
+    assert!(
+        !stderr.contains("lower error"),
+        "relaxed unresolved-call path should not emit lower-stage failures: {stderr}"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Compiled 1 module(s)"));
@@ -3098,6 +3125,15 @@ fn compile_command_directory_mode_allows_unit_return_without_tail_expression() {
         output.status.success(),
         "directory compile should allow missing tail for Unit return: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("typecheck errors"),
+        "Unit-return success path should not emit typecheck failures: {stderr}"
+    );
+    assert!(
+        !stderr.contains("lower error"),
+        "Unit-return success path should not emit lower-stage failures: {stderr}"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Compiled 1 module(s)"));
