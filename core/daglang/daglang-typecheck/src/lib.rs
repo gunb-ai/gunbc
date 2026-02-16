@@ -892,7 +892,119 @@ fn collect_unique_callables(
                 .or_insert_with(|| Some(contract));
         }
     }
+    for (name, contract) in builtin_callable_contracts() {
+        callables.entry(name).or_insert(Some(contract));
+    }
     callables
+}
+
+fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
+    vec![
+        (
+            "map".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["f".to_string()]),
+                output: ValueType::Named("List".to_string()),
+            },
+        ),
+        (
+            "filter".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["predicate".to_string()]),
+                output: ValueType::Named("List".to_string()),
+            },
+        ),
+        (
+            "join".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["separator".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "count".to_string(),
+            CallableContract {
+                arity: 0,
+                params: HashSet::new(),
+                output: ValueType::Named("Int".to_string()),
+            },
+        ),
+        (
+            "all".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["predicate".to_string()]),
+                output: ValueType::Named("Bool".to_string()),
+            },
+        ),
+        (
+            "sort_by".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["key_fn".to_string()]),
+                output: ValueType::Named("List".to_string()),
+            },
+        ),
+        (
+            "first".to_string(),
+            CallableContract {
+                arity: 0,
+                params: HashSet::new(),
+                output: ValueType::Named("Any".to_string()),
+            },
+        ),
+        (
+            "last".to_string(),
+            CallableContract {
+                arity: 0,
+                params: HashSet::new(),
+                output: ValueType::Named("Any".to_string()),
+            },
+        ),
+        (
+            "ends_with".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["suffix".to_string()]),
+                output: ValueType::Named("Bool".to_string()),
+            },
+        ),
+        (
+            "to_bytes".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["value".to_string()]),
+                output: ValueType::Named("Bytes".to_string()),
+            },
+        ),
+        (
+            "to_json".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["value".to_string()]),
+                output: ValueType::Named("Json".to_string()),
+            },
+        ),
+        (
+            "hash".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["value".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "eq".to_string(),
+            CallableContract {
+                arity: 2,
+                params: HashSet::from(["lhs".to_string(), "rhs".to_string()]),
+                output: ValueType::Named("Bool".to_string()),
+            },
+        ),
+    ]
 }
 
 fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegistry {
@@ -3025,6 +3137,33 @@ fn run() -> String { helper() }"#,
         )]);
         let typed = typecheck_module_graph(graph)
             .expect("relaxed mode should allow unresolved callable target");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_accepts_collection_intrinsic_call_targets() {
+        let graph = module_graph_from_sources(&[(
+            "sample/intrinsics.dag",
+            r#"module sample.intrinsics
+type Stage {
+  success: Bool,
+  skipped: Bool,
+  name: String
+}
+fn summarize(stages: List<Stage>) -> Int {
+  let passed = stages |> filter(s => s.success) |> count()
+  let labels = stages |> map(s => s.name) |> join(",")
+  let done = labels |> ends_with("ok")
+  passed
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("collection intrinsics should be recognized in strict mode");
         assert_eq!(typed.modules.len(), 1);
     }
 

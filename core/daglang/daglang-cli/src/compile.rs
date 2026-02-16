@@ -1069,6 +1069,48 @@ fn run() -> Unit {
     }
 
     #[test]
+    fn compile_directory_collection_intrinsics_typecheck_in_strict_mode() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_collection_intrinsics_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+type Stage {
+  success: Bool,
+  skipped: Bool,
+  name: String
+}
+fn summarize(stages: List<Stage>) -> Int {
+  let passed = stages |> filter(s => s.success) |> count()
+  let labels = stages |> map(s => s.name) |> join(",")
+  let done = labels |> ends_with("ok")
+  passed
+}
+"#,
+        )
+        .expect("failed to write collection intrinsic source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn compile_single_file_duplicate_service_suppresses_ambiguous_service_call() {
         let fixture = unique_temp_file("single_file_duplicate_service");
         std::fs::write(
