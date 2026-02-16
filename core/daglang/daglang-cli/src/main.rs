@@ -563,10 +563,14 @@ fn exit_usage(command: &str) -> ! {
 mod tests {
     use super::{
         parse_manifest_args, parse_obligations_args, parse_run_args, parse_show_triplets_args,
-        parse_viz_args, RunArgs, VizArgs, VizFormat, VizTarget,
+        parse_viz_args, restore_output_file_from_snapshot, run_written_from_log,
+        snapshot_output_file, RunArgs, VizArgs, VizFormat, VizTarget,
     };
     use crate::path_utils::{default_root_from_cwd, has_dag_extension, normalize_path_components};
     use daglang_cli::compile::ManifestFormat;
+    use gunbc_exec::{ExecutionLog, LogEntry};
+    use gunbc_ir::Value;
+    use std::collections::HashMap;
     use std::path::{Path, PathBuf};
 
     fn root_path() -> PathBuf {
@@ -877,5 +881,85 @@ mod tests {
         ];
         let error = parse_run_args(&args).expect_err("parse should fail");
         assert!(error.contains("unknown run flag"));
+    }
+
+    #[test]
+    fn run_written_from_log_prefers_transport_skip_signal() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            !run_written_from_log(&log),
+            "transport skip should force written=false regardless of wrapper value"
+        );
+    }
+
+    #[test]
+    fn run_written_from_log_falls_back_to_wrapper_output_when_transport_missing() {
+        let log = ExecutionLog {
+            entries: vec![LogEntry {
+                node_id: "tools.makegen::makegen".to_string(),
+                inputs: None,
+                outputs: HashMap::from([("written".to_string(), Value::Bool(true))]),
+                was_intercepted: false,
+            }],
+        };
+        assert!(
+            run_written_from_log(&log),
+            "wrapper written value should be used when transport node is absent"
+        );
+    }
+
+    #[test]
+    fn snapshot_and_restore_output_file_round_trips_existing_content() {
+        let temp_path = std::env::temp_dir().join(format!(
+            "daglang_snapshot_restore_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::write(&temp_path, "before\n").expect("failed to seed snapshot file");
+        let snapshot =
+            snapshot_output_file(temp_path.to_string_lossy().as_ref()).expect("snapshot succeeds");
+        std::fs::write(&temp_path, "mutated\n").expect("failed to mutate snapshot file");
+        restore_output_file_from_snapshot(temp_path.to_string_lossy().as_ref(), snapshot)
+            .expect("restore succeeds");
+        let restored = std::fs::read_to_string(&temp_path).expect("failed to read restored file");
+        assert_eq!(restored, "before\n");
+        std::fs::remove_file(&temp_path).expect("failed to clean snapshot file");
+    }
+
+    #[test]
+    fn restore_output_file_from_snapshot_deletes_file_for_none_snapshot() {
+        let temp_path = std::env::temp_dir().join(format!(
+            "daglang_snapshot_none_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::write(&temp_path, "transient\n").expect("failed to seed transient file");
+        restore_output_file_from_snapshot(temp_path.to_string_lossy().as_ref(), None)
+            .expect("restore-none should remove path");
+        assert!(
+            !temp_path.exists(),
+            "restoring with None snapshot should delete any created output"
+        );
     }
 }
