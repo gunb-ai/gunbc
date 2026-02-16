@@ -1286,6 +1286,105 @@ mod tests {
     }
 
     #[test]
+    fn build_pipeline_real_corpus_dependency_indices_match_declared_imports() {
+        let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+        let context = PipelineContext {
+            roots: vec![dsl_root],
+            target_file: None,
+        };
+
+        let files = discover_files(&context).expect("discovery should succeed");
+        let parse_outputs = execute_op(
+            &gunbc_ir::node::NodeBody::Opaque(CompilerOp::ParseAll),
+            &context,
+            HashMap::from([
+                (PORT_FILES.to_string(), PipeValue::Files(files)),
+                (
+                    PORT_DIAGNOSTICS.to_string(),
+                    PipeValue::Diagnostics(Vec::new()),
+                ),
+            ]),
+        )
+        .expect("parse op should succeed");
+
+        let mut parse_outputs = parse_outputs;
+        let parsed_modules = match parse_outputs.remove(PORT_PARSED_MODULES) {
+            Some(PipeValue::ParsedModules(parsed_modules)) => parsed_modules,
+            other => panic!("expected parsed modules output, got {other:?}"),
+        };
+        let parse_diagnostics = match parse_outputs.remove(PORT_DIAGNOSTICS) {
+            Some(PipeValue::Diagnostics(diagnostics)) => diagnostics,
+            other => panic!("expected parse diagnostics output, got {other:?}"),
+        };
+        assert!(
+            parse_diagnostics.is_empty(),
+            "real corpus parse should not emit diagnostics: {parse_diagnostics:?}"
+        );
+
+        let build_outputs = execute_op(
+            &gunbc_ir::node::NodeBody::Opaque(CompilerOp::BuildModuleGraph),
+            &context,
+            HashMap::from([
+                (
+                    PORT_PARSED_MODULES.to_string(),
+                    PipeValue::ParsedModules(parsed_modules),
+                ),
+                (
+                    PORT_DIAGNOSTICS.to_string(),
+                    PipeValue::Diagnostics(Vec::new()),
+                ),
+            ]),
+        )
+        .expect("build op should succeed");
+
+        let mut build_outputs = build_outputs;
+        let graph = match build_outputs.remove(PORT_MODULE_GRAPH) {
+            Some(PipeValue::ModuleGraph(graph)) => graph,
+            other => panic!("expected module graph output, got {other:?}"),
+        };
+
+        let module_index: HashMap<Vec<String>, usize> = graph
+            .modules
+            .iter()
+            .enumerate()
+            .map(|(idx, module)| (module.module_path.clone(), idx))
+            .collect();
+
+        for module in &graph.modules {
+            let declared_imports: HashSet<Vec<String>> = module
+                .ast
+                .imports
+                .iter()
+                .map(|import| import.node.path.segments.clone())
+                .collect();
+            let resolved_dependencies: HashSet<Vec<String>> = module
+                .dependencies
+                .iter()
+                .map(|dep_idx| graph.modules[*dep_idx].module_path.clone())
+                .collect();
+
+            for dep_path in &resolved_dependencies {
+                assert!(
+                    declared_imports.contains(dep_path),
+                    "resolved dependency {} was not declared by module {}",
+                    dep_path.join("."),
+                    module.module_path.join(".")
+                );
+            }
+            for import in &declared_imports {
+                if module_index.contains_key(import) {
+                    assert!(
+                        resolved_dependencies.contains(import),
+                        "declared import {} should resolve as dependency for module {}",
+                        import.join("."),
+                        module.module_path.join(".")
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn parse_stop_does_not_emit_module_graph_or_report_values() {
         let root = unique_temp_dir("parse_stop_outputs");
         fs::create_dir_all(&root).expect("failed to create temp root");
