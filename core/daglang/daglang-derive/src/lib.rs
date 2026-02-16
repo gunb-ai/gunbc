@@ -507,4 +507,38 @@ mod tests {
         assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
         assert_eq!(artifacts.obligations.resource_release_targets, 1);
     }
+
+    #[test]
+    fn derive_obligations_uses_structural_category_not_callable_name_prefix() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "misleading_name",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::prepare::Fake::op".to_string(),
+                obligation: ObligationCategory::None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "structural_category",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "not_a_transport_name".to_string(),
+                obligation: ObligationCategory::ServiceTransportPrepare,
+            },
+        ));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert_eq!(
+            artifacts.obligations.service_transport_prepare_targets,
+            1,
+            "classification should follow structural obligation category"
+        );
+    }
 }
