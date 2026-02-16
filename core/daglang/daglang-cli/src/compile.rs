@@ -466,4 +466,124 @@ func run(path: String) -> { body: String } {
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
+
+    #[test]
+    fn compile_single_file_unresolved_uses_fails_in_lower_stage() {
+        let fixture = unique_temp_file("single_file_unresolved_uses");
+        std::fs::write(
+            &fixture,
+            r#"module sample.uses
+func run() -> { ok: Bool } uses fs: MissingResource {
+  return { ok: true }
+}
+"#,
+        )
+        .expect("failed to write unresolved uses fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_lower_stage_error(&error);
+        assert!(error.contains("unresolved used resource"));
+        assert!(error.contains("MissingResource"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_directory_unresolved_uses_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_unresolved_uses_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+func run() -> { ok: Bool } uses fs: MissingResource {
+  return { ok: true }
+}
+"#,
+        )
+        .expect("failed to write unresolved uses source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("unknown used resource type"));
+        assert!(error.contains("MissingResource"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_single_file_unresolved_provides_fails_in_lower_stage() {
+        let fixture = unique_temp_file("single_file_unresolved_provides");
+        std::fs::write(
+            &fixture,
+            r#"module sample.provides
+func run() -> { ok: Bool } provides out: MissingResource {
+  return { ok: true }
+}
+"#,
+        )
+        .expect("failed to write unresolved provides fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_lower_stage_error(&error);
+        assert!(error.contains("unresolved provided resource"));
+        assert!(error.contains("MissingResource"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_directory_unresolved_provides_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_unresolved_provides_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+func run() -> { ok: Bool } provides out: MissingResource {
+  return { ok: true }
+}
+"#,
+        )
+        .expect("failed to write unresolved provides source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("unknown provided resource type"));
+        assert!(error.contains("MissingResource"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
 }
