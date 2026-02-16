@@ -1137,6 +1137,14 @@ enum BoundServiceCallResolution {
     NotBound,
 }
 
+struct ExprInferenceContext<'a> {
+    record_type_registry: &'a RecordTypeRegistry,
+    callable_registry: &'a HashMap<String, Option<CallableContract>>,
+    service_call_registry: &'a ServiceCallRegistry,
+    bound_service_registry: &'a BoundServiceCallRegistry,
+    param_callable_contracts: &'a HashMap<String, CallableContract>,
+}
+
 fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
     let mut registry = InterfaceRegistry::default();
     for module in modules {
@@ -1439,6 +1447,85 @@ fn validate_use_provide_binding_conflicts(
     }
 }
 
+fn collect_param_callable_contracts(params: &[Param]) -> HashMap<String, CallableContract> {
+    params
+        .iter()
+        .filter_map(|param| {
+            parse_function_type_callable_contract(&param.ty)
+                .map(|contract| (param.name.clone(), contract))
+        })
+        .collect()
+}
+
+fn parse_function_type_callable_contract(ty: &TypeExpr) -> Option<CallableContract> {
+    let raw = type_expr_to_string(ty);
+    let compact = raw.chars().filter(|ch| !ch.is_whitespace()).collect::<String>();
+    if !compact.starts_with("fn(") {
+        return None;
+    }
+    let close_paren = find_matching_paren(&compact, 2)?;
+    let args = &compact[3..close_paren];
+    let output = compact
+        .get(close_paren + 1..)?
+        .strip_prefix("->")
+        .filter(|text| !text.is_empty())?
+        .to_string();
+    Some(CallableContract {
+        arity: parse_function_type_arity(args),
+        params: HashSet::new(),
+        output: ValueType::Named(output),
+    })
+}
+
+fn find_matching_paren(text: &str, open_index: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for (index, ch) in text.char_indices().filter(|(idx, _)| *idx >= open_index) {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parse_function_type_arity(args: &str) -> usize {
+    if args.is_empty() {
+        return 0;
+    }
+    let mut arity = 1usize;
+    let mut paren_depth = 0usize;
+    let mut angle_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+    for ch in args.chars() {
+        match ch {
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '<' => angle_depth += 1,
+            '>' => angle_depth = angle_depth.saturating_sub(1),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            '{' => brace_depth += 1,
+            '}' => brace_depth = brace_depth.saturating_sub(1),
+            ',' if paren_depth == 0
+                && angle_depth == 0
+                && bracket_depth == 0
+                && brace_depth == 0 =>
+            {
+                arity += 1;
+            }
+            _ => {}
+        }
+    }
+    arity
+}
+
 fn validate_callable_body(
     caller: &str,
     params: &[Param],
@@ -1449,29 +1536,40 @@ fn validate_callable_body(
     errors: &mut Vec<TypeError>,
 ) {
     let bound_service_registry = build_bound_service_call_registry(uses, body_context);
+    let param_callable_contracts = collect_param_callable_contracts(params);
+    let infer_context = ExprInferenceContext {
+        record_type_registry: body_context.record_type_registry,
+        callable_registry: body_context.callable_registry,
+        service_call_registry: body_context.service_call_registry,
+        bound_service_registry: &bound_service_registry,
+        param_callable_contracts: &param_callable_contracts,
+    };
     let mut calls = Vec::new();
     collect_calls_from_stmts(stmts, &mut calls);
     for call in calls {
-        let contract = match body_context.callable_registry.get(&call.callee) {
-            Some(Some(contract)) => contract,
-            Some(None) => {
-                if !body_context.allow_unresolved_references {
-                    errors.push(TypeError::AmbiguousCallTarget {
-                        caller: caller.to_string(),
-                        callee: call.callee.clone(),
-                    });
+        let contract = match param_callable_contracts.get(&call.callee) {
+            Some(contract) => contract,
+            None => match body_context.callable_registry.get(&call.callee) {
+                Some(Some(contract)) => contract,
+                Some(None) => {
+                    if !body_context.allow_unresolved_references {
+                        errors.push(TypeError::AmbiguousCallTarget {
+                            caller: caller.to_string(),
+                            callee: call.callee.clone(),
+                        });
+                    }
+                    continue;
                 }
-                continue;
-            }
-            None => {
-                if !body_context.allow_unresolved_references {
-                    errors.push(TypeError::UnresolvedCallTarget {
-                        caller: caller.to_string(),
-                        callee: call.callee.clone(),
-                    });
+                None => {
+                    if !body_context.allow_unresolved_references {
+                        errors.push(TypeError::UnresolvedCallTarget {
+                            caller: caller.to_string(),
+                            callee: call.callee.clone(),
+                        });
+                    }
+                    continue;
                 }
-                continue;
-            }
+            },
         };
         if call.arg_count != contract.arity {
             errors.push(TypeError::CallArityMismatch {
@@ -1582,8 +1680,7 @@ fn validate_callable_body(
                 let inferred = infer_expr_type(
                     expr,
                     &local_bindings,
-                    body_context,
-                    &bound_service_registry,
+                    &infer_context,
                     errors,
                 );
                 local_bindings.insert(name.clone(), inferred);
@@ -1593,8 +1690,7 @@ fn validate_callable_body(
                 trailing_expr_type = Some(infer_expr_type(
                     expr,
                     &local_bindings,
-                    body_context,
-                    &bound_service_registry,
+                    &infer_context,
                     errors,
                 ));
             }
@@ -1606,8 +1702,7 @@ fn validate_callable_body(
                     &return_contract,
                     fields,
                     &local_bindings,
-                    body_context,
-                    &bound_service_registry,
+                    &infer_context,
                     errors,
                 );
             }
@@ -1627,8 +1722,7 @@ fn validate_return_stmt(
     return_contract: &ReturnContract,
     fields: &[(String, Expr)],
     local_bindings: &HashMap<String, ValueType>,
-    body_context: &BodyInferenceContext<'_>,
-    bound_service_registry: &BoundServiceCallRegistry,
+    infer_context: &ExprInferenceContext<'_>,
     errors: &mut Vec<TypeError>,
 ) {
     match return_contract {
@@ -1643,8 +1737,7 @@ fn validate_return_stmt(
             let inferred = infer_expr_type(
                 &fields[0].1,
                 local_bindings,
-                body_context,
-                bound_service_registry,
+                infer_context,
                 errors,
             );
             push_type_mismatch_if_needed(ty, &inferred, errors);
@@ -1661,8 +1754,7 @@ fn validate_return_stmt(
                 let inferred = infer_expr_type(
                     expr,
                     local_bindings,
-                    body_context,
-                    bound_service_registry,
+                    infer_context,
                     errors,
                 );
                 push_type_mismatch_if_needed(expected_ty, &inferred, errors);
@@ -1674,8 +1766,7 @@ fn validate_return_stmt(
 fn infer_expr_type(
     expr: &Expr,
     local_bindings: &HashMap<String, ValueType>,
-    body_context: &BodyInferenceContext<'_>,
-    bound_service_registry: &BoundServiceCallRegistry,
+    infer_context: &ExprInferenceContext<'_>,
     errors: &mut Vec<TypeError>,
 ) -> ValueType {
     match expr {
@@ -1688,13 +1779,7 @@ fn infer_expr_type(
         },
         Expr::Ident(name) => local_bindings.get(name).cloned().unwrap_or(ValueType::Unknown),
         Expr::FieldAccess(base, field) => {
-            let base_type = infer_expr_type(
-                base,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
+            let base_type = infer_expr_type(base, local_bindings, infer_context, errors);
             match base_type {
                 ValueType::Record(fields) => match fields.get(field) {
                     Some(ty) => ValueType::Named(ty.clone()),
@@ -1706,10 +1791,8 @@ fn infer_expr_type(
                         ValueType::Unknown
                     }
                 },
-                ValueType::Named(name) => match resolve_record_fields(
-                    &name,
-                    body_context.record_type_registry,
-                ) {
+                ValueType::Named(name) => {
+                    match resolve_record_fields(&name, infer_context.record_type_registry) {
                     Some(fields) => match fields.get(field) {
                         Some(ty) => ValueType::Named(ty.clone()),
                         None => {
@@ -1721,42 +1804,38 @@ fn infer_expr_type(
                         }
                     },
                     None => ValueType::Unknown,
-                },
+                }
+                }
                 ValueType::Unknown => ValueType::Unknown,
             }
         }
         Expr::Call(name, args) => {
             for (_, arg) in args {
-                infer_expr_type(
-                    arg,
-                    local_bindings,
-                    body_context,
-                    bound_service_registry,
-                    errors,
-                );
+                infer_expr_type(arg, local_bindings, infer_context, errors);
             }
-            body_context
-                .callable_registry
-                .get(name)
-                .and_then(|entry| entry.as_ref())
-                .map(|contract| contract.output.clone())
-                .unwrap_or(ValueType::Unknown)
+            if let Some(contract) = infer_context.param_callable_contracts.get(name) {
+                contract.output.clone()
+            } else {
+                infer_context
+                    .callable_registry
+                    .get(name)
+                    .and_then(|entry| entry.as_ref())
+                    .map(|contract| contract.output.clone())
+                    .unwrap_or(ValueType::Unknown)
+            }
         }
         Expr::ServiceCall(path, args) => {
             for (_, arg) in args {
-                infer_expr_type(
-                    arg,
-                    local_bindings,
-                    body_context,
-                    bound_service_registry,
-                    errors,
-                );
+                infer_expr_type(arg, local_bindings, infer_context, errors);
             }
-            match resolve_service_call_contract(path, body_context.service_call_registry) {
+            match resolve_service_call_contract(path, infer_context.service_call_registry) {
                 ServiceCallResolution::Resolved(contract) => ValueType::Record(contract.outputs),
                 ServiceCallResolution::Ambiguous => ValueType::Unknown,
                 ServiceCallResolution::Missing => {
-                    match resolve_bound_service_call_contract(path, bound_service_registry) {
+                    match resolve_bound_service_call_contract(
+                        path,
+                        infer_context.bound_service_registry,
+                    ) {
                         BoundServiceCallResolution::Resolved(contract) => {
                             ValueType::Record(contract.outputs)
                         }
@@ -1768,20 +1847,8 @@ fn infer_expr_type(
             }
         }
         Expr::BinOp(lhs, op, rhs) => {
-            let lhs_ty = infer_expr_type(
-                lhs,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
-            let rhs_ty = infer_expr_type(
-                rhs,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
+            let lhs_ty = infer_expr_type(lhs, local_bindings, infer_context, errors);
+            let rhs_ty = infer_expr_type(rhs, local_bindings, infer_context, errors);
             match op {
                 daglang_syntax::ast::BinOp::Eq
                 | daglang_syntax::ast::BinOp::Ne
@@ -1802,13 +1869,7 @@ fn infer_expr_type(
             }
         }
         Expr::UnaryOp(op, inner) => {
-            let inner_ty = infer_expr_type(
-                inner,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
+            let inner_ty = infer_expr_type(inner, local_bindings, infer_context, errors);
             match op {
                 daglang_syntax::ast::UnaryOp::Not => ValueType::Named("Bool".to_string()),
                 daglang_syntax::ast::UnaryOp::Neg => inner_ty,
@@ -1817,26 +1878,14 @@ fn infer_expr_type(
         Expr::StringInterp(parts) => {
             for part in parts {
                 if let daglang_syntax::ast::StringPart::Expr(inner) = part {
-                    infer_expr_type(
-                        inner,
-                        local_bindings,
-                        body_context,
-                        bound_service_registry,
-                        errors,
-                    );
+                    infer_expr_type(inner, local_bindings, infer_context, errors);
                 }
             }
             ValueType::Named("String".to_string())
         }
         Expr::Record(type_name, fields) => {
             for (_, value) in fields {
-                infer_expr_type(
-                    value,
-                    local_bindings,
-                    body_context,
-                    bound_service_registry,
-                    errors,
-                );
+                infer_expr_type(value, local_bindings, infer_context, errors);
             }
             if let Some(name) = type_name {
                 ValueType::Named(name.clone())
@@ -1847,15 +1896,9 @@ fn infer_expr_type(
                         .map(|(name, expr)| {
                             (
                                 name.clone(),
-                                infer_expr_type(
-                                    expr,
-                                    local_bindings,
-                                    body_context,
-                                    bound_service_registry,
-                                    errors,
-                                )
-                                .display_name()
-                                .unwrap_or_else(|| "Any".to_string()),
+                                infer_expr_type(expr, local_bindings, infer_context, errors)
+                                    .display_name()
+                                    .unwrap_or_else(|| "Any".to_string()),
                             )
                         })
                         .collect(),
@@ -1863,56 +1906,20 @@ fn infer_expr_type(
             }
         }
         Expr::Match(scrutinee, arms) => {
-            infer_expr_type(
-                scrutinee,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
+            infer_expr_type(scrutinee, local_bindings, infer_context, errors);
             for arm in arms {
                 if let Some(guard) = &arm.guard {
-                    infer_expr_type(
-                        guard,
-                        local_bindings,
-                        body_context,
-                        bound_service_registry,
-                        errors,
-                    );
+                    infer_expr_type(guard, local_bindings, infer_context, errors);
                 }
-                infer_expr_type(
-                    &arm.body,
-                    local_bindings,
-                    body_context,
-                    bound_service_registry,
-                    errors,
-                );
+                infer_expr_type(&arm.body, local_bindings, infer_context, errors);
             }
             ValueType::Unknown
         }
         Expr::If(cond, then_expr, else_expr) => {
-            infer_expr_type(
-                cond,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
-            let then_ty = infer_expr_type(
-                then_expr,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
+            infer_expr_type(cond, local_bindings, infer_context, errors);
+            let then_ty = infer_expr_type(then_expr, local_bindings, infer_context, errors);
             let else_ty = else_expr.as_ref().map(|otherwise| {
-                infer_expr_type(
-                    otherwise,
-                    local_bindings,
-                    body_context,
-                    bound_service_registry,
-                    errors,
-                )
+                infer_expr_type(otherwise, local_bindings, infer_context, errors)
             });
             match else_ty {
                 Some(otherwise)
@@ -1925,115 +1932,43 @@ fn infer_expr_type(
             }
         }
         Expr::For(_, iterable, body) => {
-            infer_expr_type(
-                iterable,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
-            infer_expr_type(
-                body,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
+            infer_expr_type(iterable, local_bindings, infer_context, errors);
+            infer_expr_type(body, local_bindings, infer_context, errors);
             ValueType::Unknown
         }
         Expr::Pipe(lhs, rhs) => {
-            infer_expr_type(
-                lhs,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
-            infer_expr_type(
-                rhs,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            )
+            infer_expr_type(lhs, local_bindings, infer_context, errors);
+            infer_expr_type(rhs, local_bindings, infer_context, errors)
         }
-        Expr::Lambda(_, body) => infer_expr_type(
-            body,
-            local_bindings,
-            body_context,
-            bound_service_registry,
-            errors,
-        ),
+        Expr::Lambda(_, body) => infer_expr_type(body, local_bindings, infer_context, errors),
         Expr::List(items) => {
             for item in items {
-                infer_expr_type(
-                    item,
-                    local_bindings,
-                    body_context,
-                    bound_service_registry,
-                    errors,
-                );
+                infer_expr_type(item, local_bindings, infer_context, errors);
             }
             ValueType::Named("List".to_string())
         }
         Expr::Map(entries) => {
             for (key, value) in entries {
-                infer_expr_type(
-                    key,
-                    local_bindings,
-                    body_context,
-                    bound_service_registry,
-                    errors,
-                );
-                infer_expr_type(
-                    value,
-                    local_bindings,
-                    body_context,
-                    bound_service_registry,
-                    errors,
-                );
+                infer_expr_type(key, local_bindings, infer_context, errors);
+                infer_expr_type(value, local_bindings, infer_context, errors);
             }
             ValueType::Named("Map".to_string())
         }
         Expr::Guarded(inner, guard) => {
-            infer_expr_type(
-                inner,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
-            infer_expr_type(
-                guard,
-                local_bindings,
-                body_context,
-                bound_service_registry,
-                errors,
-            );
+            infer_expr_type(inner, local_bindings, infer_context, errors);
+            infer_expr_type(guard, local_bindings, infer_context, errors);
             ValueType::Unknown
         }
-        Expr::After(inner, _) => infer_expr_type(
-            inner,
-            local_bindings,
-            body_context,
-            bound_service_registry,
-            errors,
-        ),
+        Expr::After(inner, _) => infer_expr_type(inner, local_bindings, infer_context, errors),
         Expr::Return(fields) => ValueType::Record(
             fields
                 .iter()
                 .map(|(name, expr)| {
                     (
                         name.clone(),
-                        infer_expr_type(
-                            expr,
-                            local_bindings,
-                            body_context,
-                            bound_service_registry,
-                            errors,
-                        )
-                        .display_name()
-                        .unwrap_or_else(|| "Any".to_string()),
+                        infer_expr_type(expr, local_bindings, infer_context, errors)
+                            .display_name()
+                            .unwrap_or_else(|| "Any".to_string()),
                     )
                 })
                 .collect(),
@@ -3165,6 +3100,52 @@ fn summarize(stages: List<Stage>) -> Int {
         )
         .expect("collection intrinsics should be recognized in strict mode");
         assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_accepts_function_typed_parameter_call_targets() {
+        let graph = module_graph_from_sources(&[(
+            "sample/callback.dag",
+            r#"module sample.callback
+fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
+  callback(value)
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("function-typed parameters should be callable in strict mode");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn function_typed_parameter_call_reports_arity_mismatch() {
+        let graph = module_graph_from_sources(&[(
+            "sample/callback_arity.dag",
+            r#"module sample.callback
+fn apply(callback: fn(Int) -> Int) -> Int {
+  callback()
+}"#,
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("callback calls should enforce function-type arity");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::CallArityMismatch {
+                caller,
+                callee,
+                expected,
+                got
+            } if caller == "apply" && callee == "callback" && *expected == 1 && *got == 0
+        )));
     }
 
     #[test]

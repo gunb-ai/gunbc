@@ -13152,6 +13152,38 @@ fn summarize(stages: List<Stage>) -> Int {
 }
 
 #[test]
+fn compile_command_directory_mode_accepts_function_typed_parameter_calls() {
+    let root = unique_temp_dir("function_typed_parameter_calls");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
+  callback(value)
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept function-typed parameter calls: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_type_mismatch() {
     let root = unique_temp_dir("type_mismatch");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
