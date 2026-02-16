@@ -251,6 +251,38 @@ fn expected_viz_self_mermaid() -> &'static str {
     )
 }
 
+fn expected_viz_self_ascii() -> &'static str {
+    concat!(
+        "ASCII DAG: daglang-compiler-pipeline\n",
+        "Nodes:\n",
+        "  - build_module_graph\n",
+        "    inputs: diagnostics:Vec<Diagnostic>(1), parsed_modules:Vec<ParsedModule>(1)\n",
+        "    outputs: diagnostics:Vec<Diagnostic>(1), module_graph:ModuleGraph(1)\n",
+        "  - discover_files\n",
+        "    inputs: context:PipelineContext(1)\n",
+        "    outputs: diagnostics:Vec<Diagnostic>(1), files:Vec<FileSource>(1)\n",
+        "  - parse_all\n",
+        "    inputs: diagnostics:Vec<Diagnostic>(1), files:Vec<FileSource>(1)\n",
+        "    outputs: diagnostics:Vec<Diagnostic>(1), parsed_modules:Vec<ParsedModule>(1)\n",
+        "  - report_modules\n",
+        "    inputs: diagnostics:Vec<Diagnostic>(1), module_graph:ModuleGraph(1)\n",
+        "    outputs: diagnostics:Vec<Diagnostic>(1), report:String(1)\n",
+        "Edges:\n",
+        "  - build_module_graph.diagnostics -> report_modules.diagnostics\n",
+        "  - build_module_graph.module_graph -> report_modules.module_graph\n",
+        "  - discover_files.diagnostics -> parse_all.diagnostics\n",
+        "  - discover_files.files -> parse_all.files\n",
+        "  - parse_all.diagnostics -> build_module_graph.diagnostics\n",
+        "  - parse_all.parsed_modules -> build_module_graph.parsed_modules\n",
+        "Waves:\n",
+        "  [0] discover_files\n",
+        "  [1] parse_all\n",
+        "  [2] build_module_graph\n",
+        "  [3] report_modules\n",
+        "\n",
+    )
+}
+
 fn resolve_discovered_module_order() -> Vec<String> {
     ModuleGraph::discover(&[workspace_root().join("dsl")])
         .expect("resolve discovery should succeed for real corpus")
@@ -26712,6 +26744,20 @@ fn viz_self_matches_expected_mermaid_snapshot() {
     assert!(output.status.success(), "viz --self should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, expected_viz_self_mermaid());
+}
+
+#[test]
+fn viz_self_matches_expected_ascii_snapshot() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--self")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz --self");
+
+    assert!(output.status.success(), "viz --self should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected_viz_self_ascii());
 }
 
 #[test]
