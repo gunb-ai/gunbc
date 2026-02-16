@@ -235,6 +235,7 @@ fn execute_op(
             let files = take_files(&mut inputs)?;
             let mut diagnostics = take_diagnostics_from_inputs(&mut inputs);
             let mut parsed = Vec::new();
+            let canonical_roots = canonicalize_roots(&context.roots);
 
             for file in files {
                 match parser::parse_with_file_diagnostics(&file.path, &file.source) {
@@ -244,7 +245,7 @@ fn execute_op(
                             .as_ref()
                             .map(|module| module.node.segments.clone())
                             .unwrap_or_else(|| {
-                                path_to_module_path(&file.path, &context.roots)
+                                path_to_module_path(&file.path, &context.roots, &canonical_roots)
                             });
                         let imports = ast
                             .imports
@@ -385,20 +386,27 @@ fn relative_path_to_module_path(relative: &Path) -> Vec<String> {
         .collect()
 }
 
-fn path_to_module_path(path: &Path, roots: &[PathBuf]) -> Vec<String> {
+fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
+    roots
+        .iter()
+        .filter_map(|root| fs::canonicalize(root).ok())
+        .collect()
+}
+
+fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
     let canonical_path = fs::canonicalize(path).ok();
     for root in roots {
         if let Ok(relative) = path.strip_prefix(root) {
             return relative_path_to_module_path(relative);
         }
-        if let Ok(canonical_root) = fs::canonicalize(root) {
-            if let Ok(relative) = path.strip_prefix(&canonical_root) {
+    }
+    for canonical_root in canonical_roots {
+        if let Ok(relative) = path.strip_prefix(canonical_root) {
+            return relative_path_to_module_path(relative);
+        }
+        if let Some(canonical_path) = &canonical_path {
+            if let Ok(relative) = canonical_path.strip_prefix(canonical_root) {
                 return relative_path_to_module_path(relative);
-            }
-            if let Some(canonical_path) = &canonical_path {
-                if let Ok(relative) = canonical_path.strip_prefix(&canonical_root) {
-                    return relative_path_to_module_path(relative);
-                }
             }
         }
     }
