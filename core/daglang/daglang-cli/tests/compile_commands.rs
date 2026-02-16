@@ -782,6 +782,44 @@ fn compile_command_directory_mode_fails_on_unknown_uses_resource_type() {
 }
 
 #[test]
+fn compile_command_directory_mode_fails_on_duplicate_uses_binding() {
+    let root = unique_temp_dir("duplicate_uses_binding");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } uses fs: Storage uses fs: Storage {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on duplicate uses binding"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate uses binding `fs` in `run`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_ambiguous_uses_resource_type() {
     let root = unique_temp_dir("ambiguous_uses_type");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
@@ -815,6 +853,44 @@ fn compile_command_directory_mode_fails_on_ambiguous_uses_resource_type() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("ambiguous used resource type `SharedResource`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_fails_on_duplicate_provides_binding() {
+    let root = unique_temp_dir("duplicate_provides_binding");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } provides out: Storage provides out: Storage {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on duplicate provides binding"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate provides binding `out` in `run`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
