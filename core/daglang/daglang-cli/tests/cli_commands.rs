@@ -182,6 +182,26 @@ fn check_command_missing_single_file_exits_nonzero() {
 }
 
 #[test]
+fn check_command_missing_directory_exits_nonzero() {
+    let missing_dir = unique_temp_dir("missing_dir");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&missing_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check for missing directory");
+
+    assert!(
+        !output.status.success(),
+        "check should fail when input directory does not exist"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("input root does not exist"));
+}
+
+#[test]
 fn check_command_reports_lex_diagnostic_for_unknown_character() {
     let bad_file = unique_temp_file("lex_bad");
     std::fs::write(&bad_file, "module tmp.bad\n$\n").expect("failed to create bad dag file");
@@ -665,6 +685,26 @@ fn modules_command_empty_directory_succeeds_without_diagnostics() {
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn modules_command_missing_directory_exits_nonzero() {
+    let missing_dir = unique_temp_dir("modules_missing_dir");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&missing_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules for missing directory");
+
+    assert!(
+        !output.status.success(),
+        "modules should fail when input directory does not exist"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("input root does not exist"));
 }
 
 #[test]

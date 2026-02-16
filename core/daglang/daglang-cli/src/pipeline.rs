@@ -324,6 +324,12 @@ fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> 
 
     let mut dag_files = Vec::new();
     for root in &context.roots {
+        if !root.exists() {
+            return Err(format!("input root does not exist: {}", root.display()));
+        }
+        if !root.is_dir() {
+            return Err(format!("input root is not a directory: {}", root.display()));
+        }
         collect_dag_files(root, &mut dag_files)
             .map_err(|error| format!("failed to collect .dag files in {}: {error}", root.display()))?;
     }
@@ -990,6 +996,34 @@ mod tests {
         assert!(err.contains("missing.dag"));
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn directory_mode_reports_missing_root_error() {
+        let root = unique_temp_dir("missing_root");
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let err = run_pipeline(&context, PipelineStop::Parse)
+            .expect_err("missing directory root should fail pipeline execution");
+        assert!(err.contains("input root does not exist"));
+    }
+
+    #[test]
+    fn directory_mode_rejects_non_directory_root() {
+        let root_file = unique_temp_dir("non_directory_root");
+        fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+        let context = PipelineContext {
+            roots: vec![root_file.clone()],
+            target_file: None,
+        };
+        let err = run_pipeline(&context, PipelineStop::Parse)
+            .expect_err("non-directory root should fail pipeline execution");
+        assert!(err.contains("input root is not a directory"));
+
+        fs::remove_file(root_file).expect("failed to cleanup root file");
     }
 
     #[test]
