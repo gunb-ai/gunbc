@@ -520,7 +520,16 @@ fn build_module_graph(
         });
     }
 
-    let cycle_modules = topo_sort_modules(&mut modules);
+    let cycle_modules = match topo_sort_modules(&mut modules) {
+        Ok(cycle_modules) => cycle_modules,
+        Err(message) => {
+            diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Resolve,
+                format!("internal module-graph invariant failed: {message}"),
+            ));
+            Vec::new()
+        }
+    };
     if !cycle_modules.is_empty() {
         diagnostics.push(Diagnostic::new(
             DiagnosticKind::Resolve,
@@ -537,7 +546,7 @@ fn build_module_graph(
     ModuleGraph { modules }
 }
 
-fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) -> Vec<Vec<String>> {
+fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) -> Result<Vec<Vec<String>>, String> {
     let n = modules.len();
     let mut in_degree = vec![0usize; n];
     let mut adjacency = vec![Vec::new(); n];
@@ -587,7 +596,16 @@ fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) -> Vec<Vec<String>> {
 
     let mut drained: Vec<Option<ResolvedModule>> = modules.drain(..).map(Some).collect();
     for old_idx in order {
-        let mut module = drained[old_idx].take().expect("module should exist");
+        let Some(slot) = drained.get_mut(old_idx) else {
+            return Err(format!(
+                "topological order referenced out-of-bounds module index {old_idx}"
+            ));
+        };
+        let Some(mut module) = slot.take() else {
+            return Err(format!(
+                "topological order referenced missing module index {old_idx}"
+            ));
+        };
         for dep in &mut module.dependencies {
             if *dep < n {
                 *dep = old_to_new[*dep];
@@ -595,7 +613,7 @@ fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) -> Vec<Vec<String>> {
         }
         modules.push(module);
     }
-    cycle_modules
+    Ok(cycle_modules)
 }
 
 fn topological_order(dag: &Dag<CompilerOp>) -> Result<Vec<String>, String> {
@@ -1108,7 +1126,7 @@ mod tests {
             },
         ];
 
-        let cycle_modules = topo_sort_modules(&mut modules);
+        let cycle_modules = topo_sort_modules(&mut modules).expect("topo sort should succeed");
         assert!(cycle_modules.is_empty(), "expected acyclic ordering");
         assert_eq!(modules[0].module_path, vec!["c".to_string()]);
         assert_eq!(modules[1].module_path, vec!["b".to_string()]);
