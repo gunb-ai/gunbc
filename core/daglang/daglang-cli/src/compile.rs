@@ -541,6 +541,52 @@ mod tests {
     }
 
     #[test]
+    fn build_context_treats_uppercase_dag_directory_input_as_single_file_target() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_build_context_uppercase_dag_dir_target_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        let dag_dir = root.join("bundle.DAG");
+        std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory fixture");
+
+        let input_str = dag_dir.to_string_lossy().to_string();
+        let cwd = std::env::temp_dir();
+        let context = build_context(&cwd, Some(&input_str));
+
+        assert_eq!(context.roots, vec![root.clone()]);
+        assert_eq!(context.target_file, Some(dag_dir.clone()));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn build_context_treats_mixed_case_dag_directory_input_as_single_file_target() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_build_context_mixed_case_dag_dir_target_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        let dag_dir = root.join("bundle.DaG");
+        std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory fixture");
+
+        let input_str = dag_dir.to_string_lossy().to_string();
+        let cwd = std::env::temp_dir();
+        let context = build_context(&cwd, Some(&input_str));
+
+        assert_eq!(context.roots, vec![root.clone()]);
+        assert_eq!(context.target_file, Some(dag_dir.clone()));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn compile_directory_reports_cyclic_dependency_errors() {
         let root = std::env::temp_dir().join(format!(
             "daglang_compile_cycle_{}_{}",
