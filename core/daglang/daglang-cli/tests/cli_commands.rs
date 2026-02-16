@@ -3313,6 +3313,44 @@ fn check_command_dot_double_separator_curdir_suffix_root_matches_plain_relative_
 }
 
 #[test]
+fn check_command_dot_double_separator_curdir_segment_suffix_root_matches_plain_relative_output() {
+    let cwd = workspace_root();
+
+    let dot_double_separator_curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//dsl/./.")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run dot-double-separator-curdir-segment-suffix-root daglang check");
+    assert!(
+        dot_double_separator_curdir_segment_suffix.status.success(),
+        "dot-double-separator-curdir-segment-suffix-root check should succeed: {}",
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative-root daglang check");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative-root check should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stdout, plain_relative.stdout,
+        "dot-double-separator-curdir-segment-suffix and plain-relative check outputs should match"
+    );
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stderr, plain_relative.stderr,
+        "dot-double-separator-curdir-segment-suffix and plain-relative check stderr should match"
+    );
+}
+
+#[test]
 fn check_command_curdir_suffix_root_matches_plain_relative_output() {
     let cwd = workspace_root();
 
@@ -4090,6 +4128,57 @@ fn check_command_dot_double_separator_curdir_suffix_missing_root_matches_plain_r
 }
 
 #[test]
+fn check_command_dot_double_separator_curdir_segment_suffix_missing_root_matches_plain_relative_output(
+) {
+    let cwd =
+        unique_temp_dir("check_dot_double_separator_curdir_segment_suffix_missing_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let missing_root = cwd.join("missing_root");
+
+    let dot_double_separator_curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//missing_root/./.")
+        .current_dir(&cwd)
+        .output()
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-suffix missing-root daglang check",
+        );
+    assert!(
+        !dot_double_separator_curdir_segment_suffix.status.success(),
+        "dot-double-separator-curdir-segment-suffix missing-root check should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing_root")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative missing-root daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative missing-root check should fail"
+    );
+
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stdout, plain_relative.stdout,
+        "dot-double-separator-curdir-segment-suffix and plain-relative missing-root check stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stderr, plain_relative.stderr,
+        "dot-double-separator-curdir-segment-suffix and plain-relative missing-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr).contains(
+            &format!("input root does not exist: {}", missing_root.display())
+        ),
+        "missing-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
 fn check_command_curdir_suffix_missing_root_matches_plain_relative_output() {
     let cwd = unique_temp_dir("check_curdir_suffix_missing_root");
     std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
@@ -4474,6 +4563,58 @@ fn check_command_dot_double_separator_curdir_suffix_non_directory_root_matches_p
         )),
         "non-directory-root diagnostics should include normalized absolute path: {}",
         String::from_utf8_lossy(&dot_double_separator_curdir_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn check_command_dot_double_separator_curdir_segment_suffix_non_directory_root_matches_plain_relative_output(
+) {
+    let cwd =
+        unique_temp_dir("check_dot_double_separator_curdir_segment_suffix_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let dot_double_separator_curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//input.txt/./.")
+        .current_dir(&cwd)
+        .output()
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-suffix non-directory-root daglang check",
+        );
+    assert!(
+        !dot_double_separator_curdir_segment_suffix.status.success(),
+        "dot-double-separator-curdir-segment-suffix non-directory-root check should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative non-directory-root daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative non-directory-root check should fail"
+    );
+
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stdout, plain_relative.stdout,
+        "dot-double-separator-curdir-segment-suffix and plain-relative non-directory-root check stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stderr, plain_relative.stderr,
+        "dot-double-separator-curdir-segment-suffix and plain-relative non-directory-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr).contains(
+            &format!("input root is not a directory: {}", root_file.display())
+        ),
+        "non-directory-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
@@ -5984,6 +6125,64 @@ fn check_command_dot_double_separator_curdir_suffix_single_file_target_matches_p
 }
 
 #[test]
+fn check_command_dot_double_separator_curdir_segment_suffix_single_file_target_matches_plain_relative_output(
+) {
+    let root = unique_temp_dir("check_dot_double_separator_curdir_segment_suffix_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+
+    let dot_double_separator_curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//main.dag/./.")
+        .current_dir(&root)
+        .output()
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-suffix target daglang check",
+        );
+    assert!(
+        dot_double_separator_curdir_segment_suffix.status.success(),
+        "dot-double-separator-curdir-segment-suffix target check should succeed: {}",
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("main.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative target daglang check");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative target check should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stdout, plain_relative.stdout,
+        "dot-double-separator-curdir-segment-suffix and plain-relative single-file check stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stderr, plain_relative.stderr,
+        "dot-double-separator-curdir-segment-suffix and plain-relative single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stdout),
+        expected_check_success_stdout(1),
+        "dot-double-separator-curdir-segment-suffix single-file check should parse exactly one file"
+    );
+    assert!(
+        dot_double_separator_curdir_segment_suffix.stderr.is_empty(),
+        "dot-double-separator-curdir-segment-suffix single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_curdir_suffix_single_file_target_matches_plain_relative_output() {
     let root = unique_temp_dir("check_curdir_suffix_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
@@ -6662,6 +6861,57 @@ fn check_command_dot_double_separator_curdir_suffix_missing_single_file_matches_
         )),
         "missing-target diagnostics should include normalized absolute path: {}",
         String::from_utf8_lossy(&dot_double_separator_curdir_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_dot_double_separator_curdir_segment_suffix_missing_single_file_matches_plain_relative_output(
+) {
+    let root =
+        unique_temp_dir("check_dot_double_separator_curdir_segment_suffix_missing_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing_target = root.join("missing.dag");
+
+    let dot_double_separator_curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//missing.dag/./.")
+        .current_dir(&root)
+        .output()
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-suffix missing-target daglang check",
+        );
+    assert!(
+        !dot_double_separator_curdir_segment_suffix.status.success(),
+        "dot-double-separator-curdir-segment-suffix missing-target check should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative missing-target daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative missing-target check should fail"
+    );
+
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stdout, plain_relative.stdout,
+        "dot-double-separator-curdir-segment-suffix and plain-relative missing-target check stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stderr, plain_relative.stderr,
+        "dot-double-separator-curdir-segment-suffix and plain-relative missing-target check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr).contains(
+            &format!("failed to canonicalize {}", missing_target.display())
+        ),
+        "missing-target diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -7474,6 +7724,61 @@ fn check_command_dot_double_separator_curdir_suffix_invalid_single_file_target_m
             .contains(&format!("{}:2:3:", canonical_target.display())),
         "expected parse diagnostic with normalized path for dot-double-separator-curdir-suffix invalid target: {}",
         String::from_utf8_lossy(&dot_double_separator_curdir_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_dot_double_separator_curdir_segment_suffix_invalid_single_file_target_matches_plain_relative_output(
+) {
+    let root =
+        unique_temp_dir("check_dot_double_separator_curdir_segment_suffix_invalid_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let broken_file = root.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed dag source");
+
+    let dot_double_separator_curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//broken.dag/./.")
+        .current_dir(&root)
+        .output()
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-suffix invalid-target daglang check",
+        );
+    assert!(
+        !dot_double_separator_curdir_segment_suffix.status.success(),
+        "dot-double-separator-curdir-segment-suffix invalid-target check should fail for malformed source"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative invalid-target daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative invalid-target check should fail for malformed source"
+    );
+
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stdout, plain_relative.stdout,
+        "dot-double-separator-curdir-segment-suffix and plain-relative invalid-target check stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stderr, plain_relative.stderr,
+        "dot-double-separator-curdir-segment-suffix and plain-relative invalid-target check stderr should match"
+    );
+    let canonical_target = broken_file
+        .canonicalize()
+        .expect("broken file should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
+            .contains(&format!("{}:2:3:", canonical_target.display())),
+        "expected parse diagnostic with normalized path for dot-double-separator-curdir-segment-suffix invalid target: {}",
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -15102,6 +15407,44 @@ fn modules_command_dot_double_separator_curdir_suffix_root_matches_plain_relativ
 }
 
 #[test]
+fn modules_command_dot_double_separator_curdir_segment_suffix_root_matches_plain_relative_output() {
+    let cwd = workspace_root();
+
+    let dot_double_separator_curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".//dsl/./.")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run dot-double-separator-curdir-segment-suffix-root daglang modules");
+    assert!(
+        dot_double_separator_curdir_segment_suffix.status.success(),
+        "dot-double-separator-curdir-segment-suffix-root modules should succeed: {}",
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative-root daglang modules");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative-root modules should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stdout, plain_relative.stdout,
+        "dot-double-separator-curdir-segment-suffix and plain-relative modules stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stderr, plain_relative.stderr,
+        "dot-double-separator-curdir-segment-suffix and plain-relative modules stderr should match"
+    );
+}
+
+#[test]
 fn modules_command_curdir_suffix_root_matches_plain_relative_output() {
     let cwd = workspace_root();
 
@@ -16031,6 +16374,57 @@ fn modules_command_dot_double_separator_curdir_suffix_missing_root_matches_plain
 }
 
 #[test]
+fn modules_command_dot_double_separator_curdir_segment_suffix_missing_root_matches_plain_relative_output(
+) {
+    let cwd =
+        unique_temp_dir("modules_dot_double_separator_curdir_segment_suffix_missing_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let missing_root = cwd.join("missing_root");
+
+    let dot_double_separator_curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".//missing_root/./.")
+        .current_dir(&cwd)
+        .output()
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-suffix missing-root daglang modules",
+        );
+    assert!(
+        !dot_double_separator_curdir_segment_suffix.status.success(),
+        "dot-double-separator-curdir-segment-suffix missing-root modules should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("missing_root")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative missing-root daglang modules");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative missing-root modules should fail"
+    );
+
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stdout, plain_relative.stdout,
+        "dot-double-separator-curdir-segment-suffix and plain-relative missing-root modules stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stderr, plain_relative.stderr,
+        "dot-double-separator-curdir-segment-suffix and plain-relative missing-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr).contains(
+            &format!("input root does not exist: {}", missing_root.display())
+        ),
+        "missing-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
 fn modules_command_curdir_suffix_missing_root_matches_plain_relative_output() {
     let cwd = unique_temp_dir("modules_curdir_suffix_missing_root");
     std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
@@ -16415,6 +16809,58 @@ fn modules_command_dot_double_separator_curdir_suffix_non_directory_root_matches
         )),
         "non-directory-root diagnostics should include normalized absolute path: {}",
         String::from_utf8_lossy(&dot_double_separator_curdir_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_dot_double_separator_curdir_segment_suffix_non_directory_root_matches_plain_relative_output(
+) {
+    let cwd =
+        unique_temp_dir("modules_dot_double_separator_curdir_segment_suffix_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let dot_double_separator_curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".//input.txt/./.")
+        .current_dir(&cwd)
+        .output()
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-suffix non-directory-root daglang modules",
+        );
+    assert!(
+        !dot_double_separator_curdir_segment_suffix.status.success(),
+        "dot-double-separator-curdir-segment-suffix non-directory-root modules should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative non-directory-root daglang modules");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative non-directory-root modules should fail"
+    );
+
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stdout, plain_relative.stdout,
+        "dot-double-separator-curdir-segment-suffix and plain-relative non-directory-root modules stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stderr, plain_relative.stderr,
+        "dot-double-separator-curdir-segment-suffix and plain-relative non-directory-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr).contains(
+            &format!("input root is not a directory: {}", root_file.display())
+        ),
+        "non-directory-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
@@ -16819,6 +17265,59 @@ fn modules_command_dot_double_separator_curdir_suffix_single_file_root_matches_p
         )),
         "single-file-root diagnostics should include normalized absolute path: {}",
         String::from_utf8_lossy(&dot_double_separator_curdir_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_dot_double_separator_curdir_segment_suffix_single_file_root_matches_plain_relative_output(
+) {
+    let cwd =
+        unique_temp_dir("modules_dot_double_separator_curdir_segment_suffix_single_file_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let file_path = cwd.join("one.dag");
+    std::fs::write(&file_path, "module sample.one\nfn ok() -> Unit {}")
+        .expect("failed to write .dag file");
+
+    let dot_double_separator_curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".//one.dag/./.")
+        .current_dir(&cwd)
+        .output()
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-suffix single-file-root daglang modules",
+        );
+    assert!(
+        !dot_double_separator_curdir_segment_suffix.status.success(),
+        "dot-double-separator-curdir-segment-suffix single-file-root modules should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("one.dag")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative single-file-root daglang modules");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative single-file-root modules should fail"
+    );
+
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stdout, plain_relative.stdout,
+        "dot-double-separator-curdir-segment-suffix and plain-relative single-file-root modules stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_curdir_segment_suffix.stderr, plain_relative.stderr,
+        "dot-double-separator-curdir-segment-suffix and plain-relative single-file-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr).contains(
+            &format!("input root is not a directory: {}", file_path.display())
+        ),
+        "single-file-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&dot_double_separator_curdir_segment_suffix.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
