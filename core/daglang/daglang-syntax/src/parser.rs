@@ -104,8 +104,10 @@ pub fn parse_with_file_diagnostics(
         .map_err(|errors| errors.iter().map(|error| error.to_diagnostic(file, source)).collect())
 }
 
-pub fn parse_or_panic(source: &str) -> SourceFile {
-    parse(source).unwrap_or_else(|errs| panic!("parse failed with {} error(s): {:?}", errs.len(), errs))
+#[cfg(test)]
+fn parse_or_panic(source: &str) -> SourceFile {
+    parse(source)
+        .unwrap_or_else(|errs| panic!("parse failed with {} error(s): {:?}", errs.len(), errs))
 }
 
 struct Parser {
