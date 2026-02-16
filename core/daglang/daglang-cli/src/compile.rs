@@ -4278,6 +4278,11 @@ func run(path: String) -> { body: String } {
             report.is_exact_match(),
             "compiled makegen should match builder parity after normalization: {report:?}"
         );
+        assert!(report.added_node_ids.is_empty());
+        assert!(report.removed_node_ids.is_empty());
+        assert!(report.changed_node_details.is_empty());
+        assert!(report.added_edge_ids.is_empty());
+        assert!(report.removed_edge_ids.is_empty());
     }
 
     #[test]

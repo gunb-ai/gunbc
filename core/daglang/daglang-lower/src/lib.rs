@@ -2442,6 +2442,61 @@ func run() -> { ok: Bool } provides out: Storage {
         );
     }
 
+    #[test]
+    fn parity_report_lists_added_and_removed_items_in_sorted_order() {
+        let mut candidate = Dag::new();
+        candidate.add_node(Node::opaque(
+            "b",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "sample".to_string(),
+                kind: CallableKind::Fn,
+                name: "b".to_string(),
+            },
+        ));
+        candidate.add_node(Node::opaque(
+            "a",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "sample".to_string(),
+                kind: CallableKind::Fn,
+                name: "a".to_string(),
+            },
+        ));
+        candidate.add_edge(Edge::new("a", "out", "b", "in"));
+
+        let mut reference = Dag::new();
+        reference.add_node(Node::opaque(
+            "c",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            (),
+        ));
+        reference.add_node(Node::opaque(
+            "d",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            (),
+        ));
+        reference.add_edge(Edge::new("c", "out", "d", "in"));
+
+        let report = compare_ir(&candidate, &reference);
+        assert_eq!(report.added_node_ids, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(report.removed_node_ids, vec!["c".to_string(), "d".to_string()]);
+        assert_eq!(
+            report.added_edge_ids,
+            vec!["a.out->b.in".to_string()],
+            "added edges should be deterministic and sorted"
+        );
+        assert_eq!(
+            report.removed_edge_ids,
+            vec!["c.out->d.in".to_string()],
+            "removed edges should be deterministic and sorted"
+        );
+    }
+
     #[allow(clippy::disallowed_methods)]
     fn load_makegen_lowered() -> Dag<LoweredOp> {
         let file = Path::new(env!("CARGO_MANIFEST_DIR"))
