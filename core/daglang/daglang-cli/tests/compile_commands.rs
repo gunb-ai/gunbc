@@ -10764,6 +10764,40 @@ fn obligations_command_json_format_emits_valid_json_object() {
 }
 
 #[test]
+fn obligations_command_explicit_text_format_matches_default_output() {
+    let default_output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations default format");
+    assert!(
+        default_output.status.success(),
+        "default obligations command failed: {}",
+        String::from_utf8_lossy(&default_output.stderr)
+    );
+
+    let explicit_text_output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("text")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations --format text");
+    assert!(
+        explicit_text_output.status.success(),
+        "obligations --format text failed: {}",
+        String::from_utf8_lossy(&explicit_text_output.stderr)
+    );
+
+    assert_eq!(
+        default_output.stdout, explicit_text_output.stdout,
+        "explicit text format should match default obligations output"
+    );
+}
+
+#[test]
 fn show_triplets_command_shows_transport_expansion_for_makegen() {
     let output = Command::new(daglang_bin())
         .arg("show-triplets")
@@ -10808,6 +10842,40 @@ fn show_triplets_command_json_format_emits_triplet_list() {
     assert!(
         !triplets.is_empty(),
         "triplet list should include at least one transport chain"
+    );
+}
+
+#[test]
+fn show_triplets_command_explicit_text_format_matches_default_output() {
+    let default_output = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang show-triplets default format");
+    assert!(
+        default_output.status.success(),
+        "default show-triplets command failed: {}",
+        String::from_utf8_lossy(&default_output.stderr)
+    );
+
+    let explicit_text_output = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("text")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang show-triplets --format text");
+    assert!(
+        explicit_text_output.status.success(),
+        "show-triplets --format text failed: {}",
+        String::from_utf8_lossy(&explicit_text_output.stderr)
+    );
+
+    assert_eq!(
+        default_output.stdout, explicit_text_output.stdout,
+        "explicit text format should match default show-triplets output"
     );
 }
 

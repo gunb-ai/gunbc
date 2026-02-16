@@ -30368,6 +30368,44 @@ fn obligations_and_show_triplets_with_invalid_format_exit_with_usage_message() {
 }
 
 #[test]
+fn obligations_and_show_triplets_with_extra_args_exit_with_usage_message() {
+    for (command, usage) in [
+        (
+            "obligations",
+            "Usage: daglang obligations <file.dag> [--format text|json]",
+        ),
+        (
+            "show-triplets",
+            "Usage: daglang show-triplets <file.dag> [--format text|json]",
+        ),
+    ] {
+        let output = Command::new(daglang_bin())
+            .arg(command)
+            .arg("dsl/tools/makegen.dag")
+            .arg("--format")
+            .arg("text")
+            .arg("extra")
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|err| panic!("failed to run {command} with extra args: {err}"));
+        assert!(
+            !output.status.success(),
+            "{command} with extra args should fail"
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{command} with extra args should use usage exit code 1"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains(usage),
+            "{command} with extra args should print command usage: {stderr}"
+        );
+    }
+}
+
+#[test]
 fn compile_family_commands_execute_real_pipeline_paths() {
     for command in ["expand", "manifest", "compile"] {
         let output = Command::new(daglang_bin())
