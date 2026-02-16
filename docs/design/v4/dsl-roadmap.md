@@ -540,7 +540,7 @@ No HashMap, no string keys, no `remove()` semantics, no fan-out ambiguity. Each 
 
 **Acceptance criteria**:
 - [x] `run_pipeline()` is an imperative function with typed locals — no `HashMap<String, PipeValue>`
-- [x] `PipelineResult` is a typed stage-backed result (no string-keyed values)
+- [x] `PipelineResult` is a typed enum (no string-keyed values)
 - [x] The 5 `take_*` functions are deleted
 - [x] `build_pipeline_dag()` still exists (for `dag viz --self`)
 - [x] `dag check`, `dag modules`, and `dag compile` produce identical output
