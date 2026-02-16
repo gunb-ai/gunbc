@@ -30736,6 +30736,40 @@ fn run_command_check_mode_preserves_existing_file_and_reports_not_written() {
 }
 
 #[test]
+fn run_command_check_mode_does_not_create_missing_output_file() {
+    let output_path = unique_temp_output_file("run_check_mode_missing");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("--check-mode")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with --check-mode on missing path");
+
+    assert!(
+        output.status.success(),
+        "run with --check-mode should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode run should report written=false for missing outputs: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "check-mode run should not leave a newly-created file at {}",
+        output_path.display()
+    );
+}
+
+#[test]
 fn compile_family_commands_execute_real_pipeline_paths() {
     for command in ["expand", "manifest", "obligations", "show-triplets", "compile"] {
         let output = Command::new(daglang_bin())
