@@ -26807,6 +26807,124 @@ fn check_command_accepts_symlink_mixed_case_dag_single_file_target() {
 
 #[cfg(unix)]
 #[test]
+fn check_command_uppercase_symlink_single_file_curdir_suffix_target_matches_plain_output() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_uppercase_symlink_single_file_curdir_suffix");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let real = root.join("real.DAG");
+    let link = root.join("link.DAG");
+    std::fs::write(&real, "module sample.real\nfn ok() -> Unit {}")
+        .expect("failed to write real source");
+    symlink(&real, &link).expect("failed to create symlinked target");
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.DAG/.")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run uppercase symlink curdir-suffix daglang check");
+    assert!(
+        curdir_suffix.status.success(),
+        "uppercase symlink curdir-suffix check should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain uppercase symlink daglang check");
+    assert!(
+        plain.status.success(),
+        "plain uppercase symlink check should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    assert_eq!(
+        curdir_suffix.stdout, plain.stdout,
+        "uppercase symlink curdir-suffix and plain target check stdout should match"
+    );
+    assert_eq!(
+        curdir_suffix.stderr, plain.stderr,
+        "uppercase symlink curdir-suffix and plain target check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&curdir_suffix.stdout),
+        expected_check_success_stdout(1),
+        "uppercase symlink curdir-suffix check should parse exactly one file"
+    );
+    assert!(
+        curdir_suffix.stderr.is_empty(),
+        "uppercase symlink curdir-suffix check should not emit stderr: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_mixed_case_symlink_single_file_curdir_suffix_target_matches_plain_output() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_mixed_case_symlink_single_file_curdir_suffix");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let real = root.join("real.DaG");
+    let link = root.join("link.DaG");
+    std::fs::write(&real, "module sample.real\nfn ok() -> Unit {}")
+        .expect("failed to write real source");
+    symlink(&real, &link).expect("failed to create symlinked target");
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.DaG/.")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run mixed-case symlink curdir-suffix daglang check");
+    assert!(
+        curdir_suffix.status.success(),
+        "mixed-case symlink curdir-suffix check should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain mixed-case symlink daglang check");
+    assert!(
+        plain.status.success(),
+        "plain mixed-case symlink check should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    assert_eq!(
+        curdir_suffix.stdout, plain.stdout,
+        "mixed-case symlink curdir-suffix and plain target check stdout should match"
+    );
+    assert_eq!(
+        curdir_suffix.stderr, plain.stderr,
+        "mixed-case symlink curdir-suffix and plain target check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&curdir_suffix.stdout),
+        expected_check_success_stdout(1),
+        "mixed-case symlink curdir-suffix check should parse exactly one file"
+    );
+    assert!(
+        curdir_suffix.stderr.is_empty(),
+        "mixed-case symlink curdir-suffix check should not emit stderr: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn check_command_symlink_and_real_invalid_single_file_targets_are_equivalent() {
     use std::os::unix::fs::symlink;
 
@@ -27078,6 +27196,142 @@ fn check_command_dangling_mixed_case_symlink_single_file_target_exits_nonzero() 
     assert!(
         !stderr.contains("input root is not a directory"),
         "mixed-case dangling-symlink target should be treated as single-file canonicalization failure: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_uppercase_dangling_symlink_single_file_curdir_suffix_matches_plain_output() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_uppercase_dangling_symlink_single_file_curdir_suffix");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.DAG");
+    let dangling_link = root.join("broken.DAG");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink target");
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.DAG/.")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run uppercase dangling curdir-suffix daglang check");
+    assert!(
+        !curdir_suffix.status.success(),
+        "uppercase dangling curdir-suffix check should fail"
+    );
+    assert_eq!(
+        curdir_suffix.status.code(),
+        Some(1),
+        "uppercase dangling curdir-suffix check should use exit code 1"
+    );
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain uppercase dangling daglang check");
+    assert!(
+        !plain.status.success(),
+        "plain uppercase dangling check should fail"
+    );
+    assert_eq!(
+        plain.status.code(),
+        Some(1),
+        "plain uppercase dangling check should use exit code 1"
+    );
+
+    assert_eq!(
+        curdir_suffix.stdout, plain.stdout,
+        "uppercase dangling curdir-suffix and plain target check stdout should match"
+    );
+    assert_eq!(
+        curdir_suffix.stderr, plain.stderr,
+        "uppercase dangling curdir-suffix and plain target check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&curdir_suffix.stderr).contains(&format!(
+            "failed to canonicalize {}",
+            dangling_link.display()
+        )),
+        "uppercase dangling curdir-suffix diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+    assert!(
+        !String::from_utf8_lossy(&curdir_suffix.stderr).contains("input root is not a directory"),
+        "uppercase dangling curdir-suffix target should remain in single-file mode: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_mixed_case_dangling_symlink_single_file_curdir_suffix_matches_plain_output() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_mixed_case_dangling_symlink_single_file_curdir_suffix");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.DaG");
+    let dangling_link = root.join("broken.DaG");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink target");
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.DaG/.")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run mixed-case dangling curdir-suffix daglang check");
+    assert!(
+        !curdir_suffix.status.success(),
+        "mixed-case dangling curdir-suffix check should fail"
+    );
+    assert_eq!(
+        curdir_suffix.status.code(),
+        Some(1),
+        "mixed-case dangling curdir-suffix check should use exit code 1"
+    );
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain mixed-case dangling daglang check");
+    assert!(
+        !plain.status.success(),
+        "plain mixed-case dangling check should fail"
+    );
+    assert_eq!(
+        plain.status.code(),
+        Some(1),
+        "plain mixed-case dangling check should use exit code 1"
+    );
+
+    assert_eq!(
+        curdir_suffix.stdout, plain.stdout,
+        "mixed-case dangling curdir-suffix and plain target check stdout should match"
+    );
+    assert_eq!(
+        curdir_suffix.stderr, plain.stderr,
+        "mixed-case dangling curdir-suffix and plain target check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&curdir_suffix.stderr).contains(&format!(
+            "failed to canonicalize {}",
+            dangling_link.display()
+        )),
+        "mixed-case dangling curdir-suffix diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+    assert!(
+        !String::from_utf8_lossy(&curdir_suffix.stderr).contains("input root is not a directory"),
+        "mixed-case dangling curdir-suffix target should remain in single-file mode: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
