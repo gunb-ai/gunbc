@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use daglang_syntax::ast::{Item, TypeBody};
+use daglang_syntax::ast::{Item, SourceFile, TypeBody};
 
 fn dsl_file(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -14,6 +14,23 @@ fn parse_dsl(path: &str) -> daglang_syntax::ast::SourceFile {
     let source = fs::read_to_string(&file).expect("failed to read representative .dag file");
     daglang_syntax::parser::parse(&source)
         .unwrap_or_else(|errors| panic!("failed to parse {}: {errors:?}", file.display()))
+}
+
+fn item_signatures(source: &SourceFile) -> Vec<String> {
+    source
+        .items
+        .iter()
+        .map(|item| match &item.node {
+            Item::TypeDef(def) => format!("type {}", def.name),
+            Item::FnDef(def) => format!("fn {}", def.name),
+            Item::FuncDef(def) => format!("func {}", def.name),
+            Item::PatternDef(def) => format!("pattern {}", def.name),
+            Item::ServiceDef(def) => format!("service {}", def.name),
+            Item::ResourceDef(def) => format!("resource {}", def.name),
+            Item::InterfaceDef(def) => format!("interface {}", def.name),
+            Item::PipelineDef(def) => format!("pipeline {}", def.name),
+        })
+        .collect()
 }
 
 #[test]
@@ -32,6 +49,10 @@ fn makegen_contains_fn_and_func_items() {
         .items
         .iter()
         .any(|item| matches!(item.node, Item::FuncDef(_))));
+    assert_eq!(
+        item_signatures(&source),
+        vec!["fn render_makefile", "func makegen"]
+    );
 }
 
 #[test]
@@ -59,6 +80,48 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     assert!(saw_record, "expected at least one record type definition");
     assert!(saw_sum, "expected at least one sum type definition");
     assert!(saw_alias, "expected at least one alias type definition");
+    assert_eq!(
+        item_signatures(&source),
+        vec![
+            "type CommitSha",
+            "type RetryCount",
+            "type HttpStatus",
+            "type Email",
+            "type Port",
+            "type GistId",
+            "type SecretValue",
+            "type Url",
+            "type FilePath",
+            "type SemVer",
+            "type NonEmptyStr",
+            "type GitRef",
+            "type ProjectId",
+            "type ServiceAccountEmail",
+            "type CloudRuntime",
+            "type Platform",
+            "type ContentEncoding",
+            "type TextFilePath",
+            "type BinaryFilePath",
+            "type FileClassification",
+            "type MimeType",
+            "type AuthScheme",
+            "type AccessToken",
+            "type CloudSecretConfig",
+            "type Credential",
+            "type TestResult",
+            "type Summary",
+            "type StageResult",
+            "type ToolEntry",
+            "type ToolRegistry",
+            "type DagTopology",
+            "type TopologyNode",
+            "type TopologyEdge",
+            "type DagDiff",
+            "type CodegenTarget",
+            "type PragmaDirective",
+            "type DocSource",
+        ]
+    );
 }
 
 #[test]
@@ -77,6 +140,22 @@ fn patterns_file_contains_pattern_defs() {
         .items
         .iter()
         .any(|item| matches!(item.node, Item::PatternDef(_))));
+    assert_eq!(
+        item_signatures(&source),
+        vec![
+            "pattern file_content_matches",
+            "pattern classify_files",
+            "pattern read_text_files",
+            "pattern acquire_subject_token",
+            "pattern optional_impersonation",
+            "pattern ensure",
+            "pattern upsert",
+            "pattern content_upsert",
+            "pattern credential_chain",
+            "pattern transaction",
+            "pattern retry",
+        ]
+    );
 }
 
 #[test]
@@ -95,6 +174,17 @@ fn shell_service_file_contains_service_defs() {
         .items
         .iter()
         .any(|item| matches!(item.node, Item::ServiceDef(_))));
+    assert_eq!(
+        item_signatures(&source),
+        vec![
+            "service gcloud.Auth",
+            "service oauth2.Google",
+            "service shell.Find",
+            "service shell.Codegen",
+            "service rustup.Component",
+            "service shell.Which",
+        ]
+    );
 }
 
 #[test]
@@ -113,4 +203,13 @@ fn resources_file_contains_resource_defs() {
         .items
         .iter()
         .any(|item| matches!(item.node, Item::ResourceDef(_))));
+    assert_eq!(
+        item_signatures(&source),
+        vec![
+            "resource Filesystem",
+            "resource Network",
+            "resource Clock",
+            "resource AuthContext",
+        ]
+    );
 }
