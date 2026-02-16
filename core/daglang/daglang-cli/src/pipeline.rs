@@ -1097,6 +1097,32 @@ mod tests {
     }
 
     #[test]
+    fn parse_pipeline_with_empty_roots_succeeds_with_zero_files() {
+        let context = PipelineContext {
+            roots: vec![],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse)
+            .expect("empty roots should be valid for parse pipeline");
+        assert_eq!(result.parsed_count, 0);
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn report_pipeline_with_empty_roots_emits_empty_graph_report() {
+        let context = PipelineContext {
+            roots: vec![],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Report)
+            .expect("empty roots should be valid for report pipeline");
+        let report = result.report.expect("report should be generated");
+        assert!(report.contains("Discovered modules:"));
+        assert!(!report.contains("Diagnostics:"));
+        assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
     fn directory_mode_reports_missing_root_error() {
         let root = unique_temp_dir("missing_root");
         let context = PipelineContext {
