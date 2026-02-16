@@ -134,6 +134,24 @@ fn reported_modules_sorted(stdout: &str) -> Vec<String> {
     modules
 }
 
+fn expected_viz_self_mermaid() -> &'static str {
+    concat!(
+        "flowchart TB\n",
+        "subgraph daglang_compiler_pipeline[\"daglang-compiler-pipeline\"]\n",
+        "    daglang_compiler_pipeline_discover_files[discover_files]\n",
+        "    daglang_compiler_pipeline_parse_all[parse_all]\n",
+        "    daglang_compiler_pipeline_build_module_graph[build_module_graph]\n",
+        "    daglang_compiler_pipeline_report_modules[report_modules]\n",
+        "    daglang_compiler_pipeline_discover_files -->|files:files| daglang_compiler_pipeline_parse_all\n",
+        "    daglang_compiler_pipeline_discover_files -->|diagnostics:diagnostics| daglang_compiler_pipeline_parse_all\n",
+        "    daglang_compiler_pipeline_parse_all -->|parsed_modules:parsed_modules| daglang_compiler_pipeline_build_module_graph\n",
+        "    daglang_compiler_pipeline_parse_all -->|diagnostics:diagnostics| daglang_compiler_pipeline_build_module_graph\n",
+        "    daglang_compiler_pipeline_build_module_graph -->|module_graph:module_graph| daglang_compiler_pipeline_report_modules\n",
+        "    daglang_compiler_pipeline_build_module_graph -->|diagnostics:diagnostics| daglang_compiler_pipeline_report_modules\n",
+        "end\n\n",
+    )
+}
+
 #[test]
 fn check_command_parses_full_dsl_corpus() {
     let output = Command::new(daglang_bin())
@@ -456,6 +474,20 @@ fn viz_self_contains_expected_pipeline_edge_labels() {
         stdout.contains("module_graph:module_graph"),
         "viz --self should include build->report module graph edge label"
     );
+}
+
+#[test]
+fn viz_self_matches_expected_mermaid_snapshot() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--self")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz --self");
+
+    assert!(output.status.success(), "viz --self should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected_viz_self_mermaid());
 }
 
 #[test]
