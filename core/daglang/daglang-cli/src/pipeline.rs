@@ -216,7 +216,7 @@ pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<Pip
     };
 
     Ok(PipelineResult {
-        diagnostics: normalize_diagnostics(diagnostics),
+        diagnostics: diagnostic::normalize_diagnostics(diagnostics),
         parsed_count,
         module_graph,
         report,
@@ -282,7 +282,7 @@ fn execute_op(
                 ),
                 (
                     PORT_DIAGNOSTICS.to_string(),
-                    PipeValue::Diagnostics(normalize_diagnostics(diagnostics)),
+                    PipeValue::Diagnostics(diagnostic::normalize_diagnostics(diagnostics)),
                 ),
             ]))
         }
@@ -295,13 +295,13 @@ fn execute_op(
                 (PORT_MODULE_GRAPH.to_string(), PipeValue::ModuleGraph(graph)),
                 (
                     PORT_DIAGNOSTICS.to_string(),
-                    PipeValue::Diagnostics(normalize_diagnostics(diagnostics)),
+                    PipeValue::Diagnostics(diagnostic::normalize_diagnostics(diagnostics)),
                 ),
             ]))
         }
         CompilerOp::ReportModules => {
             let graph = take_module_graph(&mut inputs)?;
-            let diagnostics = normalize_diagnostics(take_diagnostics_from_inputs(&mut inputs));
+            let diagnostics = diagnostic::normalize_diagnostics(take_diagnostics_from_inputs(&mut inputs));
             let mut report = String::new();
             report.push_str("Discovered modules:\n");
             report.push_str(&graph.display_tree());
@@ -792,9 +792,6 @@ fn edge_key(node: &str, port: &str) -> String {
     format!("{node}.{port}")
 }
 
-fn normalize_diagnostics(diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
-    diagnostic::normalize_diagnostics(diagnostics)
-}
 
 #[cfg(test)]
 // Test infrastructure: filesystem access for test fixtures

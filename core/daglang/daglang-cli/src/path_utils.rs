@@ -1,11 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
-/// Case-insensitive check for `.dag` file extension.
-pub fn has_dag_extension(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("dag"))
-}
+pub use daglang_resolve::has_dag_extension;
 
 pub fn resolve_default_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));

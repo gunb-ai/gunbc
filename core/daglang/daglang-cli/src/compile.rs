@@ -7,7 +7,7 @@ use daglang_derive::{derive_artifacts, DerivedArtifacts};
 use daglang_emit::{emit_rust_bundle, EmissionBundle};
 use daglang_lower::{lower_typed_project, LoweredOp};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
-use daglang_syntax::diagnostic::{self, Diagnostic};
+use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
 use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions};
 use gunbc_ir::Dag;
@@ -30,14 +30,10 @@ pub fn build_context(input: Option<&String>) -> PipelineContext {
             (vec![root], Some(path))
         }
         Some(path) => (vec![path], None),
-        None => (vec![resolve_default_root()], None),
+        None => (vec![path_utils::resolve_default_root()], None),
     };
 
     PipelineContext { roots, target_file }
-}
-
-pub fn resolve_default_root() -> PathBuf {
-    path_utils::resolve_default_root()
 }
 
 pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, String> {
@@ -111,7 +107,7 @@ fn format_resolve_error(error: ResolveError) -> String {
     match error {
         ResolveError::ParseErrors(files) => {
             let mut message = String::from("compile diagnostics:\n");
-            let diagnostics = normalize_diagnostics(
+            let diagnostics = diagnostic::normalize_diagnostics(
                 files
                     .into_iter()
                     .flat_map(|(_path, diagnostics)| diagnostics)
@@ -124,10 +120,6 @@ fn format_resolve_error(error: ResolveError) -> String {
         }
         other => format!("resolve error: {other}"),
     }
-}
-
-fn normalize_diagnostics(diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
-    diagnostic::normalize_diagnostics(diagnostics)
 }
 
 fn validate_module_path_consistency(

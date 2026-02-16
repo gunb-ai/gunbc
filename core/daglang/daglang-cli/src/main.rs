@@ -13,7 +13,7 @@
 //! - `daglang check <file.dag>`    -- Parse + typecheck without lowering
 //! - `daglang compile <file.dag>`  -- Full compilation pipeline
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use daglang_cli::compile::{
     build_context, compile_from_context, render_expand, render_manifest,
@@ -115,9 +115,9 @@ fn main() {
             if args.len() > 3 {
                 exit_usage("check <file.dag|dir>");
             }
-            let input = args.get(2).map(|value| normalize_cli_path(PathBuf::from(value)));
+            let input = args.get(2).map(|value| path_utils::normalize_cli_path(PathBuf::from(value)));
             let (roots, target_file) = match input {
-                Some(path) if has_dag_extension(&path) && !path.is_dir() =>
+                Some(path) if path_utils::has_dag_extension(&path) && !path.is_dir() =>
                 {
                     let root = path
                         .parent()
@@ -179,10 +179,10 @@ fn main() {
 
 fn resolve_root(arg: Option<&String>) -> PathBuf {
     if let Some(path) = arg {
-        return normalize_cli_path(PathBuf::from(path));
+        return path_utils::normalize_cli_path(PathBuf::from(path));
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    default_root_from_cwd(&cwd)
+    path_utils::default_root_from_cwd(&cwd)
 }
 
 fn exit_usage(command: &str) -> ! {
@@ -190,26 +190,10 @@ fn exit_usage(command: &str) -> ! {
     std::process::exit(1);
 }
 
-fn has_dag_extension(path: &Path) -> bool {
-    path_utils::has_dag_extension(path)
-}
-
-fn normalize_cli_path(path: PathBuf) -> PathBuf {
-    path_utils::normalize_cli_path(path)
-}
-
-fn default_root_from_cwd(cwd: &Path) -> PathBuf {
-    path_utils::default_root_from_cwd(cwd)
-}
-
-#[cfg(test)]
-fn normalize_path_components(path: &Path) -> PathBuf {
-    path_utils::normalize_path_components(path)
-}
 
 #[cfg(test)]
 mod tests {
-    use super::{default_root_from_cwd, has_dag_extension, normalize_path_components};
+    use crate::path_utils::{default_root_from_cwd, has_dag_extension, normalize_path_components};
     use std::path::{Path, PathBuf};
 
     fn root_path() -> PathBuf {
