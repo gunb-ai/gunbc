@@ -10660,6 +10660,100 @@ fn manifest_json_output_is_deterministic_for_same_input() {
 }
 
 #[test]
+fn show_triplets_command_shows_content_upsert_expansion() {
+    let output = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang show-triplets");
+
+    assert!(
+        output.status.success(),
+        "show-triplets command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("TransportTriplets:"));
+    assert!(stdout.contains("prepare_read_makegen"));
+    assert!(stdout.contains("execute_read_makegen"));
+    assert!(stdout.contains("compare_makegen_content"));
+}
+
+#[test]
+fn show_triplets_command_supports_json_output_format() {
+    let output = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("--format")
+        .arg("json")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang show-triplets --format json");
+
+    assert!(
+        output.status.success(),
+        "show-triplets --format json command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"triplets\""));
+    assert!(stdout.contains("\"prepare_nodes\""));
+    assert!(stdout.contains("\"execute_nodes\""));
+    assert!(stdout.contains("\"parse_nodes\""));
+}
+
+#[test]
+fn obligations_command_shows_four_bucket_summary() {
+    let output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations");
+
+    assert!(
+        output.status.success(),
+        "obligations command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("TestObligationsSummary:"));
+    assert!(stdout.contains("dry_run_completion_required:"));
+    assert!(stdout.contains("transport:"));
+    assert!(stdout.contains("pure_node_determinism:"));
+    assert!(stdout.contains("resource_lifecycle:"));
+}
+
+#[test]
+fn obligations_command_supports_json_output_format() {
+    let output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("--format=json")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations --format=json");
+
+    assert!(
+        output.status.success(),
+        "obligations --format=json command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"summary\""));
+    assert!(stdout.contains("\"transport\""));
+    assert!(stdout.contains("\"pure_node_determinism\""));
+    assert!(stdout.contains("\"resource_lifecycle\""));
+}
+
+#[test]
 fn manifest_command_reports_non_zero_transport_and_lifecycle_obligations() {
     let fixture = unique_temp_file("manifest_obligations");
     std::fs::write(

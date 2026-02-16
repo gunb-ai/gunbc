@@ -30245,8 +30245,8 @@ fn viz_without_args_exits_nonzero_with_usage_message() {
 }
 
 #[test]
-fn expand_and_manifest_without_required_target_exit_with_usage_message() {
-    for command in ["expand", "manifest"] {
+fn compile_read_commands_without_required_target_exit_with_usage_message() {
+    for command in ["expand", "manifest", "obligations", "show-triplets"] {
         let output = Command::new(daglang_bin())
             .arg(command)
             .current_dir(workspace_root())
@@ -30264,6 +30264,12 @@ fn expand_and_manifest_without_required_target_exit_with_usage_message() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let expected_usage = match command {
             "manifest" => "Usage: daglang manifest [--format text|json] <file.dag>".to_string(),
+            "obligations" => {
+                "Usage: daglang obligations [--format text|json] <file.dag>".to_string()
+            }
+            "show-triplets" => {
+                "Usage: daglang show-triplets [--format text|json] <file.dag>".to_string()
+            }
             _ => format!("Usage: daglang {command} <file.dag>"),
         };
         assert!(
@@ -30274,8 +30280,8 @@ fn expand_and_manifest_without_required_target_exit_with_usage_message() {
 }
 
 #[test]
-fn expand_and_manifest_with_extra_args_exit_with_usage_message() {
-    for command in ["expand", "manifest"] {
+fn compile_read_commands_with_extra_args_exit_with_usage_message() {
+    for command in ["expand", "manifest", "obligations", "show-triplets"] {
         let output = Command::new(daglang_bin())
             .arg(command)
             .arg("dsl/tools/makegen.dag")
@@ -30295,6 +30301,12 @@ fn expand_and_manifest_with_extra_args_exit_with_usage_message() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let expected_usage = match command {
             "manifest" => "Usage: daglang manifest [--format text|json] <file.dag>".to_string(),
+            "obligations" => {
+                "Usage: daglang obligations [--format text|json] <file.dag>".to_string()
+            }
+            "show-triplets" => {
+                "Usage: daglang show-triplets [--format text|json] <file.dag>".to_string()
+            }
             _ => format!("Usage: daglang {command} <file.dag>"),
         };
         assert!(
@@ -30332,6 +30344,68 @@ fn manifest_with_unknown_format_exits_nonzero_with_clear_error() {
     assert!(
         stderr.contains("Usage: daglang manifest [--format text|json] <file.dag>"),
         "manifest should print usage guidance for unknown format: {stderr}"
+    );
+}
+
+#[test]
+fn obligations_with_unknown_format_exits_nonzero_with_clear_error() {
+    let output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("--format")
+        .arg("yaml")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations with unknown format");
+
+    assert!(
+        !output.status.success(),
+        "obligations with unknown format should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "obligations with unknown format should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown obligations format `yaml`"),
+        "obligations should report unknown format explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang obligations [--format text|json] <file.dag>"),
+        "obligations should print usage guidance for unknown format: {stderr}"
+    );
+}
+
+#[test]
+fn show_triplets_with_unknown_format_exits_nonzero_with_clear_error() {
+    let output = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("--format")
+        .arg("yaml")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang show-triplets with unknown format");
+
+    assert!(
+        !output.status.success(),
+        "show-triplets with unknown format should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "show-triplets with unknown format should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown show-triplets format `yaml`"),
+        "show-triplets should report unknown format explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang show-triplets [--format text|json] <file.dag>"),
+        "show-triplets should print usage guidance for unknown format: {stderr}"
     );
 }
 
@@ -30468,7 +30542,7 @@ fn run_command_dry_run_does_not_write_makefile() {
 
 #[test]
 fn compile_family_commands_execute_real_pipeline_paths() {
-    for command in ["expand", "manifest", "compile"] {
+    for command in ["expand", "manifest", "obligations", "show-triplets", "compile"] {
         let output = Command::new(daglang_bin())
             .arg(command)
             .arg("dsl/tools/makegen.dag")

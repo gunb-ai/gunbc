@@ -1,6 +1,6 @@
 use std::fmt::Write;
 use std::path::PathBuf;
-use std::{collections::HashMap, fmt};
+use std::{collections::{BTreeMap, BTreeSet, HashMap, VecDeque}, fmt};
 
 use crate::path_utils;
 use crate::pipeline::PipelineContext;
@@ -772,6 +772,467 @@ pub fn render_manifest_with_format(
     match format {
         ManifestFormat::Text => Ok(render_manifest(derived)),
         ManifestFormat::Json => render_manifest_json(derived),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum TripletRole {
+    Prepare,
+    Execute,
+    Parse,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct TripletEdge {
+    from_node: String,
+    from_port: String,
+    to_node: String,
+    to_port: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct TripletExpansion {
+    name: String,
+    prepare_nodes: Vec<String>,
+    execute_nodes: Vec<String>,
+    parse_nodes: Vec<String>,
+    edges: Vec<TripletEdge>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ObligationsSummary {
+    pub dry_run_completion_required: bool,
+    pub transport: ObligationsTransportBucket,
+    pub pure_node_determinism: ObligationsDeterminismBucket,
+    pub resource_lifecycle: ObligationsResourceBucket,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ObligationsTransportBucket {
+    pub execution_targets: usize,
+    pub triplet_prepare_targets: usize,
+    pub triplet_execute_targets: usize,
+    pub triplet_parse_targets: usize,
+    pub triplet_total_targets: usize,
+    pub service_param_source_targets: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ObligationsDeterminismBucket {
+    pub targets: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ObligationsResourceBucket {
+    pub provide_targets: usize,
+    pub acquire_targets: usize,
+    pub release_targets: usize,
+    pub total_targets: usize,
+}
+
+fn node_callable_name(node: &Node<LoweredOp>) -> Option<&str> {
+    match &node.body {
+        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { name, .. }) => Some(name.as_str()),
+        _ => None,
+    }
+}
+
+fn is_triplet_prepare(node_id: &str, callable_name: Option<&str>) -> bool {
+    node_id.starts_with("prepare_")
+        || callable_name
+            .map(|name| {
+                name.starts_with("service_transport::prepare::")
+                    || name.contains("::prepare_")
+            })
+            .unwrap_or(false)
+}
+
+fn is_triplet_execute(node_id: &str, callable_name: Option<&str>) -> bool {
+    node_id.starts_with("execute_")
+        || callable_name
+            .map(|name| {
+                name.starts_with("service_transport::execute::")
+                    || name.contains("::execute_")
+            })
+            .unwrap_or(false)
+}
+
+fn is_triplet_parse(node_id: &str, callable_name: Option<&str>) -> bool {
+    node_id.starts_with("parse_")
+        || node_id.starts_with("compare_")
+        || callable_name
+            .map(|name| {
+                name.starts_with("service_transport::parse::")
+                    || name.contains("::parse_")
+                    || name.contains("::compare_")
+            })
+            .unwrap_or(false)
+}
+
+fn classify_triplet_role(node: &Node<LoweredOp>) -> Option<TripletRole> {
+    let node_id = node.id.0.as_str();
+    let callable_name = node_callable_name(node);
+    if is_triplet_prepare(node_id, callable_name) {
+        return Some(TripletRole::Prepare);
+    }
+    if is_triplet_execute(node_id, callable_name) {
+        return Some(TripletRole::Execute);
+    }
+    if is_triplet_parse(node_id, callable_name) {
+        return Some(TripletRole::Parse);
+    }
+    None
+}
+
+fn strip_triplet_prefix(node_id: &str) -> &str {
+    node_id
+        .strip_prefix("prepare_")
+        .or_else(|| node_id.strip_prefix("execute_"))
+        .or_else(|| node_id.strip_prefix("parse_"))
+        .or_else(|| node_id.strip_prefix("compare_"))
+        .unwrap_or(node_id)
+}
+
+fn derive_triplet_name(
+    prepare_nodes: &[String],
+    execute_nodes: &[String],
+    parse_nodes: &[String],
+) -> String {
+    for group in [execute_nodes, prepare_nodes, parse_nodes] {
+        if let Some(node_id) = group.first() {
+            let stripped = strip_triplet_prefix(node_id);
+            if !stripped.is_empty() {
+                return stripped.to_string();
+            }
+        }
+    }
+    "triplet".to_string()
+}
+
+fn derive_triplet_expansions(dag: &Dag<LoweredOp>) -> Vec<TripletExpansion> {
+    let role_by_node = dag
+        .nodes
+        .iter()
+        .filter_map(|node| classify_triplet_role(node).map(|role| (node.id.0.clone(), role)))
+        .collect::<BTreeMap<_, _>>();
+
+    if role_by_node.is_empty() {
+        return Vec::new();
+    }
+
+    let mut adjacency = role_by_node
+        .keys()
+        .map(|node_id| (node_id.clone(), BTreeSet::<String>::new()))
+        .collect::<BTreeMap<_, _>>();
+
+    for edge in &dag.edges {
+        let from = edge.from_node.0.as_str();
+        let to = edge.to_node.0.as_str();
+        if !role_by_node.contains_key(from) || !role_by_node.contains_key(to) {
+            continue;
+        }
+        adjacency
+            .get_mut(from)
+            .expect("candidate node should exist in adjacency")
+            .insert(to.to_string());
+        adjacency
+            .get_mut(to)
+            .expect("candidate node should exist in adjacency")
+            .insert(from.to_string());
+    }
+
+    let mut visited = BTreeSet::<String>::new();
+    let mut components = Vec::<Vec<String>>::new();
+    for node_id in role_by_node.keys() {
+        if !visited.insert(node_id.clone()) {
+            continue;
+        }
+        let mut queue = VecDeque::from([node_id.clone()]);
+        let mut component = Vec::<String>::new();
+        while let Some(current) = queue.pop_front() {
+            component.push(current.clone());
+            for neighbor in adjacency
+                .get(current.as_str())
+                .expect("candidate node should exist in adjacency")
+            {
+                if visited.insert(neighbor.clone()) {
+                    queue.push_back(neighbor.clone());
+                }
+            }
+        }
+        component.sort();
+        components.push(component);
+    }
+
+    let edge_set = dag
+        .edges
+        .iter()
+        .map(|edge| {
+            (
+                edge.from_node.0.as_str(),
+                edge.from_port.0.as_str(),
+                edge.to_node.0.as_str(),
+                edge.to_port.0.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let mut expansions = components
+        .into_iter()
+        .map(|component| {
+            let component_set = component.iter().cloned().collect::<BTreeSet<_>>();
+            let mut prepare_nodes = Vec::new();
+            let mut execute_nodes = Vec::new();
+            let mut parse_nodes = Vec::new();
+            for node_id in &component {
+                match role_by_node.get(node_id.as_str()) {
+                    Some(TripletRole::Prepare) => prepare_nodes.push(node_id.clone()),
+                    Some(TripletRole::Execute) => execute_nodes.push(node_id.clone()),
+                    Some(TripletRole::Parse) => parse_nodes.push(node_id.clone()),
+                    None => {}
+                }
+            }
+
+            let mut edges = edge_set
+                .iter()
+                .filter(|(from_node, _, to_node, _)| {
+                    component_set.contains(*from_node) && component_set.contains(*to_node)
+                })
+                .map(|(from_node, from_port, to_node, to_port)| TripletEdge {
+                    from_node: (*from_node).to_string(),
+                    from_port: (*from_port).to_string(),
+                    to_node: (*to_node).to_string(),
+                    to_port: (*to_port).to_string(),
+                })
+                .collect::<Vec<_>>();
+            edges.sort_by(|left, right| {
+                (
+                    left.from_node.as_str(),
+                    left.from_port.as_str(),
+                    left.to_node.as_str(),
+                    left.to_port.as_str(),
+                )
+                    .cmp(&(
+                        right.from_node.as_str(),
+                        right.from_port.as_str(),
+                        right.to_node.as_str(),
+                        right.to_port.as_str(),
+                    ))
+            });
+
+            TripletExpansion {
+                name: derive_triplet_name(&prepare_nodes, &execute_nodes, &parse_nodes),
+                prepare_nodes,
+                execute_nodes,
+                parse_nodes,
+                edges,
+            }
+        })
+        .collect::<Vec<_>>();
+    expansions.sort_by(|left, right| left.name.cmp(&right.name));
+    expansions
+}
+
+fn format_list_or_none(values: &[String]) -> String {
+    if values.is_empty() {
+        "(none)".to_string()
+    } else {
+        values.join(", ")
+    }
+}
+
+pub fn render_triplets(dag: &Dag<LoweredOp>) -> String {
+    let expansions = derive_triplet_expansions(dag);
+    let mut out = String::new();
+    out.push_str("TransportTriplets:\n");
+    if expansions.is_empty() {
+        out.push_str("  (none)\n");
+        return out;
+    }
+    for expansion in &expansions {
+        writeln!(out, "  - name: {}", expansion.name).ok();
+        writeln!(
+            out,
+            "    prepare_nodes: {}",
+            format_list_or_none(&expansion.prepare_nodes)
+        )
+        .ok();
+        writeln!(
+            out,
+            "    execute_nodes: {}",
+            format_list_or_none(&expansion.execute_nodes)
+        )
+        .ok();
+        writeln!(
+            out,
+            "    parse_nodes: {}",
+            format_list_or_none(&expansion.parse_nodes)
+        )
+        .ok();
+        out.push_str("    edges:\n");
+        if expansion.edges.is_empty() {
+            out.push_str("      * (none)\n");
+        } else {
+            for edge in &expansion.edges {
+                writeln!(
+                    out,
+                    "      * {}.{} -> {}.{}",
+                    edge.from_node, edge.from_port, edge.to_node, edge.to_port
+                )
+                .ok();
+            }
+        }
+    }
+    out
+}
+
+pub fn render_triplets_json(dag: &Dag<LoweredOp>) -> Result<String, String> {
+    #[derive(Serialize)]
+    struct TripletsEnvelope {
+        triplets: Vec<TripletExpansion>,
+    }
+
+    serde_json::to_string_pretty(&TripletsEnvelope {
+        triplets: derive_triplet_expansions(dag),
+    })
+    .map_err(|error| format!("failed to serialize triplets json: {error}"))
+}
+
+pub fn render_triplets_with_format(
+    dag: &Dag<LoweredOp>,
+    format: ManifestFormat,
+) -> Result<String, String> {
+    match format {
+        ManifestFormat::Text => Ok(render_triplets(dag)),
+        ManifestFormat::Json => render_triplets_json(dag),
+    }
+}
+
+pub fn summarize_obligations(derived: &DerivedArtifacts) -> ObligationsSummary {
+    let obligations = &derived.obligations;
+    let transport_triplet_total = obligations.service_transport_prepare_targets
+        + obligations.service_transport_execute_targets
+        + obligations.service_transport_parse_targets;
+    let resource_total = obligations.resource_provide_targets
+        + obligations.resource_acquire_targets
+        + obligations.resource_release_targets;
+    ObligationsSummary {
+        dry_run_completion_required: obligations.dry_run_completion_required,
+        transport: ObligationsTransportBucket {
+            execution_targets: obligations.transport_execution_targets,
+            triplet_prepare_targets: obligations.service_transport_prepare_targets,
+            triplet_execute_targets: obligations.service_transport_execute_targets,
+            triplet_parse_targets: obligations.service_transport_parse_targets,
+            triplet_total_targets: transport_triplet_total,
+            service_param_source_targets: obligations.service_param_source_targets,
+        },
+        pure_node_determinism: ObligationsDeterminismBucket {
+            targets: obligations.pure_node_determinism_targets,
+        },
+        resource_lifecycle: ObligationsResourceBucket {
+            provide_targets: obligations.resource_provide_targets,
+            acquire_targets: obligations.resource_acquire_targets,
+            release_targets: obligations.resource_release_targets,
+            total_targets: resource_total,
+        },
+    }
+}
+
+pub fn render_obligations(derived: &DerivedArtifacts) -> String {
+    let summary = summarize_obligations(derived);
+    let mut out = String::new();
+    out.push_str("TestObligationsSummary:\n");
+    writeln!(
+        out,
+        "  dry_run_completion_required: {}",
+        summary.dry_run_completion_required
+    )
+    .ok();
+    out.push_str("  transport:\n");
+    writeln!(
+        out,
+        "    execution_targets: {}",
+        summary.transport.execution_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "    triplet_prepare_targets: {}",
+        summary.transport.triplet_prepare_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "    triplet_execute_targets: {}",
+        summary.transport.triplet_execute_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "    triplet_parse_targets: {}",
+        summary.transport.triplet_parse_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "    triplet_total_targets: {}",
+        summary.transport.triplet_total_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "    service_param_source_targets: {}",
+        summary.transport.service_param_source_targets
+    )
+    .ok();
+    out.push_str("  pure_node_determinism:\n");
+    writeln!(out, "    targets: {}", summary.pure_node_determinism.targets).ok();
+    out.push_str("  resource_lifecycle:\n");
+    writeln!(
+        out,
+        "    provide_targets: {}",
+        summary.resource_lifecycle.provide_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "    acquire_targets: {}",
+        summary.resource_lifecycle.acquire_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "    release_targets: {}",
+        summary.resource_lifecycle.release_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "    total_targets: {}",
+        summary.resource_lifecycle.total_targets
+    )
+    .ok();
+    out
+}
+
+pub fn render_obligations_json(derived: &DerivedArtifacts) -> Result<String, String> {
+    #[derive(Serialize)]
+    struct ObligationsEnvelope<'a> {
+        summary: &'a ObligationsSummary,
+    }
+
+    let summary = summarize_obligations(derived);
+    serde_json::to_string_pretty(&ObligationsEnvelope { summary: &summary })
+        .map_err(|error| format!("failed to serialize obligations json: {error}"))
+}
+
+pub fn render_obligations_with_format(
+    derived: &DerivedArtifacts,
+    format: ManifestFormat,
+) -> Result<String, String> {
+    match format {
+        ManifestFormat::Text => Ok(render_obligations(derived)),
+        ManifestFormat::Json => render_obligations_json(derived),
     }
 }
 

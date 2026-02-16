@@ -9,6 +9,8 @@
 //! - `daglang viz <file.dag>`      -- ASCII DAG visualization from compiled IR
 //! - `daglang expand <file.dag>`   -- Show lowered GraphIR (nodes, edges, ports)
 //! - `daglang manifest <file.dag>` -- Show derived ProgressManifest
+//! - `daglang obligations <file.dag>` -- Show 4-bucket TestObligations summary
+//! - `daglang show-triplets <file.dag>` -- Show transport triplet expansion
 //! - `daglang modules [dir]`       -- Show the discovered module graph
 //! - `daglang check <file.dag>`    -- Parse + typecheck without lowering
 //! - `daglang compile <file.dag>`  -- Full compilation pipeline
@@ -19,7 +21,8 @@ use std::path::PathBuf;
 use daglang_cli::compile::{
     build_context, compile_from_context, compile_resolve_execute_from_context,
     makegen_dry_run_transport_mocks, makegen_entrypoint_mocks, render_expand,
-    render_manifest_with_format, ManifestFormat,
+    render_manifest_with_format, render_obligations_with_format, render_triplets_with_format,
+    ManifestFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{build_pipeline_dag, run_pipeline, PipelineContext, PipelineStop};
@@ -35,6 +38,8 @@ fn main() {
         eprintln!("  viz <file.dag>       ASCII DAG visualization");
         eprintln!("  expand <file.dag>    Show lowered GraphIR (nodes/edges/ports)");
         eprintln!("  manifest [--format text|json] <file.dag>  Show derived ProgressManifest");
+        eprintln!("  obligations [--format text|json] <file.dag>  Show 4-bucket test obligations");
+        eprintln!("  show-triplets [--format text|json] <file.dag>  Show transport triplet expansion");
         eprintln!("  modules [dir]        Show discovered module graph");
         eprintln!("  check <file.dag>     Parse + typecheck (no lowering)");
         eprintln!("  compile <file.dag>   Full compilation pipeline");
@@ -99,6 +104,55 @@ fn main() {
                         }
                     }
                 }
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "obligations" => {
+            let (obligations_path, obligations_format) = match parse_obligations_args(&args) {
+                Ok(values) => values,
+                Err(error) => {
+                    eprintln!("{error}");
+                    exit_usage("obligations [--format text|json] <file.dag>");
+                }
+            };
+            let context = build_context(Some(&obligations_path));
+            match compile_from_context(&context) {
+                Ok(output) => {
+                    match render_obligations_with_format(&output.derived, obligations_format) {
+                        Ok(rendered) => println!("{rendered}"),
+                        Err(error) => {
+                            eprintln!("{error}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "show-triplets" => {
+            let (triplets_path, triplets_format) = match parse_show_triplets_args(&args) {
+                Ok(values) => values,
+                Err(error) => {
+                    eprintln!("{error}");
+                    exit_usage("show-triplets [--format text|json] <file.dag>");
+                }
+            };
+            let context = build_context(Some(&triplets_path));
+            match compile_from_context(&context) {
+                Ok(output) => match render_triplets_with_format(&output.lowered_dag, triplets_format)
+                {
+                    Ok(rendered) => println!("{rendered}"),
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(1);
+                    }
+                },
                 Err(error) => {
                     eprintln!("{error}");
                     std::process::exit(1);
@@ -237,7 +291,10 @@ fn resolve_root(arg: Option<&String>) -> PathBuf {
     path_utils::default_root_from_cwd(&cwd)
 }
 
-fn parse_manifest_args(args: &[String]) -> Result<(String, ManifestFormat), String> {
+fn parse_single_file_with_optional_format(
+    args: &[String],
+    command: &str,
+) -> Result<(String, ManifestFormat), String> {
     let mut format = ManifestFormat::Text;
     let mut path = None::<String>;
     let mut index = 2usize;
@@ -248,28 +305,40 @@ fn parse_manifest_args(args: &[String]) -> Result<(String, ManifestFormat), Stri
                 .get(index + 1)
                 .ok_or_else(|| "--format requires a value: text or json".to_string())?;
             format = ManifestFormat::parse(value)
-                .ok_or_else(|| format!("unknown manifest format `{value}`"))?;
+                .ok_or_else(|| format!("unknown {command} format `{value}`"))?;
             index += 2;
             continue;
         }
         if let Some(value) = arg.strip_prefix("--format=") {
             format = ManifestFormat::parse(value)
-                .ok_or_else(|| format!("unknown manifest format `{value}`"))?;
+                .ok_or_else(|| format!("unknown {command} format `{value}`"))?;
             index += 1;
             continue;
         }
         if arg.starts_with("--") {
-            return Err(format!("unknown manifest flag `{arg}`"));
+            return Err(format!("unknown {command} flag `{arg}`"));
         }
         if path.is_some() {
-            return Err("manifest takes exactly one input path".to_string());
+            return Err(format!("{command} takes exactly one input path"));
         }
         path = Some(args[index].clone());
         index += 1;
     }
 
-    let path = path.ok_or_else(|| "manifest requires <file.dag>".to_string())?;
+    let path = path.ok_or_else(|| format!("{command} requires <file.dag>"))?;
     Ok((path, format))
+}
+
+fn parse_manifest_args(args: &[String]) -> Result<(String, ManifestFormat), String> {
+    parse_single_file_with_optional_format(args, "manifest")
+}
+
+fn parse_obligations_args(args: &[String]) -> Result<(String, ManifestFormat), String> {
+    parse_single_file_with_optional_format(args, "obligations")
+}
+
+fn parse_show_triplets_args(args: &[String]) -> Result<(String, ManifestFormat), String> {
+    parse_single_file_with_optional_format(args, "show-triplets")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -339,7 +408,10 @@ fn exit_usage(command: &str) -> ! {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_manifest_args, parse_run_args, RunArgs};
+    use super::{
+        parse_manifest_args, parse_obligations_args, parse_run_args, parse_show_triplets_args,
+        RunArgs,
+    };
     use crate::path_utils::{default_root_from_cwd, has_dag_extension, normalize_path_components};
     use daglang_cli::compile::ManifestFormat;
     use std::path::{Path, PathBuf};
@@ -525,6 +597,31 @@ mod tests {
         let args = vec!["daglang".to_string(), "manifest".to_string()];
         let error = parse_manifest_args(&args).expect_err("parse should fail");
         assert!(error.contains("requires <file.dag>"));
+    }
+
+    #[test]
+    fn parse_obligations_args_supports_json_equals_syntax() {
+        let args = vec![
+            "daglang".to_string(),
+            "obligations".to_string(),
+            "--format=json".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let (path, format) = parse_obligations_args(&args).expect("parse should succeed");
+        assert_eq!(path, "dsl/tools/makegen.dag");
+        assert_eq!(format, ManifestFormat::Json);
+    }
+
+    #[test]
+    fn parse_show_triplets_args_rejects_unknown_flags() {
+        let args = vec![
+            "daglang".to_string(),
+            "show-triplets".to_string(),
+            "--mystery".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_show_triplets_args(&args).expect_err("parse should fail");
+        assert!(error.contains("unknown show-triplets flag"));
     }
 
     #[test]
