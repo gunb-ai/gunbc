@@ -2119,6 +2119,72 @@ mod tests {
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
+    #[test]
+    fn parse_pipeline_is_independent_of_equivalent_curdir_suffix_root_order() {
+        let root = unique_temp_dir("parse_equivalent_curdir_suffix_root_order");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+            .expect("failed to write source");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.clone(), root.join(".")],
+                target_file: None,
+            },
+            PipelineStop::Parse,
+        )
+        .expect("first run should complete");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.join("."), root.clone()],
+                target_file: None,
+            },
+            PipelineStop::Parse,
+        )
+        .expect("second run should complete");
+
+        assert_eq!(first.parsed_count, second.parsed_count);
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.parsed_count, 1);
+        assert!(first.diagnostics.is_empty());
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn parse_pipeline_error_output_is_independent_of_equivalent_curdir_suffix_root_order() {
+        let root = unique_temp_dir("parse_equivalent_curdir_suffix_root_order_errors");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+            .expect("failed to write invalid source");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.clone(), root.join(".")],
+                target_file: None,
+            },
+            PipelineStop::Parse,
+        )
+        .expect("first run should complete");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.join("."), root.clone()],
+                target_file: None,
+            },
+            PipelineStop::Parse,
+        )
+        .expect("second run should complete");
+
+        assert_eq!(first.parsed_count, second.parsed_count);
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert!(
+            !first.diagnostics.is_empty(),
+            "expected parse diagnostics from malformed source"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
     #[cfg(unix)]
     #[test]
     fn parse_pipeline_deduplicates_files_from_symlink_and_real_roots() {
@@ -2795,6 +2861,70 @@ mod tests {
 
         assert_eq!(first.diagnostics, second.diagnostics);
         assert_eq!(first.report, second.report);
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn report_pipeline_is_independent_of_equivalent_curdir_suffix_root_order() {
+        let root = unique_temp_dir("report_equivalent_curdir_suffix_root_order");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+            .expect("failed to write source");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.clone(), root.join(".")],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("first run should succeed");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.join("."), root.clone()],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("second run should succeed");
+
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.report, second.report);
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn report_pipeline_error_output_is_independent_of_equivalent_curdir_suffix_root_order() {
+        let root = unique_temp_dir("report_equivalent_curdir_suffix_root_order_errors");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+            .expect("failed to write invalid source");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.clone(), root.join(".")],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("first run should complete");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.join("."), root.clone()],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("second run should complete");
+
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.report, second.report);
+        assert!(
+            !first.diagnostics.is_empty(),
+            "expected diagnostics from malformed source"
+        );
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
