@@ -9,6 +9,10 @@
 //! - `daglang viz <file.dag>`      -- ASCII DAG visualization from compiled IR
 //! - `daglang expand <file.dag>`   -- Show lowered GraphIR (nodes, edges, ports)
 //! - `daglang manifest <file.dag>` -- Show derived ProgressManifest
+//! - `daglang obligations <file.dag> [--format text|json]`
+//!                                  -- Show derived test obligations summary
+//! - `daglang show-triplets <file.dag> [--format text|json]`
+//!                                  -- Show transport triplet expansions
 //! - `daglang modules [dir]`       -- Show the discovered module graph
 //! - `daglang check <file.dag>`    -- Parse + typecheck without lowering
 //! - `daglang compile <file.dag>`  -- Full compilation pipeline
