@@ -2141,6 +2141,46 @@ mod tests {
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn report_pipeline_error_output_is_independent_of_symlink_alias_root_order() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("report_symlink_alias_root_order_errors");
+        let real = root.join("real");
+        let link = root.join("link");
+        fs::create_dir_all(&real).expect("failed to create real root");
+        fs::write(real.join("broken.dag"), "module sample.broken\nfn")
+            .expect("failed to write invalid source");
+        symlink(&real, &link).expect("failed to create root symlink");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![real.clone(), link.clone()],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("first run should complete");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![link, real],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("second run should complete");
+
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.report, second.report);
+        assert!(
+            !first.diagnostics.is_empty(),
+            "expected report diagnostics for malformed source"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
     #[test]
     fn pipeline_rejects_implicit_fanin_on_single_input_port() {
         let mut dag = build_pipeline_dag();

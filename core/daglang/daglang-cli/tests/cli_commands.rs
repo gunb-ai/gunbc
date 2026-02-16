@@ -1143,6 +1143,42 @@ fn check_command_symlink_alias_root_order_is_deterministic_for_errors() {
 
 #[cfg(unix)]
 #[test]
+fn check_command_symlink_alias_root_order_is_deterministic_for_success() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_alias_root_order_success");
+    let real = root.join("real");
+    let link = root.join("link");
+    std::fs::create_dir_all(&real).expect("failed to create real root");
+    std::fs::write(real.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write source");
+    symlink(&real, &link).expect("failed to create root symlink");
+
+    let first = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&real)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang check");
+    let second = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang check");
+
+    assert!(first.status.success(), "first run should succeed");
+    assert!(second.status.success(), "second run should succeed");
+    assert_eq!(
+        first.stdout, second.stdout,
+        "check output should match for real/symlink root aliases"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn check_command_deduplicates_parse_errors_in_directory_symlink_cycle_root() {
     use std::os::unix::fs::symlink;
 
