@@ -1154,6 +1154,7 @@ fn compile_command_reports_diagnostics_for_invalid_file() {
 
     assert!(!output.status.success(), "broken source should fail compile");
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
     assert!(stderr.contains("compile diagnostics"));
     assert!(stderr.contains(":2:"));
 
@@ -3419,6 +3420,7 @@ fn compile_command_directory_mode_reports_module_path_mismatch() {
         "directory compile should fail on module path mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
     assert!(stderr.contains("module path mismatches"));
     assert!(stderr.contains("declared `wrong.name`"));
 
