@@ -1,4 +1,5 @@
 use daglang_resolve::ModuleGraph;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -135,6 +136,21 @@ fn reported_modules_sorted(stdout: &str) -> Vec<String> {
     modules
 }
 
+fn reported_module_summary(stdout: &str) -> BTreeMap<String, (usize, usize)> {
+    stdout
+        .lines()
+        .filter_map(|line| line.strip_prefix("  "))
+        .filter_map(|line| line.split_once("  ("))
+        .filter_map(|(module, rest)| {
+            let counts = rest.split(")  [").next()?;
+            let (items_part, deps_part) = counts.split_once(", ")?;
+            let item_count = items_part.trim_end_matches(" items").parse::<usize>().ok()?;
+            let dep_count = deps_part.trim_end_matches(" deps").parse::<usize>().ok()?;
+            Some((module.trim().to_string(), (item_count, dep_count)))
+        })
+        .collect()
+}
+
 fn expected_viz_self_mermaid() -> &'static str {
     concat!(
         "flowchart TB\n",
@@ -159,6 +175,20 @@ fn resolve_discovered_module_order() -> Vec<String> {
         .modules
         .into_iter()
         .map(|module| module.module_path.join("."))
+        .collect()
+}
+
+fn resolve_discovered_module_summary() -> BTreeMap<String, (usize, usize)> {
+    ModuleGraph::discover(&[workspace_root().join("dsl")])
+        .expect("resolve discovery should succeed for real corpus")
+        .modules
+        .into_iter()
+        .map(|module| {
+            (
+                module.module_path.join("."),
+                (module.ast.items.len(), module.dependencies.len()),
+            )
+        })
         .collect()
 }
 
@@ -362,6 +392,26 @@ fn modules_command_real_corpus_order_matches_resolve_discovery() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let actual = reported_modules_in_order(&stdout);
     let expected = resolve_discovered_module_order();
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn modules_command_real_corpus_summary_matches_resolve_discovery() {
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules");
+
+    assert!(
+        output.status.success(),
+        "modules command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual = reported_module_summary(&stdout);
+    let expected = resolve_discovered_module_summary();
     assert_eq!(actual, expected);
 }
 
