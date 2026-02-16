@@ -40,6 +40,54 @@ fn expected_check_success_stdout(parsed_files: usize) -> String {
     format!("OK: parsed {parsed_files} file(s)\n")
 }
 
+fn assert_modules_single_file_root_failure(
+    output: &std::process::Output,
+    expected_path: &std::path::Path,
+    context: &str,
+) {
+    assert!(!output.status.success(), "{context} should fail");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "{context} should use exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("pipeline error"),
+        "{context} should surface pipeline error: {stderr}"
+    );
+    assert!(
+        stderr.contains("input root is not a directory"),
+        "{context} should report non-directory root: {stderr}"
+    );
+    assert!(
+        stderr.contains(&expected_path.display().to_string()),
+        "{context} should include offending path: {stderr}"
+    );
+}
+
+fn assert_modules_relative_absolute_single_file_root_equivalence(
+    relative: &std::process::Output,
+    absolute: &std::process::Output,
+    expected_path: &std::path::Path,
+    context: &str,
+) {
+    let relative_context = format!("{context} relative");
+    assert_modules_single_file_root_failure(relative, expected_path, &relative_context);
+
+    let absolute_context = format!("{context} absolute");
+    assert_modules_single_file_root_failure(absolute, expected_path, &absolute_context);
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "{context} relative and absolute stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "{context} relative and absolute stderr should match"
+    );
+}
+
 fn expected_dsl_modules_sorted() -> Vec<&'static str> {
     vec![
         "cloud.aws.credential",
@@ -29340,21 +29388,10 @@ fn modules_command_single_dag_file_path_exits_nonzero() {
         .output()
         .expect("failed to run daglang modules for single-file path");
 
-    assert!(
-        !output.status.success(),
-        "modules should fail when given a file path instead of directory root"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "single-file-root modules should use exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("pipeline error"));
-    assert!(stderr.contains("input root is not a directory"));
-    assert!(
-        stderr.contains(&file_path.display().to_string()),
-        "single-file-root error should include offending path: {stderr}"
+    assert_modules_single_file_root_failure(
+        &output,
+        &file_path,
+        "modules single-file-root input",
     );
 
     std::fs::remove_file(file_path).expect("failed to cleanup .dag file");
@@ -29374,21 +29411,10 @@ fn modules_command_single_uppercase_dag_file_path_exits_nonzero() {
         .output()
         .expect("failed to run daglang modules for uppercase single-file path");
 
-    assert!(
-        !output.status.success(),
-        "modules should fail when given an uppercase-extension file path instead of directory root"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "uppercase single-file-root modules should use exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("pipeline error"));
-    assert!(stderr.contains("input root is not a directory"));
-    assert!(
-        stderr.contains(&file_path.display().to_string()),
-        "uppercase single-file-root error should include offending path: {stderr}"
+    assert_modules_single_file_root_failure(
+        &output,
+        &file_path,
+        "modules uppercase single-file-root input",
     );
 
     std::fs::remove_file(file_path).expect("failed to cleanup .DAG file");
@@ -29408,21 +29434,10 @@ fn modules_command_single_mixed_case_dag_file_path_exits_nonzero() {
         .output()
         .expect("failed to run daglang modules for mixed-case single-file path");
 
-    assert!(
-        !output.status.success(),
-        "modules should fail when given a mixed-case-extension file path instead of directory root"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "mixed-case single-file-root modules should use exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("pipeline error"));
-    assert!(stderr.contains("input root is not a directory"));
-    assert!(
-        stderr.contains(&file_path.display().to_string()),
-        "mixed-case single-file-root error should include offending path: {stderr}"
+    assert_modules_single_file_root_failure(
+        &output,
+        &file_path,
+        "modules mixed-case single-file-root input",
     );
 
     std::fs::remove_file(file_path).expect("failed to cleanup .DaG file");
@@ -29453,26 +29468,11 @@ fn modules_command_relative_and_absolute_uppercase_single_file_roots_are_equival
         .current_dir(&root)
         .output()
         .expect("failed to run absolute uppercase single-file-root daglang modules");
-    assert!(
-        !absolute.status.success(),
-        "absolute uppercase single-file-root modules should fail"
-    );
-
-    assert_eq!(
-        relative.stdout, absolute.stdout,
-        "relative and absolute uppercase single-file-root modules stdout should match"
-    );
-    assert_eq!(
-        relative.stderr, absolute.stderr,
-        "relative and absolute uppercase single-file-root modules stderr should match"
-    );
-    assert!(
-        String::from_utf8_lossy(&relative.stderr).contains(&format!(
-            "input root is not a directory: {}",
-            file_path.display()
-        )),
-        "uppercase single-file-root diagnostics should include normalized absolute path: {}",
-        String::from_utf8_lossy(&relative.stderr)
+    assert_modules_relative_absolute_single_file_root_equivalence(
+        &relative,
+        &absolute,
+        &file_path,
+        "uppercase single-file-root modules",
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -29503,26 +29503,11 @@ fn modules_command_relative_and_absolute_mixed_case_single_file_roots_are_equiva
         .current_dir(&root)
         .output()
         .expect("failed to run absolute mixed-case single-file-root daglang modules");
-    assert!(
-        !absolute.status.success(),
-        "absolute mixed-case single-file-root modules should fail"
-    );
-
-    assert_eq!(
-        relative.stdout, absolute.stdout,
-        "relative and absolute mixed-case single-file-root modules stdout should match"
-    );
-    assert_eq!(
-        relative.stderr, absolute.stderr,
-        "relative and absolute mixed-case single-file-root modules stderr should match"
-    );
-    assert!(
-        String::from_utf8_lossy(&relative.stderr).contains(&format!(
-            "input root is not a directory: {}",
-            file_path.display()
-        )),
-        "mixed-case single-file-root diagnostics should include normalized absolute path: {}",
-        String::from_utf8_lossy(&relative.stderr)
+    assert_modules_relative_absolute_single_file_root_equivalence(
+        &relative,
+        &absolute,
+        &file_path,
+        "mixed-case single-file-root modules",
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -29553,26 +29538,11 @@ fn modules_command_relative_and_absolute_single_file_roots_are_equivalent() {
         .current_dir(&root)
         .output()
         .expect("failed to run absolute single-file-root daglang modules");
-    assert!(
-        !absolute.status.success(),
-        "absolute single-file-root modules should fail"
-    );
-
-    assert_eq!(
-        relative.stdout, absolute.stdout,
-        "relative and absolute single-file-root modules stdout should match"
-    );
-    assert_eq!(
-        relative.stderr, absolute.stderr,
-        "relative and absolute single-file-root modules stderr should match"
-    );
-    assert!(
-        String::from_utf8_lossy(&relative.stderr).contains(&format!(
-            "input root is not a directory: {}",
-            file_path.display()
-        )),
-        "single-file-root diagnostic should contain normalized absolute path: {}",
-        String::from_utf8_lossy(&relative.stderr)
+    assert_modules_relative_absolute_single_file_root_equivalence(
+        &relative,
+        &absolute,
+        &file_path,
+        "single-file-root modules",
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
