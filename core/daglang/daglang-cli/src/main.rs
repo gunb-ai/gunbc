@@ -144,3 +144,36 @@ fn normalize_path_components(path: &Path) -> PathBuf {
     }
     normalized
 }
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_path_components;
+    use std::path::{Path, PathBuf};
+
+    fn root_path() -> PathBuf {
+        PathBuf::from(Path::new(std::path::MAIN_SEPARATOR_STR))
+    }
+
+    #[test]
+    fn normalize_path_components_collapses_curdir_and_parent_segments() {
+        let path = root_path().join("workspace").join(".").join("core").join("..").join("dsl");
+        let normalized = normalize_path_components(&path);
+        let expected = root_path().join("workspace").join("dsl");
+        assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn normalize_path_components_keeps_root_when_parent_traversal_exceeds_depth() {
+        let path = root_path().join("..").join("..").join("workspace").join("dsl");
+        let normalized = normalize_path_components(&path);
+        let expected = root_path().join("workspace").join("dsl");
+        assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn normalize_path_components_preserves_clean_absolute_paths() {
+        let path = root_path().join("workspace").join("dsl").join("tools").join("makegen.dag");
+        let normalized = normalize_path_components(&path);
+        assert_eq!(normalized, path);
+    }
+}
