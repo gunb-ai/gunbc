@@ -26628,7 +26628,7 @@ fn modules_command_relative_and_absolute_non_directory_roots_are_equivalent() {
 }
 
 #[test]
-fn viz_self_renders_pipeline_mermaid() {
+fn viz_self_renders_pipeline_ascii_by_default() {
     let output = Command::new(daglang_bin())
         .arg("viz")
         .arg("--self")
@@ -26644,7 +26644,7 @@ fn viz_self_renders_pipeline_mermaid() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("flowchart TB"));
+    assert!(stdout.contains("ASCII DAG: daglang-compiler-pipeline"));
     assert!(stdout.contains("discover_files"));
     assert!(stdout.contains("report_modules"));
 }
@@ -26685,15 +26685,15 @@ fn viz_self_contains_expected_pipeline_edge_labels() {
     assert!(output.status.success(), "viz --self should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("files:files"),
+        stdout.contains("discover_files.files -> parse_all.files"),
         "viz --self should include discover->parse files edge label"
     );
     assert!(
-        stdout.contains("diagnostics:diagnostics"),
+        stdout.contains("discover_files.diagnostics -> parse_all.diagnostics"),
         "viz --self should include diagnostics flow edges"
     );
     assert!(
-        stdout.contains("module_graph:module_graph"),
+        stdout.contains("build_module_graph.module_graph -> report_modules.module_graph"),
         "viz --self should include build->report module graph edge label"
     );
 }
@@ -26702,6 +26702,8 @@ fn viz_self_contains_expected_pipeline_edge_labels() {
 fn viz_self_matches_expected_mermaid_snapshot() {
     let output = Command::new(daglang_bin())
         .arg("viz")
+        .arg("--format")
+        .arg("mermaid")
         .arg("--self")
         .current_dir(workspace_root())
         .output()
@@ -30215,7 +30217,7 @@ fn viz_self_with_extra_args_exits_nonzero_with_usage_message() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Usage: daglang viz <file.dag>|viz --self"),
+        stderr.contains("Usage: daglang viz [--format ascii|mermaid] <file.dag>|--self"),
         "viz --self with extra args should print command usage: {stderr}"
     );
 }
@@ -30239,7 +30241,7 @@ fn viz_without_args_exits_nonzero_with_usage_message() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Usage: daglang viz <file.dag>|viz --self"),
+        stderr.contains("Usage: daglang viz [--format ascii|mermaid] <file.dag>|--self"),
         "viz without args should print usage guidance: {stderr}"
     );
 }
@@ -30410,6 +30412,68 @@ fn show_triplets_with_unknown_format_exits_nonzero_with_clear_error() {
 }
 
 #[test]
+fn viz_with_unknown_format_exits_nonzero_with_clear_error_for_self_target() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--format")
+        .arg("yaml")
+        .arg("--self")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz with unknown format");
+
+    assert!(
+        !output.status.success(),
+        "viz with unknown format should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "viz with unknown format should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown viz format `yaml`"),
+        "viz should report unknown format explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang viz [--format ascii|mermaid] <file.dag>|--self"),
+        "viz should print usage guidance for unknown format: {stderr}"
+    );
+}
+
+#[test]
+fn viz_with_unknown_format_exits_nonzero_with_clear_error() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--format")
+        .arg("yaml")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz with unknown format");
+
+    assert!(
+        !output.status.success(),
+        "viz with unknown format should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "viz with unknown format should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown viz format `yaml`"),
+        "viz should report unknown format explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang viz [--format ascii|mermaid] <file.dag>|--self"),
+        "viz should print usage guidance for unknown format: {stderr}"
+    );
+}
+
+#[test]
 fn run_without_args_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
@@ -30566,7 +30630,7 @@ fn compile_family_commands_execute_real_pipeline_paths() {
 }
 
 #[test]
-fn viz_without_self_emits_compiled_mermaid_graph() {
+fn viz_without_self_emits_compiled_ascii_graph_by_default() {
     let output = Command::new(daglang_bin())
         .arg("viz")
         .arg("dsl/tools/makegen.dag")
@@ -30576,12 +30640,16 @@ fn viz_without_self_emits_compiled_mermaid_graph() {
 
     assert!(
         output.status.success(),
-        "viz should compile and render mermaid output"
+        "viz should compile and render ascii output"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("flowchart TB"),
-        "viz mermaid output should include flowchart header: {stdout}"
+        stdout.contains("ASCII DAG: daglang-compiled"),
+        "viz ascii output should include ascii header: {stdout}"
+    );
+    assert!(
+        stdout.contains("tools.makegen::render_makefile"),
+        "viz ascii output should include compiled node ids: {stdout}"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(

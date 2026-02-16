@@ -6,7 +6,8 @@
 //!
 //! # Commands
 //!
-//! - `daglang viz <file.dag>`      -- ASCII DAG visualization from compiled IR
+//! - `daglang viz [--format ascii|mermaid] <file.dag>|--self`
+//!   -- DAG visualization from compiled IR
 //! - `daglang expand <file.dag>`   -- Show lowered GraphIR (nodes, edges, ports)
 //! - `daglang manifest <file.dag>` -- Show derived ProgressManifest
 //! - `daglang obligations <file.dag>` -- Show 4-bucket TestObligations summary
@@ -22,7 +23,7 @@ use daglang_cli::compile::{
     build_context, compile_from_context, compile_resolve_execute_from_context,
     makegen_dry_run_transport_mocks, makegen_entrypoint_mocks, render_expand,
     render_manifest_with_format, render_obligations_with_format, render_triplets_with_format,
-    ManifestFormat,
+    render_viz_ascii, ManifestFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{build_pipeline_dag, run_pipeline, PipelineContext, PipelineStop};
@@ -35,7 +36,7 @@ fn main() {
         eprintln!("Usage: daglang <command> [args...]");
         eprintln!();
         eprintln!("Commands:");
-        eprintln!("  viz <file.dag>       ASCII DAG visualization");
+        eprintln!("  viz [--format ascii|mermaid] <file.dag>|--self  DAG visualization");
         eprintln!("  expand <file.dag>    Show lowered GraphIR (nodes/edges/ports)");
         eprintln!("  manifest [--format text|json] <file.dag>  Show derived ProgressManifest");
         eprintln!("  obligations [--format text|json] <file.dag>  Show 4-bucket test obligations");
@@ -49,25 +50,42 @@ fn main() {
 
     match args[1].as_str() {
         "viz" => {
-            match args.len() {
-                2 => exit_usage("viz <file.dag>|viz --self"),
-                3 if args[2] == "--self" => {
-                    let dag = build_pipeline_dag();
-                    println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
+            let viz_args = match parse_viz_args(&args) {
+                Ok(values) => values,
+                Err(error) => {
+                    eprintln!("{error}");
+                    exit_usage("viz [--format ascii|mermaid] <file.dag>|--self");
                 }
-                3 => {
-                    let context = build_context(args.get(2));
-                    match compile_from_context(&context) {
-                        Ok(output) => {
-                            println!("{}", output.lowered_dag.to_mermaid("daglang-compiled"));
+            };
+            match viz_args.target {
+                VizTarget::SelfGraph => {
+                    let dag = build_pipeline_dag();
+                    match viz_args.format {
+                        VizFormat::Ascii => {
+                            println!("{}", render_viz_ascii("daglang-compiler-pipeline", &dag))
                         }
+                        VizFormat::Mermaid => {
+                            println!("{}", dag.to_mermaid("daglang-compiler-pipeline"))
+                        }
+                    }
+                }
+                VizTarget::File(file) => {
+                    let context = build_context(Some(&file));
+                    match compile_from_context(&context) {
+                        Ok(output) => match viz_args.format {
+                            VizFormat::Ascii => {
+                                println!("{}", render_viz_ascii("daglang-compiled", &output.lowered_dag))
+                            }
+                            VizFormat::Mermaid => {
+                                println!("{}", output.lowered_dag.to_mermaid("daglang-compiled"))
+                            }
+                        },
                         Err(error) => {
                             eprintln!("{error}");
                             std::process::exit(1);
                         }
                     }
                 }
-                _ => exit_usage("viz <file.dag>|viz --self"),
             }
         }
         "expand" => {
@@ -291,6 +309,84 @@ fn resolve_root(arg: Option<&String>) -> PathBuf {
     path_utils::default_root_from_cwd(&cwd)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VizFormat {
+    Ascii,
+    Mermaid,
+}
+
+impl VizFormat {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "ascii" => Some(Self::Ascii),
+            "mermaid" => Some(Self::Mermaid),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum VizTarget {
+    SelfGraph,
+    File(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VizArgs {
+    target: VizTarget,
+    format: VizFormat,
+}
+
+fn parse_viz_args(args: &[String]) -> Result<VizArgs, String> {
+    let mut format = VizFormat::Ascii;
+    let mut target = None::<VizTarget>;
+    let mut index = 2usize;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        match arg {
+            "--self" => {
+                if target.is_some() {
+                    return Err("viz accepts either --self or <file.dag>, not both".to_string());
+                }
+                target = Some(VizTarget::SelfGraph);
+                index += 1;
+            }
+            "--format" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "--format requires a value: ascii or mermaid".to_string())?;
+                format = VizFormat::parse(value)
+                    .ok_or_else(|| format!("unknown viz format `{value}`"))?;
+                index += 2;
+            }
+            _ if arg.starts_with("--format=") => {
+                let value = arg
+                    .strip_prefix("--format=")
+                    .expect("prefix should already be checked");
+                format = VizFormat::parse(value)
+                    .ok_or_else(|| format!("unknown viz format `{value}`"))?;
+                index += 1;
+            }
+            _ if arg.starts_with("--") => return Err(format!("unknown viz flag `{arg}`")),
+            _ => {
+                if let Some(existing_target) = &target {
+                    return Err(match existing_target {
+                        VizTarget::SelfGraph => {
+                            "viz accepts either --self or <file.dag>, not both".to_string()
+                        }
+                        VizTarget::File(_) => "viz takes exactly one input path".to_string(),
+                    });
+                }
+                target = Some(VizTarget::File(args[index].clone()));
+                index += 1;
+            }
+        }
+    }
+
+    let target = target.ok_or_else(|| "viz requires --self or <file.dag>".to_string())?;
+    Ok(VizArgs { target, format })
+}
+
 fn parse_single_file_with_optional_format(
     args: &[String],
     command: &str,
@@ -410,7 +506,7 @@ fn exit_usage(command: &str) -> ! {
 mod tests {
     use super::{
         parse_manifest_args, parse_obligations_args, parse_run_args, parse_show_triplets_args,
-        RunArgs,
+        parse_viz_args, RunArgs, VizArgs, VizFormat, VizTarget,
     };
     use crate::path_utils::{default_root_from_cwd, has_dag_extension, normalize_path_components};
     use daglang_cli::compile::ManifestFormat;
@@ -622,6 +718,54 @@ mod tests {
         ];
         let error = parse_show_triplets_args(&args).expect_err("parse should fail");
         assert!(error.contains("unknown show-triplets flag"));
+    }
+
+    #[test]
+    fn parse_viz_args_defaults_to_ascii_for_file_target() {
+        let args = vec![
+            "daglang".to_string(),
+            "viz".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = parse_viz_args(&args).expect("parse should succeed");
+        assert_eq!(
+            parsed,
+            VizArgs {
+                target: VizTarget::File("dsl/tools/makegen.dag".to_string()),
+                format: VizFormat::Ascii,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_viz_args_supports_mermaid_self_graph() {
+        let args = vec![
+            "daglang".to_string(),
+            "viz".to_string(),
+            "--format".to_string(),
+            "mermaid".to_string(),
+            "--self".to_string(),
+        ];
+        let parsed = parse_viz_args(&args).expect("parse should succeed");
+        assert_eq!(
+            parsed,
+            VizArgs {
+                target: VizTarget::SelfGraph,
+                format: VizFormat::Mermaid,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_viz_args_rejects_self_and_file_combination() {
+        let args = vec![
+            "daglang".to_string(),
+            "viz".to_string(),
+            "--self".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_viz_args(&args).expect_err("parse should fail");
+        assert!(error.contains("either --self or <file.dag>"));
     }
 
     #[test]

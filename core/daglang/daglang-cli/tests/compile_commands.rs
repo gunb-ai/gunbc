@@ -10893,7 +10893,7 @@ func run() -> { ok: Bool } provides out: Storage {
 }
 
 #[test]
-fn viz_command_renders_mermaid_for_compiled_file() {
+fn viz_command_renders_ascii_for_compiled_file_by_default() {
     let output = Command::new(daglang_bin())
         .arg("viz")
         .arg(makegen_file())
@@ -10909,8 +10909,31 @@ fn viz_command_renders_mermaid_for_compiled_file() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("flowchart TB"));
+    assert!(stdout.contains("ASCII DAG: daglang-compiled"));
     assert!(stdout.contains("tools.makegen::render_makefile"));
+}
+
+#[test]
+fn viz_command_supports_mermaid_format_flag() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--format")
+        .arg("mermaid")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz --format mermaid file");
+
+    assert!(
+        output.status.success(),
+        "viz --format mermaid command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("flowchart TB"));
+    assert!(stdout.contains("daglang-compiled"));
 }
 
 #[test]

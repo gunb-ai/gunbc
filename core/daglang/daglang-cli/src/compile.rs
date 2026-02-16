@@ -708,6 +708,135 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
     out
 }
 
+pub fn render_viz_ascii<T>(title: &str, dag: &Dag<T>) -> String {
+    let mut out = String::new();
+    writeln!(out, "ASCII DAG: {title}").ok();
+
+    out.push_str("Nodes:\n");
+    let mut nodes = dag.nodes.iter().collect::<Vec<_>>();
+    nodes.sort_by(|left, right| left.id.0.cmp(&right.id.0));
+    for node in nodes {
+        writeln!(out, "  - {}", node.id.0).ok();
+        if node.inputs.is_empty() {
+            out.push_str("    inputs: (none)\n");
+        } else {
+            let mut inputs = node.inputs.iter().collect::<Vec<_>>();
+            inputs.sort_by(|left, right| left.name.0.cmp(&right.name.0));
+            let rendered_inputs = inputs
+                .into_iter()
+                .map(|input| format!("{}:{}({})", input.name.0, input.type_id.0, input.cardinality))
+                .collect::<Vec<_>>();
+            writeln!(out, "    inputs: {}", rendered_inputs.join(", ")).ok();
+        }
+        if node.outputs.is_empty() {
+            out.push_str("    outputs: (none)\n");
+        } else {
+            let mut outputs = node.outputs.iter().collect::<Vec<_>>();
+            outputs.sort_by(|left, right| left.name.0.cmp(&right.name.0));
+            let rendered_outputs = outputs
+                .into_iter()
+                .map(|output| format!("{}:{}({})", output.name.0, output.type_id.0, output.cardinality))
+                .collect::<Vec<_>>();
+            writeln!(out, "    outputs: {}", rendered_outputs.join(", ")).ok();
+        }
+    }
+
+    out.push_str("Edges:\n");
+    if dag.edges.is_empty() {
+        out.push_str("  (none)\n");
+    } else {
+        let mut edges = dag.edges.iter().collect::<Vec<_>>();
+        edges.sort_by(|left, right| {
+            (
+                left.from_node.0.as_str(),
+                left.from_port.0.as_str(),
+                left.to_node.0.as_str(),
+                left.to_port.0.as_str(),
+            )
+                .cmp(&(
+                    right.from_node.0.as_str(),
+                    right.from_port.0.as_str(),
+                    right.to_node.0.as_str(),
+                    right.to_port.0.as_str(),
+                ))
+        });
+        for edge in edges {
+            writeln!(
+                out,
+                "  - {}.{} -> {}.{}",
+                edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+            )
+            .ok();
+        }
+    }
+
+    out.push_str("Waves:\n");
+    for (index, wave) in compute_ascii_waves(dag).iter().enumerate() {
+        writeln!(out, "  [{index}] {}", wave.join(", ")).ok();
+    }
+    out
+}
+
+fn compute_ascii_waves<T>(dag: &Dag<T>) -> Vec<Vec<String>> {
+    let mut indegree = dag
+        .nodes
+        .iter()
+        .map(|node| (node.id.0.clone(), 0usize))
+        .collect::<BTreeMap<_, _>>();
+    let mut outgoing = dag
+        .nodes
+        .iter()
+        .map(|node| (node.id.0.clone(), Vec::<String>::new()))
+        .collect::<BTreeMap<_, _>>();
+
+    for edge in &dag.edges {
+        if let Some(target_degree) = indegree.get_mut(&edge.to_node.0) {
+            *target_degree += 1;
+        }
+        if let Some(edges) = outgoing.get_mut(&edge.from_node.0) {
+            edges.push(edge.to_node.0.clone());
+        }
+    }
+
+    let mut current_wave = indegree
+        .iter()
+        .filter_map(|(node_id, degree)| (*degree == 0).then_some(node_id.clone()))
+        .collect::<Vec<_>>();
+    current_wave.sort();
+
+    let mut waves = Vec::new();
+    let mut processed = 0usize;
+    while !current_wave.is_empty() {
+        waves.push(current_wave.clone());
+        processed += current_wave.len();
+        let mut next_wave = Vec::new();
+        for node_id in &current_wave {
+            if let Some(targets) = outgoing.get(node_id.as_str()) {
+                for target in targets {
+                    if let Some(degree) = indegree.get_mut(target) {
+                        *degree = degree.saturating_sub(1);
+                        if *degree == 0 {
+                            next_wave.push(target.clone());
+                        }
+                    }
+                }
+            }
+        }
+        next_wave.sort();
+        next_wave.dedup();
+        current_wave = next_wave;
+    }
+
+    if processed != dag.nodes.len() {
+        vec!["(cyclic graph)".to_string()]
+            .into_iter()
+            .map(|entry| vec![entry])
+            .collect()
+    } else {
+        waves
+    }
+}
+
 pub fn render_manifest(derived: &DerivedArtifacts) -> String {
     let manifest = &derived.manifest;
     let obligations = &derived.obligations;
@@ -4973,6 +5102,33 @@ func run(path: String) -> { body: String } {
         );
 
         std::fs::remove_file(temp_path).expect("failed to remove temp output");
+    }
+
+    #[test]
+    fn render_viz_ascii_for_makegen_includes_nodes_edges_and_waves() {
+        let context = makegen_context();
+        let output = compile_from_context(&context).expect("compile should succeed");
+        let rendered = render_viz_ascii("daglang-compiled", &output.lowered_dag);
+
+        assert!(rendered.contains("ASCII DAG: daglang-compiled"));
+        assert!(rendered.contains("Nodes:"));
+        assert!(rendered.contains("Edges:"));
+        assert!(rendered.contains("Waves:"));
+        assert!(rendered.contains("tools.makegen::render_makefile"));
+        assert!(rendered.contains("load_registry.registry -> tools.makegen::render_makefile.registry"));
+    }
+
+    #[test]
+    fn render_viz_ascii_is_deterministic_for_makegen() {
+        let context = makegen_context();
+        let output = compile_from_context(&context).expect("compile should succeed");
+        let first = render_viz_ascii("daglang-compiled", &output.lowered_dag);
+        let second = render_viz_ascii("daglang-compiled", &output.lowered_dag);
+
+        assert_eq!(
+            first, second,
+            "ascii visualization should be byte-stable across repeated renders"
+        );
     }
 
     fn makegen_context() -> PipelineContext {
