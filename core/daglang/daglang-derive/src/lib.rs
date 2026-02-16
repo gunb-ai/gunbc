@@ -446,6 +446,49 @@ struct ObligationCounts {
     resource_release_targets: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ObligationNameCategory {
+    ServiceTransportPrepare,
+    ServiceTransportExecute,
+    ServiceTransportParse,
+    ServiceParamSource,
+    ResourceProvide,
+    ResourceAcquire,
+    ResourceRelease,
+}
+
+fn classify_obligation_name(name: &str) -> Option<ObligationNameCategory> {
+    if name.starts_with("service_transport::prepare::")
+        || name.starts_with("content_upsert::prepare_")
+    {
+        return Some(ObligationNameCategory::ServiceTransportPrepare);
+    }
+    if name.starts_with("service_transport::execute::")
+        || name.starts_with("content_upsert::execute_")
+    {
+        return Some(ObligationNameCategory::ServiceTransportExecute);
+    }
+    if name.starts_with("service_transport::parse::")
+        || name.starts_with("content_upsert::parse_")
+        || name.starts_with("content_upsert::compare_")
+    {
+        return Some(ObligationNameCategory::ServiceTransportParse);
+    }
+    if name.starts_with("call_param_source::") {
+        return Some(ObligationNameCategory::ServiceParamSource);
+    }
+    if name.starts_with("resource_provide::") {
+        return Some(ObligationNameCategory::ResourceProvide);
+    }
+    if name.starts_with("resource_lifecycle::acquire::") {
+        return Some(ObligationNameCategory::ResourceAcquire);
+    }
+    if name.starts_with("resource_lifecycle::release::") {
+        return Some(ObligationNameCategory::ResourceRelease);
+    }
+    None
+}
+
 fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
     let mut counts = ObligationCounts::default();
     for node in nodes {
@@ -461,20 +504,29 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
         let Some(LoweredOp::Callable { name, .. }) = node_body_as_opaque(&node.body) else {
             continue;
         };
-        if name.starts_with("service_transport::prepare::") {
-            counts.service_transport_prepare_targets += 1;
-        } else if name.starts_with("service_transport::execute::") {
-            counts.service_transport_execute_targets += 1;
-        } else if name.starts_with("service_transport::parse::") {
-            counts.service_transport_parse_targets += 1;
-        } else if name.starts_with("call_param_source::") {
-            counts.service_param_source_targets += 1;
-        } else if name.starts_with("resource_provide::") {
-            counts.resource_provide_targets += 1;
-        } else if name.starts_with("resource_lifecycle::acquire::") {
-            counts.resource_acquire_targets += 1;
-        } else if name.starts_with("resource_lifecycle::release::") {
-            counts.resource_release_targets += 1;
+        match classify_obligation_name(name) {
+            Some(ObligationNameCategory::ServiceTransportPrepare) => {
+                counts.service_transport_prepare_targets += 1;
+            }
+            Some(ObligationNameCategory::ServiceTransportExecute) => {
+                counts.service_transport_execute_targets += 1;
+            }
+            Some(ObligationNameCategory::ServiceTransportParse) => {
+                counts.service_transport_parse_targets += 1;
+            }
+            Some(ObligationNameCategory::ServiceParamSource) => {
+                counts.service_param_source_targets += 1;
+            }
+            Some(ObligationNameCategory::ResourceProvide) => {
+                counts.resource_provide_targets += 1;
+            }
+            Some(ObligationNameCategory::ResourceAcquire) => {
+                counts.resource_acquire_targets += 1;
+            }
+            Some(ObligationNameCategory::ResourceRelease) => {
+                counts.resource_release_targets += 1;
+            }
+            None => {}
         }
     }
     counts
@@ -672,6 +724,60 @@ mod tests {
         assert_eq!(artifacts.obligations.resource_provide_targets, 1);
         assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
         assert_eq!(artifacts.obligations.resource_release_targets, 1);
+    }
+
+    #[test]
+    fn derive_obligations_counts_content_upsert_triplets_as_transport_targets() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "prepare_read_makegen",
+            vec![Port::scalar("path", "String")],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: "tools.makegen".to_string(),
+                kind: CallableKind::Pattern,
+                name: "content_upsert::prepare_read_makegen".to_string(),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "execute_read_makegen",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "tools.makegen".to_string(),
+                kind: CallableKind::Pattern,
+                name: "content_upsert::execute_read_makegen".to_string(),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "compare_makegen_content",
+            vec![Port::scalar("response", "TransportResponse")],
+            vec![Port::scalar("skip", "Bool")],
+            LoweredOp::Callable {
+                module: "tools.makegen".to_string(),
+                kind: CallableKind::Pattern,
+                name: "content_upsert::compare_makegen_content".to_string(),
+            },
+        ));
+        dag.add_edge(Edge::new(
+            "prepare_read_makegen",
+            "request",
+            "execute_read_makegen",
+            "request",
+        ));
+        dag.add_edge(Edge::new(
+            "execute_read_makegen",
+            "response",
+            "compare_makegen_content",
+            "response",
+        ));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert_eq!(artifacts.obligations.transport_execution_targets, 1);
+        assert_eq!(artifacts.obligations.pure_node_determinism_targets, 2);
+        assert_eq!(artifacts.obligations.service_transport_prepare_targets, 1);
+        assert_eq!(artifacts.obligations.service_transport_execute_targets, 1);
+        assert_eq!(artifacts.obligations.service_transport_parse_targets, 1);
     }
 
     #[test]

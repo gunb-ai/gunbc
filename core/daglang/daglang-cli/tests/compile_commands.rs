@@ -10732,6 +10732,29 @@ fn obligations_command_shows_four_bucket_summary() {
 }
 
 #[test]
+fn obligations_command_reports_non_zero_triplet_counts_for_makegen() {
+    let output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations");
+
+    assert!(
+        output.status.success(),
+        "obligations command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("triplet_prepare_targets: 2"));
+    assert!(stdout.contains("triplet_execute_targets: 2"));
+    assert!(stdout.contains("triplet_parse_targets: 1"));
+    assert!(stdout.contains("triplet_total_targets: 5"));
+}
+
+#[test]
 fn obligations_command_supports_json_output_format() {
     let output = Command::new(daglang_bin())
         .arg("obligations")
@@ -10751,6 +10774,7 @@ fn obligations_command_supports_json_output_format() {
     assert!(stdout.contains("\"transport\""));
     assert!(stdout.contains("\"pure_node_determinism\""));
     assert!(stdout.contains("\"resource_lifecycle\""));
+    assert!(stdout.contains("\"triplet_total_targets\": 5"));
 }
 
 #[test]
