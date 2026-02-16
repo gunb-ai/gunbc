@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -36,6 +36,15 @@ fn unique_temp_dir(name: &str) -> PathBuf {
         std::process::id(),
         nanos
     ))
+}
+
+fn write_minimal_directory_compile_fixture(root: &Path) {
+    std::fs::create_dir_all(root.join("dsl/sample")).expect("failed to create dsl fixture tree");
+    std::fs::write(
+        root.join("dsl/sample/main.dag"),
+        "module sample.main\nfn run() -> Unit { }",
+    )
+    .expect("failed to write minimal compile fixture");
 }
 
 fn assert_typecheck_stage_failure(stderr: &str) {
@@ -910,6 +919,226 @@ fn compile_command_default_root_non_directory_in_cwd_exits_nonzero() {
         "default-root non-directory diagnostic should include normalized absolute dsl path: {stderr}"
     );
     assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_default_root_matches_explicit_dsl_output() {
+    let root = unique_temp_dir("compile_default_root_matches_explicit");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    write_minimal_directory_compile_fixture(&root);
+
+    let default = Command::new(daglang_bin())
+        .arg("compile")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run default-root compile");
+    assert!(
+        default.status.success(),
+        "default-root compile should succeed: {}",
+        String::from_utf8_lossy(&default.stderr)
+    );
+
+    let explicit = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run explicit-root compile");
+    assert!(
+        explicit.status.success(),
+        "explicit-root compile should succeed: {}",
+        String::from_utf8_lossy(&explicit.stderr)
+    );
+
+    assert_eq!(
+        default.stdout, explicit.stdout,
+        "default-root and explicit dsl-root compile stdout should match"
+    );
+    assert_eq!(
+        default.stderr, explicit.stderr,
+        "default-root and explicit dsl-root compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&default.stderr));
+    assert!(
+        String::from_utf8_lossy(&default.stdout).contains("Compiled 1 module(s)"),
+        "default-root compile summary should report a single compiled module: {}",
+        String::from_utf8_lossy(&default.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_relative_and_absolute_roots_are_equivalent() {
+    let root = unique_temp_dir("compile_relative_absolute_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    write_minimal_directory_compile_fixture(&root);
+    let absolute_root = root.join("dsl");
+
+    let relative = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative-root compile");
+    assert!(
+        relative.status.success(),
+        "relative-root compile should succeed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&absolute_root)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute-root compile");
+    assert!(
+        absolute.status.success(),
+        "absolute-root compile should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute root compile stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute root compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&relative.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_curdir_segment_root_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_curdir_segment_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    write_minimal_directory_compile_fixture(&root);
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative root compile");
+    assert!(
+        plain.status.success(),
+        "plain-relative root compile should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("./dsl")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment root compile");
+    assert!(
+        curdir.status.success(),
+        "curdir-segment root compile should succeed: {}",
+        String::from_utf8_lossy(&curdir.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir.stdout,
+        "plain-relative and curdir-segment root compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir.stderr,
+        "plain-relative and curdir-segment root compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&plain.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_curdir_double_separator_root_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_curdir_double_separator_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    write_minimal_directory_compile_fixture(&root);
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative root compile");
+    assert!(
+        plain.status.success(),
+        "plain-relative root compile should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_double = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(".//dsl")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-double root compile");
+    assert!(
+        curdir_double.status.success(),
+        "curdir-double root compile should succeed: {}",
+        String::from_utf8_lossy(&curdir_double.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_double.stdout,
+        "plain-relative and curdir-double root compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_double.stderr,
+        "plain-relative and curdir-double root compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&plain.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_trailing_slash_root_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_trailing_slash_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    write_minimal_directory_compile_fixture(&root);
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative root compile");
+    assert!(
+        plain.status.success(),
+        "plain-relative root compile should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run trailing-slash root compile");
+    assert!(
+        trailing_slash.status.success(),
+        "trailing-slash root compile should succeed: {}",
+        String::from_utf8_lossy(&trailing_slash.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, trailing_slash.stdout,
+        "plain-relative and trailing-slash root compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, trailing_slash.stderr,
+        "plain-relative and trailing-slash root compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&plain.stderr));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
