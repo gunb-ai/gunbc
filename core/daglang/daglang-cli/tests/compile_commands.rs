@@ -10937,6 +10937,94 @@ fn viz_command_supports_mermaid_format_flag() {
 }
 
 #[test]
+fn viz_command_supports_equals_mermaid_format_flag() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--format=mermaid")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz --format=mermaid file");
+
+    assert!(
+        output.status.success(),
+        "viz --format=mermaid command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("flowchart TB"));
+    assert!(stdout.contains("daglang-compiled"));
+}
+
+#[test]
+fn viz_command_explicit_ascii_matches_default_output() {
+    let default_output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz with default format");
+    assert!(
+        default_output.status.success(),
+        "default viz run failed: {}",
+        String::from_utf8_lossy(&default_output.stderr)
+    );
+
+    let explicit_ascii_output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--format")
+        .arg("ascii")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz --format ascii");
+    assert!(
+        explicit_ascii_output.status.success(),
+        "explicit ascii viz run failed: {}",
+        String::from_utf8_lossy(&explicit_ascii_output.stderr)
+    );
+
+    assert_eq!(
+        default_output.stdout, explicit_ascii_output.stdout,
+        "explicit ascii format should match default viz output"
+    );
+}
+
+#[test]
+fn viz_command_ascii_output_is_deterministic_for_same_input() {
+    let first = Command::new(daglang_bin())
+        .arg("viz")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang viz");
+    assert!(
+        first.status.success(),
+        "first viz run failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let second = Command::new(daglang_bin())
+        .arg("viz")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang viz");
+    assert!(
+        second.status.success(),
+        "second viz run failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    assert_eq!(
+        first.stdout, second.stdout,
+        "default ascii viz output should be byte-stable across runs"
+    );
+}
+
+#[test]
 fn compile_command_reports_diagnostics_for_invalid_file() {
     let broken = unique_temp_file("broken");
     std::fs::write(&broken, "module sample.broken\nfn broken( -> String {")
