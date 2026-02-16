@@ -6,7 +6,7 @@ use daglang_emit::{emit_rust_bundle, EmissionBundle};
 use daglang_lower::{lower_typed_project, LoweredOp};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::parser;
-use daglang_typecheck::typecheck_module_graph;
+use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions};
 use gunbc_ir::Dag;
 
 #[derive(Debug)]
@@ -45,7 +45,13 @@ pub fn resolve_default_root() -> PathBuf {
 
 pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, String> {
     let module_graph = discover_module_graph_for_context(context)?;
-    let typed = typecheck_module_graph(module_graph).map_err(|errors| {
+    let typed = typecheck_module_graph_with_options(
+        module_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: context.target_file.is_some(),
+        },
+    )
+    .map_err(|errors| {
         let mut message = String::from("typecheck errors:\n");
         for error in errors {
             message.push_str(&format!("  {error}\n"));

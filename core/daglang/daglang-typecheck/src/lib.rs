@@ -32,6 +32,19 @@ pub struct TypedProject {
     pub modules: Vec<TypedModule>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TypecheckOptions {
+    pub allow_unresolved_imports: bool,
+}
+
+impl Default for TypecheckOptions {
+    fn default() -> Self {
+        Self {
+            allow_unresolved_imports: true,
+        }
+    }
+}
+
 /// A typechecked module.
 #[derive(Debug)]
 pub struct TypedModule {
@@ -109,6 +122,8 @@ pub enum TypeError {
     DuplicateParameter { item: String, param: String },
     /// Duplicate output field name in a callable signature.
     DuplicateOutputField { item: String, field: String },
+    /// Import target does not exist in the available module graph.
+    UnresolvedImport { module: String, target: String },
 }
 
 impl std::fmt::Display for TypeError {
@@ -149,13 +164,29 @@ impl std::fmt::Display for TypeError {
             Self::DuplicateOutputField { item, field } => {
                 write!(f, "duplicate output field `{field}` in `{item}`")
             }
+            Self::UnresolvedImport { module, target } => {
+                write!(f, "unresolved import `{target}` in module `{module}`")
+            }
         }
     }
 }
 
 /// Typecheck a discovered module graph and produce typed module signatures.
 pub fn typecheck_module_graph(graph: ModuleGraph) -> Result<TypedProject, Vec<TypeError>> {
+    typecheck_module_graph_with_options(graph, TypecheckOptions::default())
+}
+
+/// Typecheck a discovered module graph with explicit options.
+pub fn typecheck_module_graph_with_options(
+    graph: ModuleGraph,
+    options: TypecheckOptions,
+) -> Result<TypedProject, Vec<TypeError>> {
     let known_types = collect_known_types(&graph.modules);
+    let available_modules = graph
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect::<HashSet<_>>();
     let mut errors = Vec::new();
     let mut typed_modules = Vec::with_capacity(graph.modules.len());
 
@@ -167,6 +198,17 @@ pub fn typecheck_module_graph(graph: ModuleGraph) -> Result<TypedProject, Vec<Ty
             .map(|import| import.node.path.segments.clone())
             .collect::<Vec<_>>();
         let module_name = module.module_path.join(".");
+        if !options.allow_unresolved_imports {
+            for import in &imports {
+                let target = import.join(".");
+                if !available_modules.contains(&target) {
+                    errors.push(TypeError::UnresolvedImport {
+                        module: module_name.clone(),
+                        target,
+                    });
+                }
+            }
+        }
         let signatures = collect_signatures(&module, &known_types, &module_name, &mut errors);
         typed_modules.push(TypedModule {
             path: module.path,
@@ -547,5 +589,23 @@ mod tests {
         assert!(errors
             .iter()
             .any(|error| matches!(error, TypeError::UndefinedType(msg) if msg.contains("MissingType"))));
+    }
+
+    #[test]
+    fn strict_mode_reports_unresolved_imports() {
+        let graph = module_graph_from_sources(&[(
+            "missing_import.dag",
+            "module sample.main\nimport missing.dep\nfn run() -> Unit {}",
+        )]);
+        let options = TypecheckOptions {
+            allow_unresolved_imports: false,
+        };
+        let errors = typecheck_module_graph_with_options(graph, options)
+            .expect_err("strict mode should fail on unresolved import");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnresolvedImport { module, target }
+                if module == "sample.main" && target == "missing.dep"
+        )));
     }
 }
