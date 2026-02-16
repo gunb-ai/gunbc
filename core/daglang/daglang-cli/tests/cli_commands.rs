@@ -192,3 +192,40 @@ fn check_command_directory_mode_aggregates_multiple_file_diagnostics() {
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
+
+#[test]
+fn check_command_defaults_to_workspace_dsl_root() {
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check with default root");
+
+    assert!(
+        output.status.success(),
+        "default check command should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("OK: parsed 42 file(s)"),
+        "default check should parse full DSL corpus"
+    );
+}
+
+#[test]
+fn modules_command_defaults_to_workspace_dsl_root() {
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules with default root");
+
+    assert!(
+        output.status.success(),
+        "default modules command should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Discovered modules:"));
+    assert!(stdout.contains("std.types"));
+}

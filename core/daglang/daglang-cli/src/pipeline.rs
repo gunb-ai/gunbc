@@ -927,4 +927,11 @@ mod tests {
             .expect_err("edge to unknown target port should fail");
         assert!(err.contains("edge target port does not exist"));
     }
+
+    #[test]
+    fn pipeline_allows_unconnected_entrypoint_inputs() {
+        let dag = build_pipeline_dag();
+        validate_pipeline_semantics(&dag)
+            .expect("discover node should allow unconnected entrypoint input ports");
+    }
 }
