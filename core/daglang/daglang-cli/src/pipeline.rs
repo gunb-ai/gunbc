@@ -333,6 +333,13 @@ fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> 
         collect_dag_files(root, &mut dag_files)
             .map_err(|error| format!("failed to collect .dag files in {}: {error}", root.display()))?;
     }
+    let mut canonical_dag_files = Vec::with_capacity(dag_files.len());
+    for path in dag_files {
+        let canonical = fs::canonicalize(&path)
+            .map_err(|error| format!("failed to canonicalize {}: {error}", path.display()))?;
+        canonical_dag_files.push(canonical);
+    }
+    dag_files = canonical_dag_files;
     dag_files.sort();
     dag_files.dedup();
 
@@ -369,6 +376,15 @@ fn path_to_module_path(path: &Path, roots: &[PathBuf]) -> Vec<String> {
                 .components()
                 .filter_map(|segment| segment.as_os_str().to_str().map(String::from))
                 .collect();
+        }
+        if let Ok(canonical_root) = fs::canonicalize(root) {
+            if let Ok(relative) = path.strip_prefix(&canonical_root) {
+                return relative
+                    .with_extension("")
+                    .components()
+                    .filter_map(|segment| segment.as_os_str().to_str().map(String::from))
+                    .collect();
+            }
         }
     }
     vec![
@@ -1305,6 +1321,33 @@ mod tests {
             broken_hits, 1,
             "duplicate roots should not duplicate parse diagnostics for the same file"
         );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parse_pipeline_deduplicates_files_from_symlink_and_real_roots() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("symlink_and_real_roots");
+        let real = root.join("real");
+        let link = root.join("link");
+        fs::create_dir_all(&real).expect("failed to create real root");
+        fs::write(real.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+            .expect("failed to write source");
+        symlink(&real, &link).expect("failed to create root symlink");
+
+        let context = PipelineContext {
+            roots: vec![real.clone(), link],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+        assert_eq!(
+            result.parsed_count, 1,
+            "real+symlink roots should not duplicate parsed files"
+        );
+        assert!(result.diagnostics.is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }

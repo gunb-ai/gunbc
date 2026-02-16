@@ -65,6 +65,13 @@ impl ModuleGraph {
             }
             collect_dag_files(root, &mut dag_files)?;
         }
+        let mut canonical_dag_files = Vec::with_capacity(dag_files.len());
+        for path in dag_files {
+            let canonical = std::fs::canonicalize(&path)
+                .map_err(|e| ResolveError::IoError(path.clone(), e))?;
+            canonical_dag_files.push(canonical);
+        }
+        dag_files = canonical_dag_files;
         dag_files.sort();
         dag_files.dedup();
 
@@ -171,6 +178,15 @@ fn path_to_module_path(path: &Path, roots: &[PathBuf]) -> Vec<String> {
                 .components()
                 .filter_map(|c| c.as_os_str().to_str().map(String::from))
                 .collect();
+        }
+        if let Ok(canonical_root) = std::fs::canonicalize(root) {
+            if let Ok(rel) = path.strip_prefix(&canonical_root) {
+                return rel
+                    .with_extension("")
+                    .components()
+                    .filter_map(|c| c.as_os_str().to_str().map(String::from))
+                    .collect();
+            }
         }
     }
     vec![path
