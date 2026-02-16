@@ -786,6 +786,10 @@ service FsStorage implements MissingStorage {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("`FsStorage` references unresolved interface `MissingStorage`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "unresolved interface should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -820,6 +824,10 @@ resource Disk implements MissingStorage {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("`Disk` references unresolved interface `MissingStorage`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "unresolved interface should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -1798,6 +1806,10 @@ fn compile_command_directory_mode_fails_on_unknown_uses_resource_type() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("unknown used resource type `MissingResource`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "unknown uses resource type should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -1973,6 +1985,10 @@ fn compile_command_directory_mode_fails_on_unknown_provides_resource_type() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("unknown provided resource type `MissingResource`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "unknown provides resource type should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -2790,6 +2806,10 @@ func run(path: String) -> { body: String } {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("unresolved service call `MissingStorage.read`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "directory unresolved service call should fail before lowering: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
