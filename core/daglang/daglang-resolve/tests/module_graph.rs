@@ -590,3 +590,28 @@ fn discovery_deduplicates_files_from_duplicate_roots() {
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
+
+#[test]
+fn discovery_deduplicates_parse_errors_from_duplicate_roots() {
+    let root = unique_temp_dir("duplicate_roots_parse_errors");
+    write_file(&root.join("broken.dag"), "module sample.broken\nfn");
+
+    let err = ModuleGraph::discover(&[root.clone(), root.clone()])
+        .expect_err("expected parse error for duplicate roots");
+    match err {
+        ResolveError::ParseErrors(files) => {
+            assert_eq!(
+                files.len(),
+                1,
+                "duplicate roots should not duplicate parse error file entries"
+            );
+            assert_eq!(
+                files[0].0.file_name().and_then(|name| name.to_str()),
+                Some("broken.dag")
+            );
+        }
+        other => panic!("expected ParseErrors, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
