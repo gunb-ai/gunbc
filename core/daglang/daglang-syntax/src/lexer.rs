@@ -25,6 +25,8 @@ pub enum TokenKind {
     Int(i64), Float(f64),
     // Identifier
     Ident(String),
+    // Invalid token encountered during lexing.
+    Unknown(char),
     // End
     Eof,
 }
@@ -59,23 +61,41 @@ impl TokenKind {
             Self::Str(_) => "string", Self::StrBegin(_) => "string-begin",
             Self::StrMid(_) => "string-mid", Self::StrEnd(_) => "string-end",
             Self::Int(_) => "integer", Self::Float(_) => "float",
-            Self::Ident(_) => "identifier", Self::Eof => "EOF",
+            Self::Ident(_) => "identifier", Self::Unknown(_) => "unknown-token",
+            Self::Eof => "EOF",
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LexError {
+    pub message: String,
+    pub span: Span,
 }
 
 pub struct Lexer<'a> {
     source: &'a [u8],
     pos: usize,
     interp_depth: Vec<usize>,
+    errors: Vec<LexError>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
-        Self { source: source.as_bytes(), pos: 0, interp_depth: Vec::new() }
+        Self {
+            source: source.as_bytes(),
+            pos: 0,
+            interp_depth: Vec::new(),
+            errors: Vec::new(),
+        }
     }
 
     pub fn tokenize(source: &str) -> Vec<Token> {
+        let (tokens, _) = Self::tokenize_with_errors(source);
+        tokens
+    }
+
+    pub fn tokenize_with_errors(source: &str) -> (Vec<Token>, Vec<LexError>) {
         let mut lexer = Lexer::new(source);
         let mut tokens = Vec::new();
         loop {
@@ -84,7 +104,7 @@ impl<'a> Lexer<'a> {
             tokens.push(tok);
             if done { break; }
         }
-        tokens
+        (tokens, lexer.errors)
     }
 
     fn peek(&self) -> u8 {
@@ -108,6 +128,13 @@ impl<'a> Lexer<'a> {
 
     fn tok(&self, kind: TokenKind, start: usize) -> Token {
         Token { kind, span: Span { start, end: self.pos } }
+    }
+
+    fn push_error(&mut self, message: impl Into<String>, span: Span) {
+        self.errors.push(LexError {
+            message: message.into(),
+            span,
+        });
     }
 
     fn skip_ws(&mut self) {
@@ -178,9 +205,28 @@ impl<'a> Lexer<'a> {
             b'<' => { self.advance(); if self.peek() == b'=' { self.advance(); self.tok(TokenKind::Le, start) } else { self.tok(TokenKind::Lt, start) } }
             b'>' => { self.advance(); if self.peek() == b'=' { self.advance(); self.tok(TokenKind::Ge, start) } else { self.tok(TokenKind::Gt, start) } }
             b'|' => { self.advance(); if self.peek() == b'>' { self.advance(); self.tok(TokenKind::PipeArrow, start) } else if self.peek() == b'|' { self.advance(); self.tok(TokenKind::Or, start) } else { self.tok(TokenKind::Pipe, start) } }
-            b'&' => { self.advance(); if self.peek() == b'&' { self.advance(); self.tok(TokenKind::And, start) } else { self.tok(TokenKind::Ident("&".into()), start) } }
+            b'&' => {
+                self.advance();
+                if self.peek() == b'&' {
+                    self.advance();
+                    self.tok(TokenKind::And, start)
+                } else {
+                    self.push_error("unexpected character '&'".to_string(), Span { start, end: self.pos });
+                    self.tok(TokenKind::Unknown('&'), start)
+                }
+            }
             b'?' => { self.advance(); if self.peek() == b'?' { self.advance(); self.tok(TokenKind::NullCoalesce, start) } else { self.tok(TokenKind::Question, start) } }
-            _ => { self.advance(); self.tok(TokenKind::Ident(format!("<unknown:{}>", ch as char)), start) }
+            _ => {
+                self.advance();
+                self.push_error(
+                    format!("unexpected character '{}'", ch as char),
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                );
+                self.tok(TokenKind::Unknown(ch as char), start)
+            }
         }
     }
 
@@ -272,6 +318,13 @@ impl<'a> Lexer<'a> {
                 ch => { buf.push(ch as char); self.pos += 1; }
             }
         }
+        self.push_error(
+            "unterminated string literal".to_string(),
+            Span {
+                start,
+                end: self.pos,
+            },
+        );
         self.tok(TokenKind::Str(buf), start)
     }
 
@@ -294,6 +347,13 @@ impl<'a> Lexer<'a> {
                 ch => { buf.push(ch as char); self.pos += 1; }
             }
         }
+        self.push_error(
+            "unterminated interpolated string literal".to_string(),
+            Span {
+                start,
+                end: self.pos,
+            },
+        );
         self.tok(TokenKind::StrEnd(buf), start)
     }
 
@@ -378,5 +438,12 @@ mod tests {
         assert_eq!(kinds("foo // comment\nbar"), vec![
             TokenKind::Ident("foo".into()), TokenKind::Ident("bar".into()), TokenKind::Eof,
         ]);
+    }
+
+    #[test]
+    fn unknown_token_reports_lex_error() {
+        let (_tokens, errors) = Lexer::tokenize_with_errors("module test\n$");
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].message.contains("unexpected character '$'"));
     }
 }
