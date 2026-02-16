@@ -215,10 +215,16 @@ fn choose_preferred_relative(current: Option<PathBuf>, candidate: &Path) -> Opti
 }
 
 fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
-    roots
-        .iter()
-        .filter_map(|root| std::fs::canonicalize(root).ok())
-        .collect()
+    let mut seen = HashSet::new();
+    let mut canonical_roots = Vec::new();
+    for root in roots {
+        if let Ok(canonical_root) = std::fs::canonicalize(root) {
+            if seen.insert(canonical_root.clone()) {
+                canonical_roots.push(canonical_root);
+            }
+        }
+    }
+    canonical_roots
 }
 
 fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
