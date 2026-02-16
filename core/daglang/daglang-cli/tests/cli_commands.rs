@@ -7686,6 +7686,96 @@ fn check_command_relative_and_absolute_single_file_targets_are_equivalent() {
 }
 
 #[test]
+fn check_command_uppercase_dag_extension_single_file_target_matches_lowercase_output() {
+    let root = unique_temp_dir("check_uppercase_dag_extension_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("main.DAG"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid uppercase-extension dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+
+    let uppercase_target = Command::new(daglang_bin())
+        .arg("check")
+        .arg("main.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run uppercase-extension target daglang check");
+    assert!(
+        uppercase_target.status.success(),
+        "uppercase-extension target check should succeed: {}",
+        String::from_utf8_lossy(&uppercase_target.stderr)
+    );
+
+    let absolute_target = root.join("main.DAG");
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_target)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute uppercase-extension target daglang check");
+    assert!(
+        absolute.status.success(),
+        "absolute uppercase-extension target check should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        uppercase_target.stdout, absolute.stdout,
+        "relative and absolute uppercase-extension single-file check stdout should match"
+    );
+    assert_eq!(
+        uppercase_target.stderr, absolute.stderr,
+        "relative and absolute uppercase-extension single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&uppercase_target.stdout),
+        expected_check_success_stdout(1),
+        "uppercase-extension single-file check should parse exactly one file"
+    );
+    assert!(
+        uppercase_target.stderr.is_empty(),
+        "uppercase-extension single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&uppercase_target.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_uppercase_dag_extension_missing_target_is_treated_as_single_file() {
+    let root = unique_temp_dir("check_uppercase_dag_extension_missing_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    let missing_target = root.join("missing.DAG");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run uppercase-extension missing-target daglang check");
+    assert!(
+        !output.status.success(),
+        "uppercase-extension missing-target check should fail"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("pipeline error"),
+        "uppercase-extension missing-target check should surface pipeline error: {stderr}"
+    );
+    assert!(
+        stderr.contains(&format!("failed to canonicalize {}", missing_target.display())),
+        "uppercase-extension missing-target should be treated as single-file canonicalization failure: {stderr}"
+    );
+    assert!(
+        !stderr.contains("input root is not a directory"),
+        "uppercase-extension missing-target should not be treated as directory-root validation failure: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_parent_segment_single_file_target_matches_absolute_output() {
     let root = unique_temp_dir("check_parent_segment_single_file");
     let cwd = root.join("cwd");

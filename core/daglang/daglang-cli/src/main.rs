@@ -95,9 +95,7 @@ fn main() {
             }
             let input = args.get(2).map(|value| normalize_cli_path(PathBuf::from(value)));
             let (roots, target_file) = match input {
-                Some(path)
-                    if path.extension().and_then(|ext| ext.to_str()) == Some("dag")
-                        && !path.is_dir() =>
+                Some(path) if has_dag_extension(&path) && !path.is_dir() =>
                 {
                     let root = path
                         .parent()
@@ -160,6 +158,12 @@ fn exit_unimplemented(command: &str, detail: &str) -> ! {
 fn exit_usage(command: &str) -> ! {
     eprintln!("Usage: daglang {command}");
     std::process::exit(1);
+}
+
+fn has_dag_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("dag"))
 }
 
 fn normalize_cli_path(path: PathBuf) -> PathBuf {
