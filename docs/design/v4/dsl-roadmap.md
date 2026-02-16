@@ -379,7 +379,7 @@ This set unblocks Phase 1 without risking a giant "run makegen end-to-end" rewri
 
 ### Execution Plan: Two-Worker Bridge → Phase 1
 
-> **Context**: The Bridge Milestone's 6 workstreams have a real dependency graph. Two parallel workers can complete the bridge and Phase 1 without stepping on each other, because the work splits cleanly into "critical-path contracts" (manifest, parity, execution) and "independent quality" (viz, commands, discovery). Each worker owns distinct crates and files.
+> **Context**: The Bridge Milestone's 6 workstreams have a real dependency graph. Two parallel workers can complete the bridge and Phase 1 without stepping on each other, because the work splits cleanly into "critical-path contracts" (manifest, parity, execution) and "code quality" (pure helpers, typed pipeline, structural obligation classification). Visualization tooling is explicitly deferred — the `.dag` source is self-documenting, and Mermaid output already exists for when a picture is needed. Each worker owns distinct crates and files.
 
 #### Why this matters
 
@@ -486,60 +486,110 @@ All three steps complete. The sentence "compile `tools/makegen.dag` and run it, 
 
 ---
 
-#### Worker 2: Independent Quality — Viz, Commands, Discovery
+#### Worker 2: Code Quality — Pure Helpers, Typed Pipeline, Modular CLI
 
-**Mission**: Make the compiler's output *visible and usable*. The developer tools that let you see DAGs, inspect triplets, check obligations, and explore the module graph are what make every subsequent phase implementable. Without them, Worker 1's parity proofs are opaque numbers — with them, any developer can see exactly what the compiler produces and compare it to what they expect.
+**Mission**: Make the compiler codebase *clean and honest* before it gets bigger. Phase 1+ will add service transport, resource lifecycle, pattern expansion, and multi-backend emission — each touching multiple crates. If the foundation has impure helpers, dynamic typing where static typing would do, and 3000-line files, every future change is harder than it needs to be. Your job is to pay down the structural debt now, while the crate boundaries are still young.
 
-**Crates owned**: `daglang-cli/src/pipeline.rs`, `daglang-cli/src/main.rs`, `daglang-resolve`, `daglang-cli/src/path_utils.rs`
+**Crates owned**: `daglang-cli/src/pipeline.rs`, `daglang-cli/src/main.rs`, `daglang-cli/src/path_utils.rs`, `daglang-resolve/src/lib.rs`, `daglang-lower/src/lib.rs` (obligation classification only)
 
-**Why you matter**: The design doc says "visualization is not a nice-to-have that ships later — it's the development tool that makes every subsequent phase implementable." When Phase 1 starts and we're closing makegen parity gaps, the developer needs to run `dag viz`, `dag expand`, `dag show-triplets` and *see* what's different. Your work is the feedback loop that makes Worker 1's parity work debuggable.
+**Why you matter**: Worker 1 is building new capabilities (manifest contract, parity harness, execution dispatch). Every line they write inherits the code patterns that exist today. If helpers are impure, Worker 1 will write impure helpers. If the pipeline runner uses string-keyed HashMaps, new pipelines will too. You're setting the standard that all future code follows. Get it right now and everything downstream is cleaner.
 
-##### Step 1: Viz + Expand Stability (Workstream B)
+##### Step 1: Pure Helper Libraries
 
-`dag viz` currently outputs Mermaid format. The roadmap asks for ASCII as the default. Add an ASCII renderer (node names connected by arrows, like the roadmap examples). Keep Mermaid behind `--format mermaid`.
+The codebase has several helpers that call `std::env::current_dir()` internally, making them impure and environment-dependent. The fix is straightforward: effectful boundary at `main()`, pure core everywhere else.
 
-Make `dag expand` output deterministic and complete: every node with all input/output ports, every edge, SubDag boundaries. Add golden tests that pin the output for `tools/makegen.dag` — if the compiler changes, the golden test catches it.
+**`path_utils.rs`**: `resolve_default_root()` and `normalize_cli_path()` both call `current_dir()`. Refactor them to take `cwd: &Path` as a parameter. Have `main.rs` call `current_dir()` once at startup and thread `cwd` down through command dispatch.
 
-**Acceptance criteria**:
-- [ ] `dag viz tools/makegen.dag` produces readable ASCII graph by default
-- [ ] `dag viz --format mermaid tools/makegen.dag` still works
-- [ ] `dag expand tools/makegen.dag` lists all nodes with ports, all edges — deterministic order
-- [ ] Golden test for `dag expand` output exists and passes
-- [ ] `dag viz --self` still works (compiler pipeline self-visualization)
+**`compile.rs`**: `build_context()` calls `resolve_default_root()` which calls `current_dir()`. After the `path_utils` refactor, `build_context()` should take `cwd: &Path` too.
 
-##### Step 2: Model Preview Commands (Workstream E)
+**`pipeline.rs`**: `collect_dag_files()` constructs paths relative to an implicit cwd. Make the root path an explicit parameter.
 
-Add two standalone commands that surface information already computed by `derive_artifacts()`:
-
-`dag show-triplets <file.dag>` — show service call → transport triplet expansion. For each service call in the source, show the generated prepare/execute/parse nodes and their edges. This is how developers verify the compiler's service expansion is correct.
-
-`dag obligations <file.dag>` — show the 4-bucket test obligation summary as a standalone command (currently only available via `dag manifest`). Output: callable count, pipeline count, service transport count, resource lifecycle count, plus the total. This tells developers "here's what tests the compiler thinks this module needs."
+The pattern: every function in the `daglang-cli` crate below `main()` should be a pure function of its arguments. I/O happens exactly at the boundary — `main()` reads the environment, commands write to stdout/stderr.
 
 **Acceptance criteria**:
-- [ ] `dag show-triplets tools/makegen.dag` shows the content_upsert expansion (prepare_read → execute_read → compare → prepare_write → execute_write)
-- [ ] `dag obligations tools/makegen.dag` shows obligation counts matching `TestObligations` from derive
-- [ ] Both commands have `--format json` for machine consumption
-- [ ] Help text (`daglang --help`) lists all commands including the new ones
+- [ ] `path_utils::resolve_default_root(cwd: &Path)` — no `current_dir()` call
+- [ ] `path_utils::normalize_cli_path(cwd: &Path, path: &Path)` — no `current_dir()` call
+- [ ] `main.rs` calls `current_dir()` exactly once, threads `cwd` to all subcommands
+- [ ] `build_context()` takes `cwd: &Path`, not implicitly reading environment
+- [ ] No function in `path_utils.rs`, `compile.rs`, or `pipeline.rs` calls `std::env::current_dir()`
+- [ ] All existing tests pass (behavior is identical, only the call site of `current_dir()` moved)
 
-##### Step 3: Discovery Enrichment (Workstream D)
+##### Step 2: Typed Pipeline Runner
 
-Improve `dag modules` output and discovery robustness:
+`pipeline.rs` runs the 4-stage compiler pipeline (discover → parse → build graph → report) through a `HashMap<String, PipeValue>` with string keys and 5 `take_*` extraction functions. This is dynamic typing in a statically typed language — a mismatch with the "imperative pure functions" style.
 
-- Show dependency counts per module (how many imports, how many dependents)
-- Show unresolved import diagnostics inline (not just as errors)
-- Show cycle detection results (cycles found, which modules are involved)
-- Config-driven root discovery: respect a project manifest or config file for roots instead of just `cwd/dsl`
+The `build_pipeline_dag()` function that constructs the pipeline as a `Dag<CompilerOp>` should stay — it powers `dag viz --self` and is structurally interesting. But *execution* should be a plain imperative function with typed locals:
+
+```rust
+fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<PipelineResult, PipelineError> {
+    let files = discover_dag_files(&context.roots)?;
+    if stop == PipelineStop::Discover { return Ok(PipelineResult::Discovered(files)); }
+
+    let (modules, diagnostics) = parse_all_files(&files)?;
+    if stop == PipelineStop::Parse { return Ok(PipelineResult::Parsed(modules, diagnostics)); }
+
+    let graph = build_module_graph(&modules, &context.roots)?;
+    if stop == PipelineStop::Build { return Ok(PipelineResult::Built(graph, diagnostics)); }
+
+    let report = format_module_report(&graph, &diagnostics);
+    Ok(PipelineResult::Reported(report))
+}
+```
+
+No HashMap, no string keys, no `remove()` semantics, no fan-out ambiguity. Each stage is a pure function call. The types enforce that you can't accidentally consume a value twice or forget to produce one.
 
 **Acceptance criteria**:
-- [ ] `dag modules` output includes dependency counts per module
-- [ ] `dag modules` reports unresolved imports as warnings (not fatal errors) with file:line locations
-- [ ] `dag modules` reports detected cycles with the modules involved
-- [ ] Discovery respects a `daglang.toml` or similar config for root paths (at minimum, a `--roots` CLI flag)
-- [ ] All existing module graph tests still pass
+- [ ] `run_pipeline()` is an imperative function with typed locals — no `HashMap<String, PipeValue>`
+- [ ] `PipelineResult` is a typed enum (not string-keyed values)
+- [ ] The 5 `take_*` functions are deleted
+- [ ] `build_pipeline_dag()` still exists (for `dag viz --self`)
+- [ ] `dag check`, `dag modules`, and `dag compile` produce identical output
+- [ ] All existing pipeline tests pass
+
+##### Step 3: Obligation Classification + CLI Commands
+
+Obligation counts are currently derived from string prefix matching (`"service_transport::prepare::"`, port type equality `"TransportRequest"`). This is brittle — a rename in the lowerer silently breaks obligation counts with no compiler error.
+
+Add a classification function on `LoweredOp` that returns a typed enum:
+
+```rust
+enum ObligationCategory {
+    Callable,
+    Pipeline,
+    ServiceTransport,
+    ResourceLifecycle,
+    PatternExpanded,
+    None,
+}
+
+fn classify_obligation(op: &LoweredOp) -> ObligationCategory { ... }
+```
+
+Centralize the string constants (or better, make classification structural — based on `LoweredOp` variant, not string content). Then rewrite `derive_test_obligations()` to use this classifier instead of ad-hoc string matching.
+
+While touching the CLI, add two standalone commands that are cheap to implement (the data already exists in `derive_artifacts()`):
+
+- `dag show-triplets <file.dag>` — print service call → transport triplet expansion (prepare/execute/parse nodes and edges)
+- `dag obligations <file.dag>` — print the 4-bucket test obligation summary (currently embedded in `dag manifest` output, extract to standalone)
+
+**Acceptance criteria**:
+- [ ] `ObligationCategory` enum exists with typed variants
+- [ ] `classify_obligation()` is a pure function on `LoweredOp` — no string prefix matching
+- [ ] `derive_test_obligations()` uses `classify_obligation()` internally
+- [ ] Obligation counts for `tools/makegen.dag` are unchanged (behavioral parity)
+- [ ] `dag show-triplets tools/makegen.dag` shows the content_upsert triplet expansion
+- [ ] `dag obligations tools/makegen.dag` shows the 4-bucket obligation summary
+- [ ] Both new commands support `--format json`
 
 ##### Worker 2 Definition of Done
 
-A developer can run `dag viz`, `dag expand`, `dag show-triplets`, `dag obligations`, and `dag modules` on any `.dag` file and get clear, deterministic, useful output. The tools work well enough that when Worker 1 is debugging parity gaps, they can *see* the problem.
+The compiler codebase follows the "effectful boundary, pure core" principle. Every function below `main()` is a pure function of its arguments. The pipeline runner is typed and imperative. Obligation classification is structural, not stringly-typed. The two CLI commands (`show-triplets`, `obligations`) work and are useful for parity debugging.
+
+**Deferred (explicitly not in scope)**:
+- ASCII viz renderer — the `.dag` source is self-documenting; Mermaid exists for when you need a picture
+- File splitting of `compile.rs` / `pipeline.rs` — do this when the files actually cause merge conflicts, not preemptively
+- `daglang.toml` config-driven discovery — premature until we have more than one project consuming it
+- Enriched `dag modules` (dependency counts, inline warnings) — nice-to-have, not blocking Phase 1
 
 ---
 
@@ -549,21 +599,25 @@ The two workers share the `daglang-cli` crate but touch different files:
 
 | File | Worker 1 | Worker 2 |
 |---|---|---|
-| `daglang-derive/src/lib.rs` | **owns** (manifest expansion) | reads |
-| `daglang-lower/src/lib.rs` | **owns** (parity module) | — |
+| `daglang-derive/src/lib.rs` | **owns** (manifest expansion) | reads (obligation refactor touches `derive_test_obligations`) |
+| `daglang-lower/src/lib.rs` | **owns** (parity module) | reads (obligation classification on `LoweredOp`) |
 | `daglang-emit/src/lib.rs` | **owns** (execution path) | — |
-| `daglang-cli/src/compile.rs` | **owns** (resolve_dag, execution) | — |
-| `daglang-cli/src/main.rs` | — | **owns** (new commands) |
-| `daglang-cli/src/pipeline.rs` | — | **owns** (module reporting) |
-| `daglang-resolve/src/lib.rs` | — | **owns** (discovery enrichment) |
+| `daglang-cli/src/compile.rs` | **owns** (resolve_dag, execution) | touches (cwd threading into `build_context`) |
+| `daglang-cli/src/main.rs` | — | **owns** (cwd threading, new commands) |
+| `daglang-cli/src/pipeline.rs` | — | **owns** (typed runner refactor) |
+| `daglang-cli/src/path_utils.rs` | — | **owns** (pure helper refactor) |
+| `daglang-resolve/src/lib.rs` | — | — (stable) |
 | `daglang-syntax/` | — | — (stable, neither touches) |
 | `daglang-typecheck/` | — | — (stable, neither touches) |
 
-**Sync points**:
-1. After Worker 1 completes Step 1 (manifest contract), Worker 2's `dag manifest` rendering should adopt the new struct. Coordinate on the `DerivedArtifacts` type.
-2. After Worker 1 completes Step 3 (execution), Worker 2's `dag show-triplets` can optionally show "this triplet maps to `TransportOps::Execute`" using the `OpRegistry`.
+**Potential overlap**: Worker 2's `cwd` threading touches `compile.rs` (changing `build_context` signature), which Worker 1 also owns. Resolve this by having Worker 2 do the `cwd` refactor first (it's mechanical, no new logic), then Worker 1 builds on the new signature.
 
-**Branch strategy**: Each worker gets their own feature branch off the current branch. Merge Worker 1 Step 1 first (it changes a shared type), then both can proceed independently.
+**Sync points**:
+1. Worker 2 completes Step 1 (pure helpers + cwd threading) first. This changes function signatures in `path_utils.rs` and `compile.rs` that Worker 1 depends on. Merge this before Worker 1 starts Step 3.
+2. Worker 2's Step 3 (obligation classification) touches `LoweredOp` typing in `daglang-lower`. Coordinate with Worker 1 if they're simultaneously changing lowering logic for parity.
+3. After Worker 1 completes Step 3 (execution), Worker 2's `dag show-triplets` can optionally show dispatch mappings using the `OpRegistry`.
+
+**Branch strategy**: Each worker gets their own feature branch off the current branch. Merge Worker 2 Step 1 first (signature changes), then both proceed independently. Worker 2 Step 3 and Worker 1 Step 2-3 should coordinate on `daglang-lower` if running concurrently.
 
 ---
 
