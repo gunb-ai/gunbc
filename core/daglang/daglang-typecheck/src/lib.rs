@@ -1427,9 +1427,9 @@ fn validate_callable_body(
     }
     if !saw_explicit_return {
         if let ReturnContract::Single { ty } = &return_contract {
-            if let Some(inferred) = trailing_expr_type {
-                push_type_mismatch_if_needed(ty, &inferred, errors);
-            }
+            let inferred = trailing_expr_type
+                .unwrap_or_else(|| ValueType::Named("Unit".to_string()));
+            push_type_mismatch_if_needed(ty, &inferred, errors);
         }
     }
 }
@@ -3270,6 +3270,33 @@ fn run() -> String { 42 }"#,
             TypeError::TypeMismatch { expected, got }
                 if expected == "String" && got == "Int"
         )));
+    }
+
+    #[test]
+    fn missing_tail_expression_in_fn_return_is_reported_as_unit_mismatch() {
+        let graph = module_graph_from_sources(&[(
+            "missing_tail_expression_fn_return.dag",
+            r#"module sample.types
+fn run() -> String { let x = 42 }"#,
+        )]);
+        let errors = typecheck_module_graph(graph)
+            .expect_err("missing tail expression should fail for non-unit return type");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::TypeMismatch { expected, got }
+                if expected == "String" && got == "Unit"
+        )));
+    }
+
+    #[test]
+    fn missing_tail_expression_is_allowed_for_unit_return_type() {
+        let graph = module_graph_from_sources(&[(
+            "missing_tail_expression_unit_return.dag",
+            r#"module sample.types
+fn run() -> Unit { let x = 42 }"#,
+        )]);
+        let typed = typecheck_module_graph(graph).expect("unit return type should allow no tail expression");
+        assert_eq!(typed.modules.len(), 1);
     }
 
     #[test]
