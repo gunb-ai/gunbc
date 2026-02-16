@@ -146,6 +146,96 @@ func run() -> { ok: Bool, ok: String } { return { ok: true } }
 }
 
 #[test]
+fn compile_command_single_file_fails_on_duplicate_uses_binding() {
+    let fixture = unique_temp_file("compile_single_file_duplicate_uses_binding");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+interface Storage { capability read { input { path: String } output { body: String } } }
+func run() -> { ok: Bool } uses fs: Storage uses fs: Storage { return { ok: true } }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for duplicate-uses fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on duplicate uses binding"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate uses binding `fs` in `run`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_single_file_fails_on_duplicate_provides_binding() {
+    let fixture = unique_temp_file("compile_single_file_duplicate_provides_binding");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+interface Storage { capability read { input { path: String } output { body: String } } }
+func run() -> { ok: Bool } provides out: Storage provides out: Storage { return { ok: true } }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for duplicate-provides fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on duplicate provides binding"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate provides binding `out` in `run`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_single_file_fails_on_use_provide_binding_conflict() {
+    let fixture = unique_temp_file("compile_single_file_use_provide_binding_conflict");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+interface Storage { capability read { input { path: String } output { body: String } } }
+func run() -> { ok: Bool } uses io: Storage provides io: Storage { return { ok: true } }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for use/provide-conflict fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on use/provide binding conflict"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("binding `io` is declared in both uses/provides in `run`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_single_file_unresolved_service_call_reports_lower_error() {
     let fixture = unique_temp_file("compile_unresolved_service_single_file");
     std::fs::write(
