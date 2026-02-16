@@ -24818,6 +24818,11 @@ fn check_command_missing_single_file_exits_nonzero() {
         !output.status.success(),
         "check should fail when target .dag file does not exist"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing single-file check should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("pipeline error"),
@@ -24844,6 +24849,11 @@ fn check_command_missing_directory_exits_nonzero() {
         !output.status.success(),
         "check should fail when input directory does not exist"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing-directory check should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root does not exist"));
@@ -24869,6 +24879,11 @@ fn check_command_non_directory_root_exits_nonzero() {
     assert!(
         !output.status.success(),
         "check should fail when root path is not a directory"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "non-directory-root check should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
@@ -25484,6 +25499,11 @@ fn check_command_default_root_missing_in_cwd_exits_nonzero() {
         !output.status.success(),
         "default check should fail when cwd lacks dsl/ root"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "default-root-missing check should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root does not exist"));
@@ -25512,6 +25532,11 @@ fn check_command_default_root_non_directory_in_cwd_exits_nonzero() {
     assert!(
         !output.status.success(),
         "default check should fail when cwd/dsl exists as a file"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "default-root-non-directory check should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
@@ -25566,6 +25591,11 @@ fn modules_command_default_root_missing_in_cwd_exits_nonzero() {
         !output.status.success(),
         "default modules should fail when cwd lacks dsl/ root"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "default-root-missing modules should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root does not exist"));
@@ -25594,6 +25624,11 @@ fn modules_command_default_root_non_directory_in_cwd_exits_nonzero() {
     assert!(
         !output.status.success(),
         "default modules should fail when cwd/dsl exists as a file"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "default-root-non-directory modules should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
@@ -26213,6 +26248,11 @@ fn modules_command_missing_directory_exits_nonzero() {
         !output.status.success(),
         "modules should fail when input directory does not exist"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing-directory modules should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root does not exist"));
@@ -26238,6 +26278,11 @@ fn modules_command_non_directory_root_exits_nonzero() {
     assert!(
         !output.status.success(),
         "modules should fail when root path is not a directory"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "non-directory-root modules should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
@@ -26266,6 +26311,11 @@ fn modules_command_single_dag_file_path_exits_nonzero() {
     assert!(
         !output.status.success(),
         "modules should fail when given a file path instead of directory root"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "single-file-root modules should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
