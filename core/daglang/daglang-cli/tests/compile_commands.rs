@@ -88,6 +88,41 @@ fn run() -> String { "b" }
 }
 
 #[test]
+fn compile_command_single_file_duplicate_callable_does_not_report_ambiguous_call_target() {
+    let fixture = unique_temp_file("compile_single_file_duplicate_callable_relaxed");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+fn helper() -> String { "a" }
+fn helper() -> String { "b" }
+fn run() -> String { helper() }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for duplicate-callable fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on duplicate callable definition"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate definition `helper` in module `sample.single`"));
+    assert!(
+        !stderr.contains("ambiguous call target `helper`"),
+        "single-file relaxed mode should not report ambiguous call-target diagnostics: {stderr}"
+    );
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_single_file_fails_on_duplicate_parameter() {
     let fixture = unique_temp_file("compile_single_file_duplicate_parameter");
     std::fs::write(
