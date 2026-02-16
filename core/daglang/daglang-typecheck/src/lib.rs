@@ -168,6 +168,11 @@ pub enum TypeError {
         caller: String,
         callee: String,
     },
+    /// Call expression target cannot be resolved to a callable contract.
+    UnresolvedCallTarget {
+        caller: String,
+        callee: String,
+    },
     /// Service call expression used wrong number of arguments.
     ServiceCallArityMismatch {
         caller: String,
@@ -316,6 +321,10 @@ impl std::fmt::Display for TypeError {
             Self::AmbiguousCallTarget { caller, callee } => write!(
                 f,
                 "ambiguous call target `{callee}` in `{caller}`"
+            ),
+            Self::UnresolvedCallTarget { caller, callee } => write!(
+                f,
+                "unresolved call target `{callee}` in `{caller}`"
             ),
             Self::ServiceCallArityMismatch {
                 caller,
@@ -1075,7 +1084,15 @@ fn validate_callable_body(
                 }
                 continue;
             }
-            None => continue,
+            None => {
+                if !allow_unresolved_references {
+                    errors.push(TypeError::UnresolvedCallTarget {
+                        caller: caller.to_string(),
+                        callee: call.callee.clone(),
+                    });
+                }
+                continue;
+            }
         };
         if call.arg_count != contract.arity {
             errors.push(TypeError::CallArityMismatch {
@@ -1814,6 +1831,37 @@ mod tests {
             TypeError::AmbiguousCallTarget { caller, callee }
                 if caller == "run" && callee == "render"
         )));
+    }
+
+    #[test]
+    fn strict_mode_reports_unresolved_call_target() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            "module sample.main\nfn run() -> String { missing(value: \"ok\") }",
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for unresolved callable target");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnresolvedCallTarget { caller, callee }
+                if caller == "run" && callee == "missing"
+        )));
+    }
+
+    #[test]
+    fn relaxed_mode_allows_unresolved_call_target() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            "module sample.main\nfn run() -> String { missing(value: \"ok\") }",
+        )]);
+        let typed = typecheck_module_graph(graph)
+            .expect("relaxed mode should allow unresolved callable target");
+        assert_eq!(typed.modules.len(), 1);
     }
 
     #[test]
