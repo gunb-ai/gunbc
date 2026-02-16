@@ -51,7 +51,7 @@ fn unique_name(name: &str) -> String {
 }
 
 fn expected_check_success_stdout(parsed_files: usize) -> String {
-    format!("OK: parsed {parsed_files} file(s)\n")
+    format!("OK: checked {parsed_files} file(s)\n")
 }
 
 fn assert_modules_single_file_root_failure(
@@ -158,13 +158,13 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "infra.core",
         "infra.gcp.services",
         "infra.spec",
-        "examples.integration_tests",
         "infra.aws.config",
         "infra.aws.resources",
         "infra.azure.config",
         "infra.azure.resources",
         "infra.gcp.config",
         "infra.gcp.resources",
+        "examples.integration_tests",
         "services.cargo",
         "services.gcp.iam",
         "services.gcp.secret_manager",
@@ -174,6 +174,7 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "services.shell",
         "std.resources",
         "std.patterns",
+        "shared.gist_modes",
         "std.types",
         "cloud.aws.credential",
         "cloud.azure.credential",
@@ -183,16 +184,15 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "tools.build",
         "tools.clippy",
         "tools.codegen",
+        "tools.dag_viz",
         "tools.deps",
         "tools.docgen",
+        "tools.gist",
+        "examples.deployment",
         "tools.makegen",
         "tools.pragma",
         "tools.testgen",
         "pipelines.ci",
-        "examples.deployment",
-        "shared.gist_modes",
-        "tools.dag_viz",
-        "tools.gist",
     ]
 }
 
@@ -308,7 +308,7 @@ fn check_command_parses_full_dsl_corpus() {
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: parsed 42 file(s)"),
+        stdout.contains("OK: checked 42 file(s)"),
         "unexpected check output: {stdout}"
     );
     assert!(
@@ -29019,7 +29019,7 @@ fn check_command_ignores_non_dag_files_in_directory() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: parsed 0 file(s)"),
+        stdout.contains("OK: checked 0 file(s)"),
         "non-.dag files should be ignored during check: {stdout}"
     );
 
@@ -29047,7 +29047,7 @@ fn check_command_ignores_non_dag_files_when_dag_files_exist() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: parsed 1 file(s)"),
+        stdout.contains("OK: checked 1 file(s)"),
         "expected only the .dag file to be parsed: {stdout}"
     );
 
@@ -29077,7 +29077,7 @@ fn check_command_does_not_run_resolve_stage_for_unresolved_imports() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stdout.contains("OK: parsed 1 file(s)"));
+    assert!(stdout.contains("OK: checked 1 file(s)"));
     assert!(
         stderr.trim().is_empty(),
         "check should not emit resolve diagnostics: {stderr}"
@@ -29102,7 +29102,7 @@ fn check_command_defaults_to_workspace_dsl_root() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("OK: parsed 42 file(s)"),
+        String::from_utf8_lossy(&output.stdout).contains("OK: checked 42 file(s)"),
         "default check should parse full DSL corpus"
     );
 }
@@ -29318,7 +29318,7 @@ fn check_command_accepts_symlink_root_directory() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: parsed 1 file(s)"),
+        stdout.contains("OK: checked 1 file(s)"),
         "symlink-root check should parse exactly one file: {stdout}"
     );
 
@@ -29351,7 +29351,7 @@ fn check_command_handles_directory_symlink_cycle_root() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: parsed 1 file(s)"),
+        stdout.contains("OK: checked 1 file(s)"),
         "symlink-cycle root should parse exactly one file: {stdout}"
     );
 

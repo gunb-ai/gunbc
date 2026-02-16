@@ -15,7 +15,7 @@
 
 module examples.integration_tests
 
-import infra.gcp { GcsBucket, ManagedSecret, CloudRunService }
+import infra.gcp.resources { GcsBucket, ManagedSecret, CloudRunService }
 import infra.spec { EnvironmentConfig }
 
 

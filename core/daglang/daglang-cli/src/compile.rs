@@ -21,7 +21,7 @@ pub struct CompileOutput {
 pub fn build_context(input: Option<&String>) -> PipelineContext {
     let parsed = input.map(|value| path_utils::normalize_cli_path(PathBuf::from(value)));
     let (roots, target_file) = match parsed {
-        Some(path) if path.extension().and_then(|ext| ext.to_str()) == Some("dag") => {
+        Some(path) if path_utils::has_dag_extension(&path) && !path.is_dir() => {
             let root = path
                 .parent()
                 .map(PathBuf::from)

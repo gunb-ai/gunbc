@@ -38,6 +38,7 @@ pub struct PipelineContext {
 #[derive(Debug)]
 pub enum PipelineStop {
     Parse,
+    Build,
     Report,
 }
 
@@ -192,7 +193,9 @@ pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<Pip
         }
 
         match (&stop, node_id.as_str()) {
-            (PipelineStop::Parse, NODE_PARSE) | (PipelineStop::Report, NODE_REPORT) => break,
+            (PipelineStop::Parse, NODE_PARSE)
+            | (PipelineStop::Build, NODE_BUILD)
+            | (PipelineStop::Report, NODE_REPORT) => break,
             _ => {}
         }
     }
@@ -388,7 +391,7 @@ fn collect_dag_files(
         let path = entry.path();
         if path.is_dir() {
             collect_dag_files(&path, out, visited_dirs)?;
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("dag") {
+        } else if crate::path_utils::has_dag_extension(&path) {
             out.push(path);
         }
     }
@@ -932,13 +935,13 @@ mod tests {
             "infra.core",
             "infra.gcp.services",
             "infra.spec",
-            "examples.integration_tests",
             "infra.aws.config",
             "infra.aws.resources",
             "infra.azure.config",
             "infra.azure.resources",
             "infra.gcp.config",
             "infra.gcp.resources",
+            "examples.integration_tests",
             "services.cargo",
             "services.gcp.iam",
             "services.gcp.secret_manager",
@@ -948,6 +951,7 @@ mod tests {
             "services.shell",
             "std.resources",
             "std.patterns",
+            "shared.gist_modes",
             "std.types",
             "cloud.aws.credential",
             "cloud.azure.credential",
@@ -957,16 +961,15 @@ mod tests {
             "tools.build",
             "tools.clippy",
             "tools.codegen",
+            "tools.dag_viz",
             "tools.deps",
             "tools.docgen",
+            "tools.gist",
+            "examples.deployment",
             "tools.makegen",
             "tools.pragma",
             "tools.testgen",
             "pipelines.ci",
-            "examples.deployment",
-            "shared.gist_modes",
-            "tools.dag_viz",
-            "tools.gist",
         ]
     }
 
@@ -1360,30 +1363,10 @@ mod tests {
         )
         .expect("pipeline should execute");
 
-        assert_eq!(
-            result.diagnostics.len(),
-            2,
-            "real corpus report should emit expected resolve diagnostics"
-        );
         assert!(
-            result
-                .diagnostics
-                .iter()
-                .all(|diag| diag.kind == DiagnosticKind::Resolve),
-            "real corpus report diagnostics should be resolve-kind only"
-        );
-        let rendered: Vec<String> = result.diagnostics.iter().map(|diag| diag.render()).collect();
-        assert!(
-            rendered.iter().any(|line| line.contains(
-                "cyclic dependencies detected among modules: examples.deployment, shared.gist_modes, tools.dag_viz, tools.gist"
-            )),
-            "expected cycle diagnostic in report diagnostics: {rendered:?}"
-        );
-        assert!(
-            rendered
-                .iter()
-                .any(|line| line.contains("unresolved import: examples.integration_tests -> infra.gcp")),
-            "expected unresolved-import diagnostic in report diagnostics: {rendered:?}"
+            result.diagnostics.is_empty(),
+            "real corpus report should emit no resolve diagnostics, got: {:?}",
+            result.diagnostics
         );
         let report = result.report.as_ref().expect("report should be available");
         assert!(report.contains("Discovered modules:"));
@@ -1435,16 +1418,10 @@ mod tests {
             target_file: None,
         };
         let (graph, diagnostics) = run_parse_and_build_ops(&context);
-        assert_eq!(
-            diagnostics.len(),
-            2,
-            "real corpus build should emit known resolve diagnostics"
-        );
         assert!(
+            diagnostics.is_empty(),
+            "real corpus build should emit no diagnostics, got: {:?}",
             diagnostics
-                .iter()
-                .all(|diagnostic| diagnostic.kind == DiagnosticKind::Resolve),
-            "build diagnostics should be resolve-kind only"
         );
 
         let module_index: HashMap<Vec<String>, usize> = graph

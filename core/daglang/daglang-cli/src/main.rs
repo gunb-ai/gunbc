@@ -130,10 +130,10 @@ fn main() {
             };
 
             let context = PipelineContext { roots, target_file };
-            match run_pipeline(&context, PipelineStop::Parse) {
+            match run_pipeline(&context, PipelineStop::Build) {
                 Ok(result) => {
                     if result.diagnostics.is_empty() {
-                        println!("OK: parsed {} file(s)", result.parsed_count);
+                        println!("OK: checked {} file(s)", result.parsed_count);
                     } else {
                         for diagnostic in &result.diagnostics {
                             eprintln!("{diagnostic}");
@@ -191,9 +191,7 @@ fn exit_usage(command: &str) -> ! {
 }
 
 fn has_dag_extension(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("dag"))
+    path_utils::has_dag_extension(path)
 }
 
 fn normalize_cli_path(path: PathBuf) -> PathBuf {

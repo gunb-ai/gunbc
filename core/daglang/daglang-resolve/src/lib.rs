@@ -27,6 +27,13 @@ use daglang_syntax::parser;
 
 type ParsedModuleRecord = (PathBuf, Vec<String>, Vec<Vec<String>>, SourceFile);
 
+/// Case-insensitive check for `.dag` file extension.
+fn has_dag_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("dag"))
+}
+
 /// A resolved module in the dependency graph.
 #[derive(Debug)]
 pub struct ResolvedModule {
@@ -195,7 +202,7 @@ fn collect_dag_files(
         let p = entry.path();
         if p.is_dir() {
             collect_dag_files(&p, out, visited_dirs)?;
-        } else if p.extension().and_then(|e| e.to_str()) == Some("dag") {
+        } else if has_dag_extension(&p) {
             out.push(p);
         }
     }
