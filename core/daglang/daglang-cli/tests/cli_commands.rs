@@ -192,6 +192,30 @@ fn resolve_discovered_module_summary() -> BTreeMap<String, (usize, usize)> {
         .collect()
 }
 
+fn reported_diagnostics_in_order(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .skip_while(|line| *line != "Diagnostics:")
+        .skip(1)
+        .take_while(|line| !line.is_empty())
+        .filter_map(|line| line.strip_prefix("  ").map(String::from))
+        .collect()
+}
+
+fn expected_real_corpus_modules_diagnostics() -> Vec<String> {
+    let unresolved_file = workspace_root().join("dsl/examples/integration_tests.dag");
+    let unresolved_file = unresolved_file
+        .canonicalize()
+        .unwrap_or(unresolved_file);
+    vec![
+        "cyclic dependencies detected among modules: examples.deployment, shared.gist_modes, tools.dag_viz, tools.gist".to_string(),
+        format!(
+            "{}: unresolved import: examples.integration_tests -> infra.gcp",
+            unresolved_file.display()
+        ),
+    ]
+}
+
 #[test]
 fn check_command_parses_full_dsl_corpus() {
     let output = Command::new(daglang_bin())
@@ -350,6 +374,26 @@ fn modules_command_reports_expected_real_corpus_diagnostics() {
         stdout.contains("unresolved import: examples.integration_tests -> infra.gcp"),
         "modules output should include expected unresolved import diagnostic: {stdout}"
     );
+}
+
+#[test]
+fn modules_command_real_corpus_diagnostics_match_expected_snapshot() {
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules");
+
+    assert!(
+        output.status.success(),
+        "modules command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual = reported_diagnostics_in_order(&stdout);
+    let expected = expected_real_corpus_modules_diagnostics();
+    assert_eq!(actual, expected);
 }
 
 #[test]
