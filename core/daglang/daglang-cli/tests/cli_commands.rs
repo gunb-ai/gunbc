@@ -845,6 +845,35 @@ fn check_command_default_root_missing_in_cwd_exits_nonzero() {
 }
 
 #[test]
+fn check_command_default_root_non_directory_in_cwd_exits_nonzero() {
+    let cwd = unique_temp_dir("check_default_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let non_directory_default_root = cwd.join("dsl");
+    std::fs::write(&non_directory_default_root, "not a directory")
+        .expect("failed to create non-directory default root");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run daglang check with non-directory default root");
+
+    assert!(
+        !output.status.success(),
+        "default check should fail when cwd/dsl exists as a file"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("input root is not a directory"));
+    assert!(
+        stderr.contains(&non_directory_default_root.display().to_string()),
+        "default-root check non-directory error should include resolved cwd/dsl path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
 fn modules_command_defaults_to_workspace_dsl_root() {
     let output = Command::new(daglang_bin())
         .arg("modules")
@@ -884,6 +913,35 @@ fn modules_command_default_root_missing_in_cwd_exits_nonzero() {
     assert!(
         stderr.contains(&missing_default_root.display().to_string()),
         "default-root modules error should include resolved cwd/dsl path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_default_root_non_directory_in_cwd_exits_nonzero() {
+    let cwd = unique_temp_dir("modules_default_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let non_directory_default_root = cwd.join("dsl");
+    std::fs::write(&non_directory_default_root, "not a directory")
+        .expect("failed to create non-directory default root");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run daglang modules with non-directory default root");
+
+    assert!(
+        !output.status.success(),
+        "default modules should fail when cwd/dsl exists as a file"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("input root is not a directory"));
+    assert!(
+        stderr.contains(&non_directory_default_root.display().to_string()),
+        "default-root modules non-directory error should include resolved cwd/dsl path: {stderr}"
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
