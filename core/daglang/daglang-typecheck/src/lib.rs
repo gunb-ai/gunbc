@@ -24,7 +24,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
-use daglang_syntax::ast::{Expr, Field, Item, Param, SourceFile, Stmt, TypeExpr, UsesClause};
+use daglang_syntax::ast::{
+    Expr, Field, Item, Param, ProvidesClause, SourceFile, Stmt, TypeExpr, UsesClause,
+};
 
 /// A typechecked project snapshot.
 #[derive(Debug)]
@@ -161,6 +163,18 @@ pub enum TypeError {
         binding: String,
         resource_type: String,
     },
+    /// Duplicate `uses` binding within a callable declaration.
+    DuplicateUsesBinding { item: String, binding: String },
+    /// Duplicate `provides` binding within a callable declaration.
+    DuplicateProvidesBinding { item: String, binding: String },
+    /// A binding is declared in both `uses` and `provides`.
+    UseProvideBindingConflict { item: String, binding: String },
+    /// `provides` clause references an unknown resource/interface type.
+    UnknownProvidedResourceType {
+        item: String,
+        binding: String,
+        resource_type: String,
+    },
 }
 
 impl std::fmt::Display for TypeError {
@@ -252,6 +266,26 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "unknown used resource type `{resource_type}` for binding `{binding}` in `{item}`"
+            ),
+            Self::DuplicateUsesBinding { item, binding } => write!(
+                f,
+                "duplicate uses binding `{binding}` in `{item}`"
+            ),
+            Self::DuplicateProvidesBinding { item, binding } => write!(
+                f,
+                "duplicate provides binding `{binding}` in `{item}`"
+            ),
+            Self::UseProvideBindingConflict { item, binding } => write!(
+                f,
+                "binding `{binding}` is declared in both uses/provides in `{item}`"
+            ),
+            Self::UnknownProvidedResourceType {
+                item,
+                binding,
+                resource_type,
+            } => write!(
+                f,
+                "unknown provided resource type `{resource_type}` for binding `{binding}` in `{item}`"
             ),
         }
     }
@@ -406,6 +440,14 @@ fn collect_signatures(
                     context.allow_unresolved_references,
                     errors,
                 );
+                validate_provides_clauses(
+                    &def.name,
+                    &def.provides,
+                    context.resource_type_registry,
+                    context.allow_unresolved_references,
+                    errors,
+                );
+                validate_use_provide_binding_conflicts(&def.name, &def.uses, &def.provides, errors);
                 validate_callable_body(
                     &def.name,
                     &def.body.stmts,
@@ -728,16 +770,70 @@ fn validate_uses_clauses(
     allow_unresolved_references: bool,
     errors: &mut Vec<TypeError>,
 ) {
-    if allow_unresolved_references {
-        return;
-    }
+    let mut seen_bindings = HashSet::new();
     for usage in uses {
-        let resource_type = canonical_type_name(&type_expr_to_string(&usage.resource_type));
-        if resolve_resource_type_name(&resource_type, registry).is_none() {
-            errors.push(TypeError::UnknownUsedResourceType {
+        if !seen_bindings.insert(usage.binding.clone()) {
+            errors.push(TypeError::DuplicateUsesBinding {
                 item: item_name.to_string(),
                 binding: usage.binding.clone(),
-                resource_type,
+            });
+        }
+        if !allow_unresolved_references {
+            let resource_type = canonical_type_name(&type_expr_to_string(&usage.resource_type));
+            if resolve_resource_type_name(&resource_type, registry).is_none() {
+                errors.push(TypeError::UnknownUsedResourceType {
+                    item: item_name.to_string(),
+                    binding: usage.binding.clone(),
+                    resource_type,
+                });
+            }
+        }
+    }
+}
+
+fn validate_provides_clauses(
+    item_name: &str,
+    provides: &[ProvidesClause],
+    registry: &ResourceTypeRegistry,
+    allow_unresolved_references: bool,
+    errors: &mut Vec<TypeError>,
+) {
+    let mut seen_bindings = HashSet::new();
+    for provided in provides {
+        if !seen_bindings.insert(provided.binding.clone()) {
+            errors.push(TypeError::DuplicateProvidesBinding {
+                item: item_name.to_string(),
+                binding: provided.binding.clone(),
+            });
+        }
+        if !allow_unresolved_references {
+            let resource_type = canonical_type_name(&type_expr_to_string(&provided.resource_type));
+            if resolve_resource_type_name(&resource_type, registry).is_none() {
+                errors.push(TypeError::UnknownProvidedResourceType {
+                    item: item_name.to_string(),
+                    binding: provided.binding.clone(),
+                    resource_type,
+                });
+            }
+        }
+    }
+}
+
+fn validate_use_provide_binding_conflicts(
+    item_name: &str,
+    uses: &[UsesClause],
+    provides: &[ProvidesClause],
+    errors: &mut Vec<TypeError>,
+) {
+    let used_bindings = uses
+        .iter()
+        .map(|usage| usage.binding.as_str())
+        .collect::<HashSet<_>>();
+    for provided in provides {
+        if used_bindings.contains(provided.binding.as_str()) {
+            errors.push(TypeError::UseProvideBindingConflict {
+                item: item_name.to_string(),
+                binding: provided.binding.clone(),
             });
         }
     }
@@ -1459,5 +1555,97 @@ service FsStorage implements Storage {
         )]);
         let typed = typecheck_module_graph(graph).expect("relaxed mode should allow unknown uses");
         assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_reports_unknown_provided_resource_type() {
+        let graph = module_graph_from_sources(&[(
+            "unknown_provides.dag",
+            "module sample.provides\nfunc run() -> { ok: Bool } provides out: MissingResource { return { ok: true } }",
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for unknown provided resource type");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnknownProvidedResourceType {
+                item,
+                binding,
+                resource_type,
+            } if item == "run" && binding == "out" && resource_type == "MissingResource"
+        )));
+    }
+
+    #[test]
+    fn duplicate_uses_binding_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "duplicate_uses.dag",
+            r#"module sample.uses
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } uses fs: Storage uses fs: Storage {
+  return { ok: true }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("duplicate uses should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateUsesBinding { item, binding }
+                if item == "run" && binding == "fs"
+        )));
+    }
+
+    #[test]
+    fn duplicate_provides_binding_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "duplicate_provides.dag",
+            r#"module sample.provides
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } provides out: Storage provides out: Storage {
+  return { ok: true }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("duplicate provides should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateProvidesBinding { item, binding }
+                if item == "run" && binding == "out"
+        )));
+    }
+
+    #[test]
+    fn use_provide_binding_conflict_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "use_provide_conflict.dag",
+            r#"module sample.conflict
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } uses io: Storage provides io: Storage {
+  return { ok: true }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("binding conflict should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UseProvideBindingConflict { item, binding }
+                if item == "run" && binding == "io"
+        )));
     }
 }
