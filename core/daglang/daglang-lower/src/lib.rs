@@ -91,6 +91,32 @@ struct ResourceLifecycleEndpoint {
     release_node: Option<String>,
 }
 
+#[derive(Debug, Default, Clone)]
+struct KnownUsesTypes {
+    names: HashSet<String>,
+}
+
+impl KnownUsesTypes {
+    fn insert(&mut self, name: impl Into<String>) {
+        let canonical = canonical_type_name(name.into().as_str());
+        self.names.insert(canonical.clone());
+        let short = canonical
+            .rsplit('.')
+            .next()
+            .unwrap_or(canonical.as_str())
+            .to_string();
+        self.names.insert(short);
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        let canonical = canonical_type_name(name);
+        self.names.contains(&canonical)
+            || self
+                .names
+                .contains(canonical.rsplit('.').next().unwrap_or(canonical.as_str()))
+    }
+}
+
 /// Errors during lowering.
 #[derive(Debug)]
 pub enum LowerError {
@@ -234,7 +260,14 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
     let service_registry = add_service_transport_triplets(&mut dag, project);
     add_service_call_edges(&mut dag, project, &endpoints_by_full, &service_registry)?;
     let resource_registry = add_resource_lifecycle_nodes(&mut dag, project);
-    add_used_resource_edges(&mut dag, project, &endpoints_by_full, &resource_registry)?;
+    let known_uses_types = collect_known_uses_types(project);
+    add_used_resource_edges(
+        &mut dag,
+        project,
+        &endpoints_by_full,
+        &resource_registry,
+        &known_uses_types,
+    )?;
 
     if dag.nodes.is_empty() {
         return Err(LowerError::NoLowerableItems);
@@ -1161,6 +1194,7 @@ fn add_used_resource_edges(
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     resource_registry: &ResourceLifecycleRegistry,
+    known_uses_types: &KnownUsesTypes,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -1180,6 +1214,9 @@ fn add_used_resource_edges(
                     resource_type.as_str(),
                     resource_registry,
                 ) else {
+                    if known_uses_types.contains(&resource_type) {
+                        continue;
+                    }
                     return Err(LowerError::UnresolvedUsedResource {
                         caller: format!("{module_name}::{item_name}"),
                         binding: usage.binding.clone(),
@@ -1225,6 +1262,37 @@ fn resolve_resource_endpoint(
         }
     }
     None
+}
+
+fn collect_known_uses_types(project: &TypedProject) -> KnownUsesTypes {
+    let mut known = KnownUsesTypes::default();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            match &item.node {
+                Item::InterfaceDef(def) => {
+                    known.insert(def.name.clone());
+                    known.insert(format!("{module_name}.{}", def.name));
+                }
+                Item::ResourceDef(def) => {
+                    known.insert(def.name.clone());
+                    known.insert(format!("{module_name}.{}", def.name));
+                    if let Some(implemented) = &def.implements {
+                        known.insert(implemented.clone());
+                    }
+                }
+                Item::ServiceDef(def) => {
+                    known.insert(def.name.clone());
+                    known.insert(format!("{module_name}.{}", def.name));
+                    if let Some(implemented) = &def.implements {
+                        known.insert(implemented.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    known
 }
 
 fn resource_type_name(ty: &TypeExpr) -> String {
@@ -1869,6 +1937,30 @@ func run() -> { ok: Bool } uses fs: MissingResource {
                 && binding == "fs"
                 && resource_type == "MissingResource"
         ));
+    }
+
+    #[test]
+    fn known_interface_uses_without_lifecycle_are_tolerated() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/interface_uses.dag",
+            r#"module sample.resources
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } uses store: Storage {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag.nodes.iter().any(|node| node.id.0 == "sample.resources::run"));
+        assert!(
+            !dag.edges.iter().any(|edge| edge.to_node.0 == "sample.resources::run"
+                && edge.to_port.0 == "__deps"),
+            "interface-only uses should not fabricate lifecycle dependency edges"
+        );
     }
 
     #[test]
