@@ -5131,6 +5131,91 @@ func run(path: String) -> { body: String } {
         );
     }
 
+    #[test]
+    fn render_triplets_json_is_deterministic_for_makegen() {
+        let context = makegen_context();
+        let output = compile_from_context(&context).expect("compile should succeed");
+        let first =
+            render_triplets_with_format(&output.lowered_dag, ManifestFormat::Json)
+                .expect("triplets json should render");
+        let second =
+            render_triplets_with_format(&output.lowered_dag, ManifestFormat::Json)
+                .expect("triplets json should render");
+
+        assert_eq!(
+            first, second,
+            "triplets json output should be byte-stable across repeated renders"
+        );
+        assert!(first.contains("\"triplets\""));
+        assert!(first.contains("\"prepare_read_makegen\""));
+        assert!(first.contains("\"execute_read_makegen\""));
+        assert!(first.contains("\"compare_makegen_content\""));
+    }
+
+    #[test]
+    fn render_obligations_json_contains_summary_buckets() {
+        let context = makegen_context();
+        let output = compile_from_context(&context).expect("compile should succeed");
+        let rendered = render_obligations_with_format(&output.derived, ManifestFormat::Json)
+            .expect("obligations json should render");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&rendered).expect("obligations json should parse");
+        let summary = parsed
+            .get("summary")
+            .expect("summary bucket should exist");
+        assert!(summary.get("dry_run_completion_required").is_some());
+        assert!(summary.get("transport").is_some());
+        assert!(summary.get("pure_node_determinism").is_some());
+        assert!(summary.get("resource_lifecycle").is_some());
+    }
+
+    #[test]
+    fn summarize_obligations_computes_non_zero_triplet_totals_for_service_calls() {
+        let fixture = unique_temp_file("obligations_triplet_totals");
+        std::fs::write(
+            &fixture,
+            r#"module sample.summary
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+resource TempFile {
+  acquire {
+    let path = "/tmp/file"
+  }
+  release {
+    let done = true
+  }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}
+"#,
+        )
+        .expect("failed to write obligations summary fixture");
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+        let output = compile_from_context(&context).expect("compile should succeed");
+        let summary = summarize_obligations(&output.derived);
+        assert_eq!(summary.transport.triplet_prepare_targets, 1);
+        assert_eq!(summary.transport.triplet_execute_targets, 1);
+        assert_eq!(summary.transport.triplet_parse_targets, 1);
+        assert_eq!(summary.transport.triplet_total_targets, 3);
+        assert_eq!(summary.resource_lifecycle.acquire_targets, 1);
+        assert_eq!(summary.resource_lifecycle.release_targets, 1);
+        assert_eq!(summary.resource_lifecycle.total_targets, 2);
+
+        std::fs::remove_file(fixture).expect("failed to clean obligations summary fixture");
+    }
+
     fn makegen_context() -> PipelineContext {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../dsl/tools/makegen.dag");
