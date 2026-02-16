@@ -25560,6 +25560,42 @@ fn check_command_accepts_symlink_single_file_target() {
 
 #[cfg(unix)]
 #[test]
+fn check_command_accepts_symlink_uppercase_dag_single_file_target() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_uppercase_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let real = root.join("real.DAG");
+    let link = root.join("link.DAG");
+    std::fs::write(&real, "module sample.real\nfn ok() -> Unit {}")
+        .expect("failed to write real source");
+    symlink(&real, &link).expect("failed to create symlinked target");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on uppercase symlinked target");
+
+    assert!(
+        output.status.success(),
+        "check should succeed for uppercase symlinked single-file target: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected_check_success_stdout(1));
+    assert!(
+        output.stderr.is_empty(),
+        "uppercase symlinked single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn check_command_symlink_and_real_invalid_single_file_targets_are_equivalent() {
     use std::os::unix::fs::symlink;
 
@@ -25643,6 +25679,48 @@ fn check_command_dangling_symlink_single_file_target_exits_nonzero() {
     assert!(
         stderr.contains("broken.dag"),
         "dangling symlink single-file failure should include offending path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_dangling_uppercase_symlink_single_file_target_exits_nonzero() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_dangling_uppercase_symlink_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.DAG");
+    let dangling_link = root.join("broken.DAG");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink target");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&dangling_link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on uppercase dangling symlink target");
+
+    assert!(
+        !output.status.success(),
+        "check should fail for uppercase dangling symlink single-file target"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "uppercase dangling-symlink single-file check should use exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("failed to canonicalize"));
+    assert!(
+        stderr.contains("broken.DAG"),
+        "uppercase dangling symlink single-file failure should include offending path: {stderr}"
+    );
+    assert!(
+        !stderr.contains("input root is not a directory"),
+        "uppercase dangling-symlink target should be treated as single-file canonicalization failure: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
