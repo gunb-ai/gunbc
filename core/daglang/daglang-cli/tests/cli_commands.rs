@@ -434,6 +434,7 @@ fn check_command_curdir_segment_root_matches_plain_relative_output() {
 fn check_command_curdir_segment_missing_root_matches_plain_relative_output() {
     let cwd = unique_temp_dir("check_curdir_segment_missing_root");
     std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let missing_root = cwd.join("missing_root");
 
     let curdir_segment = Command::new(daglang_bin())
         .arg("check")
@@ -464,6 +465,14 @@ fn check_command_curdir_segment_missing_root_matches_plain_relative_output() {
     assert_eq!(
         curdir_segment.stderr, plain_relative.stderr,
         "curdir-segment and plain-relative missing-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&curdir_segment.stderr).contains(&format!(
+            "input root does not exist: {}",
+            missing_root.display()
+        )),
+        "missing-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&curdir_segment.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
@@ -787,6 +796,7 @@ fn check_command_curdir_segment_single_file_target_matches_plain_relative_output
 fn check_command_curdir_segment_missing_single_file_matches_plain_relative_output() {
     let root = unique_temp_dir("check_curdir_segment_missing_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing_target = root.join("missing.dag");
 
     let curdir_segment = Command::new(daglang_bin())
         .arg("check")
@@ -817,6 +827,14 @@ fn check_command_curdir_segment_missing_single_file_matches_plain_relative_outpu
     assert_eq!(
         curdir_segment.stderr, plain_relative.stderr,
         "curdir-segment and plain-relative missing-target check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&curdir_segment.stderr).contains(&format!(
+            "failed to canonicalize {}",
+            missing_target.display()
+        )),
+        "missing-target diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&curdir_segment.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -1168,6 +1186,7 @@ fn modules_command_curdir_segment_root_matches_plain_relative_output() {
 fn modules_command_curdir_segment_missing_root_matches_plain_relative_output() {
     let cwd = unique_temp_dir("modules_curdir_segment_missing_root");
     std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let missing_root = cwd.join("missing_root");
 
     let curdir_segment = Command::new(daglang_bin())
         .arg("modules")
@@ -1198,6 +1217,14 @@ fn modules_command_curdir_segment_missing_root_matches_plain_relative_output() {
     assert_eq!(
         curdir_segment.stderr, plain_relative.stderr,
         "curdir-segment and plain-relative missing-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&curdir_segment.stderr).contains(&format!(
+            "input root does not exist: {}",
+            missing_root.display()
+        )),
+        "missing-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&curdir_segment.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
