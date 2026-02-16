@@ -776,6 +776,118 @@ fn check_command_symlink_directory_named_dag_extension_with_errors_matches_real_
 
 #[cfg(unix)]
 #[test]
+fn check_command_symlink_directory_named_uppercase_dag_extension_matches_real_directory_output() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_directory_named_uppercase_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DAG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    std::fs::write(real_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DAG directory symlink");
+
+    let symlink_dir = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on .DAG directory symlink");
+    assert!(
+        symlink_dir.status.success(),
+        ".DAG directory symlink check should succeed: {}",
+        String::from_utf8_lossy(&symlink_dir.stderr)
+    );
+
+    let real = Command::new(daglang_bin())
+        .arg("check")
+        .arg("real")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on real directory");
+    assert!(
+        real.status.success(),
+        "real directory check should succeed: {}",
+        String::from_utf8_lossy(&real.stderr)
+    );
+
+    assert_eq!(
+        symlink_dir.stdout, real.stdout,
+        "symlink .DAG directory and real directory check stdout should match"
+    );
+    assert_eq!(
+        symlink_dir.stderr, real.stderr,
+        "symlink .DAG directory and real directory check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&symlink_dir.stdout),
+        expected_check_success_stdout(1),
+        "symlink .DAG directory check should parse exactly one file"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_symlink_directory_named_uppercase_dag_extension_with_errors_matches_real_directory_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_directory_named_uppercase_dag_extension_errors");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DAG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    let broken_file = real_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DAG directory symlink");
+
+    let symlink_dir = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed .DAG directory symlink");
+    assert!(
+        !symlink_dir.status.success(),
+        "malformed .DAG directory symlink check should fail"
+    );
+
+    let real = Command::new(daglang_bin())
+        .arg("check")
+        .arg("real")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed real directory");
+    assert!(
+        !real.status.success(),
+        "malformed real directory check should fail"
+    );
+
+    assert_eq!(
+        symlink_dir.stdout, real.stdout,
+        "malformed symlink .DAG directory and real directory check stdout should match"
+    );
+    assert_eq!(
+        symlink_dir.stderr, real.stderr,
+        "malformed symlink .DAG directory and real directory check stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&symlink_dir.stderr)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DAG directory symlink diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&symlink_dir.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn check_command_symlink_directory_named_mixed_case_dag_extension_matches_real_directory_output() {
     use std::os::unix::fs::symlink;
 
@@ -16585,6 +16697,115 @@ fn modules_command_symlink_directory_named_dag_extension_with_errors_matches_rea
         String::from_utf8_lossy(&symlink_dir.stdout)
             .contains(&format!("{}:2:3:", canonical_broken_file.display())),
         "malformed .dag directory symlink modules diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&symlink_dir.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_symlink_directory_named_uppercase_dag_extension_matches_real_directory_output() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("modules_symlink_directory_named_uppercase_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DAG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    std::fs::write(real_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DAG directory symlink");
+
+    let symlink_dir = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on .DAG directory symlink");
+    assert!(
+        symlink_dir.status.success(),
+        ".DAG directory symlink modules should succeed: {}",
+        String::from_utf8_lossy(&symlink_dir.stderr)
+    );
+
+    let real = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("real")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on real directory");
+    assert!(
+        real.status.success(),
+        "real directory modules should succeed: {}",
+        String::from_utf8_lossy(&real.stderr)
+    );
+
+    assert_eq!(
+        symlink_dir.stdout, real.stdout,
+        "symlink .DAG directory and real directory modules stdout should match"
+    );
+    assert_eq!(
+        symlink_dir.stderr, real.stderr,
+        "symlink .DAG directory and real directory modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_symlink_directory_named_uppercase_dag_extension_with_errors_matches_real_directory_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("modules_symlink_directory_named_uppercase_dag_extension_errors");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DAG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    let broken_file = real_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DAG directory symlink");
+
+    let symlink_dir = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed .DAG directory symlink");
+    assert!(
+        symlink_dir.status.success(),
+        "malformed .DAG directory symlink modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&symlink_dir.stderr)
+    );
+
+    let real = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("real")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed real directory");
+    assert!(
+        real.status.success(),
+        "malformed real directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&real.stderr)
+    );
+
+    assert_eq!(
+        symlink_dir.stdout, real.stdout,
+        "malformed symlink .DAG directory and real directory modules stdout should match"
+    );
+    assert_eq!(
+        symlink_dir.stderr, real.stderr,
+        "malformed symlink .DAG directory and real directory modules stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&symlink_dir.stdout)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DAG directory symlink modules diagnostics should include canonical broken-file path: {}",
         String::from_utf8_lossy(&symlink_dir.stdout)
     );
 
