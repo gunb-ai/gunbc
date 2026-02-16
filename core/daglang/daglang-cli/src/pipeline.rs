@@ -1782,6 +1782,45 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn target_file_mode_uses_canonical_path_for_parse_diagnostics() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("target_file_symlink_parse_diag_path");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let real = root.join("real.dag");
+        let link = root.join("link.dag");
+        fs::write(&real, "module sample.broken\nfn").expect("failed to write malformed source");
+        symlink(&real, &link).expect("failed to create file symlink");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: Some(link.clone()),
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+        assert_eq!(result.parsed_count, 0, "malformed target should not parse successfully");
+        assert!(
+            !result.diagnostics.is_empty(),
+            "malformed target should emit parse diagnostics"
+        );
+        assert!(
+            result.diagnostics.iter().all(|diag| diag.file.as_ref() == Some(&real)),
+            "target-file parse diagnostics should reference canonical real path: {:?}",
+            result.diagnostics
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .all(|diag| !diag.render().contains("link.dag")),
+            "diagnostics should not reference symlink alias path: {:?}",
+            result.diagnostics
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn report_pipeline_target_file_symlink_derives_module_path_against_real_root() {
         use std::os::unix::fs::symlink;
 

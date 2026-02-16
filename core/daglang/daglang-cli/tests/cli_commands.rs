@@ -379,10 +379,15 @@ fn check_command_relative_and_absolute_single_file_targets_are_equivalent() {
         String::from_utf8_lossy(&absolute.stderr)
     );
 
+    assert_eq!(
+        String::from_utf8_lossy(&relative.stdout),
+        expected_check_success_stdout(1),
+        "relative-target check should parse one file"
+    );
     assert!(
-        String::from_utf8_lossy(&relative.stdout).contains("OK: parsed 1 file(s)"),
-        "relative-target check should parse one file: {}",
-        String::from_utf8_lossy(&relative.stdout)
+        relative.stderr.is_empty(),
+        "relative-target check should not emit stderr: {}",
+        String::from_utf8_lossy(&relative.stderr)
     );
     assert_eq!(
         relative.stdout, absolute.stdout,
@@ -434,8 +439,13 @@ fn check_command_relative_and_absolute_invalid_single_file_targets_are_equivalen
         relative.stderr, absolute.stderr,
         "relative and absolute invalid single-file check stderr should match"
     );
+    let canonical_target = root
+        .join("broken.dag")
+        .canonicalize()
+        .expect("broken file should canonicalize");
     assert!(
-        String::from_utf8_lossy(&relative.stderr).contains("broken.dag:2:3:"),
+        String::from_utf8_lossy(&relative.stderr)
+            .contains(&format!("{}:2:3:", canonical_target.display())),
         "expected parse diagnostic with location for malformed single-file target: {}",
         String::from_utf8_lossy(&relative.stderr)
     );
