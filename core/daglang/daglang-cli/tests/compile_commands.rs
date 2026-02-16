@@ -58,6 +58,65 @@ fn compile_command_emits_summary_for_single_file() {
 }
 
 #[test]
+fn compile_command_single_file_fails_on_duplicate_definition() {
+    let fixture = unique_temp_file("compile_single_file_duplicate_definition");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+fn run() -> String { "a" }
+fn run() -> String { "b" }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for duplicate-definition fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on duplicate definition"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate definition `run` in module `sample.single`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_single_file_fails_on_duplicate_parameter() {
+    let fixture = unique_temp_file("compile_single_file_duplicate_parameter");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+fn run(a: String, a: Int) -> String { a }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for duplicate-parameter fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on duplicate parameter"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate parameter `a` in `run`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_single_file_unresolved_service_call_reports_lower_error() {
     let fixture = unique_temp_file("compile_unresolved_service_single_file");
     std::fs::write(
