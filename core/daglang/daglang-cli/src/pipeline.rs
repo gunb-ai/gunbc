@@ -860,6 +860,7 @@ fn diagnostic_kind_rank(kind: &DiagnosticKind) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir(name: &str) -> PathBuf {
@@ -930,6 +931,60 @@ mod tests {
             .filter_map(|line| line.strip_prefix("  "))
             .filter_map(|line| line.split_once("  (").map(|(module, _)| module.to_string()))
             .collect()
+    }
+
+    fn run_parse_and_build_ops(context: &PipelineContext) -> (ModuleGraph, Vec<Diagnostic>) {
+        let files = discover_files(context).expect("discovery should succeed");
+        let parse_outputs = execute_op(
+            &gunbc_ir::node::NodeBody::Opaque(CompilerOp::ParseAll),
+            context,
+            HashMap::from([
+                (PORT_FILES.to_string(), PipeValue::Files(files)),
+                (
+                    PORT_DIAGNOSTICS.to_string(),
+                    PipeValue::Diagnostics(Vec::new()),
+                ),
+            ]),
+        )
+        .expect("parse op should succeed");
+
+        let mut parse_outputs = parse_outputs;
+        let parsed_modules = match parse_outputs.remove(PORT_PARSED_MODULES) {
+            Some(PipeValue::ParsedModules(parsed_modules)) => parsed_modules,
+            other => panic!("expected parsed modules output, got {other:?}"),
+        };
+        let parse_diagnostics = match parse_outputs.remove(PORT_DIAGNOSTICS) {
+            Some(PipeValue::Diagnostics(diagnostics)) => diagnostics,
+            other => panic!("expected parse diagnostics output, got {other:?}"),
+        };
+
+        let build_outputs = execute_op(
+            &gunbc_ir::node::NodeBody::Opaque(CompilerOp::BuildModuleGraph),
+            context,
+            HashMap::from([
+                (
+                    PORT_PARSED_MODULES.to_string(),
+                    PipeValue::ParsedModules(parsed_modules),
+                ),
+                (
+                    PORT_DIAGNOSTICS.to_string(),
+                    PipeValue::Diagnostics(parse_diagnostics),
+                ),
+            ]),
+        )
+        .expect("build op should succeed");
+
+        let mut build_outputs = build_outputs;
+        let graph = match build_outputs.remove(PORT_MODULE_GRAPH) {
+            Some(PipeValue::ModuleGraph(graph)) => graph,
+            other => panic!("expected module graph output, got {other:?}"),
+        };
+        let diagnostics = match build_outputs.remove(PORT_DIAGNOSTICS) {
+            Some(PipeValue::Diagnostics(diagnostics)) => diagnostics,
+            other => panic!("expected build diagnostics output, got {other:?}"),
+        };
+
+        (graph, diagnostics)
     }
 
     #[test]
@@ -1292,56 +1347,18 @@ mod tests {
             roots: vec![dsl_root],
             target_file: None,
         };
-
-        let files = discover_files(&context).expect("discovery should succeed");
-        let parse_outputs = execute_op(
-            &gunbc_ir::node::NodeBody::Opaque(CompilerOp::ParseAll),
-            &context,
-            HashMap::from([
-                (PORT_FILES.to_string(), PipeValue::Files(files)),
-                (
-                    PORT_DIAGNOSTICS.to_string(),
-                    PipeValue::Diagnostics(Vec::new()),
-                ),
-            ]),
-        )
-        .expect("parse op should succeed");
-
-        let mut parse_outputs = parse_outputs;
-        let parsed_modules = match parse_outputs.remove(PORT_PARSED_MODULES) {
-            Some(PipeValue::ParsedModules(parsed_modules)) => parsed_modules,
-            other => panic!("expected parsed modules output, got {other:?}"),
-        };
-        let parse_diagnostics = match parse_outputs.remove(PORT_DIAGNOSTICS) {
-            Some(PipeValue::Diagnostics(diagnostics)) => diagnostics,
-            other => panic!("expected parse diagnostics output, got {other:?}"),
-        };
-        assert!(
-            parse_diagnostics.is_empty(),
-            "real corpus parse should not emit diagnostics: {parse_diagnostics:?}"
+        let (graph, diagnostics) = run_parse_and_build_ops(&context);
+        assert_eq!(
+            diagnostics.len(),
+            2,
+            "real corpus build should emit known resolve diagnostics"
         );
-
-        let build_outputs = execute_op(
-            &gunbc_ir::node::NodeBody::Opaque(CompilerOp::BuildModuleGraph),
-            &context,
-            HashMap::from([
-                (
-                    PORT_PARSED_MODULES.to_string(),
-                    PipeValue::ParsedModules(parsed_modules),
-                ),
-                (
-                    PORT_DIAGNOSTICS.to_string(),
-                    PipeValue::Diagnostics(Vec::new()),
-                ),
-            ]),
-        )
-        .expect("build op should succeed");
-
-        let mut build_outputs = build_outputs;
-        let graph = match build_outputs.remove(PORT_MODULE_GRAPH) {
-            Some(PipeValue::ModuleGraph(graph)) => graph,
-            other => panic!("expected module graph output, got {other:?}"),
-        };
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.kind == DiagnosticKind::Resolve),
+            "build diagnostics should be resolve-kind only"
+        );
 
         let module_index: HashMap<Vec<String>, usize> = graph
             .modules
@@ -1382,6 +1399,31 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn build_pipeline_real_corpus_dependency_counts_match_resolve_discovery() {
+        let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+        let context = PipelineContext {
+            roots: vec![dsl_root.clone()],
+            target_file: None,
+        };
+        let (pipeline_graph, _) = run_parse_and_build_ops(&context);
+        let resolve_graph =
+            daglang_resolve::ModuleGraph::discover(&[dsl_root]).expect("resolve discovery should succeed");
+
+        let pipeline_counts: BTreeMap<String, usize> = pipeline_graph
+            .modules
+            .iter()
+            .map(|module| (module.module_path.join("."), module.dependencies.len()))
+            .collect();
+        let resolve_counts: BTreeMap<String, usize> = resolve_graph
+            .modules
+            .iter()
+            .map(|module| (module.module_path.join("."), module.dependencies.len()))
+            .collect();
+
+        assert_eq!(pipeline_counts, resolve_counts);
     }
 
     #[test]
