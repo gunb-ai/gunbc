@@ -545,6 +545,33 @@ fn topological_order(dag: &Dag<CompilerOp>) -> Result<Vec<String>, String> {
 }
 
 fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
+    let mut seen_node_ids: HashSet<String> = HashSet::new();
+    for node in &dag.nodes {
+        if !seen_node_ids.insert(node.id.0.clone()) {
+            return Err(format!("duplicate node id is not allowed: {}", node.id.0));
+        }
+
+        let mut seen_input_ports: HashSet<String> = HashSet::new();
+        for input in &node.inputs {
+            if !seen_input_ports.insert(input.name.0.clone()) {
+                return Err(format!(
+                    "duplicate input port is not allowed on node {}: {}",
+                    node.id.0, input.name.0
+                ));
+            }
+        }
+
+        let mut seen_output_ports: HashSet<String> = HashSet::new();
+        for output in &node.outputs {
+            if !seen_output_ports.insert(output.name.0.clone()) {
+                return Err(format!(
+                    "duplicate output port is not allowed on node {}: {}",
+                    node.id.0, output.name.0
+                ));
+            }
+        }
+    }
+
     let node_by_id: HashMap<String, &Node<CompilerOp>> =
         dag.nodes.iter().map(|node| (node.id.0.clone(), node)).collect();
     let mut occupied_inputs: HashSet<(String, String)> = HashSet::new();
@@ -1202,5 +1229,56 @@ mod tests {
         let err = validate_pipeline_semantics(&dag)
             .expect_err("non-entrypoint without inbound edges should fail");
         assert!(err.contains("non-entrypoint node"));
+    }
+
+    #[test]
+    fn pipeline_rejects_duplicate_node_ids() {
+        let mut dag = build_pipeline_dag();
+        dag.add_node(Node::opaque(
+            NODE_DISCOVER,
+            vec![],
+            vec![],
+            CompilerOp::DiscoverFiles,
+        ));
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("duplicate node ids should fail validation");
+        assert!(err.contains("duplicate node id"));
+    }
+
+    #[test]
+    fn pipeline_rejects_duplicate_input_port_names() {
+        let mut dag = build_pipeline_dag();
+        let parse_node = dag
+            .nodes
+            .iter_mut()
+            .find(|node| node.id.0 == NODE_PARSE)
+            .expect("parse node should exist");
+        parse_node
+            .inputs
+            .push(Port::with_cardinality(PORT_FILES, "Vec<FileSource>", Cardinality::ONE));
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("duplicate input ports should fail validation");
+        assert!(err.contains("duplicate input port"));
+    }
+
+    #[test]
+    fn pipeline_rejects_duplicate_output_port_names() {
+        let mut dag = build_pipeline_dag();
+        let parse_node = dag
+            .nodes
+            .iter_mut()
+            .find(|node| node.id.0 == NODE_PARSE)
+            .expect("parse node should exist");
+        parse_node.outputs.push(Port::with_cardinality(
+            PORT_PARSED_MODULES,
+            "Vec<ParsedModule>",
+            Cardinality::ONE,
+        ));
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("duplicate output ports should fail validation");
+        assert!(err.contains("duplicate output port"));
     }
 }
