@@ -5,6 +5,7 @@ use daglang_derive::{derive_artifacts, DerivedArtifacts};
 use daglang_emit::{emit_rust_bundle, EmissionBundle};
 use daglang_lower::{lower_typed_project, LoweredOp};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
+use daglang_syntax::diagnostic::{Diagnostic, DiagnosticKind};
 use daglang_syntax::parser;
 use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions};
 use gunbc_ir::Dag;
@@ -136,14 +137,50 @@ fn format_resolve_error(error: ResolveError) -> String {
     match error {
         ResolveError::ParseErrors(files) => {
             let mut message = String::from("compile diagnostics:\n");
-            for (_path, diagnostics) in files {
-                for diagnostic in diagnostics {
-                    message.push_str(&format!("  {}\n", diagnostic.render()));
-                }
+            let diagnostics = normalize_diagnostics(
+                files
+                    .into_iter()
+                    .flat_map(|(_path, diagnostics)| diagnostics)
+                    .collect(),
+            );
+            for diagnostic in diagnostics {
+                message.push_str(&format!("  {}\n", diagnostic.render()));
             }
             message
         }
         other => format!("resolve error: {other}"),
+    }
+}
+
+fn normalize_diagnostics(mut diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diagnostics.sort_by_key(|diag| {
+        (
+            diagnostic_kind_rank(&diag.kind),
+            diag.file
+                .as_ref()
+                .map(|file| file.display().to_string())
+                .unwrap_or_default(),
+            diag.line.unwrap_or_default(),
+            diag.column.unwrap_or_default(),
+            diag.message.clone(),
+        )
+    });
+    diagnostics.dedup_by(|a, b| {
+        a.kind == b.kind
+            && a.file == b.file
+            && a.line == b.line
+            && a.column == b.column
+            && a.message == b.message
+    });
+    diagnostics
+}
+
+fn diagnostic_kind_rank(kind: &DiagnosticKind) -> u8 {
+    match kind {
+        DiagnosticKind::Lex => 0,
+        DiagnosticKind::Parse => 1,
+        DiagnosticKind::Resolve => 2,
+        DiagnosticKind::Pipeline => 3,
     }
 }
 
@@ -472,6 +509,44 @@ mod tests {
         let error = compile_from_context(&context).expect_err("compile should fail");
         assert!(error.contains("module path mismatches"));
         assert!(error.contains("main"));
+        assert!(!error.contains("typecheck errors"));
+        assert!(!error.contains("lower error"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_sorts_lex_before_parse_diagnostics() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_lex_before_parse_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        std::fs::write(root.join("a_parse.dag"), "module sample.parse\nfn")
+            .expect("failed to write parse-error file");
+        std::fs::write(root.join("z_lex.dag"), "module sample.lex\n$\n")
+            .expect("failed to write lex-error file");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        let first_diagnostic_line = error
+            .lines()
+            .find(|line| line.contains(".dag:"))
+            .expect("expected at least one file diagnostic line");
+        assert!(
+            first_diagnostic_line.contains("z_lex.dag"),
+            "lex diagnostics should sort before parse diagnostics: {error}"
+        );
+        assert!(error.contains("a_parse.dag"));
+        assert!(error.contains("unexpected character '$'"));
         assert!(!error.contains("typecheck errors"));
         assert!(!error.contains("lower error"));
 

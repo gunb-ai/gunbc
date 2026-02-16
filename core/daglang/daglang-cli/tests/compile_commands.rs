@@ -10771,6 +10771,42 @@ fn compile_command_diagnostic_output_is_deterministic_for_same_input() {
 }
 
 #[test]
+fn compile_command_sorts_lex_diagnostics_before_parse_diagnostics() {
+    let root = unique_temp_dir("compile_kind_order");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("a_parse.dag"), "module sample.parse\nfn")
+        .expect("failed to write parse-error file");
+    std::fs::write(root.join("z_lex.dag"), "module sample.lex\n$\n")
+        .expect("failed to write lex-error file");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on mixed-error directory");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail when diagnostics are present"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    let first_diagnostic_line = stderr
+        .lines()
+        .find(|line| line.contains(".dag:"))
+        .expect("expected at least one diagnostic line");
+    assert!(
+        first_diagnostic_line.contains("z_lex.dag"),
+        "lex diagnostics should sort before parse diagnostics: {stderr}"
+    );
+    assert!(stderr.contains("a_parse.dag"));
+    assert!(stderr.contains("unexpected character '$'"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_single_file_mode_ignores_sibling_broken_files() {
     let root = unique_temp_dir("compile_single_file_ignores_sibling_broken");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
