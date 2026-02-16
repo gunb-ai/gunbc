@@ -400,6 +400,7 @@ fn node_output_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Opti
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 mod tests {
     use super::*;
+    use serde_json::Value;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_file(name: &str) -> PathBuf {
@@ -546,6 +547,79 @@ mod tests {
         assert!(rendered.contains("service_transport_prepare_targets:"));
         assert!(rendered.contains("service_param_source_targets:"));
         assert!(rendered.contains("resource_provide_targets:"));
+    }
+
+    #[test]
+    fn render_obligations_json_emits_expected_keys() {
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dsl/tools/makegen.dag");
+        let context = PipelineContext {
+            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            target_file: Some(file),
+        };
+        let output = compile_from_context(&context).expect("compile should succeed");
+
+        let rendered = render_obligations(&output.derived, OutputFormat::Json);
+        let parsed: Value =
+            serde_json::from_str(&rendered).expect("obligations json should parse");
+        assert_eq!(
+            parsed.get("dry_run_completion_required").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(parsed.get("transport_execution_targets").is_some());
+        assert!(parsed.get("pure_node_determinism_targets").is_some());
+    }
+
+    #[test]
+    fn render_triplets_json_includes_makegen_transport_nodes() {
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dsl/tools/makegen.dag");
+        let context = PipelineContext {
+            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            target_file: Some(file),
+        };
+        let output = compile_from_context(&context).expect("compile should succeed");
+
+        let rendered = render_triplets(&output.lowered_dag, OutputFormat::Json);
+        let parsed: Value =
+            serde_json::from_str(&rendered).expect("triplets json should parse");
+        let triplets = parsed
+            .get("triplets")
+            .and_then(Value::as_array)
+            .expect("triplets should be an array");
+        assert!(
+            triplets.iter().any(|triplet| {
+                triplet
+                    .get("prepare_node")
+                    .and_then(Value::as_str)
+                    .is_some_and(|prepare| prepare == "prepare_read_makegen")
+            }),
+            "expected read transport triplet"
+        );
+        assert!(
+            triplets.iter().any(|triplet| {
+                triplet
+                    .get("prepare_node")
+                    .and_then(Value::as_str)
+                    .is_some_and(|prepare| prepare == "prepare_write_makegen")
+            }),
+            "expected write transport triplet"
+        );
+    }
+
+    #[test]
+    fn render_triplets_text_is_deterministic() {
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dsl/tools/makegen.dag");
+        let context = PipelineContext {
+            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            target_file: Some(file),
+        };
+        let output = compile_from_context(&context).expect("compile should succeed");
+
+        let first = render_triplets(&output.lowered_dag, OutputFormat::Text);
+        let second = render_triplets(&output.lowered_dag, OutputFormat::Text);
+        assert_eq!(first, second, "triplet rendering should be deterministic");
     }
 
     #[test]
