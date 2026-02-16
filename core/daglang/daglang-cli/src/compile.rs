@@ -343,6 +343,67 @@ mod tests {
     }
 
     #[test]
+    fn build_context_normalizes_absolute_directory_input_components() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_build_context_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        let normalized_root = root.join("sample");
+        std::fs::create_dir_all(&normalized_root).expect("failed to create temp directory root");
+        let input = root.join("sample").join(".").join("nested").join("..");
+        let input_str = input.to_string_lossy().to_string();
+
+        let context = build_context(Some(&input_str));
+        assert_eq!(context.roots, vec![normalized_root.clone()]);
+        assert!(context.target_file.is_none());
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn build_context_normalizes_absolute_single_file_input_components() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_build_context_file_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        let normalized_file = root.join("sample/main.dag");
+        std::fs::create_dir_all(normalized_file.parent().expect("file should have parent"))
+            .expect("failed to create temp file parent");
+        std::fs::write(&normalized_file, "module sample.main\nfn run() -> Unit { }")
+            .expect("failed to write temp dag file");
+        let input = root.join("sample").join("nested").join("..").join("main.dag");
+        let input_str = input.to_string_lossy().to_string();
+
+        let context = build_context(Some(&input_str));
+        assert_eq!(
+            context.roots,
+            vec![normalized_file
+                .parent()
+                .expect("file should have parent")
+                .to_path_buf()]
+        );
+        assert_eq!(context.target_file, Some(normalized_file.clone()));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn build_context_default_root_is_cwd_dsl() {
+        let context = build_context(None);
+        let cwd = std::env::current_dir().expect("cwd should resolve");
+        assert_eq!(context.roots, vec![cwd.join("dsl")]);
+        assert!(context.target_file.is_none());
+    }
+
+    #[test]
     fn compile_single_file_makegen_produces_non_empty_outputs() {
         let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../../dsl/tools/makegen.dag");
