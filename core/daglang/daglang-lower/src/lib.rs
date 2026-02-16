@@ -16,7 +16,7 @@
 //! TypedAST → [daglang-lower] → GraphIR (gunbc Dag/Node/Port/Edge)
 //! ```
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{Expr, Item, Stmt};
 use daglang_syntax::ast_utils::{
@@ -24,7 +24,8 @@ use daglang_syntax::ast_utils::{
     should_track_call_name as should_track_call, type_expr_to_string, walk_stmts,
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
-use gunbc_ir::{diff_topologies, Cardinality, Dag, Edge, Node, Port};
+use gunbc_ir::{Cardinality, Dag, Edge, Node, Port};
+use serde::Serialize;
 
 /// Lowered operation payload for daglang graph nodes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +54,11 @@ pub struct ParityReport {
     pub changed_nodes: usize,
     pub added_edges: usize,
     pub removed_edges: usize,
+    pub added_node_ids: Vec<String>,
+    pub removed_node_ids: Vec<String>,
+    pub changed_node_details: Vec<NodeDiff>,
+    pub added_edge_ids: Vec<String>,
+    pub removed_edge_ids: Vec<String>,
 }
 
 impl ParityReport {
@@ -63,6 +69,43 @@ impl ParityReport {
             && self.added_edges == 0
             && self.removed_edges == 0
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeDiff {
+    pub node_id: String,
+    pub differences: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CanonicalDag {
+    pub nodes: Vec<CanonicalNode>,
+    pub edges: Vec<CanonicalEdge>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CanonicalNode {
+    pub id: String,
+    pub kind: String,
+    pub label: String,
+    pub inputs: Vec<CanonicalPort>,
+    pub outputs: Vec<CanonicalPort>,
+    pub subdag: Option<Box<CanonicalDag>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CanonicalPort {
+    pub name: String,
+    pub type_id: String,
+    pub cardinality: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct CanonicalEdge {
+    pub from_node: String,
+    pub from_port: String,
+    pub to_node: String,
+    pub to_port: String,
 }
 
 /// Kind of lowered callable declaration.
@@ -371,20 +414,124 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
 /// - scaffold mode: report still gives deterministic deltas while lowering
 ///   coverage grows.
 pub fn compare_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
-    let candidate_topology = candidate.topology();
-    let reference_topology = reference.topology();
-    let diff = diff_topologies(&reference_topology, &candidate_topology);
+    compare_ir(candidate, reference)
+}
+
+/// Compare a lowered daglang graph against a reference graph using canonical
+/// structural IR (node kind, labels, ports, edges, and nested subdag shape).
+pub fn compare_ir<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
+    let candidate_ir = canonicalize_lowered_ir(candidate);
+    let reference_ir = canonicalize_reference_ir(reference);
+    compare_canonical_ir(&candidate_ir, &reference_ir)
+}
+
+/// Serialize lowered IR into deterministic canonical JSON.
+pub fn canonical_ir_json(dag: &Dag<LoweredOp>) -> Result<String, serde_json::Error> {
+    serde_json::to_string_pretty(&canonicalize_lowered_ir(dag))
+}
+
+fn compare_canonical_ir(candidate: &CanonicalDag, reference: &CanonicalDag) -> ParityReport {
+    let candidate_nodes = candidate.nodes.len();
+    let reference_nodes = reference.nodes.len();
+    let candidate_edges = candidate.edges.len();
+    let reference_edges = reference.edges.len();
+
+    let candidate_by_id = candidate
+        .nodes
+        .iter()
+        .map(|node| (node.id.clone(), node))
+        .collect::<BTreeMap<_, _>>();
+    let reference_by_id = reference
+        .nodes
+        .iter()
+        .map(|node| (node.id.clone(), node))
+        .collect::<BTreeMap<_, _>>();
+
+    let candidate_ids = candidate_by_id.keys().cloned().collect::<BTreeSet<_>>();
+    let reference_ids = reference_by_id.keys().cloned().collect::<BTreeSet<_>>();
+
+    let added_node_ids = candidate_ids
+        .difference(&reference_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+    let removed_node_ids = reference_ids
+        .difference(&candidate_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let changed_node_details = candidate_ids
+        .intersection(&reference_ids)
+        .filter_map(|node_id| {
+            let candidate_node = candidate_by_id
+                .get(node_id)
+                .expect("intersection node must exist in candidate map");
+            let reference_node = reference_by_id
+                .get(node_id)
+                .expect("intersection node must exist in reference map");
+            let mut differences = Vec::new();
+            if candidate_node.kind != reference_node.kind {
+                differences.push(format!(
+                    "kind differs: candidate=`{}` reference=`{}`",
+                    candidate_node.kind, reference_node.kind
+                ));
+            }
+            if candidate_node.label != reference_node.label {
+                differences.push(format!(
+                    "label differs: candidate=`{}` reference=`{}`",
+                    candidate_node.label, reference_node.label
+                ));
+            }
+            if candidate_node.inputs != reference_node.inputs {
+                differences.push("input ports differ".to_string());
+            }
+            if candidate_node.outputs != reference_node.outputs {
+                differences.push("output ports differ".to_string());
+            }
+            if candidate_node.subdag != reference_node.subdag {
+                differences.push("subdag structure differs".to_string());
+            }
+            (!differences.is_empty()).then_some(NodeDiff {
+                node_id: node_id.clone(),
+                differences,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let candidate_edge_ids = candidate
+        .edges
+        .iter()
+        .map(canonical_edge_id)
+        .collect::<BTreeSet<_>>();
+    let reference_edge_ids = reference
+        .edges
+        .iter()
+        .map(canonical_edge_id)
+        .collect::<BTreeSet<_>>();
+
+    let added_edge_ids = candidate_edge_ids
+        .difference(&reference_edge_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+    let removed_edge_ids = reference_edge_ids
+        .difference(&candidate_edge_ids)
+        .cloned()
+        .collect::<Vec<_>>();
 
     ParityReport {
-        candidate_nodes: candidate_topology.nodes.len(),
-        reference_nodes: reference_topology.nodes.len(),
-        candidate_edges: candidate_topology.edges.len(),
-        reference_edges: reference_topology.edges.len(),
-        added_nodes: diff.added_nodes.len(),
-        removed_nodes: diff.removed_nodes.len(),
-        changed_nodes: diff.changed_nodes.len(),
-        added_edges: diff.added_edges.len(),
-        removed_edges: diff.removed_edges.len(),
+        candidate_nodes,
+        reference_nodes,
+        candidate_edges,
+        reference_edges,
+        added_nodes: added_node_ids.len(),
+        removed_nodes: removed_node_ids.len(),
+        changed_nodes: changed_node_details.len(),
+        added_edges: added_edge_ids.len(),
+        removed_edges: removed_edge_ids.len(),
+        added_node_ids,
+        removed_node_ids,
+        changed_node_details,
+        added_edge_ids,
+        removed_edge_ids,
     }
 }
 
@@ -399,6 +546,145 @@ pub fn compare_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> Pa
 pub fn compare_makegen_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
     let normalized = normalize_makegen_candidate(candidate);
     compare_topology(&normalized, reference)
+}
+
+fn canonicalize_lowered_ir(dag: &Dag<LoweredOp>) -> CanonicalDag {
+    canonicalize_dag(dag, canonical_kind_lowered, canonical_label_lowered)
+}
+
+fn canonicalize_reference_ir<T>(dag: &Dag<T>) -> CanonicalDag {
+    canonicalize_dag(dag, canonical_kind_reference, canonical_label_reference)
+}
+
+fn canonicalize_dag<T>(
+    dag: &Dag<T>,
+    kind_of: fn(&Node<T>) -> String,
+    label_of: fn(&Node<T>) -> String,
+) -> CanonicalDag {
+    let mut nodes = dag
+        .nodes
+        .iter()
+        .map(|node| CanonicalNode {
+            id: node.id.0.clone(),
+            kind: kind_of(node),
+            label: label_of(node),
+            inputs: canonicalize_ports(&node.inputs),
+            outputs: canonicalize_ports(&node.outputs),
+            subdag: match &node.body {
+                gunbc_ir::node::NodeBody::SubDag(inner) => {
+                    Some(Box::new(canonicalize_dag(inner, kind_of, label_of)))
+                }
+                gunbc_ir::node::NodeBody::Opaque(_) => None,
+            },
+        })
+        .collect::<Vec<_>>();
+    nodes.sort_by(|lhs, rhs| lhs.id.cmp(&rhs.id));
+
+    let mut edges = dag
+        .edges
+        .iter()
+        .map(|edge| CanonicalEdge {
+            from_node: edge.from_node.0.clone(),
+            from_port: edge.from_port.0.clone(),
+            to_node: edge.to_node.0.clone(),
+            to_port: edge.to_port.0.clone(),
+        })
+        .collect::<Vec<_>>();
+    edges.sort();
+
+    CanonicalDag { nodes, edges }
+}
+
+fn canonicalize_ports(ports: &[Port]) -> Vec<CanonicalPort> {
+    let mut canonical = ports
+        .iter()
+        .map(|port| CanonicalPort {
+            name: port.name.0.clone(),
+            type_id: port.type_id.0.clone(),
+            cardinality: port.cardinality.to_string(),
+        })
+        .collect::<Vec<_>>();
+    canonical.sort_by(|lhs, rhs| {
+        lhs.name
+            .cmp(&rhs.name)
+            .then_with(|| lhs.type_id.cmp(&rhs.type_id))
+            .then_with(|| lhs.cardinality.cmp(&rhs.cardinality))
+    });
+    canonical
+}
+
+fn canonical_kind_lowered(node: &Node<LoweredOp>) -> String {
+    let pipeline_hint = matches!(
+        node.body,
+        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { .. })
+    );
+    match &node.body {
+        gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+        gunbc_ir::node::NodeBody::Opaque(_) => canonical_kind_from_shape(
+            &node.id.0,
+            &node.inputs,
+            &node.outputs,
+            pipeline_hint,
+        ),
+    }
+}
+
+fn canonical_label_lowered(node: &Node<LoweredOp>) -> String {
+    node.id.0.clone()
+}
+
+fn canonical_kind_reference<T>(node: &Node<T>) -> String {
+    match &node.body {
+        gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+        gunbc_ir::node::NodeBody::Opaque(_) => {
+            canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
+        }
+    }
+}
+
+fn canonical_label_reference<T>(node: &Node<T>) -> String {
+    node.id.0.clone()
+}
+
+fn canonical_edge_id(edge: &CanonicalEdge) -> String {
+    format!(
+        "{}.{}->{}.{}",
+        edge.from_node, edge.from_port, edge.to_node, edge.to_port
+    )
+}
+
+fn canonical_kind_from_shape(
+    node_id: &str,
+    inputs: &[Port],
+    outputs: &[Port],
+    pipeline_hint: bool,
+) -> String {
+    if pipeline_hint
+        || outputs
+            .iter()
+            .any(|port| port.name.0 == "stages" && port.type_id.0 == "Int")
+    {
+        return "pipeline".to_string();
+    }
+    if inputs
+        .iter()
+        .any(|port| port.type_id.0 == "TransportRequest")
+    {
+        return "transport".to_string();
+    }
+    let looks_expanded = node_id.starts_with("prepare_")
+        || node_id.starts_with("compare_")
+        || node_id.starts_with("execute_transport_")
+        || node_id.starts_with("param_source_")
+        || node_id.starts_with("acquire_resource_")
+        || node_id.starts_with("release_resource_")
+        || node_id.starts_with("provide_resource_")
+        || node_id == "load_registry"
+        || node_id == "fs_env";
+    if looks_expanded {
+        return "pattern-expanded".to_string();
+    }
+    "callable".to_string()
 }
 
 fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
@@ -2074,11 +2360,7 @@ func run() -> { ok: Bool } provides out: Storage {
     #[allow(clippy::disallowed_methods)]
     #[test]
     fn makegen_parity_report_is_deterministic() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
-        let source = fs::read_to_string(file).expect("should read makegen source");
-        let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
-        let lowered = lower_typed_project(&typed).expect("lowering should succeed");
+        let lowered = load_makegen_lowered();
         let reference = reference_makegen_shape();
 
         let report_a = compare_topology(&lowered, &reference);
@@ -2098,11 +2380,7 @@ func run() -> { ok: Bool } provides out: Storage {
     #[allow(clippy::disallowed_methods)]
     #[test]
     fn makegen_normalized_parity_can_reach_exact_match() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
-        let source = fs::read_to_string(file).expect("should read makegen source");
-        let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
-        let lowered = lower_typed_project(&typed).expect("lowering should succeed");
+        let lowered = load_makegen_lowered();
         let reference = reference_makegen_shape();
 
         let report = compare_makegen_topology(&lowered, &reference);
@@ -2110,6 +2388,58 @@ func run() -> { ok: Bool } provides out: Storage {
             report.is_exact_match(),
             "normalized makegen parity should currently match reference topology"
         );
+    }
+
+    // Test infrastructure: filesystem access for test fixtures
+    #[allow(clippy::disallowed_methods)]
+    #[test]
+    fn makegen_canonical_ir_json_matches_snapshot() {
+        let lowered = load_makegen_lowered();
+        let canonical = canonical_ir_json(&lowered).expect("canonical json should serialize");
+        let expected = include_str!("../tests/snapshots/makegen_canonical_ir.json");
+        assert_eq!(canonical.trim(), expected.trim());
+    }
+
+    #[test]
+    fn parity_report_includes_changed_node_details() {
+        let mut candidate = Dag::new();
+        candidate.add_node(Node::opaque(
+            "render",
+            vec![Port::scalar("registry", "ToolRegistry")],
+            vec![Port::scalar("content", "String")],
+            LoweredOp::Callable {
+                module: "tools.makegen".to_string(),
+                kind: CallableKind::Fn,
+                name: "render".to_string(),
+            },
+        ));
+        let mut reference = Dag::new();
+        reference.add_node(Node::opaque(
+            "render",
+            vec![Port::scalar("registry", "ToolRegistry")],
+            vec![Port::scalar("makefile", "String")],
+            (),
+        ));
+
+        let report = compare_ir(&candidate, &reference);
+        assert_eq!(report.changed_nodes, 1);
+        assert_eq!(report.changed_node_details.len(), 1);
+        assert_eq!(report.changed_node_details[0].node_id, "render");
+        assert!(
+            report.changed_node_details[0]
+                .differences
+                .iter()
+                .any(|difference| difference.contains("output ports differ"))
+        );
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    fn load_makegen_lowered() -> Dag<LoweredOp> {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dsl/tools/makegen.dag");
+        let source = fs::read_to_string(file).expect("should read makegen source");
+        let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
+        lower_typed_project(&typed).expect("lowering should succeed")
     }
 
     fn reference_makegen_shape() -> Dag<()> {
