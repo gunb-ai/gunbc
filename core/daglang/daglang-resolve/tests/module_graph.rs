@@ -155,6 +155,38 @@ fn lex_error_is_reported_with_lex_diagnostic_kind() {
 }
 
 #[test]
+fn lex_error_file_order_is_deterministic() {
+    let root = unique_temp_dir("lex_error_order");
+    write_file(&root.join("z_lex.dag"), "module sample.z\n$\n");
+    write_file(&root.join("a_lex.dag"), "module sample.a\n$\n");
+
+    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected lex errors");
+    match err {
+        ResolveError::ParseErrors(files) => {
+            assert_eq!(files.len(), 2, "expected diagnostics for both lex-broken files");
+            let names: Vec<String> = files
+                .iter()
+                .map(|(path, _)| path.file_name().unwrap().to_string_lossy().to_string())
+                .collect();
+            assert_eq!(
+                names,
+                vec!["a_lex.dag".to_string(), "z_lex.dag".to_string()],
+                "lex error file ordering should be deterministic and path-sorted"
+            );
+            for (_path, diagnostics) in &files {
+                assert!(
+                    diagnostics.iter().all(|diag| diag.kind == DiagnosticKind::Lex),
+                    "expected lexical diagnostic kinds for lex-broken files"
+                );
+            }
+        }
+        other => panic!("expected ParseErrors, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn parse_errors_are_aggregated_across_multiple_files() {
     let root = unique_temp_dir("parse_error_many");
     write_file(&root.join("broken_a.dag"), "module sample.a\nfn");
