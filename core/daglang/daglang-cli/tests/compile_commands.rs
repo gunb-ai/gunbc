@@ -2773,6 +2773,39 @@ fn compile_command_directory_mode_fails_on_missing_tail_expression_type_mismatch
 }
 
 #[test]
+fn compile_command_directory_mode_fails_on_no_such_field_for_record_literal() {
+    let root = unique_temp_dir("no_such_field_record_literal");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+func run() -> { body: String } {
+  let payload = { body: "ok" }
+  return { body: payload.missing }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on missing field access for record literal"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("type `Record` has no field `missing`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_no_such_field_for_named_record() {
     let root = unique_temp_dir("no_such_field_named_record");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
@@ -2804,6 +2837,36 @@ fn run(input: Payload) -> String { input.missing }
 }
 
 #[test]
+fn compile_command_directory_mode_fails_on_generic_arity_mismatch() {
+    let root = unique_temp_dir("generic_arity_mismatch");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+fn run(values: Map<String>) -> Int { 1 }
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on generic arity mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("generic arity mismatch for `Map`: expected 2, got 1"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_unsatisfiable_refinement() {
     let root = unique_temp_dir("unsatisfiable_refinement");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
@@ -2827,6 +2890,36 @@ fn compile_command_directory_mode_fails_on_unsatisfiable_refinement() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("unsatisfiable refinement on `Int`: range min 9 exceeds max 1"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_fails_on_undefined_type_typecheck_error() {
+    let root = unique_temp_dir("undefined_type");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+fn run(input: MissingType) -> String { "ok" }
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on undefined type"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("undefined type `MissingType"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
