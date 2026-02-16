@@ -673,6 +673,34 @@ fn discovery_is_independent_of_symlink_alias_root_order() {
 
 #[cfg(unix)]
 #[test]
+fn discovery_parse_errors_are_independent_of_symlink_alias_root_order() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("symlink_alias_root_order_parse_errors");
+    let real = root.join("real");
+    let link = root.join("link");
+    write_file(&real.join("broken.dag"), "module sample.broken\nfn");
+    symlink(&real, &link).expect("failed to create root symlink");
+
+    let first = ModuleGraph::discover(&[real.clone(), link.clone()])
+        .expect_err("first discover should return parse errors");
+    let second = ModuleGraph::discover(&[link, real])
+        .expect_err("second discover should return parse errors");
+
+    match (first, second) {
+        (ResolveError::ParseErrors(first_files), ResolveError::ParseErrors(second_files)) => {
+            assert_eq!(first_files, second_files);
+        }
+        (left, right) => panic!(
+            "expected ParseErrors for both runs, got left={left:?}, right={right:?}"
+        ),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[cfg(unix)]
+#[test]
 fn discovery_handles_directory_symlink_cycle_without_recursing_forever() {
     use std::os::unix::fs::symlink;
 

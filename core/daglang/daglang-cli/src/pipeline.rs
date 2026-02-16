@@ -1514,6 +1514,46 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn parse_pipeline_error_output_is_independent_of_symlink_alias_root_order() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("symlink_alias_root_order_parse_errors");
+        let real = root.join("real");
+        let link = root.join("link");
+        fs::create_dir_all(&real).expect("failed to create real root");
+        fs::write(real.join("broken.dag"), "module sample.broken\nfn")
+            .expect("failed to write invalid source");
+        symlink(&real, &link).expect("failed to create root symlink");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![real.clone(), link.clone()],
+                target_file: None,
+            },
+            PipelineStop::Parse,
+        )
+        .expect("first run should complete");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![link, real],
+                target_file: None,
+            },
+            PipelineStop::Parse,
+        )
+        .expect("second run should complete");
+
+        assert_eq!(first.parsed_count, second.parsed_count);
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert!(
+            !first.diagnostics.is_empty(),
+            "expected parse diagnostics for malformed source"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn parse_pipeline_deduplicates_diagnostics_in_directory_symlink_cycle() {
         use std::os::unix::fs::symlink;
 
@@ -2053,6 +2093,42 @@ mod tests {
         let second = run_pipeline(
             &PipelineContext {
                 roots: vec![b, a],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("second run should succeed");
+
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.report, second.report);
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn report_pipeline_is_independent_of_symlink_alias_root_order() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("report_symlink_alias_root_order");
+        let real = root.join("real");
+        let link = root.join("link");
+        fs::create_dir_all(&real).expect("failed to create real root");
+        fs::write(real.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+            .expect("failed to write source");
+        symlink(&real, &link).expect("failed to create root symlink");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![real.clone(), link.clone()],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("first run should succeed");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![link, real],
                 target_file: None,
             },
             PipelineStop::Report,
