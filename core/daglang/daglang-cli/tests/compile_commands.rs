@@ -118,6 +118,10 @@ fn run() -> String { helper() }
         !stderr.contains("ambiguous call target `helper`"),
         "single-file relaxed mode should not report ambiguous call-target diagnostics: {stderr}"
     );
+    assert!(
+        !stderr.contains("lower error"),
+        "single-file relaxed duplicate-callable path should not fail in lowering: {stderr}"
+    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -165,6 +169,10 @@ func run(path: String) -> { body: String } {
     assert!(
         !stderr.contains("ambiguous service call `FsStorage.read`"),
         "single-file relaxed mode should not report ambiguous service-call diagnostics: {stderr}"
+    );
+    assert!(
+        !stderr.contains("lower error"),
+        "single-file relaxed duplicate-service path should not fail in lowering: {stderr}"
     );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -291,6 +299,10 @@ func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
         !stderr.contains("ambiguous used resource type `SharedResource`"),
         "single-file relaxed mode should suppress ambiguous used resource diagnostics: {stderr}"
     );
+    assert!(
+        !stderr.contains("lower error"),
+        "single-file relaxed duplicate-resource uses path should not fail in lowering: {stderr}"
+    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -357,6 +369,10 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
     assert!(
         !stderr.contains("ambiguous provided resource type `SharedResource`"),
         "single-file relaxed mode should suppress ambiguous provided resource diagnostics: {stderr}"
+    );
+    assert!(
+        !stderr.contains("lower error"),
+        "single-file relaxed duplicate-resource provides path should not fail in lowering: {stderr}"
     );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -899,6 +915,10 @@ service FsStorage implements Storage {
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("duplicate definition `Storage` in module `sample.single`"));
     assert!(stderr.contains("`FsStorage` references ambiguous interface `Storage`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "single-file duplicate-interface layering should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
