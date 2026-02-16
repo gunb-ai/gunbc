@@ -73,6 +73,16 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
     ]
 }
 
+fn reported_modules_sorted(stdout: &str) -> Vec<String> {
+    let mut modules: Vec<String> = stdout
+        .lines()
+        .filter_map(|line| line.strip_prefix("  "))
+        .filter_map(|line| line.split_once("  (").map(|(module, _)| module.trim().to_string()))
+        .collect();
+    modules.sort();
+    modules
+}
+
 #[test]
 fn check_command_parses_full_dsl_corpus() {
     let output = Command::new(daglang_bin())
@@ -110,13 +120,15 @@ fn modules_command_prints_module_graph_summary() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Discovered modules:"));
-    for module in expected_dsl_modules_sorted() {
-        let entry = format!("  {module}  (");
-        assert!(
-            stdout.contains(&entry),
-            "modules output is missing expected module entry '{module}':\n{stdout}"
-        );
-    }
+    let reported_modules = reported_modules_sorted(&stdout);
+    let expected_modules: Vec<String> = expected_dsl_modules_sorted()
+        .into_iter()
+        .map(String::from)
+        .collect();
+    assert_eq!(
+        reported_modules, expected_modules,
+        "modules command should report the complete 42-module corpus"
+    );
 }
 
 #[test]
@@ -1007,7 +1019,15 @@ fn modules_command_defaults_to_workspace_dsl_root() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Discovered modules:"));
-    assert!(stdout.contains("std.types"));
+    let reported_modules = reported_modules_sorted(&stdout);
+    let expected_modules: Vec<String> = expected_dsl_modules_sorted()
+        .into_iter()
+        .map(String::from)
+        .collect();
+    assert_eq!(
+        reported_modules, expected_modules,
+        "default modules command should report the complete dsl corpus"
+    );
 }
 
 #[test]
