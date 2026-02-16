@@ -95,7 +95,10 @@ fn main() {
             }
             let input = args.get(2).map(|value| normalize_cli_path(PathBuf::from(value)));
             let (roots, target_file) = match input {
-                Some(path) if path.extension().and_then(|ext| ext.to_str()) == Some("dag") => {
+                Some(path)
+                    if path.extension().and_then(|ext| ext.to_str()) == Some("dag")
+                        && !path.is_dir() =>
+                {
                     let root = path
                         .parent()
                         .map(PathBuf::from)
