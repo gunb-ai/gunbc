@@ -54,6 +54,17 @@ fn assert_lower_stage_failure(stderr: &str) {
     );
 }
 
+fn assert_no_stage_failures(stderr: &str) {
+    assert!(
+        !stderr.contains("typecheck errors"),
+        "did not expect typecheck-stage banner in successful path: {stderr}"
+    );
+    assert!(
+        !stderr.contains("lower error"),
+        "did not expect lowering-stage banner in successful path: {stderr}"
+    );
+}
+
 #[test]
 fn compile_command_emits_summary_for_single_file() {
     let output = Command::new(daglang_bin())
@@ -68,6 +79,8 @@ fn compile_command_emits_summary_for_single_file() {
         "compile command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Compiled 1 module(s)"));
     assert!(stdout.contains("target/generated/rust/main.rs"));
@@ -932,6 +945,8 @@ fn expand_command_shows_lowered_nodes_and_edges() {
         "expand command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Nodes:"));
     assert!(stdout.contains("tools.makegen::render_makefile"));
@@ -952,6 +967,8 @@ fn manifest_command_shows_derived_progress_manifest() {
         "manifest command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("ProgressManifest:"));
     assert!(stdout.contains("total_nodes:"));
@@ -1005,6 +1022,8 @@ func run(path: String) -> { body: String } {
         "manifest command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("service_transport_prepare_targets: 1"));
     assert!(stdout.contains("service_transport_execute_targets: 1"));
@@ -1051,6 +1070,8 @@ func run() -> { body: String } {
         "manifest command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("service_param_source_targets: 0"));
 
@@ -1088,6 +1109,8 @@ func run() -> { ok: Bool } provides out: Storage {
         "manifest command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("resource_provide_targets: 1"));
     assert!(stdout.contains("resource_release_targets: 0"));
@@ -1109,6 +1132,8 @@ fn viz_command_renders_mermaid_for_compiled_file() {
         "viz command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("flowchart TB"));
     assert!(stdout.contains("tools.makegen::render_makefile"));
@@ -1276,6 +1301,8 @@ func run(path: String) -> { body: String } {
         "expand command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("param_source_sample_services_run_path"));
     assert!(stdout.contains(
