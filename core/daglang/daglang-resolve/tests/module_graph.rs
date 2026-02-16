@@ -67,6 +67,53 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
     ]
 }
 
+fn expected_real_corpus_module_order() -> Vec<&'static str> {
+    vec![
+        "std.types",
+        "std.resources",
+        "services.shell",
+        "tools.codegen",
+        "services.github.gist",
+        "services.git",
+        "services.gcp.sts",
+        "services.gcp.secret_manager",
+        "services.gcp.iam",
+        "std.patterns",
+        "tools.testgen",
+        "tools.docgen",
+        "shared.dag_util",
+        "tools.pragma",
+        "tools.makegen",
+        "tools.deps",
+        "tools.bootstrap",
+        "cloud.gcp.credential",
+        "services.cargo",
+        "tools.clippy",
+        "tools.build",
+        "pipelines.ci",
+        "infra.gcp.services",
+        "infra.core",
+        "infra.spec",
+        "infra.gcp.resources",
+        "infra.gcp.config",
+        "infra.azure.config",
+        "infra.aws.config",
+        "examples.integration_tests",
+        "infra.azure.services",
+        "infra.azure.resources",
+        "cloud.azure.credential",
+        "infra.aws.services",
+        "infra.aws.resources",
+        "cloud.aws.credential",
+        "examples.rich_types",
+        "examples.abstract_services",
+        "examples.deployment",
+        "shared.gist_modes",
+        "tools.dag_viz",
+        "tools.gist",
+    ]
+}
+
 #[test]
 fn discovers_all_real_dsl_modules() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
@@ -84,6 +131,22 @@ fn discovers_all_real_dsl_modules() {
         .map(String::from)
         .collect();
     assert_eq!(module_names, expected);
+}
+
+#[test]
+fn real_corpus_module_order_matches_expected_topological_snapshot() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+    let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
+    let actual: Vec<String> = graph
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    let expected: Vec<String> = expected_real_corpus_module_order()
+        .into_iter()
+        .map(String::from)
+        .collect();
+    assert_eq!(actual, expected);
 }
 
 #[test]

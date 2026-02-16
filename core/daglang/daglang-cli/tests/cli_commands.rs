@@ -73,12 +73,63 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
     ]
 }
 
-fn reported_modules_sorted(stdout: &str) -> Vec<String> {
-    let mut modules: Vec<String> = stdout
+fn expected_real_corpus_module_order() -> Vec<&'static str> {
+    vec![
+        "std.types",
+        "std.resources",
+        "services.shell",
+        "tools.codegen",
+        "services.github.gist",
+        "services.git",
+        "services.gcp.sts",
+        "services.gcp.secret_manager",
+        "services.gcp.iam",
+        "std.patterns",
+        "tools.testgen",
+        "tools.docgen",
+        "shared.dag_util",
+        "tools.pragma",
+        "tools.makegen",
+        "tools.deps",
+        "tools.bootstrap",
+        "services.cargo",
+        "tools.clippy",
+        "tools.build",
+        "pipelines.ci",
+        "infra.gcp.services",
+        "infra.core",
+        "infra.spec",
+        "infra.gcp.resources",
+        "infra.gcp.config",
+        "infra.azure.services",
+        "infra.azure.resources",
+        "infra.azure.config",
+        "infra.aws.services",
+        "infra.aws.resources",
+        "infra.aws.config",
+        "examples.rich_types",
+        "examples.integration_tests",
+        "examples.abstract_services",
+        "cloud.gcp.credential",
+        "cloud.azure.credential",
+        "cloud.aws.credential",
+        "examples.deployment",
+        "shared.gist_modes",
+        "tools.dag_viz",
+        "tools.gist",
+    ]
+}
+
+fn reported_modules_in_order(stdout: &str) -> Vec<String> {
+    stdout
         .lines()
         .filter_map(|line| line.strip_prefix("  "))
         .filter_map(|line| line.split_once("  (").map(|(module, _)| module.trim().to_string()))
-        .collect();
+        .collect()
+}
+
+fn reported_modules_sorted(stdout: &str) -> Vec<String> {
+    let mut modules = reported_modules_in_order(stdout);
     modules.sort();
     modules
 }
@@ -241,6 +292,29 @@ fn modules_command_reports_expected_real_corpus_diagnostics() {
         stdout.contains("unresolved import: examples.integration_tests -> infra.gcp"),
         "modules output should include expected unresolved import diagnostic: {stdout}"
     );
+}
+
+#[test]
+fn modules_command_real_corpus_order_matches_expected_snapshot() {
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules");
+
+    assert!(
+        output.status.success(),
+        "modules command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual = reported_modules_in_order(&stdout);
+    let expected: Vec<String> = expected_real_corpus_module_order()
+        .into_iter()
+        .map(String::from)
+        .collect();
+    assert_eq!(actual, expected);
 }
 
 #[test]
