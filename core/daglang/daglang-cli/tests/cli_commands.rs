@@ -800,6 +800,58 @@ fn check_command_accepts_symlink_single_file_target() {
 
 #[cfg(unix)]
 #[test]
+fn check_command_symlink_and_real_invalid_single_file_targets_are_equivalent() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_real_invalid_single_file_equivalent");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let real = root.join("real.dag");
+    let link = root.join("link.dag");
+    std::fs::write(&real, "module sample.broken\nfn")
+        .expect("failed to write malformed real source");
+    symlink(&real, &link).expect("failed to create symlinked target");
+
+    let real_output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&real)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on real malformed target");
+    assert!(
+        !real_output.status.success(),
+        "real malformed single-file target should fail"
+    );
+
+    let link_output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on symlinked malformed target");
+    assert!(
+        !link_output.status.success(),
+        "symlinked malformed single-file target should fail"
+    );
+
+    assert_eq!(
+        real_output.stdout, link_output.stdout,
+        "real and symlink invalid target check stdout should match"
+    );
+    assert_eq!(
+        real_output.stderr, link_output.stderr,
+        "real and symlink invalid target check stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&real_output.stderr);
+    assert!(
+        stderr.contains("real.dag:2:3:"),
+        "expected canonicalized parse diagnostic path in stderr: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn check_command_dangling_symlink_single_file_target_exits_nonzero() {
     use std::os::unix::fs::symlink;
 
