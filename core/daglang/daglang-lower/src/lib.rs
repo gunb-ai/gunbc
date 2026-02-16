@@ -192,6 +192,7 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
     }
 
     add_dependency_edges(&mut dag, project, &endpoints_by_full, &endpoints_by_name);
+    add_makegen_scaffolding(&mut dag, &endpoints_by_full);
 
     Ok(dag)
 }
@@ -675,6 +676,85 @@ fn expansion_suffix(item_name: &str, expansion_count: usize) -> String {
     }
 }
 
+fn add_makegen_scaffolding(
+    dag: &mut Dag<LoweredOp>,
+    endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
+) {
+    let Some(render) = endpoints_by_full
+        .get(&("tools.makegen".to_string(), "render_makefile".to_string()))
+    else {
+        return;
+    };
+    let makegen = endpoints_by_full.get(&("tools.makegen".to_string(), "makegen".to_string()));
+
+    if !dag.nodes.iter().any(|node| node.id.0 == "load_registry") {
+        dag.add_node(Node::opaque(
+            "load_registry",
+            vec![],
+            vec![Port::scalar("registry", "ToolRegistry")],
+            LoweredOp::Callable {
+                module: "tools.makegen".to_string(),
+                kind: CallableKind::Pattern,
+                name: "load_registry".to_string(),
+            },
+        ));
+    }
+    add_edge_once(
+        dag,
+        "load_registry",
+        "registry",
+        render.node_id.as_str(),
+        "registry",
+    );
+    if let Some(makegen_endpoint) = makegen {
+        add_edge_once(
+            dag,
+            "load_registry",
+            "registry",
+            makegen_endpoint.node_id.as_str(),
+            "registry",
+        );
+    }
+
+    if dag
+        .nodes
+        .iter()
+        .any(|node| node.id.0 == "prepare_read_makegen")
+    {
+        if !dag.nodes.iter().any(|node| node.id.0 == "fs_env") {
+            dag.add_node(Node::opaque(
+                "fs_env",
+                vec![],
+                vec![Port::scalar("FilesystemHandle", "FilesystemHandle")],
+                LoweredOp::Callable {
+                    module: "tools.makegen".to_string(),
+                    kind: CallableKind::Pattern,
+                    name: "fs_env".to_string(),
+                },
+            ));
+        }
+        add_edge_once(
+            dag,
+            "fs_env",
+            "FilesystemHandle",
+            "prepare_read_makegen",
+            "res:file:Makefile",
+        );
+    }
+}
+
+fn add_edge_once(dag: &mut Dag<LoweredOp>, from: &str, from_port: &str, to: &str, to_port: &str) {
+    if dag.edges.iter().any(|edge| {
+        edge.from_node.0 == from
+            && edge.from_port.0 == from_port
+            && edge.to_node.0 == to
+            && edge.to_port.0 == to_port
+    }) {
+        return;
+    }
+    dag.add_edge(Edge::new(from, from_port, to, to_port));
+}
+
 fn item_callable_body(item: &Item) -> Option<(&str, &[Stmt])> {
     match item {
         Item::FnDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
@@ -837,6 +917,8 @@ mod tests {
         assert!(node_ids.contains(&"compare_makegen_content"));
         assert!(node_ids.contains(&"prepare_write_makegen"));
         assert!(node_ids.contains(&"execute_makegen_transport"));
+        assert!(node_ids.contains(&"load_registry"));
+        assert!(node_ids.contains(&"fs_env"));
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == "tools.makegen::render_makefile"
                 && edge.to_node.0 == "tools.makegen::makegen"
@@ -857,7 +939,11 @@ mod tests {
         let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
 
-        assert_eq!(dag.nodes.len(), 7, "expected callable + content_upsert chain nodes");
+        assert_eq!(
+            dag.nodes.len(),
+            9,
+            "expected callable + content_upsert chain + source scaffold nodes"
+        );
         let required_edges = [
             (
                 "prepare_read_makegen",
@@ -888,6 +974,13 @@ mod tests {
                 "makegen_response",
                 "tools.makegen::makegen",
                 "__deps",
+            ),
+            ("load_registry", "registry", "tools.makegen::render_makefile", "registry"),
+            (
+                "fs_env",
+                "FilesystemHandle",
+                "prepare_read_makegen",
+                "res:file:Makefile",
             ),
         ];
         for (from_node, from_port, to_node, to_port) in required_edges {
@@ -930,8 +1023,8 @@ mod tests {
             "phase-1 scaffold should still report makegen parity deltas"
         );
         assert!(
-            report_a.reference_nodes > report_a.candidate_nodes,
-            "reference graph should currently be richer than scaffold lowering"
+            report_a.added_nodes + report_a.removed_nodes + report_a.changed_nodes > 0,
+            "parity report should continue surfacing remaining topology differences"
         );
     }
 
