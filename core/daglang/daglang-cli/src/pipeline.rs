@@ -619,6 +619,12 @@ fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
 
     for node in &dag.nodes {
         let incoming = incoming_by_node.get(&node.id.0).copied().unwrap_or(0);
+        if node.id.0 == NODE_DISCOVER && incoming > 0 {
+            return Err(format!(
+                "entrypoint node {} must not have inbound edges",
+                NODE_DISCOVER
+            ));
+        }
         if incoming == 0 {
             if node.id.0 != NODE_DISCOVER && !node.inputs.is_empty() {
                 return Err(format!(
@@ -1481,5 +1487,20 @@ mod tests {
         let err = validate_pipeline_semantics(&dag)
             .expect_err("unreachable node should fail pipeline semantics");
         assert!(err.contains("is unreachable from entrypoint"));
+    }
+
+    #[test]
+    fn pipeline_rejects_inbound_edges_to_entrypoint_node() {
+        let mut dag = build_pipeline_dag();
+        dag.add_edge(Edge::new(
+            NODE_REPORT,
+            PORT_DIAGNOSTICS,
+            NODE_DISCOVER,
+            PORT_CONTEXT,
+        ));
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("entrypoint node should not accept inbound edges");
+        assert!(err.contains("must not have inbound edges"));
     }
 }
