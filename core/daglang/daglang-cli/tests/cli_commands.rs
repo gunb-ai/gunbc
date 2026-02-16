@@ -30188,6 +30188,22 @@ fn no_command_exits_nonzero_with_usage_message() {
         stderr.contains("check <file.dag>"),
         "usage guidance should include check command help text: {stderr}"
     );
+    assert!(
+        stderr.contains("obligations [--format text|json] <file.dag>"),
+        "usage guidance should include obligations command help text: {stderr}"
+    );
+    assert!(
+        stderr.contains("show-triplets [--format text|json] <file.dag>"),
+        "usage guidance should include show-triplets command help text: {stderr}"
+    );
+    assert!(
+        stderr.contains("run <file.dag> [--output <path>] [--dry-run] [--check-mode]"),
+        "usage guidance should include run command help text: {stderr}"
+    );
+    assert!(
+        stderr.contains("viz [--format ascii|mermaid] <file.dag>|--self"),
+        "usage guidance should include viz format help text: {stderr}"
+    );
 }
 
 #[test]
