@@ -325,3 +325,19 @@ fn display_tree_contains_expected_summary_fields() {
         "display tree should include dependency counts"
     );
 }
+
+#[test]
+fn discovery_ignores_non_dag_files() {
+    let root = unique_temp_dir("ignore_non_dag");
+    write_file(
+        &root.join("main.dag"),
+        "module sample.main\nfn ok() -> Unit {}",
+    );
+    write_file(&root.join("notes.txt"), "module not.real\n$");
+
+    let graph = ModuleGraph::discover(&[root.clone()]).expect("discover should ignore non-dag");
+    assert_eq!(graph.modules.len(), 1);
+    assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
