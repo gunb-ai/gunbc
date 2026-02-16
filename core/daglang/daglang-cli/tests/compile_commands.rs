@@ -12749,6 +12749,42 @@ fn run() -> String { greet(name: "hi") }
 }
 
 #[test]
+fn compile_command_directory_mode_accepts_pattern_calls_with_extra_named_wiring_args() {
+    let root = unique_temp_dir("pattern_wiring_call_args");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+pattern ensure(should_act: Bool = true) -> { acted: Bool } {
+  return { acted: should_act }
+}
+fn run() -> Bool {
+  let result = ensure(check: true, action: false)
+  result.acted
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept pattern calls with extra named wiring args: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_unknown_named_call_argument_typecheck_error() {
     let root = unique_temp_dir("call_unknown_arg");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");

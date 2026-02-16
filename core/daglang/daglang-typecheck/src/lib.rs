@@ -439,6 +439,7 @@ pub fn typecheck_module_graph_with_options(
     let generic_arity_registry = collect_generic_arities(&graph.modules);
     let record_type_registry = collect_record_types(&graph.modules);
     let callable_registry = collect_unique_callables(&graph.modules);
+    let pattern_callable_names = collect_pattern_callable_names(&graph.modules);
     let service_call_registry = collect_service_call_contracts(&graph.modules);
     let interface_registry = collect_interfaces(&graph.modules);
     let resource_type_registry = collect_resource_types(&graph.modules);
@@ -455,6 +456,7 @@ pub fn typecheck_module_graph_with_options(
         generic_arity_registry: &generic_arity_registry,
         record_type_registry: &record_type_registry,
         callable_registry: &callable_registry,
+        pattern_callable_names: &pattern_callable_names,
         service_call_registry: &service_call_registry,
         interface_registry: &interface_registry,
         resource_type_registry: &resource_type_registry,
@@ -505,6 +507,7 @@ struct TypecheckContext<'a> {
     generic_arity_registry: &'a GenericArityRegistry,
     record_type_registry: &'a RecordTypeRegistry,
     callable_registry: &'a HashMap<String, Option<CallableContract>>,
+    pattern_callable_names: &'a HashSet<String>,
     service_call_registry: &'a ServiceCallRegistry,
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
@@ -532,6 +535,7 @@ fn collect_signatures(
     let body_context = BodyInferenceContext {
         record_type_registry: context.record_type_registry,
         callable_registry: context.callable_registry,
+        pattern_callable_names: context.pattern_callable_names,
         service_call_registry: context.service_call_registry,
         interface_registry: context.interface_registry,
         resource_type_registry: context.resource_type_registry,
@@ -922,6 +926,17 @@ fn collect_unique_callables(
     callables
 }
 
+fn collect_pattern_callable_names(modules: &[ResolvedModule]) -> HashSet<String> {
+    modules
+        .iter()
+        .flat_map(|module| module.ast.items.iter())
+        .filter_map(|item| match &item.node {
+            Item::PatternDef(def) => Some(def.name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 fn required_param_arity(params: &[Param]) -> usize {
     params.iter().filter(|param| param.default.is_none()).count()
 }
@@ -1256,6 +1271,7 @@ impl ReturnContract {
 struct BodyInferenceContext<'a> {
     record_type_registry: &'a RecordTypeRegistry,
     callable_registry: &'a HashMap<String, Option<CallableContract>>,
+    pattern_callable_names: &'a HashSet<String>,
     service_call_registry: &'a ServiceCallRegistry,
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
@@ -1716,19 +1732,22 @@ fn validate_callable_body(
                 }
             },
         };
-        let max_arity = callable_contract_max_arity(contract);
-        if call.arg_count < contract.arity || call.arg_count > max_arity {
-            let expected = if call.arg_count < contract.arity {
-                contract.arity
-            } else {
-                max_arity
-            };
-            errors.push(TypeError::CallArityMismatch {
-                caller: caller.to_string(),
-                callee: call.callee.clone(),
-                expected,
-                got: call.arg_count,
-            });
+        let is_pattern_callable = body_context.pattern_callable_names.contains(&call.callee);
+        if !is_pattern_callable {
+            let max_arity = callable_contract_max_arity(contract);
+            if call.arg_count < contract.arity || call.arg_count > max_arity {
+                let expected = if call.arg_count < contract.arity {
+                    contract.arity
+                } else {
+                    max_arity
+                };
+                errors.push(TypeError::CallArityMismatch {
+                    caller: caller.to_string(),
+                    callee: call.callee.clone(),
+                    expected,
+                    got: call.arg_count,
+                });
+            }
         }
         let mut seen_named = HashSet::new();
         for named in call.named_args {
@@ -1740,7 +1759,7 @@ fn validate_callable_body(
                 });
                 continue;
             }
-            if !contract.params.contains(&named) {
+            if !is_pattern_callable && !contract.params.contains(&named) {
                 errors.push(TypeError::UnknownCallArgument {
                     caller: caller.to_string(),
                     callee: call.callee.clone(),
@@ -3157,6 +3176,29 @@ fn run() -> String {
             },
         )
         .expect("defaulted callable params should be optional at call sites");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_allows_pattern_calls_with_extra_wiring_named_args() {
+        let graph = module_graph_from_sources(&[(
+            "pattern_wiring_call.dag",
+            r#"module sample.calls
+pattern ensure(should_act: Bool = true) -> { acted: Bool } {
+  return { acted: should_act }
+}
+fn run() -> Bool {
+  let result = ensure(check: true, action: false)
+  result.acted
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("pattern calls should allow extra named wiring arguments");
         assert_eq!(typed.modules.len(), 1);
     }
 
