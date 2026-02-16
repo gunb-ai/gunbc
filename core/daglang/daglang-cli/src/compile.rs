@@ -360,6 +360,56 @@ pub fn compile_resolve_execute_from_context(
     execute_compiled_dag(&resolved, mode, input_mocks)
 }
 
+pub fn makegen_entrypoint_mocks(output_path: &str, check_mode: bool) -> BoundaryMocks {
+    let mut input_mocks = BoundaryMocks::new();
+    input_mocks.set_input(
+        "prepare_read_makegen",
+        "path",
+        Value::Str(output_path.to_string()),
+    );
+    input_mocks.set_input(
+        "prepare_write_makegen",
+        "path",
+        Value::Str(output_path.to_string()),
+    );
+    input_mocks.set_input(
+        "compare_makegen_content",
+        "check_mode",
+        Value::Bool(check_mode),
+    );
+    input_mocks.set_input(
+        "tools.makegen::render_makefile",
+        "__deps",
+        Value::List(Vec::new()),
+    );
+    input_mocks
+}
+
+pub fn makegen_dry_run_transport_mocks(output_path: &str) -> BoundaryMocks {
+    let mut dry_run_mocks = BoundaryMocks::new();
+    dry_run_mocks.set_value(
+        "fs_env",
+        "FilesystemHandle",
+        Value::Str("filesystem://dry-run".to_string()),
+    );
+    dry_run_mocks.set_value(
+        "execute_read_makegen",
+        "response",
+        Value::Response(TransportResponse::File(FileResponse::read_ok(
+            output_path.to_string(),
+            "<dry-run>",
+        ))),
+    );
+    dry_run_mocks.set_value(
+        "execute_makegen_transport",
+        "makegen_response",
+        Value::Response(TransportResponse::File(FileResponse::written(
+            output_path.to_string(),
+        ))),
+    );
+    dry_run_mocks
+}
+
 pub fn compare_compiled_makegen_against_builder(
     context: &PipelineContext,
 ) -> Result<ParityReport, String> {
@@ -4375,23 +4425,7 @@ func run(path: String) -> { body: String } {
                 .expect("system clock should be after unix epoch")
                 .as_nanos()
         ));
-        let mut input_mocks = BoundaryMocks::new();
-        input_mocks.set_input(
-            "prepare_read_makegen",
-            "path",
-            Value::Str(temp_path.to_string_lossy().to_string()),
-        );
-        input_mocks.set_input(
-            "prepare_write_makegen",
-            "path",
-            Value::Str(temp_path.to_string_lossy().to_string()),
-        );
-        input_mocks.set_input("compare_makegen_content", "check_mode", Value::Bool(true));
-        input_mocks.set_input(
-            "tools.makegen::render_makefile",
-            "__deps",
-            Value::List(Vec::new()),
-        );
+        let input_mocks = makegen_entrypoint_mocks(&temp_path.to_string_lossy(), true);
 
         let log = compile_resolve_execute_from_context(
             &context,
@@ -4421,47 +4455,12 @@ func run(path: String) -> { body: String } {
                 .expect("system clock should be after unix epoch")
                 .as_nanos()
         ));
-        let mut input_mocks = BoundaryMocks::new();
-        input_mocks.set_input(
-            "prepare_read_makegen",
-            "path",
-            Value::Str(temp_path.to_string_lossy().to_string()),
-        );
-        input_mocks.set_input(
-            "prepare_write_makegen",
-            "path",
-            Value::Str(temp_path.to_string_lossy().to_string()),
-        );
-        input_mocks.set_input(
-            "tools.makegen::render_makefile",
-            "__deps",
-            Value::List(Vec::new()),
-        );
+        let input_mocks = makegen_entrypoint_mocks(&temp_path.to_string_lossy(), false);
         if temp_path.exists() {
             std::fs::remove_file(&temp_path).expect("failed to remove stale dry-run output");
         }
 
-        let mut dry_run_mocks = BoundaryMocks::new();
-        dry_run_mocks.set_value(
-            "fs_env",
-            "FilesystemHandle",
-            Value::Str("filesystem://dry-run".to_string()),
-        );
-        dry_run_mocks.set_value(
-            "execute_read_makegen",
-            "response",
-            Value::Response(TransportResponse::File(FileResponse::read_ok(
-                temp_path.to_string_lossy().to_string(),
-                "<dry-run>",
-            ))),
-        );
-        dry_run_mocks.set_value(
-            "execute_makegen_transport",
-            "makegen_response",
-            Value::Response(TransportResponse::File(FileResponse::written(
-                temp_path.to_string_lossy().to_string(),
-            ))),
-        );
+        let dry_run_mocks = makegen_dry_run_transport_mocks(&temp_path.to_string_lossy());
 
         let log = compile_resolve_execute_from_context(
             &context,
@@ -4491,22 +4490,7 @@ func run(path: String) -> { body: String } {
             std::fs::remove_file(&temp_path).expect("failed to clear previous temp output");
         }
 
-        let mut input_mocks = BoundaryMocks::new();
-        input_mocks.set_input(
-            "prepare_read_makegen",
-            "path",
-            Value::Str(temp_path.to_string_lossy().to_string()),
-        );
-        input_mocks.set_input(
-            "prepare_write_makegen",
-            "path",
-            Value::Str(temp_path.to_string_lossy().to_string()),
-        );
-        input_mocks.set_input(
-            "tools.makegen::render_makefile",
-            "__deps",
-            Value::List(Vec::new()),
-        );
+        let input_mocks = makegen_entrypoint_mocks(&temp_path.to_string_lossy(), false);
 
         let log = compile_resolve_execute_from_context(
             &context,

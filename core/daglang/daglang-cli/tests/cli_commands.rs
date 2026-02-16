@@ -23,6 +23,14 @@ fn unique_temp_file(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("daglang_cli_{name}_{}_{}.dag", std::process::id(), nanos))
 }
 
+fn unique_temp_output_file(name: &str) -> std::path::PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("daglang_cli_{name}_{}_{}.mk", std::process::id(), nanos))
+}
+
 fn unique_temp_dir(name: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -30324,6 +30332,137 @@ fn manifest_with_unknown_format_exits_nonzero_with_clear_error() {
     assert!(
         stderr.contains("Usage: daglang manifest [--format text|json] <file.dag>"),
         "manifest should print usage guidance for unknown format: {stderr}"
+    );
+}
+
+#[test]
+fn run_without_args_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run without args");
+
+    assert!(
+        !output.status.success(),
+        "run without args should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run without args should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run] [--check-mode]"),
+        "run without args should print command usage: {stderr}"
+    );
+}
+
+#[test]
+fn run_with_unknown_flag_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--mystery")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with unknown flag");
+
+    assert!(
+        !output.status.success(),
+        "run with unknown flag should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with unknown flag should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown run flag `--mystery`"),
+        "run should report unknown flag explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run] [--check-mode]"),
+        "run should include usage for unknown flags: {stderr}"
+    );
+}
+
+#[test]
+fn run_command_writes_makefile_in_real_mode() {
+    let output_path = unique_temp_output_file("run_real_mode");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale output before run");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run in real mode");
+
+    assert!(
+        output.status.success(),
+        "run in real mode should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Run completed:"),
+        "run should report completion details: {stdout}"
+    );
+    assert!(
+        stdout.contains("mode=real"),
+        "run should report real mode in summary: {stdout}"
+    );
+    assert!(
+        output_path.exists(),
+        "real run should write output file at {}",
+        output_path.display()
+    );
+    let written = std::fs::read_to_string(&output_path).expect("failed to read written makefile");
+    assert!(
+        written.contains(".PHONY"),
+        "written makefile should contain expected phony target: {written}"
+    );
+    std::fs::remove_file(&output_path).expect("failed to clean up real mode output file");
+}
+
+#[test]
+fn run_command_dry_run_does_not_write_makefile() {
+    let output_path = unique_temp_output_file("run_dry_mode");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale dry-run output");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("--dry-run")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run in dry-run mode");
+
+    assert!(
+        output.status.success(),
+        "run in dry-run mode should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "run should report dry-run mode in summary: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "dry-run should not write output file at {}",
+        output_path.display()
     );
 }
 
