@@ -18,6 +18,14 @@ fn unique_temp_file(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("daglang_cli_{name}_{}_{}.dag", std::process::id(), nanos))
 }
 
+fn unique_temp_dir(name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("daglang_cli_{name}_{}_{}", std::process::id(), nanos))
+}
+
 #[test]
 fn check_command_parses_full_dsl_corpus() {
     let output = Command::new(daglang_bin())
@@ -100,4 +108,32 @@ fn check_command_reports_file_line_col_for_broken_file() {
     );
 
     std::fs::remove_file(broken_file).expect("failed to remove broken dag file");
+}
+
+#[test]
+fn modules_command_reports_graph_diagnostics_without_failing() {
+    let root = unique_temp_dir("modules_diag");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("main.dag"),
+        "module sample.main\nimport missing.dep\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write temp dag file");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules for temp dir");
+
+    assert!(
+        output.status.success(),
+        "modules command should still succeed while reporting diagnostics"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Diagnostics:"));
+    assert!(stdout.contains("unresolved import"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
