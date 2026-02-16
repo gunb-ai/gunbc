@@ -1478,6 +1478,37 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn parse_pipeline_deduplicates_diagnostics_in_directory_symlink_cycle() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("dir_symlink_cycle_diags");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("failed to create nested root");
+        fs::write(nested.join("broken.dag"), "module sample.broken\nfn")
+            .expect("failed to write invalid source");
+        symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse)
+            .expect("pipeline should handle directory cycle symlink");
+        let broken_hits = result
+            .diagnostics
+            .iter()
+            .filter(|diag| diag.render().contains("broken.dag"))
+            .count();
+        assert_eq!(
+            broken_hits, 1,
+            "directory symlink cycle should not duplicate diagnostics for same file"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn parse_pipeline_deduplicates_diagnostics_from_symlink_and_real_roots() {
         use std::os::unix::fs::symlink;
 

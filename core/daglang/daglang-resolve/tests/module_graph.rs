@@ -661,6 +661,36 @@ fn discovery_handles_directory_symlink_cycle_without_recursing_forever() {
 
 #[cfg(unix)]
 #[test]
+fn discovery_deduplicates_parse_errors_in_directory_symlink_cycle() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("dir_symlink_cycle_parse_errors");
+    let nested = root.join("nested");
+    write_file(&nested.join("broken.dag"), "module sample.broken\nfn");
+    symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+    let err = ModuleGraph::discover(&[root.clone()])
+        .expect_err("discover should return parse errors for malformed source");
+    match err {
+        ResolveError::ParseErrors(files) => {
+            assert_eq!(
+                files.len(),
+                1,
+                "directory symlink cycle should not duplicate parse-error files"
+            );
+            assert_eq!(
+                files[0].0.file_name().and_then(|name| name.to_str()),
+                Some("broken.dag")
+            );
+        }
+        other => panic!("expected ParseErrors, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[cfg(unix)]
+#[test]
 fn discovery_deduplicates_parse_errors_from_symlink_and_real_roots() {
     use std::os::unix::fs::symlink;
 

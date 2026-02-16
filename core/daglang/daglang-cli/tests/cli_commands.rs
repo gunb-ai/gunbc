@@ -1107,6 +1107,39 @@ fn check_command_handles_directory_symlink_cycle_root() {
 
 #[cfg(unix)]
 #[test]
+fn check_command_deduplicates_parse_errors_in_directory_symlink_cycle_root() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_cycle_parse_errors");
+    let nested = root.join("nested");
+    std::fs::create_dir_all(&nested).expect("failed to create nested root");
+    std::fs::write(nested.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write invalid source");
+    symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on symlink-cycle parse-error root");
+
+    assert!(
+        !output.status.success(),
+        "check should fail when the symlink-cycle root contains parse errors"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let broken_hits = stderr.matches("broken.dag:").count();
+    assert_eq!(
+        broken_hits, 1,
+        "symlink-cycle traversal should not duplicate parse diagnostics: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn modules_command_symlink_root_without_module_decl_uses_path_fallback() {
     use std::os::unix::fs::symlink;
 
@@ -1134,6 +1167,39 @@ fn modules_command_symlink_root_without_module_decl_uses_path_fallback() {
     assert!(
         stdout.contains("nested.no_module"),
         "symlink-root module fallback should render path-derived module: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_deduplicates_parse_errors_in_directory_symlink_cycle_root() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("modules_symlink_cycle_parse_errors");
+    let nested = root.join("nested");
+    std::fs::create_dir_all(&nested).expect("failed to create nested root");
+    std::fs::write(nested.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write invalid source");
+    symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules on symlink-cycle parse-error root");
+
+    assert!(
+        output.status.success(),
+        "modules should still succeed while reporting parse diagnostics"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let broken_hits = stdout.matches("broken.dag:").count();
+    assert_eq!(
+        broken_hits, 1,
+        "symlink-cycle traversal should not duplicate parse diagnostics in modules output: {stdout}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
