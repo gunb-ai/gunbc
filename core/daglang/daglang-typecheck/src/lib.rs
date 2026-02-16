@@ -135,6 +135,13 @@ pub enum TypeError {
         interface: String,
         operation: String,
     },
+    /// Implementor signature does not match interface contract.
+    InterfaceSignatureMismatch {
+        implementor: String,
+        interface: String,
+        capability: String,
+        detail: String,
+    },
     /// Call expression used wrong number of arguments.
     CallArityMismatch {
         caller: String,
@@ -205,6 +212,15 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "service `{service}` is missing operation `{operation}` for interface `{interface}`"
+            ),
+            Self::InterfaceSignatureMismatch {
+                implementor,
+                interface,
+                capability,
+                detail,
+            } => write!(
+                f,
+                "`{implementor}` does not match `{interface}.{capability}` contract: {detail}"
             ),
             Self::CallArityMismatch {
                 caller,
@@ -505,8 +521,8 @@ fn collect_unique_callables(
 
 #[derive(Debug, Clone, Default)]
 struct InterfaceRegistry {
-    full: HashMap<String, HashSet<String>>,
-    short: HashMap<String, Option<HashSet<String>>>,
+    full: HashMap<String, InterfaceContract>,
+    short: HashMap<String, Option<InterfaceContract>>,
 }
 
 fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
@@ -517,13 +533,19 @@ fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
             let Item::InterfaceDef(interface) = &item.node else {
                 continue;
             };
-            let capabilities = interface
-                .capabilities
-                .iter()
-                .map(|capability| capability.name.clone())
-                .collect::<HashSet<_>>();
+            let mut capabilities = HashMap::<String, CapabilityContract>::new();
+            for capability in &interface.capabilities {
+                capabilities.insert(
+                    capability.name.clone(),
+                    CapabilityContract {
+                        inputs: field_signature_map(&capability.inputs),
+                        outputs: field_signature_map(&capability.outputs),
+                    },
+                );
+            }
+            let contract = InterfaceContract { capabilities };
             let full_name = format!("{module_name}.{}", interface.name);
-            registry.full.insert(full_name, capabilities.clone());
+            registry.full.insert(full_name, contract.clone());
 
             registry
                 .short
@@ -533,10 +555,21 @@ fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
                         *existing = None;
                     }
                 })
-                .or_insert_with(|| Some(capabilities.clone()));
+                .or_insert_with(|| Some(contract.clone()));
         }
     }
     registry
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InterfaceContract {
+    capabilities: HashMap<String, CapabilityContract>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CapabilityContract {
+    inputs: HashMap<String, String>,
+    outputs: HashMap<String, String>,
 }
 
 fn builtin_type_names() -> HashSet<String> {
@@ -659,7 +692,7 @@ fn validate_resource_interface_conformance(
     let Some(implemented) = resource.implements.as_deref() else {
         return;
     };
-    let Some(required_capabilities) = resolve_interface_capabilities(implemented, interface_registry)
+    let Some(interface_contract) = resolve_interface_contract(implemented, interface_registry)
     else {
         errors.push(TypeError::UnresolvedInterface {
             implementor: resource.name.clone(),
@@ -670,15 +703,92 @@ fn validate_resource_interface_conformance(
     let provided_capabilities = resource
         .capabilities
         .iter()
-        .map(|capability| capability.name.clone())
-        .collect::<HashSet<_>>();
+        .map(|capability| {
+            (
+                capability.name.clone(),
+                CapabilityContract {
+                    inputs: field_signature_map(&capability.inputs),
+                    outputs: field_signature_map(&capability.outputs),
+                },
+            )
+        })
+        .collect::<HashMap<_, _>>();
     let interface_name = canonical_interface_name(implemented);
-    for capability in required_capabilities {
-        if !provided_capabilities.contains(&capability) {
+    for (capability_name, required_contract) in interface_contract.capabilities {
+        let Some(provided_contract) = provided_capabilities.get(&capability_name) else {
             errors.push(TypeError::MissingCapability {
                 resource: resource.name.clone(),
                 interface: interface_name.clone(),
-                capability,
+                capability: capability_name,
+            });
+            continue;
+        };
+        validate_capability_contract(
+            &resource.name,
+            &interface_name,
+            &capability_name,
+            provided_contract,
+            &required_contract,
+            errors,
+        );
+    }
+}
+
+fn validate_capability_contract(
+    implementor: &str,
+    interface: &str,
+    capability: &str,
+    provided: &CapabilityContract,
+    required: &CapabilityContract,
+    errors: &mut Vec<TypeError>,
+) {
+    validate_signature_map(
+        implementor,
+        interface,
+        capability,
+        "input",
+        &provided.inputs,
+        &required.inputs,
+        errors,
+    );
+    validate_signature_map(
+        implementor,
+        interface,
+        capability,
+        "output",
+        &provided.outputs,
+        &required.outputs,
+        errors,
+    );
+}
+
+fn validate_signature_map(
+    implementor: &str,
+    interface: &str,
+    capability: &str,
+    direction: &str,
+    provided: &HashMap<String, String>,
+    required: &HashMap<String, String>,
+    errors: &mut Vec<TypeError>,
+) {
+    for (field, expected_ty) in required {
+        let Some(provided_ty) = provided.get(field) else {
+            errors.push(TypeError::InterfaceSignatureMismatch {
+                implementor: implementor.to_string(),
+                interface: interface.to_string(),
+                capability: capability.to_string(),
+                detail: format!("missing {direction} field `{field}`"),
+            });
+            continue;
+        };
+        if provided_ty != expected_ty {
+            errors.push(TypeError::InterfaceSignatureMismatch {
+                implementor: implementor.to_string(),
+                interface: interface.to_string(),
+                capability: capability.to_string(),
+                detail: format!(
+                    "{direction} field `{field}` expected `{expected_ty}` but found `{provided_ty}`"
+                ),
             });
         }
     }
@@ -692,7 +802,7 @@ fn validate_service_interface_conformance(
     let Some(implemented) = service.implements.as_deref() else {
         return;
     };
-    let Some(required_capabilities) = resolve_interface_capabilities(implemented, interface_registry)
+    let Some(interface_contract) = resolve_interface_contract(implemented, interface_registry)
     else {
         errors.push(TypeError::UnresolvedInterface {
             implementor: service.name.clone(),
@@ -703,27 +813,51 @@ fn validate_service_interface_conformance(
     let provided_operations = service
         .operations
         .iter()
-        .map(|operation| operation.name.clone())
-        .collect::<HashSet<_>>();
+        .map(|operation| {
+            (
+                operation.name.clone(),
+                CapabilityContract {
+                    inputs: field_signature_map(&operation.inputs),
+                    outputs: field_signature_map(&operation.outputs),
+                },
+            )
+        })
+        .collect::<HashMap<_, _>>();
     let interface_name = canonical_interface_name(implemented);
-    for capability in required_capabilities {
-        if !provided_operations.contains(&capability) {
+    for (capability_name, required_contract) in interface_contract.capabilities {
+        let Some(provided_contract) = provided_operations.get(&capability_name) else {
             errors.push(TypeError::MissingOperation {
                 service: service.name.clone(),
                 interface: interface_name.clone(),
-                operation: capability,
+                operation: capability_name,
             });
-        }
+            continue;
+        };
+        validate_capability_contract(
+            &service.name,
+            &interface_name,
+            &capability_name,
+            provided_contract,
+            &required_contract,
+            errors,
+        );
     }
 }
 
-fn resolve_interface_capabilities(
+fn field_signature_map(fields: &[Field]) -> HashMap<String, String> {
+    fields
+        .iter()
+        .map(|field| (field.name.clone(), type_expr_to_string(&field.ty)))
+        .collect()
+}
+
+fn resolve_interface_contract(
     implemented: &str,
     registry: &InterfaceRegistry,
-) -> Option<HashSet<String>> {
+) -> Option<InterfaceContract> {
     let canonical = canonical_interface_name(implemented);
-    if let Some(required) = registry.full.get(&canonical) {
-        return Some(required.clone());
+    if let Some(contract) = registry.full.get(&canonical) {
+        return Some(contract.clone());
     }
     let short = canonical.rsplit('.').next().unwrap_or(canonical.as_str());
     registry.short.get(short).and_then(|entry| entry.clone())
@@ -1122,6 +1256,69 @@ service FsStorage implements Storage {
             error,
             TypeError::UnresolvedInterface { implementor, interface }
                 if implementor == "FsStorage" && interface == "MissingStorage"
+        )));
+    }
+
+    #[test]
+    fn resource_capability_signature_mismatch_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "resource_sig_mismatch.dag",
+            r#"module sample.resources
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource Disk implements ObjectStorage {
+  capability read {
+    input { path: Int }
+    output { body: String }
+  }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("signature mismatch should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::InterfaceSignatureMismatch {
+                implementor,
+                interface,
+                capability,
+                detail,
+            } if implementor == "Disk"
+                && interface == "ObjectStorage"
+                && capability == "read"
+                && detail.contains("input field `path` expected `String` but found `Int`")
+        )));
+    }
+
+    #[test]
+    fn service_operation_signature_mismatch_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "service_sig_mismatch.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: Int }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("signature mismatch should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::InterfaceSignatureMismatch {
+                implementor,
+                interface,
+                capability,
+                detail,
+            } if implementor == "FsStorage"
+                && interface == "Storage"
+                && capability == "read"
+                && detail.contains("output field `body` expected `String` but found `Int`")
         )));
     }
 }
