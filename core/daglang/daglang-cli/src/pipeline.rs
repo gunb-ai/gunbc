@@ -976,6 +976,23 @@ mod tests {
     }
 
     #[test]
+    fn target_file_mode_reports_missing_file_error() {
+        let root = unique_temp_dir("missing_target");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: Some(root.join("missing.dag")),
+        };
+        let err = run_pipeline(&context, PipelineStop::Parse)
+            .expect_err("missing target file should fail pipeline execution");
+        assert!(err.contains("failed to read"));
+        assert!(err.contains("missing.dag"));
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn report_pipeline_emits_unresolved_import_diagnostic() {
         let root = unique_temp_dir("unresolved_import");
         fs::create_dir_all(&root).expect("failed to create temp root");

@@ -160,6 +160,28 @@ fn check_command_reports_file_line_col_for_broken_file() {
 }
 
 #[test]
+fn check_command_missing_single_file_exits_nonzero() {
+    let missing_file = unique_temp_file("missing_single_file");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&missing_file)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check for missing file");
+
+    assert!(
+        !output.status.success(),
+        "check should fail when target .dag file does not exist"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("pipeline error"),
+        "missing single-file path should surface pipeline error: {stderr}"
+    );
+}
+
+#[test]
 fn check_command_reports_lex_diagnostic_for_unknown_character() {
     let bad_file = unique_temp_file("lex_bad");
     std::fs::write(&bad_file, "module tmp.bad\n$\n").expect("failed to create bad dag file");
