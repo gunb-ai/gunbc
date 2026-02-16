@@ -77,7 +77,14 @@ struct LoweredEndpoint {
 
 #[derive(Debug, Default, Clone)]
 struct ServiceEndpointRegistry {
-    by_key: HashMap<String, Option<LoweredEndpoint>>,
+    by_key: HashMap<String, Option<ServiceTransportEndpoint>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ServiceTransportEndpoint {
+    parse: LoweredEndpoint,
+    prepare_node_id: String,
+    prepare_inputs: Vec<String>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1098,9 +1105,17 @@ fn add_service_transport_triplets(
                     .first()
                     .map(|field| field.name.clone())
                     .unwrap_or_else(|| "result".to_string());
-                let endpoint = LoweredEndpoint {
-                    node_id: parse_id,
-                    primary_output: parse_output,
+                let endpoint = ServiceTransportEndpoint {
+                    parse: LoweredEndpoint {
+                        node_id: parse_id,
+                        primary_output: parse_output,
+                    },
+                    prepare_node_id: prepare_id,
+                    prepare_inputs: operation
+                        .inputs
+                        .iter()
+                        .map(|field| field.name.clone())
+                        .collect::<Vec<_>>(),
                 };
                 register_service_endpoint(
                     &mut registry,
@@ -1138,7 +1153,7 @@ fn add_node_once(dag: &mut Dag<LoweredOp>, node: Node<LoweredOp>) {
 fn register_service_endpoint(
     registry: &mut ServiceEndpointRegistry,
     key: String,
-    endpoint: LoweredEndpoint,
+    endpoint: ServiceTransportEndpoint,
 ) {
     registry
         .by_key
@@ -1180,30 +1195,66 @@ fn add_service_call_edges(
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
-            let Some((item_name, stmts)) = item_callable_body(&item.node) else {
-                continue;
+            let (item_name, params, stmts) = match &item.node {
+                Item::FnDef(def) => (&def.name, &def.params, def.body.stmts.as_slice()),
+                Item::FuncDef(def) => (&def.name, &def.params, def.body.stmts.as_slice()),
+                Item::PatternDef(def) => (&def.name, &def.params, def.body.stmts.as_slice()),
+                _ => continue,
             };
             let Some(target) =
                 endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
-            let mut service_calls = HashSet::<Vec<String>>::new();
+            let param_types = params
+                .iter()
+                .map(|param| (param.name.clone(), type_expr_to_string(&param.ty)))
+                .collect::<HashMap<_, _>>();
+            let mut service_calls = Vec::<ServiceCallSite>::new();
             collect_service_calls_from_stmts(stmts, &mut service_calls);
-            for call_path in service_calls {
-                let Some(source) = resolve_service_endpoint(&call_path, service_registry) else {
+            for call in service_calls {
+                let Some(source) = resolve_service_endpoint(&call.path, service_registry) else {
                     return Err(LowerError::UnresolvedServiceCall {
                         caller: format!("{module_name}::{item_name}"),
-                        service_call: call_path.join("."),
+                        service_call: call.path.join("."),
                     });
                 };
                 add_edge_once(
                     dag,
-                    source.node_id.as_str(),
-                    source.primary_output.as_str(),
+                    source.parse.node_id.as_str(),
+                    source.parse.primary_output.as_str(),
                     target.node_id.as_str(),
                     "__deps",
                 );
+                for (index, arg) in call.args.iter().enumerate() {
+                    let Some(arg_ident) = arg.ident.as_deref() else {
+                        continue;
+                    };
+                    let Some(param_ty) = param_types.get(arg_ident) else {
+                        continue;
+                    };
+                    let Some(prepare_input) = arg
+                        .name
+                        .as_deref()
+                        .or_else(|| source.prepare_inputs.get(index).map(String::as_str))
+                    else {
+                        continue;
+                    };
+                    let param_source = ensure_param_source_node(
+                        dag,
+                        module_name.as_str(),
+                        item_name,
+                        arg_ident,
+                        param_ty.as_str(),
+                    );
+                    add_edge_once(
+                        dag,
+                        param_source.as_str(),
+                        arg_ident,
+                        source.prepare_node_id.as_str(),
+                        prepare_input,
+                    );
+                }
             }
         }
     }
@@ -1477,7 +1528,7 @@ fn add_resource_lifecycle_nodes(
 fn resolve_service_endpoint(
     call_path: &[String],
     registry: &ServiceEndpointRegistry,
-) -> Option<LoweredEndpoint> {
+) -> Option<ServiceTransportEndpoint> {
     if call_path.len() < 2 {
         return None;
     }
@@ -1507,6 +1558,33 @@ fn add_edge_once(dag: &mut Dag<LoweredOp>, from: &str, from_port: &str, to: &str
         return;
     }
     dag.add_edge(Edge::new(from, from_port, to, to_port));
+}
+
+fn ensure_param_source_node(
+    dag: &mut Dag<LoweredOp>,
+    module_name: &str,
+    callable: &str,
+    param: &str,
+    ty: &str,
+) -> String {
+    let node_id = format!(
+        "param_source_{}",
+        sanitize_identifier(&format!("{module_name}_{callable}_{param}"))
+    );
+    add_node_once(
+        dag,
+        Node::opaque(
+            node_id.clone(),
+            vec![],
+            vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
+            LoweredOp::Callable {
+                module: module_name.to_string(),
+                kind: CallableKind::Pattern,
+                name: format!("call_param_source::{callable}::{param}"),
+            },
+        ),
+    );
+    node_id
 }
 
 fn item_callable_body(item: &Item) -> Option<(&str, &[Stmt])> {
@@ -1550,7 +1628,19 @@ fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut HashSet<String>) {
     }
 }
 
-fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut HashSet<Vec<String>>) {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ServiceCallArgSite {
+    name: Option<String>,
+    ident: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ServiceCallSite {
+    path: Vec<String>,
+    args: Vec<ServiceCallArgSite>,
+}
+
+fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallSite>) {
     for stmt in stmts {
         match stmt {
             Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
@@ -1648,7 +1738,7 @@ fn collect_calls_from_expr(expr: &Expr, calls: &mut HashSet<String>) {
     }
 }
 
-fn collect_service_calls_from_expr(expr: &Expr, calls: &mut HashSet<Vec<String>>) {
+fn collect_service_calls_from_expr(expr: &Expr, calls: &mut Vec<ServiceCallSite>) {
     match expr {
         Expr::Call(_, args) => {
             for (_, arg) in args {
@@ -1656,7 +1746,19 @@ fn collect_service_calls_from_expr(expr: &Expr, calls: &mut HashSet<Vec<String>>
             }
         }
         Expr::ServiceCall(path, args) => {
-            calls.insert(path.clone());
+            calls.push(ServiceCallSite {
+                path: path.clone(),
+                args: args
+                    .iter()
+                    .map(|(name, arg)| ServiceCallArgSite {
+                        name: name.clone(),
+                        ident: match arg {
+                            Expr::Ident(ident) => Some(ident.clone()),
+                            _ => None,
+                        },
+                    })
+                    .collect::<Vec<_>>(),
+            });
             for (_, arg) in args {
                 collect_service_calls_from_expr(arg, calls);
             }
@@ -1927,10 +2029,19 @@ func run(path: String) -> { body: String } {
         )]);
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
         let parse_node = "parse_transport_sample_services_FsStorage_read";
+        let prepare_node = "prepare_transport_sample_services_FsStorage_read";
+        let param_source = "param_source_sample_services_run_path";
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == parse_node
                 && edge.to_node.0 == "sample.services::run"
                 && edge.to_port.0 == "__deps"
+        }));
+        assert!(dag.nodes.iter().any(|node| node.id.0 == param_source));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == param_source
+                && edge.from_port.0 == "path"
+                && edge.to_node.0 == prepare_node
+                && edge.to_port.0 == "path"
         }));
     }
 
@@ -1959,6 +2070,34 @@ func run(path: String) -> { body: String } {
             LowerError::UnresolvedServiceCall { caller, service_call }
                 if caller == "sample.services::run" && service_call == "MissingStorage.read"
         ));
+    }
+
+    #[test]
+    fn positional_service_call_args_wire_by_operation_input_order() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/storage_calls_positional.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path)
+  return { body: response.body }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "param_source_sample_services_run_path"
+                && edge.from_port.0 == "path"
+                && edge.to_node.0 == "prepare_transport_sample_services_FsStorage_read"
+                && edge.to_port.0 == "path"
+        }));
     }
 
     #[test]
