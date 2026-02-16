@@ -16,3 +16,16 @@ fn malformed_inputs_return_errors_without_panicking() {
         );
     }
 }
+
+#[test]
+fn lexer_unknown_character_surfaces_as_parser_diagnostic() {
+    let result = daglang_syntax::parser::parse("module bad\n$");
+    assert!(result.is_err(), "expected parse failure for unknown token");
+    let errors = result.err().unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|err| err.message.contains("unexpected character '$'")),
+        "expected lexical diagnostic to be surfaced through parser: {errors:?}"
+    );
+}

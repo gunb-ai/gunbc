@@ -1574,6 +1574,11 @@ impl Parser {
             if self.at_eof() {
                 break;
             }
+            if self.check(&TokenKind::Question) {
+                return Err(self.err(
+                    "ternary operator is not supported; did you mean an optional type?".into(),
+                ));
+            }
             if self.check(&TokenKind::LBrace) {
                 if 21u8 < min_bp {
                     break;
@@ -2170,6 +2175,12 @@ mod tests {
         parser.parse_expr(0).expect("expression should parse")
     }
 
+    fn parse_expr_only_err(source: &str) -> ParseError {
+        let tokens = Lexer::tokenize(source);
+        let mut parser = Parser::new(tokens);
+        parser.parse_expr(0).expect_err("expression should fail")
+    }
+
     #[test]
     fn parse_module_decl() {
         let sf = parse_or_panic("module tools.makegen");
@@ -2268,5 +2279,11 @@ mod tests {
             }
             other => panic!("unexpected expression tree: {other:?}"),
         }
+    }
+
+    #[test]
+    fn question_in_expression_is_targeted_error() {
+        let err = parse_expr_only_err("a ? b : c");
+        assert!(err.message.contains("ternary operator is not supported"));
     }
 }
