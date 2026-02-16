@@ -2247,6 +2247,39 @@ fn compile_command_directory_mode_fails_on_ambiguous_callable_target() {
 }
 
 #[test]
+fn compile_command_directory_mode_duplicate_callable_also_reports_ambiguous_call_target() {
+    let root = unique_temp_dir("duplicate_callable_ambiguous_call_target");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+fn helper() -> String { "a" }
+fn helper() -> String { "b" }
+fn run() -> String { helper() }
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on duplicate callable definitions"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate definition `helper` in module `sample.main`"));
+    assert!(stderr.contains("ambiguous call target `helper` in `run`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_unresolved_callable_target() {
     let root = unique_temp_dir("unresolved_callable_target");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");

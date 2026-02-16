@@ -2549,6 +2549,34 @@ service FsStorage implements Storage {
     }
 
     #[test]
+    fn strict_mode_duplicate_callable_definition_also_reports_ambiguous_call_target() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            r#"module sample.main
+fn helper() -> String { "a" }
+fn helper() -> String { "b" }
+fn run() -> String { helper() }"#,
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for duplicate callable definition");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateDefinition { module, name }
+                if module == "sample.main" && name == "helper"
+        )));
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousCallTarget { caller, callee }
+                if caller == "run" && callee == "helper"
+        )));
+    }
+
+    #[test]
     fn strict_mode_reports_unresolved_call_target() {
         let graph = module_graph_from_sources(&[(
             "sample/main.dag",
