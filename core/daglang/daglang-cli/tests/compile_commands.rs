@@ -1305,7 +1305,7 @@ fn compile_command_directory_mode_fails_on_unresolved_imports() {
         "directory compile should fail on unresolved imports"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("unresolved import"));
     assert!(
         !stderr.contains("lower error"),
@@ -1342,7 +1342,7 @@ func run() -> { ok: Bool } {
         "directory compile should fail on duplicate definitions"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `run` in module `sample.main`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -1380,7 +1380,7 @@ service FsStorage implements Storage {
         "directory compile should fail on duplicate interface definitions"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `Storage` in module `sample.main`"));
     assert!(stderr.contains("`FsStorage` references ambiguous interface `Storage`"));
     assert!(
@@ -1430,7 +1430,7 @@ func run(path: String) -> { body: String } {
         "directory compile should fail on duplicate service definitions"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `FsStorage` in module `sample.main`"));
     assert!(stderr.contains("ambiguous service call `FsStorage.read` in `run`"));
     assert!(
@@ -1467,7 +1467,7 @@ func run() -> { ok: Bool, ok: Bool } {
         "directory compile should fail on duplicate output fields"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate output field `ok` in `run`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -1495,7 +1495,7 @@ fn compile_command_directory_mode_fails_on_duplicate_parameters() {
         "directory compile should fail on duplicate parameters"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate parameter `a` in `run`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -1533,7 +1533,7 @@ fn compile_command_directory_mode_fails_on_ambiguous_interface_reference() {
         "directory compile should fail on ambiguous interface reference"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("ambiguous interface `Storage`"));
     assert!(
         !stderr.contains("lower error"),
@@ -1575,7 +1575,7 @@ fn compile_command_directory_mode_fails_on_ambiguous_resource_interface_referenc
         "directory compile should fail on ambiguous resource interface reference"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("`Disk` references ambiguous interface `Storage`"));
     assert!(
         !stderr.contains("lower error"),
@@ -1607,7 +1607,7 @@ fn compile_command_directory_mode_fails_on_unresolved_interface_reference() {
         "directory compile should fail on unresolved interface reference"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("references unresolved interface `MissingStorage`"));
     assert!(
         !stderr.contains("lower error"),
@@ -1639,7 +1639,7 @@ fn compile_command_directory_mode_fails_on_unresolved_resource_interface_referen
         "directory compile should fail on unresolved resource interface reference"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("`Disk` references unresolved interface `MissingStorage`"));
     assert!(
         !stderr.contains("lower error"),
@@ -1688,7 +1688,7 @@ resource Disk implements Storage {
         "directory compile should fail when resource is missing interface capability"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("resource `Disk` is missing capability `write` for interface `Storage`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -1730,7 +1730,7 @@ service FsStorage implements Storage {
         "directory compile should fail when service is missing interface operation"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("service `FsStorage` is missing operation `write` for interface `Storage`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -1768,7 +1768,7 @@ service FsStorage implements Storage {
         "directory compile should fail on interface signature mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("`FsStorage` does not match `Storage.read` contract"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -1809,7 +1809,7 @@ resource Disk implements Storage {
         "directory compile should fail on resource interface signature mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("`Disk` does not match `Storage.read` contract"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -1847,7 +1847,7 @@ func run() -> { ok: Bool } uses io: Storage provides io: Storage {
         "directory compile should fail on use/provide binding conflict"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("binding `io` is declared in both uses/provides in `run`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -1875,7 +1875,7 @@ fn compile_command_directory_mode_fails_on_unknown_uses_resource_type() {
         "directory compile should fail on unknown uses resource type"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("unknown used resource type `MissingResource`"));
     assert!(
         !stderr.contains("lower error"),
@@ -1917,7 +1917,7 @@ func run() -> { ok: Bool } uses fs: Storage uses fs: Storage {
         "directory compile should fail on duplicate uses binding"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate uses binding `fs` in `run`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -1955,7 +1955,7 @@ fn compile_command_directory_mode_fails_on_ambiguous_uses_resource_type() {
         "directory compile should fail on ambiguous uses resource type"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("ambiguous used resource type `SharedResource`"));
     assert!(
         !stderr.contains("lower error"),
@@ -1991,7 +1991,7 @@ func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
         "directory compile should fail on duplicate resource definitions"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `SharedResource` in module `sample.main`"));
     assert!(stderr.contains("ambiguous used resource type `SharedResource`"));
     assert!(
@@ -2034,7 +2034,7 @@ func run() -> { ok: Bool } provides out: Storage provides out: Storage {
         "directory compile should fail on duplicate provides binding"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate provides binding `out` in `run`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -2062,7 +2062,7 @@ fn compile_command_directory_mode_fails_on_unknown_provides_resource_type() {
         "directory compile should fail on unknown provides resource type"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("unknown provided resource type `MissingResource`"));
     assert!(
         !stderr.contains("lower error"),
@@ -2104,7 +2104,7 @@ fn compile_command_directory_mode_fails_on_ambiguous_provides_resource_type() {
         "directory compile should fail on ambiguous provides resource type"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("ambiguous provided resource type `SharedResource`"));
     assert!(
         !stderr.contains("lower error"),
@@ -2140,7 +2140,7 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
         "directory compile should fail on duplicate resource definitions"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `SharedResource` in module `sample.main`"));
     assert!(stderr.contains("ambiguous provided resource type `SharedResource`"));
     assert!(
@@ -2175,7 +2175,7 @@ fn run() -> String { fmt() }
         "compile should fail on call arity mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("call arity mismatch"));
     assert!(stderr.contains("fmt"));
 
@@ -2206,7 +2206,7 @@ fn run() -> String { fmt(text: "ok") }
         "compile should fail on unknown named call argument"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("unknown named argument `text`"));
     assert!(stderr.contains("call to `fmt`"));
 
@@ -2236,7 +2236,7 @@ fn run(input: MissingType) -> String { "ok" }
         "compile should fail on undefined type"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("undefined type `MissingType"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -2265,7 +2265,7 @@ fn run() -> String { return 42 }
         "compile should fail on return type mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("type mismatch: expected `String`, got `Int`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -2294,7 +2294,7 @@ fn run() -> String { 42 }
         "compile should fail on implicit return type mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("type mismatch: expected `String`, got `Int`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -2323,7 +2323,7 @@ fn run() -> String { let x = 42 }
         "compile should fail when fn has no tail expression for non-unit return type"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("type mismatch: expected `String`, got `Unit`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -2355,7 +2355,7 @@ func run() -> { body: String } {
         "compile should fail on missing record field access"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("type `Record` has no field `missing`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -2385,7 +2385,7 @@ fn run(input: Payload) -> String { input.missing }
         "compile should fail on missing field access for named record type"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("type `Payload` has no field `missing`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -2414,7 +2414,7 @@ fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
         "compile should fail on unsatisfiable refinement"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("unsatisfiable refinement on `Int`: range min 5 exceeds max 1"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -2443,7 +2443,7 @@ fn run(values: Map<String>) -> Int { 1 }
         "compile should fail on generic arity mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("generic arity mismatch for `Map`: expected 2, got 1"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -2473,7 +2473,7 @@ fn run(values: Box<String, Int>) -> String { values }
         "compile should fail on user-defined generic arity mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("generic arity mismatch for `Box`: expected 1, got 2"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -2514,7 +2514,7 @@ func run() -> { ok: Bool } {
         "compile should fail on service call arity mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("service call arity mismatch"));
     assert!(stderr.contains("FsStorage.read"));
 
@@ -2556,7 +2556,7 @@ func run(path: String) -> { body: String } {
         "compile should fail on unknown named service argument"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("unknown named argument `file`"));
     assert!(stderr.contains("service call `FsStorage.read`"));
 
@@ -2589,7 +2589,7 @@ fn run() -> String {
         "compile should fail on duplicate named call argument"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate named argument `value`"));
     assert!(stderr.contains("call to `fmt`"));
 
@@ -2631,7 +2631,7 @@ func run(path: String) -> { body: String } {
         "compile should fail on duplicate named service argument"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate named argument `path`"));
     assert!(stderr.contains("service call `FsStorage.read`"));
 
@@ -2663,7 +2663,7 @@ fn run() -> String { fmt() }
         "directory compile should fail on call arity mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("call arity mismatch"));
     assert!(stderr.contains("fmt"));
 
@@ -2695,7 +2695,7 @@ fn run() -> String { fmt(text: "ok") }
         "directory compile should fail on unknown named call argument"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("unknown named argument `text`"));
     assert!(stderr.contains("call to `fmt`"));
 
@@ -2729,7 +2729,7 @@ fn run() -> String {
         "directory compile should fail on duplicate named call argument"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate named argument `value`"));
     assert!(stderr.contains("call to `fmt`"));
 
@@ -2772,7 +2772,7 @@ func run() -> { ok: Bool } {
         "directory compile should fail on service call arity mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("service call arity mismatch"));
     assert!(stderr.contains("FsStorage.read"));
 
@@ -2815,7 +2815,7 @@ func run(path: String) -> { body: String } {
         "directory compile should fail on unknown named service argument"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("unknown named argument `file`"));
     assert!(stderr.contains("service call `FsStorage.read`"));
 
@@ -2858,7 +2858,7 @@ func run(path: String) -> { body: String } {
         "directory compile should fail on duplicate named service argument"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate named argument `path`"));
     assert!(stderr.contains("service call `FsStorage.read`"));
 
@@ -2891,7 +2891,7 @@ func run(path: String) -> { body: String } {
         "directory compile should fail on unresolved service call"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("unresolved service call `MissingStorage.read`"));
     assert!(
         !stderr.contains("lower error"),
@@ -2943,7 +2943,7 @@ func run(path: String) -> { body: String } {
         "directory compile should fail on ambiguous service call"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("ambiguous service call `SharedService.read`"));
     assert!(
         !stderr.contains("lower error"),
@@ -2985,7 +2985,7 @@ fn compile_command_directory_mode_fails_on_ambiguous_callable_target() {
         "directory compile should fail on ambiguous callable target"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("ambiguous call target `render`"));
     assert!(
         !stderr.contains("lower error"),
@@ -3021,7 +3021,7 @@ fn run() -> String { helper() }
         "directory compile should fail on duplicate callable definitions"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `helper` in module `sample.main`"));
     assert!(stderr.contains("ambiguous call target `helper` in `run`"));
     assert!(
@@ -3054,7 +3054,7 @@ fn compile_command_directory_mode_fails_on_unresolved_callable_target() {
         "directory compile should fail on unresolved callable target"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("unresolved call target `missing`"));
     assert!(
         !stderr.contains("lower error"),
@@ -3086,7 +3086,7 @@ fn compile_command_directory_mode_fails_on_type_mismatch() {
         "directory compile should fail on return type mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("type mismatch: expected `String`, got `Int`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -3114,7 +3114,7 @@ fn compile_command_directory_mode_fails_on_implicit_return_type_mismatch() {
         "directory compile should fail on implicit return type mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("type mismatch: expected `String`, got `Int`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -3179,7 +3179,7 @@ fn compile_command_directory_mode_fails_on_missing_tail_expression_type_mismatch
         "directory compile should fail when fn has no tail expression for non-unit return type"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("type mismatch: expected `String`, got `Unit`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -3212,7 +3212,7 @@ func run() -> { body: String } {
         "directory compile should fail on missing field access for record literal"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("type `Record` has no field `missing`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -3243,7 +3243,7 @@ fn run(input: Payload) -> String { input.missing }
         "directory compile should fail on missing field for named record type"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("type `Payload` has no field `missing`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -3273,7 +3273,7 @@ fn run(values: Map<String>) -> Int { 1 }
         "directory compile should fail on generic arity mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("generic arity mismatch for `Map`: expected 2, got 1"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -3301,7 +3301,7 @@ fn compile_command_directory_mode_fails_on_unsatisfiable_refinement() {
         "directory compile should fail on unsatisfiable refinement"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("unsatisfiable refinement on `Int`: range min 9 exceeds max 1"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -3331,7 +3331,7 @@ fn run(input: MissingType) -> String { "ok" }
         "directory compile should fail on undefined type"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("undefined type `MissingType"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -3362,7 +3362,7 @@ fn run(value: Box<String, Int>) -> String { value }
         "directory compile should fail on user-defined generic arity mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("generic arity mismatch for `Box`: expected 1, got 2"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
