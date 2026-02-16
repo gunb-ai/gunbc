@@ -104,7 +104,8 @@ fn main() {
             if args.len() != 3 && args.len() != 5 {
                 exit_usage("obligations <file.dag> [--format text|json]");
             }
-            let format = parse_output_format("obligations", &args);
+            let format = parse_output_format("obligations", &args)
+                .unwrap_or_else(|usage| exit_usage(&usage));
             let context = build_context(&cwd, args.get(2));
             match compile_from_context(&context) {
                 Ok(output) => println!("{}", render_obligations(&output.derived, format)),
@@ -118,7 +119,8 @@ fn main() {
             if args.len() != 3 && args.len() != 5 {
                 exit_usage("show-triplets <file.dag> [--format text|json]");
             }
-            let format = parse_output_format("show-triplets", &args);
+            let format = parse_output_format("show-triplets", &args)
+                .unwrap_or_else(|usage| exit_usage(&usage));
             let context = build_context(&cwd, args.get(2));
             match compile_from_context(&context) {
                 Ok(output) => println!("{}", render_triplets(&output.lowered_dag, format)),
@@ -224,17 +226,17 @@ fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
     path_utils::default_root_from_cwd(cwd)
 }
 
-fn parse_output_format(command: &str, args: &[String]) -> OutputFormat {
+fn parse_output_format(command: &str, args: &[String]) -> Result<OutputFormat, String> {
     if args.len() == 3 {
-        return OutputFormat::Text;
+        return Ok(OutputFormat::Text);
     }
     if args.len() != 5 || args[3] != "--format" {
-        exit_usage(&format!("{command} <file.dag> [--format text|json]"));
+        return Err(format!("{command} <file.dag> [--format text|json]"));
     }
     match args[4].as_str() {
-        "text" => OutputFormat::Text,
-        "json" => OutputFormat::Json,
-        _ => exit_usage(&format!("{command} <file.dag> [--format text|json]")),
+        "text" => Ok(OutputFormat::Text),
+        "json" => Ok(OutputFormat::Json),
+        _ => Err(format!("{command} <file.dag> [--format text|json]")),
     }
 }
 
@@ -397,5 +399,81 @@ mod tests {
         assert!(!has_dag_extension(Path::new("main.dag.bak")));
         assert!(!has_dag_extension(Path::new("main.txt")));
         assert!(!has_dag_extension(Path::new("main")));
+    }
+
+    #[test]
+    fn parse_output_format_defaults_to_text_for_three_args() {
+        let args = vec![
+            "daglang".to_string(),
+            "obligations".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let format = super::parse_output_format("obligations", &args)
+            .expect("three-argument form should parse");
+        assert!(matches!(format, super::OutputFormat::Text));
+    }
+
+    #[test]
+    fn parse_output_format_accepts_json_and_text_flags() {
+        let json_args = vec![
+            "daglang".to_string(),
+            "obligations".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ];
+        let text_args = vec![
+            "daglang".to_string(),
+            "show-triplets".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--format".to_string(),
+            "text".to_string(),
+        ];
+
+        let json_format = super::parse_output_format("obligations", &json_args)
+            .expect("json format should parse");
+        let text_format = super::parse_output_format("show-triplets", &text_args)
+            .expect("text format should parse");
+
+        assert!(matches!(json_format, super::OutputFormat::Json));
+        assert!(matches!(text_format, super::OutputFormat::Text));
+    }
+
+    #[test]
+    fn parse_output_format_rejects_invalid_shapes() {
+        let missing_value = vec![
+            "daglang".to_string(),
+            "obligations".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--format".to_string(),
+        ];
+        let bad_flag = vec![
+            "daglang".to_string(),
+            "obligations".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--fmt".to_string(),
+            "json".to_string(),
+        ];
+        let bad_value = vec![
+            "daglang".to_string(),
+            "show-triplets".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--format".to_string(),
+            "yaml".to_string(),
+        ];
+
+        let expected_usage = "obligations <file.dag> [--format text|json]";
+        assert_eq!(
+            super::parse_output_format("obligations", &missing_value),
+            Err(expected_usage.to_string())
+        );
+        assert_eq!(
+            super::parse_output_format("obligations", &bad_flag),
+            Err(expected_usage.to_string())
+        );
+        assert_eq!(
+            super::parse_output_format("show-triplets", &bad_value),
+            Err("show-triplets <file.dag> [--format text|json]".to_string())
+        );
     }
 }
