@@ -187,6 +187,33 @@ fn lex_error_file_order_is_deterministic() {
 }
 
 #[test]
+fn lex_errors_are_aggregated_within_single_file() {
+    let root = unique_temp_dir("lex_error_multi");
+    write_file(&root.join("broken.dag"), "module sample.broken\n$\n&\n");
+
+    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected lex errors");
+    match err {
+        ResolveError::ParseErrors(files) => {
+            assert_eq!(files.len(), 1);
+            let diagnostics = &files[0].1;
+            assert_eq!(
+                diagnostics.len(),
+                2,
+                "expected both lexical diagnostics for one file"
+            );
+            assert!(diagnostics.iter().all(|diag| diag.kind == DiagnosticKind::Lex));
+            assert_eq!(diagnostics[0].line, Some(2));
+            assert_eq!(diagnostics[0].column, Some(1));
+            assert_eq!(diagnostics[1].line, Some(3));
+            assert_eq!(diagnostics[1].column, Some(1));
+        }
+        other => panic!("expected ParseErrors, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn parse_errors_are_aggregated_across_multiple_files() {
     let root = unique_temp_dir("parse_error_many");
     write_file(&root.join("broken_a.dag"), "module sample.a\nfn");
