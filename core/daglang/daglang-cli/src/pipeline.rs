@@ -863,6 +863,64 @@ mod tests {
         ))
     }
 
+    fn expected_real_corpus_module_order() -> Vec<&'static str> {
+        vec![
+            "std.types",
+            "std.resources",
+            "services.shell",
+            "tools.codegen",
+            "services.github.gist",
+            "services.git",
+            "services.gcp.sts",
+            "services.gcp.secret_manager",
+            "services.gcp.iam",
+            "std.patterns",
+            "tools.testgen",
+            "tools.docgen",
+            "shared.dag_util",
+            "tools.pragma",
+            "tools.makegen",
+            "tools.deps",
+            "tools.bootstrap",
+            "services.cargo",
+            "tools.clippy",
+            "tools.build",
+            "pipelines.ci",
+            "infra.gcp.services",
+            "infra.core",
+            "infra.spec",
+            "infra.gcp.resources",
+            "infra.gcp.config",
+            "infra.azure.services",
+            "infra.azure.resources",
+            "infra.azure.config",
+            "infra.aws.services",
+            "infra.aws.resources",
+            "infra.aws.config",
+            "examples.rich_types",
+            "examples.integration_tests",
+            "examples.abstract_services",
+            "cloud.gcp.credential",
+            "cloud.azure.credential",
+            "cloud.aws.credential",
+            "examples.deployment",
+            "shared.gist_modes",
+            "tools.dag_viz",
+            "tools.gist",
+        ]
+    }
+
+    fn reported_modules_in_order(report: &str) -> Vec<String> {
+        report
+            .lines()
+            .skip_while(|line| !line.starts_with("Discovered modules:"))
+            .skip(1)
+            .take_while(|line| !line.is_empty())
+            .filter_map(|line| line.strip_prefix("  "))
+            .filter_map(|line| line.split_once("  (").map(|(module, _)| module.to_string()))
+            .collect()
+    }
+
     #[test]
     fn compiler_pipeline_has_expected_dag_shape() {
         let dag = build_pipeline_dag();
@@ -1117,6 +1175,26 @@ mod tests {
         let report = result.report.as_ref().expect("report should be available");
         assert!(report.contains("Discovered modules:"));
         assert!(report.contains("tools.makegen"));
+    }
+
+    #[test]
+    fn report_pipeline_real_corpus_module_order_matches_expected_snapshot() {
+        let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+        let result = run_pipeline(
+            &PipelineContext {
+                roots: vec![dsl_root],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("pipeline should execute");
+        let report = result.report.as_ref().expect("report should be available");
+        let actual = reported_modules_in_order(report);
+        let expected: Vec<String> = expected_real_corpus_module_order()
+            .into_iter()
+            .map(String::from)
+            .collect();
+        assert_eq!(actual, expected);
     }
 
     #[test]
