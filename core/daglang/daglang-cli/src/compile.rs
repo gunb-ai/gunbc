@@ -790,4 +790,64 @@ func run(path: String) -> { body: String } {
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
+
+    #[test]
+    fn compile_single_file_duplicate_callable_suppresses_ambiguous_call_target() {
+        let fixture = unique_temp_file("single_file_duplicate_callable");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+fn helper() -> String { "a" }
+fn helper() -> String { "b" }
+fn run() -> String { helper() }
+"#,
+        )
+        .expect("failed to write duplicate callable fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate definition `helper`"));
+        assert!(!error.contains("ambiguous call target"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_directory_duplicate_callable_reports_ambiguous_call_target() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_duplicate_callable_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn helper() -> String { "a" }
+fn helper() -> String { "b" }
+fn run() -> String { helper() }
+"#,
+        )
+        .expect("failed to write duplicate callable source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate definition `helper`"));
+        assert!(error.contains("ambiguous call target"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
 }
