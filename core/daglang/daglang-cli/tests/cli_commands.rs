@@ -26415,6 +26415,33 @@ fn unknown_command_exits_nonzero_with_message() {
 }
 
 #[test]
+fn no_command_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang without command");
+
+    assert!(
+        !output.status.success(),
+        "invoking daglang without a command should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing command should use exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang <command> [args...]"),
+        "missing-command invocation should print usage guidance: {stderr}"
+    );
+    assert!(
+        stderr.contains("check <file.dag>"),
+        "usage guidance should include check command help text: {stderr}"
+    );
+}
+
+#[test]
 fn placeholder_commands_exit_nonzero_with_unimplemented_message() {
     for command in ["expand", "manifest", "compile"] {
         let output = Command::new(daglang_bin())
