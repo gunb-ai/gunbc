@@ -137,3 +137,31 @@ fn modules_command_reports_graph_diagnostics_without_failing() {
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
+
+#[test]
+fn check_command_single_file_mode_ignores_sibling_broken_files() {
+    let root = unique_temp_dir("single_file_mode");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    let good_file = root.join("good.dag");
+    std::fs::write(&good_file, "module sample.good\nfn ok() -> Unit {}")
+        .expect("failed to write good file");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write broken sibling");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&good_file)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on single file");
+
+    assert!(
+        output.status.success(),
+        "single-file check should succeed even with sibling broken file: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("OK: parsed 1 file(s)"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
