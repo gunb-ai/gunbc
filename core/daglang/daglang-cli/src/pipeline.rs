@@ -43,19 +43,22 @@ pub enum PipelineStop {
 }
 
 #[derive(Debug)]
-pub struct PipelineResultData {
-    stage: PipelineStage,
-    diagnostics: Vec<Diagnostic>,
-    parsed_count: usize,
-    module_graph: Option<ModuleGraph>,
-    report: Option<String>,
-}
-
-#[derive(Debug)]
 pub enum PipelineResult {
-    Parse(PipelineResultData),
-    Build(PipelineResultData),
-    Report(PipelineResultData),
+    Parse {
+        diagnostics: Vec<Diagnostic>,
+        parsed_count: usize,
+    },
+    Build {
+        diagnostics: Vec<Diagnostic>,
+        parsed_count: usize,
+        module_graph: ModuleGraph,
+    },
+    Report {
+        diagnostics: Vec<Diagnostic>,
+        parsed_count: usize,
+        module_graph: ModuleGraph,
+        report: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,20 +69,11 @@ pub enum PipelineStage {
 }
 
 impl PipelineResult {
-    fn data(&self) -> &PipelineResultData {
-        match self {
-            Self::Parse(data) | Self::Build(data) | Self::Report(data) => data,
-        }
-    }
-
     fn parsed(diagnostics: Vec<Diagnostic>, parsed_count: usize) -> Self {
-        Self::Parse(PipelineResultData {
-            stage: PipelineStage::Parse,
+        Self::Parse {
             diagnostics,
             parsed_count,
-            module_graph: None,
-            report: None,
-        })
+        }
     }
 
     fn built(
@@ -87,13 +81,11 @@ impl PipelineResult {
         parsed_count: usize,
         module_graph: ModuleGraph,
     ) -> Self {
-        Self::Build(PipelineResultData {
-            stage: PipelineStage::Build,
+        Self::Build {
             diagnostics,
             parsed_count,
-            module_graph: Some(module_graph),
-            report: None,
-        })
+            module_graph,
+        }
     }
 
     fn reported(
@@ -102,33 +94,52 @@ impl PipelineResult {
         module_graph: ModuleGraph,
         report: String,
     ) -> Self {
-        Self::Report(PipelineResultData {
-            stage: PipelineStage::Report,
+        Self::Report {
             diagnostics,
             parsed_count,
-            module_graph: Some(module_graph),
-            report: Some(report),
-        })
+            module_graph,
+            report,
+        }
     }
 
     pub fn stage(&self) -> PipelineStage {
-        self.data().stage
+        match self {
+            Self::Parse { .. } => PipelineStage::Parse,
+            Self::Build { .. } => PipelineStage::Build,
+            Self::Report { .. } => PipelineStage::Report,
+        }
     }
 
     pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.data().diagnostics
+        match self {
+            Self::Parse { diagnostics, .. }
+            | Self::Build { diagnostics, .. }
+            | Self::Report { diagnostics, .. } => diagnostics,
+        }
     }
 
     pub fn parsed_count(&self) -> usize {
-        self.data().parsed_count
+        match self {
+            Self::Parse { parsed_count, .. }
+            | Self::Build { parsed_count, .. }
+            | Self::Report { parsed_count, .. } => *parsed_count,
+        }
     }
 
     pub fn module_graph(&self) -> Option<&ModuleGraph> {
-        self.data().module_graph.as_ref()
+        match self {
+            Self::Build { module_graph, .. } | Self::Report { module_graph, .. } => {
+                Some(module_graph)
+            }
+            Self::Parse { .. } => None,
+        }
     }
 
     pub fn report(&self) -> Option<&str> {
-        self.data().report.as_deref()
+        match self {
+            Self::Report { report, .. } => Some(report.as_str()),
+            Self::Parse { .. } | Self::Build { .. } => None,
+        }
     }
 }
 
@@ -1241,7 +1252,7 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         assert!(
-            matches!(result, PipelineResult::Parse(_)),
+            matches!(result, PipelineResult::Parse { .. }),
             "parse stop should return parse variant"
         );
         assert_eq!(result.stage(), PipelineStage::Parse);
@@ -1266,7 +1277,7 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Build).expect("pipeline should execute");
         assert!(
-            matches!(result, PipelineResult::Build(_)),
+            matches!(result, PipelineResult::Build { .. }),
             "build stop should return build variant"
         );
         assert_eq!(result.stage(), PipelineStage::Build);
@@ -1291,7 +1302,7 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
         assert!(
-            matches!(result, PipelineResult::Report(_)),
+            matches!(result, PipelineResult::Report { .. }),
             "report stop should return report variant"
         );
         assert_eq!(
