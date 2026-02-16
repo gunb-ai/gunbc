@@ -2733,4 +2733,248 @@ resource Disk implements Storage {
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
+
+    #[test]
+    fn compile_directory_ambiguous_interface_reference_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_ambiguous_interface_reference_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/first.dag"),
+            "module sample.first\ninterface Storage { capability read { input { path: String } output { body: String } } }",
+        )
+        .expect("failed to write first interface source");
+        std::fs::write(
+            root.join("sample/second.dag"),
+            "module sample.second\ninterface Storage { capability read { input { path: String } output { body: String } } }",
+        )
+        .expect("failed to write second interface source");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            "module sample.main\nservice FsStorage implements Storage { operation read(path: String) -> { body: String } }",
+        )
+        .expect("failed to write main source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("ambiguous interface `Storage`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_ambiguous_resource_interface_reference_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_ambiguous_resource_interface_reference_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/first.dag"),
+            "module sample.first\ninterface Storage { capability read { input { path: String } output { body: String } } }",
+        )
+        .expect("failed to write first interface source");
+        std::fs::write(
+            root.join("sample/second.dag"),
+            "module sample.second\ninterface Storage { capability read { input { path: String } output { body: String } } }",
+        )
+        .expect("failed to write second interface source");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            "module sample.main\nresource Disk implements Storage { capability read { input { path: String } output { body: String } } }",
+        )
+        .expect("failed to write main source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("`Disk` references ambiguous interface `Storage`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_ambiguous_uses_resource_type_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_ambiguous_uses_resource_type_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/one.dag"),
+            "module sample.one\nresource SharedResource {}",
+        )
+        .expect("failed to write first resource source");
+        std::fs::write(
+            root.join("sample/two.dag"),
+            "module sample.two\nresource SharedResource {}",
+        )
+        .expect("failed to write second resource source");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            "module sample.main\nfunc run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }",
+        )
+        .expect("failed to write main source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("ambiguous used resource type `SharedResource`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_ambiguous_provides_resource_type_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_ambiguous_provides_resource_type_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/one.dag"),
+            "module sample.one\nresource SharedResource {}",
+        )
+        .expect("failed to write first resource source");
+        std::fs::write(
+            root.join("sample/two.dag"),
+            "module sample.two\nresource SharedResource {}",
+        )
+        .expect("failed to write second resource source");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            "module sample.main\nfunc run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }",
+        )
+        .expect("failed to write main source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("ambiguous provided resource type `SharedResource`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_ambiguous_service_call_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_ambiguous_service_call_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/first.dag"),
+            r#"module sample.first
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        )
+        .expect("failed to write first service source");
+        std::fs::write(
+            root.join("sample/second.dag"),
+            r#"module sample.second
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+        )
+        .expect("failed to write second service source");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+        )
+        .expect("failed to write main source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("ambiguous service call `SharedService.read`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_ambiguous_callable_target_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_ambiguous_callable_target_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/one.dag"),
+            "module sample.one\nfn render(value: String) -> String { value }",
+        )
+        .expect("failed to write first callable source");
+        std::fs::write(
+            root.join("sample/two.dag"),
+            "module sample.two\nfn render(value: String) -> String { value }",
+        )
+        .expect("failed to write second callable source");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            "module sample.main\nfn run() -> String { render(value: \"ok\") }",
+        )
+        .expect("failed to write main source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("ambiguous call target `render`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
 }
