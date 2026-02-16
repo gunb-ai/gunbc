@@ -1267,6 +1267,33 @@ mod tests {
     }
 
     #[test]
+    fn directory_mode_fails_when_any_root_is_non_directory() {
+        let valid_root = unique_temp_dir("mixed_valid_nondir_root_valid");
+        fs::create_dir_all(&valid_root).expect("failed to create valid root");
+        fs::write(
+            valid_root.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
+
+        let non_directory_root = unique_temp_dir("mixed_valid_nondir_root_file");
+        fs::write(&non_directory_root, "not a directory")
+            .expect("failed to create non-directory root file");
+
+        let context = PipelineContext {
+            roots: vec![valid_root.clone(), non_directory_root.clone()],
+            target_file: None,
+        };
+        let err = run_pipeline(&context, PipelineStop::Parse)
+            .expect_err("pipeline should fail when any root is non-directory");
+        assert!(err.contains("input root is not a directory"));
+        assert!(err.contains(&non_directory_root.display().to_string()));
+
+        fs::remove_dir_all(valid_root).expect("failed to cleanup valid root");
+        fs::remove_file(non_directory_root).expect("failed to cleanup non-directory root file");
+    }
+
+    #[test]
     fn report_pipeline_emits_unresolved_import_diagnostic() {
         let root = unique_temp_dir("unresolved_import");
         fs::create_dir_all(&root).expect("failed to create temp root");
