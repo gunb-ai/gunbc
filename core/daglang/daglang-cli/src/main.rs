@@ -317,14 +317,21 @@ fn main() {
 }
 
 fn run_written_from_log(log: &gunbc_exec::ExecutionLog) -> bool {
-    if let Some(skip) = log
+    if let Some(transport_entry) = log
         .entries
         .iter()
         .find(|entry| entry.node_id == "execute_makegen_transport")
-        .and_then(|entry| entry.outputs.get("skip"))
-        .and_then(|value| value.as_bool())
     {
-        return !skip;
+        if transport_entry.was_intercepted {
+            return false;
+        }
+        if let Some(skip) = transport_entry
+            .outputs
+            .get("skip")
+            .and_then(|value| value.as_bool())
+        {
+            return !skip;
+        }
     }
     log.entries
         .iter()
@@ -938,6 +945,35 @@ mod tests {
         assert!(
             run_written_from_log(&log),
             "wrapper written value should be used when transport node is absent"
+        );
+    }
+
+    #[test]
+    fn run_written_from_log_treats_intercepted_transport_as_not_written() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([(
+                        "makegen_response".to_string(),
+                        Value::Response(gunbc_ir::transport::TransportResponse::File(
+                            gunbc_ir::transport::FileResponse::written("dry-run.mk"),
+                        )),
+                    )]),
+                    was_intercepted: true,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            !run_written_from_log(&log),
+            "intercepted transport should force written=false in run summary"
         );
     }
 

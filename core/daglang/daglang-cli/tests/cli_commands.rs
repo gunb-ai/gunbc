@@ -30660,6 +30660,10 @@ fn run_command_dry_run_does_not_write_makefile() {
         "run should report dry-run mode in summary: {stdout}"
     );
     assert!(
+        stdout.contains("written=false"),
+        "run dry-run summary should report no writes: {stdout}"
+    );
+    assert!(
         !output_path.exists(),
         "dry-run should not write output file at {}",
         output_path.display()
