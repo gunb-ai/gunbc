@@ -18,7 +18,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use daglang_syntax::ast::{Expr, Item, Stmt, StringPart};
+use daglang_syntax::ast::{Expr, Item, Stmt, StringPart, TypeExpr};
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::{diff_topologies, Cardinality, Dag, Edge, Node, Port};
 
@@ -187,12 +187,13 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
         }
     }
 
+    add_dependency_edges(&mut dag, project, &endpoints_by_full, &endpoints_by_name);
+    add_makegen_scaffolding(&mut dag, &endpoints_by_full);
+    add_service_transport_triplets(&mut dag, project);
+
     if dag.nodes.is_empty() {
         return Err(LowerError::NoLowerableItems);
     }
-
-    add_dependency_edges(&mut dag, project, &endpoints_by_full, &endpoints_by_name);
-    add_makegen_scaffolding(&mut dag, &endpoints_by_full);
 
     Ok(dag)
 }
@@ -777,6 +778,40 @@ fn expansion_suffix(item_name: &str, expansion_count: usize) -> String {
     }
 }
 
+fn sanitize_identifier(value: &str) -> String {
+    let mut out = value
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect::<String>();
+    if out.is_empty() {
+        out.push('_');
+    }
+    out
+}
+
+fn type_expr_to_string(expr: &TypeExpr) -> String {
+    match expr {
+        TypeExpr::Named(name) => name.clone(),
+        TypeExpr::Generic(name, args) => format!(
+            "{name}<{}>",
+            args.iter()
+                .map(type_expr_to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        TypeExpr::Optional(inner) => format!("{}?", type_expr_to_string(inner)),
+        TypeExpr::Annotated(inner, annotations) => format!(
+            "{} {}",
+            type_expr_to_string(inner),
+            annotations
+                .iter()
+                .map(|annotation| format!("@{}", annotation.name))
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+    }
+}
+
 fn add_makegen_scaffolding(
     dag: &mut Dag<LoweredOp>,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
@@ -842,6 +877,128 @@ fn add_makegen_scaffolding(
             "res:file:Makefile",
         );
     }
+}
+
+fn add_service_transport_triplets(dag: &mut Dag<LoweredOp>, project: &TypedProject) {
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::ServiceDef(service) = &item.node else {
+                continue;
+            };
+            if service.implements.is_none() {
+                continue;
+            }
+
+            for operation in &service.operations {
+                let suffix = sanitize_identifier(&format!(
+                    "{module_name}_{}_{}",
+                    service.name, operation.name
+                ));
+                let prepare_id = format!("prepare_transport_{suffix}");
+                let execute_id = format!("execute_transport_{suffix}");
+                let parse_id = format!("parse_transport_{suffix}");
+
+                add_node_once(
+                    dag,
+                    Node::opaque(
+                        prepare_id.clone(),
+                        operation
+                            .inputs
+                            .iter()
+                            .map(|field| {
+                                let ty = type_expr_to_string(&field.ty);
+                                Port::with_cardinality(
+                                    field.name.as_str(),
+                                    ty.as_str(),
+                                    Cardinality::ONE,
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                        vec![Port::scalar("request", "TransportRequest")],
+                        LoweredOp::Callable {
+                            module: module_name.clone(),
+                            kind: CallableKind::Pattern,
+                            name: format!(
+                                "service_transport::prepare::{}::{}",
+                                service.name, operation.name
+                            ),
+                        },
+                    ),
+                );
+                add_node_once(
+                    dag,
+                    Node::opaque(
+                        execute_id.clone(),
+                        vec![Port::scalar("request", "TransportRequest")],
+                        vec![Port::scalar("response", "TransportResponse")],
+                        LoweredOp::Callable {
+                            module: module_name.clone(),
+                            kind: CallableKind::Pattern,
+                            name: format!(
+                                "service_transport::execute::{}::{}",
+                                service.name, operation.name
+                            ),
+                        },
+                    ),
+                );
+                let parse_outputs = if operation.outputs.is_empty() {
+                    vec![Port::scalar("result", "Unit")]
+                } else {
+                    operation
+                        .outputs
+                        .iter()
+                        .map(|field| {
+                            let ty = type_expr_to_string(&field.ty);
+                            Port::with_cardinality(
+                                field.name.as_str(),
+                                ty.as_str(),
+                                Cardinality::ONE,
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                };
+                add_node_once(
+                    dag,
+                    Node::opaque(
+                        parse_id.clone(),
+                        vec![Port::scalar("response", "TransportResponse")],
+                        parse_outputs,
+                        LoweredOp::Callable {
+                            module: module_name.clone(),
+                            kind: CallableKind::Pattern,
+                            name: format!(
+                                "service_transport::parse::{}::{}",
+                                service.name, operation.name
+                            ),
+                        },
+                    ),
+                );
+
+                add_edge_once(
+                    dag,
+                    prepare_id.as_str(),
+                    "request",
+                    execute_id.as_str(),
+                    "request",
+                );
+                add_edge_once(
+                    dag,
+                    execute_id.as_str(),
+                    "response",
+                    parse_id.as_str(),
+                    "response",
+                );
+            }
+        }
+    }
+}
+
+fn add_node_once(dag: &mut Dag<LoweredOp>, node: Node<LoweredOp>) {
+    if dag.nodes.iter().any(|existing| existing.id.0 == node.id.0) {
+        return;
+    }
+    dag.add_node(node);
 }
 
 fn add_edge_once(dag: &mut Dag<LoweredOp>, from: &str, from_port: &str, to: &str, to_port: &str) {
@@ -1095,6 +1252,49 @@ mod tests {
                 "missing edge {from_node}.{from_port} -> {to_node}.{to_port}"
             );
         }
+    }
+
+    #[test]
+    fn interface_backed_service_lowers_transport_triplet_nodes() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/storage.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let node_ids = dag
+            .nodes
+            .iter()
+            .map(|node| node.id.0.as_str())
+            .collect::<Vec<_>>();
+        let suffix = "sample_services_FsStorage_read";
+        let prepare = format!("prepare_transport_{suffix}");
+        let execute = format!("execute_transport_{suffix}");
+        let parse = format!("parse_transport_{suffix}");
+
+        assert!(node_ids.contains(&prepare.as_str()));
+        assert!(node_ids.contains(&execute.as_str()));
+        assert!(node_ids.contains(&parse.as_str()));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == prepare.as_str()
+                && edge.from_port.0 == "request"
+                && edge.to_node.0 == execute.as_str()
+                && edge.to_port.0 == "request"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == execute.as_str()
+                && edge.from_port.0 == "response"
+                && edge.to_node.0 == parse.as_str()
+                && edge.to_port.0 == "response"
+        }));
     }
 
     #[test]
