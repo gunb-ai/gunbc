@@ -2200,6 +2200,102 @@ fn check_command_double_separator_trailing_slash_single_file_target_matches_plai
 }
 
 #[test]
+fn check_command_curdir_double_separator_missing_single_file_matches_plain_relative_output() {
+    let root = unique_temp_dir("check_curdir_double_separator_missing_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing_target = root.join("missing.dag");
+
+    let curdir_double_separator = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./missing.dag//")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-double-separator missing-target daglang check");
+    assert!(
+        !curdir_double_separator.status.success(),
+        "curdir-double-separator missing-target check should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative missing-target daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative missing-target check should fail"
+    );
+
+    assert_eq!(
+        curdir_double_separator.stdout, plain_relative.stdout,
+        "curdir-double-separator and plain-relative missing-target check stdout should match"
+    );
+    assert_eq!(
+        curdir_double_separator.stderr, plain_relative.stderr,
+        "curdir-double-separator and plain-relative missing-target check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&curdir_double_separator.stderr).contains(&format!(
+            "failed to canonicalize {}",
+            missing_target.display()
+        )),
+        "missing-target diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&curdir_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_double_separator_trailing_slash_missing_single_file_matches_plain_relative_output() {
+    let root = unique_temp_dir("check_double_separator_trailing_slash_missing_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing_target = root.join("missing.dag");
+
+    let double_separator_trailing = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//missing.dag/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run double-separator-trailing missing-target daglang check");
+    assert!(
+        !double_separator_trailing.status.success(),
+        "double-separator-trailing missing-target check should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative missing-target daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative missing-target check should fail"
+    );
+
+    assert_eq!(
+        double_separator_trailing.stdout, plain_relative.stdout,
+        "double-separator-trailing and plain-relative missing-target check stdout should match"
+    );
+    assert_eq!(
+        double_separator_trailing.stderr, plain_relative.stderr,
+        "double-separator-trailing and plain-relative missing-target check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&double_separator_trailing.stderr).contains(&format!(
+            "failed to canonicalize {}",
+            missing_target.display()
+        )),
+        "missing-target diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&double_separator_trailing.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn check_command_curdir_segment_missing_single_file_matches_plain_relative_output() {
     let root = unique_temp_dir("check_curdir_segment_missing_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -2496,6 +2592,109 @@ fn check_command_trailing_slash_invalid_single_file_target_matches_plain_relativ
             .contains(&format!("{}:2:3:", canonical_target.display())),
         "expected parse diagnostic with normalized path for trailing-slash invalid target: {}",
         String::from_utf8_lossy(&trailing_slash.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_curdir_double_separator_invalid_single_file_target_matches_plain_relative_output() {
+    let root = unique_temp_dir("check_curdir_double_separator_invalid_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let broken_file = root.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed dag source");
+
+    let curdir_double_separator = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./broken.dag//")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-double-separator invalid-target daglang check");
+    assert!(
+        !curdir_double_separator.status.success(),
+        "curdir-double-separator invalid-target check should fail for malformed source"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative invalid-target daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative invalid-target check should fail for malformed source"
+    );
+
+    assert_eq!(
+        curdir_double_separator.stdout, plain_relative.stdout,
+        "curdir-double-separator and plain-relative invalid-target check stdout should match"
+    );
+    assert_eq!(
+        curdir_double_separator.stderr, plain_relative.stderr,
+        "curdir-double-separator and plain-relative invalid-target check stderr should match"
+    );
+    let canonical_target = broken_file
+        .canonicalize()
+        .expect("broken file should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&curdir_double_separator.stderr)
+            .contains(&format!("{}:2:3:", canonical_target.display())),
+        "expected parse diagnostic with normalized path for curdir-double-separator invalid target: {}",
+        String::from_utf8_lossy(&curdir_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_double_separator_trailing_slash_invalid_single_file_target_matches_plain_relative_output(
+) {
+    let root = unique_temp_dir("check_double_separator_trailing_slash_invalid_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let broken_file = root.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed dag source");
+
+    let double_separator_trailing = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//broken.dag/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run double-separator-trailing invalid-target daglang check");
+    assert!(
+        !double_separator_trailing.status.success(),
+        "double-separator-trailing invalid-target check should fail for malformed source"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative invalid-target daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative invalid-target check should fail for malformed source"
+    );
+
+    assert_eq!(
+        double_separator_trailing.stdout, plain_relative.stdout,
+        "double-separator-trailing and plain-relative invalid-target check stdout should match"
+    );
+    assert_eq!(
+        double_separator_trailing.stderr, plain_relative.stderr,
+        "double-separator-trailing and plain-relative invalid-target check stderr should match"
+    );
+    let canonical_target = broken_file
+        .canonicalize()
+        .expect("broken file should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&double_separator_trailing.stderr)
+            .contains(&format!("{}:2:3:", canonical_target.display())),
+        "expected parse diagnostic with normalized path for double-separator-trailing invalid target: {}",
+        String::from_utf8_lossy(&double_separator_trailing.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
