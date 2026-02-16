@@ -1666,4 +1666,257 @@ fn run(values: Box<String, Int>) -> String { values }
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
     }
+
+    #[test]
+    fn compile_directory_undefined_type_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_undefined_type_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn run(input: MissingType) -> String { "ok" }
+"#,
+        )
+        .expect("failed to write undefined-type source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("undefined type `MissingType"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_type_mismatch_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_type_mismatch_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn run() -> String { return 42 }
+"#,
+        )
+        .expect("failed to write type-mismatch source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("type mismatch: expected `String`, got `Int`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_implicit_return_type_mismatch_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_implicit_return_mismatch_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn run() -> String { 42 }
+"#,
+        )
+        .expect("failed to write implicit-return mismatch source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("type mismatch: expected `String`, got `Int`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_no_such_field_record_literal_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_no_such_field_record_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+func run() -> { body: String } {
+  let payload = { body: "ok" }
+  return { body: payload.missing }
+}
+"#,
+        )
+        .expect("failed to write no-such-field record-literal source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("type `Record` has no field `missing`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_no_such_field_named_record_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_no_such_field_named_record_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+type Payload { body: String }
+fn run(input: Payload) -> String { input.missing }
+"#,
+        )
+        .expect("failed to write no-such-field named-record source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("type `Payload` has no field `missing`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_unsatisfiable_refinement_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_unsatisfiable_refinement_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
+"#,
+        )
+        .expect("failed to write unsatisfiable-refinement source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("unsatisfiable refinement on `Int`: range min 5 exceeds max 1"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_generic_arity_mismatch_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_generic_arity_mismatch_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn run(values: Map<String>) -> Int { 1 }
+"#,
+        )
+        .expect("failed to write generic-arity mismatch source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("generic arity mismatch for `Map`: expected 2, got 1"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_user_defined_generic_arity_mismatch_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_user_defined_generic_arity_mismatch_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+type Box<T> = T
+fn run(values: Box<String, Int>) -> String { values }
+"#,
+        )
+        .expect("failed to write user-defined generic-arity mismatch source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("generic arity mismatch for `Box`: expected 1, got 2"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
 }
