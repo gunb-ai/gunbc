@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use daglang_syntax::ast::SourceFile;
+use daglang_syntax::diagnostic::Diagnostic;
 use daglang_syntax::parser;
 
 /// A resolved module in the dependency graph.
@@ -55,7 +56,7 @@ impl ModuleGraph {
         dag_files.sort();
 
         let mut parsed: Vec<(PathBuf, Vec<String>, Vec<Vec<String>>, SourceFile)> = Vec::new();
-        let mut parse_errors: Vec<(PathBuf, Vec<String>)> = Vec::new();
+        let mut parse_errors: Vec<(PathBuf, Vec<Diagnostic>)> = Vec::new();
 
         for path in &dag_files {
             let source = std::fs::read_to_string(path)
@@ -75,11 +76,11 @@ impl ModuleGraph {
                     parsed.push((path.clone(), mod_path, imports, ast));
                 }
                 Err(errs) => {
-                    let formatted = errs
+                    let diagnostics = errs
                         .iter()
-                        .map(|err| err.format_with_source(path, &source))
+                        .map(|err| err.to_diagnostic(path, &source))
                         .collect();
-                    parse_errors.push((path.clone(), formatted));
+                    parse_errors.push((path.clone(), diagnostics));
                 }
             }
         }
@@ -219,7 +220,7 @@ pub enum ResolveError {
     /// A `.dag` file could not be read.
     IoError(PathBuf, std::io::Error),
     /// Parse errors in one or more `.dag` files.
-    ParseErrors(Vec<(PathBuf, Vec<String>)>),
+    ParseErrors(Vec<(PathBuf, Vec<Diagnostic>)>),
     /// An import references a module that doesn't exist.
     UnresolvedImport {
         importing_module: Vec<String>,
@@ -240,7 +241,7 @@ impl std::fmt::Display for ResolveError {
                 for (file, errors) in files {
                     write!(f, "\n  {}:", file.display())?;
                     for e in errors {
-                        write!(f, "\n    {e}")?;
+                        write!(f, "\n    {}", e.render())?;
                     }
                 }
                 Ok(())
