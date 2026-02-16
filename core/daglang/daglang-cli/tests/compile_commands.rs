@@ -197,6 +197,44 @@ func run() -> { body: String } {
 }
 
 #[test]
+fn manifest_command_interface_only_provides_has_no_release_obligation() {
+    let fixture = unique_temp_file("manifest_interface_provides");
+    std::fs::write(
+        &fixture,
+        r#"module sample.provides
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } provides out: Storage {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest on fixture");
+
+    assert!(
+        output.status.success(),
+        "manifest command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("resource_provide_targets: 1"));
+    assert!(stdout.contains("resource_release_targets: 0"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn viz_command_renders_mermaid_for_compiled_file() {
     let output = Command::new(daglang_bin())
         .arg("viz")
