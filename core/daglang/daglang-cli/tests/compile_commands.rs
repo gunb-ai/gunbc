@@ -10929,6 +10929,46 @@ fn manifest_and_obligations_commands_share_obligation_text_output() {
 }
 
 #[test]
+fn obligations_command_json_output_is_deterministic_for_same_input() {
+    let first = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang obligations --format json");
+    assert!(
+        first.status.success(),
+        "first obligations json command failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let second = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang obligations --format json");
+    assert!(
+        second.status.success(),
+        "second obligations json command failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    assert_eq!(
+        first.stdout, second.stdout,
+        "obligations json output should be deterministic"
+    );
+    assert_eq!(
+        first.stderr, second.stderr,
+        "obligations json stderr should be deterministic"
+    );
+}
+
+#[test]
 fn show_triplets_command_shows_transport_expansion_for_makegen() {
     let output = Command::new(daglang_bin())
         .arg("show-triplets")
@@ -11073,6 +11113,46 @@ fn show_triplets_command_explicit_text_format_matches_default_output() {
     assert_eq!(
         default_output.stdout, explicit_text_output.stdout,
         "explicit text format should match default show-triplets output"
+    );
+}
+
+#[test]
+fn show_triplets_command_json_output_is_deterministic_for_same_input() {
+    let first = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang show-triplets --format json");
+    assert!(
+        first.status.success(),
+        "first show-triplets json command failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let second = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang show-triplets --format json");
+    assert!(
+        second.status.success(),
+        "second show-triplets json command failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    assert_eq!(
+        first.stdout, second.stdout,
+        "show-triplets json output should be deterministic"
+    );
+    assert_eq!(
+        first.stderr, second.stderr,
+        "show-triplets json stderr should be deterministic"
     );
 }
 
