@@ -263,6 +263,46 @@ fn parse_error_file_order_is_deterministic() {
 }
 
 #[test]
+fn mixed_lex_and_parse_error_file_order_is_path_sorted() {
+    let root = unique_temp_dir("mixed_error_order");
+    write_file(&root.join("a_parse.dag"), "module sample.a\nfn");
+    write_file(&root.join("z_lex.dag"), "module sample.z\n$\n");
+
+    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected mixed errors");
+    match err {
+        ResolveError::ParseErrors(files) => {
+            assert_eq!(files.len(), 2, "expected diagnostics for both broken files");
+            let names: Vec<String> = files
+                .iter()
+                .map(|(path, _)| path.file_name().unwrap().to_string_lossy().to_string())
+                .collect();
+            assert_eq!(
+                names,
+                vec!["a_parse.dag".to_string(), "z_lex.dag".to_string()],
+                "mixed error file ordering should remain path-sorted"
+            );
+            assert!(
+                files[0]
+                    .1
+                    .iter()
+                    .all(|diag| diag.kind == DiagnosticKind::Parse),
+                "first file should preserve parse diagnostic kind"
+            );
+            assert!(
+                files[1]
+                    .1
+                    .iter()
+                    .all(|diag| diag.kind == DiagnosticKind::Lex),
+                "second file should preserve lex diagnostic kind"
+            );
+        }
+        other => panic!("expected ParseErrors, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn parse_error_display_includes_all_files_and_locations() {
     let root = unique_temp_dir("parse_error_display");
     write_file(&root.join("broken_a.dag"), "module sample.a\nfn");
