@@ -2067,6 +2067,124 @@ fn compile_command_directory_mode_fails_on_unresolved_callable_target() {
 }
 
 #[test]
+fn compile_command_directory_mode_fails_on_type_mismatch() {
+    let root = unique_temp_dir("type_mismatch");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        "module sample.main\nfn run() -> String { return 42 }",
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on return type mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("type mismatch: expected `String`, got `Int`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_fails_on_no_such_field_for_named_record() {
+    let root = unique_temp_dir("no_such_field_named_record");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+type Payload { body: String }
+fn run(input: Payload) -> String { input.missing }
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on missing field for named record type"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("type `Payload` has no field `missing`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_fails_on_unsatisfiable_refinement() {
+    let root = unique_temp_dir("unsatisfiable_refinement");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        "module sample.main\nfn run(value: Int @range(min: 9, max: 1)) -> Int { value }",
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on unsatisfiable refinement"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("unsatisfiable refinement on `Int`: range min 9 exceeds max 1"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_fails_on_user_defined_generic_arity_mismatch() {
+    let root = unique_temp_dir("user_defined_generic_arity");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+type Box<T> = T
+fn run(value: Box<String, Int>) -> String { value }
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on user-defined generic arity mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("generic arity mismatch for `Box`: expected 1, got 2"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_reports_module_path_mismatch() {
     let root = unique_temp_dir("path_mismatch");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
