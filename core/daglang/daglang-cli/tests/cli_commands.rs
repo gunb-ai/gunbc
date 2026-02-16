@@ -24410,6 +24410,11 @@ fn check_command_dangling_symlink_single_file_target_exits_nonzero() {
         !output.status.success(),
         "check should fail for dangling symlink single-file target"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "dangling-symlink single-file check should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("failed to canonicalize"));
@@ -24836,6 +24841,11 @@ fn check_command_missing_single_file_exits_nonzero() {
         !output.status.success(),
         "check should fail when target .dag file does not exist"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing single-file check should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("pipeline error"),
@@ -24862,6 +24872,11 @@ fn check_command_missing_directory_exits_nonzero() {
         !output.status.success(),
         "check should fail when input directory does not exist"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing-directory check should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root does not exist"));
@@ -24887,6 +24902,11 @@ fn check_command_non_directory_root_exits_nonzero() {
     assert!(
         !output.status.success(),
         "check should fail when root path is not a directory"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "non-directory-root check should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
@@ -25511,6 +25531,11 @@ fn check_command_default_root_missing_in_cwd_exits_nonzero() {
         !output.status.success(),
         "default check should fail when cwd lacks dsl/ root"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "default-root-missing check should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root does not exist"));
@@ -25539,6 +25564,11 @@ fn check_command_default_root_non_directory_in_cwd_exits_nonzero() {
     assert!(
         !output.status.success(),
         "default check should fail when cwd/dsl exists as a file"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "default-root-non-directory check should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
@@ -25595,6 +25625,11 @@ fn modules_command_default_root_missing_in_cwd_exits_nonzero() {
         !output.status.success(),
         "default modules should fail when cwd lacks dsl/ root"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "default-root-missing modules should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root does not exist"));
@@ -25623,6 +25658,11 @@ fn modules_command_default_root_non_directory_in_cwd_exits_nonzero() {
     assert!(
         !output.status.success(),
         "default modules should fail when cwd/dsl exists as a file"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "default-root-non-directory modules should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
@@ -26095,6 +26135,11 @@ fn check_command_dangling_dag_symlink_in_root_exits_nonzero() {
         !output.status.success(),
         "check should fail when root contains dangling .dag symlink"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "dangling-symlink root check should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("failed to canonicalize"));
@@ -26127,6 +26172,11 @@ fn modules_command_dangling_dag_symlink_in_root_exits_nonzero() {
     assert!(
         !output.status.success(),
         "modules should fail when root contains dangling .dag symlink"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "dangling-symlink root modules should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
@@ -26242,6 +26292,11 @@ fn modules_command_missing_directory_exits_nonzero() {
         !output.status.success(),
         "modules should fail when input directory does not exist"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing-directory modules should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root does not exist"));
@@ -26267,6 +26322,11 @@ fn modules_command_non_directory_root_exits_nonzero() {
     assert!(
         !output.status.success(),
         "modules should fail when root path is not a directory"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "non-directory-root modules should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
@@ -26295,6 +26355,11 @@ fn modules_command_single_dag_file_path_exits_nonzero() {
     assert!(
         !output.status.success(),
         "modules should fail when given a file path instead of directory root"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "single-file-root modules should use exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
@@ -26369,8 +26434,122 @@ fn unknown_command_exits_nonzero_with_message() {
         !output.status.success(),
         "unknown command should fail with non-zero exit code"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "unknown command should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Unknown command"));
+    assert!(
+        stderr.contains("Usage: daglang <command> [args...]"),
+        "unknown command should include top-level usage guidance: {stderr}"
+    );
+}
+
+#[test]
+fn no_command_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang without command");
+
+    assert!(
+        !output.status.success(),
+        "invoking daglang without a command should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing command should use exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang <command> [args...]"),
+        "missing-command invocation should print usage guidance: {stderr}"
+    );
+    assert!(
+        stderr.contains("check <file.dag>"),
+        "usage guidance should include check command help text: {stderr}"
+    );
+}
+
+#[test]
+fn check_command_with_extra_args_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl")
+        .arg("extra")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check with extra args");
+
+    assert!(
+        !output.status.success(),
+        "check with extra args should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "check with extra args should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang check <file.dag|dir>"),
+        "check with extra args should print command usage: {stderr}"
+    );
+}
+
+#[test]
+fn modules_command_with_extra_args_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .arg("extra")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules with extra args");
+
+    assert!(
+        !output.status.success(),
+        "modules with extra args should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "modules with extra args should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang modules [dir]"),
+        "modules with extra args should print command usage: {stderr}"
+    );
+}
+
+#[test]
+fn viz_self_with_extra_args_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--self")
+        .arg("extra")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz --self with extra args");
+
+    assert!(
+        !output.status.success(),
+        "viz --self with extra args should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "viz --self with extra args should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang viz --self"),
+        "viz --self with extra args should print command usage: {stderr}"
+    );
 }
 
 #[test]
