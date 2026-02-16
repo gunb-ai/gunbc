@@ -917,6 +917,41 @@ mod tests {
     }
 
     #[test]
+    fn parse_pipeline_sorts_lex_before_parse_diagnostics() {
+        let root = unique_temp_dir("parse_kind_order");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("a_parse.dag"), "module broken.parse\nfn")
+            .expect("failed to write parse-error source");
+        fs::write(root.join("z_lex.dag"), "module broken.lex\n$\n")
+            .expect("failed to write lex-error source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+
+        assert!(
+            result.diagnostics.len() >= 2,
+            "expected lexical and parse diagnostics"
+        );
+        assert_eq!(
+            result.diagnostics[0].kind,
+            DiagnosticKind::Lex,
+            "lex diagnostics should sort before parse diagnostics"
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diag| diag.kind == DiagnosticKind::Parse),
+            "expected at least one parse diagnostic"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn target_file_mode_limits_pipeline_input_to_single_file() {
         let root = unique_temp_dir("target_file_mode");
         fs::create_dir_all(&root).expect("failed to create temp root");
