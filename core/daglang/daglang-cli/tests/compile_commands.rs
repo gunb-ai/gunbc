@@ -792,6 +792,49 @@ fn compile_command_curdir_segment_missing_root_matches_plain_relative_output() {
 }
 
 #[test]
+fn compile_command_curdir_segment_trailing_slash_missing_root_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_curdir_segment_trailing_slash_missing_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing = root.join("missing_root");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("missing_root")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain missing-root compile");
+    assert!(!plain.status.success(), "plain missing-root compile should fail");
+
+    let curdir_segment_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("./missing_root/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment-trailing missing-root compile");
+    assert!(
+        !curdir_segment_trailing.status.success(),
+        "curdir-segment-trailing missing-root compile should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_segment_trailing.stdout,
+        "plain and curdir-segment-trailing missing-root compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_segment_trailing.stderr,
+        "plain and curdir-segment-trailing missing-root compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&missing.display().to_string()),
+        "curdir-segment-trailing missing-root diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_curdir_suffix_missing_root_matches_plain_relative_output() {
     let root = unique_temp_dir("compile_curdir_suffix_missing_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -1274,6 +1317,53 @@ fn compile_command_curdir_segment_missing_single_file_target_matches_plain_relat
 }
 
 #[test]
+fn compile_command_curdir_segment_trailing_slash_missing_single_file_target_matches_plain_relative_output(
+) {
+    let root = unique_temp_dir("compile_curdir_segment_trailing_missing_single_file_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing = root.join("missing.dag");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("missing.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain missing single-file compile");
+    assert!(
+        !plain.status.success(),
+        "plain missing single-file compile should fail"
+    );
+
+    let curdir_segment_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("./missing.dag/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment-trailing missing single-file compile");
+    assert!(
+        !curdir_segment_trailing.status.success(),
+        "curdir-segment-trailing missing single-file compile should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_segment_trailing.stdout,
+        "plain and curdir-segment-trailing missing single-file compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_segment_trailing.stderr,
+        "plain and curdir-segment-trailing missing single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", missing.display())),
+        "curdir-segment-trailing missing single-file diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_curdir_suffix_missing_single_file_target_matches_plain_relative_output() {
     let root = unique_temp_dir("compile_curdir_suffix_missing_single_file_target");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -1648,6 +1738,55 @@ fn compile_command_curdir_segment_invalid_single_file_target_matches_plain_relat
     assert!(
         stderr.contains(&format!("failed to read {}", invalid_target.display())),
         "curdir invalid single-file diagnostic should include normalized absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_curdir_segment_trailing_slash_invalid_single_file_target_matches_plain_relative_output(
+) {
+    let root = unique_temp_dir("compile_curdir_segment_trailing_invalid_single_file_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("invalid.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain invalid single-file compile");
+    assert!(
+        !plain.status.success(),
+        "plain invalid single-file compile should fail"
+    );
+
+    let curdir_segment_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("./invalid.dag/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment-trailing invalid single-file compile");
+    assert!(
+        !curdir_segment_trailing.status.success(),
+        "curdir-segment-trailing invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_segment_trailing.stdout,
+        "plain and curdir-segment-trailing invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_segment_trailing.stderr,
+        "plain and curdir-segment-trailing invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "curdir-segment-trailing invalid single-file diagnostic should include normalized absolute path: {stderr}"
     );
     assert_no_stage_failures(&stderr);
 
@@ -3662,6 +3801,51 @@ fn compile_command_curdir_segment_single_file_target_matches_plain_relative_outp
 }
 
 #[test]
+fn compile_command_curdir_segment_trailing_slash_single_file_target_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_curdir_segment_trailing_single_file_target");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let source = root.join("sample/main.dag");
+    std::fs::write(&source, "module sample.main\nfn run() -> Unit { }")
+        .expect("failed to write single-file source");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("sample/main.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain single-file compile");
+    assert!(
+        plain.status.success(),
+        "plain single-file compile should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_segment_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("./sample/main.dag/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment-trailing single-file compile");
+    assert!(
+        curdir_segment_trailing.status.success(),
+        "curdir-segment-trailing single-file compile should succeed: {}",
+        String::from_utf8_lossy(&curdir_segment_trailing.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_segment_trailing.stdout,
+        "plain and curdir-segment-trailing single-file compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_segment_trailing.stderr,
+        "plain and curdir-segment-trailing single-file compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&plain.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_curdir_suffix_single_file_target_matches_plain_relative_output() {
     let root = unique_temp_dir("compile_curdir_suffix_single_file_target");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
@@ -3932,6 +4116,53 @@ fn compile_command_curdir_segment_double_separator_non_directory_root_matches_pl
     assert!(
         stderr.contains(&root_file.display().to_string()),
         "curdir-segment-double-separator non-directory-root diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_curdir_segment_trailing_slash_non_directory_root_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_curdir_segment_trailing_non_directory_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let root_file = root.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to write non-directory root");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("input.txt")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain non-directory-root compile");
+    assert!(
+        !plain.status.success(),
+        "plain non-directory-root compile should fail"
+    );
+
+    let curdir_segment_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("./input.txt/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment-trailing non-directory-root compile");
+    assert!(
+        !curdir_segment_trailing.status.success(),
+        "curdir-segment-trailing non-directory-root compile should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_segment_trailing.stdout,
+        "plain and curdir-segment-trailing non-directory-root compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_segment_trailing.stderr,
+        "plain and curdir-segment-trailing non-directory-root compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&root_file.display().to_string()),
+        "curdir-segment-trailing non-directory-root diagnostic should normalize to absolute path: {stderr}"
     );
     assert_no_stage_failures(&stderr);
 
@@ -6453,6 +6684,49 @@ fn compile_command_curdir_segment_root_matches_plain_relative_output() {
     assert_eq!(
         plain.stderr, curdir.stderr,
         "plain-relative and curdir-segment root compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&plain.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_curdir_segment_trailing_slash_root_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_curdir_segment_trailing_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    write_minimal_directory_compile_fixture(&root);
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative root compile");
+    assert!(
+        plain.status.success(),
+        "plain-relative root compile should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_segment_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("./dsl/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment-trailing root compile");
+    assert!(
+        curdir_segment_trailing.status.success(),
+        "curdir-segment-trailing root compile should succeed: {}",
+        String::from_utf8_lossy(&curdir_segment_trailing.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_segment_trailing.stdout,
+        "plain-relative and curdir-segment-trailing root compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_segment_trailing.stderr,
+        "plain-relative and curdir-segment-trailing root compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(&plain.stderr));
 
