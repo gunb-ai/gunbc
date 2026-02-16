@@ -19,6 +19,7 @@
 //! of the module graph.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use daglang_syntax::ast::SourceFile;
@@ -170,10 +171,7 @@ impl ModuleGraph {
             let path_str = m.module_path.join(".");
             let dep_count = m.dependencies.len();
             let n_items = m.ast.items.len();
-            out.push_str(&format!(
-                "  {path_str}  ({n_items} items, {dep_count} deps)  [{}]\n",
-                m.path.display()
-            ));
+            writeln!(out, "  {path_str}  ({n_items} items, {dep_count} deps)  [{}]", m.path.display()).ok();
         }
         out
     }

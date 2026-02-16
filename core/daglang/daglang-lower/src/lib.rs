@@ -75,21 +75,42 @@ struct LoweredEndpoint {
     primary_output: String,
 }
 
-#[derive(Debug, Default, Clone)]
-struct ServiceEndpointRegistry {
-    by_key: HashMap<String, Option<ServiceTransportEndpoint>>,
+#[derive(Debug, Clone)]
+struct EndpointRegistry<T> {
+    by_key: HashMap<String, Option<T>>,
 }
+
+impl<T> Default for EndpointRegistry<T> {
+    fn default() -> Self {
+        Self {
+            by_key: HashMap::new(),
+        }
+    }
+}
+
+impl<T: PartialEq> EndpointRegistry<T> {
+    fn register(&mut self, key: String, endpoint: T) {
+        self.by_key
+            .entry(key)
+            .and_modify(|existing| {
+                if let Some(current) = existing {
+                    if current != &endpoint {
+                        *existing = None;
+                    }
+                }
+            })
+            .or_insert(Some(endpoint));
+    }
+}
+
+type ServiceEndpointRegistry = EndpointRegistry<ServiceTransportEndpoint>;
+type ResourceLifecycleRegistry = EndpointRegistry<ResourceLifecycleEndpoint>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ServiceTransportEndpoint {
     parse: LoweredEndpoint,
     prepare_node_id: String,
     prepare_inputs: Vec<String>,
-}
-
-#[derive(Debug, Default, Clone)]
-struct ResourceLifecycleRegistry {
-    by_key: HashMap<String, Option<ResourceLifecycleEndpoint>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,6 +142,50 @@ impl KnownUsesTypes {
             || self
                 .names
                 .contains(canonical.rsplit('.').next().unwrap_or(canonical.as_str()))
+    }
+}
+
+/// Wraps a `Dag` with O(1) deduplication tracking for nodes and edges.
+struct DagBuilder {
+    dag: Dag<LoweredOp>,
+    seen_nodes: HashSet<String>,
+    seen_edges: HashSet<(String, String, String, String)>,
+}
+
+impl DagBuilder {
+    fn new() -> Self {
+        Self {
+            dag: Dag::new(),
+            seen_nodes: HashSet::new(),
+            seen_edges: HashSet::new(),
+        }
+    }
+
+    fn add_node(&mut self, node: Node<LoweredOp>) {
+        let node_id = node.id.0.clone();
+        if self.seen_nodes.insert(node_id) {
+            self.dag.add_node(node);
+        }
+    }
+
+    fn add_edge(&mut self, from: &str, from_port: &str, to: &str, to_port: &str) {
+        let key = (
+            from.to_string(),
+            from_port.to_string(),
+            to.to_string(),
+            to_port.to_string(),
+        );
+        if self.seen_edges.insert(key) {
+            self.dag.add_edge(Edge::new(from, from_port, to, to_port));
+        }
+    }
+
+    fn has_node(&self, id: &str) -> bool {
+        self.seen_nodes.contains(id)
+    }
+
+    fn into_dag(self) -> Dag<LoweredOp> {
+        self.dag
     }
 }
 
@@ -208,7 +273,7 @@ impl std::fmt::Display for LowerError {
 /// - type/service/resource/interface declarations remain metadata and are not
 ///   lowered into executable graph nodes yet.
 pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, LowerError> {
-    let mut dag = Dag::new();
+    let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
     let mut endpoints_by_name = HashMap::<String, Option<LoweredEndpoint>>::new();
 
@@ -225,7 +290,7 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
                         &callable.name,
                         endpoint,
                     );
-                    dag.add_node(node);
+                    builder.add_node(node);
                 }
                 TypedItemSignature::Func(callable) => {
                     let (node, endpoint) =
@@ -237,7 +302,7 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
                         &callable.name,
                         endpoint,
                     );
-                    dag.add_node(node);
+                    builder.add_node(node);
                 }
                 TypedItemSignature::Pattern(callable) => {
                     let (node, endpoint) =
@@ -249,11 +314,11 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
                         &callable.name,
                         endpoint,
                     );
-                    dag.add_node(node);
+                    builder.add_node(node);
                 }
                 TypedItemSignature::Pipeline { name, stages } => {
                     let node_id = lowered_node_id(&module_name, name);
-                    dag.add_node(Node::opaque(
+                    builder.add_node(Node::opaque(
                         node_id,
                         vec![],
                         vec![Port::with_cardinality(
@@ -276,32 +341,32 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
         }
     }
 
-    add_dependency_edges(&mut dag, project, &endpoints_by_full, &endpoints_by_name);
-    add_makegen_scaffolding(&mut dag, &endpoints_by_full);
-    let service_registry = add_service_transport_triplets(&mut dag, project);
-    add_service_call_edges(&mut dag, project, &endpoints_by_full, &service_registry)?;
-    let resource_registry = add_resource_lifecycle_nodes(&mut dag, project);
+    add_dependency_edges(&mut builder, project, &endpoints_by_full, &endpoints_by_name);
+    add_makegen_scaffolding(&mut builder, &endpoints_by_full);
+    let service_registry = add_service_transport_triplets(&mut builder, project);
+    add_service_call_edges(&mut builder, project, &endpoints_by_full, &service_registry)?;
+    let resource_registry = add_resource_lifecycle_nodes(&mut builder, project);
     let known_uses_types = collect_known_uses_types(project);
     add_used_resource_edges(
-        &mut dag,
+        &mut builder,
         project,
         &endpoints_by_full,
         &resource_registry,
         &known_uses_types,
     )?;
     add_provided_resource_nodes(
-        &mut dag,
+        &mut builder,
         project,
         &endpoints_by_full,
         &resource_registry,
         &known_uses_types,
     )?;
 
-    if dag.nodes.is_empty() {
+    if builder.dag.nodes.is_empty() {
         return Err(LowerError::NoLowerableItems);
     }
 
-    Ok(dag)
+    Ok(builder.into_dag())
 }
 
 /// Compare a lowered daglang graph against a reference graph topology.
@@ -512,18 +577,11 @@ fn register_endpoint(
 }
 
 fn add_dependency_edges(
-    dag: &mut Dag<LoweredOp>,
+    builder: &mut DagBuilder,
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
 ) {
-    let mut seen_edges = HashSet::<(String, String, String, String)>::new();
-    let mut seen_nodes = dag
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<HashSet<_>>();
-
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
@@ -545,39 +603,33 @@ fn add_dependency_edges(
                 if source.node_id == target.node_id {
                     continue;
                 }
-                let key = edge_key(
-                    source.node_id.clone(),
-                    source.primary_output.clone(),
-                    target.node_id.clone(),
-                    "__deps".to_string(),
+                builder.add_edge(
+                    &source.node_id,
+                    &source.primary_output,
+                    &target.node_id,
+                    "__deps",
                 );
-                add_edge_if_new(dag, &mut seen_edges, key);
             }
 
             expand_content_upsert_patterns(
-                dag,
+                builder,
                 &module_name,
                 item_name,
                 stmts,
                 target,
                 endpoints_by_name,
-                &mut seen_nodes,
-                &mut seen_edges,
             );
         }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn expand_content_upsert_patterns(
-    dag: &mut Dag<LoweredOp>,
+    builder: &mut DagBuilder,
     module_name: &str,
     item_name: &str,
     stmts: &[Stmt],
     target: &LoweredEndpoint,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    seen_nodes: &mut HashSet<String>,
-    seen_edges: &mut HashSet<(String, String, String, String)>,
 ) {
     let mut bound_callables = HashMap::<String, String>::new();
     let mut expansion_count = 0usize;
@@ -590,7 +642,7 @@ fn expand_content_upsert_patterns(
                     if name == "content_upsert" {
                         expansion_count += 1;
                         expand_single_content_upsert(
-                            dag,
+                            builder,
                             module_name,
                             item_name,
                             expansion_count,
@@ -598,8 +650,6 @@ fn expand_content_upsert_patterns(
                             target,
                             &bound_callables,
                             endpoints_by_name,
-                            seen_nodes,
-                            seen_edges,
                         );
                     }
                 }
@@ -619,7 +669,7 @@ fn expand_content_upsert_patterns(
                 if name == "content_upsert" {
                     expansion_count += 1;
                     expand_single_content_upsert(
-                        dag,
+                        builder,
                         module_name,
                         item_name,
                         expansion_count,
@@ -627,8 +677,6 @@ fn expand_content_upsert_patterns(
                         target,
                         &bound_callables,
                         endpoints_by_name,
-                        seen_nodes,
-                        seen_edges,
                     );
                 }
             }
@@ -644,7 +692,7 @@ fn expand_content_upsert_patterns(
 
 #[allow(clippy::too_many_arguments)]
 fn expand_single_content_upsert(
-    dag: &mut Dag<LoweredOp>,
+    builder: &mut DagBuilder,
     module_name: &str,
     item_name: &str,
     expansion_count: usize,
@@ -652,8 +700,6 @@ fn expand_single_content_upsert(
     target: &LoweredEndpoint,
     bound_callables: &HashMap<String, String>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    seen_nodes: &mut HashSet<String>,
-    seen_edges: &mut HashSet<(String, String, String, String)>,
 ) {
     let suffix = expansion_suffix(item_name, expansion_count);
     let prepare_read_id = format!("prepare_read_{suffix}");
@@ -662,163 +708,115 @@ fn expand_single_content_upsert(
     let prepare_write_id = format!("prepare_write_{suffix}");
     let execute_transport_id = format!("execute_{suffix}_transport");
 
-    add_node_if_missing(
-        dag,
-        seen_nodes,
-        Node::opaque(
-            prepare_read_id.clone(),
-            vec![
-                Port::scalar("path", "String"),
-                Port::scalar("res:file:Makefile", "FilesystemHandle"),
-            ],
-            vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
-                module: module_name.to_string(),
-                kind: CallableKind::Pattern,
-                name: format!("content_upsert::{prepare_read_id}"),
-            },
-        ),
-    );
-    add_node_if_missing(
-        dag,
-        seen_nodes,
-        Node::opaque(
-            execute_read_id.clone(),
-            vec![Port::scalar("request", "TransportRequest")],
-            vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
-                module: module_name.to_string(),
-                kind: CallableKind::Pattern,
-                name: format!("content_upsert::{execute_read_id}"),
-            },
-        ),
-    );
-    add_node_if_missing(
-        dag,
-        seen_nodes,
-        Node::opaque(
-            compare_id.clone(),
-            vec![
-                Port::scalar("expected_content", "String"),
-                Port::scalar("response", "TransportResponse"),
-            ],
-            vec![
-                Port::scalar("fresh", "Bool"),
-                Port::scalar("skip", "Bool"),
-            ],
-            LoweredOp::Callable {
-                module: module_name.to_string(),
-                kind: CallableKind::Pattern,
-                name: format!("content_upsert::{compare_id}"),
-            },
-        ),
-    );
-    add_node_if_missing(
-        dag,
-        seen_nodes,
-        Node::opaque(
-            prepare_write_id.clone(),
-            vec![
-                Port::scalar("content", "String"),
-                Port::scalar("path", "String"),
-            ],
-            vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
-                module: module_name.to_string(),
-                kind: CallableKind::Pattern,
-                name: format!("content_upsert::{prepare_write_id}"),
-            },
-        ),
-    );
-    add_node_if_missing(
-        dag,
-        seen_nodes,
-        Node::opaque(
-            execute_transport_id.clone(),
-            vec![
-                Port::scalar("request", "TransportRequest"),
-                Port::scalar("skip", "Bool"),
-            ],
-            vec![Port::scalar("makegen_response", "TransportResponse")],
-            LoweredOp::Callable {
-                module: module_name.to_string(),
-                kind: CallableKind::Pattern,
-                name: format!("content_upsert::{execute_transport_id}"),
-            },
-        ),
-    );
+    builder.add_node(Node::opaque(
+        prepare_read_id.clone(),
+        vec![
+            Port::scalar("path", "String"),
+            Port::scalar("res:file:Makefile", "FilesystemHandle"),
+        ],
+        vec![Port::scalar("request", "TransportRequest")],
+        LoweredOp::Callable {
+            module: module_name.to_string(),
+            kind: CallableKind::Pattern,
+            name: format!("content_upsert::{prepare_read_id}"),
+        },
+    ));
+    builder.add_node(Node::opaque(
+        execute_read_id.clone(),
+        vec![Port::scalar("request", "TransportRequest")],
+        vec![Port::scalar("response", "TransportResponse")],
+        LoweredOp::Callable {
+            module: module_name.to_string(),
+            kind: CallableKind::Pattern,
+            name: format!("content_upsert::{execute_read_id}"),
+        },
+    ));
+    builder.add_node(Node::opaque(
+        compare_id.clone(),
+        vec![
+            Port::scalar("expected_content", "String"),
+            Port::scalar("response", "TransportResponse"),
+        ],
+        vec![
+            Port::scalar("fresh", "Bool"),
+            Port::scalar("skip", "Bool"),
+        ],
+        LoweredOp::Callable {
+            module: module_name.to_string(),
+            kind: CallableKind::Pattern,
+            name: format!("content_upsert::{compare_id}"),
+        },
+    ));
+    builder.add_node(Node::opaque(
+        prepare_write_id.clone(),
+        vec![
+            Port::scalar("content", "String"),
+            Port::scalar("path", "String"),
+        ],
+        vec![Port::scalar("request", "TransportRequest")],
+        LoweredOp::Callable {
+            module: module_name.to_string(),
+            kind: CallableKind::Pattern,
+            name: format!("content_upsert::{prepare_write_id}"),
+        },
+    ));
+    builder.add_node(Node::opaque(
+        execute_transport_id.clone(),
+        vec![
+            Port::scalar("request", "TransportRequest"),
+            Port::scalar("skip", "Bool"),
+        ],
+        vec![Port::scalar("makegen_response", "TransportResponse")],
+        LoweredOp::Callable {
+            module: module_name.to_string(),
+            kind: CallableKind::Pattern,
+            name: format!("content_upsert::{execute_transport_id}"),
+        },
+    ));
 
-    add_edge_if_new(
-        dag,
-        seen_edges,
-        edge_key(
-            prepare_read_id.clone(),
-            "request".to_string(),
-            execute_read_id.clone(),
-            "request".to_string(),
-        ),
+    builder.add_edge(
+        &prepare_read_id,
+        "request",
+        &execute_read_id,
+        "request",
     );
-    add_edge_if_new(
-        dag,
-        seen_edges,
-        edge_key(
-            execute_read_id.clone(),
-            "response".to_string(),
-            compare_id.clone(),
-            "response".to_string(),
-        ),
+    builder.add_edge(
+        &execute_read_id,
+        "response",
+        &compare_id,
+        "response",
     );
-    add_edge_if_new(
-        dag,
-        seen_edges,
-        edge_key(
-            prepare_write_id.clone(),
-            "request".to_string(),
-            execute_transport_id.clone(),
-            "request".to_string(),
-        ),
+    builder.add_edge(
+        &prepare_write_id,
+        "request",
+        &execute_transport_id,
+        "request",
     );
-    add_edge_if_new(
-        dag,
-        seen_edges,
-        edge_key(
-            compare_id.clone(),
-            "skip".to_string(),
-            execute_transport_id.clone(),
-            "skip".to_string(),
-        ),
+    builder.add_edge(
+        &compare_id,
+        "skip",
+        &execute_transport_id,
+        "skip",
     );
-    add_edge_if_new(
-        dag,
-        seen_edges,
-        edge_key(
-            execute_transport_id,
-            "makegen_response".to_string(),
-            target.node_id.clone(),
-            "__deps".to_string(),
-        ),
+    builder.add_edge(
+        &execute_transport_id,
+        "makegen_response",
+        &target.node_id,
+        "__deps",
     );
 
     if let Some(source) = resolve_content_source(args, bound_callables, endpoints_by_name) {
-        add_edge_if_new(
-            dag,
-            seen_edges,
-            edge_key(
-                source.node_id.clone(),
-                source.primary_output.clone(),
-                compare_id.clone(),
-                "expected_content".to_string(),
-            ),
+        builder.add_edge(
+            &source.node_id,
+            &source.primary_output,
+            &compare_id,
+            "expected_content",
         );
-        add_edge_if_new(
-            dag,
-            seen_edges,
-            edge_key(
-                source.node_id,
-                source.primary_output,
-                prepare_write_id,
-                "content".to_string(),
-            ),
+        builder.add_edge(
+            &source.node_id,
+            &source.primary_output,
+            &prepare_write_id,
+            "content",
         );
     }
 }
@@ -840,36 +838,6 @@ fn resolve_content_source(
         _ => return None,
     };
     endpoints_by_name.get(&source_name).and_then(|entry| entry.clone())
-}
-
-fn add_node_if_missing(
-    dag: &mut Dag<LoweredOp>,
-    seen_nodes: &mut HashSet<String>,
-    node: Node<LoweredOp>,
-) {
-    let node_id = node.id.0.clone();
-    if seen_nodes.insert(node_id) {
-        dag.add_node(node);
-    }
-}
-
-fn add_edge_if_new(
-    dag: &mut Dag<LoweredOp>,
-    seen_edges: &mut HashSet<(String, String, String, String)>,
-    key: (String, String, String, String),
-) {
-    if seen_edges.insert(key.clone()) {
-        dag.add_edge(Edge::new(key.0, key.1, key.2, key.3));
-    }
-}
-
-fn edge_key(
-    from_node: String,
-    from_port: String,
-    to_node: String,
-    to_port: String,
-) -> (String, String, String, String) {
-    (from_node, from_port, to_node, to_port)
 }
 
 fn expansion_suffix(item_name: &str, expansion_count: usize) -> String {
@@ -919,7 +887,7 @@ fn type_expr_to_string(expr: &TypeExpr) -> String {
 }
 
 fn add_makegen_scaffolding(
-    dag: &mut Dag<LoweredOp>,
+    builder: &mut DagBuilder,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
 ) {
     let Some(render) = endpoints_by_full
@@ -929,8 +897,8 @@ fn add_makegen_scaffolding(
     };
     let makegen = endpoints_by_full.get(&("tools.makegen".to_string(), "makegen".to_string()));
 
-    if !dag.nodes.iter().any(|node| node.id.0 == "load_registry") {
-        dag.add_node(Node::opaque(
+    if !builder.has_node("load_registry") {
+        builder.add_node(Node::opaque(
             "load_registry",
             vec![],
             vec![Port::scalar("registry", "ToolRegistry")],
@@ -941,16 +909,14 @@ fn add_makegen_scaffolding(
             },
         ));
     }
-    add_edge_once(
-        dag,
+    builder.add_edge(
         "load_registry",
         "registry",
         render.node_id.as_str(),
         "registry",
     );
     if let Some(makegen_endpoint) = makegen {
-        add_edge_once(
-            dag,
+        builder.add_edge(
             "load_registry",
             "registry",
             makegen_endpoint.node_id.as_str(),
@@ -958,13 +924,9 @@ fn add_makegen_scaffolding(
         );
     }
 
-    if dag
-        .nodes
-        .iter()
-        .any(|node| node.id.0 == "prepare_read_makegen")
-    {
-        if !dag.nodes.iter().any(|node| node.id.0 == "fs_env") {
-            dag.add_node(Node::opaque(
+    if builder.has_node("prepare_read_makegen") {
+        if !builder.has_node("fs_env") {
+            builder.add_node(Node::opaque(
                 "fs_env",
                 vec![],
                 vec![Port::scalar("FilesystemHandle", "FilesystemHandle")],
@@ -975,8 +937,7 @@ fn add_makegen_scaffolding(
                 },
             ));
         }
-        add_edge_once(
-            dag,
+        builder.add_edge(
             "fs_env",
             "FilesystemHandle",
             "prepare_read_makegen",
@@ -986,7 +947,7 @@ fn add_makegen_scaffolding(
 }
 
 fn add_service_transport_triplets(
-    dag: &mut Dag<LoweredOp>,
+    builder: &mut DagBuilder,
     project: &TypedProject,
 ) -> ServiceEndpointRegistry {
     let mut registry = ServiceEndpointRegistry::default();
@@ -1009,49 +970,43 @@ fn add_service_transport_triplets(
                 let execute_id = format!("execute_transport_{suffix}");
                 let parse_id = format!("parse_transport_{suffix}");
 
-                add_node_once(
-                    dag,
-                    Node::opaque(
-                        prepare_id.clone(),
-                        operation
-                            .inputs
-                            .iter()
-                            .map(|field| {
-                                let ty = type_expr_to_string(&field.ty);
-                                Port::with_cardinality(
-                                    field.name.as_str(),
-                                    ty.as_str(),
-                                    Cardinality::ONE,
-                                )
-                            })
-                            .collect::<Vec<_>>(),
-                        vec![Port::scalar("request", "TransportRequest")],
-                        LoweredOp::Callable {
-                            module: module_name.clone(),
-                            kind: CallableKind::Pattern,
-                            name: format!(
-                                "service_transport::prepare::{}::{}",
-                                service.name, operation.name
-                            ),
-                        },
-                    ),
-                );
-                add_node_once(
-                    dag,
-                    Node::opaque(
-                        execute_id.clone(),
-                        vec![Port::scalar("request", "TransportRequest")],
-                        vec![Port::scalar("response", "TransportResponse")],
-                        LoweredOp::Callable {
-                            module: module_name.clone(),
-                            kind: CallableKind::Pattern,
-                            name: format!(
-                                "service_transport::execute::{}::{}",
-                                service.name, operation.name
-                            ),
-                        },
-                    ),
-                );
+                builder.add_node(Node::opaque(
+                    prepare_id.clone(),
+                    operation
+                        .inputs
+                        .iter()
+                        .map(|field| {
+                            let ty = type_expr_to_string(&field.ty);
+                            Port::with_cardinality(
+                                field.name.as_str(),
+                                ty.as_str(),
+                                Cardinality::ONE,
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                    vec![Port::scalar("request", "TransportRequest")],
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "service_transport::prepare::{}::{}",
+                            service.name, operation.name
+                        ),
+                    },
+                ));
+                builder.add_node(Node::opaque(
+                    execute_id.clone(),
+                    vec![Port::scalar("request", "TransportRequest")],
+                    vec![Port::scalar("response", "TransportResponse")],
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "service_transport::execute::{}::{}",
+                            service.name, operation.name
+                        ),
+                    },
+                ));
                 let parse_outputs = if operation.outputs.is_empty() {
                     vec![Port::scalar("result", "Unit")]
                 } else {
@@ -1068,32 +1023,27 @@ fn add_service_transport_triplets(
                         })
                         .collect::<Vec<_>>()
                 };
-                add_node_once(
-                    dag,
-                    Node::opaque(
-                        parse_id.clone(),
-                        vec![Port::scalar("response", "TransportResponse")],
-                        parse_outputs,
-                        LoweredOp::Callable {
-                            module: module_name.clone(),
-                            kind: CallableKind::Pattern,
-                            name: format!(
-                                "service_transport::parse::{}::{}",
-                                service.name, operation.name
-                            ),
-                        },
-                    ),
-                );
+                builder.add_node(Node::opaque(
+                    parse_id.clone(),
+                    vec![Port::scalar("response", "TransportResponse")],
+                    parse_outputs,
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "service_transport::parse::{}::{}",
+                            service.name, operation.name
+                        ),
+                    },
+                ));
 
-                add_edge_once(
-                    dag,
+                builder.add_edge(
                     prepare_id.as_str(),
                     "request",
                     execute_id.as_str(),
                     "request",
                 );
-                add_edge_once(
-                    dag,
+                builder.add_edge(
                     execute_id.as_str(),
                     "response",
                     parse_id.as_str(),
@@ -1117,8 +1067,7 @@ fn add_service_transport_triplets(
                         .map(|field| field.name.clone())
                         .collect::<Vec<_>>(),
                 };
-                register_service_endpoint(
-                    &mut registry,
+                registry.register(
                     format!("{}.{}", service.name, operation.name),
                     endpoint.clone(),
                 );
@@ -1127,13 +1076,11 @@ fn add_service_transport_triplets(
                     .rsplit('.')
                     .next()
                     .unwrap_or(service.name.as_str());
-                register_service_endpoint(
-                    &mut registry,
+                registry.register(
                     format!("{service_tail}.{}", operation.name),
                     endpoint.clone(),
                 );
-                register_service_endpoint(
-                    &mut registry,
+                registry.register(
                     format!("{}.{}.{}", module_name, service.name, operation.name),
                     endpoint,
                 );
@@ -1143,51 +1090,9 @@ fn add_service_transport_triplets(
     registry
 }
 
-fn add_node_once(dag: &mut Dag<LoweredOp>, node: Node<LoweredOp>) {
-    if dag.nodes.iter().any(|existing| existing.id.0 == node.id.0) {
-        return;
-    }
-    dag.add_node(node);
-}
-
-fn register_service_endpoint(
-    registry: &mut ServiceEndpointRegistry,
-    key: String,
-    endpoint: ServiceTransportEndpoint,
-) {
-    registry
-        .by_key
-        .entry(key)
-        .and_modify(|existing| {
-            if let Some(current) = existing {
-                if current != &endpoint {
-                    *existing = None;
-                }
-            }
-        })
-        .or_insert(Some(endpoint));
-}
-
-fn register_resource_endpoint(
-    registry: &mut ResourceLifecycleRegistry,
-    key: String,
-    endpoint: ResourceLifecycleEndpoint,
-) {
-    registry
-        .by_key
-        .entry(key)
-        .and_modify(|existing| {
-            if let Some(current) = existing {
-                if current != &endpoint {
-                    *existing = None;
-                }
-            }
-        })
-        .or_insert(Some(endpoint));
-}
 
 fn add_service_call_edges(
-    dag: &mut Dag<LoweredOp>,
+    builder: &mut DagBuilder,
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     service_registry: &ServiceEndpointRegistry,
@@ -1247,8 +1152,7 @@ fn add_service_call_edges(
                         service_call: call.path.join("."),
                     });
                 };
-                add_edge_once(
-                    dag,
+                builder.add_edge(
                     source.parse.node_id.as_str(),
                     source.parse.primary_output.as_str(),
                     target.node_id.as_str(),
@@ -1269,14 +1173,13 @@ fn add_service_call_edges(
                         continue;
                     };
                     let param_source = ensure_param_source_node(
-                        dag,
+                        builder,
                         module_name.as_str(),
                         item_name,
                         arg_ident,
                         param_ty.as_str(),
                     );
-                    add_edge_once(
-                        dag,
+                    builder.add_edge(
                         param_source.as_str(),
                         arg_ident,
                         source.prepare_node_id.as_str(),
@@ -1290,7 +1193,7 @@ fn add_service_call_edges(
 }
 
 fn add_used_resource_edges(
-    dag: &mut Dag<LoweredOp>,
+    builder: &mut DagBuilder,
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     resource_registry: &ResourceLifecycleRegistry,
@@ -1324,8 +1227,7 @@ fn add_used_resource_edges(
                     });
                 };
                 if let Some(acquire_node) = endpoint.acquire_node {
-                    add_edge_once(
-                        dag,
+                    builder.add_edge(
                         acquire_node.as_str(),
                         "resource_handle",
                         target.node_id.as_str(),
@@ -1333,8 +1235,7 @@ fn add_used_resource_edges(
                     );
                 }
                 if let Some(release_node) = endpoint.release_node {
-                    add_edge_once(
-                        dag,
+                    builder.add_edge(
                         target.node_id.as_str(),
                         target.primary_output.as_str(),
                         release_node.as_str(),
@@ -1348,7 +1249,7 @@ fn add_used_resource_edges(
 }
 
 fn add_provided_resource_nodes(
-    dag: &mut Dag<LoweredOp>,
+    builder: &mut DagBuilder,
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     resource_registry: &ResourceLifecycleRegistry,
@@ -1387,28 +1288,24 @@ fn add_provided_resource_nodes(
                         provided.binding
                     ))
                 );
-                add_node_once(
-                    dag,
-                    Node::opaque(
-                        provider_node_id.clone(),
-                        vec![Port::scalar("trigger", "Any")],
-                        vec![Port::with_cardinality(
-                            provided.binding.as_str(),
-                            resource_type.as_str(),
-                            Cardinality::ONE,
-                        )],
-                        LoweredOp::Callable {
-                            module: module_name.clone(),
-                            kind: CallableKind::Pattern,
-                            name: format!(
-                                "resource_provide::{}::{}",
-                                item_name, provided.binding
-                            ),
-                        },
-                    ),
-                );
-                add_edge_once(
-                    dag,
+                builder.add_node(Node::opaque(
+                    provider_node_id.clone(),
+                    vec![Port::scalar("trigger", "Any")],
+                    vec![Port::with_cardinality(
+                        provided.binding.as_str(),
+                        resource_type.as_str(),
+                        Cardinality::ONE,
+                    )],
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "resource_provide::{}::{}",
+                            item_name, provided.binding
+                        ),
+                    },
+                ));
+                builder.add_edge(
                     target.node_id.as_str(),
                     target.primary_output.as_str(),
                     provider_node_id.as_str(),
@@ -1416,8 +1313,7 @@ fn add_provided_resource_nodes(
                 );
                 if let Some(endpoint) = endpoint {
                     if let Some(release_node) = endpoint.release_node {
-                        add_edge_once(
-                            dag,
+                        builder.add_edge(
                             provider_node_id.as_str(),
                             provided.binding.as_str(),
                             release_node.as_str(),
@@ -1501,7 +1397,7 @@ fn canonical_type_name(name: &str) -> String {
 }
 
 fn add_resource_lifecycle_nodes(
-    dag: &mut Dag<LoweredOp>,
+    builder: &mut DagBuilder,
     project: &TypedProject,
 ) -> ResourceLifecycleRegistry {
     let mut registry = ResourceLifecycleRegistry::default();
@@ -1518,40 +1414,33 @@ fn add_resource_lifecycle_nodes(
             let mut has_release = false;
 
             if resource.acquire.is_some() {
-                add_node_once(
-                    dag,
-                    Node::opaque(
-                        acquire_id.clone(),
-                        vec![],
-                        vec![Port::scalar("resource_handle", "ResourceHandle")],
-                        LoweredOp::Callable {
-                            module: module_name.clone(),
-                            kind: CallableKind::Pattern,
-                            name: format!("resource_lifecycle::acquire::{}", resource.name),
-                        },
-                    ),
-                );
+                builder.add_node(Node::opaque(
+                    acquire_id.clone(),
+                    vec![],
+                    vec![Port::scalar("resource_handle", "ResourceHandle")],
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!("resource_lifecycle::acquire::{}", resource.name),
+                    },
+                ));
                 has_acquire = true;
             }
             if resource.release.is_some() {
-                add_node_once(
-                    dag,
-                    Node::opaque(
-                        release_id.clone(),
-                        vec![Port::scalar("resource_handle", "ResourceHandle")],
-                        vec![Port::scalar("released", "Bool")],
-                        LoweredOp::Callable {
-                            module: module_name.clone(),
-                            kind: CallableKind::Pattern,
-                            name: format!("resource_lifecycle::release::{}", resource.name),
-                        },
-                    ),
-                );
+                builder.add_node(Node::opaque(
+                    release_id.clone(),
+                    vec![Port::scalar("resource_handle", "ResourceHandle")],
+                    vec![Port::scalar("released", "Bool")],
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!("resource_lifecycle::release::{}", resource.name),
+                    },
+                ));
                 has_release = true;
             }
             if has_acquire && has_release {
-                add_edge_once(
-                    dag,
+                builder.add_edge(
                     acquire_id.as_str(),
                     "resource_handle",
                     release_id.as_str(),
@@ -1562,12 +1451,11 @@ fn add_resource_lifecycle_nodes(
                 acquire_node: has_acquire.then_some(acquire_id),
                 release_node: has_release.then_some(release_id),
             };
-            register_resource_endpoint(
-                &mut registry,
+            registry.register(
                 format!("{module_name}.{}", resource.name),
                 endpoint.clone(),
             );
-            register_resource_endpoint(&mut registry, resource.name.clone(), endpoint);
+            registry.register(resource.name.clone(), endpoint);
         }
     }
     registry
@@ -1596,20 +1484,8 @@ fn resolve_service_endpoint(
     None
 }
 
-fn add_edge_once(dag: &mut Dag<LoweredOp>, from: &str, from_port: &str, to: &str, to_port: &str) {
-    if dag.edges.iter().any(|edge| {
-        edge.from_node.0 == from
-            && edge.from_port.0 == from_port
-            && edge.to_node.0 == to
-            && edge.to_port.0 == to_port
-    }) {
-        return;
-    }
-    dag.add_edge(Edge::new(from, from_port, to, to_port));
-}
-
 fn ensure_param_source_node(
-    dag: &mut Dag<LoweredOp>,
+    builder: &mut DagBuilder,
     module_name: &str,
     callable: &str,
     param: &str,
@@ -1619,19 +1495,16 @@ fn ensure_param_source_node(
         "param_source_{}",
         sanitize_identifier(&format!("{module_name}_{callable}_{param}"))
     );
-    add_node_once(
-        dag,
-        Node::opaque(
-            node_id.clone(),
-            vec![],
-            vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
-            LoweredOp::Callable {
-                module: module_name.to_string(),
-                kind: CallableKind::Pattern,
-                name: format!("call_param_source::{callable}::{param}"),
-            },
-        ),
-    );
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        vec![],
+        vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
+        LoweredOp::Callable {
+            module: module_name.to_string(),
+            kind: CallableKind::Pattern,
+            name: format!("call_param_source::{callable}::{param}"),
+        },
+    ));
     node_id
 }
 

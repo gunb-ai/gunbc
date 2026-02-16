@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::path::PathBuf;
 
 use crate::path_utils;
@@ -53,7 +54,7 @@ pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, 
     .map_err(|errors| {
         let mut message = String::from("typecheck errors:\n");
         for error in errors {
-            message.push_str(&format!("  {error}\n"));
+            writeln!(message, "  {error}").ok();
         }
         message
     })?;
@@ -78,10 +79,7 @@ fn discover_module_graph_for_context(context: &PipelineContext) -> Result<Module
         let ast = parser::parse(&source).map_err(|errors| {
             let mut message = String::from("compile diagnostics:\n");
             for error in &errors {
-                message.push_str(&format!(
-                    "  {}\n",
-                    error.format_with_source(target_file, &source)
-                ));
+                writeln!(message, "  {}", error.format_with_source(target_file, &source)).ok();
             }
             message
         })?;
@@ -120,7 +118,7 @@ fn format_resolve_error(error: ResolveError) -> String {
                     .collect(),
             );
             for diagnostic in diagnostics {
-                message.push_str(&format!("  {}\n", diagnostic.render()));
+                writeln!(message, "  {}", diagnostic.render()).ok();
             }
             message
         }
@@ -155,10 +153,7 @@ fn validate_module_path_consistency(
 
     let mut message = String::from("module path mismatches:\n");
     for (path, declared, derived) in mismatches {
-        message.push_str(&format!(
-            "  {}: declared `{declared}` but filesystem implies `{derived}`\n",
-            path.display()
-        ));
+        writeln!(message, "  {}: declared `{declared}` but filesystem implies `{derived}`", path.display()).ok();
     }
     Err(message)
 }
@@ -188,23 +183,17 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
             gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
         };
 
-        out.push_str(&format!("  - {} [{kind}]\n", node.id.0));
+        writeln!(out, "  - {} [{kind}]", node.id.0).ok();
         if !node.inputs.is_empty() {
             out.push_str("    inputs:\n");
             for input in &node.inputs {
-                out.push_str(&format!(
-                    "      * {}: {} ({})\n",
-                    input.name.0, input.type_id.0, input.cardinality
-                ));
+                writeln!(out, "      * {}: {} ({})", input.name.0, input.type_id.0, input.cardinality).ok();
             }
         }
         if !node.outputs.is_empty() {
             out.push_str("    outputs:\n");
             for output in &node.outputs {
-                out.push_str(&format!(
-                    "      * {}: {} ({})\n",
-                    output.name.0, output.type_id.0, output.cardinality
-                ));
+                writeln!(out, "      * {}: {} ({})", output.name.0, output.type_id.0, output.cardinality).ok();
             }
         }
     }
@@ -214,10 +203,7 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
         out.push_str("  (none)\n");
     } else {
         for edge in &dag.edges {
-            out.push_str(&format!(
-                "  - {}.{} -> {}.{}\n",
-                edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
-            ));
+            writeln!(out, "  - {}.{} -> {}.{}", edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0).ok();
         }
     }
     out
@@ -228,69 +214,39 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
     let obligations = &derived.obligations;
     let mut out = String::new();
     out.push_str("ProgressManifest:\n");
-    out.push_str(&format!("  total_nodes: {}\n", manifest.total_nodes));
-    out.push_str(&format!("  total_edges: {}\n", manifest.total_edges));
+    writeln!(out, "  total_nodes: {}", manifest.total_nodes).ok();
+    writeln!(out, "  total_edges: {}", manifest.total_edges).ok();
     out.push_str("  waves:\n");
     for (index, wave) in manifest.waves.iter().enumerate() {
-        out.push_str(&format!("    [{index}] {}\n", wave.join(", ")));
+        writeln!(out, "    [{index}] {}", wave.join(", ")).ok();
     }
-    out.push_str(&format!(
-        "  entrypoint_nodes: {}\n",
+    writeln!(
+        out, "  entrypoint_nodes: {}",
         if manifest.entrypoint_nodes.is_empty() {
             "(none)".to_string()
         } else {
             manifest.entrypoint_nodes.join(", ")
         }
-    ));
-    out.push_str(&format!(
-        "  boundary_nodes: {}\n",
+    ).ok();
+    writeln!(
+        out, "  boundary_nodes: {}",
         if manifest.boundary_nodes.is_empty() {
             "(none)".to_string()
         } else {
             manifest.boundary_nodes.join(", ")
         }
-    ));
+    ).ok();
     out.push_str("TestObligations:\n");
-    out.push_str(&format!(
-        "  dry_run_completion_required: {}\n",
-        obligations.dry_run_completion_required
-    ));
-    out.push_str(&format!(
-        "  transport_execution_targets: {}\n",
-        obligations.transport_execution_targets
-    ));
-    out.push_str(&format!(
-        "  pure_node_determinism_targets: {}\n",
-        obligations.pure_node_determinism_targets
-    ));
-    out.push_str(&format!(
-        "  service_transport_prepare_targets: {}\n",
-        obligations.service_transport_prepare_targets
-    ));
-    out.push_str(&format!(
-        "  service_transport_execute_targets: {}\n",
-        obligations.service_transport_execute_targets
-    ));
-    out.push_str(&format!(
-        "  service_transport_parse_targets: {}\n",
-        obligations.service_transport_parse_targets
-    ));
-    out.push_str(&format!(
-        "  service_param_source_targets: {}\n",
-        obligations.service_param_source_targets
-    ));
-    out.push_str(&format!(
-        "  resource_provide_targets: {}\n",
-        obligations.resource_provide_targets
-    ));
-    out.push_str(&format!(
-        "  resource_acquire_targets: {}\n",
-        obligations.resource_acquire_targets
-    ));
-    out.push_str(&format!(
-        "  resource_release_targets: {}\n",
-        obligations.resource_release_targets
-    ));
+    writeln!(out, "  dry_run_completion_required: {}", obligations.dry_run_completion_required).ok();
+    writeln!(out, "  transport_execution_targets: {}", obligations.transport_execution_targets).ok();
+    writeln!(out, "  pure_node_determinism_targets: {}", obligations.pure_node_determinism_targets).ok();
+    writeln!(out, "  service_transport_prepare_targets: {}", obligations.service_transport_prepare_targets).ok();
+    writeln!(out, "  service_transport_execute_targets: {}", obligations.service_transport_execute_targets).ok();
+    writeln!(out, "  service_transport_parse_targets: {}", obligations.service_transport_parse_targets).ok();
+    writeln!(out, "  service_param_source_targets: {}", obligations.service_param_source_targets).ok();
+    writeln!(out, "  resource_provide_targets: {}", obligations.resource_provide_targets).ok();
+    writeln!(out, "  resource_acquire_targets: {}", obligations.resource_acquire_targets).ok();
+    writeln!(out, "  resource_release_targets: {}", obligations.resource_release_targets).ok();
     out
 }
 
