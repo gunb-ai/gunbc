@@ -80,6 +80,17 @@ struct ServiceEndpointRegistry {
     by_key: HashMap<String, Option<LoweredEndpoint>>,
 }
 
+#[derive(Debug, Default, Clone)]
+struct ResourceLifecycleRegistry {
+    by_key: HashMap<String, Option<ResourceLifecycleEndpoint>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResourceLifecycleEndpoint {
+    acquire_node: Option<String>,
+    release_node: Option<String>,
+}
+
 /// Errors during lowering.
 #[derive(Debug)]
 pub enum LowerError {
@@ -95,6 +106,12 @@ pub enum LowerError {
     UnresolvedServiceCall {
         caller: String,
         service_call: String,
+    },
+    /// `uses` clause references an unknown resource/interface lifecycle source.
+    UnresolvedUsedResource {
+        caller: String,
+        binding: String,
+        resource_type: String,
     },
     /// No executable declarations were available for lowering.
     NoLowerableItems,
@@ -122,6 +139,14 @@ impl std::fmt::Display for LowerError {
             } => write!(
                 f,
                 "unresolved service call `{service_call}` in `{caller}`"
+            ),
+            Self::UnresolvedUsedResource {
+                caller,
+                binding,
+                resource_type,
+            } => write!(
+                f,
+                "unresolved used resource `{binding}: {resource_type}` in `{caller}`"
             ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
         }
@@ -208,7 +233,8 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
     add_makegen_scaffolding(&mut dag, &endpoints_by_full);
     let service_registry = add_service_transport_triplets(&mut dag, project);
     add_service_call_edges(&mut dag, project, &endpoints_by_full, &service_registry)?;
-    add_resource_lifecycle_nodes(&mut dag, project);
+    let resource_registry = add_resource_lifecycle_nodes(&mut dag, project);
+    add_used_resource_edges(&mut dag, project, &endpoints_by_full, &resource_registry)?;
 
     if dag.nodes.is_empty() {
         return Err(LowerError::NoLowerableItems);
@@ -1073,6 +1099,24 @@ fn register_service_endpoint(
         .or_insert(Some(endpoint));
 }
 
+fn register_resource_endpoint(
+    registry: &mut ResourceLifecycleRegistry,
+    key: String,
+    endpoint: ResourceLifecycleEndpoint,
+) {
+    registry
+        .by_key
+        .entry(key)
+        .and_modify(|existing| {
+            if let Some(current) = existing {
+                if current != &endpoint {
+                    *existing = None;
+                }
+            }
+        })
+        .or_insert(Some(endpoint));
+}
+
 fn add_service_call_edges(
     dag: &mut Dag<LoweredOp>,
     project: &TypedProject,
@@ -1112,7 +1156,93 @@ fn add_service_call_edges(
     Ok(())
 }
 
-fn add_resource_lifecycle_nodes(dag: &mut Dag<LoweredOp>, project: &TypedProject) {
+fn add_used_resource_edges(
+    dag: &mut Dag<LoweredOp>,
+    project: &TypedProject,
+    endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
+    resource_registry: &ResourceLifecycleRegistry,
+) -> Result<(), LowerError> {
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Some((item_name, uses)) = item_callable_uses(&item.node) else {
+                continue;
+            };
+            let Some(target) =
+                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            else {
+                continue;
+            };
+            for usage in uses {
+                let resource_type = resource_type_name(&usage.resource_type);
+                let Some(endpoint) = resolve_resource_endpoint(
+                    module_name.as_str(),
+                    resource_type.as_str(),
+                    resource_registry,
+                ) else {
+                    return Err(LowerError::UnresolvedUsedResource {
+                        caller: format!("{module_name}::{item_name}"),
+                        binding: usage.binding.clone(),
+                        resource_type,
+                    });
+                };
+                if let Some(acquire_node) = endpoint.acquire_node {
+                    add_edge_once(
+                        dag,
+                        acquire_node.as_str(),
+                        "resource_handle",
+                        target.node_id.as_str(),
+                        "__deps",
+                    );
+                }
+                if let Some(release_node) = endpoint.release_node {
+                    add_edge_once(
+                        dag,
+                        target.node_id.as_str(),
+                        target.primary_output.as_str(),
+                        release_node.as_str(),
+                        "resource_handle",
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn resolve_resource_endpoint(
+    module_name: &str,
+    resource_type: &str,
+    registry: &ResourceLifecycleRegistry,
+) -> Option<ResourceLifecycleEndpoint> {
+    let keys = [
+        format!("{module_name}.{resource_type}"),
+        resource_type.to_string(),
+    ];
+    for key in keys {
+        if let Some(Some(endpoint)) = registry.by_key.get(&key) {
+            return Some(endpoint.clone());
+        }
+    }
+    None
+}
+
+fn resource_type_name(ty: &TypeExpr) -> String {
+    match ty {
+        TypeExpr::Named(name) | TypeExpr::Generic(name, _) => canonical_type_name(name),
+        TypeExpr::Optional(inner) | TypeExpr::Annotated(inner, _) => resource_type_name(inner),
+    }
+}
+
+fn canonical_type_name(name: &str) -> String {
+    name.split('<').next().unwrap_or(name).trim().to_string()
+}
+
+fn add_resource_lifecycle_nodes(
+    dag: &mut Dag<LoweredOp>,
+    project: &TypedProject,
+) -> ResourceLifecycleRegistry {
+    let mut registry = ResourceLifecycleRegistry::default();
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
@@ -1166,8 +1296,19 @@ fn add_resource_lifecycle_nodes(dag: &mut Dag<LoweredOp>, project: &TypedProject
                     "resource_handle",
                 );
             }
+            let endpoint = ResourceLifecycleEndpoint {
+                acquire_node: has_acquire.then_some(acquire_id),
+                release_node: has_release.then_some(release_id),
+            };
+            register_resource_endpoint(
+                &mut registry,
+                format!("{module_name}.{}", resource.name),
+                endpoint.clone(),
+            );
+            register_resource_endpoint(&mut registry, resource.name.clone(), endpoint);
         }
     }
+    registry
 }
 
 fn resolve_service_endpoint(
@@ -1210,6 +1351,14 @@ fn item_callable_body(item: &Item) -> Option<(&str, &[Stmt])> {
         Item::FnDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
         Item::FuncDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
         Item::PatternDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
+        _ => None,
+    }
+}
+
+fn item_callable_uses(item: &Item) -> Option<(&str, &[daglang_syntax::ast::UsesClause])> {
+    match item {
+        Item::FuncDef(def) => Some((def.name.as_str(), def.uses.as_slice())),
+        Item::PatternDef(def) => Some((def.name.as_str(), def.uses.as_slice())),
         _ => None,
     }
 }
@@ -1668,6 +1817,58 @@ func run() -> { ok: Bool } {
                 && edge.to_node.0 == release
                 && edge.to_port.0 == "resource_handle"
         }));
+    }
+
+    #[test]
+    fn uses_clause_wires_acquire_and_release_lifecycle_edges() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/uses_wiring.dag",
+            r#"module sample.resources
+resource TempFile {
+  acquire { let path = "/tmp/file" }
+  release { let done = true }
+}
+func run() -> { ok: Bool } uses fs: TempFile {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let acquire = "acquire_resource_sample_resources_TempFile";
+        let release = "release_resource_sample_resources_TempFile";
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == acquire
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == "sample.resources::run"
+                && edge.to_port.0 == "__deps"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.resources::run"
+                && edge.from_port.0 == "ok"
+                && edge.to_node.0 == release
+                && edge.to_port.0 == "resource_handle"
+        }));
+    }
+
+    #[test]
+    fn unresolved_uses_clause_reports_lower_error() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/unresolved_uses.dag",
+            r#"module sample.resources
+func run() -> { ok: Bool } uses fs: MissingResource {
+  return { ok: true }
+}"#,
+        )]);
+        let error = lower_typed_project(&typed).expect_err("lowering should fail");
+        assert!(matches!(
+            error,
+            LowerError::UnresolvedUsedResource {
+                caller,
+                binding,
+                resource_type,
+            } if caller == "sample.resources::run"
+                && binding == "fs"
+                && resource_type == "MissingResource"
+        ));
     }
 
     #[test]
