@@ -46,6 +46,11 @@ pub struct TestObligations {
     pub dry_run_completion_required: bool,
     pub transport_execution_targets: usize,
     pub pure_node_determinism_targets: usize,
+    pub service_transport_prepare_targets: usize,
+    pub service_transport_execute_targets: usize,
+    pub service_transport_parse_targets: usize,
+    pub resource_acquire_targets: usize,
+    pub resource_release_targets: usize,
 }
 
 /// Metadata summary for lowered modules.
@@ -109,27 +114,16 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         },
     };
 
+    let obligation_counts = derive_obligation_counts(&dag.nodes);
     let obligations = TestObligations {
         dry_run_completion_required: true,
-        transport_execution_targets: dag
-            .nodes
-            .iter()
-            .filter(|node| {
-                node.inputs
-                    .iter()
-                    .any(|port| port.type_id.0 == "TransportRequest")
-            })
-            .count(),
-        pure_node_determinism_targets: dag
-            .nodes
-            .iter()
-            .filter(|node| {
-                !node
-                    .inputs
-                    .iter()
-                    .any(|port| port.type_id.0 == "TransportRequest")
-            })
-            .count(),
+        transport_execution_targets: obligation_counts.transport_execution_targets,
+        pure_node_determinism_targets: obligation_counts.pure_node_determinism_targets,
+        service_transport_prepare_targets: obligation_counts.service_transport_prepare_targets,
+        service_transport_execute_targets: obligation_counts.service_transport_execute_targets,
+        service_transport_parse_targets: obligation_counts.service_transport_parse_targets,
+        resource_acquire_targets: obligation_counts.resource_acquire_targets,
+        resource_release_targets: obligation_counts.resource_release_targets,
     };
 
     let tool_metadata = ToolMetadata {
@@ -249,6 +243,47 @@ fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
     by_module.into_values().collect()
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ObligationCounts {
+    transport_execution_targets: usize,
+    pure_node_determinism_targets: usize,
+    service_transport_prepare_targets: usize,
+    service_transport_execute_targets: usize,
+    service_transport_parse_targets: usize,
+    resource_acquire_targets: usize,
+    resource_release_targets: usize,
+}
+
+fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
+    let mut counts = ObligationCounts::default();
+    for node in nodes {
+        if node
+            .inputs
+            .iter()
+            .any(|port| port.type_id.0 == "TransportRequest")
+        {
+            counts.transport_execution_targets += 1;
+        } else {
+            counts.pure_node_determinism_targets += 1;
+        }
+        let Some(LoweredOp::Callable { name, .. }) = node.body.as_opaque() else {
+            continue;
+        };
+        if name.starts_with("service_transport::prepare::") {
+            counts.service_transport_prepare_targets += 1;
+        } else if name.starts_with("service_transport::execute::") {
+            counts.service_transport_execute_targets += 1;
+        } else if name.starts_with("service_transport::parse::") {
+            counts.service_transport_parse_targets += 1;
+        } else if name.starts_with("resource_lifecycle::acquire::") {
+            counts.resource_acquire_targets += 1;
+        } else if name.starts_with("resource_lifecycle::release::") {
+            counts.resource_release_targets += 1;
+        }
+    }
+    counts
+}
+
 trait NodeBodyExt {
     fn as_opaque(&self) -> Option<&LoweredOp>;
 }
@@ -328,5 +363,87 @@ mod tests {
             .modules
             .iter()
             .any(|module| module.module == "pipelines.ci" && module.pipeline_count == 1));
+    }
+
+    #[test]
+    fn derive_obligations_count_transport_and_lifecycle_targets() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "prepare_transport",
+            vec![Port::scalar("path", "String")],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::prepare::FsStorage::read".to_string(),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "execute_transport",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::execute::FsStorage::read".to_string(),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "parse_transport",
+            vec![Port::scalar("response", "TransportResponse")],
+            vec![Port::scalar("body", "String")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::parse::FsStorage::read".to_string(),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "acquire_resource",
+            vec![],
+            vec![Port::scalar("resource_handle", "ResourceHandle")],
+            LoweredOp::Callable {
+                module: "sample.resources".to_string(),
+                kind: CallableKind::Pattern,
+                name: "resource_lifecycle::acquire::TempFile".to_string(),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "release_resource",
+            vec![Port::scalar("resource_handle", "ResourceHandle")],
+            vec![Port::scalar("released", "Bool")],
+            LoweredOp::Callable {
+                module: "sample.resources".to_string(),
+                kind: CallableKind::Pattern,
+                name: "resource_lifecycle::release::TempFile".to_string(),
+            },
+        ));
+        dag.add_edge(Edge::new(
+            "prepare_transport",
+            "request",
+            "execute_transport",
+            "request",
+        ));
+        dag.add_edge(Edge::new(
+            "execute_transport",
+            "response",
+            "parse_transport",
+            "response",
+        ));
+        dag.add_edge(Edge::new(
+            "acquire_resource",
+            "resource_handle",
+            "release_resource",
+            "resource_handle",
+        ));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert_eq!(artifacts.obligations.transport_execution_targets, 1);
+        assert_eq!(artifacts.obligations.pure_node_determinism_targets, 4);
+        assert_eq!(artifacts.obligations.service_transport_prepare_targets, 1);
+        assert_eq!(artifacts.obligations.service_transport_execute_targets, 1);
+        assert_eq!(artifacts.obligations.service_transport_parse_targets, 1);
+        assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
+        assert_eq!(artifacts.obligations.resource_release_targets, 1);
     }
 }
