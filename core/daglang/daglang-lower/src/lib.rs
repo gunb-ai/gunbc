@@ -196,6 +196,7 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
     add_makegen_scaffolding(&mut dag, &endpoints_by_full);
     let service_registry = add_service_transport_triplets(&mut dag, project);
     add_service_call_edges(&mut dag, project, &endpoints_by_full, &service_registry);
+    add_resource_lifecycle_nodes(&mut dag, project);
 
     if dag.nodes.is_empty() {
         return Err(LowerError::NoLowerableItems);
@@ -1095,6 +1096,64 @@ fn add_service_call_edges(
     }
 }
 
+fn add_resource_lifecycle_nodes(dag: &mut Dag<LoweredOp>, project: &TypedProject) {
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::ResourceDef(resource) = &item.node else {
+                continue;
+            };
+            let suffix = sanitize_identifier(&format!("{module_name}_{}", resource.name));
+            let acquire_id = format!("acquire_resource_{suffix}");
+            let release_id = format!("release_resource_{suffix}");
+            let mut has_acquire = false;
+            let mut has_release = false;
+
+            if resource.acquire.is_some() {
+                add_node_once(
+                    dag,
+                    Node::opaque(
+                        acquire_id.clone(),
+                        vec![],
+                        vec![Port::scalar("resource_handle", "ResourceHandle")],
+                        LoweredOp::Callable {
+                            module: module_name.clone(),
+                            kind: CallableKind::Pattern,
+                            name: format!("resource_lifecycle::acquire::{}", resource.name),
+                        },
+                    ),
+                );
+                has_acquire = true;
+            }
+            if resource.release.is_some() {
+                add_node_once(
+                    dag,
+                    Node::opaque(
+                        release_id.clone(),
+                        vec![Port::scalar("resource_handle", "ResourceHandle")],
+                        vec![Port::scalar("released", "Bool")],
+                        LoweredOp::Callable {
+                            module: module_name.clone(),
+                            kind: CallableKind::Pattern,
+                            name: format!("resource_lifecycle::release::{}", resource.name),
+                        },
+                    ),
+                );
+                has_release = true;
+            }
+            if has_acquire && has_release {
+                add_edge_once(
+                    dag,
+                    acquire_id.as_str(),
+                    "resource_handle",
+                    release_id.as_str(),
+                    "resource_handle",
+                );
+            }
+        }
+    }
+}
+
 fn resolve_service_endpoint(
     call_path: &[String],
     registry: &ServiceEndpointRegistry,
@@ -1535,6 +1594,36 @@ func run(path: String) -> { body: String } {
             edge.from_node.0 == parse_node
                 && edge.to_node.0 == "sample.services::run"
                 && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
+    fn resource_acquire_release_lower_to_lifecycle_nodes() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/fs.dag",
+            r#"module sample.resources
+resource TempFile {
+  acquire {
+    let path = "/tmp/file"
+  }
+  release {
+    let done = true
+  }
+}
+func run() -> { ok: Bool } {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let acquire = "acquire_resource_sample_resources_TempFile";
+        let release = "release_resource_sample_resources_TempFile";
+        assert!(dag.nodes.iter().any(|node| node.id.0 == acquire));
+        assert!(dag.nodes.iter().any(|node| node.id.0 == release));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == acquire
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == release
+                && edge.to_port.0 == "resource_handle"
         }));
     }
 
