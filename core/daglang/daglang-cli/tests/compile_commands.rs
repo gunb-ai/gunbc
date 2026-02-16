@@ -10098,6 +10098,83 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn compile_command_single_file_accepts_resource_bound_capability_calls() {
+    let fixture = unique_temp_file("compile_resource_bound_capability_single_file");
+    std::fs::write(
+        &fixture,
+        r#"module sample.resources
+resource Filesystem {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run(path: String) -> { body: String } uses fs: Filesystem {
+  let response = fs.read(path: path)
+  return { body: response.body }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for resource-bound capability fixture");
+
+    assert!(
+        output.status.success(),
+        "single-file compile should accept resource-bound capability calls: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_directory_mode_accepts_resource_bound_capability_calls() {
+    let root = unique_temp_dir("resource_bound_capability_directory_mode");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+resource Filesystem {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run(path: String) -> { body: String } uses fs: Filesystem {
+  let response = fs.read(path: path)
+  return { body: response.body }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept resource-bound capability calls: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_single_file_unresolved_uses_reports_lower_error() {
     let fixture = unique_temp_file("compile_unresolved_uses_single_file");
     std::fs::write(

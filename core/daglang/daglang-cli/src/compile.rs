@@ -625,6 +625,80 @@ func run(path: String) -> { body: String } {
     }
 
     #[test]
+    fn compile_single_file_uses_bound_resource_capability_call_succeeds() {
+        let fixture = unique_temp_file("single_file_uses_bound_resource_capability_call");
+        std::fs::write(
+            &fixture,
+            r#"module sample.resources
+resource Filesystem {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run(path: String) -> { body: String } uses fs: Filesystem {
+  let response = fs.read(path: path)
+  return { body: response.body }
+}
+"#,
+        )
+        .expect("failed to write resource-bound capability fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_directory_uses_bound_resource_capability_call_succeeds() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_resource_bound_service_call_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+resource Filesystem {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run(path: String) -> { body: String } uses fs: Filesystem {
+  let response = fs.read(path: path)
+  return { body: response.body }
+}
+"#,
+        )
+        .expect("failed to write resource-bound capability source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn compile_single_file_unresolved_uses_fails_in_lower_stage() {
         let fixture = unique_temp_file("single_file_unresolved_uses");
         std::fs::write(

@@ -442,6 +442,7 @@ pub fn typecheck_module_graph_with_options(
     let service_call_registry = collect_service_call_contracts(&graph.modules);
     let interface_registry = collect_interfaces(&graph.modules);
     let resource_type_registry = collect_resource_types(&graph.modules);
+    let resource_capability_registry = collect_resource_capabilities(&graph.modules);
     let available_modules = graph
         .modules
         .iter()
@@ -457,6 +458,7 @@ pub fn typecheck_module_graph_with_options(
         service_call_registry: &service_call_registry,
         interface_registry: &interface_registry,
         resource_type_registry: &resource_type_registry,
+        resource_capability_registry: &resource_capability_registry,
         allow_unresolved_references: options.allow_unresolved_imports,
     };
 
@@ -506,6 +508,7 @@ struct TypecheckContext<'a> {
     service_call_registry: &'a ServiceCallRegistry,
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
+    resource_capability_registry: &'a ResourceCapabilityRegistry,
     allow_unresolved_references: bool,
 }
 
@@ -530,6 +533,10 @@ fn collect_signatures(
         record_type_registry: context.record_type_registry,
         callable_registry: context.callable_registry,
         service_call_registry: context.service_call_registry,
+        interface_registry: context.interface_registry,
+        resource_type_registry: context.resource_type_registry,
+        resource_capability_registry: context.resource_capability_registry,
+        allow_unresolved_references: context.allow_unresolved_references,
     };
 
     for item in &module.ast.items {
@@ -569,9 +576,9 @@ fn collect_signatures(
                     &def.name,
                     &def.params,
                     ReturnContract::single(type_expr_to_string(&def.return_type)),
+                    &[],
                     &def.body.stmts,
                     &body_context,
-                    context.allow_unresolved_references,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Fn(TypedCallableSignature {
@@ -622,9 +629,9 @@ fn collect_signatures(
                     &def.name,
                     &def.params,
                     ReturnContract::record(field_signature_map(&def.outputs)),
+                    &def.uses,
                     &def.body.stmts,
                     &body_context,
-                    context.allow_unresolved_references,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Func(TypedCallableSignature {
@@ -674,9 +681,9 @@ fn collect_signatures(
                     &def.name,
                     &def.params,
                     ReturnContract::record(field_signature_map(&def.outputs)),
+                    &def.uses,
                     &def.body.stmts,
                     &body_context,
-                    context.allow_unresolved_references,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Pattern(TypedCallableSignature {
@@ -949,6 +956,11 @@ struct ResourceTypeRegistry {
 }
 
 #[derive(Debug, Clone, Default)]
+struct ResourceCapabilityRegistry {
+    full: HashMap<String, HashMap<String, CapabilityContract>>,
+}
+
+#[derive(Debug, Clone, Default)]
 struct GenericArityRegistry {
     full: HashMap<String, usize>,
     short: HashMap<String, Option<usize>>,
@@ -988,6 +1000,29 @@ struct BodyInferenceContext<'a> {
     record_type_registry: &'a RecordTypeRegistry,
     callable_registry: &'a HashMap<String, Option<CallableContract>>,
     service_call_registry: &'a ServiceCallRegistry,
+    interface_registry: &'a InterfaceRegistry,
+    resource_type_registry: &'a ResourceTypeRegistry,
+    resource_capability_registry: &'a ResourceCapabilityRegistry,
+    allow_unresolved_references: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct BoundServiceCallRegistry {
+    by_binding: HashMap<String, BoundServiceCallBinding>,
+}
+
+#[derive(Debug, Clone)]
+enum BoundServiceCallBinding {
+    Resolved(HashMap<String, ServiceCallContract>),
+    Deferred,
+}
+
+#[derive(Debug, Clone)]
+enum BoundServiceCallResolution {
+    Resolved(ServiceCallContract),
+    MissingCapability,
+    Deferred,
+    NotBound,
 }
 
 fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
@@ -1047,6 +1082,35 @@ fn collect_resource_types(modules: &[ResolvedModule]) -> ResourceTypeRegistry {
                     }
                 })
                 .or_insert_with(|| Some(full));
+        }
+    }
+    registry
+}
+
+fn collect_resource_capabilities(modules: &[ResolvedModule]) -> ResourceCapabilityRegistry {
+    let mut registry = ResourceCapabilityRegistry::default();
+    for module in modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::ResourceDef(resource) = &item.node else {
+                continue;
+            };
+            let capabilities = resource
+                .capabilities
+                .iter()
+                .map(|capability| {
+                    (
+                        capability.name.clone(),
+                        CapabilityContract {
+                            inputs: field_signature_map(&capability.inputs),
+                            outputs: field_signature_map(&capability.outputs),
+                        },
+                    )
+                })
+                .collect::<HashMap<_, _>>();
+            registry
+                .full
+                .insert(format!("{module_name}.{}", resource.name), capabilities);
         }
     }
     registry
@@ -1267,18 +1331,19 @@ fn validate_callable_body(
     caller: &str,
     params: &[Param],
     return_contract: ReturnContract,
+    uses: &[UsesClause],
     stmts: &[Stmt],
     body_context: &BodyInferenceContext<'_>,
-    allow_unresolved_references: bool,
     errors: &mut Vec<TypeError>,
 ) {
+    let bound_service_registry = build_bound_service_call_registry(uses, body_context);
     let mut calls = Vec::new();
     collect_calls_from_stmts(stmts, &mut calls);
     for call in calls {
         let contract = match body_context.callable_registry.get(&call.callee) {
             Some(Some(contract)) => contract,
             Some(None) => {
-                if !allow_unresolved_references {
+                if !body_context.allow_unresolved_references {
                     errors.push(TypeError::AmbiguousCallTarget {
                         caller: caller.to_string(),
                         callee: call.callee.clone(),
@@ -1287,7 +1352,7 @@ fn validate_callable_body(
                 continue;
             }
             None => {
-                if !allow_unresolved_references {
+                if !body_context.allow_unresolved_references {
                     errors.push(TypeError::UnresolvedCallTarget {
                         caller: caller.to_string(),
                         callee: call.callee.clone(),
@@ -1328,27 +1393,37 @@ fn validate_callable_body(
     collect_service_calls_from_stmts(stmts, &mut service_calls);
     for call in service_calls {
         let service_call_name = call.path.join(".");
-        let contract =
-            match resolve_service_call_contract(&call.path, body_context.service_call_registry) {
-            ServiceCallResolution::Resolved(contract) => contract,
+        let contract = match resolve_service_call_contract(&call.path, body_context.service_call_registry)
+        {
+            ServiceCallResolution::Resolved(contract) => Some(contract),
             ServiceCallResolution::Ambiguous => {
-                if !allow_unresolved_references {
+                if !body_context.allow_unresolved_references {
                     errors.push(TypeError::AmbiguousServiceCall {
                         caller: caller.to_string(),
-                        service_call: service_call_name,
+                        service_call: service_call_name.clone(),
                     });
                 }
-                continue;
+                None
             }
             ServiceCallResolution::Missing => {
-                if !allow_unresolved_references {
-                    errors.push(TypeError::UnresolvedServiceCall {
-                        caller: caller.to_string(),
-                        service_call: service_call_name,
-                    });
+                match resolve_bound_service_call_contract(&call.path, &bound_service_registry) {
+                    BoundServiceCallResolution::Resolved(contract) => Some(contract),
+                    BoundServiceCallResolution::MissingCapability
+                    | BoundServiceCallResolution::NotBound => {
+                        if !body_context.allow_unresolved_references {
+                            errors.push(TypeError::UnresolvedServiceCall {
+                                caller: caller.to_string(),
+                                service_call: service_call_name.clone(),
+                            });
+                        }
+                        None
+                    }
+                    BoundServiceCallResolution::Deferred => None,
                 }
-                continue;
             }
+        };
+        let Some(contract) = contract else {
+            continue;
         };
         if call.arg_count != contract.arity {
             errors.push(TypeError::ServiceCallArityMismatch {
@@ -1396,6 +1471,7 @@ fn validate_callable_body(
                     expr,
                     &local_bindings,
                     body_context,
+                    &bound_service_registry,
                     errors,
                 );
                 local_bindings.insert(name.clone(), inferred);
@@ -1406,6 +1482,7 @@ fn validate_callable_body(
                     expr,
                     &local_bindings,
                     body_context,
+                    &bound_service_registry,
                     errors,
                 ));
             }
@@ -1418,6 +1495,7 @@ fn validate_callable_body(
                     fields,
                     &local_bindings,
                     body_context,
+                    &bound_service_registry,
                     errors,
                 );
             }
@@ -1438,6 +1516,7 @@ fn validate_return_stmt(
     fields: &[(String, Expr)],
     local_bindings: &HashMap<String, ValueType>,
     body_context: &BodyInferenceContext<'_>,
+    bound_service_registry: &BoundServiceCallRegistry,
     errors: &mut Vec<TypeError>,
 ) {
     match return_contract {
@@ -1453,6 +1532,7 @@ fn validate_return_stmt(
                 &fields[0].1,
                 local_bindings,
                 body_context,
+                bound_service_registry,
                 errors,
             );
             push_type_mismatch_if_needed(ty, &inferred, errors);
@@ -1470,6 +1550,7 @@ fn validate_return_stmt(
                     expr,
                     local_bindings,
                     body_context,
+                    bound_service_registry,
                     errors,
                 );
                 push_type_mismatch_if_needed(expected_ty, &inferred, errors);
@@ -1482,6 +1563,7 @@ fn infer_expr_type(
     expr: &Expr,
     local_bindings: &HashMap<String, ValueType>,
     body_context: &BodyInferenceContext<'_>,
+    bound_service_registry: &BoundServiceCallRegistry,
     errors: &mut Vec<TypeError>,
 ) -> ValueType {
     match expr {
@@ -1494,7 +1576,13 @@ fn infer_expr_type(
         },
         Expr::Ident(name) => local_bindings.get(name).cloned().unwrap_or(ValueType::Unknown),
         Expr::FieldAccess(base, field) => {
-            let base_type = infer_expr_type(base, local_bindings, body_context, errors);
+            let base_type = infer_expr_type(
+                base,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
             match base_type {
                 ValueType::Record(fields) => match fields.get(field) {
                     Some(ty) => ValueType::Named(ty.clone()),
@@ -1527,7 +1615,13 @@ fn infer_expr_type(
         }
         Expr::Call(name, args) => {
             for (_, arg) in args {
-                infer_expr_type(arg, local_bindings, body_context, errors);
+                infer_expr_type(
+                    arg,
+                    local_bindings,
+                    body_context,
+                    bound_service_registry,
+                    errors,
+                );
             }
             body_context
                 .callable_registry
@@ -1538,18 +1632,44 @@ fn infer_expr_type(
         }
         Expr::ServiceCall(path, args) => {
             for (_, arg) in args {
-                infer_expr_type(arg, local_bindings, body_context, errors);
+                infer_expr_type(
+                    arg,
+                    local_bindings,
+                    body_context,
+                    bound_service_registry,
+                    errors,
+                );
             }
             match resolve_service_call_contract(path, body_context.service_call_registry) {
                 ServiceCallResolution::Resolved(contract) => ValueType::Record(contract.outputs),
-                ServiceCallResolution::Ambiguous | ServiceCallResolution::Missing => {
-                    ValueType::Unknown
+                ServiceCallResolution::Ambiguous => ValueType::Unknown,
+                ServiceCallResolution::Missing => {
+                    match resolve_bound_service_call_contract(path, bound_service_registry) {
+                        BoundServiceCallResolution::Resolved(contract) => {
+                            ValueType::Record(contract.outputs)
+                        }
+                        BoundServiceCallResolution::MissingCapability
+                        | BoundServiceCallResolution::Deferred
+                        | BoundServiceCallResolution::NotBound => ValueType::Unknown,
+                    }
                 }
             }
         }
         Expr::BinOp(lhs, op, rhs) => {
-            let lhs_ty = infer_expr_type(lhs, local_bindings, body_context, errors);
-            let rhs_ty = infer_expr_type(rhs, local_bindings, body_context, errors);
+            let lhs_ty = infer_expr_type(
+                lhs,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
+            let rhs_ty = infer_expr_type(
+                rhs,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
             match op {
                 daglang_syntax::ast::BinOp::Eq
                 | daglang_syntax::ast::BinOp::Ne
@@ -1570,7 +1690,13 @@ fn infer_expr_type(
             }
         }
         Expr::UnaryOp(op, inner) => {
-            let inner_ty = infer_expr_type(inner, local_bindings, body_context, errors);
+            let inner_ty = infer_expr_type(
+                inner,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
             match op {
                 daglang_syntax::ast::UnaryOp::Not => ValueType::Named("Bool".to_string()),
                 daglang_syntax::ast::UnaryOp::Neg => inner_ty,
@@ -1579,14 +1705,26 @@ fn infer_expr_type(
         Expr::StringInterp(parts) => {
             for part in parts {
                 if let daglang_syntax::ast::StringPart::Expr(inner) = part {
-                    infer_expr_type(inner, local_bindings, body_context, errors);
+                    infer_expr_type(
+                        inner,
+                        local_bindings,
+                        body_context,
+                        bound_service_registry,
+                        errors,
+                    );
                 }
             }
             ValueType::Named("String".to_string())
         }
         Expr::Record(type_name, fields) => {
             for (_, value) in fields {
-                infer_expr_type(value, local_bindings, body_context, errors);
+                infer_expr_type(
+                    value,
+                    local_bindings,
+                    body_context,
+                    bound_service_registry,
+                    errors,
+                );
             }
             if let Some(name) = type_name {
                 ValueType::Named(name.clone())
@@ -1597,7 +1735,13 @@ fn infer_expr_type(
                         .map(|(name, expr)| {
                             (
                                 name.clone(),
-                                infer_expr_type(expr, local_bindings, body_context, errors)
+                                infer_expr_type(
+                                    expr,
+                                    local_bindings,
+                                    body_context,
+                                    bound_service_registry,
+                                    errors,
+                                )
                                 .display_name()
                                 .unwrap_or_else(|| "Any".to_string()),
                             )
@@ -1607,20 +1751,56 @@ fn infer_expr_type(
             }
         }
         Expr::Match(scrutinee, arms) => {
-            infer_expr_type(scrutinee, local_bindings, body_context, errors);
+            infer_expr_type(
+                scrutinee,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
             for arm in arms {
                 if let Some(guard) = &arm.guard {
-                    infer_expr_type(guard, local_bindings, body_context, errors);
+                    infer_expr_type(
+                        guard,
+                        local_bindings,
+                        body_context,
+                        bound_service_registry,
+                        errors,
+                    );
                 }
-                infer_expr_type(&arm.body, local_bindings, body_context, errors);
+                infer_expr_type(
+                    &arm.body,
+                    local_bindings,
+                    body_context,
+                    bound_service_registry,
+                    errors,
+                );
             }
             ValueType::Unknown
         }
         Expr::If(cond, then_expr, else_expr) => {
-            infer_expr_type(cond, local_bindings, body_context, errors);
-            let then_ty = infer_expr_type(then_expr, local_bindings, body_context, errors);
+            infer_expr_type(
+                cond,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
+            let then_ty = infer_expr_type(
+                then_expr,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
             let else_ty = else_expr.as_ref().map(|otherwise| {
-                infer_expr_type(otherwise, local_bindings, body_context, errors)
+                infer_expr_type(
+                    otherwise,
+                    local_bindings,
+                    body_context,
+                    bound_service_registry,
+                    errors,
+                )
             });
             match else_ty {
                 Some(otherwise)
@@ -1633,41 +1813,113 @@ fn infer_expr_type(
             }
         }
         Expr::For(_, iterable, body) => {
-            infer_expr_type(iterable, local_bindings, body_context, errors);
-            infer_expr_type(body, local_bindings, body_context, errors);
+            infer_expr_type(
+                iterable,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
+            infer_expr_type(
+                body,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
             ValueType::Unknown
         }
         Expr::Pipe(lhs, rhs) => {
-            infer_expr_type(lhs, local_bindings, body_context, errors);
-            infer_expr_type(rhs, local_bindings, body_context, errors)
+            infer_expr_type(
+                lhs,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
+            infer_expr_type(
+                rhs,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            )
         }
-        Expr::Lambda(_, body) => infer_expr_type(body, local_bindings, body_context, errors),
+        Expr::Lambda(_, body) => infer_expr_type(
+            body,
+            local_bindings,
+            body_context,
+            bound_service_registry,
+            errors,
+        ),
         Expr::List(items) => {
             for item in items {
-                infer_expr_type(item, local_bindings, body_context, errors);
+                infer_expr_type(
+                    item,
+                    local_bindings,
+                    body_context,
+                    bound_service_registry,
+                    errors,
+                );
             }
             ValueType::Named("List".to_string())
         }
         Expr::Map(entries) => {
             for (key, value) in entries {
-                infer_expr_type(key, local_bindings, body_context, errors);
-                infer_expr_type(value, local_bindings, body_context, errors);
+                infer_expr_type(
+                    key,
+                    local_bindings,
+                    body_context,
+                    bound_service_registry,
+                    errors,
+                );
+                infer_expr_type(
+                    value,
+                    local_bindings,
+                    body_context,
+                    bound_service_registry,
+                    errors,
+                );
             }
             ValueType::Named("Map".to_string())
         }
         Expr::Guarded(inner, guard) => {
-            infer_expr_type(inner, local_bindings, body_context, errors);
-            infer_expr_type(guard, local_bindings, body_context, errors);
+            infer_expr_type(
+                inner,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
+            infer_expr_type(
+                guard,
+                local_bindings,
+                body_context,
+                bound_service_registry,
+                errors,
+            );
             ValueType::Unknown
         }
-        Expr::After(inner, _) => infer_expr_type(inner, local_bindings, body_context, errors),
+        Expr::After(inner, _) => infer_expr_type(
+            inner,
+            local_bindings,
+            body_context,
+            bound_service_registry,
+            errors,
+        ),
         Expr::Return(fields) => ValueType::Record(
             fields
                 .iter()
                 .map(|(name, expr)| {
                     (
                         name.clone(),
-                        infer_expr_type(expr, local_bindings, body_context, errors)
+                        infer_expr_type(
+                            expr,
+                            local_bindings,
+                            body_context,
+                            bound_service_registry,
+                            errors,
+                        )
                         .display_name()
                         .unwrap_or_else(|| "Any".to_string()),
                     )
@@ -1974,6 +2226,85 @@ fn resolve_service_call_contract(
         ServiceCallResolution::Ambiguous
     } else {
         ServiceCallResolution::Missing
+    }
+}
+
+fn build_bound_service_call_registry(
+    uses: &[UsesClause],
+    body_context: &BodyInferenceContext<'_>,
+) -> BoundServiceCallRegistry {
+    let mut registry = BoundServiceCallRegistry::default();
+    for usage in uses {
+        let resource_type = resource_type_name(&usage.resource_type);
+        let binding = match resolve_resource_type_name(&resource_type, body_context.resource_type_registry) {
+            ResourceTypeResolution::Resolved(resolved_type) => {
+                if let Some(interface_contract) =
+                    body_context.interface_registry.full.get(&resolved_type)
+                {
+                    let capabilities = interface_contract
+                        .capabilities
+                        .iter()
+                        .map(|(name, contract)| {
+                            (
+                                name.clone(),
+                                ServiceCallContract {
+                                    arity: contract.inputs.len(),
+                                    params: contract.inputs.keys().cloned().collect(),
+                                    outputs: contract.outputs.clone(),
+                                },
+                            )
+                        })
+                        .collect::<HashMap<_, _>>();
+                    BoundServiceCallBinding::Resolved(capabilities)
+                } else if let Some(resource_capabilities) =
+                    body_context.resource_capability_registry.full.get(&resolved_type)
+                {
+                    let capabilities = resource_capabilities
+                        .iter()
+                        .map(|(name, contract)| {
+                            (
+                                name.clone(),
+                                ServiceCallContract {
+                                    arity: contract.inputs.len(),
+                                    params: contract.inputs.keys().cloned().collect(),
+                                    outputs: contract.outputs.clone(),
+                                },
+                            )
+                        })
+                        .collect::<HashMap<_, _>>();
+                    BoundServiceCallBinding::Resolved(capabilities)
+                } else {
+                    BoundServiceCallBinding::Deferred
+                }
+            }
+            ResourceTypeResolution::Ambiguous | ResourceTypeResolution::Missing => {
+                BoundServiceCallBinding::Deferred
+            }
+        };
+        registry.by_binding.insert(usage.binding.clone(), binding);
+    }
+    registry
+}
+
+fn resolve_bound_service_call_contract(
+    call_path: &[String],
+    registry: &BoundServiceCallRegistry,
+) -> BoundServiceCallResolution {
+    if call_path.len() != 2 {
+        return BoundServiceCallResolution::NotBound;
+    }
+    let binding = &call_path[0];
+    let capability = &call_path[1];
+    let Some(binding_contracts) = registry.by_binding.get(binding) else {
+        return BoundServiceCallResolution::NotBound;
+    };
+    match binding_contracts {
+        BoundServiceCallBinding::Resolved(capabilities) => capabilities
+            .get(capability)
+            .cloned()
+            .map(BoundServiceCallResolution::Resolved)
+            .unwrap_or(BoundServiceCallResolution::MissingCapability),
+        BoundServiceCallBinding::Deferred => BoundServiceCallResolution::Deferred,
     }
 }
 
@@ -2763,6 +3094,69 @@ func run() -> { ok: Bool } {
                 got
             } if caller == "run"
                 && service_call == "FsStorage.read"
+                && *expected == 1
+                && *got == 0
+        )));
+    }
+
+    #[test]
+    fn uses_bound_resource_capability_call_typechecks_and_infers_outputs() {
+        let graph = module_graph_from_sources(&[(
+            "resource_bound_service_call.dag",
+            r#"module sample.resources
+resource Filesystem {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run(path: String) -> { body: String } uses fs: Filesystem {
+  let response = fs.read(path: path)
+  return { body: response.body }
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("resource-bound capability calls should typecheck in strict mode");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn uses_bound_resource_capability_call_reports_arity_mismatch() {
+        let graph = module_graph_from_sources(&[(
+            "resource_bound_service_call_arity.dag",
+            r#"module sample.resources
+resource Filesystem {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } uses fs: Filesystem {
+  let response = fs.read()
+  return { ok: true }
+}"#,
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("resource-bound capability calls should enforce arity");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::ServiceCallArityMismatch {
+                caller,
+                service_call,
+                expected,
+                got
+            } if caller == "run"
+                && service_call == "fs.read"
                 && *expected == 1
                 && *got == 0
         )));

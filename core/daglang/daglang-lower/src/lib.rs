@@ -1195,10 +1195,31 @@ fn add_service_call_edges(
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
-            let (item_name, params, stmts) = match &item.node {
-                Item::FnDef(def) => (&def.name, &def.params, def.body.stmts.as_slice()),
-                Item::FuncDef(def) => (&def.name, &def.params, def.body.stmts.as_slice()),
-                Item::PatternDef(def) => (&def.name, &def.params, def.body.stmts.as_slice()),
+            let (item_name, params, stmts, uses_bindings) = match &item.node {
+                Item::FnDef(def) => (
+                    &def.name,
+                    &def.params,
+                    def.body.stmts.as_slice(),
+                    HashSet::new(),
+                ),
+                Item::FuncDef(def) => (
+                    &def.name,
+                    &def.params,
+                    def.body.stmts.as_slice(),
+                    def.uses
+                        .iter()
+                        .map(|usage| usage.binding.clone())
+                        .collect::<HashSet<_>>(),
+                ),
+                Item::PatternDef(def) => (
+                    &def.name,
+                    &def.params,
+                    def.body.stmts.as_slice(),
+                    def.uses
+                        .iter()
+                        .map(|usage| usage.binding.clone())
+                        .collect::<HashSet<_>>(),
+                ),
                 _ => continue,
             };
             let Some(target) =
@@ -1214,6 +1235,13 @@ fn add_service_call_edges(
             collect_service_calls_from_stmts(stmts, &mut service_calls);
             for call in service_calls {
                 let Some(source) = resolve_service_endpoint(&call.path, service_registry) else {
+                    if call
+                        .path
+                        .first()
+                        .is_some_and(|segment| uses_bindings.contains(segment))
+                    {
+                        continue;
+                    }
                     return Err(LowerError::UnresolvedServiceCall {
                         caller: format!("{module_name}::{item_name}"),
                         service_call: call.path.join("."),
@@ -2063,6 +2091,29 @@ func run(path: String) -> { body: String } {
                 && edge.to_node.0 == prepare_node
                 && edge.to_port.0 == "path"
         }));
+    }
+
+    #[test]
+    fn resource_bound_capability_calls_do_not_raise_unresolved_service_call_errors() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/resource_capability_calls.dag",
+            r#"module sample.resources
+resource Filesystem {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run(path: String) -> { body: String } uses fs: Filesystem {
+  let response = fs.read(path: path)
+  return { body: response.body }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "sample.resources::run"));
     }
 
     #[test]
