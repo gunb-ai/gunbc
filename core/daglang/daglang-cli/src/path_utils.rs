@@ -3,7 +3,7 @@ use std::path::{Component, Path, PathBuf};
 pub use daglang_resolve::has_dag_extension;
 
 pub fn resolve_default_root(cwd: &Path) -> PathBuf {
-    default_root_from_cwd(cwd)
+    normalize_path_components(&cwd.join("dsl"))
 }
 
 pub fn normalize_cli_path(cwd: &Path, path: &Path) -> PathBuf {
@@ -13,10 +13,6 @@ pub fn normalize_cli_path(cwd: &Path, path: &Path) -> PathBuf {
         cwd.join(path)
     };
     normalize_path_components(&absolute)
-}
-
-pub fn default_root_from_cwd(cwd: &Path) -> PathBuf {
-    normalize_path_components(&cwd.join("dsl"))
 }
 
 pub fn normalize_path_components(path: &Path) -> PathBuf {

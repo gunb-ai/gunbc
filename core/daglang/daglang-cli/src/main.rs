@@ -151,7 +151,7 @@ fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
     if let Some(path) = arg {
         return path_utils::normalize_cli_path(cwd, &PathBuf::from(path));
     }
-    path_utils::default_root_from_cwd(cwd)
+    path_utils::resolve_default_root(cwd)
 }
 
 fn build_check_pipeline_context(
@@ -217,7 +217,7 @@ fn exit_usage(command: &str) -> ! {
 
 #[cfg(test)]
 mod tests {
-    use crate::path_utils::{default_root_from_cwd, has_dag_extension, normalize_path_components};
+    use crate::path_utils::{has_dag_extension, normalize_path_components, resolve_default_root};
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -321,21 +321,21 @@ mod tests {
     }
 
     #[test]
-    fn default_root_from_cwd_normalizes_curdir_suffix() {
+    fn resolve_default_root_normalizes_curdir_suffix() {
         let cwd = root_path().join("workspace").join("project").join(".");
-        let normalized_root = default_root_from_cwd(&cwd);
+        let normalized_root = resolve_default_root(&cwd);
         let expected = root_path().join("workspace").join("project").join("dsl");
         assert_eq!(normalized_root, expected);
     }
 
     #[test]
-    fn default_root_from_cwd_collapses_parent_segments() {
+    fn resolve_default_root_collapses_parent_segments() {
         let cwd = root_path()
             .join("workspace")
             .join("project")
             .join("nested")
             .join("..");
-        let normalized_root = default_root_from_cwd(&cwd);
+        let normalized_root = resolve_default_root(&cwd);
         let expected = root_path().join("workspace").join("project").join("dsl");
         assert_eq!(normalized_root, expected);
     }
