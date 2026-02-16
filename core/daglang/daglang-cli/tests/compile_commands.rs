@@ -278,6 +278,53 @@ fn compile_command_parent_double_separator_missing_root_is_normalized_and_equiva
 }
 
 #[test]
+fn compile_command_parent_double_separator_trailing_slash_missing_root_is_normalized_and_equivalent(
+) {
+    let root = unique_temp_dir("compile_parent_double_trailing_missing_root");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let missing = root.join("missing_root");
+
+    let parent_double_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("..//missing_root/")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-double-trailing missing-root compile");
+    assert!(
+        !parent_double_trailing.status.success(),
+        "parent-double-trailing missing-root compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&missing)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute missing-root compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-root compile should fail"
+    );
+
+    assert_eq!(
+        parent_double_trailing.stdout, absolute.stdout,
+        "parent-double-trailing and absolute missing-root compile stdout should match"
+    );
+    assert_eq!(
+        parent_double_trailing.stderr, absolute.stderr,
+        "parent-double-trailing and absolute missing-root compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_double_trailing.stderr);
+    assert!(
+        stderr.contains(&missing.display().to_string()),
+        "parent-double-trailing missing-root diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_parent_segment_non_directory_root_matches_absolute_output() {
     let root = unique_temp_dir("compile_parent_segment_non_directory_root");
     std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
@@ -365,6 +412,54 @@ fn compile_command_parent_double_separator_non_directory_root_matches_absolute_o
     assert!(
         stderr.contains(&root_file.display().to_string()),
         "parent-double non-directory-root diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_parent_double_separator_trailing_slash_non_directory_root_matches_absolute_output()
+{
+    let root = unique_temp_dir("compile_parent_double_trailing_non_directory_root");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let root_file = root.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to write non-directory root");
+
+    let parent_double_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("..//input.txt/")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-double-trailing non-directory-root compile");
+    assert!(
+        !parent_double_trailing.status.success(),
+        "parent-double-trailing non-directory-root compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root_file)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute non-directory-root compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute non-directory-root compile should fail"
+    );
+
+    assert_eq!(
+        parent_double_trailing.stdout, absolute.stdout,
+        "parent-double-trailing and absolute non-directory-root compile stdout should match"
+    );
+    assert_eq!(
+        parent_double_trailing.stderr, absolute.stderr,
+        "parent-double-trailing and absolute non-directory-root compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_double_trailing.stderr);
+    assert!(
+        stderr.contains(&root_file.display().to_string()),
+        "parent-double-trailing non-directory-root diagnostic should normalize to absolute path: {stderr}"
     );
     assert_no_stage_failures(&stderr);
 
@@ -819,6 +914,53 @@ fn compile_command_parent_double_separator_missing_single_file_target_is_normali
 }
 
 #[test]
+fn compile_command_parent_double_separator_trailing_slash_missing_single_file_target_is_normalized_and_equivalent(
+) {
+    let root = unique_temp_dir("compile_parent_double_trailing_missing_single_file");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let missing = root.join("missing.dag");
+
+    let parent_double_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("..//missing.dag/")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-double-trailing missing single-file compile");
+    assert!(
+        !parent_double_trailing.status.success(),
+        "parent-double-trailing missing single-file compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&missing)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute missing single-file compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing single-file compile should fail"
+    );
+
+    assert_eq!(
+        parent_double_trailing.stdout, absolute.stdout,
+        "parent-double-trailing and absolute missing single-file compile stdout should match"
+    );
+    assert_eq!(
+        parent_double_trailing.stderr, absolute.stderr,
+        "parent-double-trailing and absolute missing single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_double_trailing.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", missing.display())),
+        "parent-double-trailing missing single-file diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_parent_segment_root_matches_absolute_output() {
     let root = unique_temp_dir("compile_parent_segment_root");
     std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
@@ -902,6 +1044,50 @@ fn compile_command_parent_double_separator_root_matches_absolute_output() {
         "parent-double and absolute root compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(&parent_double.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_parent_double_separator_trailing_slash_root_matches_absolute_output() {
+    let root = unique_temp_dir("compile_parent_double_trailing_root");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    write_minimal_directory_compile_fixture(&root);
+    let absolute_root = root.join("dsl");
+
+    let parent_double_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("..//dsl/")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-double-trailing root compile");
+    assert!(
+        parent_double_trailing.status.success(),
+        "parent-double-trailing root compile should succeed: {}",
+        String::from_utf8_lossy(&parent_double_trailing.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&absolute_root)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute root compile");
+    assert!(
+        absolute.status.success(),
+        "absolute root compile should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        parent_double_trailing.stdout, absolute.stdout,
+        "parent-double-trailing and absolute root compile stdout should match"
+    );
+    assert_eq!(
+        parent_double_trailing.stderr, absolute.stderr,
+        "parent-double-trailing and absolute root compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&parent_double_trailing.stderr));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
@@ -994,6 +1180,53 @@ fn compile_command_parent_double_separator_single_file_target_matches_absolute_o
         "parent-double and absolute single-file compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(&parent_double.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_parent_double_separator_trailing_slash_single_file_target_matches_absolute_output()
+{
+    let root = unique_temp_dir("compile_parent_double_trailing_single_file_target");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root child");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root sample");
+    let source = root.join("sample/main.dag");
+    std::fs::write(&source, "module sample.main\nfn run() -> Unit { }")
+        .expect("failed to write single-file source");
+
+    let parent_double_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("..//sample/main.dag/")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-double-trailing single-file compile");
+    assert!(
+        parent_double_trailing.status.success(),
+        "parent-double-trailing single-file compile should succeed: {}",
+        String::from_utf8_lossy(&parent_double_trailing.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&source)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute single-file compile");
+    assert!(
+        absolute.status.success(),
+        "absolute single-file compile should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        parent_double_trailing.stdout, absolute.stdout,
+        "parent-double-trailing and absolute single-file compile stdout should match"
+    );
+    assert_eq!(
+        parent_double_trailing.stderr, absolute.stderr,
+        "parent-double-trailing and absolute single-file compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&parent_double_trailing.stderr));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
