@@ -160,7 +160,7 @@ fn resolve_root(arg: Option<&String>) -> PathBuf {
         return normalize_cli_path(PathBuf::from(path));
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    cwd.join("dsl")
+    default_root_from_cwd(&cwd)
 }
 
 fn normalize_cli_path(path: PathBuf) -> PathBuf {
@@ -171,6 +171,10 @@ fn normalize_cli_path(path: PathBuf) -> PathBuf {
         cwd.join(path)
     };
     normalize_path_components(&absolute)
+}
+
+fn default_root_from_cwd(cwd: &Path) -> PathBuf {
+    normalize_path_components(&cwd.join("dsl"))
 }
 
 fn normalize_path_components(path: &Path) -> PathBuf {
@@ -191,7 +195,7 @@ fn normalize_path_components(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_path_components;
+    use super::{default_root_from_cwd, normalize_path_components};
     use std::path::{Path, PathBuf};
 
     fn root_path() -> PathBuf {
@@ -279,5 +283,25 @@ mod tests {
         let normalized = normalize_path_components(&path);
         let expected = root_path().join("workspace").join("dsl").join("makegen.dag");
         assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn default_root_from_cwd_normalizes_curdir_suffix() {
+        let cwd = root_path().join("workspace").join("project").join(".");
+        let normalized_root = default_root_from_cwd(&cwd);
+        let expected = root_path().join("workspace").join("project").join("dsl");
+        assert_eq!(normalized_root, expected);
+    }
+
+    #[test]
+    fn default_root_from_cwd_collapses_parent_segments() {
+        let cwd = root_path()
+            .join("workspace")
+            .join("project")
+            .join("nested")
+            .join("..");
+        let normalized_root = default_root_from_cwd(&cwd);
+        let expected = root_path().join("workspace").join("project").join("dsl");
+        assert_eq!(normalized_root, expected);
     }
 }
