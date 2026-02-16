@@ -165,3 +165,30 @@ fn check_command_single_file_mode_ignores_sibling_broken_files() {
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
+
+#[test]
+fn check_command_directory_mode_aggregates_multiple_file_diagnostics() {
+    let root = unique_temp_dir("directory_mode_errors");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("broken_a.dag"), "module sample.a\nfn")
+        .expect("failed to write broken_a");
+    std::fs::write(root.join("broken_b.dag"), "module sample.b\nimport")
+        .expect("failed to write broken_b");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory check should fail when multiple files are invalid"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("broken_a.dag"));
+    assert!(stderr.contains("broken_b.dag"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
