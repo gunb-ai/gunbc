@@ -1074,6 +1074,39 @@ fn check_command_accepts_symlink_root_directory() {
 
 #[cfg(unix)]
 #[test]
+fn check_command_handles_directory_symlink_cycle_root() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_cycle_root");
+    let nested = root.join("nested");
+    std::fs::create_dir_all(&nested).expect("failed to create nested root");
+    std::fs::write(nested.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write source");
+    symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on symlink-cycle root");
+
+    assert!(
+        output.status.success(),
+        "check should succeed for directory symlink cycle root: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("OK: parsed 1 file(s)"),
+        "symlink-cycle root should parse exactly one file: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn modules_command_symlink_root_without_module_decl_uses_path_fallback() {
     use std::os::unix::fs::symlink;
 
@@ -1101,6 +1134,39 @@ fn modules_command_symlink_root_without_module_decl_uses_path_fallback() {
     assert!(
         stdout.contains("nested.no_module"),
         "symlink-root module fallback should render path-derived module: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_handles_directory_symlink_cycle_root() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("modules_symlink_cycle_root");
+    let nested = root.join("nested");
+    std::fs::create_dir_all(&nested).expect("failed to create nested root");
+    std::fs::write(nested.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write source");
+    symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules on symlink-cycle root");
+
+    assert!(
+        output.status.success(),
+        "modules should succeed for directory symlink cycle root: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("sample.main"),
+        "symlink-cycle root should still render discovered module: {stdout}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");

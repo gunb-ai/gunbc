@@ -18,7 +18,7 @@
 //! every `.dag` file in the configured directories is automatically part
 //! of the module graph.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use daglang_syntax::ast::SourceFile;
@@ -50,6 +50,7 @@ impl ModuleGraph {
     /// the module graph.
     pub fn discover(roots: &[PathBuf]) -> Result<Self, ResolveError> {
         let mut dag_files = Vec::new();
+        let mut visited_dirs = HashSet::new();
         for root in roots {
             if !root.exists() {
                 return Err(ResolveError::InvalidRootPath {
@@ -63,7 +64,7 @@ impl ModuleGraph {
                     reason: "is not a directory".to_string(),
                 });
             }
-            collect_dag_files(root, &mut dag_files)?;
+            collect_dag_files(root, &mut dag_files, &mut visited_dirs)?;
         }
         let mut canonical_dag_files = Vec::with_capacity(dag_files.len());
         for path in dag_files {
@@ -150,8 +151,17 @@ impl ModuleGraph {
 }
 
 /// Recursively collect all `.dag` files under `dir`.
-fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), ResolveError> {
+fn collect_dag_files(
+    dir: &Path,
+    out: &mut Vec<PathBuf>,
+    visited_dirs: &mut HashSet<PathBuf>,
+) -> Result<(), ResolveError> {
     if !dir.is_dir() {
+        return Ok(());
+    }
+    let canonical_dir =
+        std::fs::canonicalize(dir).map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
+    if !visited_dirs.insert(canonical_dir) {
         return Ok(());
     }
     let entries =
@@ -160,7 +170,7 @@ fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), ResolveEr
         let entry = entry.map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
         let p = entry.path();
         if p.is_dir() {
-            collect_dag_files(&p, out)?;
+            collect_dag_files(&p, out, visited_dirs)?;
         } else if p.extension().and_then(|e| e.to_str()) == Some("dag") {
             out.push(p);
         }

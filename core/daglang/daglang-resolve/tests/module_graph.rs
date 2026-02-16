@@ -640,6 +640,27 @@ fn discovery_deduplicates_files_from_symlink_and_real_roots() {
 
 #[cfg(unix)]
 #[test]
+fn discovery_handles_directory_symlink_cycle_without_recursing_forever() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("dir_symlink_cycle");
+    let nested = root.join("nested");
+    write_file(
+        &nested.join("main.dag"),
+        "module sample.main\nfn ok() -> Unit {}",
+    );
+    symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+    let graph = ModuleGraph::discover(&[root.clone()])
+        .expect("discover should handle directory cycle symlink");
+    assert_eq!(graph.modules.len(), 1);
+    assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[cfg(unix)]
+#[test]
 fn discovery_deduplicates_parse_errors_from_symlink_and_real_roots() {
     use std::os::unix::fs::symlink;
 

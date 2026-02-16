@@ -323,6 +323,7 @@ fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> 
     }
 
     let mut dag_files = Vec::new();
+    let mut visited_dirs = HashSet::new();
     for root in &context.roots {
         if !root.exists() {
             return Err(format!("input root does not exist: {}", root.display()));
@@ -330,7 +331,7 @@ fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> 
         if !root.is_dir() {
             return Err(format!("input root is not a directory: {}", root.display()));
         }
-        collect_dag_files(root, &mut dag_files)
+        collect_dag_files(root, &mut dag_files, &mut visited_dirs)
             .map_err(|error| format!("failed to collect .dag files in {}: {error}", root.display()))?;
     }
     let mut canonical_dag_files = Vec::with_capacity(dag_files.len());
@@ -352,15 +353,23 @@ fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> 
     Ok(out)
 }
 
-fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+fn collect_dag_files(
+    dir: &Path,
+    out: &mut Vec<PathBuf>,
+    visited_dirs: &mut HashSet<PathBuf>,
+) -> std::io::Result<()> {
     if !dir.is_dir() {
+        return Ok(());
+    }
+    let canonical_dir = fs::canonicalize(dir)?;
+    if !visited_dirs.insert(canonical_dir) {
         return Ok(());
     }
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
-            collect_dag_files(&path, out)?;
+            collect_dag_files(&path, out, visited_dirs)?;
         } else if path.extension().and_then(|ext| ext.to_str()) == Some("dag") {
             out.push(path);
         }
@@ -1394,6 +1403,30 @@ mod tests {
             result.parsed_count, 1,
             "real+symlink roots should not duplicate parsed files"
         );
+        assert!(result.diagnostics.is_empty());
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parse_pipeline_handles_directory_symlink_cycle_without_recursing_forever() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("dir_symlink_cycle");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("failed to create nested root");
+        fs::write(nested.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+            .expect("failed to write source");
+        symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse)
+            .expect("pipeline should handle directory cycle symlink");
+        assert_eq!(result.parsed_count, 1);
         assert!(result.diagnostics.is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
