@@ -206,7 +206,7 @@ pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<Pip
     };
 
     Ok(PipelineResult {
-        diagnostics,
+        diagnostics: normalize_diagnostics(diagnostics),
         parsed_count,
         module_graph,
         report,
@@ -275,7 +275,7 @@ fn execute_op(
                 ),
                 (
                     PORT_DIAGNOSTICS.to_string(),
-                    PipeValue::Diagnostics(diagnostics),
+                    PipeValue::Diagnostics(normalize_diagnostics(diagnostics)),
                 ),
             ]))
         }
@@ -288,13 +288,13 @@ fn execute_op(
                 (PORT_MODULE_GRAPH.to_string(), PipeValue::ModuleGraph(graph)),
                 (
                     PORT_DIAGNOSTICS.to_string(),
-                    PipeValue::Diagnostics(diagnostics),
+                    PipeValue::Diagnostics(normalize_diagnostics(diagnostics)),
                 ),
             ]))
         }
         CompilerOp::ReportModules => {
             let graph = take_module_graph(&mut inputs)?;
-            let diagnostics = take_diagnostics_from_inputs(&mut inputs);
+            let diagnostics = normalize_diagnostics(take_diagnostics_from_inputs(&mut inputs));
             let mut report = String::new();
             report.push_str("Discovered modules:\n");
             report.push_str(&graph.display_tree());
@@ -665,6 +665,38 @@ fn edge_key(node: &str, port: &str) -> String {
     format!("{node}.{port}")
 }
 
+fn normalize_diagnostics(mut diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diagnostics.sort_by_key(|diag| {
+        (
+            diagnostic_kind_rank(&diag.kind),
+            diag.file
+                .as_ref()
+                .map(|file| file.display().to_string())
+                .unwrap_or_default(),
+            diag.line.unwrap_or_default(),
+            diag.column.unwrap_or_default(),
+            diag.message.clone(),
+        )
+    });
+    diagnostics.dedup_by(|a, b| {
+        a.kind == b.kind
+            && a.file == b.file
+            && a.line == b.line
+            && a.column == b.column
+            && a.message == b.message
+    });
+    diagnostics
+}
+
+fn diagnostic_kind_rank(kind: &DiagnosticKind) -> u8 {
+    match kind {
+        DiagnosticKind::Lex => 0,
+        DiagnosticKind::Parse => 1,
+        DiagnosticKind::Resolve => 2,
+        DiagnosticKind::Pipeline => 3,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -822,9 +854,9 @@ mod tests {
     fn parse_pipeline_aggregates_diagnostics_across_multiple_invalid_files() {
         let root = unique_temp_dir("multi_invalid");
         fs::create_dir_all(&root).expect("failed to create temp root");
-        fs::write(root.join("broken_a.dag"), "module broken.a\nfn")
+        fs::write(root.join("z_broken.dag"), "module broken.z\nfn")
             .expect("failed to write invalid source A");
-        fs::write(root.join("broken_b.dag"), "module broken.b\nimport")
+        fs::write(root.join("a_broken.dag"), "module broken.a\nimport")
             .expect("failed to write invalid source B");
 
         let context = PipelineContext {
@@ -837,15 +869,19 @@ mod tests {
             result
                 .diagnostics
                 .iter()
-                .any(|diag| diag.render().contains("broken_a.dag")),
-            "expected diagnostics to include broken_a.dag"
+                .any(|diag| diag.render().contains("z_broken.dag")),
+            "expected diagnostics to include z_broken.dag"
         );
         assert!(
             result
                 .diagnostics
                 .iter()
-                .any(|diag| diag.render().contains("broken_b.dag")),
-            "expected diagnostics to include broken_b.dag"
+                .any(|diag| diag.render().contains("a_broken.dag")),
+            "expected diagnostics to include a_broken.dag"
+        );
+        assert!(
+            result.diagnostics[0].render().contains("a_broken.dag"),
+            "diagnostics should be deterministically sorted by path"
         );
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -986,6 +1022,35 @@ mod tests {
                 .iter()
                 .any(|diag| diag.render().contains("unresolved import")),
             "expected unresolved import diagnostic in report pipeline"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn report_pipeline_deduplicates_duplicate_unresolved_import_diagnostics() {
+        let root = unique_temp_dir("dedupe_unresolved");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(
+            root.join("main.dag"),
+            "module sample.main\nimport missing.dep\nimport missing.dep\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+
+        let unresolved_count = result
+            .diagnostics
+            .iter()
+            .filter(|diag| diag.render().contains("unresolved import"))
+            .count();
+        assert_eq!(
+            unresolved_count, 1,
+            "duplicate unresolved imports should collapse into one diagnostic"
         );
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
