@@ -556,11 +556,23 @@ impl Parser {
             params.push(self.expect_ident()?);
             // optional bounds `: Bound + Bound`
             if self.eat(&TokenKind::Colon) {
+                if self.eat(&TokenKind::Arrow) {
+                    let output_type = self.expect_ident()?;
+                    if !params.contains(&output_type) {
+                        params.push(output_type);
+                    }
+                }
                 self.skip_type_bound();
             }
             while self.eat(&TokenKind::Comma) {
                 params.push(self.expect_ident()?);
                 if self.eat(&TokenKind::Colon) {
+                    if self.eat(&TokenKind::Arrow) {
+                        let output_type = self.expect_ident()?;
+                        if !params.contains(&output_type) {
+                            params.push(output_type);
+                        }
+                    }
                     self.skip_type_bound();
                 }
             }
@@ -702,7 +714,7 @@ impl Parser {
     fn parse_fn_def(&mut self) -> Result<FnDef, ParseError> {
         self.expect(&TokenKind::Fn)?;
         let name = self.expect_ident()?;
-        let _tp = self.parse_optional_type_params()?;
+        let type_params = self.parse_optional_type_params()?;
         self.expect(&TokenKind::LParen)?;
         let params = self.parse_param_list()?;
         self.expect(&TokenKind::RParen)?;
@@ -715,6 +727,7 @@ impl Parser {
         };
         Ok(FnDef {
             name,
+            type_params,
             params,
             return_type,
             body,
@@ -724,7 +737,7 @@ impl Parser {
     fn parse_func_def(&mut self, leading: Vec<Annotation>) -> Result<FuncDef, ParseError> {
         self.expect(&TokenKind::Func)?;
         let name = self.expect_ident()?;
-        let _tp = self.parse_optional_type_params()?;
+        let type_params = self.parse_optional_type_params()?;
         self.expect(&TokenKind::LParen)?;
         let params = self.parse_param_list()?;
         self.expect(&TokenKind::RParen)?;
@@ -739,6 +752,7 @@ impl Parser {
         let body = self.parse_func_body_lossy()?;
         Ok(FuncDef {
             name,
+            type_params,
             params,
             outputs,
             uses,
@@ -751,7 +765,7 @@ impl Parser {
     fn parse_pattern_def(&mut self) -> Result<PatternDef, ParseError> {
         self.expect(&TokenKind::Pattern)?;
         let name = self.expect_ident()?;
-        let _tp = self.parse_optional_type_params()?;
+        let type_params = self.parse_optional_type_params()?;
         self.expect(&TokenKind::LParen)?;
         let params = self.parse_param_list()?;
         self.expect(&TokenKind::RParen)?;
@@ -762,6 +776,7 @@ impl Parser {
         let body = self.parse_func_body_lossy()?;
         Ok(PatternDef {
             name,
+            type_params,
             params,
             outputs,
             uses,
@@ -2260,8 +2275,41 @@ mod tests {
         let sf = parse_or_panic("module test\nfn greet(name: String) -> String { name }");
         assert_eq!(sf.items.len(), 1);
         match &sf.items[0].node {
-            Item::FnDef(f) => assert_eq!(f.name, "greet"),
+            Item::FnDef(f) => {
+                assert_eq!(f.name, "greet");
+                assert!(f.type_params.is_empty());
+            }
             other => panic!("expected FnDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_type_params_are_preserved() {
+        let sf = parse_or_panic("module test\nfn identity<T>(value: T) -> T { value }");
+        match &sf.items[0].node {
+            Item::FnDef(f) => assert_eq!(f.type_params, vec!["T".to_string()]),
+            other => panic!("expected FnDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_pattern_type_params_capture_arrow_output_variable() {
+        let sf = parse_or_panic(
+            "module test\npattern upsert<Check, Create, Resolve: -> R>(value: Check) -> { value: R } { return { value: value } }",
+        );
+        match &sf.items[0].node {
+            Item::PatternDef(p) => {
+                assert_eq!(
+                    p.type_params,
+                    vec![
+                        "Check".to_string(),
+                        "Create".to_string(),
+                        "Resolve".to_string(),
+                        "R".to_string()
+                    ]
+                );
+            }
+            other => panic!("expected PatternDef, got {other:?}"),
         }
     }
 

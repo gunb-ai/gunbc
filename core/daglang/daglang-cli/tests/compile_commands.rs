@@ -12785,6 +12785,77 @@ fn run() -> Bool {
 }
 
 #[test]
+fn compile_command_directory_mode_accepts_generic_fn_type_params() {
+    let root = unique_temp_dir("generic_fn_type_params");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+fn identity<T>(value: T) -> T {
+  value
+}
+fn relay<T>(value: T) -> T {
+  identity(value: value)
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept generic fn type params: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_accepts_generic_pattern_type_params() {
+    let root = unique_temp_dir("generic_pattern_type_params");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+pattern passthrough<T: Serializable>(value: T) -> { value: T } {
+  return { value: value }
+}
+fn relay<T>(value: T) -> T {
+  let result = passthrough(value: value)
+  result.value
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept generic pattern type params: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_unknown_named_call_argument_typecheck_error() {
     let root = unique_temp_dir("call_unknown_arg");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");

@@ -558,16 +558,17 @@ fn collect_signatures(
             }
             Item::FnDef(def) => {
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
+                let item_known_types = extend_known_types(&module_known_types, &def.type_params);
                 validate_params(
                     &def.name,
                     &def.params,
-                    &module_known_types,
+                    &item_known_types,
                     context.generic_arity_registry,
                     errors,
                 );
                 validate_type_expr(
                     &def.return_type,
-                    &module_known_types,
+                    &item_known_types,
                     context.generic_arity_registry,
                     &format!("{}.return", def.name),
                     errors,
@@ -600,17 +601,18 @@ fn collect_signatures(
             }
             Item::FuncDef(def) => {
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
+                let item_known_types = extend_known_types(&module_known_types, &def.type_params);
                 validate_params(
                     &def.name,
                     &def.params,
-                    &module_known_types,
+                    &item_known_types,
                     context.generic_arity_registry,
                     errors,
                 );
                 validate_outputs(
                     &def.name,
                     &def.outputs,
-                    &module_known_types,
+                    &item_known_types,
                     context.generic_arity_registry,
                     errors,
                 );
@@ -660,17 +662,18 @@ fn collect_signatures(
             }
             Item::PatternDef(def) => {
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
+                let item_known_types = extend_known_types(&module_known_types, &def.type_params);
                 validate_params(
                     &def.name,
                     &def.params,
-                    &module_known_types,
+                    &item_known_types,
                     context.generic_arity_registry,
                     errors,
                 );
                 validate_outputs(
                     &def.name,
                     &def.outputs,
-                    &module_known_types,
+                    &item_known_types,
                     context.generic_arity_registry,
                     errors,
                 );
@@ -744,6 +747,12 @@ fn collect_signatures(
     }
 
     signatures
+}
+
+fn extend_known_types(base: &HashSet<String>, additional: &[String]) -> HashSet<String> {
+    let mut known = base.clone();
+    known.extend(additional.iter().cloned());
+    known
 }
 
 fn collect_known_types(modules: &[ResolvedModule]) -> HashSet<String> {
@@ -3376,6 +3385,51 @@ fn run(sources: DocgenSources, payload: String) -> String {
             },
         )
         .expect("std helper intrinsics should be recognized in strict mode");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_accepts_generic_fn_type_params() {
+        let graph = module_graph_from_sources(&[(
+            "sample/generic_fn.dag",
+            r#"module sample.generic
+fn identity<T>(value: T) -> T {
+  value
+}
+fn relay<T>(value: T) -> T {
+  identity(value: value)
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("generic fn type parameters should be treated as known types");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_accepts_generic_pattern_type_params() {
+        let graph = module_graph_from_sources(&[(
+            "sample/generic_pattern.dag",
+            r#"module sample.generic
+pattern passthrough<T: Serializable>(value: T) -> { value: T } {
+  return { value: value }
+}
+fn relay<T>(value: T) -> T {
+  let result = passthrough(value: value)
+  result.value
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("generic pattern type parameters should be treated as known types");
         assert_eq!(typed.modules.len(), 1);
     }
 

@@ -130,6 +130,7 @@ pub mod ast {
     #[derive(Debug)]
     pub struct FnDef {
         pub name: String,
+        pub type_params: Vec<String>,
         pub params: Vec<Param>,
         pub return_type: TypeExpr,
         pub body: FnBody,
@@ -139,6 +140,7 @@ pub mod ast {
     #[derive(Debug)]
     pub struct FuncDef {
         pub name: String,
+        pub type_params: Vec<String>,
         pub params: Vec<Param>,
         pub outputs: Vec<Field>,
         pub uses: Vec<UsesClause>,
@@ -151,6 +153,7 @@ pub mod ast {
     #[derive(Debug)]
     pub struct PatternDef {
         pub name: String,
+        pub type_params: Vec<String>,
         pub params: Vec<Param>,
         pub outputs: Vec<Field>,
         pub uses: Vec<UsesClause>,
