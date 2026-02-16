@@ -970,4 +970,210 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
+
+    #[test]
+    fn compile_single_file_unresolved_service_interface_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_unresolved_service_interface");
+        std::fs::write(
+            &fixture,
+            r#"module sample.services
+service FsStorage implements MissingStorage {
+  operation read(path: String) -> { body: String }
+}
+"#,
+        )
+        .expect("failed to write unresolved service-interface fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("`FsStorage` references unresolved interface `MissingStorage`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_unresolved_resource_interface_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_unresolved_resource_interface");
+        std::fs::write(
+            &fixture,
+            r#"module sample.resources
+resource Disk implements MissingStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+"#,
+        )
+        .expect("failed to write unresolved resource-interface fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("`Disk` references unresolved interface `MissingStorage`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_directory_unresolved_service_interface_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_unresolved_service_interface_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+service FsStorage implements MissingStorage {
+  operation read(path: String) -> { body: String }
+}
+"#,
+        )
+        .expect("failed to write unresolved service-interface source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("`FsStorage` references unresolved interface `MissingStorage`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_unresolved_resource_interface_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_unresolved_resource_interface_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+resource Disk implements MissingStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+"#,
+        )
+        .expect("failed to write unresolved resource-interface source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("`Disk` references unresolved interface `MissingStorage`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_single_file_duplicate_interface_reports_ambiguous_implements() {
+        let fixture = unique_temp_file("single_file_duplicate_interface");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+"#,
+        )
+        .expect("failed to write duplicate-interface fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate definition `Storage` in module `sample.single`"));
+        assert!(error.contains("`FsStorage` references ambiguous interface `Storage`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_directory_duplicate_interface_reports_ambiguous_implements() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_duplicate_interface_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+"#,
+        )
+        .expect("failed to write duplicate-interface source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate definition `Storage` in module `sample.main`"));
+        assert!(error.contains("`FsStorage` references ambiguous interface `Storage`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
 }
