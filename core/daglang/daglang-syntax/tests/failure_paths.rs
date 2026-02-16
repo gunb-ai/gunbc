@@ -29,3 +29,20 @@ fn lexer_unknown_character_surfaces_as_parser_diagnostic() {
         "expected lexical diagnostic to be surfaced through parser: {errors:?}"
     );
 }
+
+#[test]
+fn parser_recovers_to_next_top_level_item_and_reports_multiple_errors() {
+    let source = r#"
+module bad
+import
+fn broken(
+type Broken =
+"#;
+
+    let errors = daglang_syntax::parser::parse(source)
+        .expect_err("malformed source should produce parse errors");
+    assert!(
+        errors.len() >= 2,
+        "expected multiple diagnostics via top-level recovery, got: {errors:?}"
+    );
+}
