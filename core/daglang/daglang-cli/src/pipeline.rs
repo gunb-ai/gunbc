@@ -580,6 +580,12 @@ fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
 
     let node_by_id: HashMap<String, &Node<CompilerOp>> =
         dag.nodes.iter().map(|node| (node.id.0.clone(), node)).collect();
+    if !node_by_id.contains_key(NODE_DISCOVER) {
+        return Err(format!(
+            "missing required entrypoint node {}",
+            NODE_DISCOVER
+        ));
+    }
     let mut occupied_inputs: HashSet<(String, String)> = HashSet::new();
     let mut incoming_by_node: HashMap<String, usize> = HashMap::new();
     for edge in &dag.edges {
@@ -1502,5 +1508,15 @@ mod tests {
         let err = validate_pipeline_semantics(&dag)
             .expect_err("entrypoint node should not accept inbound edges");
         assert!(err.contains("must not have inbound edges"));
+    }
+
+    #[test]
+    fn pipeline_requires_discover_entrypoint_node() {
+        let mut dag = build_pipeline_dag();
+        dag.nodes.retain(|node| node.id.0 != NODE_DISCOVER);
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("missing discover entrypoint should fail validation");
+        assert!(err.contains("missing required entrypoint node"));
     }
 }
