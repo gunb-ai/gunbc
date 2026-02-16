@@ -157,6 +157,19 @@ pub enum TypeError {
         callee: String,
         argument: String,
     },
+    /// Service call expression used wrong number of arguments.
+    ServiceCallArityMismatch {
+        caller: String,
+        service_call: String,
+        expected: usize,
+        got: usize,
+    },
+    /// Service call expression used an unknown named argument.
+    UnknownServiceCallArgument {
+        caller: String,
+        service_call: String,
+        argument: String,
+    },
     /// `uses` clause references an unknown resource/interface type.
     UnknownUsedResourceType {
         item: String,
@@ -259,6 +272,23 @@ impl std::fmt::Display for TypeError {
                 f,
                 "unknown named argument `{argument}` in call to `{callee}` within `{caller}`"
             ),
+            Self::ServiceCallArityMismatch {
+                caller,
+                service_call,
+                expected,
+                got,
+            } => write!(
+                f,
+                "service call arity mismatch in `{caller}` for `{service_call}`: expected {expected}, got {got}"
+            ),
+            Self::UnknownServiceCallArgument {
+                caller,
+                service_call,
+                argument,
+            } => write!(
+                f,
+                "unknown named argument `{argument}` in service call `{service_call}` within `{caller}`"
+            ),
             Self::UnknownUsedResourceType {
                 item,
                 binding,
@@ -303,6 +333,7 @@ pub fn typecheck_module_graph_with_options(
 ) -> Result<TypedProject, Vec<TypeError>> {
     let known_types = collect_known_types(&graph.modules);
     let callable_registry = collect_unique_callables(&graph.modules);
+    let service_call_registry = collect_service_call_contracts(&graph.modules);
     let interface_registry = collect_interfaces(&graph.modules);
     let resource_type_registry = collect_resource_types(&graph.modules);
     let available_modules = graph
@@ -315,6 +346,7 @@ pub fn typecheck_module_graph_with_options(
     let context = TypecheckContext {
         known_types: &known_types,
         callable_registry: &callable_registry,
+        service_call_registry: &service_call_registry,
         interface_registry: &interface_registry,
         resource_type_registry: &resource_type_registry,
         allow_unresolved_references: options.allow_unresolved_imports,
@@ -361,6 +393,7 @@ pub fn typecheck_module_graph_with_options(
 struct TypecheckContext<'a> {
     known_types: &'a HashSet<String>,
     callable_registry: &'a HashMap<String, Option<CallableContract>>,
+    service_call_registry: &'a ServiceCallRegistry,
     interface_registry: &'a InterfaceRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     allow_unresolved_references: bool,
@@ -414,6 +447,7 @@ fn collect_signatures(
                     &def.name,
                     &def.body.stmts,
                     context.callable_registry,
+                    context.service_call_registry,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Fn(TypedCallableSignature {
@@ -452,6 +486,7 @@ fn collect_signatures(
                     &def.name,
                     &def.body.stmts,
                     context.callable_registry,
+                    context.service_call_registry,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Func(TypedCallableSignature {
@@ -489,6 +524,7 @@ fn collect_signatures(
                     &def.name,
                     &def.body.stmts,
                     context.callable_registry,
+                    context.service_call_registry,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Pattern(TypedCallableSignature {
@@ -567,6 +603,17 @@ struct CallableContract {
     params: HashSet<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ServiceCallContract {
+    arity: usize,
+    params: HashSet<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ServiceCallRegistry {
+    by_key: HashMap<String, Option<ServiceCallContract>>,
+}
+
 fn collect_unique_callables(
     modules: &[ResolvedModule],
 ) -> HashMap<String, Option<CallableContract>> {
@@ -594,6 +641,67 @@ fn collect_unique_callables(
         }
     }
     callables
+}
+
+fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegistry {
+    let mut registry = ServiceCallRegistry::default();
+    for module in modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::ServiceDef(service) = &item.node else {
+                continue;
+            };
+            for operation in &service.operations {
+                let contract = ServiceCallContract {
+                    arity: operation.inputs.len(),
+                    params: operation
+                        .inputs
+                        .iter()
+                        .map(|field| field.name.clone())
+                        .collect(),
+                };
+                register_service_call_contract(
+                    &mut registry,
+                    format!("{}.{}", service.name, operation.name),
+                    contract.clone(),
+                );
+                let service_tail = service
+                    .name
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(service.name.as_str());
+                register_service_call_contract(
+                    &mut registry,
+                    format!("{service_tail}.{}", operation.name),
+                    contract.clone(),
+                );
+                register_service_call_contract(
+                    &mut registry,
+                    format!("{}.{}.{}", module_name, service.name, operation.name),
+                    contract,
+                );
+            }
+        }
+    }
+    registry
+}
+
+fn register_service_call_contract(
+    registry: &mut ServiceCallRegistry,
+    key: String,
+    contract: ServiceCallContract,
+) {
+    registry
+        .by_key
+        .entry(key)
+        .and_modify(|existing| {
+            if let Some(current) = existing {
+                if current != &contract {
+                    *existing = None;
+                }
+            }
+        })
+        .or_insert_with(|| Some(contract));
 }
 
 #[derive(Debug, Clone, Default)]
@@ -843,6 +951,7 @@ fn validate_callable_body(
     caller: &str,
     stmts: &[Stmt],
     callable_registry: &HashMap<String, Option<CallableContract>>,
+    service_call_registry: &ServiceCallRegistry,
     errors: &mut Vec<TypeError>,
 ) {
     let mut calls = Vec::new();
@@ -864,6 +973,31 @@ fn validate_callable_body(
                 errors.push(TypeError::UnknownCallArgument {
                     caller: caller.to_string(),
                     callee: call.callee.clone(),
+                    argument: named,
+                });
+            }
+        }
+    }
+
+    let mut service_calls = Vec::new();
+    collect_service_calls_from_stmts(stmts, &mut service_calls);
+    for call in service_calls {
+        let Some(contract) = resolve_service_call_contract(&call.path, service_call_registry) else {
+            continue;
+        };
+        if call.arg_count != contract.arity {
+            errors.push(TypeError::ServiceCallArityMismatch {
+                caller: caller.to_string(),
+                service_call: call.path.join("."),
+                expected: contract.arity,
+                got: call.arg_count,
+            });
+        }
+        for named in call.named_args {
+            if !contract.params.contains(&named) {
+                errors.push(TypeError::UnknownServiceCallArgument {
+                    caller: caller.to_string(),
+                    service_call: call.path.join("."),
                     argument: named,
                 });
             }
@@ -1065,6 +1199,29 @@ fn resolve_resource_type_name(
     registry.short.get(short).and_then(|entry| entry.clone())
 }
 
+fn resolve_service_call_contract(
+    call_path: &[String],
+    registry: &ServiceCallRegistry,
+) -> Option<ServiceCallContract> {
+    if call_path.len() < 2 {
+        return None;
+    }
+    let operation = call_path.last()?;
+    let service_name = call_path[..call_path.len() - 1].join(".");
+    let short_service = call_path[call_path.len() - 2].clone();
+    let keys = [
+        format!("{service_name}.{operation}"),
+        format!("{short_service}.{operation}"),
+        call_path.join("."),
+    ];
+    for key in keys {
+        if let Some(Some(contract)) = registry.by_key.get(&key) {
+            return Some(contract.clone());
+        }
+    }
+    None
+}
+
 fn canonical_type_name(name: &str) -> String {
     name.split('<').next().unwrap_or(name).trim().to_string()
 }
@@ -1072,6 +1229,13 @@ fn canonical_type_name(name: &str) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BodyCall {
     callee: String,
+    arg_count: usize,
+    named_args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BodyServiceCall {
+    path: Vec<String>,
     arg_count: usize,
     named_args: Vec<String>,
 }
@@ -1175,6 +1339,109 @@ fn collect_calls_from_expr(expr: &Expr, calls: &mut Vec<BodyCall>) {
         Expr::Return(fields) => {
             for (_, value) in fields {
                 collect_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Literal(_) | Expr::Ident(_) => {}
+    }
+}
+
+fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<BodyServiceCall>) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+                collect_service_calls_from_expr(expr, calls);
+            }
+            Stmt::Return(fields) => {
+                for (_, expr) in fields {
+                    collect_service_calls_from_expr(expr, calls);
+                }
+            }
+        }
+    }
+}
+
+fn collect_service_calls_from_expr(expr: &Expr, calls: &mut Vec<BodyServiceCall>) {
+    match expr {
+        Expr::Call(_, args) => {
+            for (_, arg) in args {
+                collect_service_calls_from_expr(arg, calls);
+            }
+        }
+        Expr::ServiceCall(path, args) => {
+            calls.push(BodyServiceCall {
+                path: path.clone(),
+                arg_count: args.len(),
+                named_args: args
+                    .iter()
+                    .filter_map(|(name, _)| name.clone())
+                    .collect::<Vec<_>>(),
+            });
+            for (_, arg) in args {
+                collect_service_calls_from_expr(arg, calls);
+            }
+        }
+        Expr::FieldAccess(base, _) => collect_service_calls_from_expr(base, calls),
+        Expr::BinOp(lhs, _, rhs) => {
+            collect_service_calls_from_expr(lhs, calls);
+            collect_service_calls_from_expr(rhs, calls);
+        }
+        Expr::UnaryOp(_, inner) => collect_service_calls_from_expr(inner, calls),
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let daglang_syntax::ast::StringPart::Expr(inner) = part {
+                    collect_service_calls_from_expr(inner, calls);
+                }
+            }
+        }
+        Expr::Record(_, fields) => {
+            for (_, value) in fields {
+                collect_service_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            collect_service_calls_from_expr(scrutinee, calls);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_service_calls_from_expr(guard, calls);
+                }
+                collect_service_calls_from_expr(&arm.body, calls);
+            }
+        }
+        Expr::If(cond, then_expr, else_expr) => {
+            collect_service_calls_from_expr(cond, calls);
+            collect_service_calls_from_expr(then_expr, calls);
+            if let Some(otherwise) = else_expr {
+                collect_service_calls_from_expr(otherwise, calls);
+            }
+        }
+        Expr::For(_, iterable, body) => {
+            collect_service_calls_from_expr(iterable, calls);
+            collect_service_calls_from_expr(body, calls);
+        }
+        Expr::Pipe(lhs, rhs) => {
+            collect_service_calls_from_expr(lhs, calls);
+            collect_service_calls_from_expr(rhs, calls);
+        }
+        Expr::Lambda(_, body) => collect_service_calls_from_expr(body, calls),
+        Expr::List(items) => {
+            for item in items {
+                collect_service_calls_from_expr(item, calls);
+            }
+        }
+        Expr::Map(entries) => {
+            for (key, value) in entries {
+                collect_service_calls_from_expr(key, calls);
+                collect_service_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Guarded(inner, guard) => {
+            collect_service_calls_from_expr(inner, calls);
+            collect_service_calls_from_expr(guard, calls);
+        }
+        Expr::After(inner, _) => collect_service_calls_from_expr(inner, calls),
+        Expr::Return(fields) => {
+            for (_, value) in fields {
+                collect_service_calls_from_expr(value, calls);
             }
         }
         Expr::Literal(_) | Expr::Ident(_) => {}
@@ -1366,6 +1633,72 @@ mod tests {
                 callee,
                 argument
             } if caller == "run" && callee == "fmt" && argument == "text"
+        )));
+    }
+
+    #[test]
+    fn service_call_arity_mismatch_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "service_arity_mismatch.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run() -> { ok: Bool } {
+  let response = FsStorage.read()
+  return { ok: true }
+}"#,
+        )]);
+        let errors =
+            typecheck_module_graph(graph).expect_err("service call arity mismatch should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::ServiceCallArityMismatch {
+                caller,
+                service_call,
+                expected,
+                got
+            } if caller == "run"
+                && service_call == "FsStorage.read"
+                && *expected == 1
+                && *got == 0
+        )));
+    }
+
+    #[test]
+    fn unknown_named_service_call_argument_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "service_unknown_arg.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(file: path)
+  return { body: response.body }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph)
+            .expect_err("unknown named service call argument should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnknownServiceCallArgument {
+                caller,
+                service_call,
+                argument
+            } if caller == "run" && service_call == "FsStorage.read" && argument == "file"
         )));
     }
 
