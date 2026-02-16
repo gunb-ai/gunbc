@@ -172,6 +172,8 @@ pub enum TypeError {
     },
     /// Service call target could not be resolved to a known service operation contract.
     UnresolvedServiceCall { caller: String, service_call: String },
+    /// Service call target matches multiple possible service operation contracts.
+    AmbiguousServiceCall { caller: String, service_call: String },
     /// Service call expression used an unknown named argument.
     UnknownServiceCallArgument {
         caller: String,
@@ -309,6 +311,13 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "unresolved service call `{service_call}` in `{caller}`"
+            ),
+            Self::AmbiguousServiceCall {
+                caller,
+                service_call,
+            } => write!(
+                f,
+                "ambiguous service call `{service_call}` in `{caller}`"
             ),
             Self::UnknownServiceCallArgument {
                 caller,
@@ -654,6 +663,13 @@ struct ServiceCallRegistry {
     by_key: HashMap<String, Option<ServiceCallContract>>,
 }
 
+#[derive(Debug, Clone)]
+enum ServiceCallResolution {
+    Resolved(ServiceCallContract),
+    Ambiguous,
+    Missing,
+}
+
 fn collect_unique_callables(
     modules: &[ResolvedModule],
 ) -> HashMap<String, Option<CallableContract>> {
@@ -700,26 +716,18 @@ fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegi
                         .map(|field| field.name.clone())
                         .collect(),
                 };
-                register_service_call_contract(
-                    &mut registry,
-                    format!("{}.{}", service.name, operation.name),
-                    contract.clone(),
-                );
                 let service_tail = service
                     .name
                     .rsplit('.')
                     .next()
                     .unwrap_or(service.name.as_str());
-                register_service_call_contract(
-                    &mut registry,
-                    format!("{service_tail}.{}", operation.name),
-                    contract.clone(),
-                );
-                register_service_call_contract(
-                    &mut registry,
-                    format!("{}.{}.{}", module_name, service.name, operation.name),
-                    contract,
-                );
+                let mut keys = HashSet::new();
+                keys.insert(format!("{}.{}", service.name, operation.name));
+                keys.insert(format!("{service_tail}.{}", operation.name));
+                keys.insert(format!("{}.{}.{}", module_name, service.name, operation.name));
+                for key in keys {
+                    register_service_call_contract(&mut registry, key, contract.clone());
+                }
             }
         }
     }
@@ -734,13 +742,7 @@ fn register_service_call_contract(
     registry
         .by_key
         .entry(key)
-        .and_modify(|existing| {
-            if let Some(current) = existing {
-                if current != &contract {
-                    *existing = None;
-                }
-            }
-        })
+        .and_modify(|existing| *existing = None)
         .or_insert_with(|| Some(contract));
 }
 
@@ -1032,19 +1034,32 @@ fn validate_callable_body(
     let mut service_calls = Vec::new();
     collect_service_calls_from_stmts(stmts, &mut service_calls);
     for call in service_calls {
-        let Some(contract) = resolve_service_call_contract(&call.path, service_call_registry) else {
-            if !allow_unresolved_references {
-                errors.push(TypeError::UnresolvedServiceCall {
-                    caller: caller.to_string(),
-                    service_call: call.path.join("."),
-                });
+        let service_call_name = call.path.join(".");
+        let contract = match resolve_service_call_contract(&call.path, service_call_registry) {
+            ServiceCallResolution::Resolved(contract) => contract,
+            ServiceCallResolution::Ambiguous => {
+                if !allow_unresolved_references {
+                    errors.push(TypeError::AmbiguousServiceCall {
+                        caller: caller.to_string(),
+                        service_call: service_call_name,
+                    });
+                }
+                continue;
             }
-            continue;
+            ServiceCallResolution::Missing => {
+                if !allow_unresolved_references {
+                    errors.push(TypeError::UnresolvedServiceCall {
+                        caller: caller.to_string(),
+                        service_call: service_call_name,
+                    });
+                }
+                continue;
+            }
         };
         if call.arg_count != contract.arity {
             errors.push(TypeError::ServiceCallArityMismatch {
                 caller: caller.to_string(),
-                service_call: call.path.join("."),
+                service_call: service_call_name.clone(),
                 expected: contract.arity,
                 got: call.arg_count,
             });
@@ -1054,7 +1069,7 @@ fn validate_callable_body(
             if !seen_named.insert(named.clone()) {
                 errors.push(TypeError::DuplicateServiceCallArgument {
                     caller: caller.to_string(),
-                    service_call: call.path.join("."),
+                    service_call: service_call_name.clone(),
                     argument: named,
                 });
                 continue;
@@ -1062,7 +1077,7 @@ fn validate_callable_body(
             if !contract.params.contains(&named) {
                 errors.push(TypeError::UnknownServiceCallArgument {
                     caller: caller.to_string(),
-                    service_call: call.path.join("."),
+                    service_call: service_call_name.clone(),
                     argument: named,
                 });
             }
@@ -1267,11 +1282,13 @@ fn resolve_resource_type_name(
 fn resolve_service_call_contract(
     call_path: &[String],
     registry: &ServiceCallRegistry,
-) -> Option<ServiceCallContract> {
+) -> ServiceCallResolution {
     if call_path.len() < 2 {
-        return None;
+        return ServiceCallResolution::Missing;
     }
-    let operation = call_path.last()?;
+    let Some(operation) = call_path.last() else {
+        return ServiceCallResolution::Missing;
+    };
     let service_name = call_path[..call_path.len() - 1].join(".");
     let short_service = call_path[call_path.len() - 2].clone();
     let keys = [
@@ -1279,12 +1296,20 @@ fn resolve_service_call_contract(
         format!("{short_service}.{operation}"),
         call_path.join("."),
     ];
+    let mut saw_ambiguous = false;
     for key in keys {
-        if let Some(Some(contract)) = registry.by_key.get(&key) {
-            return Some(contract.clone());
+        if let Some(entry) = registry.by_key.get(&key) {
+            match entry {
+                Some(contract) => return ServiceCallResolution::Resolved(contract.clone()),
+                None => saw_ambiguous = true,
+            }
         }
     }
-    None
+    if saw_ambiguous {
+        ServiceCallResolution::Ambiguous
+    } else {
+        ServiceCallResolution::Missing
+    }
 }
 
 fn canonical_type_name(name: &str) -> String {
@@ -1777,6 +1802,48 @@ func run(path: String) -> { body: String } {
                 caller,
                 service_call
             } if caller == "run" && service_call == "MissingStorage.read"
+        )));
+    }
+
+    #[test]
+    fn strict_mode_reports_ambiguous_service_call() {
+        let graph = module_graph_from_sources(&[
+            (
+                "sample/first.dag",
+                r#"module sample.first
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+            ),
+            (
+                "sample/second.dag",
+                r#"module sample.second
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+            ),
+            (
+                "sample/main.dag",
+                r#"module sample.main
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+            ),
+        ]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for ambiguous service call");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousServiceCall {
+                caller,
+                service_call
+            } if caller == "run" && service_call == "SharedService.read"
         )));
     }
 

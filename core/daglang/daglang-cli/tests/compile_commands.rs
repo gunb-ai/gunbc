@@ -738,6 +738,54 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn compile_command_directory_mode_fails_on_ambiguous_service_call() {
+    let root = unique_temp_dir("ambiguous_service_call_typecheck");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/first.dag"),
+        r#"module sample.first
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+    )
+    .expect("failed to write first service source");
+    std::fs::write(
+        root.join("sample/second.dag"),
+        r#"module sample.second
+service SharedService {
+  operation read(path: String) -> { body: String }
+}"#,
+    )
+    .expect("failed to write second service source");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+func run(path: String) -> { body: String } {
+  let response = SharedService.read(path: path)
+  return { body: response.body }
+}"#,
+    )
+    .expect("failed to write main source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on ambiguous service call"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("ambiguous service call `SharedService.read`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_reports_module_path_mismatch() {
     let root = unique_temp_dir("path_mismatch");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
