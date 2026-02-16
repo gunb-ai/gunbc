@@ -124,7 +124,7 @@ fn main() {
         }
         cmd => {
             eprintln!("Unknown command: {cmd}");
-            std::process::exit(1);
+            exit_usage("<command> [args...]");
         }
     }
 }

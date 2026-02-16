@@ -26412,6 +26412,10 @@ fn unknown_command_exits_nonzero_with_message() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Unknown command"));
+    assert!(
+        stderr.contains("Usage: daglang <command> [args...]"),
+        "unknown command should include top-level usage guidance: {stderr}"
+    );
 }
 
 #[test]
