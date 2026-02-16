@@ -1,3 +1,4 @@
+use daglang_resolve::ModuleGraph;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -150,6 +151,15 @@ fn expected_viz_self_mermaid() -> &'static str {
         "    daglang_compiler_pipeline_build_module_graph -->|diagnostics:diagnostics| daglang_compiler_pipeline_report_modules\n",
         "end\n\n",
     )
+}
+
+fn resolve_discovered_module_order() -> Vec<String> {
+    ModuleGraph::discover(&[workspace_root().join("dsl")])
+        .expect("resolve discovery should succeed for real corpus")
+        .modules
+        .into_iter()
+        .map(|module| module.module_path.join("."))
+        .collect()
 }
 
 #[test]
@@ -332,6 +342,26 @@ fn modules_command_real_corpus_order_matches_expected_snapshot() {
         .into_iter()
         .map(String::from)
         .collect();
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn modules_command_real_corpus_order_matches_resolve_discovery() {
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules");
+
+    assert!(
+        output.status.success(),
+        "modules command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual = reported_modules_in_order(&stdout);
+    let expected = resolve_discovered_module_order();
     assert_eq!(actual, expected);
 }
 
