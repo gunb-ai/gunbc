@@ -86,6 +86,26 @@ fn discovers_all_real_dsl_modules() {
 }
 
 #[test]
+fn discovered_module_paths_match_ast_module_declarations() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+    let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
+
+    for module in &graph.modules {
+        let ast_module_path = module
+            .ast
+            .module_path
+            .as_ref()
+            .map(|module| module.node.segments.clone())
+            .expect("real corpus files should contain module declarations");
+        assert_eq!(
+            module.module_path, ast_module_path,
+            "resolved module path should match parsed AST module declaration for {}",
+            module.path.display()
+        );
+    }
+}
+
+#[test]
 fn discovery_with_empty_roots_returns_empty_graph() {
     let graph = ModuleGraph::discover(&[]).expect("empty roots should be valid");
     assert!(graph.modules.is_empty(), "expected no discovered modules");
