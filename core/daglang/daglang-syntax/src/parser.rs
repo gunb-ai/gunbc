@@ -89,6 +89,7 @@ fn flatten_path(expr: &Expr) -> Option<Vec<String>> {
     }
 }
 
+#[allow(dead_code)]
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
         Self {
@@ -2146,6 +2147,12 @@ impl Parser {
 mod tests {
     use super::*;
 
+    fn parse_expr_only(source: &str) -> Expr {
+        let tokens = Lexer::tokenize(source);
+        let mut parser = Parser::new(tokens);
+        parser.parse_expr(0).expect("expression should parse")
+    }
+
     #[test]
     fn parse_module_decl() {
         let sf = parse_or_panic("module tools.makegen");
@@ -2216,6 +2223,33 @@ mod tests {
                 }
             }
             other => panic!("expected TypeDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn expression_precedence_multiplicative_over_additive() {
+        let expr = parse_expr_only("a + b * c");
+        match expr {
+            Expr::BinOp(lhs, BinOp::Add, rhs) => {
+                assert!(matches!(*lhs, Expr::Ident(ref name) if name == "a"));
+                assert!(matches!(
+                    *rhs,
+                    Expr::BinOp(_, BinOp::Mul, _)
+                ));
+            }
+            other => panic!("unexpected expression tree: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn expression_pipe_is_left_associative() {
+        let expr = parse_expr_only("a |> f |> g");
+        match expr {
+            Expr::Pipe(lhs, rhs) => {
+                assert!(matches!(*rhs, Expr::Ident(ref name) if name == "g"));
+                assert!(matches!(*lhs, Expr::Pipe(_, _)));
+            }
+            other => panic!("unexpected expression tree: {other:?}"),
         }
     }
 }

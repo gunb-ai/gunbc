@@ -13,6 +13,10 @@
 //! - `daglang check <file.dag>`    -- Parse + typecheck without lowering
 //! - `daglang compile <file.dag>`  -- Full compilation pipeline
 
+use std::path::PathBuf;
+
+use daglang_cli::pipeline::{build_pipeline_dag, run_pipeline, PipelineContext, PipelineStop};
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -31,8 +35,12 @@ fn main() {
 
     match args[1].as_str() {
         "viz" => {
-            eprintln!("TODO: dag viz -- Phase 0 deliverable");
-            eprintln!("Will show ASCII DAG visualization from compiled IR.");
+            if args.get(2).map(String::as_str) == Some("--self") {
+                let dag = build_pipeline_dag();
+                println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
+            } else {
+                eprintln!("TODO: dag viz <file.dag> -- file visualization is not implemented yet.");
+            }
         }
         "expand" => {
             eprintln!("TODO: dag expand -- Phase 0 deliverable");
@@ -43,12 +51,57 @@ fn main() {
             eprintln!("Will show derived ProgressManifest: topology, waves, boundaries.");
         }
         "modules" => {
-            eprintln!("TODO: dag modules -- Phase 0 deliverable");
-            eprintln!("Will show the discovered module graph from filesystem scan.");
+            let roots = vec![resolve_root(args.get(2))];
+            let context = PipelineContext {
+                roots,
+                target_file: None,
+            };
+            match run_pipeline(&context, PipelineStop::Report) {
+                Ok(result) => {
+                    if let Some(report) = result.report {
+                        println!("{report}");
+                    }
+                    if !result.diagnostics.is_empty() {
+                        std::process::exit(1);
+                    }
+                }
+                Err(error) => {
+                    eprintln!("pipeline error: {error}");
+                    std::process::exit(1);
+                }
+            }
         }
         "check" => {
-            eprintln!("TODO: dag check -- Phase 0 deliverable");
-            eprintln!("Will parse + typecheck without lowering.");
+            let input = args.get(2).map(PathBuf::from);
+            let (roots, target_file) = match input {
+                Some(path) if path.extension().and_then(|ext| ext.to_str()) == Some("dag") => {
+                    let root = path
+                        .parent()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| ".".into()));
+                    (vec![root], Some(path))
+                }
+                Some(path) => (vec![path], None),
+                None => (vec![resolve_root(None)], None),
+            };
+
+            let context = PipelineContext { roots, target_file };
+            match run_pipeline(&context, PipelineStop::Parse) {
+                Ok(result) => {
+                    if result.diagnostics.is_empty() {
+                        println!("OK: parsed {} file(s)", result.parsed_count);
+                    } else {
+                        for diagnostic in &result.diagnostics {
+                            eprintln!("{diagnostic}");
+                        }
+                        std::process::exit(1);
+                    }
+                }
+                Err(error) => {
+                    eprintln!("pipeline error: {error}");
+                    std::process::exit(1);
+                }
+            }
         }
         "compile" => {
             eprintln!("TODO: dag compile -- Phase 1 deliverable");
@@ -58,5 +111,18 @@ fn main() {
             eprintln!("Unknown command: {cmd}");
             std::process::exit(1);
         }
+    }
+}
+
+fn resolve_root(arg: Option<&String>) -> PathBuf {
+    if let Some(path) = arg {
+        return PathBuf::from(path);
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let dsl = cwd.join("dsl");
+    if dsl.exists() {
+        dsl
+    } else {
+        PathBuf::from("dsl")
     }
 }

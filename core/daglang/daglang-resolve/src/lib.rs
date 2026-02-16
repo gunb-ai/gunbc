@@ -88,18 +88,21 @@ impl ModuleGraph {
             return Err(ResolveError::ParseErrors(parse_errors));
         }
 
-        let mod_index: HashMap<Vec<String>, usize> = parsed
-            .iter()
-            .enumerate()
-            .map(|(i, (_, mp, _, _))| (mp.clone(), i))
-            .collect();
+        let mut mod_index: HashMap<Vec<String>, usize> = HashMap::new();
+        for (i, (_, mp, _, _)) in parsed.iter().enumerate() {
+            if mod_index.insert(mp.clone(), i).is_some() {
+                return Err(ResolveError::DuplicateModule(mp.clone()));
+            }
+        }
 
         let mut modules: Vec<ResolvedModule> = Vec::with_capacity(parsed.len());
         for (path, mod_path, imports, ast) in parsed {
-            let deps: Vec<usize> = imports
-                .iter()
-                .filter_map(|imp| mod_index.get(imp).copied())
-                .collect();
+            let mut deps: Vec<usize> = Vec::new();
+            for imp in &imports {
+                if let Some(dep) = mod_index.get(imp) {
+                    deps.push(*dep);
+                }
+            }
             modules.push(ResolvedModule {
                 path,
                 ast,
@@ -108,7 +111,7 @@ impl ModuleGraph {
             });
         }
 
-        topo_sort(&mut modules);
+        topo_sort(&mut modules)?;
 
         Ok(ModuleGraph { modules })
     }
@@ -168,7 +171,7 @@ fn path_to_module_path(path: &Path, roots: &[PathBuf]) -> Vec<String> {
 }
 
 /// Stable topological sort: leaves (no deps) first.
-fn topo_sort(modules: &mut Vec<ResolvedModule>) {
+fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
     let n = modules.len();
     let mut in_degree = vec![0usize; n];
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
@@ -191,12 +194,23 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) {
             }
         }
     }
-    if order.len() == n {
-        let mut tmp: Vec<Option<ResolvedModule>> = modules.drain(..).map(Some).collect();
-        for i in &order {
-            modules.push(tmp[*i].take().unwrap());
+    if order.len() != n {
+        let mut seen = vec![false; n];
+        for idx in &order {
+            seen[*idx] = true;
+        }
+        for idx in 0..n {
+            if !seen[idx] {
+                order.push(idx);
+            }
         }
     }
+
+    let mut tmp: Vec<Option<ResolvedModule>> = modules.drain(..).map(Some).collect();
+    for i in &order {
+        modules.push(tmp[*i].take().unwrap());
+    }
+    Ok(())
 }
 
 /// Errors during module resolution.

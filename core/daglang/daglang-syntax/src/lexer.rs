@@ -330,6 +330,21 @@ mod tests {
     }
 
     #[test]
+    fn longest_match_operators() {
+        assert_eq!(kinds("|>| => = > -> - !="), vec![
+            TokenKind::PipeArrow,
+            TokenKind::Pipe,
+            TokenKind::FatArrow,
+            TokenKind::Eq,
+            TokenKind::Gt,
+            TokenKind::Arrow,
+            TokenKind::Minus,
+            TokenKind::Ne,
+            TokenKind::Eof,
+        ]);
+    }
+
+    #[test]
     fn numbers() {
         assert_eq!(kinds("42 3.14"), vec![
             TokenKind::Int(42), TokenKind::Float(3.14), TokenKind::Eof,
