@@ -590,6 +590,81 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn compile_command_reports_duplicate_named_call_argument_typecheck_error() {
+    let fixture = unique_temp_file("duplicate_named_call_arg");
+    std::fs::write(
+        &fixture,
+        r#"module sample.calls
+fn fmt(value: String, mode: String) -> String { value }
+fn run() -> String {
+  fmt(value: "a", value: "b")
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on duplicate named call argument"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate named argument `value`"));
+    assert!(stderr.contains("call to `fmt`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_reports_duplicate_named_service_argument_typecheck_error() {
+    let fixture = unique_temp_file("duplicate_named_service_arg");
+    std::fs::write(
+        &fixture,
+        r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String, mode: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String, mode: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path, path: path)
+  return { body: response.body }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on duplicate named service argument"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate named argument `path`"));
+    assert!(stderr.contains("service call `FsStorage.read`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_directory_mode_reports_module_path_mismatch() {
     let root = unique_temp_dir("path_mismatch");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
