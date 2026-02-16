@@ -1339,13 +1339,12 @@ fn add_provided_resource_nodes(
             };
             for provided in provides {
                 let resource_type = resource_type_name(&provided.resource_type);
-                let has_endpoint = resolve_resource_endpoint(
+                let endpoint = resolve_resource_endpoint(
                     module_name.as_str(),
                     resource_type.as_str(),
                     resource_registry,
-                )
-                .is_some();
-                if !has_endpoint && !known_uses_types.contains(&resource_type) {
+                );
+                if endpoint.is_none() && !known_uses_types.contains(&resource_type) {
                     return Err(LowerError::UnresolvedProvidedResource {
                         caller: format!("{module_name}::{item_name}"),
                         binding: provided.binding.clone(),
@@ -1387,6 +1386,17 @@ fn add_provided_resource_nodes(
                     provider_node_id.as_str(),
                     "trigger",
                 );
+                if let Some(endpoint) = endpoint {
+                    if let Some(release_node) = endpoint.release_node {
+                        add_edge_once(
+                            dag,
+                            provider_node_id.as_str(),
+                            provided.binding.as_str(),
+                            release_node.as_str(),
+                            "resource_handle",
+                        );
+                    }
+                }
             }
         }
     }
@@ -2228,6 +2238,29 @@ func run() -> { ok: Bool } provides out: MissingResource {
                 && binding == "out"
                 && resource_type == "MissingResource"
         ));
+    }
+
+    #[test]
+    fn provides_resource_with_release_wires_provider_output_to_lifecycle_release() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/provides_release_wiring.dag",
+            r#"module sample.resources
+resource TempFile {
+  release {
+    let done = true
+  }
+}
+func run() -> { ok: Bool } provides file: TempFile {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "provide_resource_sample_resources_run_file"
+                && edge.from_port.0 == "file"
+                && edge.to_node.0 == "release_resource_sample_resources_TempFile"
+                && edge.to_port.0 == "resource_handle"
+        }));
     }
 
     #[test]
