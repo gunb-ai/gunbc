@@ -878,6 +878,22 @@ fn discovery_deduplicates_files_from_duplicate_roots() {
 }
 
 #[test]
+fn discovery_deduplicates_files_from_equivalent_curdir_suffix_roots() {
+    let root = unique_temp_dir("equivalent_curdir_suffix_roots");
+    write_file(
+        &root.join("main.dag"),
+        "module sample.main\nfn ok() -> Unit {}",
+    );
+
+    let graph = ModuleGraph::discover(&[root.clone(), root.join(".")])
+        .expect("discover should dedupe equivalent root entries");
+    assert_eq!(graph.modules.len(), 1);
+    assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn discovery_deduplicates_parse_errors_from_duplicate_roots() {
     let root = unique_temp_dir("duplicate_roots_parse_errors");
     write_file(&root.join("broken.dag"), "module sample.broken\nfn");
@@ -890,6 +906,31 @@ fn discovery_deduplicates_parse_errors_from_duplicate_roots() {
                 files.len(),
                 1,
                 "duplicate roots should not duplicate parse error file entries"
+            );
+            assert_eq!(
+                files[0].0.file_name().and_then(|name| name.to_str()),
+                Some("broken.dag")
+            );
+        }
+        other => panic!("expected ParseErrors, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
+fn discovery_deduplicates_parse_errors_from_equivalent_curdir_suffix_roots() {
+    let root = unique_temp_dir("equivalent_curdir_suffix_roots_parse_errors");
+    write_file(&root.join("broken.dag"), "module sample.broken\nfn");
+
+    let err = ModuleGraph::discover(&[root.clone(), root.join(".")])
+        .expect_err("expected parse error for equivalent root entries");
+    match err {
+        ResolveError::ParseErrors(files) => {
+            assert_eq!(
+                files.len(),
+                1,
+                "equivalent roots should not duplicate parse error file entries"
             );
             assert_eq!(
                 files[0].0.file_name().and_then(|name| name.to_str()),
