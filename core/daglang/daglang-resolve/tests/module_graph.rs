@@ -1,6 +1,7 @@
 use daglang_resolve::{ModuleGraph, ResolveError};
 use daglang_syntax::diagnostic::DiagnosticKind;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -270,6 +271,53 @@ fn real_corpus_dependency_indices_are_within_bounds() {
                 dep_idx,
                 module.module_path.join(".")
             );
+        }
+    }
+}
+
+#[test]
+fn real_corpus_dependency_indices_match_declared_imports() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+    let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
+    let module_index: HashMap<Vec<String>, usize> = graph
+        .modules
+        .iter()
+        .enumerate()
+        .map(|(idx, module)| (module.module_path.clone(), idx))
+        .collect();
+
+    for module in &graph.modules {
+        let declared_imports: HashSet<Vec<String>> = module
+            .ast
+            .imports
+            .iter()
+            .map(|import| import.node.path.segments.clone())
+            .collect();
+
+        let resolved_dependencies: HashSet<Vec<String>> = module
+            .dependencies
+            .iter()
+            .map(|dep_idx| graph.modules[*dep_idx].module_path.clone())
+            .collect();
+
+        for dep_path in &resolved_dependencies {
+            assert!(
+                declared_imports.contains(dep_path),
+                "resolved dependency {} was not declared by module {}",
+                dep_path.join("."),
+                module.module_path.join(".")
+            );
+        }
+
+        for import in &declared_imports {
+            if module_index.contains_key(import) {
+                assert!(
+                    resolved_dependencies.contains(import),
+                    "declared import {} should resolve as dependency for module {}",
+                    import.join("."),
+                    module.module_path.join(".")
+                );
+            }
         }
     }
 }
