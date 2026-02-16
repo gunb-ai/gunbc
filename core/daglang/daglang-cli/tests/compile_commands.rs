@@ -10162,6 +10162,74 @@ func run() -> { ok: Bool } provides out: MissingResource {
 }
 
 #[test]
+fn compile_command_single_file_accepts_uses_resource_with_runtime_config_suffix() {
+    let fixture = unique_temp_file("compile_single_file_uses_config_suffix");
+    std::fs::write(
+        &fixture,
+        r#"module sample.uses
+resource Filesystem {}
+func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for configured uses fixture");
+
+    assert!(
+        output.status.success(),
+        "single-file compile should accept configured uses resource type: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_single_file_accepts_provides_resource_with_runtime_config_suffix() {
+    let fixture = unique_temp_file("compile_single_file_provides_config_suffix");
+    std::fs::write(
+        &fixture,
+        r#"module sample.provides
+resource ArtifactStore {
+  release {
+    let done = true
+  }
+}
+func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for configured provides fixture");
+
+    assert!(
+        output.status.success(),
+        "single-file compile should accept configured provides resource type: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_single_file_allows_unresolved_imports() {
     let fixture = unique_temp_file("compile_single_file_unresolved_import");
     std::fs::write(
@@ -11718,6 +11786,39 @@ fn compile_command_directory_mode_fails_on_unknown_uses_resource_type() {
 }
 
 #[test]
+fn compile_command_directory_mode_accepts_uses_resource_with_runtime_config_suffix() {
+    let root = unique_temp_dir("configured_uses_type");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+resource Filesystem {}
+func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept configured uses resource type: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_duplicate_uses_binding() {
     let root = unique_temp_dir("duplicate_uses_binding");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
@@ -11900,6 +12001,43 @@ fn compile_command_directory_mode_fails_on_unknown_provides_resource_type() {
         !stderr.contains("lower error"),
         "unknown provides resource type should fail in typecheck stage: {stderr}"
     );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_accepts_provides_resource_with_runtime_config_suffix() {
+    let root = unique_temp_dir("configured_provides_type");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+resource ArtifactStore {
+  release {
+    let done = true
+  }
+}
+func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept configured provides resource type: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }

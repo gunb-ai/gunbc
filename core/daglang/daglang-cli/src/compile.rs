@@ -685,6 +685,68 @@ func run() -> { ok: Bool } uses fs: MissingResource {
     }
 
     #[test]
+    fn compile_single_file_uses_resource_with_runtime_config_suffix_succeeds() {
+        let fixture = unique_temp_file("single_file_uses_resource_with_config_suffix");
+        std::fs::write(
+            &fixture,
+            r#"module sample.uses
+resource Filesystem {}
+func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
+  return { ok: true }
+}
+"#,
+        )
+        .expect("failed to write configured uses fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_directory_uses_resource_with_runtime_config_suffix_succeeds() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_uses_config_suffix_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+resource Filesystem {}
+func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
+  return { ok: true }
+}
+"#,
+        )
+        .expect("failed to write configured uses source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn compile_single_file_unresolved_provides_fails_in_lower_stage() {
         let fixture = unique_temp_file("single_file_unresolved_provides");
         std::fs::write(
@@ -740,6 +802,76 @@ func run() -> { ok: Bool } provides out: MissingResource {
         assert_typecheck_stage_error(&error);
         assert!(error.contains("unknown provided resource type"));
         assert!(error.contains("MissingResource"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_single_file_provides_resource_with_runtime_config_suffix_succeeds() {
+        let fixture = unique_temp_file("single_file_provides_resource_with_config_suffix");
+        std::fs::write(
+            &fixture,
+            r#"module sample.provides
+resource ArtifactStore {
+  release {
+    let done = true
+  }
+}
+func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
+  return { ok: true }
+}
+"#,
+        )
+        .expect("failed to write configured provides fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_directory_provides_resource_with_runtime_config_suffix_succeeds() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_provides_config_suffix_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+resource ArtifactStore {
+  release {
+    let done = true
+  }
+}
+func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
+  return { ok: true }
+}
+"#,
+        )
+        .expect("failed to write configured provides source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }

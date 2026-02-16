@@ -1459,7 +1459,17 @@ fn resource_type_name(ty: &TypeExpr) -> String {
 }
 
 fn canonical_type_name(name: &str) -> String {
-    name.split('<').next().unwrap_or(name).trim().to_string()
+    let base_without_config = name.split('(').next().unwrap_or(name).trim();
+    let base_without_annotations = base_without_config
+        .split_whitespace()
+        .next()
+        .unwrap_or(base_without_config);
+    base_without_annotations
+        .split('<')
+        .next()
+        .unwrap_or(base_without_annotations)
+        .trim()
+        .to_string()
 }
 
 fn add_resource_lifecycle_nodes(
@@ -2193,6 +2203,28 @@ func run() -> { ok: Bool } uses fs: MissingResource {
     }
 
     #[test]
+    fn uses_clause_with_runtime_config_suffix_resolves_resource_type() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/configured_uses_wiring.dag",
+            r#"module sample.resources
+resource TempFile {
+  acquire { let path = "/tmp/file" }
+  release { let done = true }
+}
+func run() -> { ok: Bool } uses fs: TempFile(mode: ReadWrite) {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_sample_resources_TempFile"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == "sample.resources::run"
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
     fn provides_clause_adds_provider_node_and_edge() {
         let typed = typed_project_from_sources(&[(
             "dsl/resources/provides_wiring.dag",
@@ -2238,6 +2270,29 @@ func run() -> { ok: Bool } provides out: MissingResource {
                 && binding == "out"
                 && resource_type == "MissingResource"
         ));
+    }
+
+    #[test]
+    fn provides_clause_with_runtime_config_suffix_resolves_resource_type() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/configured_provides_wiring.dag",
+            r#"module sample.resources
+resource TempFile {
+  release {
+    let done = true
+  }
+}
+func run() -> { ok: Bool } provides file: TempFile(mode: ReadWrite) {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "provide_resource_sample_resources_run_file"
+                && edge.from_port.0 == "file"
+                && edge.to_node.0 == "release_resource_sample_resources_TempFile"
+                && edge.to_port.0 == "resource_handle"
+        }));
     }
 
     #[test]

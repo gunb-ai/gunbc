@@ -1183,7 +1183,7 @@ fn validate_uses_clauses(
             });
         }
         if !allow_unresolved_references {
-            let resource_type = canonical_type_name(&type_expr_to_string(&usage.resource_type));
+            let resource_type = resource_type_name(&usage.resource_type);
             match resolve_resource_type_name(&resource_type, registry) {
                 ResourceTypeResolution::Resolved(_) => {}
                 ResourceTypeResolution::Ambiguous => {
@@ -1221,7 +1221,7 @@ fn validate_provides_clauses(
             });
         }
         if !allow_unresolved_references {
-            let resource_type = canonical_type_name(&type_expr_to_string(&provided.resource_type));
+            let resource_type = resource_type_name(&provided.resource_type);
             match resolve_resource_type_name(&resource_type, registry) {
                 ResourceTypeResolution::Resolved(_) => {}
                 ResourceTypeResolution::Ambiguous => {
@@ -1979,6 +1979,22 @@ fn resolve_service_call_contract(
 
 fn canonical_type_name(name: &str) -> String {
     name.split('<').next().unwrap_or(name).trim().to_string()
+}
+
+fn canonical_resource_type_name(name: &str) -> String {
+    let base_without_config = name.split('(').next().unwrap_or(name).trim();
+    let base_without_annotations = base_without_config
+        .split_whitespace()
+        .next()
+        .unwrap_or(base_without_config);
+    canonical_type_name(base_without_annotations)
+}
+
+fn resource_type_name(resource_type: &TypeExpr) -> String {
+    match resource_type {
+        TypeExpr::Named(name) | TypeExpr::Generic(name, _) => canonical_resource_type_name(name),
+        TypeExpr::Optional(inner) | TypeExpr::Annotated(inner, _) => resource_type_name(inner),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3211,6 +3227,26 @@ service FsStorage implements Storage {
     }
 
     #[test]
+    fn strict_mode_accepts_uses_resource_type_with_runtime_config_suffix() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            r#"module sample.main
+resource Filesystem {}
+func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
+  return { ok: true }
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("configured resource type should resolve in strict mode");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
     fn strict_mode_reports_ambiguous_used_resource_type() {
         let graph = module_graph_from_sources(&[
             (
@@ -3338,6 +3374,46 @@ func run() -> { ok: Bool } uses fs: SharedResource {
                 resource_type,
             } if item == "run" && binding == "out" && resource_type == "MissingResource"
         )));
+    }
+
+    #[test]
+    fn strict_mode_accepts_provides_resource_type_with_runtime_config_suffix() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            r#"module sample.main
+resource ArtifactStore {}
+func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
+  return { ok: true }
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("configured provided resource type should resolve in strict mode");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_accepts_annotated_provides_resource_type_reference() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            r#"module sample.main
+resource ArtifactStore {}
+func run() -> { ok: Bool } provides out: ArtifactStore @test_integration {
+  return { ok: true }
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("annotated provided resource type should resolve in strict mode");
+        assert_eq!(typed.modules.len(), 1);
     }
 
     #[test]
