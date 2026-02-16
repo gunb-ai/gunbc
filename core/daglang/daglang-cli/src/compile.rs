@@ -1183,6 +1183,58 @@ fn make_gcp() -> CloudConfig {
     }
 
     #[test]
+    fn compile_directory_std_helper_intrinsics_typecheck_in_strict_mode() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_std_helper_intrinsics_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+type DocgenSources {}
+
+fn run(sources: DocgenSources, payload: String) -> String {
+  let a = "template" |> replace_section("section", "value")
+  let b = render_test_listings(sources: sources)
+  let c = render_graph_structure(sources: sources)
+  let d = render_source_artifacts(sources: sources)
+  let e = compute_topology_diff(current: "{}", base: "{}")
+  let f = render_annotated_mermaid(diff: e, topology: "{}", title: "title")
+  let g = detect_runtime()
+  let h = generate()
+  let i = now()
+  let j = build_token(
+    payload: payload,
+    scheme: "Bearer",
+    header_name: "Authorization",
+    source_id: "source",
+    required_scopes: ["gist"]
+  )
+  a
+}
+"#,
+        )
+        .expect("failed to write helper intrinsic source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn compile_single_file_duplicate_service_suppresses_ambiguous_service_call() {
         let fixture = unique_temp_file("single_file_duplicate_service");
         std::fs::write(

@@ -1043,6 +1043,96 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
                 output: ValueType::Named("Bool".to_string()),
             },
         ),
+        (
+            "replace_section".to_string(),
+            CallableContract {
+                arity: 2,
+                params: HashSet::from(["section".to_string(), "replacement".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "render_test_listings".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["sources".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "render_graph_structure".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["sources".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "render_source_artifacts".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["sources".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "build_token".to_string(),
+            CallableContract {
+                arity: 5,
+                params: HashSet::from([
+                    "payload".to_string(),
+                    "scheme".to_string(),
+                    "header_name".to_string(),
+                    "source_id".to_string(),
+                    "required_scopes".to_string(),
+                ]),
+                output: ValueType::Named("AccessToken".to_string()),
+            },
+        ),
+        (
+            "generate".to_string(),
+            CallableContract {
+                arity: 0,
+                params: HashSet::new(),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "now".to_string(),
+            CallableContract {
+                arity: 0,
+                params: HashSet::new(),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "compute_topology_diff".to_string(),
+            CallableContract {
+                arity: 2,
+                params: HashSet::from(["current".to_string(), "base".to_string()]),
+                output: ValueType::Named("DagDiff".to_string()),
+            },
+        ),
+        (
+            "render_annotated_mermaid".to_string(),
+            CallableContract {
+                arity: 3,
+                params: HashSet::from([
+                    "diff".to_string(),
+                    "topology".to_string(),
+                    "title".to_string(),
+                ]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "detect_runtime".to_string(),
+            CallableContract {
+                arity: 0,
+                params: HashSet::new(),
+                output: ValueType::Named("CloudRuntime".to_string()),
+            },
+        ),
     ]
 }
 
@@ -3138,6 +3228,44 @@ fn summarize(stages: List<Stage>) -> Int {
             },
         )
         .expect("collection intrinsics should be recognized in strict mode");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_accepts_std_helper_intrinsic_call_targets() {
+        let graph = module_graph_from_sources(&[(
+            "sample/helpers.dag",
+            r#"module sample.helpers
+type DocgenSources {}
+
+fn run(sources: DocgenSources, payload: String) -> String {
+  let a = "template" |> replace_section("section", "value")
+  let b = render_test_listings(sources: sources)
+  let c = render_graph_structure(sources: sources)
+  let d = render_source_artifacts(sources: sources)
+  let e = compute_topology_diff(current: "{}", base: "{}")
+  let f = render_annotated_mermaid(diff: e, topology: "{}", title: "title")
+  let g = detect_runtime()
+  let h = generate()
+  let i = now()
+  let j = build_token(
+    payload: payload,
+    scheme: "Bearer",
+    header_name: "Authorization",
+    source_id: "source",
+    required_scopes: ["gist"]
+  )
+  a
+}
+"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("std helper intrinsics should be recognized in strict mode");
         assert_eq!(typed.modules.len(), 1);
     }
 

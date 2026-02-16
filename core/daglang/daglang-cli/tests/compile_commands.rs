@@ -13220,6 +13220,56 @@ fn make_gcp() -> CloudConfig {
 }
 
 #[test]
+fn compile_command_directory_mode_accepts_std_helper_intrinsic_call_targets() {
+    let root = unique_temp_dir("std_helper_intrinsic_call_targets");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+type DocgenSources {}
+
+fn run(sources: DocgenSources, payload: String) -> String {
+  let a = "template" |> replace_section("section", "value")
+  let b = render_test_listings(sources: sources)
+  let c = render_graph_structure(sources: sources)
+  let d = render_source_artifacts(sources: sources)
+  let e = compute_topology_diff(current: "{}", base: "{}")
+  let f = render_annotated_mermaid(diff: e, topology: "{}", title: "title")
+  let g = detect_runtime()
+  let h = generate()
+  let i = now()
+  let j = build_token(
+    payload: payload,
+    scheme: "Bearer",
+    header_name: "Authorization",
+    source_id: "source",
+    required_scopes: ["gist"]
+  )
+  a
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept std helper intrinsic call targets: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_type_mismatch() {
     let root = unique_temp_dir("type_mismatch");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
