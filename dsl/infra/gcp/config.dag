@@ -1,0 +1,73 @@
+// infra/gcp/config.dag -- GCP-specific environment configurations.
+//
+// Compile-time constants for GCP projects, regions, and secrets.
+// These are pure functions returning GCP CloudConfig values.
+
+module infra.gcp.config
+
+import infra.core { CloudConfig, InfraEnvironment }
+import infra.spec { Environment }
+
+// --- GCP-specific spec types ---------------------------------------------
+
+type GcpWifSpec {
+  pool_id: NonEmptyStr
+  provider_id: NonEmptyStr
+  issuer_uri: Url
+  attribute_mapping: Map<String, String>
+  attribute_condition: String?
+}
+
+type GcpWifBindingSpec {
+  pool_id: NonEmptyStr
+  provider_id: NonEmptyStr
+  attribute: NonEmptyStr
+}
+
+type GcpServiceAccountSpec {
+  name: NonEmptyStr
+  display_name: String
+  description: String
+  project: ProjectId?
+  roles: List<String>
+  self_roles: List<String>
+  wif_bindings: List<GcpWifBindingSpec>
+}
+
+// --- Environment configs -------------------------------------------------
+
+fn dev_config() -> InfraEnvironment {
+  {
+    name: Dev,
+    cloud: GcpConfig(
+      project: "gunbai-auto",
+      project_number: "314501921854",
+      region: "us-central1",
+      zone: "us-central1-a"
+    ),
+    secrets_prefix: "dev-",
+    tags: { "environment": "dev", "managed-by": "gunbc" }
+  }
+}
+
+fn ci_config() -> InfraEnvironment {
+  dev_config() with {
+    name: Ci,
+    secrets_prefix: "ci-",
+    tags: { "environment": "ci", "managed-by": "gunbc" }
+  }
+}
+
+fn prod_config() -> InfraEnvironment {
+  {
+    name: Prod,
+    cloud: GcpConfig(
+      project: "gunbai-prod",
+      project_number: "000000000000",
+      region: "us-central1",
+      zone: "us-central1-a"
+    ),
+    secrets_prefix: "",
+    tags: { "environment": "prod", "managed-by": "gunbc" }
+  }
+}

@@ -1,48 +1,41 @@
-// infra/gcp.dag -- GCP infrastructure as first-class resources.
+// infra/gcp/resources.dag -- GCP infrastructure as first-class resources.
 //
-// Each cloud resource type is a `resource` declaration where the
-// `acquire` block IS the ensure/upsert pattern. Business logic just
-// `uses` these resources like Filesystem or Network.
+// Each resource implements an abstract interface from infra/core.dag.
+// The acquire block contains the GCP-specific ensure/upsert DAG.
+// Business logic `uses` these via the abstract interface or directly.
 //
-// The compiler:
+// Compiler behavior:
 //   1. Inserts acquire nodes (ensure/upsert DAG) at DAG boundaries
 //   2. Threads resource handles to consuming nodes
 //   3. Detects conflicts (e.g., two funcs writing same bucket)
-//   4. Generates integration tests for the acquire + business logic chain
+//   4. Generates integration tests from @mock_response annotations
 //   5. Manages release/cleanup lifecycle
-//
-// This unifies infra provisioning with the existing resource model.
-// A GcsBucket is acquired the same way a Filesystem is acquired --
-// the only difference is that acquire calls cloud APIs instead of
-// local syscalls.
+//   6. Verifies @contract compliance from the abstract interface
 
-module infra.gcp
+module infra.gcp.resources
 
-import infra.spec { BucketSpec, CloudRunSpec, SecretSpec, ServiceAccountSpec, WifSpec, EnvironmentConfig, ReconcileAction, ResourceFingerprint }
-import services.gcp.secret_manager
-import services.gcp.iam
-import services.gcp.sts
+import infra.core { ObjectStorage, Compute, SecretStore, Identity, Queue, QueueMessage }
+import infra.spec { ResourceFingerprint, ReconcileAction }
+import infra.gcp.services
 
 
 // =========================================================================
-// GCS Bucket
+// GCS Bucket  --  implements ObjectStorage
 // =========================================================================
 
-resource GcsBucket {
+resource GcsBucket implements ObjectStorage {
   kind: Capability
   mode: ReadWrite
-  key: name                      // conflict detection key
+  key: name
 
   config {
-    name: String
+    name: NonEmptyStr
     location: String = "us-central1"
     storage_class: String = "STANDARD"
-    project: String
+    project: ProjectId
   }
 
   acquire {
-    // This IS the ensure pattern. The compiler expands it to:
-    //   check_bucket -> [guard: !exists] -> create_bucket -> resolve_bucket
     check = gcp.Storage.GetBucket(name: config.name)
     create [when !check.exists] = gcp.Storage.CreateBucket(
       project: config.project,
@@ -58,33 +51,31 @@ resource GcsBucket {
     @mock_response(resolve, status: 200, body: { "name": config.name, "selfLink": "https://storage.googleapis.com/storage/v1/b/{config.name}" })
   }
 
-  release {
-    // Buckets are persistent -- no cleanup in normal operation.
-    // For test environments, an explicit teardown func can delete.
-  }
+  release {}
 
+  // Capabilities map to ObjectStorage interface
   capability read {
-    input { key: String }
+    input { key: NonEmptyStr }
     output { content: Bytes, found: Bool }
     @rest(GET, "https://storage.googleapis.com/storage/v1/b/{config.name}/o/{key}?alt=media")
     @idempotent @readonly
   }
 
   capability write {
-    input { key: String, content: Bytes }
+    input { key: NonEmptyStr, content: Bytes }
     output { ok: Bool }
     @rest(POST, "https://storage.googleapis.com/upload/storage/v1/b/{config.name}/o?name={key}")
   }
 
   capability delete {
-    input { key: String }
+    input { key: NonEmptyStr }
     output { ok: Bool }
     @rest(DELETE, "https://storage.googleapis.com/storage/v1/b/{config.name}/o/{key}")
   }
 
   capability list {
     input { prefix: String }
-    output { keys: List<String> }
+    output { keys: List<NonEmptyStr> }
     @rest(GET, "https://storage.googleapis.com/storage/v1/b/{config.name}/o?prefix={prefix}")
     @idempotent @readonly
   }
@@ -92,25 +83,25 @@ resource GcsBucket {
 
 
 // =========================================================================
-// Cloud Run Service
+// Cloud Run Service  --  implements Compute
 // =========================================================================
 
-resource CloudRunService {
+resource CloudRunService implements Compute {
   kind: Capability
   mode: ReadWrite
   key: name
 
   config {
-    name: String
-    project: String
+    name: NonEmptyStr
+    project: ProjectId
     region: String = "us-central1"
-    image: String
+    image: NonEmptyStr
     memory: String = "512Mi"
     cpu: Int = 1
     min_instances: Int = 0
     max_instances: Int = 10
     env: Map<String, String>?
-    service_account: String?
+    service_account: ServiceAccountEmail?
   }
 
   acquire {
@@ -134,7 +125,6 @@ resource CloudRunService {
       labels: ResourceFingerprint { spec_hash: hash(config) }.to_labels()
     )
 
-    // Update if spec changed (drift reconciliation)
     update [when check.exists && check.labels.spec_hash != hash(config)] = gcp.CloudRun.UpdateService(
       project: config.project,
       region: config.region,
@@ -157,6 +147,12 @@ resource CloudRunService {
 
   release {}
 
+  capability deploy {
+    input { image: NonEmptyStr, env: Map<String, String>? }
+    output { ok: Bool }
+    // Triggers an update of the running service
+  }
+
   capability invoke {
     input { path: String, body: Json }
     output { response: Json, status: Int }
@@ -167,47 +163,51 @@ resource CloudRunService {
   capability get_url {
     input {}
     output { url: Url }
-    // Returns the service URL from the resolve step
+  }
+
+  capability scale {
+    input { min_instances: Int, max_instances: Int }
+    output { ok: Bool }
   }
 }
 
 
 // =========================================================================
-// Managed Secret
+// Managed Secret  --  implements SecretStore
 // =========================================================================
 
-resource ManagedSecret {
+resource ManagedSecret implements SecretStore {
   kind: Capability
   mode: Read
   key: secret_id
   expires: true
 
   config {
-    project: String
-    secret_id: String
+    project: ProjectId
+    secret_id: NonEmptyStr
     prefix: String = ""
   }
 
   acquire {
     full_name = "{config.prefix}{config.secret_id}"
 
-    check = gcp.SecretManager.GetSecret(
+    check = gcp.SecretManager.Lifecycle.GetSecret(
       project: config.project,
       secret: full_name
     )
 
-    create [when !check.exists] = gcp.SecretManager.CreateSecret(
+    create [when !check.exists] = gcp.SecretManager.Lifecycle.CreateSecret(
       project: config.project,
       secret_id: full_name
     )
 
-    resolve = gcp.SecretManager.AccessVersion(
+    resolve = gcp.SecretManager.Lifecycle.GetSecret(
       project: config.project,
       secret: full_name
     ) [after create]
 
     @mock_response(check, status: 200, body: { "name": "projects/{config.project}/secrets/{full_name}" })
-    @mock_response(resolve, status: 200, body: { "payload": { "data": "bW9jay1zZWNyZXQ=" }, "name": "projects/{config.project}/secrets/{full_name}/versions/latest" })
+    @mock_response(resolve, status: 200, body: { "name": "projects/{config.project}/secrets/{full_name}" })
   }
 
   release {}
@@ -215,24 +215,39 @@ resource ManagedSecret {
   capability read_value {
     input {}
     output { value: Secret }
-    // Returns the secret payload from the resolve step
     @readonly
+  }
+
+  capability write_value {
+    input { value: Secret }
+    output { ok: Bool, version: NonEmptyStr }
+  }
+
+  capability rotate {
+    input { new_value: Secret }
+    output { ok: Bool, new_version: NonEmptyStr }
+  }
+
+  capability list_versions {
+    input {}
+    output { versions: List<NonEmptyStr> }
+    @idempotent @readonly
   }
 }
 
 
 // =========================================================================
-// Service Account
+// Service Account  --  implements Identity
 // =========================================================================
 
-resource GcpServiceAccount {
+resource GcpServiceAccount implements Identity {
   kind: Capability
   mode: Read
   key: name
 
   config {
-    name: String
-    project: String
+    name: NonEmptyStr
+    project: ProjectId
     display_name: String
     roles: List<String>
   }
@@ -240,17 +255,16 @@ resource GcpServiceAccount {
   acquire {
     email = "{config.name}@{config.project}.iam.gserviceaccount.com"
 
-    check = gcp.IAM.GetServiceAccount(project: config.project, email: email)
+    check = gcp.IAM.Lifecycle.GetServiceAccount(project: config.project, email: email)
 
-    create [when !check.exists] = gcp.IAM.CreateServiceAccount(
+    create [when !check.exists] = gcp.IAM.Lifecycle.CreateServiceAccount(
       project: config.project,
       account_id: config.name,
       display_name: config.display_name
     )
 
-    // Grant roles
     roles = for role in config.roles {
-      gcp.ResourceManager.SetIamBinding(
+      gcp.ResourceManager.Infra.SetIamBinding(
         project: config.project,
         role: role,
         member: "serviceAccount:{email}"
@@ -263,18 +277,30 @@ resource GcpServiceAccount {
 
   release {}
 
-  capability impersonate {
+  capability assume {
     input { scopes: List<String>, lifetime_seconds: Int = 3600 }
     output { token: Secret, expires_at: String }
     @rest(POST, "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{email}:generateAccessToken")
     @auth(BearerToken)
   }
+
+  capability grant {
+    input { role: NonEmptyStr, target: NonEmptyStr }
+    output { ok: Bool }
+  }
+
+  capability revoke {
+    input { role: NonEmptyStr, target: NonEmptyStr }
+    output { ok: Bool }
+  }
 }
 
 
 // =========================================================================
-// Workload Identity Federation
+// Workload Identity Federation  (GCP-specific, no abstract interface)
 // =========================================================================
+// WIF is GCP-specific -- AWS uses OIDC federation differently, Azure uses
+// federated credentials on managed identities. No common interface.
 
 resource WifProvider {
   kind: Capability
@@ -282,9 +308,9 @@ resource WifProvider {
   key: pool_id
 
   config {
-    project_number: String
-    pool_id: String
-    provider_id: String
+    project_number: NonEmptyStr
+    pool_id: NonEmptyStr
+    provider_id: NonEmptyStr
     issuer_uri: Url
     attribute_mapping: Map<String, String>
     attribute_condition: String?
@@ -318,14 +344,65 @@ resource WifProvider {
     )
 
     @mock_response(check_pool, status: 200, body: { "name": "projects/{config.project_number}/locations/global/workloadIdentityPools/{config.pool_id}" })
-    @mock_response(check_provider, status: 200, body: { "name": "projects/{config.project_number}/locations/global/workloadIdentityPools/{config.pool_id}/providers/{config.provider_id}" })
+    @mock_response(check_provider, status: 200, body: { "name": ".../{config.provider_id}" })
   }
 
   release {}
 
   capability get_token {
-    input { audience: String }
-    output { token: String }
-    // OIDC token exchange via the provider
+    input { audience: NonEmptyStr }
+    output { token: Secret }
+  }
+}
+
+
+// =========================================================================
+// Pub/Sub Topic  --  implements Queue<Bytes>
+// =========================================================================
+
+resource PubSubTopic implements Queue<Bytes> {
+  kind: Capability
+  mode: ReadWrite
+  key: name
+
+  config {
+    name: NonEmptyStr
+    project: ProjectId
+  }
+
+  acquire {
+    check = gcp.PubSub.GetTopic(project: config.project, topic: config.name)
+
+    create [when !check.exists] = gcp.PubSub.CreateTopic(
+      project: config.project,
+      topic: config.name,
+      labels: ResourceFingerprint { spec_hash: hash(config) }.to_labels()
+    )
+
+    @mock_response(check, status: 404, body: { "error": { "code": 404 } })
+    @mock_response(create, status: 200, body: { "name": "projects/{config.project}/topics/{config.name}" })
+  }
+
+  release {}
+
+  capability publish {
+    input { message: Bytes }
+    output { message_id: NonEmptyStr, ok: Bool }
+  }
+
+  capability subscribe {
+    input {}
+    output { messages: List<QueueMessage<Bytes>> }
+    @readonly
+  }
+
+  capability ack {
+    input { message_id: NonEmptyStr }
+    output { ok: Bool }
+  }
+
+  capability purge {
+    input {}
+    output { purged_count: Int }
   }
 }

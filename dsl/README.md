@@ -15,8 +15,13 @@ Start with the foundation, then work outward:
 ```
 std/          Foundation: types, resources, patterns
 services/     Pure declarations: typed I/O + transport annotations
-cloud/        Credential acquisition (uses services + patterns)
-infra/        Infrastructure as first-class resources (GCP, etc.)
+cloud/        Credential acquisition per provider (GCP, AWS, Azure)
+infra/        Multi-cloud infrastructure (abstract interfaces + provider impls)
+  core.dag    Abstract interfaces: ObjectStorage, Compute, SecretStore, Identity, Queue
+  spec.dag    Provider-neutral spec types
+  gcp/        GCP provider: services, resources, config
+  aws/        AWS provider: services, resources, config
+  azure/      Azure provider: services, resources, config
 shared/       Composition helpers + utility library
 tools/        Funcs that compose everything above
 pipelines/    Multi-stage composition of tools
@@ -31,11 +36,14 @@ examples/     Forward-looking proposals (services, types, deployment, test gener
 4. `shared/dag_util.dag` -- utility helpers (aggregate, report, stage construction)
 5. `tools/makegen.dag` -- simplest tool (~30 lines, uses content_upsert)
 6. `tools/gist.dag` -- complex tool (4 modes, loops, service composition)
-7. `infra/spec.dag` -- infrastructure types (specs, reconciliation, environments)
-8. `infra/gcp.dag` -- GCP resources as first-class `resource` declarations
-9. `examples/deployment.dag` -- infra resources composed with business logic
-10. `examples/integration_tests.dag` -- six-tier test generation model
-11. `pipelines/ci.dag` -- everything wired together
+7. `infra/core.dag` -- abstract interfaces (ObjectStorage, Compute, SecretStore, Identity, Queue)
+8. `infra/spec.dag` -- provider-neutral specs (reconciliation, fingerprinting, cost estimation)
+9. `infra/gcp/resources.dag` -- GCP resources implementing abstract interfaces
+10. `infra/aws/resources.dag` -- AWS resources implementing abstract interfaces
+11. `infra/azure/resources.dag` -- Azure resources implementing abstract interfaces
+12. `examples/deployment.dag` -- multi-cloud composition, provider selection, cross-provider
+13. `examples/integration_tests.dag` -- six-tier test generation model
+14. `pipelines/ci.dag` -- everything wired together
 
 ## Syntax overview
 
@@ -97,14 +105,25 @@ Each `.dag` file replaces a specific Rust graph builder:
 - **`gcp/iam.dag`** -- `gcp.IAM`: GenerateAccessToken; `gcp.ResourceManager`: Get/SetIamPolicy
 - **`gcp/sts.dag`** -- `gcp.STS`: Exchange; `github.OIDC`: GetToken; `gcp.Metadata`: GetIdentityToken
 
-### `cloud/` -- Cloud provider integration
+### `cloud/` -- Cloud provider credential acquisition
 
-- **`gcp/credential.dag`** -- `acquire_gcp_secret` func. Wraps `credential_chain` pattern. Entry point for all GCP-authenticated tools.
+- **`gcp/credential.dag`** -- `acquire_gcp_secret` func. Wraps `credential_chain` pattern for GCP WIF -> STS -> impersonation.
+- **`aws/credential.dag`** -- `acquire_aws_credentials`, `acquire_aws_secret`. AWS OIDC -> STS AssumeRoleWithWebIdentity -> session credentials.
+- **`azure/credential.dag`** -- `acquire_azure_credentials`, `acquire_azure_secret`. Azure federated identity -> AD token exchange.
 
-### `infra/` -- Infrastructure as resources
+### `infra/` -- Multi-cloud infrastructure as resources
 
-- **`spec.dag`** -- Typed infra specs (`BucketSpec`, `CloudRunSpec`, `SecretSpec`, `ServiceAccountSpec`, `WifSpec`), aggregate `InfraSpec`, `ReconcileAction`/`ReconcileResult` types, environment configs (`dev_config`, `ci_config`).
-- **`gcp.dag`** -- GCP infra as first-class `resource` declarations: `GcsBucket`, `CloudRunService`, `ManagedSecret`, `GcpServiceAccount`, `WifProvider`. Each has `acquire` (ensure/upsert pattern), `release`, and `capability` blocks. Business logic `uses` them the same way as `Filesystem` or `Network`.
+- **`core.dag`** -- Abstract infrastructure interfaces: `ObjectStorage`, `Compute`, `SecretStore`, `Identity`, `Queue<T>`. Provider-neutral capabilities with `@contract` behavioral annotations. Also defines `CloudConfig` (sum type: GcpConfig | AwsConfig | AzureConfig) and `InfraEnvironment`.
+- **`spec.dag`** -- Provider-neutral spec types: `ReconcileAction`/`ReconcileResult`, `ResourceFingerprint`, `SecretSpec`, `ComputeSpec`, `StorageSpec`, `IdentitySpec`, `QueueSpec`, `InfraSpec`. No provider-specific types.
+- **`gcp/services.dag`** -- GCP API service declarations for infra lifecycle: `gcp.Storage`, `gcp.CloudRun`, `gcp.SecretManager.Lifecycle`, `gcp.IAM.Lifecycle`, `gcp.WIF`, `gcp.PubSub`.
+- **`gcp/resources.dag`** -- GCP resources implementing abstract interfaces: `GcsBucket : ObjectStorage`, `CloudRunService : Compute`, `ManagedSecret : SecretStore`, `GcpServiceAccount : Identity`, `WifProvider` (GCP-specific), `PubSubTopic : Queue<Bytes>`.
+- **`gcp/config.dag`** -- GCP environment configs (`dev_config`, `ci_config`, `prod_config`), GCP-specific spec types (`GcpWifSpec`, `GcpServiceAccountSpec`).
+- **`aws/services.dag`** -- AWS API service declarations: `aws.S3`, `aws.Lambda`, `aws.SecretsManager`, `aws.IAM`, `aws.STS`, `aws.SQS`.
+- **`aws/resources.dag`** -- AWS resources implementing abstract interfaces: `S3Bucket : ObjectStorage`, `LambdaFunction : Compute`, `AwsSecret : SecretStore`, `AwsIamRole : Identity`, `SqsQueue : Queue<String>`.
+- **`aws/config.dag`** -- AWS environment configs (`dev_config`, `ci_config`, `prod_config`).
+- **`azure/services.dag`** -- Azure API service declarations: `azure.BlobStorage`, `azure.ContainerApps`, `azure.KeyVault`, `azure.ManagedIdentity`, `azure.ServiceBus`, `azure.Authorization`.
+- **`azure/resources.dag`** -- Azure resources implementing abstract interfaces: `BlobContainer : ObjectStorage`, `ContainerApp : Compute`, `KeyVaultSecret : SecretStore`, `AzureManagedIdentity : Identity`, `ServiceBusQueue : Queue<String>`.
+- **`azure/config.dag`** -- Azure environment configs (`dev_config`, `ci_config`, `prod_config`).
 
 ### `shared/` -- Composition helpers
 
@@ -135,36 +154,55 @@ These explore language extensions not yet finalized in the spec. Each file is se
 
 - **`abstract_services.dag`** -- Three-layer service abstraction: `interface` (abstract contract with `@contract` behavioral specs), `service X : Interface` (concrete implementation), and funcs written against interfaces. Shows Storage, LLM, Queue interfaces with GCS, S3, OpenAI, VertexAI implementations.
 - **`rich_types.dag`** -- Generic types (`Result<T, E>`, `Page<T>`), sum types with payloads (`DeployEvent`), type bounds/interfaces (`Serializable`, `Comparable`), branded types (`UserId`, `TeamId`), and bounded generics. Includes phasing recommendation (Phase 1-4).
-- **`deployment.dag`** -- Infra resources composed with business logic via `uses`. Shows direct resource use, multi-resource composition, interface-to-infra binding, full bootstrap, environment-driven config, and cross-infra composition.
+- **`deployment.dag`** -- Multi-cloud infrastructure composition. Shows abstract interface usage, provider-specific resources, cross-provider composition (GCP + AWS), provider selection via config, GCP/AWS full bootstrap, and multi-cloud integration test generation.
 - **`integration_tests.dag`** -- Six-tier test generation for infra-backed funcs: hermetic unit, node contracts, scenario coverage (guard paths), resource hygiene, live integration (real GCP), and end-to-end. Shows how `@mock_response` in resource acquire blocks + probe-observer model generates all test tiers automatically.
 
-## Infrastructure as resources
+## Multi-cloud infrastructure
 
-The key architectural decision: cloud infrastructure is modeled as first-class `resource` declarations where `acquire` IS the ensure/upsert pattern. Business logic `uses` infra resources the same way it uses `Filesystem` or `Network`.
+The key architectural decision: cloud infrastructure is modeled as first-class `resource` declarations where `acquire` IS the ensure/upsert pattern. Abstract interfaces define capabilities; provider-specific resources implement them.
 
 ```
-resource GcsBucket {
-  config { name: String, project: String }
-  acquire {
-    check = gcp.Storage.GetBucket(name: config.name)
-    create [when !check.exists] = gcp.Storage.CreateBucket(...)
-    resolve = gcp.Storage.GetBucket(name: config.name) [after create]
-    @mock_response(check, status: 404)
-    @mock_response(create, status: 200, body: { "name": config.name })
-  }
-  capability read { ... }
-  capability write { ... }
+// Abstract interface (infra/core.dag)
+interface ObjectStorage {
+  capability read(key: NonEmptyStr) -> { content: Bytes, found: Bool }
+  capability write(key: NonEmptyStr, content: Bytes) -> { ok: Bool }
+  @contract: read(k) after write(k, v) => { content: v, found: true }
 }
 
-func store_artifact(key: String, content: Bytes) -> { ok: Bool }
-  uses bucket: GcsBucket(name: "my-bucket", project: "my-project")
+// GCP implementation (infra/gcp/resources.dag)
+resource GcsBucket implements ObjectStorage {
+  config { name: NonEmptyStr, project: ProjectId }
+  acquire { check -> create -> resolve }  // GCP-specific ensure DAG
+}
+
+// AWS implementation (infra/aws/resources.dag)
+resource S3Bucket implements ObjectStorage {
+  config { name: NonEmptyStr, region: String }
+  acquire { HeadBucket -> CreateBucket }   // AWS-specific ensure DAG
+}
+
+// Business logic targets the INTERFACE
+func store_artifact(key: NonEmptyStr, content: Bytes) -> { ok: Bool }
+  uses store: ObjectStorage
 {
-  result = bucket.write(key: key, content: content)
+  result = store.write(key: key, content: content)
   return { ok: result.ok }
 }
 ```
 
-The compiler inserts the acquire DAG before business logic, threads the resource handle, detects conflicts, and generates integration tests from `@mock_response` annotations. See `infra/gcp.dag` for the full resource library and `examples/integration_tests.dag` for test generation details.
+Provider selection happens at compile time via `CloudConfig` (sum type: GcpConfig | AwsConfig | AzureConfig). The compiler inserts the correct acquire DAG, threads resource handles, detects conflicts, and generates integration tests from `@mock_response` annotations.
+
+Five abstract interfaces, three providers, 15 concrete resources:
+
+| Interface | GCP | AWS | Azure |
+|---|---|---|---|
+| ObjectStorage | GcsBucket | S3Bucket | BlobContainer |
+| Compute | CloudRunService | LambdaFunction | ContainerApp |
+| SecretStore | ManagedSecret | AwsSecret | KeyVaultSecret |
+| Identity | GcpServiceAccount | AwsIamRole | AzureManagedIdentity |
+| Queue | PubSubTopic | SqsQueue | ServiceBusQueue |
+
+See `infra/core.dag` for the interface definitions, `infra/{gcp,aws,azure}/resources.dag` for implementations, and `examples/deployment.dag` for multi-cloud composition.
 
 ## Collection operations as IR nodes
 

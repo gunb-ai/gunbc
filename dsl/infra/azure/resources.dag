@@ -1,0 +1,326 @@
+// infra/azure/resources.dag -- Azure infrastructure as first-class resources.
+//
+// Each resource implements an abstract interface from infra/core.dag.
+// The acquire block contains the Azure-specific ensure/upsert DAG.
+// Azure uses ARM-style APIs via management.azure.com.
+
+module infra.azure.resources
+
+import infra.core { ObjectStorage, Compute, SecretStore, Identity, Queue, QueueMessage }
+import infra.spec { ResourceFingerprint, ReconcileAction }
+import infra.azure.services
+
+
+// =========================================================================
+// Blob Container  --  implements ObjectStorage
+// =========================================================================
+
+resource BlobContainer implements ObjectStorage {
+  kind: Capability
+  mode: ReadWrite
+  key: name
+
+  config {
+    account_name: NonEmptyStr
+    name: NonEmptyStr
+  }
+
+  acquire {
+    check = azure.BlobStorage.GetContainer(
+      account_name: config.account_name,
+      container: config.name
+    )
+
+    create [when !check.exists] = azure.BlobStorage.CreateContainer(
+      account_name: config.account_name,
+      container: config.name
+    )
+
+    @mock_response(check, status: 404, body: {})
+    @mock_response(create, status: 201, body: {})
+  }
+
+  release {}
+
+  capability read {
+    input { key: NonEmptyStr }
+    output { content: Bytes, found: Bool }
+    @rest(GET, "https://{config.account_name}.blob.core.windows.net/{config.name}/{key}")
+    @auth(BearerToken)
+    @idempotent @readonly
+  }
+
+  capability write {
+    input { key: NonEmptyStr, content: Bytes }
+    output { ok: Bool }
+    @rest(PUT, "https://{config.account_name}.blob.core.windows.net/{config.name}/{key}")
+    @auth(BearerToken)
+  }
+
+  capability delete {
+    input { key: NonEmptyStr }
+    output { ok: Bool }
+    @rest(DELETE, "https://{config.account_name}.blob.core.windows.net/{config.name}/{key}")
+    @auth(BearerToken)
+  }
+
+  capability list {
+    input { prefix: String }
+    output { keys: List<NonEmptyStr> }
+    @rest(GET, "https://{config.account_name}.blob.core.windows.net/{config.name}?restype=container&comp=list&prefix={prefix}")
+    @auth(BearerToken)
+    @idempotent @readonly
+  }
+}
+
+
+// =========================================================================
+// Container App  --  implements Compute
+// =========================================================================
+
+resource ContainerApp implements Compute {
+  kind: Capability
+  mode: ReadWrite
+  key: name
+
+  config {
+    name: NonEmptyStr
+    subscription_id: NonEmptyStr
+    resource_group: NonEmptyStr
+    location: String = "eastus"
+    image: NonEmptyStr
+    target_port: Int = 8080
+    cpu: Float = 0.5
+    memory: String = "1Gi"
+    min_replicas: Int = 0
+    max_replicas: Int = 10
+    env: Map<String, String>?
+    managed_identity_id: String?
+  }
+
+  acquire {
+    check = azure.ContainerApps.Get(
+      subscription_id: config.subscription_id,
+      resource_group: config.resource_group,
+      name: config.name
+    )
+
+    deploy = azure.ContainerApps.CreateOrUpdate(
+      subscription_id: config.subscription_id,
+      resource_group: config.resource_group,
+      name: config.name,
+      location: config.location,
+      image: config.image,
+      target_port: config.target_port,
+      cpu: config.cpu,
+      memory: config.memory,
+      min_replicas: config.min_replicas,
+      max_replicas: config.max_replicas,
+      env: config.env,
+      managed_identity_id: config.managed_identity_id,
+      tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
+    )
+
+    @mock_response(check, status: 404, body: { "error": { "code": "ResourceNotFound" } })
+    @mock_response(deploy, status: 200, body: { "properties": { "configuration": { "ingress": { "fqdn": "https://{config.name}.azurecontainerapps.io" } } } })
+  }
+
+  release {}
+
+  capability deploy {
+    input { image: NonEmptyStr, env: Map<String, String>? }
+    output { ok: Bool }
+  }
+
+  capability invoke {
+    input { path: String, body: Json }
+    output { response: Json, status: Int }
+    @rest(POST, "https://{config.name}.azurecontainerapps.io{path}")
+    @auth(BearerToken)
+  }
+
+  capability get_url {
+    input {}
+    output { url: Url }
+  }
+
+  capability scale {
+    input { min_instances: Int, max_instances: Int }
+    output { ok: Bool }
+  }
+}
+
+
+// =========================================================================
+// Key Vault Secret  --  implements SecretStore
+// =========================================================================
+
+resource KeyVaultSecret implements SecretStore {
+  kind: Capability
+  mode: Read
+  key: name
+  expires: true
+
+  config {
+    vault_name: NonEmptyStr
+    name: NonEmptyStr
+  }
+
+  acquire {
+    check = azure.KeyVault.GetSecret(
+      vault_name: config.vault_name,
+      name: config.name
+    )
+
+    // Key Vault secrets are created via SetSecret (idempotent PUT)
+    // If the secret doesn't exist yet, we don't create an empty one --
+    // we assume it will be populated via write_value or external tooling.
+
+    @mock_response(check, status: 200, body: { "value": "mock-secret-value", "id": "https://{config.vault_name}.vault.azure.net/secrets/{config.name}/version1" })
+  }
+
+  release {}
+
+  capability read_value {
+    input {}
+    output { value: Secret }
+    @readonly
+  }
+
+  capability write_value {
+    input { value: Secret }
+    output { ok: Bool, version: NonEmptyStr }
+  }
+
+  capability rotate {
+    input { new_value: Secret }
+    output { ok: Bool, new_version: NonEmptyStr }
+  }
+
+  capability list_versions {
+    input {}
+    output { versions: List<NonEmptyStr> }
+    @idempotent @readonly
+  }
+}
+
+
+// =========================================================================
+// Managed Identity  --  implements Identity
+// =========================================================================
+
+resource AzureManagedIdentity implements Identity {
+  kind: Capability
+  mode: Read
+  key: name
+
+  config {
+    name: NonEmptyStr
+    subscription_id: NonEmptyStr
+    resource_group: NonEmptyStr
+    location: String = "eastus"
+  }
+
+  acquire {
+    check = azure.ManagedIdentity.Get(
+      subscription_id: config.subscription_id,
+      resource_group: config.resource_group,
+      name: config.name
+    )
+
+    create [when !check.exists] = azure.ManagedIdentity.Create(
+      subscription_id: config.subscription_id,
+      resource_group: config.resource_group,
+      name: config.name,
+      location: config.location,
+      tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
+    )
+
+    @mock_response(check, status: 200, body: { "properties": { "principalId": "00000000-...", "clientId": "11111111-..." } })
+    @mock_response(create, status: 201, body: { "properties": { "principalId": "00000000-...", "clientId": "11111111-..." } })
+  }
+
+  release {}
+
+  capability assume {
+    input { scopes: List<String>, lifetime_seconds: Int = 3600 }
+    output { token: Secret, expires_at: String }
+    // Azure: Acquire token via MSAL / managed identity endpoint
+  }
+
+  capability grant {
+    input { role: NonEmptyStr, target: NonEmptyStr }
+    output { ok: Bool }
+    // Azure: CreateRoleAssignment
+  }
+
+  capability revoke {
+    input { role: NonEmptyStr, target: NonEmptyStr }
+    output { ok: Bool }
+    // Azure: DeleteRoleAssignment
+  }
+}
+
+
+// =========================================================================
+// Service Bus Queue  --  implements Queue<String>
+// =========================================================================
+
+resource ServiceBusQueue implements Queue<String> {
+  kind: Capability
+  mode: ReadWrite
+  key: name
+
+  config {
+    name: NonEmptyStr
+    subscription_id: NonEmptyStr
+    resource_group: NonEmptyStr
+    namespace: NonEmptyStr
+    lock_duration: String = "PT30S"
+    max_delivery_count: Int = 5
+  }
+
+  acquire {
+    check = azure.ServiceBus.GetQueue(
+      subscription_id: config.subscription_id,
+      resource_group: config.resource_group,
+      namespace: config.namespace,
+      queue_name: config.name
+    )
+
+    create [when !check.exists] = azure.ServiceBus.CreateQueue(
+      subscription_id: config.subscription_id,
+      resource_group: config.resource_group,
+      namespace: config.namespace,
+      queue_name: config.name,
+      lock_duration: config.lock_duration,
+      max_delivery_count: config.max_delivery_count
+    )
+
+    @mock_response(check, status: 404, body: { "error": { "code": "QueueNotFound" } })
+    @mock_response(create, status: 200, body: {})
+  }
+
+  release {}
+
+  capability publish {
+    input { message: String }
+    output { message_id: NonEmptyStr, ok: Bool }
+  }
+
+  capability subscribe {
+    input {}
+    output { messages: List<QueueMessage<String>> }
+    @readonly
+  }
+
+  capability ack {
+    input { message_id: NonEmptyStr }
+    output { ok: Bool }
+  }
+
+  capability purge {
+    input {}
+    output { purged_count: Int }
+  }
+}

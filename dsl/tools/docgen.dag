@@ -11,20 +11,23 @@ import std.patterns { content_upsert }
 import std.resources { Filesystem }
 
 // Source file paths -- these are the 13 inputs to the doc renderer
+// Note: these are file CONTENTS (read from disk), not file paths.
+// The paths are hardcoded in the func body below. The type correctly
+// uses String for content (the result of fs.read) -- not FilePath.
 type DocgenSources {
-  template: String                    // docs/ab-writing-workflows.md
-  clippy_graph_mock: String           // lib/tools/clippy/src/graph_mock.rs
-  clippy_generated_tests: String      // lib/tools/clippy/src/generated_tests.rs
-  clippy_config: String               // lib/tools/clippy/src/config.rs
-  clippy_graph: String                // lib/tools/clippy/src/graph.rs
-  clippy_lib: String                  // lib/tools/clippy/src/lib.rs
-  clippy_lint: String                 // lib/tools/clippy/src/lint.rs
-  clippy_ops: String                  // lib/tools/clippy/src/ops.rs
-  clippy_policy: String               // lib/tools/clippy/src/policy.rs
-  gist_graph_mock: String             // lib/tools/gist/src/graph_mock.rs
-  gist_generated_tests: String        // lib/tools/gist/src/generated_tests_snapshot.rs
-  gist_integration_tests: String      // lib/tools/gist/tests/generated_tests.rs
-  gist_codegen_cli: String?           // target/codegen/bin/gist/main.rs (may not exist)
+  template: String                    // content of docs/ab-writing-workflows.md
+  clippy_graph_mock: String           // content of lib/tools/clippy/src/graph_mock.rs
+  clippy_generated_tests: String      // content of lib/tools/clippy/src/generated_tests.rs
+  clippy_config: String               // content of lib/tools/clippy/src/config.rs
+  clippy_graph: String                // content of lib/tools/clippy/src/graph.rs
+  clippy_lib: String                  // content of lib/tools/clippy/src/lib.rs
+  clippy_lint: String                 // content of lib/tools/clippy/src/lint.rs
+  clippy_ops: String                  // content of lib/tools/clippy/src/ops.rs
+  clippy_policy: String               // content of lib/tools/clippy/src/policy.rs
+  gist_graph_mock: String             // content of lib/tools/gist/src/graph_mock.rs
+  gist_generated_tests: String        // content of lib/tools/gist/src/generated_tests_snapshot.rs
+  gist_integration_tests: String      // content of lib/tools/gist/tests/generated_tests.rs
+  gist_codegen_cli: String?           // content of target/codegen/bin/gist/main.rs (may not exist)
 }
 
 fn render_ab_workflows_doc(sources: DocgenSources) -> String {

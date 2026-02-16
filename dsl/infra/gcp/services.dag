@@ -1,0 +1,240 @@
+// infra/gcp/services.dag -- GCP API service declarations for infra resources.
+//
+// These are the raw GCP API operations used by the resource acquire blocks.
+// Separate from the higher-level services in dsl/services/gcp/ which cover
+// application-level APIs (Secret Manager access, IAM token generation).
+//
+// These focus on resource lifecycle: create, get, update, delete.
+
+module infra.gcp.services
+
+// --- Cloud Storage -------------------------------------------------------
+
+service gcp.Storage {
+  @endpoint("https://storage.googleapis.com/storage/v1")
+  @auth(BearerToken)
+
+  operation GetBucket {
+    input { name: NonEmptyStr }
+    output { exists: Bool, name: String, labels: Map<String, String>? }
+    @rest(GET, "/b/{name}")
+    @idempotent @readonly
+  }
+
+  operation CreateBucket {
+    input {
+      project: ProjectId
+      name: NonEmptyStr
+      location: String = "us-central1"
+      storage_class: String = "STANDARD"
+      labels: Map<String, String>?
+    }
+    output { name: String, selfLink: Url }
+    @rest(POST, "/b?project={project}")
+  }
+
+  operation DeleteBucket {
+    input { name: NonEmptyStr }
+    output { ok: Bool }
+    @rest(DELETE, "/b/{name}")
+  }
+}
+
+// --- Cloud Run -----------------------------------------------------------
+
+service gcp.CloudRun {
+  @endpoint("https://run.googleapis.com/v2")
+  @auth(BearerToken)
+
+  operation GetService {
+    input { project: ProjectId, region: String, name: NonEmptyStr }
+    output { exists: Bool, name: String, uri: Url?, labels: Map<String, String>? }
+    @rest(GET, "/projects/{project}/locations/{region}/services/{name}")
+    @idempotent @readonly
+  }
+
+  operation CreateService {
+    input {
+      project: ProjectId
+      region: String
+      name: NonEmptyStr
+      image: NonEmptyStr
+      memory: String = "512Mi"
+      cpu: Int = 1
+      min_instances: Int = 0
+      max_instances: Int = 10
+      env: Map<String, String>?
+      service_account: ServiceAccountEmail?
+      labels: Map<String, String>?
+    }
+    output { name: String, uri: Url }
+    @rest(POST, "/projects/{project}/locations/{region}/services")
+  }
+
+  operation UpdateService {
+    input {
+      project: ProjectId
+      region: String
+      name: NonEmptyStr
+      image: NonEmptyStr
+      memory: String
+      env: Map<String, String>?
+      labels: Map<String, String>?
+    }
+    output { name: String, uri: Url }
+    @rest(PATCH, "/projects/{project}/locations/{region}/services/{name}")
+  }
+
+  operation DeleteService {
+    input { project: ProjectId, region: String, name: NonEmptyStr }
+    output { ok: Bool }
+    @rest(DELETE, "/projects/{project}/locations/{region}/services/{name}")
+  }
+}
+
+// --- Secret Manager (lifecycle) ------------------------------------------
+
+service gcp.SecretManager.Lifecycle {
+  @endpoint("https://secretmanager.googleapis.com/v1")
+  @auth(BearerToken)
+
+  operation GetSecret {
+    input { project: ProjectId, secret: NonEmptyStr }
+    output { exists: Bool, name: String }
+    @rest(GET, "/projects/{project}/secrets/{secret}")
+    @idempotent @readonly
+  }
+
+  operation CreateSecret {
+    input { project: ProjectId, secret_id: NonEmptyStr }
+    output { name: String }
+    @rest(POST, "/projects/{project}/secrets")
+  }
+
+  operation AddVersion {
+    input { secret_name: NonEmptyStr, payload: Bytes }
+    output { name: String }
+    @rest(POST, "/v1/{secret_name}:addVersion")
+  }
+
+  operation DeleteSecret {
+    input { project: ProjectId, secret: NonEmptyStr }
+    output { ok: Bool }
+    @rest(DELETE, "/projects/{project}/secrets/{secret}")
+  }
+}
+
+// --- IAM (lifecycle) -----------------------------------------------------
+
+service gcp.IAM.Lifecycle {
+  @endpoint("https://iam.googleapis.com/v1")
+  @auth(BearerToken)
+
+  operation GetServiceAccount {
+    input { project: ProjectId, email: ServiceAccountEmail }
+    output { exists: Bool, email: String }
+    @rest(GET, "/projects/{project}/serviceAccounts/{email}")
+    @idempotent @readonly
+  }
+
+  operation CreateServiceAccount {
+    input {
+      project: ProjectId
+      account_id: NonEmptyStr
+      display_name: String
+    }
+    output { email: ServiceAccountEmail }
+    @rest(POST, "/projects/{project}/serviceAccounts")
+  }
+}
+
+// --- Workload Identity Federation ----------------------------------------
+
+service gcp.WIF {
+  @endpoint("https://iam.googleapis.com/v1")
+  @auth(BearerToken)
+
+  operation GetPool {
+    input { project: NonEmptyStr, pool_id: NonEmptyStr }
+    output { exists: Bool, name: String }
+    @rest(GET, "/projects/{project}/locations/global/workloadIdentityPools/{pool_id}")
+    @idempotent @readonly
+  }
+
+  operation CreatePool {
+    input { project: NonEmptyStr, pool_id: NonEmptyStr, display_name: String }
+    output { name: String }
+    @rest(POST, "/projects/{project}/locations/global/workloadIdentityPools")
+  }
+
+  operation GetProvider {
+    input { project: NonEmptyStr, pool_id: NonEmptyStr, provider_id: NonEmptyStr }
+    output { exists: Bool, name: String }
+    @rest(GET, "/projects/{project}/locations/global/workloadIdentityPools/{pool_id}/providers/{provider_id}")
+    @idempotent @readonly
+  }
+
+  operation CreateProvider {
+    input {
+      project: NonEmptyStr
+      pool_id: NonEmptyStr
+      provider_id: NonEmptyStr
+      issuer_uri: Url
+      attribute_mapping: Map<String, String>
+      attribute_condition: String?
+    }
+    output { name: String }
+    @rest(POST, "/projects/{project}/locations/global/workloadIdentityPools/{pool_id}/providers")
+  }
+}
+
+// --- Pub/Sub -------------------------------------------------------------
+
+service gcp.PubSub {
+  @endpoint("https://pubsub.googleapis.com/v1")
+  @auth(BearerToken)
+
+  operation GetTopic {
+    input { project: ProjectId, topic: NonEmptyStr }
+    output { exists: Bool, name: String }
+    @rest(GET, "/projects/{project}/topics/{topic}")
+    @idempotent @readonly
+  }
+
+  operation CreateTopic {
+    input { project: ProjectId, topic: NonEmptyStr, labels: Map<String, String>? }
+    output { name: String }
+    @rest(PUT, "/projects/{project}/topics/{topic}")
+  }
+
+  operation Publish {
+    input { topic: NonEmptyStr, data: Bytes, attributes: Map<String, String>? }
+    output { message_id: NonEmptyStr }
+    @rest(POST, "/projects/{project}/topics/{topic}:publish")
+  }
+
+  operation Pull {
+    input { subscription: NonEmptyStr, max_messages: Int = 10 }
+    output { messages: List<Json> }
+    @rest(POST, "/{subscription}:pull")
+  }
+
+  operation Ack {
+    input { subscription: NonEmptyStr, ack_ids: List<NonEmptyStr> }
+    output { ok: Bool }
+    @rest(POST, "/{subscription}:acknowledge")
+  }
+}
+
+// --- Resource Manager (IAM bindings) -------------------------------------
+
+service gcp.ResourceManager.Infra {
+  @endpoint("https://cloudresourcemanager.googleapis.com/v1")
+  @auth(BearerToken)
+
+  operation SetIamBinding {
+    input { project: ProjectId, role: NonEmptyStr, member: NonEmptyStr }
+    output { ok: Bool }
+    @rest(POST, "/projects/{project}:setIamPolicy")
+  }
+}

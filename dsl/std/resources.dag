@@ -19,9 +19,45 @@ resource Filesystem {
   acquire {}
   release {}
 
-  capability read {
+  // Classify a file's content encoding. Cheap operation: reads file
+  // header bytes + consults @file_types extension mapping. Returns
+  // FileClassification so the caller can narrow FilePath →
+  // TextFilePath | BinaryFilePath before reading content.
+  //
+  // This is the bridge between unclassified path sources (e.g.,
+  // git.Core.LsFiles) and encoding-specific read operations.
+  capability probe {
     input { path: FilePath }
+    output { classification: FileClassification }
+    @file(READ, "{path}")
+    @mock_response {
+      classification: { path: "{path}", encoding: UTF8, size: 42, mime: "text/plain" }
+    }
+    @mock_response(scenario: "binary") {
+      classification: { path: "{path}", encoding: Binary, size: 1024, mime: "application/pdf" }
+    }
+  }
+
+  // Read text content. Requires TextFilePath -- the compiler rejects
+  // unclassified FilePath here. This is the key type-safety boundary:
+  //   ⟦FilePath⟧ ⊄ ⟦TextFilePath⟧  →  compile error
+  //   ⟦TextFilePath⟧ ⊆ ⟦TextFilePath⟧  →  ok
+  //
+  // Guarantees: output content is valid String (Σ*). If the file
+  // were binary, the probe step would have classified it as
+  // BinaryFilePath and this capability would never be called.
+  capability read {
+    input { path: TextFilePath }
     output { content: String }
+    @file(READ, "{path}")
+  }
+
+  // Read raw bytes. Accepts any FilePath -- no encoding requirement.
+  // Returns Bytes ({0..255}*), not String (Σ*).
+  // Use when content encoding doesn't matter or is handled downstream.
+  capability read_bytes {
+    input { path: FilePath }
+    output { content: Bytes }
     @file(READ, "{path}")
   }
 

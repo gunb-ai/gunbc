@@ -1,42 +1,84 @@
-// examples/deployment.dag -- Infra resources as first-class resources.
+// examples/deployment.dag -- Multi-cloud infra composition.
 //
-// Shows the full holistic binding:
-//   1. Infra resources (infra/gcp.dag) are `resource` declarations
-//   2. Business logic `uses` them like Filesystem or Network
-//   3. The compiler generates integration tests automatically
-//   4. Interfaces bind to infra-backed resources
-//   5. Environment configs select which infra is provisioned
+// Shows the full holistic binding across providers:
+//   1. Abstract interfaces let business logic target capabilities, not providers
+//   2. Provider-specific resources implement the interfaces
+//   3. Provider selection happens at compile time via environment config
+//   4. Cross-provider composition works naturally
+//   5. Integration tests generate for any provider
+//
+// Reading order:
+//   infra/core.dag       -- Abstract interfaces (ObjectStorage, Compute, etc.)
+//   infra/spec.dag       -- Provider-neutral spec types
+//   infra/gcp/           -- GCP implementations
+//   infra/aws/           -- AWS implementations
+//   infra/azure/         -- Azure implementations
+//   (this file)          -- Composition examples
 
 module examples.deployment
 
-import infra.gcp { GcsBucket, CloudRunService, ManagedSecret, GcpServiceAccount, WifProvider }
-import infra.spec { dev_config, ci_config }
+import infra.core { ObjectStorage, Compute, SecretStore, Identity, Queue, CloudConfig, InfraEnvironment }
+import infra.spec { Environment, ReconcileResult }
+
+// --- Provider resources ---
+import infra.gcp.resources { GcsBucket, CloudRunService, ManagedSecret, GcpServiceAccount, WifProvider, PubSubTopic }
+import infra.gcp.config as gcp_config
+import infra.aws.resources { S3Bucket, LambdaFunction, AwsSecret, AwsIamRole, SqsQueue }
+import infra.aws.config as aws_config
+import infra.azure.resources { BlobContainer, ContainerApp, KeyVaultSecret, AzureManagedIdentity, ServiceBusQueue }
+import infra.azure.config as azure_config
+
 import tools.gist { gist_snapshot }
-import examples.abstract_services { Storage, LLM }
 
 
 // =========================================================================
-// 1. BUSINESS LOGIC USES INFRA RESOURCES DIRECTLY
+// 1. ABSTRACT INTERFACE -- Provider-agnostic business logic
 // =========================================================================
+//
+// Business logic writes against ObjectStorage. It does NOT know whether
+// the backend is GCS, S3, or Azure Blob -- that's resolved at compile time.
 
-func store_gist_artifact(content: String, key: String) -> { ok: Bool }
+func store_artifact(key: NonEmptyStr, content: Bytes) -> { ok: Bool }
+  uses store: ObjectStorage
+{
+  result = store.write(key: key, content: content)
+  return { ok: result.ok }
+}
+
+func read_artifact(key: NonEmptyStr) -> { content: Bytes, found: Bool }
+  uses store: ObjectStorage
+{
+  result = store.read(key: key)
+  return { content: result.content, found: result.found }
+}
+
+// Compiler resolves `ObjectStorage` to the concrete provider based on
+// the environment config at build time:
+//   gunbc build --env=gcp-dev  -> ObjectStorage = GcsBucket
+//   gunbc build --env=aws-dev  -> ObjectStorage = S3Bucket
+//   gunbc build --env=azure    -> ObjectStorage = BlobContainer
+
+
+// =========================================================================
+// 2. PROVIDER-SPECIFIC -- Direct resource usage (GCP)
+// =========================================================================
+//
+// You can also use concrete resources directly when you need
+// provider-specific features (e.g., GCS storage classes, S3 versioning).
+
+func store_gist_artifact_gcp(content: String, key: NonEmptyStr) -> { ok: Bool }
   uses bucket: GcsBucket(name: "gunbc-gist-artifacts", project: "gunbai-auto")
 {
   result = bucket.write(key: key, content: content |> to_bytes())
   return { ok: result.ok }
 }
 
-// Compiler expands to:
-//   [acquire: check_bucket -> create_bucket -> resolve_bucket]
-//   [business: bucket.write(key, content)]
-// Bucket handle flows from acquire -> write via resource edges.
-
 
 // =========================================================================
-// 2. COMPOSING MULTIPLE INFRA RESOURCES
+// 3. MULTI-RESOURCE COMPOSITION (within one provider)
 // =========================================================================
 
-func gist_with_storage(base_ref: String?) -> { url: String, stored: Bool }
+func gist_with_storage(base_ref: CommitSha?) -> { url: Url, stored: Bool }
   uses bucket: GcsBucket(name: "gunbc-gist-artifacts", project: "gunbai-auto")
   uses secret: ManagedSecret(project: "gunbai-secrets", secret_id: "github-token", prefix: "dev-")
 {
@@ -50,43 +92,133 @@ func gist_with_storage(base_ref: String?) -> { url: String, stored: Bool }
 
 
 // =========================================================================
-// 3. INTERFACES BOUND TO INFRA RESOURCES
+// 4. CROSS-PROVIDER COMPOSITION
 // =========================================================================
+//
+// A func that uses resources from DIFFERENT providers.
+// The compiler provisions each resource via the correct provider API.
 
-// Storage interface backed by a GcsBucket resource.
-service gcs.BucketStorage : Storage {
-  backed_by: GcsBucket
-
-  operation Get { delegate: bucket.read }
-  operation Put { delegate: bucket.write }
-  operation Delete { delegate: bucket.delete }
-  operation List { delegate: bucket.list }
-}
-
-// Business logic uses the INTERFACE:
-func review_and_store(diff: String) -> { review: String, stored: Bool }
-  uses store: Storage
-  uses llm: LLM
+func cross_cloud_pipeline(
+  content: Bytes,
+  notification: String
+) -> { stored_gcp: Bool, stored_aws: Bool, notified: Bool }
+  uses gcs: GcsBucket(name: "gunbc-primary", project: "gunbai-auto")
+  uses s3: S3Bucket(name: "gunbc-backup", region: "us-east-1")
+  uses queue: SqsQueue(name: "gunbc-notifications", region: "us-east-1")
 {
-  review = llm.Complete(messages: [
-    { role: "system", content: "You are a code reviewer." },
-    { role: "user", content: "Review:\n{diff}" }
-  ])
-  stored = store.Put(key: "reviews/{hash(diff)}.md", value: review.content |> to_bytes())
-  return { review: review.content, stored: stored.ok }
+  // Write to GCS (primary)
+  gcp_result = gcs.write(key: "data/latest.bin", content: content)
+
+  // Replicate to S3 (backup)
+  aws_result = s3.write(key: "data/latest.bin", content: content)
+
+  // Notify via SQS
+  notify = queue.publish(message: notification) [after gcp_result, after aws_result]
+
+  return {
+    stored_gcp: gcp_result.ok,
+    stored_aws: aws_result.ok,
+    notified: notify.ok
+  }
 }
 
-// Binding at environment level:
-//   dev:  Storage => gcs.BucketStorage(bucket: GcsBucket(name: "dev-artifacts", ...))
-//   test: Storage => local.FileStore(base_dir: "/tmp/test-artifacts")
-//   CI:   Storage => gcs.BucketStorage(bucket: GcsBucket(name: "ci-artifacts", ...))
+// Compiler generates:
+//   1. Acquire GcsBucket via GCP APIs (check -> create -> resolve)
+//   2. Acquire S3Bucket via AWS APIs (HeadBucket -> CreateBucket)
+//   3. Acquire SqsQueue via AWS APIs (GetQueueUrl -> CreateQueue)
+//   4. gcs.write and s3.write run in parallel (independent)
+//   5. queue.publish runs after both writes complete
+//   6. Each provider's auth chain is resolved independently
 
 
 // =========================================================================
-// 4. FULL INFRA BOOTSTRAP
+// 5. PROVIDER SELECTION VIA CONFIG
+// =========================================================================
+//
+// Same business logic, different provider per environment.
+// The environment config determines which concrete resource backs
+// each abstract interface.
+
+fn storage_for_env(env: InfraEnvironment) -> ObjectStorage {
+  match env.cloud {
+    GcpConfig { project, ... } =>
+      GcsBucket(name: "gunbc-artifacts", project: project)
+    AwsConfig { region, ... } =>
+      S3Bucket(name: "gunbc-artifacts", region: region)
+    AzureConfig { ... } =>
+      BlobContainer(account_name: "gunbcartifacts", name: "artifacts")
+  }
+}
+
+fn compute_for_env(env: InfraEnvironment) -> Compute {
+  match env.cloud {
+    GcpConfig { project, region, ... } =>
+      CloudRunService(
+        name: "gunbc-api", project: project, region: region,
+        image: "gcr.io/{project}/gunbc-api:latest"
+      )
+    AwsConfig { region, ... } =>
+      LambdaFunction(
+        name: "gunbc-api", region: region,
+        role_arn: "arn:aws:iam::*:role/gunbc-lambda",
+        code_s3_bucket: "gunbc-deploy", code_s3_key: "lambda/api.zip"
+      )
+    AzureConfig { subscription_id, resource_group, location, ... } =>
+      ContainerApp(
+        name: "gunbc-api",
+        subscription_id: subscription_id,
+        resource_group: resource_group,
+        location: location,
+        image: "gunbcregistry.azurecr.io/api:latest"
+      )
+  }
+}
+
+// Usage: build-time resolution
+//   gunbc build --env=gcp-dev    -> storage_for_env(gcp_config.dev_config())
+//   gunbc build --env=aws-prod   -> storage_for_env(aws_config.prod_config())
+
+
+// =========================================================================
+// 6. FULL MULTI-CLOUD DEPLOYMENT
+// =========================================================================
+//
+// Deploy a complete application stack to any cloud provider.
+// The func composes compute + storage + secrets + identity.
+
+func deploy_gist_api(env: InfraEnvironment) -> { url: Url, ready: Bool }
+  uses compute: Compute
+  uses store: ObjectStorage
+  uses secrets: SecretStore
+  uses identity: Identity
+{
+  // Identity: acquire service identity
+  token = identity.assume(
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    lifetime_seconds: 3600
+  )
+
+  // Secrets: read API credentials
+  api_key = secrets.read_value()
+
+  // Compute: deploy the service
+  deployed = compute.deploy(
+    image: "gunbc-api:latest",
+    env: { "STORAGE_BACKEND": "abstract", "API_KEY_SECRET": "ref:secrets" }
+  ) [after token, after api_key]
+
+  // Storage: verify bucket/container is ready
+  url = compute.get_url() [after deployed]
+
+  return { url: url.url, ready: deployed.ok }
+}
+
+
+// =========================================================================
+// 7. GCP-SPECIFIC FULL BOOTSTRAP (concrete)
 // =========================================================================
 
-func infra_bootstrap() -> { ready: Bool }
+func infra_bootstrap_gcp() -> { ready: Bool }
   uses wif: WifProvider(
     project_number: "314501921854",
     pool_id: "github-pool",
@@ -104,234 +236,106 @@ func infra_bootstrap() -> { ready: Bool }
     display_name: "GitHub Actions Deployer",
     roles: ["roles/iam.serviceAccountAdmin", "roles/secretmanager.admin"]
   )
-  uses dev_secrets_sa: GcpServiceAccount(
-    name: "gunbai-dev-secrets",
-    project: "gunbai-auto",
-    display_name: "Dev Secrets Accessor",
-    roles: []
-  )
   uses github_token: ManagedSecret(
     project: "gunbai-secrets",
     secret_id: "github-token",
     prefix: "dev-"
   )
   uses gist_bucket: GcsBucket(name: "gunbc-gist-artifacts", project: "gunbai-auto")
+  uses notifications: PubSubTopic(name: "gunbc-events", project: "gunbai-auto")
 {
-  // All resources acquired by the time we get here.
-  // Compiler orders: WIF -> SAs -> Secrets -> Buckets
+  // All resources acquired. Compiler orders:
+  //   WIF -> ServiceAccount -> Secret -> Bucket, PubSub (parallel)
   return { ready: true }
 }
 
 
 // =========================================================================
-// 5. INTEGRATION TEST GENERATION
+// 8. AWS-SPECIFIC FULL BOOTSTRAP (concrete)
+// =========================================================================
+
+func infra_bootstrap_aws() -> { ready: Bool }
+  uses role: AwsIamRole(
+    name: "gunbc-deployer",
+    assume_role_policy: {
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Principal": { "Federated": "arn:aws:iam::*:oidc-provider/token.actions.githubusercontent.com" },
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": { "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" } }
+      }]
+    },
+    managed_policy_arns: [
+      "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+      "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
+    ]
+  )
+  uses api_key: AwsSecret(name: "gunbc/github-token", region: "us-east-1")
+  uses artifacts: S3Bucket(name: "gunbc-artifacts", region: "us-east-1")
+  uses notifications: SqsQueue(name: "gunbc-events", region: "us-east-1")
+{
+  return { ready: true }
+}
+
+
+// =========================================================================
+// 9. INTEGRATION TEST GENERATION (multi-cloud)
 // =========================================================================
 //
-// For `store_gist_artifact` using GcsBucket, compiler generates:
+// For `store_artifact` using ObjectStorage, the compiler generates tests
+// for EACH provider implementation:
 //
-// Bucket A (DryRun, cost XS):
-//   DAG completes with @mock_response from GcsBucket.acquire
+// --- Per-provider DryRun (cost XS) ---
+//   GcsBucket: mock GCP APIs, verify DAG completes
+//   S3Bucket: mock AWS APIs, verify DAG completes
+//   BlobContainer: mock Azure APIs, verify DAG completes
 //
-// Bucket B (Node Contracts, cost S):
-//   check_bucket: mock 404 -> { exists: false }
-//   create_bucket: mock 200 -> { name: "gunbc-gist-artifacts" }
-//   bucket.write: mock 200 -> { ok: true }
+// --- Contract verification (cost S) ---
+//   For each provider: write(k,v) then read(k) => found: true, content: v
+//   Tests that the @contract from ObjectStorage holds for all implementations
 //
-// Bucket C (Scenarios, cost S):
-//   Scenario: bucket exists -> create SKIPPED, write proceeds
-//   Scenario: bucket missing -> create runs, then write
-//   Scenario: create fails (503) -> func fails, write never runs
-//
-// Bucket D (Resource Hygiene, cost S):
-//   Resource acquired before first use
-//   Handle threaded to all consumers
-//   No dangling references
-//
-// Integration (Live GCP, cost M):
-//   Gated: GUNBC_TEST_MAX_COST >= M, GCP_WIF_PROVIDER set
-//   Creates test-prefixed bucket, writes, reads back, cleans up
+// --- Cross-provider scenario (cost M) ---
+//   cross_cloud_pipeline: mock GCP + AWS APIs, verify parallel writes
+//   and sequential notification
 
-func store_and_verify(key: String, content: String) -> { stored: Bool, verified: Bool }
-  uses bucket: GcsBucket(name: "gunbc-test-artifacts", project: "gunbai-auto")
+func store_and_verify(key: NonEmptyStr, content: Bytes) -> { stored: Bool, verified: Bool }
+  uses store: ObjectStorage
   @test_hermetic(
-    probes: { key: "test/hello.txt", content: "hello world" },
+    probes: { key: "test/hello.txt", content: "hello world" |> to_bytes() },
     observers: { stored: true, verified: true }
   )
   @test_integration(
     cost: M,
-    requires_secrets: ["GCP_WIF_PROVIDER"],
-    config_override: { bucket.name: "test-artifacts-{uuid()}" },
-    cleanup: bucket.delete_all(prefix: "test/")
+    requires_env: ["CLOUD_PROVIDER"],
+    config_override: { store.name: "test-artifacts-{uuid()}" },
+    cleanup: store.delete(key: "test/hello.txt")
   )
 {
-  write_result = bucket.write(key: key, content: content |> to_bytes())
-  read_result = bucket.read(key: key) [after write_result]
-  verified = read_result.found && read_result.content == content |> to_bytes()
+  write_result = store.write(key: key, content: content)
+  read_result = store.read(key: key) [after write_result]
+  verified = read_result.found && read_result.content == content
   return { stored: write_result.ok, verified: verified }
 }
 
 
 // =========================================================================
-// 6. ENVIRONMENT-DRIVEN CONFIG
+// 10. ENVIRONMENT CONFIGS (all providers)
 // =========================================================================
 
-fn dev_bucket_config() -> GcsBucket.Config {
+fn gcp_dev_storage() -> GcsBucket.Config {
   { name: "gunbc-dev-artifacts", project: "gunbai-auto" }
 }
 
-fn ci_bucket_config() -> GcsBucket.Config {
-  { name: "gunbc-ci-artifacts", project: "gunbai-auto" }
+fn aws_dev_storage() -> S3Bucket.Config {
+  { name: "gunbc-dev-artifacts", region: "us-east-1" }
 }
 
-fn prod_bucket_config() -> GcsBucket.Config {
-  { name: "gunbc-prod-artifacts", project: "gunbai-prod", storage_class: "NEARLINE" }
+fn azure_dev_storage() -> BlobContainer.Config {
+  { account_name: "gunbcdev", name: "artifacts" }
 }
 
-// Func written once; config selected at build time:
-//   gunbc build --env=dev   -> uses dev_bucket_config()
-//   gunbc build --env=prod  -> uses prod_bucket_config()
-
-
-// =========================================================================
-// 7. CROSS-INFRA COMPOSITION
-// =========================================================================
-
-func deploy_gist_api() -> { url: Url }
-  uses service: CloudRunService(
-    name: "gist-api",
-    project: "gunbai-auto",
-    image: "gcr.io/gunbai-auto/gist-api:latest",
-    memory: "512Mi",
-    service_account: "gunbai-deployer"
-  )
-  uses bucket: GcsBucket(name: "gunbc-gist-artifacts", project: "gunbai-auto")
-{
-  // Both provisioned. Cloud Run deployed, GCS bucket exists.
-  url = service.get_url()
-  return { url: url.url }
-}
-rio: bucket already exists (check returns 200)
-//     -> create is SKIPPED, write proceeds
-//   - Scenario: bucket doesn't exist (check returns 404)
-//     -> create runs, then write
-//   - Scenario: create fails (503)
-//     -> entire func fails, bucket.write never runs
-//
-// --- Bucket D: Resource Hygiene (hermetic, cost: S) ---
-//   - Resource acquired before first use
-//   - Resource handle threaded to all consuming nodes
-//   - No dangling resource references
-//
-// --- Integration: Live Infra (real GCP, cost: M) ---
-//   Gated by:
-//     GUNBC_TEST_MAX_COST >= M
-//     GCP_WIF_PROVIDER is set
-//     GCP_SECRETS_PROJECT is set
-//
-//   Test runs the REAL acquire DAG against GCP APIs:
-//   - Creates a test-prefixed bucket (test-gunbc-gist-artifacts-{uuid})
-//   - Writes a test object
-//   - Reads it back and verifies
-//   - Cleans up (deletes test bucket)
-//
-//   MockSpec for live tests uses `live_expected_output`:
-//     bucket.write -> { ok: true }
-//     bucket.read  -> { found: true, content: NonEmpty }
-
-// Here's what the generated test annotations look like on a func:
-
-func store_and_verify(key: String, content: String) -> { stored: Bool, verified: Bool }
-  uses bucket: GcsBucket(
-    name: "gunbc-test-artifacts",
-    project: "gunbai-auto"
-  )
-
-  // Test annotations -- compiler uses these + @mock_response from
-  // the resource declaration to generate all test tiers.
-  @test_hermetic(
-    // Probes: entry point values
-    probes: { key: "test/hello.txt", content: "hello world" },
-    // Observers: expected outputs at terminal nodes
-    observers: { stored: true, verified: true }
-  )
-  @test_integration(
-    cost: M,
-    requires_secrets: ["GCP_WIF_PROVIDER"],
-    // For live tests, use a unique bucket name to avoid conflicts
-    config_override: { bucket.name: "test-artifacts-{uuid()}" },
-    // Cleanup: delete the test bucket after the test
-    cleanup: bucket.delete_all(prefix: "test/")
-  )
-{
-  write_result = bucket.write(key: key, content: content |> to_bytes())
-
-  // Verify by reading back
-  read_result = bucket.read(key: key) [after write_result]
-  verified = read_result.found && read_result.content == content |> to_bytes()
-
-  return { stored: write_result.ok, verified: verified }
-}
-
-
-// =========================================================================
-// 6. ENVIRONMENT-DRIVEN RESOURCE SELECTION
-// =========================================================================
-//
-// Different environments use different resource configurations.
-// This is NOT a separate "deploy" block -- it's just different
-// config values passed to the same resource declarations.
-
-fn dev_bucket() -> GcsBucket.Config {
-  { name: "gunbc-dev-artifacts", project: "gunbai-auto" }
-}
-
-fn ci_bucket() -> GcsBucket.Config {
-  { name: "gunbc-ci-artifacts", project: "gunbai-auto" }
-}
-
-fn prod_bucket() -> GcsBucket.Config {
-  { name: "gunbc-prod-artifacts", project: "gunbai-prod", storage_class: "NEARLINE" }
-}
-
-// The func is written once; the config is selected at build time:
-//   gunbc build --env=dev   -> uses dev_bucket()
-//   gunbc build --env=ci    -> uses ci_bucket()
-//   gunbc build --env=prod  -> uses prod_bucket()
-//
-// The compiler resolves the config at compile time and generates
-// the appropriate acquire DAG for the selected environment.
-
-
-// =========================================================================
-// 7. CROSS-INFRA COMPOSITION
-// =========================================================================
-//
-// A Cloud Run service that uses a GCS bucket for storage.
-// Both are infra resources, composed via `uses`.
-
-func deploy_gist_api() -> { url: Url }
-  uses service: CloudRunService(
-    name: "gist-api",
-    project: "gunbai-auto",
-    region: "us-central1",
-    image: "gcr.io/gunbai-auto/gist-api:latest",
-    memory: "512Mi",
-    service_account: "gunbai-deployer"
-  )
-  uses bucket: GcsBucket(
-    name: "gunbc-gist-artifacts",
-    project: "gunbai-auto"
-  )
-{
-  // Both resources are acquired (provisioned if needed).
-  // The Cloud Run service is deployed with the latest image.
-  // The GCS bucket exists for the service to use.
-  url = service.get_url()
-  return { url: url.url }
-}
-
-// The compiler generates:
-//   1. Acquire GcsBucket (check -> create if needed)
-//   2. Acquire CloudRunService (check -> create/update if needed)
-//   3. Wire: service's env can reference bucket.name
-//   4. Integration tests: deploy test service, verify it responds
+// Build command selects the provider:
+//   gunbc build --env=gcp-dev     -> GcsBucket with gcp_dev_storage()
+//   gunbc build --env=aws-dev     -> S3Bucket with aws_dev_storage()
+//   gunbc build --env=azure-dev   -> BlobContainer with azure_dev_storage()

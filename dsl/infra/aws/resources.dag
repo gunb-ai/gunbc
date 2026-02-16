@@ -1,0 +1,323 @@
+// infra/aws/resources.dag -- AWS infrastructure as first-class resources.
+//
+// Each resource implements an abstract interface from infra/core.dag.
+// The acquire block contains the AWS-specific ensure/upsert DAG.
+// Same resource model as GCP -- different API calls, same pattern.
+
+module infra.aws.resources
+
+import infra.core { ObjectStorage, Compute, SecretStore, Identity, Queue, QueueMessage }
+import infra.spec { ResourceFingerprint, ReconcileAction }
+import infra.aws.services
+
+
+// =========================================================================
+// S3 Bucket  --  implements ObjectStorage
+// =========================================================================
+
+resource S3Bucket implements ObjectStorage {
+  kind: Capability
+  mode: ReadWrite
+  key: name
+
+  config {
+    name: NonEmptyStr
+    region: String = "us-east-1"
+  }
+
+  acquire {
+    check = aws.S3.HeadBucket(bucket: config.name)
+
+    create [when !check.exists] = aws.S3.CreateBucket(
+      bucket: config.name,
+      region: config.region,
+      tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
+    )
+
+    @mock_response(check, status: 404, body: {})
+    @mock_response(create, status: 200, body: { "location": "/{config.name}" })
+  }
+
+  release {}
+
+  capability read {
+    input { key: NonEmptyStr }
+    output { content: Bytes, found: Bool }
+    @rest(GET, "https://{config.name}.s3.{config.region}.amazonaws.com/{key}")
+    @auth(AwsSigV4)
+    @idempotent @readonly
+  }
+
+  capability write {
+    input { key: NonEmptyStr, content: Bytes }
+    output { ok: Bool }
+    @rest(PUT, "https://{config.name}.s3.{config.region}.amazonaws.com/{key}")
+    @auth(AwsSigV4)
+  }
+
+  capability delete {
+    input { key: NonEmptyStr }
+    output { ok: Bool }
+    @rest(DELETE, "https://{config.name}.s3.{config.region}.amazonaws.com/{key}")
+    @auth(AwsSigV4)
+  }
+
+  capability list {
+    input { prefix: String }
+    output { keys: List<NonEmptyStr> }
+    @rest(GET, "https://{config.name}.s3.{config.region}.amazonaws.com/?list-type=2&prefix={prefix}")
+    @auth(AwsSigV4)
+    @idempotent @readonly
+  }
+}
+
+
+// =========================================================================
+// Lambda Function  --  implements Compute
+// =========================================================================
+
+resource LambdaFunction implements Compute {
+  kind: Capability
+  mode: ReadWrite
+  key: name
+
+  config {
+    name: NonEmptyStr
+    region: String = "us-east-1"
+    role_arn: NonEmptyStr
+    runtime: String = "provided.al2023"
+    handler: String = "bootstrap"
+    code_s3_bucket: NonEmptyStr
+    code_s3_key: NonEmptyStr
+    memory_size: Int = 512
+    timeout: Int = 300
+    env: Map<String, String>?
+  }
+
+  acquire {
+    check = aws.Lambda.GetFunction(function_name: config.name)
+
+    create [when !check.exists] = aws.Lambda.CreateFunction(
+      function_name: config.name,
+      runtime: config.runtime,
+      handler: config.handler,
+      role: config.role_arn,
+      code_s3_bucket: config.code_s3_bucket,
+      code_s3_key: config.code_s3_key,
+      memory_size: config.memory_size,
+      timeout: config.timeout,
+      environment: config.env,
+      tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
+    )
+
+    // Update if spec changed
+    update_code [when check.exists && check.state == "Active"] = aws.Lambda.UpdateFunctionCode(
+      function_name: config.name,
+      s3_bucket: config.code_s3_bucket,
+      s3_key: config.code_s3_key
+    )
+
+    update_config [when check.exists] = aws.Lambda.UpdateFunctionConfiguration(
+      function_name: config.name,
+      memory_size: config.memory_size,
+      timeout: config.timeout,
+      environment: config.env
+    ) [after update_code]
+
+    @mock_response(check, status: 404, body: { "Type": "ResourceNotFoundException" })
+    @mock_response(create, status: 201, body: { "FunctionArn": "arn:aws:lambda:{config.region}:*:function:{config.name}" })
+  }
+
+  release {}
+
+  capability deploy {
+    input { image: NonEmptyStr, env: Map<String, String>? }
+    output { ok: Bool }
+  }
+
+  capability invoke {
+    input { path: String, body: Json }
+    output { response: Json, status: Int }
+    // Lambda invocation via function URL or API Gateway
+  }
+
+  capability get_url {
+    input {}
+    output { url: Url }
+    // Returns the function URL if configured
+  }
+
+  capability scale {
+    input { min_instances: Int, max_instances: Int }
+    output { ok: Bool }
+    // Lambda: provisioned concurrency
+  }
+}
+
+
+// =========================================================================
+// AWS Secret  --  implements SecretStore
+// =========================================================================
+
+resource AwsSecret implements SecretStore {
+  kind: Capability
+  mode: Read
+  key: name
+  expires: true
+
+  config {
+    name: NonEmptyStr
+    region: String = "us-east-1"
+  }
+
+  acquire {
+    check = aws.SecretsManager.DescribeSecret(secret_id: config.name)
+
+    create [when !check.exists] = aws.SecretsManager.CreateSecret(
+      name: config.name,
+      secret_string: "",   // empty placeholder; value set via write_value
+      tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
+    )
+
+    @mock_response(check, status: 200, body: { "ARN": "arn:aws:secretsmanager:{config.region}:*:secret:{config.name}", "Name": config.name })
+    @mock_response(create, status: 200, body: { "ARN": "arn:aws:...", "Name": config.name })
+  }
+
+  release {}
+
+  capability read_value {
+    input {}
+    output { value: Secret }
+    @readonly
+  }
+
+  capability write_value {
+    input { value: Secret }
+    output { ok: Bool, version: NonEmptyStr }
+  }
+
+  capability rotate {
+    input { new_value: Secret }
+    output { ok: Bool, new_version: NonEmptyStr }
+  }
+
+  capability list_versions {
+    input {}
+    output { versions: List<NonEmptyStr> }
+    @idempotent @readonly
+  }
+}
+
+
+// =========================================================================
+// IAM Role  --  implements Identity
+// =========================================================================
+
+resource AwsIamRole implements Identity {
+  kind: Capability
+  mode: Read
+  key: name
+
+  config {
+    name: NonEmptyStr
+    assume_role_policy: Json
+    description: String?
+    managed_policy_arns: List<String>
+  }
+
+  acquire {
+    check = aws.IAM.GetRole(role_name: config.name)
+
+    create [when !check.exists] = aws.IAM.CreateRole(
+      role_name: config.name,
+      assume_role_policy: config.assume_role_policy,
+      description: config.description,
+      tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
+    )
+
+    policies = for policy_arn in config.managed_policy_arns {
+      aws.IAM.AttachRolePolicy(
+        role_name: config.name,
+        policy_arn: policy_arn
+      )
+    } [after create]
+
+    @mock_response(check, status: 200, body: { "Role": { "Arn": "arn:aws:iam::*:role/{config.name}", "RoleName": config.name } })
+    @mock_response(create, status: 200, body: { "Role": { "Arn": "arn:aws:iam::*:role/{config.name}" } })
+  }
+
+  release {}
+
+  capability assume {
+    input { scopes: List<String>, lifetime_seconds: Int = 3600 }
+    output { token: Secret, expires_at: String }
+    // AWS: maps to STS AssumeRole
+  }
+
+  capability grant {
+    input { role: NonEmptyStr, target: NonEmptyStr }
+    output { ok: Bool }
+    // AWS: AttachRolePolicy
+  }
+
+  capability revoke {
+    input { role: NonEmptyStr, target: NonEmptyStr }
+    output { ok: Bool }
+    // AWS: DetachRolePolicy
+  }
+}
+
+
+// =========================================================================
+// SQS Queue  --  implements Queue<String>
+// =========================================================================
+
+resource SqsQueue implements Queue<String> {
+  kind: Capability
+  mode: ReadWrite
+  key: name
+
+  config {
+    name: NonEmptyStr
+    region: String = "us-east-1"
+    visibility_timeout: Int = 30
+    message_retention_period: Int = 345600
+  }
+
+  acquire {
+    check = aws.SQS.GetQueueUrl(queue_name: config.name)
+
+    create [when !check.exists] = aws.SQS.CreateQueue(
+      queue_name: config.name,
+      visibility_timeout: config.visibility_timeout,
+      message_retention_period: config.message_retention_period,
+      tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
+    )
+
+    @mock_response(check, status: 400, body: { "Error": { "Code": "AWS.SimpleQueueService.NonExistentQueue" } })
+    @mock_response(create, status: 200, body: { "QueueUrl": "https://sqs.{config.region}.amazonaws.com/123456789012/{config.name}" })
+  }
+
+  release {}
+
+  capability publish {
+    input { message: String }
+    output { message_id: NonEmptyStr, ok: Bool }
+  }
+
+  capability subscribe {
+    input {}
+    output { messages: List<QueueMessage<String>> }
+    @readonly
+  }
+
+  capability ack {
+    input { message_id: NonEmptyStr }
+    output { ok: Bool }
+  }
+
+  capability purge {
+    input {}
+    output { purged_count: Int }
+  }
+}

@@ -18,6 +18,7 @@
 module tools.dag_viz
 
 import services.git
+import std.patterns { content_upsert }
 import std.resources { Filesystem }
 import std.types { DagTopology, DagDiff }
 import shared.gist_modes { branch_context, resolve_recent_base, share_content }
@@ -38,7 +39,7 @@ service workspace.Introspect {
 
 service shell.Browser {
   operation Open {
-    input { path: String }
+    input { path: FilePath }
     output { opened: Bool }
     @shell(["xdg-open", "{path}"])
     @external
@@ -81,7 +82,7 @@ fn render_topology_diff(
   )
 }
 
-fn topology_snapshot_path() -> String {
+fn topology_snapshot_path() -> FilePath {
   ".dag-snapshots/workspace.json"
 }
 
@@ -102,7 +103,7 @@ fn produce_topology_diff_markdown(
 
 // --- Funcs -----------------------------------------------------------
 
-func dag_viz_snapshot(format: String = "html") -> { url: String, local_path: String }
+func dag_viz_snapshot(format: String = "html") -> { url: Url, local_path: FilePath }
   uses fs: Filesystem(mode: ReadWrite)
 {
   topo = workspace.Introspect.BuildTopology()
@@ -114,8 +115,8 @@ func dag_viz_snapshot(format: String = "html") -> { url: String, local_path: Str
     format: format
   )
 
-  local_path = "target/dag-viz/workspace.{rendered.ext}"
-  save = fs.write(path: local_path, content: rendered.content)
+  local_path: FilePath = "target/dag-viz/workspace.{rendered.ext}"
+  save = content_upsert(content: rendered.content, path: local_path)
   open = shell.Browser.Open(path: local_path) [after save]
 
   result = share_content(
@@ -126,7 +127,7 @@ func dag_viz_snapshot(format: String = "html") -> { url: String, local_path: Str
   return { url: result.url, local_path: local_path }
 }
 
-func dag_viz_diff(base_ref: String = "main") -> { url: String } {
+func dag_viz_diff(base_ref: GitRef = "main") -> { url: Url } {
   topo = workspace.Introspect.BuildTopology()
   ctx = branch_context()
 
@@ -151,7 +152,7 @@ func dag_viz_diff(base_ref: String = "main") -> { url: String } {
   return { url: result.url }
 }
 
-func dag_viz_recent(since: String = "3.days.ago") -> { url: String } {
+func dag_viz_recent(since: String = "3.days.ago") -> { url: Url } {
   topo = workspace.Introspect.BuildTopology()
   recent = resolve_recent_base(since: since)
 
@@ -176,17 +177,18 @@ func dag_viz_recent(since: String = "3.days.ago") -> { url: String } {
   return { url: result.url }
 }
 
-func dag_viz_save() -> { node_count: Int, total_node_count: Int }
+func dag_viz_save() -> { node_count: Int, total_node_count: Int, written: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {
   topo = workspace.Introspect.BuildTopology()
-  write = fs.write(
-    path: topology_snapshot_path(),
-    content: topo.topology_json
+  result = content_upsert(
+    content: topo.topology_json,
+    path: topology_snapshot_path()
   )
 
   return {
     node_count: topo.node_count,
-    total_node_count: topo.total_node_count
+    total_node_count: topo.total_node_count,
+    written: result.written
   }
 }

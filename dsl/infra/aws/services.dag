@@ -1,0 +1,283 @@
+// infra/aws/services.dag -- AWS API service declarations for infra resources.
+//
+// Raw AWS API operations used by the resource acquire blocks.
+// Uses AWS REST/JSON APIs with SigV4 authentication.
+
+module infra.aws.services
+
+
+// --- S3 ------------------------------------------------------------------
+
+service aws.S3 {
+  @endpoint("https://s3.{region}.amazonaws.com")
+  @auth(AwsSigV4)
+
+  operation HeadBucket {
+    input { bucket: NonEmptyStr }
+    output { exists: Bool }
+    @rest(HEAD, "/{bucket}")
+    @idempotent @readonly
+  }
+
+  operation CreateBucket {
+    input {
+      bucket: NonEmptyStr
+      region: String = "us-east-1"
+      tags: Map<String, String>?
+    }
+    output { location: String }
+    @rest(PUT, "/{bucket}")
+  }
+
+  operation DeleteBucket {
+    input { bucket: NonEmptyStr }
+    output { ok: Bool }
+    @rest(DELETE, "/{bucket}")
+  }
+
+  operation GetObject {
+    input { bucket: NonEmptyStr, key: NonEmptyStr }
+    output { body: Bytes, found: Bool }
+    @rest(GET, "/{bucket}/{key}")
+    @idempotent @readonly
+  }
+
+  operation PutObject {
+    input { bucket: NonEmptyStr, key: NonEmptyStr, body: Bytes }
+    output { etag: String }
+    @rest(PUT, "/{bucket}/{key}")
+  }
+
+  operation DeleteObject {
+    input { bucket: NonEmptyStr, key: NonEmptyStr }
+    output { ok: Bool }
+    @rest(DELETE, "/{bucket}/{key}")
+  }
+
+  operation ListObjectsV2 {
+    input { bucket: NonEmptyStr, prefix: String? }
+    output { keys: List<NonEmptyStr>, truncated: Bool }
+    @rest(GET, "/{bucket}?list-type=2&prefix={prefix}")
+    @idempotent @readonly
+  }
+}
+
+
+// --- Lambda --------------------------------------------------------------
+
+service aws.Lambda {
+  @endpoint("https://lambda.{region}.amazonaws.com")
+  @auth(AwsSigV4)
+
+  operation GetFunction {
+    input { function_name: NonEmptyStr }
+    output { exists: Bool, function_arn: String?, state: String? }
+    @rest(GET, "/2015-03-31/functions/{function_name}")
+    @idempotent @readonly
+  }
+
+  operation CreateFunction {
+    input {
+      function_name: NonEmptyStr
+      runtime: String = "provided.al2023"
+      handler: String = "bootstrap"
+      role: NonEmptyStr
+      code_s3_bucket: NonEmptyStr
+      code_s3_key: NonEmptyStr
+      memory_size: Int = 512
+      timeout: Int = 300
+      environment: Map<String, String>?
+      tags: Map<String, String>?
+    }
+    output { function_arn: String }
+    @rest(POST, "/2015-03-31/functions")
+  }
+
+  operation UpdateFunctionCode {
+    input {
+      function_name: NonEmptyStr
+      s3_bucket: NonEmptyStr
+      s3_key: NonEmptyStr
+    }
+    output { function_arn: String }
+    @rest(PUT, "/2015-03-31/functions/{function_name}/code")
+  }
+
+  operation UpdateFunctionConfiguration {
+    input {
+      function_name: NonEmptyStr
+      memory_size: Int?
+      timeout: Int?
+      environment: Map<String, String>?
+    }
+    output { function_arn: String }
+    @rest(PUT, "/2015-03-31/functions/{function_name}/configuration")
+  }
+
+  operation Invoke {
+    input { function_name: NonEmptyStr, payload: Json }
+    output { status_code: Int, payload: Json }
+    @rest(POST, "/2015-03-31/functions/{function_name}/invocations")
+  }
+
+  operation DeleteFunction {
+    input { function_name: NonEmptyStr }
+    output { ok: Bool }
+    @rest(DELETE, "/2015-03-31/functions/{function_name}")
+  }
+}
+
+
+// --- Secrets Manager -----------------------------------------------------
+
+service aws.SecretsManager {
+  @endpoint("https://secretsmanager.{region}.amazonaws.com")
+  @auth(AwsSigV4)
+
+  operation DescribeSecret {
+    input { secret_id: NonEmptyStr }
+    output { exists: Bool, arn: String?, name: String? }
+    @rest(POST, "/")
+    @idempotent @readonly
+    // AWS Secrets Manager uses POST with X-Amz-Target header
+  }
+
+  operation CreateSecret {
+    input { name: NonEmptyStr, secret_string: Secret, tags: Map<String, String>? }
+    output { arn: String, name: String }
+    @rest(POST, "/")
+  }
+
+  operation GetSecretValue {
+    input { secret_id: NonEmptyStr, version_stage: String = "AWSCURRENT" }
+    output { secret_string: Secret, version_id: NonEmptyStr }
+    @rest(POST, "/")
+    @readonly
+  }
+
+  operation PutSecretValue {
+    input { secret_id: NonEmptyStr, secret_string: Secret }
+    output { version_id: NonEmptyStr }
+    @rest(POST, "/")
+  }
+
+  operation RotateSecret {
+    input { secret_id: NonEmptyStr, rotation_lambda_arn: String? }
+    output { arn: String, version_id: NonEmptyStr }
+    @rest(POST, "/")
+  }
+
+  operation ListSecretVersionIds {
+    input { secret_id: NonEmptyStr }
+    output { versions: List<NonEmptyStr> }
+    @rest(POST, "/")
+    @idempotent @readonly
+  }
+}
+
+
+// --- IAM -----------------------------------------------------------------
+
+service aws.IAM {
+  @endpoint("https://iam.amazonaws.com")
+  @auth(AwsSigV4)
+
+  operation GetRole {
+    input { role_name: NonEmptyStr }
+    output { exists: Bool, arn: String?, role_name: String? }
+    @rest(GET, "/?Action=GetRole&RoleName={role_name}")
+    @idempotent @readonly
+  }
+
+  operation CreateRole {
+    input {
+      role_name: NonEmptyStr
+      assume_role_policy: Json
+      description: String?
+      tags: Map<String, String>?
+    }
+    output { arn: String, role_name: String }
+    @rest(POST, "/?Action=CreateRole")
+  }
+
+  operation AttachRolePolicy {
+    input { role_name: NonEmptyStr, policy_arn: NonEmptyStr }
+    output { ok: Bool }
+    @rest(POST, "/?Action=AttachRolePolicy")
+  }
+
+  operation DetachRolePolicy {
+    input { role_name: NonEmptyStr, policy_arn: NonEmptyStr }
+    output { ok: Bool }
+    @rest(POST, "/?Action=DetachRolePolicy")
+  }
+}
+
+// --- STS -----------------------------------------------------------------
+
+service aws.STS {
+  @endpoint("https://sts.{region}.amazonaws.com")
+  @auth(AwsSigV4)
+
+  operation AssumeRole {
+    input { role_arn: NonEmptyStr, session_name: NonEmptyStr, duration_seconds: Int = 3600 }
+    output { access_key_id: Secret, secret_access_key: Secret, session_token: Secret, expiration: String }
+    @rest(POST, "/?Action=AssumeRole")
+  }
+
+  operation AssumeRoleWithWebIdentity {
+    input { role_arn: NonEmptyStr, session_name: NonEmptyStr, web_identity_token: Secret }
+    output { access_key_id: Secret, secret_access_key: Secret, session_token: Secret, expiration: String }
+    @rest(POST, "/?Action=AssumeRoleWithWebIdentity")
+  }
+}
+
+// --- SQS -----------------------------------------------------------------
+
+service aws.SQS {
+  @endpoint("https://sqs.{region}.amazonaws.com")
+  @auth(AwsSigV4)
+
+  operation GetQueueUrl {
+    input { queue_name: NonEmptyStr }
+    output { exists: Bool, queue_url: Url? }
+    @rest(POST, "/?Action=GetQueueUrl")
+    @idempotent @readonly
+  }
+
+  operation CreateQueue {
+    input {
+      queue_name: NonEmptyStr
+      visibility_timeout: Int = 30
+      message_retention_period: Int = 345600
+      tags: Map<String, String>?
+    }
+    output { queue_url: Url }
+    @rest(POST, "/?Action=CreateQueue")
+  }
+
+  operation SendMessage {
+    input { queue_url: Url, message_body: String }
+    output { message_id: NonEmptyStr }
+    @rest(POST, "/?Action=SendMessage")
+  }
+
+  operation ReceiveMessage {
+    input { queue_url: Url, max_messages: Int = 10, wait_time_seconds: Int = 0 }
+    output { messages: List<Json> }
+    @rest(POST, "/?Action=ReceiveMessage")
+    @readonly
+  }
+
+  operation DeleteMessage {
+    input { queue_url: Url, receipt_handle: NonEmptyStr }
+    output { ok: Bool }
+    @rest(POST, "/?Action=DeleteMessage")
+  }
+
+  operation PurgeQueue {
+    input { queue_url: Url }
+    output { ok: Bool }
+    @rest(POST, "/?Action=PurgeQueue")
+  }
+}

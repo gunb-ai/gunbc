@@ -1867,85 +1867,149 @@ Resource capability handles (`FilesystemHandle`, `NetworkHandle`, `ToolHandle`, 
 
 **gunbc implementation status:** Partially mitigated via a capability marker pattern (`CAPABILITY_MARKER` in `core/ir/src/resource/mod.rs`) and per-process secrets (`PROCESS_SECRET` in `handle.rs`). The DSL compiler should enforce this structurally — handles are never in the user-visible type namespace, so forgery is impossible at the language level.
 
-### 7.6 Infrastructure as Resources
+### 7.6 Infrastructure as Resources (Multi-Cloud)
 
-Cloud infrastructure (GCS buckets, Cloud Run services, Secret Manager secrets, service accounts, WIF providers) uses the **same resource model** as system resources. The `acquire` block IS the ensure/upsert pattern (check -> create -> resolve). Business logic `uses` infra resources the same way it uses `Filesystem` or `Network`.
+Cloud infrastructure uses the **same resource model** as system resources, extended with a **multi-cloud abstraction layer**. Abstract interfaces define capabilities (ObjectStorage, Compute, SecretStore, Identity, Queue); provider-specific resources implement them. Business logic `uses` infra resources the same way it uses `Filesystem` or `Network`.
+
+#### 7.6.1 Abstract Interfaces
+
+Five abstract interfaces in `infra/core.dag` define cloud-agnostic capabilities:
 
 ```
-resource GcsBucket {
-  kind: Capability
-  mode: ReadWrite
-  key: name                          // conflict detection per bucket name
+interface ObjectStorage {
+  capability read(key: NonEmptyStr) -> { content: Bytes, found: Bool }
+  capability write(key: NonEmptyStr, content: Bytes) -> { ok: Bool }
+  capability delete(key: NonEmptyStr) -> { ok: Bool }
+  capability list(prefix: String) -> { keys: List<NonEmptyStr> }
 
-  config {
-    name: String
-    project: String
-    location: String = "us-central1"
-  }
+  @contract: read(k) after write(k, v) => { content: v, found: true }
+  @contract: read(k) after delete(k) => { found: false }
+}
 
+interface Compute { deploy, invoke, get_url, scale }
+interface SecretStore { read_value, write_value, rotate, list_versions }
+interface Identity { assume, grant, revoke }
+interface Queue<T> { publish, subscribe, ack, purge }
+```
+
+Each interface has `@contract` annotations that generate behavioral verification tests for every implementor.
+
+#### 7.6.2 Provider Implementations
+
+Provider-specific resources use `implements` to declare their interface conformance:
+
+```
+resource GcsBucket implements ObjectStorage {
+  config { name: NonEmptyStr, project: ProjectId }
   acquire {
     check = gcp.Storage.GetBucket(name: config.name)
-    create [when !check.exists] = gcp.Storage.CreateBucket(
-      project: config.project,
-      name: config.name,
-      location: config.location,
-      labels: { "managed-by": "gunbc", "spec-hash": hash(config) }
-    )
+    create [when !check.exists] = gcp.Storage.CreateBucket(...)
     resolve = gcp.Storage.GetBucket(name: config.name) [after create]
-
     @mock_response(check, status: 404)
     @mock_response(create, status: 200, body: { "name": config.name })
   }
-
-  release {}
-
-  capability read {
-    input { key: String }
-    output { content: Bytes, found: Bool }
-    @rest(GET, "https://storage.googleapis.com/.../o/{key}?alt=media")
-    @idempotent @readonly
-  }
-
-  capability write {
-    input { key: String, content: Bytes }
-    output { ok: Bool }
-    @rest(POST, "https://storage.googleapis.com/.../o?name={key}")
-  }
+  capability read { @rest(GET, "https://storage.googleapis.com/...") }
+  capability write { @rest(POST, "https://storage.googleapis.com/...") }
 }
 
-// Business logic -- identical syntax to Filesystem
-func store_artifact(key: String, content: Bytes) -> { ok: Bool }
-  uses bucket: GcsBucket(name: "my-bucket", project: "my-project")
+resource S3Bucket implements ObjectStorage {
+  config { name: NonEmptyStr, region: String }
+  acquire {
+    check = aws.S3.HeadBucket(bucket: config.name)
+    create [when !check.exists] = aws.S3.CreateBucket(bucket: config.name, ...)
+  }
+  capability read { @rest(GET, "https://{name}.s3.{region}.amazonaws.com/{key}") @auth(AwsSigV4) }
+}
+
+resource BlobContainer implements ObjectStorage {
+  config { account_name: NonEmptyStr, name: NonEmptyStr }
+  acquire { ... }  // Azure Blob Storage APIs
+}
+```
+
+Full provider matrix (5 interfaces × 3 providers = 15 resources):
+
+| Interface | GCP | AWS | Azure |
+|---|---|---|---|
+| ObjectStorage | GcsBucket | S3Bucket | BlobContainer |
+| Compute | CloudRunService | LambdaFunction | ContainerApp |
+| SecretStore | ManagedSecret | AwsSecret | KeyVaultSecret |
+| Identity | GcpServiceAccount | AwsIamRole | AzureManagedIdentity |
+| Queue | PubSubTopic | SqsQueue | ServiceBusQueue |
+
+#### 7.6.3 Provider Selection
+
+Provider selection is a compile-time decision via `CloudConfig` (sum type):
+
+```
+type CloudConfig
+  = GcpConfig { project: ProjectId, project_number: NonEmptyStr, region: String }
+  | AwsConfig { account_id: NonEmptyStr, region: String, profile: String? }
+  | AzureConfig { subscription_id: NonEmptyStr, resource_group: NonEmptyStr, location: String }
+```
+
+Business logic writes against abstract interfaces; the compiler resolves them:
+
+```
+// Business logic targets the interface
+func store_artifact(key: NonEmptyStr, content: Bytes) -> { ok: Bool }
+  uses store: ObjectStorage
 {
-  result = bucket.write(key: key, content: content)
+  result = store.write(key: key, content: content)
   return { ok: result.ok }
 }
+
+// Provider resolved at build time:
+//   gunbc build --env=gcp-dev  -> ObjectStorage = GcsBucket
+//   gunbc build --env=aws-prod -> ObjectStorage = S3Bucket
 ```
 
-**Why this is the right model:**
+#### 7.6.4 Cross-Provider Composition
 
-1. **No new language constructs.** Infra provisioning is resource acquisition. The same compiler passes (TypeCheck, Lower, Validate, Derive) that handle Filesystem handles also handle GcsBucket handles.
-
-2. **Test generation for free.** The `@mock_response` annotations in `acquire` blocks feed the testgen probe-observer model. The compiler generates hermetic tests (DryRun with mocked transport), scenario tests (bucket exists / missing / creation fails), resource hygiene tests (lifecycle invariants), and live integration tests (real GCP APIs, gated by cost).
-
-3. **Drift detection.** The `labels: { "spec-hash": hash(config) }` pattern enables reconciliation: if the spec changes, the acquire block detects the hash mismatch and updates. This matches `gcp-service-modeling.md`'s fingerprinting design.
-
-4. **Composable bootstrap.** A full infra bootstrap is just a func that `uses` all the infra resources. The compiler orders acquisitions by dependency analysis:
+Funcs can compose resources from different providers:
 
 ```
-func infra_bootstrap() -> { ready: Bool }
+func cross_cloud_pipeline(content: Bytes, notification: String) -> { ok: Bool }
+  uses gcs: GcsBucket(name: "primary", project: "my-project")
+  uses s3: S3Bucket(name: "backup", region: "us-east-1")
+  uses queue: SqsQueue(name: "notifications", region: "us-east-1")
+{
+  gcp_result = gcs.write(key: "latest.bin", content: content)
+  aws_result = s3.write(key: "latest.bin", content: content)
+  queue.publish(message: notification) [after gcp_result, after aws_result]
+  return { ok: gcp_result.ok && aws_result.ok }
+}
+```
+
+The compiler resolves each provider's auth chain independently (GCP WIF, AWS STS, Azure AD).
+
+#### 7.6.5 Why This Model
+
+1. **No new language constructs.** Infra provisioning is resource acquisition. The same compiler passes (TypeCheck, Lower, Validate, Derive) that handle Filesystem handles also handle cloud resource handles.
+
+2. **Test generation for free.** `@mock_response` annotations in `acquire` blocks feed the testgen probe-observer model. `@contract` annotations on interfaces generate behavioral tests for every implementor. Cross-provider tests verify the composition DAG.
+
+3. **Drift detection.** `ResourceFingerprint { spec_hash: hash(config) }` enables reconciliation: if the spec changes, the acquire block detects the hash mismatch and updates.
+
+4. **Composable bootstrap.** A full infra bootstrap is just a func that `uses` all the infra resources:
+
+```
+func infra_bootstrap_gcp() -> { ready: Bool }
   uses wif: WifProvider(...)
-  uses sa: GcpServiceAccount(...)   // after WIF (needs pool)
-  uses secret: ManagedSecret(...)   // after SA (needs IAM binding)
-  uses bucket: GcsBucket(...)       // independent
+  uses sa: GcpServiceAccount(...)
+  uses secret: ManagedSecret(...)
+  uses bucket: GcsBucket(...)
+  uses queue: PubSubTopic(...)
 {
   return { ready: true }
 }
 ```
 
-5. **Interface binding.** Abstract service interfaces (e.g., `Storage`) can be backed by infra resources (e.g., `GcsBucket`). The `service gcs.BucketStorage : Storage { backed_by: GcsBucket }` pattern composes interface contracts with infra provisioning.
+5. **Provider portability.** Business logic written against abstract interfaces works on any provider. Migration from GCP to AWS is a config change, not a code change.
 
-See `dsl/infra/gcp.dag` for the full resource library and `dsl/examples/integration_tests.dag` for the test generation model.
+6. **Credential abstraction.** Each provider has its own credential acquisition func (`cloud/{gcp,aws,azure}/credential.dag`), following the same pattern: CI uses OIDC federation, local uses CLI credentials.
+
+See `dsl/infra/core.dag` for the interface definitions, `dsl/infra/{gcp,aws,azure}/resources.dag` for implementations, and `dsl/examples/deployment.dag` for multi-cloud composition.
 
 ### 7.7 What This Replaces
 
