@@ -162,6 +162,60 @@ fn modules_command_reports_graph_diagnostics_without_failing() {
 }
 
 #[test]
+fn modules_command_reports_parse_diagnostics_without_failing() {
+    let root = unique_temp_dir("modules_parse_diag");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("broken.dag"),
+        "module sample.broken\nfn broken( -> Unit {\n",
+    )
+    .expect("failed to write malformed dag file");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules for malformed source");
+
+    assert!(
+        output.status.success(),
+        "modules command should succeed while surfacing parse diagnostics"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Diagnostics:"));
+    assert!(stdout.contains("broken.dag:2:12:"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn modules_command_reports_lex_diagnostics_without_failing() {
+    let root = unique_temp_dir("modules_lex_diag");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\n$\n")
+        .expect("failed to write malformed dag file");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules for malformed source");
+
+    assert!(
+        output.status.success(),
+        "modules command should succeed while surfacing lex diagnostics"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Diagnostics:"));
+    assert!(stdout.contains("broken.dag:2:1:"));
+    assert!(stdout.contains("unexpected character '$'"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn modules_command_reports_cycle_diagnostics_without_failing() {
     let root = unique_temp_dir("modules_cycle_diag");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
