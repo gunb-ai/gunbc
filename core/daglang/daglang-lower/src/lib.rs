@@ -123,30 +123,21 @@ struct ResourceLifecycleEndpoint {
     release_node: Option<String>,
 }
 
-#[derive(Debug, Default, Clone)]
-struct KnownUsesTypes {
-    names: HashSet<String>,
+fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
+    let canonical = canonical_type_name(name);
+    let short = canonical
+        .rsplit('.')
+        .next()
+        .unwrap_or(canonical.as_str())
+        .to_string();
+    set.insert(canonical);
+    set.insert(short);
 }
 
-impl KnownUsesTypes {
-    fn insert(&mut self, name: impl Into<String>) {
-        let canonical = canonical_type_name(name.into().as_str());
-        self.names.insert(canonical.clone());
-        let short = canonical
-            .rsplit('.')
-            .next()
-            .unwrap_or(canonical.as_str())
-            .to_string();
-        self.names.insert(short);
-    }
-
-    fn contains(&self, name: &str) -> bool {
-        let canonical = canonical_type_name(name);
-        self.names.contains(&canonical)
-            || self
-                .names
-                .contains(canonical.rsplit('.').next().unwrap_or(canonical.as_str()))
-    }
+fn is_known_uses_type(set: &HashSet<String>, name: &str) -> bool {
+    let canonical = canonical_type_name(name);
+    set.contains(&canonical)
+        || set.contains(canonical.rsplit('.').next().unwrap_or(canonical.as_str()))
 }
 
 /// Wraps a `Dag` with O(1) deduplication tracking for nodes and edges.
@@ -1178,7 +1169,7 @@ fn add_used_resource_edges(
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     resource_registry: &ResourceLifecycleRegistry,
-    known_uses_types: &KnownUsesTypes,
+    known_uses_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -1198,7 +1189,7 @@ fn add_used_resource_edges(
                     resource_type.as_str(),
                     resource_registry,
                 ) else {
-                    if known_uses_types.contains(&resource_type) {
+                    if is_known_uses_type(known_uses_types, &resource_type) {
                         continue;
                     }
                     return Err(LowerError::UnresolvedUsedResource {
@@ -1234,7 +1225,7 @@ fn add_provided_resource_nodes(
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     resource_registry: &ResourceLifecycleRegistry,
-    known_uses_types: &KnownUsesTypes,
+    known_uses_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -1254,7 +1245,7 @@ fn add_provided_resource_nodes(
                     resource_type.as_str(),
                     resource_registry,
                 );
-                if endpoint.is_none() && !known_uses_types.contains(&resource_type) {
+                if endpoint.is_none() && !is_known_uses_type(known_uses_types, &resource_type) {
                     return Err(LowerError::UnresolvedProvidedResource {
                         caller: format!("{module_name}::{item_name}"),
                         binding: provided.binding.clone(),
@@ -1325,28 +1316,28 @@ fn resolve_resource_endpoint(
     None
 }
 
-fn collect_known_uses_types(project: &TypedProject) -> KnownUsesTypes {
-    let mut known = KnownUsesTypes::default();
+fn collect_known_uses_types(project: &TypedProject) -> HashSet<String> {
+    let mut known = HashSet::new();
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
             match &item.node {
                 Item::InterfaceDef(def) => {
-                    known.insert(def.name.clone());
-                    known.insert(format!("{module_name}.{}", def.name));
+                    insert_canonical_names(&mut known, &def.name);
+                    insert_canonical_names(&mut known, &format!("{module_name}.{}", def.name));
                 }
                 Item::ResourceDef(def) => {
-                    known.insert(def.name.clone());
-                    known.insert(format!("{module_name}.{}", def.name));
+                    insert_canonical_names(&mut known, &def.name);
+                    insert_canonical_names(&mut known, &format!("{module_name}.{}", def.name));
                     if let Some(implemented) = &def.implements {
-                        known.insert(implemented.clone());
+                        insert_canonical_names(&mut known, implemented);
                     }
                 }
                 Item::ServiceDef(def) => {
-                    known.insert(def.name.clone());
-                    known.insert(format!("{module_name}.{}", def.name));
+                    insert_canonical_names(&mut known, &def.name);
+                    insert_canonical_names(&mut known, &format!("{module_name}.{}", def.name));
                     if let Some(implemented) = &def.implements {
-                        known.insert(implemented.clone());
+                        insert_canonical_names(&mut known, implemented);
                     }
                 }
                 _ => {}

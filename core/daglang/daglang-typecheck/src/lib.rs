@@ -487,7 +487,8 @@ pub fn typecheck_module_graph_with_options(
                 }
             }
         }
-        let signatures = collect_signatures(&module, &context, &module_name, &mut errors);
+        let (signatures, sig_errors) = collect_signatures(&module, &context, &module_name);
+        errors.extend(sig_errors);
         typed_modules.push(TypedModule {
             path: module.path,
             module_path: module.module_path,
@@ -523,8 +524,8 @@ fn collect_signatures(
     module: &ResolvedModule,
     context: &TypecheckContext<'_>,
     module_name: &str,
-    errors: &mut Vec<TypeError>,
-) -> Vec<TypedItemSignature> {
+) -> (Vec<TypedItemSignature>, Vec<TypeError>) {
+    let mut errors = Vec::new();
     let mut module_known_types = context.known_types.clone();
     for import in &module.ast.imports {
         if let Some(bindings) = &import.node.bindings {
@@ -561,27 +562,25 @@ fn collect_signatures(
                 });
             }
             Item::FnDef(def) => {
-                record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
+                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
                 let item_known_types = extend_known_types(&module_known_types, &def.type_params);
-                validate_params(
+                errors.extend(validate_params(
                     &def.name,
                     &def.params,
                     &item_known_types,
                     context.generic_arity_registry,
-                    errors,
-                );
-                validate_type_expr(
+                ));
+                errors.extend(validate_type_expr(
                     &def.return_type,
                     &item_known_types,
                     context.generic_arity_registry,
                     &format!("{}.return", def.name),
-                    errors,
-                );
+                ));
                 let outputs = vec![TypedBinding {
                     name: "return".to_string(),
                     ty: type_expr_to_string(&def.return_type),
                 }];
-                validate_callable_body(
+                errors.extend(validate_callable_body(
                     &def.name,
                     &def.params,
                     ReturnContract::single(type_expr_to_string(&def.return_type)),
@@ -591,8 +590,7 @@ fn collect_signatures(
                         is_lossy: def.body.lossy,
                     },
                     &body_context,
-                    errors,
-                );
+                ));
                 signatures.push(TypedItemSignature::Fn(TypedCallableSignature {
                     name: def.name.clone(),
                     params: def
@@ -607,38 +605,34 @@ fn collect_signatures(
                 }));
             }
             Item::FuncDef(def) => {
-                record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
+                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
                 let item_known_types = extend_known_types(&module_known_types, &def.type_params);
-                validate_params(
+                errors.extend(validate_params(
                     &def.name,
                     &def.params,
                     &item_known_types,
                     context.generic_arity_registry,
-                    errors,
-                );
-                validate_outputs(
+                ));
+                errors.extend(validate_outputs(
                     &def.name,
                     &def.outputs,
                     &item_known_types,
                     context.generic_arity_registry,
-                    errors,
-                );
-                validate_uses_clauses(
+                ));
+                errors.extend(validate_uses_clauses(
                     &def.name,
                     &def.uses,
                     context.resource_type_registry,
                     context.allow_unresolved_references,
-                    errors,
-                );
-                validate_provides_clauses(
+                ));
+                errors.extend(validate_provides_clauses(
                     &def.name,
                     &def.provides,
                     context.resource_type_registry,
                     context.allow_unresolved_references,
-                    errors,
-                );
-                validate_use_provide_binding_conflicts(&def.name, &def.uses, &def.provides, errors);
-                validate_callable_body(
+                ));
+                errors.extend(validate_use_provide_binding_conflicts(&def.name, &def.uses, &def.provides));
+                errors.extend(validate_callable_body(
                     &def.name,
                     &def.params,
                     ReturnContract::record(field_signature_map(&def.outputs)),
@@ -648,8 +642,7 @@ fn collect_signatures(
                         is_lossy: def.body.lossy,
                     },
                     &body_context,
-                    errors,
-                );
+                ));
                 signatures.push(TypedItemSignature::Func(TypedCallableSignature {
                     name: def.name.clone(),
                     params: def
@@ -671,30 +664,27 @@ fn collect_signatures(
                 }));
             }
             Item::PatternDef(def) => {
-                record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
+                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
                 let item_known_types = extend_known_types(&module_known_types, &def.type_params);
-                validate_params(
+                errors.extend(validate_params(
                     &def.name,
                     &def.params,
                     &item_known_types,
                     context.generic_arity_registry,
-                    errors,
-                );
-                validate_outputs(
+                ));
+                errors.extend(validate_outputs(
                     &def.name,
                     &def.outputs,
                     &item_known_types,
                     context.generic_arity_registry,
-                    errors,
-                );
-                validate_uses_clauses(
+                ));
+                errors.extend(validate_uses_clauses(
                     &def.name,
                     &def.uses,
                     context.resource_type_registry,
                     context.allow_unresolved_references,
-                    errors,
-                );
-                validate_callable_body(
+                ));
+                errors.extend(validate_callable_body(
                     &def.name,
                     &def.params,
                     ReturnContract::record(field_signature_map(&def.outputs)),
@@ -704,8 +694,7 @@ fn collect_signatures(
                         is_lossy: def.body.lossy,
                     },
                     &body_context,
-                    errors,
-                );
+                ));
                 signatures.push(TypedItemSignature::Pattern(TypedCallableSignature {
                     name: def.name.clone(),
                     params: def
@@ -727,30 +716,30 @@ fn collect_signatures(
                 }));
             }
             Item::ServiceDef(def) => {
-                record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
-                validate_service_interface_conformance(def, context.interface_registry, errors);
+                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
+                errors.extend(validate_service_interface_conformance(def, context.interface_registry));
                 signatures.push(TypedItemSignature::Service {
                     name: def.name.clone(),
                     operations: def.operations.len(),
                 });
             }
             Item::ResourceDef(def) => {
-                record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
-                validate_resource_interface_conformance(def, context.interface_registry, errors);
+                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
+                errors.extend(validate_resource_interface_conformance(def, context.interface_registry));
                 signatures.push(TypedItemSignature::Resource {
                     name: def.name.clone(),
                     implements: def.implements.clone(),
                 });
             }
             Item::InterfaceDef(def) => {
-                record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
+                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
                 signatures.push(TypedItemSignature::Interface {
                     name: def.name.clone(),
                     capabilities: def.capabilities.len(),
                 });
             }
             Item::PipelineDef(def) => {
-                record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
+                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
                 signatures.push(TypedItemSignature::Pipeline {
                     name: def.name.clone(),
                     stages: def.stages.len(),
@@ -759,7 +748,7 @@ fn collect_signatures(
         }
     }
 
-    signatures
+    (signatures, errors)
 }
 
 fn extend_known_types(base: &HashSet<String>, additional: &[String]) -> HashSet<String> {
@@ -1530,13 +1519,14 @@ fn record_duplicate_item_name(
     module_name: &str,
     item_name: &str,
     seen_items: &mut HashSet<String>,
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
     if !seen_items.insert(item_name.to_string()) {
-        errors.push(TypeError::DuplicateDefinition {
+        vec![TypeError::DuplicateDefinition {
             module: module_name.to_string(),
             name: item_name.to_string(),
-        });
+        }]
+    } else {
+        Vec::new()
     }
 }
 
@@ -1545,8 +1535,8 @@ fn validate_params(
     params: &[Param],
     known_types: &HashSet<String>,
     generic_arity_registry: &GenericArityRegistry,
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     let mut seen = HashSet::new();
     for param in params {
         if !seen.insert(param.name.clone()) {
@@ -1555,14 +1545,14 @@ fn validate_params(
                 param: param.name.clone(),
             });
         }
-        validate_type_expr(
+        errors.extend(validate_type_expr(
             &param.ty,
             known_types,
             generic_arity_registry,
             &format!("{}.{}", item_name, param.name),
-            errors,
-        );
+        ));
     }
+    errors
 }
 
 fn validate_outputs(
@@ -1570,8 +1560,8 @@ fn validate_outputs(
     outputs: &[Field],
     known_types: &HashSet<String>,
     generic_arity_registry: &GenericArityRegistry,
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     let mut seen = HashSet::new();
     for output in outputs {
         if !seen.insert(output.name.clone()) {
@@ -1580,14 +1570,14 @@ fn validate_outputs(
                 field: output.name.clone(),
             });
         }
-        validate_type_expr(
+        errors.extend(validate_type_expr(
             &output.ty,
             known_types,
             generic_arity_registry,
             &format!("{}.{}", item_name, output.name),
-            errors,
-        );
+        ));
     }
+    errors
 }
 
 fn validate_uses_clauses(
@@ -1595,8 +1585,8 @@ fn validate_uses_clauses(
     uses: &[UsesClause],
     registry: &ResourceTypeRegistry,
     allow_unresolved_references: bool,
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     let mut seen_bindings = HashSet::new();
     for usage in uses {
         if !seen_bindings.insert(usage.binding.clone()) {
@@ -1626,6 +1616,7 @@ fn validate_uses_clauses(
             }
         }
     }
+    errors
 }
 
 fn validate_provides_clauses(
@@ -1633,8 +1624,8 @@ fn validate_provides_clauses(
     provides: &[ProvidesClause],
     registry: &ResourceTypeRegistry,
     allow_unresolved_references: bool,
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     let mut seen_bindings = HashSet::new();
     for provided in provides {
         if !seen_bindings.insert(provided.binding.clone()) {
@@ -1664,14 +1655,15 @@ fn validate_provides_clauses(
             }
         }
     }
+    errors
 }
 
 fn validate_use_provide_binding_conflicts(
     item_name: &str,
     uses: &[UsesClause],
     provides: &[ProvidesClause],
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     let used_bindings = uses
         .iter()
         .map(|usage| usage.binding.as_str())
@@ -1684,6 +1676,7 @@ fn validate_use_provide_binding_conflicts(
             });
         }
     }
+    errors
 }
 
 fn collect_param_callable_contracts(params: &[Param]) -> HashMap<String, CallableContract> {
@@ -1772,8 +1765,8 @@ fn validate_callable_body(
     uses: &[UsesClause],
     body: CallableBodyRef<'_>,
     body_context: &BodyInferenceContext<'_>,
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     let bound_service_registry = build_bound_service_call_registry(uses, body_context);
     let param_callable_contracts = collect_param_callable_contracts(params);
     let infer_context = ExprInferenceContext {
@@ -1932,56 +1925,60 @@ fn validate_callable_body(
     for stmt in body.stmts {
         match stmt {
             Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
-                let inferred = infer_expr_type(
+                let (inferred, infer_errors) = infer_expr_type(
                     expr,
                     &local_bindings,
                     &infer_context,
-                    errors,
                 );
+                errors.extend(infer_errors);
                 local_bindings.insert(name.clone(), inferred);
                 trailing_expr_type = None;
                 trailing_expr = None;
             }
             Stmt::Expr(expr) => {
                 trailing_expr = Some(expr);
-                trailing_expr_type = Some(infer_expr_type(
+                let (inferred, infer_errors) = infer_expr_type(
                     expr,
                     &local_bindings,
                     &infer_context,
-                    errors,
-                ));
+                );
+                errors.extend(infer_errors);
+                trailing_expr_type = Some(inferred);
             }
             Stmt::Return(fields) => {
                 saw_explicit_return = true;
                 trailing_expr_type = None;
                 trailing_expr = None;
-                validate_return_stmt(
+                errors.extend(validate_return_stmt(
                     caller,
                     &return_contract,
                     fields,
                     &local_bindings,
                     &infer_context,
-                    errors,
-                );
+                ));
             }
         }
     }
     if !body.is_lossy && !saw_explicit_return {
         if let ReturnContract::Single { ty } = &return_contract {
             let inferred = match trailing_expr {
-                Some(expr) => infer_expr_type_for_expected_named_record(
-                    expr,
-                    ty,
-                    &local_bindings,
-                    &infer_context,
-                    errors,
-                ),
+                Some(expr) => {
+                    let (val, infer_errors) = infer_expr_type_for_expected_named_record(
+                        expr,
+                        ty,
+                        &local_bindings,
+                        &infer_context,
+                    );
+                    errors.extend(infer_errors);
+                    val
+                }
                 None => trailing_expr_type
                     .unwrap_or_else(|| ValueType::Named("Unit".to_string())),
             };
-            push_type_mismatch_if_needed(ty, &inferred, errors);
+            errors.extend(push_type_mismatch_if_needed(ty, &inferred));
         }
     }
+    errors
 }
 
 fn validate_return_stmt(
@@ -2358,15 +2355,17 @@ impl ValueType {
     }
 }
 
-fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType, errors: &mut Vec<TypeError>) {
+fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<TypeError> {
     let Some(got) = inferred.display_name() else {
-        return;
+        return Vec::new();
     };
     if !types_match(expected, &got) {
-        errors.push(TypeError::TypeMismatch {
+        vec![TypeError::TypeMismatch {
             expected: expected.to_string(),
             got,
-        });
+        }]
+    } else {
+        Vec::new()
     }
 }
 
@@ -2398,10 +2397,10 @@ fn resolve_record_fields(
 fn validate_resource_interface_conformance(
     resource: &daglang_syntax::ast::ResourceDef,
     interface_registry: &InterfaceRegistry,
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     let Some(implemented) = resource.implements.as_deref() else {
-        return;
+        return errors;
     };
     let interface_contract = match resolve_interface_contract(implemented, interface_registry) {
         InterfaceResolution::Resolved(contract) => contract,
@@ -2410,14 +2409,14 @@ fn validate_resource_interface_conformance(
                 implementor: resource.name.clone(),
                 interface: implemented.to_string(),
             });
-            return;
+            return errors;
         }
         InterfaceResolution::Missing => {
             errors.push(TypeError::UnresolvedInterface {
                 implementor: resource.name.clone(),
                 interface: implemented.to_string(),
             });
-            return;
+            return errors;
         }
     };
     let provided_capabilities = resource
@@ -2451,6 +2450,7 @@ fn validate_resource_interface_conformance(
             &required_contract,
         ));
     }
+    errors
 }
 
 fn validate_capability_contract(
@@ -2516,10 +2516,10 @@ fn validate_signature_map(
 fn validate_service_interface_conformance(
     service: &daglang_syntax::ast::ServiceDef,
     interface_registry: &InterfaceRegistry,
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     let Some(implemented) = service.implements.as_deref() else {
-        return;
+        return errors;
     };
     let interface_contract = match resolve_interface_contract(implemented, interface_registry) {
         InterfaceResolution::Resolved(contract) => contract,
@@ -2528,14 +2528,14 @@ fn validate_service_interface_conformance(
                 implementor: service.name.clone(),
                 interface: implemented.to_string(),
             });
-            return;
+            return errors;
         }
         InterfaceResolution::Missing => {
             errors.push(TypeError::UnresolvedInterface {
                 implementor: service.name.clone(),
                 interface: implemented.to_string(),
             });
-            return;
+            return errors;
         }
     };
     let provided_operations = service
@@ -2569,6 +2569,7 @@ fn validate_service_interface_conformance(
             &required_contract,
         ));
     }
+    errors
 }
 
 fn field_signature_map(fields: &[Field]) -> HashMap<String, String> {
@@ -2766,8 +2767,8 @@ fn validate_type_expr(
     known_types: &HashSet<String>,
     generic_arity_registry: &GenericArityRegistry,
     context: &str,
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     match ty {
         TypeExpr::Named(name) => {
             if should_validate_named_type(name) && !known_types.contains(name) {
@@ -2796,14 +2797,14 @@ fn validate_type_expr(
                 }
             }
             for arg in args {
-                validate_type_expr(arg, known_types, generic_arity_registry, context, errors);
+                errors.extend(validate_type_expr(arg, known_types, generic_arity_registry, context));
             }
         }
         TypeExpr::Optional(inner) => {
-            validate_type_expr(inner, known_types, generic_arity_registry, context, errors);
+            errors.extend(validate_type_expr(inner, known_types, generic_arity_registry, context));
         }
         TypeExpr::Annotated(inner, annotations) => {
-            validate_type_expr(inner, known_types, generic_arity_registry, context, errors);
+            errors.extend(validate_type_expr(inner, known_types, generic_arity_registry, context));
             for annotation in annotations {
                 if annotation.name != "range" {
                     continue;
@@ -2820,6 +2821,7 @@ fn validate_type_expr(
             }
         }
     }
+    errors
 }
 
 fn resolve_generic_arity(
