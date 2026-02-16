@@ -461,6 +461,107 @@ fn check_command_directory_named_dag_extension_with_errors_matches_trailing_slas
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[test]
+fn check_command_uppercase_dag_extension_directory_matches_trailing_slash_output() {
+    let root = unique_temp_dir("check_uppercase_dag_extension_directory");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    std::fs::write(dag_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in .DAG directory");
+
+    let dag_extension_dir = Command::new(daglang_bin())
+        .arg("check")
+        .arg("bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on .DAG directory without trailing slash");
+    assert!(
+        dag_extension_dir.status.success(),
+        ".DAG directory root check should succeed: {}",
+        String::from_utf8_lossy(&dag_extension_dir.stderr)
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("check")
+        .arg("bundle.DAG/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on .DAG directory with trailing slash");
+    assert!(
+        trailing_slash.status.success(),
+        ".DAG directory trailing-slash check should succeed: {}",
+        String::from_utf8_lossy(&trailing_slash.stderr)
+    );
+
+    assert_eq!(
+        dag_extension_dir.stdout, trailing_slash.stdout,
+        ".DAG directory and trailing-slash directory check stdout should match"
+    );
+    assert_eq!(
+        dag_extension_dir.stderr, trailing_slash.stderr,
+        ".DAG directory and trailing-slash directory check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&dag_extension_dir.stdout),
+        expected_check_success_stdout(1),
+        ".DAG directory root check should parse exactly one file"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_uppercase_dag_extension_directory_with_errors_matches_trailing_slash_output() {
+    let root = unique_temp_dir("check_uppercase_dag_extension_directory_errors");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    let broken_file = dag_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DAG directory");
+
+    let dag_extension_dir = Command::new(daglang_bin())
+        .arg("check")
+        .arg("bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed .DAG directory without trailing slash");
+    assert!(
+        !dag_extension_dir.status.success(),
+        "malformed .DAG directory root check should fail"
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("check")
+        .arg("bundle.DAG/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed .DAG directory with trailing slash");
+    assert!(
+        !trailing_slash.status.success(),
+        "malformed .DAG directory trailing-slash check should fail"
+    );
+
+    assert_eq!(
+        dag_extension_dir.stdout, trailing_slash.stdout,
+        "malformed .DAG directory and trailing-slash directory check stdout should match"
+    );
+    assert_eq!(
+        dag_extension_dir.stderr, trailing_slash.stderr,
+        "malformed .DAG directory and trailing-slash directory check stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&dag_extension_dir.stderr)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DAG directory diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&dag_extension_dir.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[cfg(unix)]
 #[test]
 fn check_command_symlink_directory_named_dag_extension_matches_real_directory_output() {
@@ -15451,6 +15552,104 @@ fn modules_command_directory_named_dag_extension_with_errors_matches_trailing_sl
         String::from_utf8_lossy(&dag_extension_dir.stdout)
             .contains(&format!("{}:2:3:", canonical_broken_file.display())),
         "malformed .dag directory diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&dag_extension_dir.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_uppercase_dag_extension_directory_matches_trailing_slash_output() {
+    let root = unique_temp_dir("modules_uppercase_dag_extension_directory");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    std::fs::write(dag_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in .DAG directory");
+
+    let dag_extension_dir = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on .DAG directory without trailing slash");
+    assert!(
+        dag_extension_dir.status.success(),
+        ".DAG directory root modules should succeed: {}",
+        String::from_utf8_lossy(&dag_extension_dir.stderr)
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DAG/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on .DAG directory with trailing slash");
+    assert!(
+        trailing_slash.status.success(),
+        ".DAG directory trailing-slash modules should succeed: {}",
+        String::from_utf8_lossy(&trailing_slash.stderr)
+    );
+
+    assert_eq!(
+        dag_extension_dir.stdout, trailing_slash.stdout,
+        ".DAG directory and trailing-slash directory modules stdout should match"
+    );
+    assert_eq!(
+        dag_extension_dir.stderr, trailing_slash.stderr,
+        ".DAG directory and trailing-slash directory modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_uppercase_dag_extension_directory_with_errors_matches_trailing_slash_output() {
+    let root = unique_temp_dir("modules_uppercase_dag_extension_directory_errors");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    let broken_file = dag_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DAG directory");
+
+    let dag_extension_dir = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed .DAG directory without trailing slash");
+    assert!(
+        dag_extension_dir.status.success(),
+        "malformed .DAG directory root modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&dag_extension_dir.stderr)
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DAG/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed .DAG directory with trailing slash");
+    assert!(
+        trailing_slash.status.success(),
+        "malformed .DAG directory trailing-slash modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&trailing_slash.stderr)
+    );
+
+    assert_eq!(
+        dag_extension_dir.stdout, trailing_slash.stdout,
+        "malformed .DAG directory and trailing-slash directory modules stdout should match"
+    );
+    assert_eq!(
+        dag_extension_dir.stderr, trailing_slash.stderr,
+        "malformed .DAG directory and trailing-slash directory modules stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&dag_extension_dir.stdout)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DAG directory diagnostics should include canonical broken-file path: {}",
         String::from_utf8_lossy(&dag_extension_dir.stdout)
     );
 
