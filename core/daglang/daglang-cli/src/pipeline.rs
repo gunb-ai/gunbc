@@ -1385,6 +1385,29 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn parse_pipeline_reports_canonicalize_error_for_dangling_dag_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("dangling_dag_symlink");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let dangling_target = root.join("missing.dag");
+        let dangling_link = root.join("broken.dag");
+        symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let err = run_pipeline(&context, PipelineStop::Parse)
+            .expect_err("dangling dag symlink should fail canonicalization");
+        assert!(err.contains("failed to canonicalize"));
+        assert!(err.contains("broken.dag"));
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn report_pipeline_derives_module_path_for_symlink_root_without_module_decl() {
         use std::os::unix::fs::symlink;
 

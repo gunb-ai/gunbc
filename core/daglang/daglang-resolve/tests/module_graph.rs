@@ -689,3 +689,31 @@ fn discovery_derives_module_path_for_symlink_root_without_module_decl() {
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
+
+#[cfg(unix)]
+#[test]
+fn discovery_reports_io_error_for_dangling_dag_symlink() {
+    use std::io::ErrorKind;
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("dangling_dag_symlink");
+    fs::create_dir_all(&root).expect("failed to create temp directory");
+    let dangling_target = root.join("missing.dag");
+    let dangling_link = root.join("broken.dag");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink");
+
+    let err =
+        ModuleGraph::discover(&[root.clone()]).expect_err("dangling symlink should fail discover");
+    match err {
+        ResolveError::IoError(path, io_error) => {
+            assert_eq!(
+                path.file_name().and_then(|name| name.to_str()),
+                Some("broken.dag")
+            );
+            assert_eq!(io_error.kind(), ErrorKind::NotFound);
+        }
+        other => panic!("expected IoError, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
