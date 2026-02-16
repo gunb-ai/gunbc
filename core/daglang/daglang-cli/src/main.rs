@@ -269,7 +269,7 @@ fn main() {
             let input_mocks = makegen_entrypoint_mocks(&run_args.output_path, run_args.check_mode);
             let check_mode_snapshot = if run_args.check_mode && !run_args.dry_run {
                 match snapshot_output_file(&run_args.output_path) {
-                    Ok(snapshot) => Some(snapshot),
+                    Ok(snapshot) => snapshot,
                     Err(error) => {
                         eprintln!("{error}");
                         std::process::exit(1);
@@ -286,10 +286,10 @@ fn main() {
             match compile_resolve_execute_from_context(&context, mode, Some(&input_mocks)) {
                 Ok(log) => {
                     let mut written = run_written_from_log(&log);
-                    if let Some(snapshot) = check_mode_snapshot {
+                    if run_args.check_mode && !run_args.dry_run {
                         if let Err(error) = restore_output_file_from_snapshot(
                             &run_args.output_path,
-                            snapshot,
+                            check_mode_snapshot,
                         ) {
                             eprintln!("{error}");
                             std::process::exit(1);
@@ -334,16 +334,16 @@ fn run_written_from_log(log: &gunbc_exec::ExecutionLog) -> bool {
         .unwrap_or(false)
 }
 
-fn snapshot_output_file(path: &str) -> Result<Option<String>, String> {
+fn snapshot_output_file(path: &str) -> Result<Option<Vec<u8>>, String> {
     if !std::path::Path::new(path).exists() {
         return Ok(None);
     }
-    std::fs::read_to_string(path)
+    std::fs::read(path)
         .map(Some)
         .map_err(|error| format!("failed to read check-mode output snapshot `{path}`: {error}"))
 }
 
-fn restore_output_file_from_snapshot(path: &str, snapshot: Option<String>) -> Result<(), String> {
+fn restore_output_file_from_snapshot(path: &str, snapshot: Option<Vec<u8>>) -> Result<(), String> {
     match snapshot {
         Some(content) => std::fs::write(path, content)
             .map_err(|error| format!("failed to restore check-mode output `{path}`: {error}")),
@@ -942,6 +942,28 @@ mod tests {
         let restored = std::fs::read_to_string(&temp_path).expect("failed to read restored file");
         assert_eq!(restored, "before\n");
         std::fs::remove_file(&temp_path).expect("failed to clean snapshot file");
+    }
+
+    #[test]
+    fn snapshot_and_restore_output_file_round_trips_binary_content() {
+        let temp_path = std::env::temp_dir().join(format!(
+            "daglang_snapshot_restore_binary_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        let initial = vec![0u8, 159, 255, 10, 13, 42];
+        std::fs::write(&temp_path, &initial).expect("failed to seed binary snapshot file");
+        let snapshot =
+            snapshot_output_file(temp_path.to_string_lossy().as_ref()).expect("snapshot succeeds");
+        std::fs::write(&temp_path, b"mutated").expect("failed to mutate binary snapshot file");
+        restore_output_file_from_snapshot(temp_path.to_string_lossy().as_ref(), snapshot)
+            .expect("restore succeeds");
+        let restored = std::fs::read(&temp_path).expect("failed to read restored binary file");
+        assert_eq!(restored, initial);
+        std::fs::remove_file(&temp_path).expect("failed to clean binary snapshot file");
     }
 
     #[test]
