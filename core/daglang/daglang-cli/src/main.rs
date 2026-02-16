@@ -114,23 +114,7 @@ fn main() {
             if args.len() > 3 {
                 exit_usage("check <file.dag|dir>");
             }
-            let input = args
-                .get(2)
-                .map(|value| path_utils::normalize_cli_path(&cwd, &PathBuf::from(value)));
-            let (roots, target_file) = match input {
-                Some(path) if path_utils::has_dag_extension(&path) && !path.is_dir() =>
-                {
-                    let root = path
-                        .parent()
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|| cwd.clone());
-                    (vec![root], Some(path))
-                }
-                Some(path) => (vec![path], None),
-                None => (vec![resolve_root(&cwd, None)], None),
-            };
-
-            let context = PipelineContext { roots, target_file };
+            let context = build_check_pipeline_context(&cwd, args.get(2));
             let result = run_pipeline_or_exit(&context, PipelineStop::Build);
             if result.diagnostics().is_empty() {
                 println!("OK: checked {} file(s)", result.parsed_count());
@@ -168,6 +152,26 @@ fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
         return path_utils::normalize_cli_path(cwd, &PathBuf::from(path));
     }
     path_utils::default_root_from_cwd(cwd)
+}
+
+fn build_check_pipeline_context(
+    cwd: &std::path::Path,
+    input: Option<&String>,
+) -> PipelineContext {
+    let normalized_input = input
+        .map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
+    let (roots, target_file) = match normalized_input {
+        Some(path) if path_utils::has_dag_extension(&path) && !path.is_dir() => {
+            let root = path
+                .parent()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| cwd.to_path_buf());
+            (vec![root], Some(path))
+        }
+        Some(path) => (vec![path], None),
+        None => (vec![resolve_root(cwd, None)], None),
+    };
+    PipelineContext { roots, target_file }
 }
 
 fn compile_target_or_exit(cwd: &std::path::Path, input: Option<&String>) -> CompileOutput {
@@ -215,9 +219,22 @@ fn exit_usage(command: &str) -> ! {
 mod tests {
     use crate::path_utils::{default_root_from_cwd, has_dag_extension, normalize_path_components};
     use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn root_path() -> PathBuf {
         PathBuf::from(Path::new(std::path::MAIN_SEPARATOR_STR))
+    }
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "daglang_cli_main_{label}_{}_{}",
+            std::process::id(),
+            nanos
+        ))
     }
 
     #[test]
@@ -440,5 +457,44 @@ mod tests {
             super::parse_output_format("show-triplets", &bad_value),
             Err("show-triplets <file.dag> [--format text|json]".to_string())
         );
+    }
+
+    #[test]
+    fn build_check_pipeline_context_defaults_to_cwd_dsl_root_without_input() {
+        let cwd = root_path().join("workspace").join("project").join(".");
+        let context = super::build_check_pipeline_context(&cwd, None);
+        assert_eq!(context.target_file, None);
+        assert_eq!(
+            context.roots,
+            vec![root_path().join("workspace").join("project").join("dsl")]
+        );
+    }
+
+    #[test]
+    fn build_check_pipeline_context_treats_dag_file_as_target_input() {
+        let cwd = root_path().join("workspace").join("project");
+        let input = "nested/tool.dag".to_string();
+        let context = super::build_check_pipeline_context(&cwd, Some(&input));
+        assert_eq!(
+            context.target_file,
+            Some(cwd.join("nested").join("tool.dag"))
+        );
+        assert_eq!(context.roots, vec![cwd.join("nested")]);
+    }
+
+    #[test]
+    fn build_check_pipeline_context_treats_dag_named_directory_as_root() {
+        let root = unique_temp_dir("check_context_dag_dir");
+        let cwd = root.join("workspace");
+        let dag_dir = cwd.join("bundle.dag");
+        std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory fixture");
+        let input = "bundle.dag".to_string();
+
+        let context = super::build_check_pipeline_context(&cwd, Some(&input));
+
+        assert_eq!(context.target_file, None);
+        assert_eq!(context.roots, vec![dag_dir.clone()]);
+
+        std::fs::remove_dir_all(&root).expect("failed to cleanup temp fixture");
     }
 }
