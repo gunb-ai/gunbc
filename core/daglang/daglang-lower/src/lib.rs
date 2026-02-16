@@ -2288,6 +2288,35 @@ func run() -> { ok: Bool } uses store: Storage {
     }
 
     #[test]
+    fn known_interface_provides_without_lifecycle_are_tolerated() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/interface_provides.dag",
+            r#"module sample.resources
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } provides out: Storage {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "provide_resource_sample_resources_run_out"));
+        assert!(
+            !dag.edges.iter().any(|edge| {
+                edge.from_node.0 == "provide_resource_sample_resources_run_out"
+                    && edge.to_port.0 == "resource_handle"
+            }),
+            "interface-only provides should not fabricate lifecycle release edges"
+        );
+    }
+
+    #[test]
     fn lower_errors_when_no_callable_items_exist() {
         let typed = typed_project_from_sources(&[(
             "dsl/types_only.dag",
