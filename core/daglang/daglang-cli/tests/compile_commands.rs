@@ -99,6 +99,68 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn compile_command_single_file_unresolved_uses_reports_lower_error() {
+    let fixture = unique_temp_file("compile_unresolved_uses_single_file");
+    std::fs::write(
+        &fixture,
+        r#"module sample.uses
+func run() -> { ok: Bool } uses fs: MissingResource {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for unresolved uses fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail for unresolved uses binding"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("lower error: unresolved used resource"));
+    assert!(stderr.contains("fs: MissingResource"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_single_file_unresolved_provides_reports_lower_error() {
+    let fixture = unique_temp_file("compile_unresolved_provides_single_file");
+    std::fs::write(
+        &fixture,
+        r#"module sample.provides
+func run() -> { ok: Bool } provides out: MissingResource {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for unresolved provides fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail for unresolved provides binding"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("lower error: unresolved provided resource"));
+    assert!(stderr.contains("out: MissingResource"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn expand_command_shows_lowered_nodes_and_edges() {
     let output = Command::new(daglang_bin())
         .arg("expand")
