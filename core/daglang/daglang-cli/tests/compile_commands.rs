@@ -266,6 +266,49 @@ fn compile_command_curdir_segment_missing_root_matches_plain_relative_output() {
 }
 
 #[test]
+fn compile_command_curdir_double_separator_missing_root_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_curdir_double_separator_missing_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing = root.join("missing_root");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("missing_root")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain missing-root compile");
+    assert!(!plain.status.success(), "plain missing-root compile should fail");
+
+    let curdir_double = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(".//missing_root")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-double-separator missing-root compile");
+    assert!(
+        !curdir_double.status.success(),
+        "curdir-double-separator missing-root compile should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_double.stdout,
+        "plain and curdir-double missing-root compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_double.stderr,
+        "plain and curdir-double missing-root compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&missing.display().to_string()),
+        "curdir-double missing-root diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_double_separator_missing_root_matches_plain_relative_output() {
     let root = unique_temp_dir("compile_double_separator_missing_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -302,6 +345,49 @@ fn compile_command_double_separator_missing_root_matches_plain_relative_output()
     assert!(
         stderr.contains(&missing.display().to_string()),
         "double-separator missing-root diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_trailing_slash_missing_root_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_trailing_slash_missing_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing = root.join("missing_root");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("missing_root")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain missing-root compile");
+    assert!(!plain.status.success(), "plain missing-root compile should fail");
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("missing_root/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run trailing-slash missing-root compile");
+    assert!(
+        !trailing_slash.status.success(),
+        "trailing-slash missing-root compile should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, trailing_slash.stdout,
+        "plain and trailing-slash missing-root compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, trailing_slash.stderr,
+        "plain and trailing-slash missing-root compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&missing.display().to_string()),
+        "trailing-slash missing-root diagnostic should normalize to absolute path: {stderr}"
     );
     assert_no_stage_failures(&stderr);
 
@@ -355,6 +441,52 @@ fn compile_command_relative_and_absolute_missing_single_file_targets_are_equival
 }
 
 #[test]
+fn compile_command_trailing_slash_missing_single_file_target_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_trailing_slash_missing_single_file_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing = root.join("missing.dag");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("missing.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain missing single-file compile");
+    assert!(
+        !plain.status.success(),
+        "plain missing single-file compile should fail"
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("missing.dag/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run trailing-slash missing single-file compile");
+    assert!(
+        !trailing_slash.status.success(),
+        "trailing-slash missing single-file compile should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, trailing_slash.stdout,
+        "plain and trailing-slash missing single-file compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, trailing_slash.stderr,
+        "plain and trailing-slash missing single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", missing.display())),
+        "trailing-slash missing single-file diagnostic should include normalized absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_curdir_segment_missing_single_file_target_matches_plain_relative_output() {
     let root = unique_temp_dir("compile_curdir_segment_missing_single_file_target");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -396,6 +528,51 @@ fn compile_command_curdir_segment_missing_single_file_target_matches_plain_relat
         "curdir-segment missing single-file diagnostic should normalize to absolute path: {stderr}"
     );
     assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_curdir_double_separator_single_file_target_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_curdir_double_separator_single_file_target");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let source = root.join("sample/main.dag");
+    std::fs::write(&source, "module sample.main\nfn run() -> Unit { }")
+        .expect("failed to write single-file source");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("sample/main.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain single-file compile");
+    assert!(
+        plain.status.success(),
+        "plain single-file compile should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_double = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(".//sample/main.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-double single-file compile");
+    assert!(
+        curdir_double.status.success(),
+        "curdir-double single-file compile should succeed: {}",
+        String::from_utf8_lossy(&curdir_double.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_double.stdout,
+        "plain and curdir-double single-file compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_double.stderr,
+        "plain and curdir-double single-file compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&plain.stderr));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
@@ -447,6 +624,51 @@ fn compile_command_parent_segment_missing_single_file_target_is_normalized_and_e
 }
 
 #[test]
+fn compile_command_trailing_slash_single_file_target_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_trailing_slash_single_file_target");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let source = root.join("sample/main.dag");
+    std::fs::write(&source, "module sample.main\nfn run() -> Unit { }")
+        .expect("failed to write single-file source");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("sample/main.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain single-file compile");
+    assert!(
+        plain.status.success(),
+        "plain single-file compile should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("sample/main.dag/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run trailing-slash single-file compile");
+    assert!(
+        trailing_slash.status.success(),
+        "trailing-slash single-file compile should succeed: {}",
+        String::from_utf8_lossy(&trailing_slash.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, trailing_slash.stdout,
+        "plain and trailing-slash single-file compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, trailing_slash.stderr,
+        "plain and trailing-slash single-file compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&plain.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_curdir_segment_single_file_target_matches_plain_relative_output() {
     let root = unique_temp_dir("compile_curdir_segment_single_file_target");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
@@ -487,6 +709,53 @@ fn compile_command_curdir_segment_single_file_target_matches_plain_relative_outp
         "plain and curdir single-file compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(&plain.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_trailing_slash_non_directory_root_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_trailing_slash_non_directory_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let root_file = root.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to write non-directory root");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("input.txt")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain non-directory-root compile");
+    assert!(
+        !plain.status.success(),
+        "plain non-directory-root compile should fail"
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("input.txt/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run trailing-slash non-directory-root compile");
+    assert!(
+        !trailing_slash.status.success(),
+        "trailing-slash non-directory-root compile should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, trailing_slash.stdout,
+        "plain and trailing-slash non-directory-root compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, trailing_slash.stderr,
+        "plain and trailing-slash non-directory-root compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&root_file.display().to_string()),
+        "trailing-slash non-directory-root diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
