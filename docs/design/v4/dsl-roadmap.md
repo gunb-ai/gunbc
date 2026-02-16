@@ -377,6 +377,196 @@ This set unblocks Phase 1 without risking a giant "run makegen end-to-end" rewri
 
 ---
 
+### Execution Plan: Two-Worker Bridge → Phase 1
+
+> **Context**: The Bridge Milestone's 6 workstreams have a real dependency graph. Two parallel workers can complete the bridge and Phase 1 without stepping on each other, because the work splits cleanly into "critical-path contracts" (manifest, parity, execution) and "independent quality" (viz, commands, discovery). Each worker owns distinct crates and files.
+
+#### Why this matters
+
+The compiler pipeline *works* — it compiles `.dag` files to `Dag<LoweredOp>` with correct topology. But three things are missing before we can say "the DSL produces the same thing as the hand-wired builders":
+
+1. **The manifest contract doesn't match the spec.** Renderers, tests, and parity comparisons all need the full `ProgressManifest` shape — topology, labels, SubDag boundaries, parallel groups. Without this, Phase 1's acceptance gates can't even be evaluated.
+2. **Parity is topology-only.** We can diff node/edge counts, but not ports, node kinds, or SubDag structure. The parity harness needs to compare *full IR shape* to prove equivalence.
+3. **No execution path.** The compiled `Dag<LoweredOp>` has the right shape but `LoweredOp` doesn't implement `Executable`. We need a dispatch layer that maps DSL-declared names to the existing concrete ops (`MakegenOp`, `TransportOps`, etc.) so the existing `execute_dag()` can run compiled output.
+
+Each of these feeds the next. The manifest contract defines what "correct" looks like. The parity harness proves we match it. The execution path proves it actually runs. That's Worker 1's job.
+
+Meanwhile, the compiler codebase itself has structural debt — impure helpers, dynamic pipeline execution, stringly-typed obligation classification, and large monolithic files. Cleaning this up now (while the crate APIs are still young) prevents the debt from compounding as Phase 1+ features land. That's Worker 2's job: make the codebase clean, modular, and honest before it gets bigger.
+
+---
+
+#### Worker 1: Critical Path — Contracts → Parity → Execution
+
+**Mission**: Make the compiler's output *provably equivalent* to the hand-wired builders, then make it *executable*. This is the spine of the entire migration — everything in Part 2 (porting workflows) depends on this worker's output being correct and stable.
+
+**Crates owned**: `daglang-derive`, `daglang-lower` (parity module), `daglang-emit`, `daglang-cli/src/compile.rs`
+
+**Why you're first**: Nothing else matters if the compiled IR doesn't match the builder IR. Viz is nice. Commands are nice. But if the parity proof fails, we're building on sand. Your job is to make the foundation solid.
+
+##### Step 1: Manifest Contract (Workstream A)
+
+Expand `daglang_derive::ProgressManifest` to match the roadmap contract. The current struct has `{total_nodes, total_edges, waves, entrypoint_nodes, boundary_nodes}`. The contract requires:
+
+| Field | Type | Derived from |
+|---|---|---|
+| `topology` | `Vec<TopologyNode>` | Node IDs + depth (wave index) |
+| `labels` | `HashMap<NodeId, String>` | DSL identifiers (`module.name`) |
+| `subdag_boundaries` | `Vec<SubDagBoundary>` | `NodeBody::SubDag` nodes in the lowered DAG |
+| `parallel_groups` | `Vec<ParallelGroup>` | Siblings at same depth with no ordering edge |
+| `scatter_points` | `Vec<NodeId>` | Loop expansion nodes (Phase 3, stub empty for now) |
+| `interactive_nodes` | `Vec<NodeId>` | `@interactive` annotated nodes (Phase 3, stub empty) |
+| `capture_modes` | `HashMap<NodeId, CaptureMode>` | Transport nodes → `Captured`, others → default |
+| `stage_groups` | `Vec<StageGroup>` | Pipeline stages (Phase 4, stub empty) |
+| `resources` | `HashMap<NodeId, Vec<ResourceUsage>>` | `uses`/`provides` clauses from typed project |
+
+Add `dag manifest --format json` for stable, machine-readable output. Keep the existing text rendering as the default, layered on the contract object.
+
+**Acceptance criteria**:
+- [ ] `ProgressManifest` struct has all contract fields (Phase 3/4 fields can be empty `Vec`s)
+- [ ] `derive_artifacts()` populates `topology`, `labels`, `parallel_groups` correctly for makegen
+- [ ] `dag manifest tools/makegen.dag` produces the expected 8-node, 4-wave manifest
+- [ ] `dag manifest --format json tools/makegen.dag` produces stable, parseable JSON
+- [ ] All existing tests pass (the struct expansion must be backward-compatible)
+
+##### Step 2: Parity Infrastructure (Workstream C)
+
+Expand the parity harness beyond topology-only comparison. Currently `compare_topology()` counts nodes/edges and reports deltas. It needs to compare:
+
+| Comparison | What to diff |
+|---|---|
+| Ports | Input/output port names and type IDs per node |
+| Node kinds | At minimum a tag: `callable`, `transport`, `pattern-expanded`, `resource-lifecycle` |
+| SubDag structure | Which nodes are inside SubDags, boundary nesting |
+| Labels | DSL-derived labels match builder-derived labels |
+
+Add canonical JSON serialization for the lowered DAG (stable sort by node ID, normalized edge ordering). This becomes the snapshot format.
+
+Create IR snapshot tests: compile `tools/makegen.dag`, serialize to canonical JSON, compare against a checked-in snapshot. Any change to the compiler that alters the IR shape fails the test — forcing explicit acknowledgment.
+
+**Acceptance criteria**:
+- [ ] `compare_topology()` (or a new `compare_ir()`) diffs ports, node kinds, and labels — not just counts
+- [ ] `ParityReport` includes per-node detail: which nodes differ and how
+- [ ] Canonical JSON serialization for `Dag<LoweredOp>` is deterministic (same input → same bytes)
+- [ ] At least one IR snapshot test exists for `tools/makegen.dag` and passes
+- [ ] Snapshot test is in CI (fails if compiler changes alter makegen IR)
+
+##### Step 3: Makegen Parity + Execution (Workstream F)
+
+Wire the parity harness as a real test: compile `tools/makegen.dag` → lowered DAG, load the hand-wired `build_makegen_graph()` reference DAG, compare using the expanded parity harness. Get the delta to zero.
+
+Then build the dispatch layer: a registry that maps `LoweredOp` descriptions to concrete `Executable` implementations. For makegen, this is ~8-10 entries:
+
+| `LoweredOp::Callable` | Maps to |
+|---|---|
+| `tools.makegen::render_makefile` | `MakegenOp::RenderMakefile` |
+| `tools.makegen::makegen` | `MakegenOp::Makegen` |
+| `load_registry` | `MakegenOp::LoadRegistry` (or equivalent) |
+| `fs_env` | Environment node producing `FilesystemHandle` |
+| `prepare_read_makegen` | `PrepareFileReadOp` |
+| `execute_read_makegen` | `TransportOps::Execute` |
+| `compare_makegen_content` | `FreshnessStep` |
+| `prepare_write_makegen` | `PrepareFileWriteOp` |
+| `execute_makegen_transport` | `TransportOps::Execute` |
+
+Write `fn resolve_dag(dag: Dag<LoweredOp>, registry: &OpRegistry) -> Result<Dag<Box<dyn Executable>>, ResolveError>` that walks the compiled DAG, replaces each `LoweredOp` node with its concrete `Executable`, and preserves all edges/ports.
+
+Then execute: pass the resolved DAG to the existing `execute_dag()` in `core/exec`. Verify it produces the same Makefile output as running the hand-wired builder.
+
+**Acceptance criteria**:
+- [ ] Parity test: compiled makegen IR matches builder IR (zero delta in `ParityReport`)
+- [ ] `OpRegistry` exists with entries for all makegen nodes
+- [ ] `resolve_dag()` converts `Dag<LoweredOp>` → `Dag<Box<dyn Executable>>` for makegen
+- [ ] End-to-end test: `compile → resolve → execute_dag()` produces valid Makefile output
+- [ ] DryRun mode works: compiled makegen executes in DryRun with transport interception
+- [ ] Existing `make test-all` still passes (no regressions)
+
+##### Worker 1 Definition of Done
+
+All three steps complete. The sentence "compile `tools/makegen.dag` and run it, producing the same Makefile as the hand-wired builder" is true and proven by tests.
+
+---
+
+#### Worker 2: Independent Quality — Viz, Commands, Discovery
+
+**Mission**: Make the compiler's output *visible and usable*. The developer tools that let you see DAGs, inspect triplets, check obligations, and explore the module graph are what make every subsequent phase implementable. Without them, Worker 1's parity proofs are opaque numbers — with them, any developer can see exactly what the compiler produces and compare it to what they expect.
+
+**Crates owned**: `daglang-cli/src/pipeline.rs`, `daglang-cli/src/main.rs`, `daglang-resolve`, `daglang-cli/src/path_utils.rs`
+
+**Why you matter**: The design doc says "visualization is not a nice-to-have that ships later — it's the development tool that makes every subsequent phase implementable." When Phase 1 starts and we're closing makegen parity gaps, the developer needs to run `dag viz`, `dag expand`, `dag show-triplets` and *see* what's different. Your work is the feedback loop that makes Worker 1's parity work debuggable.
+
+##### Step 1: Viz + Expand Stability (Workstream B)
+
+`dag viz` currently outputs Mermaid format. The roadmap asks for ASCII as the default. Add an ASCII renderer (node names connected by arrows, like the roadmap examples). Keep Mermaid behind `--format mermaid`.
+
+Make `dag expand` output deterministic and complete: every node with all input/output ports, every edge, SubDag boundaries. Add golden tests that pin the output for `tools/makegen.dag` — if the compiler changes, the golden test catches it.
+
+**Acceptance criteria**:
+- [ ] `dag viz tools/makegen.dag` produces readable ASCII graph by default
+- [ ] `dag viz --format mermaid tools/makegen.dag` still works
+- [ ] `dag expand tools/makegen.dag` lists all nodes with ports, all edges — deterministic order
+- [ ] Golden test for `dag expand` output exists and passes
+- [ ] `dag viz --self` still works (compiler pipeline self-visualization)
+
+##### Step 2: Model Preview Commands (Workstream E)
+
+Add two standalone commands that surface information already computed by `derive_artifacts()`:
+
+`dag show-triplets <file.dag>` — show service call → transport triplet expansion. For each service call in the source, show the generated prepare/execute/parse nodes and their edges. This is how developers verify the compiler's service expansion is correct.
+
+`dag obligations <file.dag>` — show the 4-bucket test obligation summary as a standalone command (currently only available via `dag manifest`). Output: callable count, pipeline count, service transport count, resource lifecycle count, plus the total. This tells developers "here's what tests the compiler thinks this module needs."
+
+**Acceptance criteria**:
+- [ ] `dag show-triplets tools/makegen.dag` shows the content_upsert expansion (prepare_read → execute_read → compare → prepare_write → execute_write)
+- [ ] `dag obligations tools/makegen.dag` shows obligation counts matching `TestObligations` from derive
+- [ ] Both commands have `--format json` for machine consumption
+- [ ] Help text (`daglang --help`) lists all commands including the new ones
+
+##### Step 3: Discovery Enrichment (Workstream D)
+
+Improve `dag modules` output and discovery robustness:
+
+- Show dependency counts per module (how many imports, how many dependents)
+- Show unresolved import diagnostics inline (not just as errors)
+- Show cycle detection results (cycles found, which modules are involved)
+- Config-driven root discovery: respect a project manifest or config file for roots instead of just `cwd/dsl`
+
+**Acceptance criteria**:
+- [ ] `dag modules` output includes dependency counts per module
+- [ ] `dag modules` reports unresolved imports as warnings (not fatal errors) with file:line locations
+- [ ] `dag modules` reports detected cycles with the modules involved
+- [ ] Discovery respects a `daglang.toml` or similar config for root paths (at minimum, a `--roots` CLI flag)
+- [ ] All existing module graph tests still pass
+
+##### Worker 2 Definition of Done
+
+A developer can run `dag viz`, `dag expand`, `dag show-triplets`, `dag obligations`, and `dag modules` on any `.dag` file and get clear, deterministic, useful output. The tools work well enough that when Worker 1 is debugging parity gaps, they can *see* the problem.
+
+---
+
+#### Coordination Protocol
+
+The two workers share the `daglang-cli` crate but touch different files:
+
+| File | Worker 1 | Worker 2 |
+|---|---|---|
+| `daglang-derive/src/lib.rs` | **owns** (manifest expansion) | reads |
+| `daglang-lower/src/lib.rs` | **owns** (parity module) | — |
+| `daglang-emit/src/lib.rs` | **owns** (execution path) | — |
+| `daglang-cli/src/compile.rs` | **owns** (resolve_dag, execution) | — |
+| `daglang-cli/src/main.rs` | — | **owns** (new commands) |
+| `daglang-cli/src/pipeline.rs` | — | **owns** (module reporting) |
+| `daglang-resolve/src/lib.rs` | — | **owns** (discovery enrichment) |
+| `daglang-syntax/` | — | — (stable, neither touches) |
+| `daglang-typecheck/` | — | — (stable, neither touches) |
+
+**Sync points**:
+1. After Worker 1 completes Step 1 (manifest contract), Worker 2's `dag manifest` rendering should adopt the new struct. Coordinate on the `DerivedArtifacts` type.
+2. After Worker 1 completes Step 3 (execution), Worker 2's `dag show-triplets` can optionally show "this triplet maps to `TransportOps::Execute`" using the `OpRegistry`.
+
+**Branch strategy**: Each worker gets their own feature branch off the current branch. Merge Worker 1 Step 1 first (it changes a shared type), then both can proceed independently.
+
+---
+
 ### Phase 1: Language Core + Discovery + ProgressManifest
 
 > **Proving workflow**: `makegen` (scenario S1 — simplest complete graph)
