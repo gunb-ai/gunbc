@@ -1039,6 +1039,72 @@ fn modules_command_symlink_root_without_module_decl_uses_path_fallback() {
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[cfg(unix)]
+#[test]
+fn check_command_dangling_dag_symlink_in_root_exits_nonzero() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_dangling_symlink_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.dag");
+    let dangling_link = root.join("broken.dag");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on dangling symlink root");
+
+    assert!(
+        !output.status.success(),
+        "check should fail when root contains dangling .dag symlink"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("failed to canonicalize"));
+    assert!(
+        stderr.contains("broken.dag"),
+        "dangling symlink failure should include offending path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_dangling_dag_symlink_in_root_exits_nonzero() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("modules_dangling_symlink_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.dag");
+    let dangling_link = root.join("broken.dag");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules on dangling symlink root");
+
+    assert!(
+        !output.status.success(),
+        "modules should fail when root contains dangling .dag symlink"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("failed to canonicalize"));
+    assert!(
+        stderr.contains("broken.dag"),
+        "dangling symlink failure should include offending path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[test]
 fn modules_command_empty_directory_succeeds_without_diagnostics() {
     let root = unique_temp_dir("modules_empty_dir");
