@@ -479,6 +479,55 @@ fn check_command_curdir_segment_missing_root_matches_plain_relative_output() {
 }
 
 #[test]
+fn check_command_curdir_segment_non_directory_root_matches_plain_relative_output() {
+    let cwd = unique_temp_dir("check_curdir_segment_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let curdir_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run curdir-segment non-directory-root daglang check");
+    assert!(
+        !curdir_segment.status.success(),
+        "curdir-segment non-directory-root check should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative non-directory-root daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative non-directory-root check should fail"
+    );
+
+    assert_eq!(
+        curdir_segment.stdout, plain_relative.stdout,
+        "curdir-segment and plain-relative non-directory-root check stdout should match"
+    );
+    assert_eq!(
+        curdir_segment.stderr, plain_relative.stderr,
+        "curdir-segment and plain-relative non-directory-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&curdir_segment.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&curdir_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
 fn check_command_relative_and_absolute_missing_roots_are_equivalent() {
     let missing_relative = unique_name("check_relative_absolute_missing_root");
     let cwd = workspace_root()
@@ -1224,6 +1273,105 @@ fn modules_command_curdir_segment_missing_root_matches_plain_relative_output() {
             missing_root.display()
         )),
         "missing-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&curdir_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_curdir_segment_non_directory_root_matches_plain_relative_output() {
+    let cwd = unique_temp_dir("modules_curdir_segment_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let curdir_segment = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run curdir-segment non-directory-root daglang modules");
+    assert!(
+        !curdir_segment.status.success(),
+        "curdir-segment non-directory-root modules should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative non-directory-root daglang modules");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative non-directory-root modules should fail"
+    );
+
+    assert_eq!(
+        curdir_segment.stdout, plain_relative.stdout,
+        "curdir-segment and plain-relative non-directory-root modules stdout should match"
+    );
+    assert_eq!(
+        curdir_segment.stderr, plain_relative.stderr,
+        "curdir-segment and plain-relative non-directory-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&curdir_segment.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&curdir_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_curdir_segment_single_file_root_matches_plain_relative_output() {
+    let cwd = unique_temp_dir("modules_curdir_segment_single_file_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let file_path = cwd.join("one.dag");
+    std::fs::write(&file_path, "module sample.one\nfn ok() -> Unit {}")
+        .expect("failed to write .dag file");
+
+    let curdir_segment = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./one.dag")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run curdir-segment single-file-root daglang modules");
+    assert!(
+        !curdir_segment.status.success(),
+        "curdir-segment single-file-root modules should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("one.dag")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative single-file-root daglang modules");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative single-file-root modules should fail"
+    );
+
+    assert_eq!(
+        curdir_segment.stdout, plain_relative.stdout,
+        "curdir-segment and plain-relative single-file-root modules stdout should match"
+    );
+    assert_eq!(
+        curdir_segment.stderr, plain_relative.stderr,
+        "curdir-segment and plain-relative single-file-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&curdir_segment.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            file_path.display()
+        )),
+        "single-file-root diagnostics should include normalized absolute path: {}",
         String::from_utf8_lossy(&curdir_segment.stderr)
     );
 
