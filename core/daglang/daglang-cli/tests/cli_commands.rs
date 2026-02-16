@@ -26,6 +26,17 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("daglang_cli_{name}_{}_{}", std::process::id(), nanos))
 }
 
+fn assert_no_compile_stage_banners(stderr: &str) {
+    assert!(
+        !stderr.contains("typecheck errors"),
+        "unexpected typecheck-stage banner in non-compile command path: {stderr}"
+    );
+    assert!(
+        !stderr.contains("lower error"),
+        "unexpected lower-stage banner in non-compile command path: {stderr}"
+    );
+}
+
 #[test]
 fn check_command_parses_full_dsl_corpus() {
     let output = Command::new(daglang_bin())
@@ -40,6 +51,8 @@ fn check_command_parses_full_dsl_corpus() {
         "check command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("OK: parsed 42 file(s)"),
@@ -61,6 +74,8 @@ fn modules_command_prints_module_graph_summary() {
         "modules command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Discovered modules:"));
     assert!(stdout.contains("tools.makegen"));
@@ -81,6 +96,8 @@ fn viz_self_renders_pipeline_mermaid() {
         "viz --self command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("flowchart TB"));
     assert!(stdout.contains("discover_files"));
@@ -102,6 +119,7 @@ fn check_command_reports_file_line_col_for_broken_file() {
 
     assert!(!output.status.success(), "broken file should fail check");
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     assert!(
         stderr.contains(":2:12:"),
         "expected file:line:col in stderr, got: {stderr}"
@@ -131,6 +149,8 @@ fn modules_command_reports_graph_diagnostics_without_failing() {
         output.status.success(),
         "modules command should still succeed while reporting diagnostics"
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Diagnostics:"));
     assert!(stdout.contains("unresolved import"));
@@ -164,6 +184,8 @@ fn modules_command_reports_cycle_diagnostics_without_failing() {
         output.status.success(),
         "modules command should still succeed while reporting cycle diagnostics"
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Diagnostics:"));
     assert!(stdout.contains("cyclic dependencies detected"));
@@ -193,6 +215,8 @@ fn check_command_single_file_mode_ignores_sibling_broken_files() {
         "single-file check should succeed even with sibling broken file: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("OK: parsed 1 file(s)"));
 
@@ -220,6 +244,7 @@ fn check_command_directory_mode_aggregates_multiple_file_diagnostics() {
         "directory check should fail when multiple files are invalid"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     assert!(stderr.contains("broken_a.dag"));
     assert!(stderr.contains("broken_b.dag"));
 
@@ -239,6 +264,8 @@ fn check_command_defaults_to_workspace_dsl_root() {
         "default check command should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     assert!(
         String::from_utf8_lossy(&output.stdout).contains("OK: parsed 42 file(s)"),
         "default check should parse full DSL corpus"
@@ -258,6 +285,8 @@ fn modules_command_defaults_to_workspace_dsl_root() {
         "default modules command should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Discovered modules:"));
     assert!(stdout.contains("std.types"));
