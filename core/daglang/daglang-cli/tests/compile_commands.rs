@@ -1340,6 +1340,10 @@ service FsStorage implements Storage {
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("duplicate definition `Storage` in module `sample.main`"));
     assert!(stderr.contains("`FsStorage` references ambiguous interface `Storage`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "duplicate-interface layering should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -1386,6 +1390,10 @@ func run(path: String) -> { body: String } {
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("duplicate definition `FsStorage` in module `sample.main`"));
     assert!(stderr.contains("ambiguous service call `FsStorage.read` in `run`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "duplicate-service layering should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -1943,6 +1951,10 @@ func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("duplicate definition `SharedResource` in module `sample.main`"));
     assert!(stderr.contains("ambiguous used resource type `SharedResource`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "duplicate-resource uses layering should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -2088,6 +2100,10 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("duplicate definition `SharedResource` in module `sample.main`"));
     assert!(stderr.contains("ambiguous provided resource type `SharedResource`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "duplicate-resource provides layering should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -2965,6 +2981,10 @@ fn run() -> String { helper() }
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("duplicate definition `helper` in module `sample.main`"));
     assert!(stderr.contains("ambiguous call target `helper` in `run`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "duplicate-callable layering should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
