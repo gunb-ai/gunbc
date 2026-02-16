@@ -496,6 +496,41 @@ fn check_command_directory_mode_outputs_deterministic_diagnostic_order() {
 }
 
 #[test]
+fn check_command_sorts_lex_diagnostics_before_parse_diagnostics() {
+    let root = unique_temp_dir("check_kind_order");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("a_parse.dag"), "module sample.parse\nfn")
+        .expect("failed to write parse-error file");
+    std::fs::write(root.join("z_lex.dag"), "module sample.lex\n$\n")
+        .expect("failed to write lex-error file");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on mixed-error directory");
+
+    assert!(
+        !output.status.success(),
+        "check should fail when diagnostics are present"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let first_line = stderr
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .expect("expected at least one diagnostic line");
+    assert!(
+        first_line.contains("z_lex.dag"),
+        "lex diagnostics should sort before parse diagnostics: {stderr}"
+    );
+    assert!(stderr.contains("a_parse.dag"));
+    assert!(stderr.contains("unexpected character '$'"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_defaults_to_workspace_dsl_root() {
     let output = Command::new(daglang_bin())
         .arg("check")
