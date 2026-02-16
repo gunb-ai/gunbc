@@ -18,6 +18,16 @@ fn byte_to_line_col_handles_multiline_offsets_and_eof_clamp() {
 }
 
 #[test]
+fn byte_to_line_col_handles_utf8_byte_offsets() {
+    let src = "éx\n";
+
+    assert_eq!(byte_to_line_col(src, 0), (1, 1));
+    assert_eq!(byte_to_line_col(src, 1), (1, 2));
+    assert_eq!(byte_to_line_col(src, 2), (1, 2));
+    assert_eq!(byte_to_line_col(src, 3), (1, 3));
+}
+
+#[test]
 fn parse_error_formats_with_file_line_col() {
     let src = "module test\nfn broken( -> String {\n";
     let err = parse(src)
