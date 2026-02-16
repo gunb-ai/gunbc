@@ -145,3 +145,23 @@ fn parse_errors_are_aggregated_across_multiple_files() {
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
+
+#[test]
+fn discovery_order_is_deterministic_across_runs() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+    let graph_a = ModuleGraph::discover(&[dsl_root.clone()]).expect("first discover should succeed");
+    let graph_b = ModuleGraph::discover(&[dsl_root]).expect("second discover should succeed");
+
+    let order_a: Vec<String> = graph_a
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    let order_b: Vec<String> = graph_b
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+
+    assert_eq!(order_a, order_b, "module discovery order should be stable");
+}
