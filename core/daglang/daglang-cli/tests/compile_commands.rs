@@ -1471,6 +1471,209 @@ fn compile_command_absolute_double_separator_trailing_slash_single_file_target_m
 }
 
 #[test]
+fn compile_command_absolute_missing_root_variants_match_canonical_output() {
+    let root = unique_temp_dir("compile_absolute_missing_root_variants");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    std::fs::create_dir_all(root.join("anchor")).expect("failed to create anchor directory");
+    let canonical_missing_root = root.join("missing_root");
+
+    let canonical = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&canonical_missing_root)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute missing-root compile");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute missing-root compile should fail"
+    );
+    let canonical_stderr = String::from_utf8_lossy(&canonical.stderr);
+    assert_no_stage_failures(&canonical_stderr);
+    assert!(
+        canonical_stderr.contains(&canonical_missing_root.display().to_string()),
+        "canonical missing-root diagnostic should contain normalized absolute path: {canonical_stderr}"
+    );
+
+    let variants = vec![
+        ("mixed", root.join(".").join("missing_root")),
+        ("parent", root.join("anchor/../missing_root")),
+        (
+            "double_separator",
+            PathBuf::from(format!("{}//missing_root", root.display())),
+        ),
+        (
+            "trailing_slash",
+            PathBuf::from(format!("{}/", canonical_missing_root.display())),
+        ),
+        (
+            "double_separator_trailing",
+            PathBuf::from(format!("{}//missing_root/", root.display())),
+        ),
+    ];
+
+    for (label, variant_path) in variants {
+        let variant = Command::new(daglang_bin())
+            .arg("compile")
+            .arg(&variant_path)
+            .current_dir(&root)
+            .output()
+            .unwrap_or_else(|_| {
+                panic!("failed to run {label} absolute missing-root compile variant")
+            });
+        assert!(
+            !variant.status.success(),
+            "{label} absolute missing-root compile variant should fail"
+        );
+        assert_eq!(
+            variant.stdout, canonical.stdout,
+            "{label} missing-root variant stdout should match canonical output"
+        );
+        assert_eq!(
+            variant.stderr, canonical.stderr,
+            "{label} missing-root variant stderr should match canonical output"
+        );
+    }
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_absolute_non_directory_root_variants_match_canonical_output() {
+    let root = unique_temp_dir("compile_absolute_non_directory_root_variants");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    std::fs::create_dir_all(root.join("anchor")).expect("failed to create anchor directory");
+    let canonical_non_directory_root = root.join("input.txt");
+    std::fs::write(&canonical_non_directory_root, "not a directory")
+        .expect("failed to write non-directory root fixture");
+
+    let canonical = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&canonical_non_directory_root)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute non-directory-root compile");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute non-directory-root compile should fail"
+    );
+    let canonical_stderr = String::from_utf8_lossy(&canonical.stderr);
+    assert_no_stage_failures(&canonical_stderr);
+    assert!(
+        canonical_stderr.contains(&canonical_non_directory_root.display().to_string()),
+        "canonical non-directory-root diagnostic should contain normalized absolute path: {canonical_stderr}"
+    );
+
+    let variants = vec![
+        ("mixed", root.join(".").join("input.txt")),
+        ("parent", root.join("anchor/../input.txt")),
+        (
+            "double_separator",
+            PathBuf::from(format!("{}//input.txt", root.display())),
+        ),
+        (
+            "trailing_slash",
+            PathBuf::from(format!("{}/", canonical_non_directory_root.display())),
+        ),
+        (
+            "double_separator_trailing",
+            PathBuf::from(format!("{}//input.txt/", root.display())),
+        ),
+    ];
+
+    for (label, variant_path) in variants {
+        let variant = Command::new(daglang_bin())
+            .arg("compile")
+            .arg(&variant_path)
+            .current_dir(&root)
+            .output()
+            .unwrap_or_else(|_| {
+                panic!("failed to run {label} absolute non-directory-root compile variant")
+            });
+        assert!(
+            !variant.status.success(),
+            "{label} absolute non-directory-root compile variant should fail"
+        );
+        assert_eq!(
+            variant.stdout, canonical.stdout,
+            "{label} non-directory-root variant stdout should match canonical output"
+        );
+        assert_eq!(
+            variant.stderr, canonical.stderr,
+            "{label} non-directory-root variant stderr should match canonical output"
+        );
+    }
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_absolute_missing_single_file_variants_match_canonical_output() {
+    let root = unique_temp_dir("compile_absolute_missing_single_file_variants");
+    std::fs::create_dir_all(root.join("dsl/sample")).expect("failed to create temp root fixture");
+    std::fs::create_dir_all(root.join("anchor")).expect("failed to create anchor directory");
+    let canonical_missing_single_file = root.join("dsl/sample/missing.dag");
+
+    let canonical = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&canonical_missing_single_file)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute missing single-file compile");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute missing single-file compile should fail"
+    );
+    let canonical_stderr = String::from_utf8_lossy(&canonical.stderr);
+    assert_no_stage_failures(&canonical_stderr);
+    assert!(
+        canonical_stderr.contains(&canonical_missing_single_file.display().to_string()),
+        "canonical missing single-file diagnostic should contain normalized absolute path: {canonical_stderr}"
+    );
+
+    let variants = vec![
+        ("mixed", root.join(".").join("dsl/sample/missing.dag")),
+        ("parent", root.join("dsl/sample/../sample/missing.dag")),
+        (
+            "double_separator",
+            PathBuf::from(format!("{}//dsl//sample//missing.dag", root.display())),
+        ),
+        (
+            "trailing_slash",
+            PathBuf::from(format!("{}/", canonical_missing_single_file.display())),
+        ),
+        (
+            "double_separator_trailing",
+            PathBuf::from(format!("{}//dsl//sample//missing.dag/", root.display())),
+        ),
+    ];
+
+    for (label, variant_path) in variants {
+        let variant = Command::new(daglang_bin())
+            .arg("compile")
+            .arg(&variant_path)
+            .current_dir(&root)
+            .output()
+            .unwrap_or_else(|_| {
+                panic!("failed to run {label} absolute missing single-file compile variant")
+            });
+        assert!(
+            !variant.status.success(),
+            "{label} absolute missing single-file compile variant should fail"
+        );
+        assert_eq!(
+            variant.stdout, canonical.stdout,
+            "{label} missing single-file variant stdout should match canonical output"
+        );
+        assert_eq!(
+            variant.stderr, canonical.stderr,
+            "{label} missing single-file variant stderr should match canonical output"
+        );
+    }
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_curdir_segment_root_matches_plain_relative_output() {
     let root = unique_temp_dir("compile_curdir_segment_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
