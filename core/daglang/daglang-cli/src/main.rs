@@ -141,7 +141,7 @@ fn main() {
             };
             match run_pipeline(&context, PipelineStop::Report) {
                 Ok(result) => {
-                    if let Some(report) = result.report {
+                    if let Some(report) = result.report() {
                         println!("{report}");
                     }
                 }
@@ -174,10 +174,10 @@ fn main() {
             let context = PipelineContext { roots, target_file };
             match run_pipeline(&context, PipelineStop::Build) {
                 Ok(result) => {
-                    if result.diagnostics.is_empty() {
-                        println!("OK: checked {} file(s)", result.parsed_count);
+                    if result.diagnostics().is_empty() {
+                        println!("OK: checked {} file(s)", result.parsed_count());
                     } else {
-                        for diagnostic in &result.diagnostics {
+                        for diagnostic in result.diagnostics() {
                             eprintln!("{diagnostic}");
                         }
                         std::process::exit(1);

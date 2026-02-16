@@ -44,11 +44,11 @@ pub enum PipelineStop {
 
 #[derive(Debug)]
 pub struct PipelineResult {
-    pub stage: PipelineStage,
-    pub diagnostics: Vec<Diagnostic>,
-    pub parsed_count: usize,
-    pub module_graph: Option<ModuleGraph>,
-    pub report: Option<String>,
+    stage: PipelineStage,
+    diagnostics: Vec<Diagnostic>,
+    parsed_count: usize,
+    module_graph: Option<ModuleGraph>,
+    report: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,6 +56,67 @@ pub enum PipelineStage {
     Parse,
     Build,
     Report,
+}
+
+impl PipelineResult {
+    fn parsed(diagnostics: Vec<Diagnostic>, parsed_count: usize) -> Self {
+        Self {
+            stage: PipelineStage::Parse,
+            diagnostics,
+            parsed_count,
+            module_graph: None,
+            report: None,
+        }
+    }
+
+    fn built(
+        diagnostics: Vec<Diagnostic>,
+        parsed_count: usize,
+        module_graph: ModuleGraph,
+    ) -> Self {
+        Self {
+            stage: PipelineStage::Build,
+            diagnostics,
+            parsed_count,
+            module_graph: Some(module_graph),
+            report: None,
+        }
+    }
+
+    fn reported(
+        diagnostics: Vec<Diagnostic>,
+        parsed_count: usize,
+        module_graph: ModuleGraph,
+        report: String,
+    ) -> Self {
+        Self {
+            stage: PipelineStage::Report,
+            diagnostics,
+            parsed_count,
+            module_graph: Some(module_graph),
+            report: Some(report),
+        }
+    }
+
+    pub fn stage(&self) -> PipelineStage {
+        self.stage
+    }
+
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    pub fn parsed_count(&self) -> usize {
+        self.parsed_count
+    }
+
+    pub fn module_graph(&self) -> Option<&ModuleGraph> {
+        self.module_graph.as_ref()
+    }
+
+    pub fn report(&self) -> Option<&str> {
+        self.report.as_deref()
+    }
 }
 
 #[derive(Debug)]
@@ -170,36 +231,23 @@ pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<Pip
     let parsed_count = parsed_modules.len();
 
     if matches!(stop, PipelineStop::Parse) {
-        return Ok(PipelineResult {
-            stage: PipelineStage::Parse,
-            diagnostics: parse_diagnostics,
-            parsed_count,
-            module_graph: None,
-            report: None,
-        });
+        return Ok(PipelineResult::parsed(parse_diagnostics, parsed_count));
     }
 
     let mut diagnostics = parse_diagnostics;
     let graph = build_module_graph(parsed_modules, &mut diagnostics);
     let diagnostics = diagnostic::normalize_diagnostics(diagnostics);
     if matches!(stop, PipelineStop::Build) {
-        return Ok(PipelineResult {
-            stage: PipelineStage::Build,
-            diagnostics,
-            parsed_count,
-            module_graph: Some(graph),
-            report: None,
-        });
+        return Ok(PipelineResult::built(diagnostics, parsed_count, graph));
     }
 
     let report = format_module_report(&graph, &diagnostics);
-    Ok(PipelineResult {
-        stage: PipelineStage::Report,
+    Ok(PipelineResult::reported(
         diagnostics,
         parsed_count,
-        module_graph: Some(graph),
-        report: Some(report),
-    })
+        graph,
+        report,
+    ))
 }
 
 fn parse_files(files: Vec<FileSource>, roots: &[PathBuf]) -> (Vec<ParsedModule>, Vec<Diagnostic>) {
