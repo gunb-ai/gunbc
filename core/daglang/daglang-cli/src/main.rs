@@ -39,16 +39,23 @@ fn main() {
                 let dag = build_pipeline_dag();
                 println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
             } else {
-                eprintln!("TODO: dag viz <file.dag> -- file visualization is not implemented yet.");
+                exit_unimplemented(
+                    "viz <file.dag>",
+                    "file visualization is not implemented in Phase 0. Use `daglang viz --self` to inspect the compiler pipeline DAG.",
+                );
             }
         }
         "expand" => {
-            eprintln!("TODO: dag expand -- Phase 0 deliverable");
-            eprintln!("Will show lowered GraphIR: every Node, Edge, Port.");
+            exit_unimplemented(
+                "expand <file.dag>",
+                "GraphIR expansion is not implemented in Phase 0.",
+            );
         }
         "manifest" => {
-            eprintln!("TODO: dag manifest -- Phase 0 deliverable");
-            eprintln!("Will show derived ProgressManifest: topology, waves, boundaries.");
+            exit_unimplemented(
+                "manifest <file.dag>",
+                "manifest derivation is not implemented in Phase 0.",
+            );
         }
         "modules" => {
             let roots = vec![resolve_root(args.get(2))];
@@ -101,8 +108,10 @@ fn main() {
             }
         }
         "compile" => {
-            eprintln!("TODO: dag compile -- Phase 1 deliverable");
-            eprintln!("Will run full pipeline: parse → resolve → typecheck → lower → validate → derive → emit.");
+            exit_unimplemented(
+                "compile <file.dag>",
+                "full compilation pipeline is not implemented in Phase 0.",
+            );
         }
         cmd => {
             eprintln!("Unknown command: {cmd}");
@@ -117,6 +126,12 @@ fn resolve_root(arg: Option<&String>) -> PathBuf {
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     default_root_from_cwd(&cwd)
+}
+
+fn exit_unimplemented(command: &str, detail: &str) -> ! {
+    eprintln!("command `{command}` is not implemented.");
+    eprintln!("{detail}");
+    std::process::exit(2);
 }
 
 fn normalize_cli_path(path: PathBuf) -> PathBuf {

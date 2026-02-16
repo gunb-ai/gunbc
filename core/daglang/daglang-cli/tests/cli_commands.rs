@@ -26345,7 +26345,7 @@ fn unknown_command_exits_nonzero_with_message() {
 }
 
 #[test]
-fn placeholder_commands_remain_non_blocking() {
+fn placeholder_commands_exit_nonzero_with_unimplemented_message() {
     for command in ["expand", "manifest", "compile"] {
         let output = Command::new(daglang_bin())
             .arg(command)
@@ -26354,19 +26354,19 @@ fn placeholder_commands_remain_non_blocking() {
             .output()
             .unwrap_or_else(|err| panic!("failed to run {command}: {err}"));
         assert!(
-            output.status.success(),
-            "{command} placeholder command should remain non-blocking"
+            !output.status.success(),
+            "{command} placeholder command should fail until implemented"
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            stderr.contains("TODO"),
-            "{command} placeholder should make TODO status explicit"
+            stderr.contains("not implemented"),
+            "{command} placeholder should explicitly report unimplemented status"
         );
     }
 }
 
 #[test]
-fn viz_without_self_is_non_blocking_placeholder() {
+fn viz_without_self_exits_nonzero_with_unimplemented_message() {
     let output = Command::new(daglang_bin())
         .arg("viz")
         .arg("dsl/tools/makegen.dag")
@@ -26375,12 +26375,16 @@ fn viz_without_self_is_non_blocking_placeholder() {
         .expect("failed to run daglang viz placeholder mode");
 
     assert!(
-        output.status.success(),
-        "viz placeholder mode should remain non-blocking"
+        !output.status.success(),
+        "viz placeholder mode should fail until file visualization ships"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("TODO"),
-        "viz placeholder mode should surface TODO guidance"
+        stderr.contains("not implemented"),
+        "viz placeholder mode should surface unimplemented guidance"
+    );
+    assert!(
+        stderr.contains("viz --self"),
+        "viz placeholder mode should include available Phase 0 guidance"
     );
 }
