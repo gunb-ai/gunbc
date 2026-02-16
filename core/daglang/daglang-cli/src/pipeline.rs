@@ -985,6 +985,50 @@ mod tests {
     }
 
     #[test]
+    fn parse_stop_does_not_emit_module_graph_or_report_values() {
+        let root = unique_temp_dir("parse_stop_outputs");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+            .expect("failed to write source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+        assert_eq!(result.parsed_count, 1);
+        assert!(result.module_graph.is_none());
+        assert!(result.report.is_none());
+        assert!(result.diagnostics.is_empty());
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn report_stop_emits_module_graph_and_report_values() {
+        let root = unique_temp_dir("report_stop_outputs");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+            .expect("failed to write source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+        assert!(
+            result.module_graph.is_none(),
+            "report stop currently consumes module graph into report stage"
+        );
+        let report = result.report.as_ref().expect("report stop should include report text");
+        assert!(report.contains("Discovered modules:"));
+        assert!(report.contains("sample.main"));
+        assert!(result.diagnostics.is_empty());
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn parse_pipeline_aggregates_diagnostics_across_multiple_invalid_files() {
         let root = unique_temp_dir("multi_invalid");
         fs::create_dir_all(&root).expect("failed to create temp root");
