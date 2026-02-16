@@ -1053,6 +1053,43 @@ mod tests {
     }
 
     #[test]
+    fn report_pipeline_sorts_lex_before_resolve_diagnostics() {
+        let root = unique_temp_dir("diag_sorting");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(
+            root.join("z_good.dag"),
+            "module sample.good\nimport missing.dep\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write good source");
+        fs::write(root.join("a_bad.dag"), "module sample.bad\n$\n")
+            .expect("failed to write bad source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+
+        assert!(
+            result.diagnostics.len() >= 2,
+            "expected at least two diagnostics from lex + resolve phases"
+        );
+        assert_eq!(
+            result.diagnostics[0].kind,
+            DiagnosticKind::Lex,
+            "lex diagnostics should be sorted before resolve diagnostics"
+        );
+        assert!(
+            result.diagnostics
+                .iter()
+                .any(|diag| diag.kind == DiagnosticKind::Resolve),
+            "expected at least one resolve diagnostic"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn pipeline_rejects_implicit_fanin_on_single_input_port() {
         let mut dag = build_pipeline_dag();
         dag.add_edge(Edge::new(
