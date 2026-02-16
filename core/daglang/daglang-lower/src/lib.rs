@@ -75,6 +75,11 @@ struct LoweredEndpoint {
     primary_output: String,
 }
 
+#[derive(Debug, Default, Clone)]
+struct ServiceEndpointRegistry {
+    by_key: HashMap<String, Option<LoweredEndpoint>>,
+}
+
 /// Errors during lowering.
 #[derive(Debug)]
 pub enum LowerError {
@@ -189,7 +194,8 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
 
     add_dependency_edges(&mut dag, project, &endpoints_by_full, &endpoints_by_name);
     add_makegen_scaffolding(&mut dag, &endpoints_by_full);
-    add_service_transport_triplets(&mut dag, project);
+    let service_registry = add_service_transport_triplets(&mut dag, project);
+    add_service_call_edges(&mut dag, project, &endpoints_by_full, &service_registry);
 
     if dag.nodes.is_empty() {
         return Err(LowerError::NoLowerableItems);
@@ -879,7 +885,11 @@ fn add_makegen_scaffolding(
     }
 }
 
-fn add_service_transport_triplets(dag: &mut Dag<LoweredOp>, project: &TypedProject) {
+fn add_service_transport_triplets(
+    dag: &mut Dag<LoweredOp>,
+    project: &TypedProject,
+) -> ServiceEndpointRegistry {
+    let mut registry = ServiceEndpointRegistry::default();
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
@@ -989,9 +999,40 @@ fn add_service_transport_triplets(dag: &mut Dag<LoweredOp>, project: &TypedProje
                     parse_id.as_str(),
                     "response",
                 );
+
+                let parse_output = operation
+                    .outputs
+                    .first()
+                    .map(|field| field.name.clone())
+                    .unwrap_or_else(|| "result".to_string());
+                let endpoint = LoweredEndpoint {
+                    node_id: parse_id,
+                    primary_output: parse_output,
+                };
+                register_service_endpoint(
+                    &mut registry,
+                    format!("{}.{}", service.name, operation.name),
+                    endpoint.clone(),
+                );
+                let service_tail = service
+                    .name
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(service.name.as_str());
+                register_service_endpoint(
+                    &mut registry,
+                    format!("{service_tail}.{}", operation.name),
+                    endpoint.clone(),
+                );
+                register_service_endpoint(
+                    &mut registry,
+                    format!("{}.{}.{}", module_name, service.name, operation.name),
+                    endpoint,
+                );
             }
         }
     }
+    registry
 }
 
 fn add_node_once(dag: &mut Dag<LoweredOp>, node: Node<LoweredOp>) {
@@ -999,6 +1040,82 @@ fn add_node_once(dag: &mut Dag<LoweredOp>, node: Node<LoweredOp>) {
         return;
     }
     dag.add_node(node);
+}
+
+fn register_service_endpoint(
+    registry: &mut ServiceEndpointRegistry,
+    key: String,
+    endpoint: LoweredEndpoint,
+) {
+    registry
+        .by_key
+        .entry(key)
+        .and_modify(|existing| {
+            if let Some(current) = existing {
+                if current != &endpoint {
+                    *existing = None;
+                }
+            }
+        })
+        .or_insert(Some(endpoint));
+}
+
+fn add_service_call_edges(
+    dag: &mut Dag<LoweredOp>,
+    project: &TypedProject,
+    endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
+    service_registry: &ServiceEndpointRegistry,
+) {
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Some((item_name, stmts)) = item_callable_body(&item.node) else {
+                continue;
+            };
+            let Some(target) =
+                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            else {
+                continue;
+            };
+            let mut service_calls = HashSet::<Vec<String>>::new();
+            collect_service_calls_from_stmts(stmts, &mut service_calls);
+            for call_path in service_calls {
+                let Some(source) = resolve_service_endpoint(&call_path, service_registry) else {
+                    continue;
+                };
+                add_edge_once(
+                    dag,
+                    source.node_id.as_str(),
+                    source.primary_output.as_str(),
+                    target.node_id.as_str(),
+                    "__deps",
+                );
+            }
+        }
+    }
+}
+
+fn resolve_service_endpoint(
+    call_path: &[String],
+    registry: &ServiceEndpointRegistry,
+) -> Option<LoweredEndpoint> {
+    if call_path.len() < 2 {
+        return None;
+    }
+    let operation = call_path.last()?;
+    let service_name = call_path[..call_path.len() - 1].join(".");
+    let short_service = call_path[call_path.len() - 2].clone();
+    let keys = [
+        format!("{service_name}.{operation}"),
+        format!("{short_service}.{operation}"),
+        call_path.join("."),
+    ];
+    for key in keys {
+        if let Some(Some(endpoint)) = registry.by_key.get(&key) {
+            return Some(endpoint.clone());
+        }
+    }
+    None
 }
 
 fn add_edge_once(dag: &mut Dag<LoweredOp>, from: &str, from_port: &str, to: &str, to_port: &str) {
@@ -1031,6 +1148,21 @@ fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut HashSet<String>) {
             Stmt::Return(fields) => {
                 for (_, expr) in fields {
                     collect_calls_from_expr(expr, calls);
+                }
+            }
+        }
+    }
+}
+
+fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut HashSet<Vec<String>>) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+                collect_service_calls_from_expr(expr, calls);
+            }
+            Stmt::Return(fields) => {
+                for (_, expr) in fields {
+                    collect_service_calls_from_expr(expr, calls);
                 }
             }
         }
@@ -1114,6 +1246,87 @@ fn collect_calls_from_expr(expr: &Expr, calls: &mut HashSet<String>) {
         Expr::Return(fields) => {
             for (_, value) in fields {
                 collect_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Literal(_) | Expr::Ident(_) => {}
+    }
+}
+
+fn collect_service_calls_from_expr(expr: &Expr, calls: &mut HashSet<Vec<String>>) {
+    match expr {
+        Expr::Call(_, args) => {
+            for (_, arg) in args {
+                collect_service_calls_from_expr(arg, calls);
+            }
+        }
+        Expr::ServiceCall(path, args) => {
+            calls.insert(path.clone());
+            for (_, arg) in args {
+                collect_service_calls_from_expr(arg, calls);
+            }
+        }
+        Expr::FieldAccess(base, _) => collect_service_calls_from_expr(base, calls),
+        Expr::BinOp(lhs, _, rhs) => {
+            collect_service_calls_from_expr(lhs, calls);
+            collect_service_calls_from_expr(rhs, calls);
+        }
+        Expr::UnaryOp(_, inner) => collect_service_calls_from_expr(inner, calls),
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let StringPart::Expr(inner) = part {
+                    collect_service_calls_from_expr(inner, calls);
+                }
+            }
+        }
+        Expr::Record(_, fields) => {
+            for (_, value) in fields {
+                collect_service_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            collect_service_calls_from_expr(scrutinee, calls);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_service_calls_from_expr(guard, calls);
+                }
+                collect_service_calls_from_expr(&arm.body, calls);
+            }
+        }
+        Expr::If(cond, then_expr, else_expr) => {
+            collect_service_calls_from_expr(cond, calls);
+            collect_service_calls_from_expr(then_expr, calls);
+            if let Some(otherwise) = else_expr {
+                collect_service_calls_from_expr(otherwise, calls);
+            }
+        }
+        Expr::For(_, iterable, body) => {
+            collect_service_calls_from_expr(iterable, calls);
+            collect_service_calls_from_expr(body, calls);
+        }
+        Expr::Pipe(lhs, rhs) => {
+            collect_service_calls_from_expr(lhs, calls);
+            collect_service_calls_from_expr(rhs, calls);
+        }
+        Expr::Lambda(_, body) => collect_service_calls_from_expr(body, calls),
+        Expr::List(items) => {
+            for item in items {
+                collect_service_calls_from_expr(item, calls);
+            }
+        }
+        Expr::Map(entries) => {
+            for (key, value) in entries {
+                collect_service_calls_from_expr(key, calls);
+                collect_service_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Guarded(inner, guard) => {
+            collect_service_calls_from_expr(inner, calls);
+            collect_service_calls_from_expr(guard, calls);
+        }
+        Expr::After(inner, _) => collect_service_calls_from_expr(inner, calls),
+        Expr::Return(fields) => {
+            for (_, value) in fields {
+                collect_service_calls_from_expr(value, calls);
             }
         }
         Expr::Literal(_) | Expr::Ident(_) => {}
@@ -1294,6 +1507,34 @@ service FsStorage implements Storage {
                 && edge.from_port.0 == "response"
                 && edge.to_node.0 == parse.as_str()
                 && edge.to_port.0 == "response"
+        }));
+    }
+
+    #[test]
+    fn service_calls_link_parse_triplet_output_into_caller_dependencies() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/storage_calls.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let parse_node = "parse_transport_sample_services_FsStorage_read";
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == parse_node
+                && edge.to_node.0 == "sample.services::run"
+                && edge.to_port.0 == "__deps"
         }));
     }
 
