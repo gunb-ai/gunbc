@@ -391,6 +391,8 @@ fn node_output_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Opti
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 mod tests {
     use super::*;
+    use daglang_lower::{CallableKind, ObligationCategory};
+    use gunbc_ir::{Edge, Node, Port};
     use serde_json::Value;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -628,6 +630,82 @@ mod tests {
         assert!(
             manifest.ends_with(&obligations),
             "manifest output should embed the same obligations text renderer"
+        );
+    }
+
+    #[test]
+    fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "prepare_a",
+            vec![],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: "sample.triplets".to_string(),
+                kind: CallableKind::Pattern,
+                name: "prepare".to_string(),
+                obligation: ObligationCategory::None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "execute_a",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "sample.triplets".to_string(),
+                kind: CallableKind::Pattern,
+                name: "execute".to_string(),
+                obligation: ObligationCategory::None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "parse_z",
+            vec![Port::scalar("response", "TransportResponse")],
+            vec![Port::scalar("body", "String")],
+            LoweredOp::Callable {
+                module: "sample.triplets".to_string(),
+                kind: CallableKind::Pattern,
+                name: "parse_z".to_string(),
+                obligation: ObligationCategory::None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "parse_a",
+            vec![Port::scalar("response", "TransportResponse")],
+            vec![Port::scalar("body", "String")],
+            LoweredOp::Callable {
+                module: "sample.triplets".to_string(),
+                kind: CallableKind::Pattern,
+                name: "parse_a".to_string(),
+                obligation: ObligationCategory::None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "non_transport_sink",
+            vec![Port::scalar("value", "String")],
+            vec![Port::scalar("ok", "Bool")],
+            LoweredOp::Callable {
+                module: "sample.triplets".to_string(),
+                kind: CallableKind::Pattern,
+                name: "sink".to_string(),
+                obligation: ObligationCategory::None,
+            },
+        ));
+
+        dag.add_edge(Edge::new("prepare_a", "request", "execute_a", "request"));
+        dag.add_edge(Edge::new("execute_a", "response", "parse_z", "response"));
+        dag.add_edge(Edge::new("execute_a", "response", "parse_a", "response"));
+        dag.add_edge(Edge::new("parse_a", "body", "non_transport_sink", "value"));
+
+        let triplets = collect_transport_triplets(&dag);
+        assert_eq!(triplets.len(), 1, "expected exactly one transport triplet");
+        let triplet = &triplets[0];
+        assert_eq!(triplet.prepare_node, "prepare_a");
+        assert_eq!(triplet.execute_node, "execute_a");
+        assert_eq!(
+            triplet.parse_nodes,
+            vec!["parse_a".to_string(), "parse_z".to_string()],
+            "parse nodes should be sorted and deterministic"
         );
     }
 
