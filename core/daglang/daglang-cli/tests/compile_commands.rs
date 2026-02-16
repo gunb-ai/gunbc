@@ -870,6 +870,199 @@ fn compile_command_curdir_segment_missing_single_file_target_matches_plain_relat
 }
 
 #[test]
+fn compile_command_relative_and_absolute_invalid_single_file_targets_are_equivalent() {
+    let root = unique_temp_dir("compile_relative_absolute_invalid_single_file_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let relative = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("invalid.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative invalid single-file compile");
+    assert!(
+        !relative.status.success(),
+        "relative invalid single-file compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&invalid_target)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute invalid single-file compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&relative.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "invalid single-file diagnostic should include normalized absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_trailing_slash_invalid_single_file_target_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_trailing_invalid_single_file_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("invalid.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain invalid single-file compile");
+    assert!(
+        !plain.status.success(),
+        "plain invalid single-file compile should fail"
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("invalid.dag/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run trailing invalid single-file compile");
+    assert!(
+        !trailing_slash.status.success(),
+        "trailing invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, trailing_slash.stdout,
+        "plain and trailing invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, trailing_slash.stderr,
+        "plain and trailing invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "trailing invalid single-file diagnostic should include normalized absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_curdir_segment_invalid_single_file_target_matches_plain_relative_output() {
+    let root = unique_temp_dir("compile_curdir_invalid_single_file_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("invalid.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain invalid single-file compile");
+    assert!(
+        !plain.status.success(),
+        "plain invalid single-file compile should fail"
+    );
+
+    let curdir = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("./invalid.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir invalid single-file compile");
+    assert!(
+        !curdir.status.success(),
+        "curdir invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir.stdout,
+        "plain and curdir invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir.stderr,
+        "plain and curdir invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "curdir invalid single-file diagnostic should include normalized absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_curdir_double_separator_invalid_single_file_target_matches_plain_relative_output(
+) {
+    let root = unique_temp_dir("compile_curdir_double_invalid_single_file_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("invalid.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain invalid single-file compile");
+    assert!(
+        !plain.status.success(),
+        "plain invalid single-file compile should fail"
+    );
+
+    let curdir_double = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(".//invalid.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-double invalid single-file compile");
+    assert!(
+        !curdir_double.status.success(),
+        "curdir-double invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_double.stdout,
+        "plain and curdir-double invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_double.stderr,
+        "plain and curdir-double invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "curdir-double invalid single-file diagnostic should include normalized absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_curdir_double_separator_single_file_target_matches_plain_relative_output() {
     let root = unique_temp_dir("compile_curdir_double_separator_single_file_target");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
@@ -2006,6 +2199,248 @@ fn compile_command_parent_curdir_trailing_slash_missing_single_file_target_is_no
     assert!(
         stderr.contains(&format!("failed to read {}", missing.display())),
         "parent-curdir-trailing missing single-file diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_parent_segment_invalid_single_file_target_is_normalized_and_equivalent() {
+    let root = unique_temp_dir("compile_parent_segment_invalid_single_file_target");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("../invalid.dag")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-segment invalid single-file compile");
+    assert!(
+        !parent_segment.status.success(),
+        "parent-segment invalid single-file compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&invalid_target)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute invalid single-file compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        parent_segment.stdout, absolute.stdout,
+        "parent-segment and absolute invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, absolute.stderr,
+        "parent-segment and absolute invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_segment.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "parent-segment invalid single-file diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_parent_double_separator_invalid_single_file_target_is_normalized_and_equivalent() {
+    let root = unique_temp_dir("compile_parent_double_invalid_single_file_target");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let parent_double = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("..//invalid.dag")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-double invalid single-file compile");
+    assert!(
+        !parent_double.status.success(),
+        "parent-double invalid single-file compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&invalid_target)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute invalid single-file compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        parent_double.stdout, absolute.stdout,
+        "parent-double and absolute invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        parent_double.stderr, absolute.stderr,
+        "parent-double and absolute invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_double.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "parent-double invalid single-file diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_parent_curdir_segment_invalid_single_file_target_is_normalized_and_equivalent() {
+    let root = unique_temp_dir("compile_parent_curdir_segment_invalid_single_file");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let parent_curdir_segment = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(".././invalid.dag")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-curdir-segment invalid single-file compile");
+    assert!(
+        !parent_curdir_segment.status.success(),
+        "parent-curdir-segment invalid single-file compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&invalid_target)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute invalid single-file compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        parent_curdir_segment.stdout, absolute.stdout,
+        "parent-curdir-segment and absolute invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_segment.stderr, absolute.stderr,
+        "parent-curdir-segment and absolute invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_curdir_segment.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "parent-curdir-segment invalid single-file diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_parent_curdir_double_separator_invalid_single_file_target_is_normalized_and_equivalent(
+) {
+    let root = unique_temp_dir("compile_parent_curdir_double_invalid_single_file");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let parent_curdir_double = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(".././invalid.dag//")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-curdir-double invalid single-file compile");
+    assert!(
+        !parent_curdir_double.status.success(),
+        "parent-curdir-double invalid single-file compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&invalid_target)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute invalid single-file compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        parent_curdir_double.stdout, absolute.stdout,
+        "parent-curdir-double and absolute invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_double.stderr, absolute.stderr,
+        "parent-curdir-double and absolute invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_curdir_double.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "parent-curdir-double invalid single-file diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_parent_curdir_trailing_slash_invalid_single_file_target_is_normalized_and_equivalent(
+) {
+    let root = unique_temp_dir("compile_parent_curdir_trailing_invalid_single_file");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let parent_curdir_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(".././invalid.dag/")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-curdir-trailing invalid single-file compile");
+    assert!(
+        !parent_curdir_trailing.status.success(),
+        "parent-curdir-trailing invalid single-file compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&invalid_target)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute invalid single-file compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        parent_curdir_trailing.stdout, absolute.stdout,
+        "parent-curdir-trailing and absolute invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_trailing.stderr, absolute.stderr,
+        "parent-curdir-trailing and absolute invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_curdir_trailing.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "parent-curdir-trailing invalid single-file diagnostic should normalize to absolute path: {stderr}"
     );
     assert_no_stage_failures(&stderr);
 
@@ -3607,6 +4042,99 @@ fn compile_command_absolute_missing_single_file_variants_match_canonical_output(
         assert_eq!(
             variant.stderr, canonical.stderr,
             "{label} missing single-file variant stderr should match canonical output"
+        );
+    }
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_absolute_invalid_single_file_variants_match_canonical_output() {
+    let root = unique_temp_dir("compile_absolute_invalid_single_file_variants");
+    std::fs::create_dir_all(root.join("anchor")).expect("failed to create anchor directory");
+    let canonical_invalid_single_file = root.join("dsl/sample/invalid.dag");
+    std::fs::create_dir_all(&canonical_invalid_single_file)
+        .expect("failed to create invalid single-file target fixture directory");
+
+    let canonical = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&canonical_invalid_single_file)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute invalid single-file compile");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute invalid single-file compile should fail"
+    );
+    let canonical_stderr = String::from_utf8_lossy(&canonical.stderr);
+    assert_no_stage_failures(&canonical_stderr);
+    assert!(
+        canonical_stderr.contains(&canonical_invalid_single_file.display().to_string()),
+        "canonical invalid single-file diagnostic should contain normalized absolute path: {canonical_stderr}"
+    );
+
+    let variants = vec![
+        ("mixed", root.join(".").join("dsl/sample/invalid.dag")),
+        ("parent", root.join("anchor/../dsl/sample/invalid.dag")),
+        (
+            "parent_curdir_segment",
+            root.join("anchor/.././dsl/sample/invalid.dag"),
+        ),
+        (
+            "parent_double_separator",
+            PathBuf::from(format!(
+                "{}/anchor/..//dsl/sample/invalid.dag",
+                root.display()
+            )),
+        ),
+        (
+            "parent_trailing",
+            PathBuf::from(format!(
+                "{}/",
+                root.join("anchor/../dsl/sample/invalid.dag").display()
+            )),
+        ),
+        (
+            "parent_double_separator_trailing",
+            PathBuf::from(format!(
+                "{}/anchor/..//dsl/sample/invalid.dag/",
+                root.display()
+            )),
+        ),
+        (
+            "double_separator",
+            PathBuf::from(format!("{}//dsl//sample//invalid.dag", root.display())),
+        ),
+        (
+            "trailing_slash",
+            PathBuf::from(format!("{}/", canonical_invalid_single_file.display())),
+        ),
+        (
+            "double_separator_trailing",
+            PathBuf::from(format!("{}//dsl//sample//invalid.dag/", root.display())),
+        ),
+    ];
+
+    for (label, variant_path) in variants {
+        let variant = Command::new(daglang_bin())
+            .arg("compile")
+            .arg(&variant_path)
+            .current_dir(&root)
+            .output()
+            .unwrap_or_else(|_| {
+                panic!("failed to run {label} absolute invalid single-file compile variant")
+            });
+        assert!(
+            !variant.status.success(),
+            "{label} absolute invalid single-file compile variant should fail"
+        );
+        assert_eq!(
+            variant.stdout, canonical.stdout,
+            "{label} invalid single-file variant stdout should match canonical output"
+        );
+        assert_eq!(
+            variant.stderr, canonical.stderr,
+            "{label} invalid single-file variant stderr should match canonical output"
         );
     }
 
