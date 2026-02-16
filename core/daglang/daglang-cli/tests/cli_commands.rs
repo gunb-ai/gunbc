@@ -531,6 +531,31 @@ fn check_command_sorts_lex_diagnostics_before_parse_diagnostics() {
 }
 
 #[test]
+fn check_command_empty_directory_succeeds_with_zero_files() {
+    let root = unique_temp_dir("check_empty_dir");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on empty directory");
+
+    assert!(
+        output.status.success(),
+        "check should succeed for an empty directory"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("OK: parsed 0 file(s)"),
+        "expected empty directory to parse zero files: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_defaults_to_workspace_dsl_root() {
     let output = Command::new(daglang_bin())
         .arg("check")
@@ -589,6 +614,35 @@ fn modules_command_output_is_deterministic_for_same_input() {
         first.stdout, second.stdout,
         "modules output should be deterministic for identical inputs"
     );
+}
+
+#[test]
+fn modules_command_empty_directory_succeeds_without_diagnostics() {
+    let root = unique_temp_dir("modules_empty_dir");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules on empty directory");
+
+    assert!(
+        output.status.success(),
+        "modules should succeed for an empty directory"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Discovered modules:"),
+        "modules output should include summary header"
+    );
+    assert!(
+        !stdout.contains("Diagnostics:"),
+        "empty directory should not produce diagnostics: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
 
 #[test]
