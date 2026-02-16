@@ -431,6 +431,21 @@ mod tests {
     }
 
     #[test]
+    fn longest_match_comparison_and_question_operators() {
+        assert_eq!(kinds("<= < >= > ?? ? != !"), vec![
+            TokenKind::Le,
+            TokenKind::Lt,
+            TokenKind::Ge,
+            TokenKind::Gt,
+            TokenKind::NullCoalesce,
+            TokenKind::Question,
+            TokenKind::Ne,
+            TokenKind::Bang,
+            TokenKind::Eof,
+        ]);
+    }
+
+    #[test]
     fn numbers() {
         assert_eq!(kinds("42 3.14"), vec![
             TokenKind::Int(42), TokenKind::Float(3.14), TokenKind::Eof,

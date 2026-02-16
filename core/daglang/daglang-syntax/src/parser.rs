@@ -2308,6 +2308,45 @@ mod tests {
     }
 
     #[test]
+    fn expression_logical_and_binds_tighter_than_or() {
+        let expr = parse_expr_only("x || y && z");
+        match expr {
+            Expr::BinOp(lhs, BinOp::Or, rhs) => {
+                assert!(matches!(*lhs, Expr::Ident(ref name) if name == "x"));
+                assert!(matches!(*rhs, Expr::BinOp(_, BinOp::And, _)));
+            }
+            other => panic!("unexpected expression tree: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn expression_unary_binds_after_field_and_call_suffixes() {
+        let expr = parse_expr_only("-a.b(c)");
+        match expr {
+            Expr::UnaryOp(UnaryOp::Neg, inner) => match *inner {
+                Expr::ServiceCall(path, args) => {
+                    assert_eq!(path, vec!["a".to_string(), "b".to_string()]);
+                    assert_eq!(args.len(), 1);
+                }
+                other => panic!("unexpected unary operand: {other:?}"),
+            },
+            other => panic!("unexpected expression tree: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn expression_additive_binds_tighter_than_comparison() {
+        let expr = parse_expr_only("a + b < c");
+        match expr {
+            Expr::BinOp(lhs, BinOp::Lt, rhs) => {
+                assert!(matches!(*lhs, Expr::BinOp(_, BinOp::Add, _)));
+                assert!(matches!(*rhs, Expr::Ident(ref name) if name == "c"));
+            }
+            other => panic!("unexpected expression tree: {other:?}"),
+        }
+    }
+
+    #[test]
     fn question_in_expression_is_targeted_error() {
         let err = parse_expr_only_err("a ? b : c");
         assert!(err.message.contains("ternary operator is not supported"));
