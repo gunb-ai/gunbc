@@ -1919,4 +1919,235 @@ fn run(values: Box<String, Int>) -> String { values }
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
+
+    #[test]
+    fn compile_directory_call_arity_mismatch_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_call_arity_mismatch_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn fmt(value: String) -> String { value }
+fn run() -> String { fmt() }
+"#,
+        )
+        .expect("failed to write call-arity mismatch source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("call arity mismatch"));
+        assert!(error.contains("fmt"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_unknown_named_call_argument_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_unknown_named_call_arg_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn fmt(value: String) -> String { value }
+fn run() -> String { fmt(text: "ok") }
+"#,
+        )
+        .expect("failed to write unknown named-call argument source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("unknown named argument"));
+        assert!(error.contains("text"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_duplicate_named_call_argument_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_duplicate_named_call_arg_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn fmt(value: String) -> String { value }
+fn run() -> String { fmt(value: "a", value: "b") }
+"#,
+        )
+        .expect("failed to write duplicate named-call argument source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate named argument"));
+        assert!(error.contains("value"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_service_call_arity_mismatch_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_service_call_arity_mismatch_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run() -> { body: String } {
+  let response = FsStorage.read()
+  return { body: response.body }
+}
+"#,
+        )
+        .expect("failed to write service call-arity mismatch source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("service call arity mismatch"));
+        assert!(error.contains("FsStorage.read"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_unknown_named_service_argument_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_unknown_named_service_arg_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run() -> { body: String } {
+  let response = FsStorage.read(name: "README.md")
+  return { body: response.body }
+}
+"#,
+        )
+        .expect("failed to write unknown named service-argument source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("unknown named argument"));
+        assert!(error.contains("name"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_duplicate_named_service_argument_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_duplicate_named_service_arg_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run() -> { body: String } {
+  let response = FsStorage.read(path: "a", path: "b")
+  return { body: response.body }
+}
+"#,
+        )
+        .expect("failed to write duplicate named service-argument source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate named argument"));
+        assert!(error.contains("path"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
 }
