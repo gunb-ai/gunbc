@@ -83,6 +83,28 @@ fn missing_discovery_root_is_rejected() {
 }
 
 #[test]
+fn discovery_fails_when_any_root_is_missing() {
+    let valid_root = unique_temp_dir("mixed_valid_missing_valid");
+    write_file(
+        &valid_root.join("main.dag"),
+        "module sample.main\nfn ok() -> Unit {}",
+    );
+    let missing_root = unique_temp_dir("mixed_valid_missing_missing");
+
+    let err = ModuleGraph::discover(&[valid_root.clone(), missing_root.clone()])
+        .expect_err("expected invalid root error");
+    match err {
+        ResolveError::InvalidRootPath { path, reason } => {
+            assert_eq!(path, missing_root);
+            assert!(reason.contains("does not exist"));
+        }
+        other => panic!("expected InvalidRootPath, got {other:?}"),
+    }
+
+    fs::remove_dir_all(valid_root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn non_directory_discovery_root_is_rejected() {
     let root = unique_temp_dir("non_directory_root");
     write_file(&root, "not a directory");

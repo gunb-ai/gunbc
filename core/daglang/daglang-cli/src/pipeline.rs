@@ -1228,6 +1228,29 @@ mod tests {
     }
 
     #[test]
+    fn directory_mode_fails_when_any_root_is_missing() {
+        let valid_root = unique_temp_dir("mixed_valid_missing_root_valid");
+        fs::create_dir_all(&valid_root).expect("failed to create valid root");
+        fs::write(
+            valid_root.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
+        let missing_root = unique_temp_dir("mixed_valid_missing_root_missing");
+
+        let context = PipelineContext {
+            roots: vec![valid_root.clone(), missing_root.clone()],
+            target_file: None,
+        };
+        let err = run_pipeline(&context, PipelineStop::Parse)
+            .expect_err("pipeline should fail when any root is missing");
+        assert!(err.contains("input root does not exist"));
+        assert!(err.contains(&missing_root.display().to_string()));
+
+        fs::remove_dir_all(valid_root).expect("failed to cleanup valid root");
+    }
+
+    #[test]
     fn directory_mode_rejects_non_directory_root() {
         let root_file = unique_temp_dir("non_directory_root");
         fs::write(&root_file, "not a directory").expect("failed to create root file");
