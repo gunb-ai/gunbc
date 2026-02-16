@@ -1797,6 +1797,25 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_output_fields_are_reported() {
+        let graph = module_graph_from_sources(&[(
+            "dup_outputs.dag",
+            r#"module sample.dup
+func run() -> { ok: Bool, ok: Bool } {
+  return { ok: true }
+}
+"#,
+        )]);
+        let errors =
+            typecheck_module_graph(graph).expect_err("duplicate outputs should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateOutputField { item, field }
+                if item == "run" && field == "ok"
+        )));
+    }
+
+    #[test]
     fn undefined_types_are_reported() {
         let graph = module_graph_from_sources(&[(
             "unknown_type.dag",
