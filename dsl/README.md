@@ -16,9 +16,11 @@ Start with the foundation, then work outward:
 std/          Foundation: types, resources, patterns
 services/     Pure declarations: typed I/O + transport annotations
 cloud/        Credential acquisition (uses services + patterns)
+infra/        Infrastructure as first-class resources (GCP, etc.)
 shared/       Composition helpers + utility library
 tools/        Funcs that compose everything above
 pipelines/    Multi-stage composition of tools
+examples/     Forward-looking proposals (services, types, deployment, test generation)
 ```
 
 ### Recommended first read
@@ -29,7 +31,11 @@ pipelines/    Multi-stage composition of tools
 4. `shared/dag_util.dag` -- utility helpers (aggregate, report, stage construction)
 5. `tools/makegen.dag` -- simplest tool (~30 lines, uses content_upsert)
 6. `tools/gist.dag` -- complex tool (4 modes, loops, service composition)
-7. `pipelines/ci.dag` -- everything wired together
+7. `infra/spec.dag` -- infrastructure types (specs, reconciliation, environments)
+8. `infra/gcp.dag` -- GCP resources as first-class `resource` declarations
+9. `examples/deployment.dag` -- infra resources composed with business logic
+10. `examples/integration_tests.dag` -- six-tier test generation model
+11. `pipelines/ci.dag` -- everything wired together
 
 ## Syntax overview
 
@@ -95,6 +101,11 @@ Each `.dag` file replaces a specific Rust graph builder:
 
 - **`gcp/credential.dag`** -- `acquire_gcp_secret` func. Wraps `credential_chain` pattern. Entry point for all GCP-authenticated tools.
 
+### `infra/` -- Infrastructure as resources
+
+- **`spec.dag`** -- Typed infra specs (`BucketSpec`, `CloudRunSpec`, `SecretSpec`, `ServiceAccountSpec`, `WifSpec`), aggregate `InfraSpec`, `ReconcileAction`/`ReconcileResult` types, environment configs (`dev_config`, `ci_config`).
+- **`gcp.dag`** -- GCP infra as first-class `resource` declarations: `GcsBucket`, `CloudRunService`, `ManagedSecret`, `GcpServiceAccount`, `WifProvider`. Each has `acquire` (ensure/upsert pattern), `release`, and `capability` blocks. Business logic `uses` them the same way as `Filesystem` or `Network`.
+
 ### `shared/` -- Composition helpers
 
 - **`dag_util.dag`** -- Common utility functions: `aggregate_results`, `all_succeeded`, `format_report`, `stage_result`, `stage_from_output`, `generated_header`, `render_and_upsert`. Extracted from duplicated logic across tool files.
@@ -117,6 +128,43 @@ Each `.dag` file replaces a specific Rust graph builder:
 ### `pipelines/` -- Multi-stage pipelines
 
 - **`ci.dag`** -- 12-stage CI pipeline composing all tools with `after` dependencies, parallel groups, conditional execution (`when`), and aggregate reporting. Uses `aggregate_results`, `format_report`, `stage_result`, `stage_from_output` from dag_util.
+
+### `examples/` -- Forward-looking proposals
+
+These explore language extensions not yet finalized in the spec. Each file is self-contained with design rationale and open questions.
+
+- **`abstract_services.dag`** -- Three-layer service abstraction: `interface` (abstract contract with `@contract` behavioral specs), `service X : Interface` (concrete implementation), and funcs written against interfaces. Shows Storage, LLM, Queue interfaces with GCS, S3, OpenAI, VertexAI implementations.
+- **`rich_types.dag`** -- Generic types (`Result<T, E>`, `Page<T>`), sum types with payloads (`DeployEvent`), type bounds/interfaces (`Serializable`, `Comparable`), branded types (`UserId`, `TeamId`), and bounded generics. Includes phasing recommendation (Phase 1-4).
+- **`deployment.dag`** -- Infra resources composed with business logic via `uses`. Shows direct resource use, multi-resource composition, interface-to-infra binding, full bootstrap, environment-driven config, and cross-infra composition.
+- **`integration_tests.dag`** -- Six-tier test generation for infra-backed funcs: hermetic unit, node contracts, scenario coverage (guard paths), resource hygiene, live integration (real GCP), and end-to-end. Shows how `@mock_response` in resource acquire blocks + probe-observer model generates all test tiers automatically.
+
+## Infrastructure as resources
+
+The key architectural decision: cloud infrastructure is modeled as first-class `resource` declarations where `acquire` IS the ensure/upsert pattern. Business logic `uses` infra resources the same way it uses `Filesystem` or `Network`.
+
+```
+resource GcsBucket {
+  config { name: String, project: String }
+  acquire {
+    check = gcp.Storage.GetBucket(name: config.name)
+    create [when !check.exists] = gcp.Storage.CreateBucket(...)
+    resolve = gcp.Storage.GetBucket(name: config.name) [after create]
+    @mock_response(check, status: 404)
+    @mock_response(create, status: 200, body: { "name": config.name })
+  }
+  capability read { ... }
+  capability write { ... }
+}
+
+func store_artifact(key: String, content: Bytes) -> { ok: Bool }
+  uses bucket: GcsBucket(name: "my-bucket", project: "my-project")
+{
+  result = bucket.write(key: key, content: content)
+  return { ok: result.ok }
+}
+```
+
+The compiler inserts the acquire DAG before business logic, threads the resource handle, detects conflicts, and generates integration tests from `@mock_response` annotations. See `infra/gcp.dag` for the full resource library and `examples/integration_tests.dag` for test generation details.
 
 ## Collection operations as IR nodes
 

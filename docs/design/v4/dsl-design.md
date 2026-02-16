@@ -357,7 +357,7 @@ This is not a metaphor. In gunbc, a type like `Url` is literally a `Dag<TypeOp>`
 String (raw) → [NonEmpty check] → [URL pattern check] → Url (validated)
 ```
 
-Type validation IS a causal chain. Using `Dag<TypeOp>` makes this explicit and reuses all DAG infrastructure (composition, lowering, validation). The DSL inherits and extends this.
+Type validation IS a causal chain. Using `Dag<TypeOp>` makes this explicit and reuses all DAG infrastructure (composition, lowering, validation). The DSL inherits and extends this. See "Type-Theoretic Foundations" below for the set-theoretic meaning: a type's DAG defines `⟦T⟧ = {v | execute(T.dag, v) succeeds}`.
 
 **TypeOp — the operations in a type DAG:**
 
@@ -367,9 +367,14 @@ TypeOp = Identity              // pass-through (base of every type)
        | Transform(Coercion)   // safe type conversion (Int → Json, Url → String)
        | Wrap(WrapperKind)     // Optional, List, Set, NonEmptyList, Map
        | Unwrap(WrapperKind)   // extract from container
+       | Product(fields)       // record — parallel composition of field type DAGs
+       | Coproduct(variants)   // sum — branching on variant tag
+       | Apply(TypeVar, args)  // generic instantiation — substitute type params into SubDags
+       | Brand(name)           // nominal tag — disjointness marker (zero runtime cost)
+       | Invariant(Predicate)  // cross-field constraint on product (dependent refinement)
 ```
 
-**Building types from composition:**
+**Building types from composition (Level 0–1: primitives and refinements):**
 
 ```
 // Primitives — identity DAGs (single node, no validation)
@@ -381,7 +386,35 @@ Bool    = Dag { Identity("Bool") }
 Url     = Dag { Identity("String") → Validate(NonEmpty) → Validate(Matches("^https?://...")) }
 Email   = Dag { Identity("String") → Validate(NonEmpty) → Validate(Matches("^[^@]+@...")) }
 Port    = Dag { Identity("Int") → Validate(InRange(1, 65535)) }
+```
 
+**Records and sums (Level 3–4: products and coproducts):**
+
+```
+// Records — Product nodes with parallel field type SubDags
+AccessToken = Dag {
+  Product {
+    token:      SubDag(Secret)        // ⟦Secret⟧
+    scheme:     SubDag(AuthScheme)    // ⟦AuthScheme⟧
+    expires_at: SubDag(Optional → SubDag(String))  // ⟦String?⟧
+  }
+}
+// Set-theoretically: ⟦AccessToken⟧ = ⟦Secret⟧ × ⟦AuthScheme⟧ × (⟦String⟧ ∪ {none})
+
+// Sum types — Coproduct nodes with branching on variant tag
+AuthScheme = Dag {
+  Coproduct {
+    Bearer: SubDag(Identity("unit"))               // singleton
+    Header: SubDag(Product { name: SubDag(String) })
+    Basic:  SubDag(Product { username: SubDag(String) })
+  }
+}
+// Set-theoretically: ⟦AuthScheme⟧ = {Bearer} ⊔ ({Header} × ⟦String⟧) ⊔ ({Basic} × ⟦String⟧)
+```
+
+**Containers (Level 6: parameterized wrappers):**
+
+```
 // Container types — wrapper nodes with inner type DAGs as SubDags
 List<Url>       = Dag { Wrap(List) → SubDag(Url) }
 Optional<Email> = Dag { Wrap(Optional) → SubDag(Email) }
@@ -391,6 +424,56 @@ Map<String, V>  = Dag { Wrap(Map) → SubDag(V) }
 // Compound types compose freely
 NonEmpty<List<Url>> = Dag { Wrap(NonEmptyList) → Validate(NonEmpty) → SubDag(Url) }
 ```
+
+**Generics and brands (Level 2, 7–9: richer structures):**
+
+```
+// Generics — Apply nodes parameterize SubDags
+// type Result<T, E> = Ok { value: T } | Err { error: E }
+Result = Dag {
+  Apply(T, E) → Coproduct {
+    Ok:  SubDag(Product { value: SubDag(TypeVar(T)) })
+    Err: SubDag(Product { error: SubDag(TypeVar(E)) })
+  }
+}
+// Instantiation: Result<Int, String> substitutes T→Int, E→String in all SubDags
+
+// Branded types — Brand node adds nominal disjointness
+UserId = Dag { Identity("String") → Brand("UserId") }
+TeamId = Dag { Identity("String") → Brand("TeamId") }
+// Brand nodes make DAGs structurally incompatible even with same base
+
+// Branded + refined (composition of Brand and Validate)
+Milliseconds = Dag { Identity("Int") → Validate(InRange(0, ∞)) → Brand("Milliseconds") }
+Seconds      = Dag { Identity("Int") → Validate(InRange(0, ∞)) → Brand("Seconds") }
+
+// Cross-field invariants — Invariant node on Product
+DateRange = Dag {
+  Product {
+    start: SubDag(Identity("String") → Validate(Matches(date_pattern)))
+    end:   SubDag(Identity("String") → Validate(Matches(date_pattern)))
+  } → Invariant(start <= end)
+}
+// The Invariant node executes AFTER both field DAGs succeed, checking the cross-field predicate
+
+// Bounded generics — Apply with bounds
+// fn serialize<T: Serializable>(value: T) -> Json
+serialize = Dag {
+  Apply(T, bound: Serializable) → SubDag(TypeVar(T)) → Transform(to_json)
+}
+// The bound restricts which type DAGs can be substituted for T:
+// only those whose DAG includes the operations required by Serializable
+```
+
+**The three DAG families — one recursive structure:**
+
+```
+Dag<TypeOp>       — type validation workflows    (what IS a value)
+Dag<FunctorOp>    — pure transformation workflows (what a fn COMPUTES)
+Dag<NodeOp>       — effectful workflows           (what a func DOES)
+```
+
+All three compose the same way (sequential, parallel, SubDag nesting), are analyzed by the same graph algorithms (reachability, topological sort, cycle detection), and are processed by the same compiler passes. The only difference is the operation set.
 
 **Three-level coercion lattice (already implemented in gunbc):**
 
@@ -458,6 +541,432 @@ Predicates form their own partial order: `Predicate::entails(&self, other)` chec
 **The standard library defines the type foundation.** `std/types.dag` provides primitive types, common refinements (Url, Email, FilePath, Port), and container constructors. User-defined types extend the same DAG. The `TypeRegistry` stores named type DAGs and resolves references during compilation.
 
 **What this is NOT:** This is not a dependent type system or a proof assistant. The type DAG is a finite, acyclic composition graph with no type-level computation. The compiler uses it for structural reasoning (compatibility, coercion, generation), not for theorem proving. This preserves P9 (totality) — type resolution always terminates because the type DAG is finite and acyclic.
+
+#### Type-Theoretic Foundations
+
+The type system is grounded in set theory: every type denotes a set of values, subtyping is set inclusion, and coercion safety is a provable property — not ad-hoc pattern matching. This section makes the axioms explicit, building from primitives upward. See `examples/rich_types.dag` for the surface-syntax proposals that extend this model.
+
+**Notation.** `⟦T⟧` denotes the set of values inhabiting type `T`.
+
+##### Core Axioms
+
+```
+Axiom 1 (Denotation):   Every type T denotes a set ⟦T⟧ of values.
+Axiom 2 (Subtyping):    A <: B  iff  ⟦A⟧ ⊆ ⟦B⟧
+Axiom 3 (Bounded):      The type universe is a bounded lattice:
+                         ⊥ = Unit = {}  (empty set)
+                         ⊤ = Json       (universal structured value)
+Axiom 4 (Decidable):    For any A, B: whether ⟦A⟧ ⊆ ⟦B⟧ is decidable at compile time.
+Axiom 5 (Types are DAGs): Every type T is itself a Dag<TypeOp>. The set ⟦T⟧ is
+                         the set of values that PASS the type's DAG when executed.
+```
+
+**Axiom 5 is the key architectural insight.** Types are not static metadata attached to values — they are executable DAGs that use the same infrastructure as business logic. A type's DAG defines its set denotation operationally: `⟦T⟧ = {v | execute(T.dag, v) succeeds}`. This means:
+
+1. **Types compose like workflows.** Records compose type DAGs via product (parallel). Sums compose via coproduct (branch). Refinements extend via sequential validation nodes. Generics parameterize SubDag slots. It's DAGs all the way down.
+
+2. **Type checking IS DAG analysis.** The compiler checks `A <: B` by analyzing whether A's DAG is a "refinement" of B's DAG — i.e., A's validation chain is at least as strict. This is graph reachability on `Dag<TypeOp>`, not string comparison.
+
+3. **Coercion insertion IS DAG transformation.** When the compiler inserts a safe upcast (e.g., `Url → String`), it splices in a `Transform(Coercion)` node — the same node-insertion the compiler uses for resource acquisition or pattern expansion.
+
+4. **Test generation IS DAG traversal.** The testgen system walks the type DAG to generate valid inhabitants (values that pass every `Validate` node), invalid boundary values (values that fail exactly one `Validate` node), and structural edge cases (empty lists, single-element lists, etc.).
+
+5. **Same tooling, same semantics.** Type DAGs are visualized, diffed, validated, and emitted by the same compiler passes that handle func DAGs and pattern DAGs. There is one recursive structure (`Dag<Op>`) with different `Op` types for different purposes:
+
+```
+Dag<TypeOp>       — type validation workflows    (what IS a value)
+Dag<FunctorOp>    — pure transformation workflows (what a fn COMPUTES)
+Dag<NodeOp>       — effectful workflows           (what a func DOES)
+```
+
+All three share the same composition rules, the same executor model, the same graph analysis algorithms. The set-theoretic axioms below describe what the type DAGs MEAN; the DAG representation describes how the compiler COMPUTES those meanings.
+
+Everything below is a consequence of these five axioms applied to specific type constructors.
+
+##### Level 0 — Primitive Types (Atoms)
+
+Base types are the atomic sets. They partition the value universe at the leaves of the lattice:
+
+```
+⟦Unit⟧   = {}                              empty set (bottom, ⊥)
+⟦Bool⟧   = {true, false}                   two-element Boolean algebra
+⟦Int⟧    = ℤ                               integers
+⟦Float⟧  = 𝔽₆₄                             IEEE 754 doubles
+⟦String⟧ = Σ*                              finite Unicode sequences
+⟦Bytes⟧  = {0..255}*                       finite byte sequences
+⟦Secret⟧ = Σ*                              same carrier as String (security-policy distinction)
+⟦Json⟧   = ⟦Bool⟧ ∪ ⟦Int⟧ ∪ ⟦Float⟧ ∪ ⟦String⟧
+           ∪ ⟦List<Json>⟧ ∪ ⟦Map<String,Json>⟧ ∪ {null}
+```
+
+From these definitions, `Int <: Json`, `Bool <: Json`, `String <: Json` follow by `⊆`. This is not a special coercion rule — it's a direct consequence of Axiom 2.
+
+The base type lattice (repeated from above, now grounded):
+
+```
+           Json (⊤ — universal structured value)
+          / | \  \
+       Int Bool String  Bytes  Secret
+                  |
+                 Url (refined String)
+
+           Unit (⊥ — empty set)
+```
+
+Each arrow upward is a `⊆` relationship. Downcasts (e.g., `Json → Int`) are never implicit because `⟦Json⟧ ⊄ ⟦Int⟧`.
+
+##### Level 1 — Refinement Types (Subset Comprehension)
+
+A refinement type narrows a base type by predicate — this is classical subset comprehension:
+
+```
+⟦T @pred(P)⟧ = {x ∈ ⟦T⟧ | P(x)}
+```
+
+Since `{x ∈ S | P(x)} ⊆ S` always holds:
+
+- **Refinements are always subtypes:** `T @pred(P) <: T`
+
+Conjunction of predicates is set intersection:
+
+```
+⟦T @pred(P) @pred(Q)⟧ = {x ∈ ⟦T⟧ | P(x) ∧ Q(x)}
+                       = ⟦T @pred(P)⟧ ∩ ⟦T @pred(Q)⟧
+```
+
+Predicate entailment is logical implication, which is subset inclusion:
+
+```
+If ∀x. P(x) → Q(x), then ⟦T @pred(P)⟧ ⊆ ⟦T @pred(Q)⟧
+```
+
+Concrete examples (every existing refinement in `std/types.dag`):
+
+```
+⟦Port⟧        = {n ∈ ℤ | 1 ≤ n ≤ 65535}                        ⊂ ⟦Int⟧
+⟦CommitSha⟧   = {s ∈ Σ* | s matches ^[a-f0-9]{40}$}            ⊂ ⟦String⟧
+⟦Url⟧         = {s ∈ Σ* | s ≠ "" ∧ s matches ^https?://}       ⊂ ⟦NonEmptyStr⟧ ⊂ ⟦String⟧
+⟦Email⟧       = {s ∈ Σ* | s matches ^[^@]+@[^@]+\.[^@]+$}      ⊂ ⟦String⟧
+⟦HttpStatus⟧  = {n ∈ ℤ | 100 ≤ n ≤ 599}                        ⊂ ⟦Int⟧
+⟦RetryCount⟧  = {n ∈ ℤ | 1 ≤ n ≤ 5}                            ⊂ ⟦HttpStatus⟧ ⊂ ⟦Int⟧
+⟦SecretValue⟧ = {s ∈ Σ* | s ≠ ""}                               ⊂ ⟦Secret⟧
+```
+
+Note that refinement chains mirror the type DAG validation chains:
+
+```
+String → [NonEmpty] → [URL pattern] → Url
+⟦Url⟧ ⊂ ⟦NonEmptyStr⟧ ⊂ ⟦String⟧ ⊂ ⟦Json⟧
+```
+
+Each `Validate` node in the type DAG corresponds to a predicate that narrows the set. The compiler walks this chain to determine coercion safety.
+
+**For test generation:** The complement of a refinement set provides invalid test cases. `⟦Port⟧ᶜ ∩ ⟦Int⟧ = {n ∈ ℤ | n < 1 ∨ n > 65535}` gives boundary values `{0, -1, 65536, MAX_INT}`. The compiler generates both valid inhabitants (from `⟦Port⟧`) and invalid boundary values (from `⟦Port⟧ᶜ`) automatically.
+
+##### Level 2 — Branded Types (Nominal Disjointness)
+
+Brands add nominal identity atop structural refinement. A brand creates a type that is a subtype of its base but disjoint from all other brands on the same base:
+
+```
+⟦T @brand("N")⟧ ⊂ ⟦T⟧                           always (subtype of base)
+⟦T @brand("N")⟧ ∩ ⟦T @brand("M")⟧ = ∅   when N ≠ M  (disjoint brands)
+```
+
+Concrete example:
+
+```
+⟦UserId⟧ = ⟦String @brand("UserId")⟧     ⊂ ⟦String⟧
+⟦TeamId⟧ = ⟦String @brand("TeamId")⟧     ⊂ ⟦String⟧
+
+UserId <: String     ✓  (can use UserId where String expected)
+TeamId <: String     ✓  (can use TeamId where String expected)
+UserId <: TeamId     ✗  (disjoint — compile error)
+TeamId <: UserId     ✗  (disjoint — compile error)
+```
+
+Brands compose with refinements:
+
+```
+⟦Milliseconds⟧ = ⟦Int @brand("Milliseconds") @range(min: 0)⟧
+                = {n ∈ ℤ | n ≥ 0} ∩ {branded "Milliseconds"}
+
+Milliseconds <: Int   ✓
+Seconds <: Int        ✓
+Milliseconds <: Seconds  ✗  (different brands, even though both are non-negative ints)
+```
+
+**Implementation:** Brands are phantom tags — zero runtime cost. The compiler tracks brand identity during type checking; at code generation, brands are erased. This is the "newtype" pattern from Haskell/Rust, grounded in disjoint subset comprehension.
+
+##### Level 3 — Records (Labeled Products)
+
+Records are labeled Cartesian products:
+
+```
+⟦{a: A, b: B}⟧ = ⟦A⟧ × ⟦B⟧     (with labels a, b)
+```
+
+Structural subtyping combines two rules — **width** (extra fields) and **depth** (narrower field types):
+
+```
+Width:   {a: A, b: B, c: C} <: {a: A, b: B}
+         Because ⟦A⟧ × ⟦B⟧ × ⟦C⟧ projects onto ⟦A⟧ × ⟦B⟧ (surjective projection)
+
+Depth:   If A' <: A and B' <: B then {a: A', b: B'} <: {a: A, b: B}
+         Because ⟦A'⟧ × ⟦B'⟧ ⊆ ⟦A⟧ × ⟦B⟧ (Cartesian product is monotone)
+
+Combined: {a: Port, b: Url, c: Bool} <: {a: Int, b: String}
+          Both wider (extra field c) and deeper (Port <: Int, Url <: String)
+```
+
+This gives the compiler structural subtyping "for free" — it just checks each field's type using Axiom 2. No special record-subtyping rules are needed.
+
+##### Level 4 — Sum Types (Disjoint Union / Coproduct)
+
+Simple enums are finite sets:
+
+```
+⟦Dev | Ci | Test | Prod⟧ = {Dev, Ci, Test, Prod}
+```
+
+Sum types with payloads are tagged disjoint unions:
+
+```
+⟦Ok{value: T} | Err{error: E}⟧ = ({Ok} × ⟦T⟧) ⊔ ({Err} × ⟦E⟧)
+```
+
+The tag ensures disjointness even when payload types overlap (`Ok{value: String} | Err{error: String}` — the tag distinguishes them).
+
+Subtyping rules:
+
+```
+Injection:    A <: (A | B)                                  always (a variant is a subtype of a wider sum)
+Covariance:   If A' <: A and B' <: B then (A'|B') <: (A|B) (covariant in each variant)
+Width:        (A | B) <: (A | B | C)                        always (fewer variants = more specific)
+```
+
+**Exhaustiveness:** Pattern matching on sums must cover `⟦A⟧ ⊔ ⟦B⟧` completely. The compiler rejects non-exhaustive matches at compile time — this is decidable because sum types are finite unions of named variants.
+
+Example from `rich_types.dag`:
+
+```
+⟦DeployEvent⟧ = ({BuildStarted} × ⟦CommitSha⟧ × ⟦String⟧)
+              ⊔ ({BuildSucceeded} × ⟦CommitSha⟧ × ⟦Int⟧ × ⟦List<String>⟧)
+              ⊔ ({BuildFailed} × ⟦CommitSha⟧ × ⟦String⟧ × ⟦String⟧)
+              ⊔ ({Deployed} × ⟦CommitSha⟧ × ⟦String⟧ × ⟦Url⟧)
+              ⊔ ({RolledBack} × ⟦CommitSha⟧ × ⟦String⟧ × ⟦CommitSha⟧)
+```
+
+##### Level 5 — Optional Types (Lifted Sets)
+
+Optionals adjoin a distinguished "absent" value:
+
+```
+⟦T?⟧ = ⟦T⟧ ∪ {none}     where none ∉ ⟦T⟧ for any T
+```
+
+Since `⟦T⟧ ⊆ ⟦T⟧ ∪ {none}`:
+
+```
+T <: T?        always (every value is also an optional value)
+¬(T? <: T)     in general (none ∉ ⟦T⟧)
+```
+
+This connects directly to the cardinality algebra:
+
+```
+T  has cardinality [1,1]     (exactly one value)
+T? has cardinality [0,1]     (zero or one value)
+[1,1] ⊆ [0,1]               (L1 check passes: safe upcast)
+```
+
+Optional is actually syntactic sugar for a sum type: `T? ≅ Some{value: T} | None`. The compiler may represent it either way internally; the set-theoretic meaning is identical.
+
+##### Level 6 — Collections (Parameterized Containers)
+
+Collections are parameterized set constructions:
+
+```
+⟦List<T>⟧   = ⋃_{n∈ℕ} ⟦T⟧ⁿ             finite sequences (ordered, duplicates allowed)
+⟦Set<T>⟧    = 𝒫_fin(⟦T⟧)                finite power set (unordered, unique)
+⟦Map<K,V>⟧  = K ⇀_fin V                 finite partial functions (unique keys)
+```
+
+**Covariance** (for immutable/read-only collections):
+
+```
+If A <: B then List<A> <: List<B>
+If A <: B then Set<A> <: Set<B>
+If K' <: K and V' <: V then Map<K',V'> <: Map<K,V>
+```
+
+This follows from the definitions: if `⟦A⟧ ⊆ ⟦B⟧` then `⟦A⟧ⁿ ⊆ ⟦B⟧ⁿ` for every n, so `⋃ₙ ⟦A⟧ⁿ ⊆ ⋃ₙ ⟦B⟧ⁿ`.
+
+**Cardinality bridge:**
+
+```
+List<T>              → cardinality [0,∞)
+List<T> @non_empty   → cardinality [1,∞)    (NonEmpty<List<T>>)
+Set<T>               → cardinality [0,∞)    with uniqueness
+T?                   → cardinality [0,1]
+```
+
+The cardinality algebra unifies container reasoning: `[1,∞) ⊆ [0,∞)` so `NonEmpty<List<T>> <: List<T>`.
+
+##### Level 7 — Generic Types (Parametric Polymorphism)
+
+A generic type declaration defines a **type constructor** — a function from types to types:
+
+```
+type F<T> = ...    defines    F : Type → Type
+type G<T, E> = ... defines    G : Type × Type → Type
+```
+
+Application instantiates the constructor:
+
+```
+⟦Result<Int, String>⟧ = ({Ok} × ⟦Int⟧) ⊔ ({Err} × ⟦String⟧)
+⟦Page<Url>⟧ = ⟦List<Url>⟧ × ⟦String?⟧ × ⟦Int?⟧
+```
+
+**Parametricity guarantee:** A generic function `fn f<T>(x: T) -> T` cannot inspect `T`'s structure. It must work uniformly for all `T`. This is the "free theorem" property — the function's behavior is fully determined by its type signature, not by runtime type inspection. (In set-theoretic terms: `f` is a natural transformation.)
+
+Generic subtyping is covariant for types (consistent with Axiom 2):
+
+```
+If A <: B then Result<A, E> <: Result<B, E>   (covariant in success type)
+If E' <: E then Result<T, E'> <: Result<T, E>  (covariant in error type)
+```
+
+##### Level 8 — Type Bounds (Constrained Quantification)
+
+An interface defines a **set of types** that support certain operations:
+
+```
+interface Serializable {
+  fn to_json(self) -> Json
+  fn from_json(json: Json) -> Result<Self, String>
+}
+
+⟦Serializable⟧ = {T ∈ Type | T supports to_json : T → Json
+                                and from_json : Json → Result<T, String>}
+```
+
+Bounded quantification restricts type variables to these sets:
+
+```
+fn serialize<T: Serializable>(value: T) -> Json
+
+This is: ∀T ∈ ⟦Serializable⟧. T → Json
+```
+
+Multiple bounds are intersection:
+
+```
+<T: Serializable + Comparable>  means  T ∈ ⟦Serializable⟧ ∩ ⟦Comparable⟧
+```
+
+**Subtyping on bounds:** If interface `A` extends interface `B` (i.e., `A` requires everything `B` requires plus more), then `⟦A⟧ ⊆ ⟦B⟧` — the set of types satisfying `A` is a subset of types satisfying `B`. This gives us:
+
+```
+If A extends B, then <T: A> is more restrictive than <T: B>
+Any T: A also satisfies T: B
+```
+
+**Auto-derivation:** Records with all `Serializable` fields automatically satisfy `Serializable`. In set terms: if `⟦A⟧ ∈ ⟦Serializable⟧` and `⟦B⟧ ∈ ⟦Serializable⟧`, then `⟦{a: A, b: B}⟧ ∈ ⟦Serializable⟧` (products of serializable types are serializable). This is a structural rule the compiler applies.
+
+##### Level 9 — Cross-Field Invariants (Dependent Refinement)
+
+`@invariant` constraints refine product types by restricting to a subset of the full Cartesian product:
+
+```
+type DateRange {
+  start: String @pattern("^\\d{4}-\\d{2}-\\d{2}$")
+  end: String @pattern("^\\d{4}-\\d{2}-\\d{2}$")
+  @invariant: start <= end
+}
+
+⟦DateRange⟧ = {(s, e) ∈ ⟦Date⟧ × ⟦Date⟧ | s ≤ e}
+            ⊂ ⟦{start: Date, end: Date}⟧      (strict subset of the product)
+```
+
+This is **dependent refinement** — the predicate references multiple fields. It's strictly more expressive than per-field refinement but still decidable (the invariant is a boolean expression over field values, not arbitrary computation).
+
+```
+DateRange <: {start: String, end: String}    ✓  (by ⊆, dropping the invariant)
+{start: String, end: String} <: DateRange    ✗  (not all pairs satisfy start ≤ end)
+```
+
+**Scope limitation:** Invariants are restricted to decidable predicates (comparisons, range checks, field equality). This preserves P9 (totality) — the compiler can always evaluate invariant satisfaction. We do NOT support arbitrary computation in invariants (no Turing-complete type-level programs).
+
+##### The Coercion Theorem
+
+Given Levels 0–9, the existing three-level coercion check is **sound** — it correctly computes `⟦A⟧ ⊆ ⟦B⟧`:
+
+```
+can_safely_coerce(A, B) =
+    Card(A) ⊆ Card(B)           -- L1: cardinality interval containment
+  ∧ Base(A) ≤ Base(B)           -- L2: base lattice order
+  ∧ Preds(A) ⊇ Preds(B)        -- L3: predicate strength (more preds = smaller set)
+```
+
+**Theorem:** `can_safely_coerce(A, B)` implies `⟦A⟧ ⊆ ⟦B⟧`.
+
+**Proof sketch:**
+
+1. L2 establishes that A's base set is contained in B's base set (lattice order = set inclusion on carriers).
+2. L3 establishes that A's predicate-filtered subset is contained in B's predicate-filtered subset (more predicates = smaller set, so dropping predicates only widens).
+3. L1 establishes that A's collection size range is contained in B's (narrower interval = fewer valid sizes ⊆ wider interval = more valid sizes).
+4. All three widening in the same direction means the target set contains the source set.
+
+**Contrapositive:** If `⟦A⟧ ⊄ ⟦B⟧`, at least one level fails → compile error with a diagnostic identifying which level narrowed (e.g., "output might be empty (min=0) but input requires at least 1 element" for L1 failure).
+
+**Coercion uniqueness:** Between any two types, there is at most one safe coercion path (because the lattice is a partial order, not a preorder). This means the compiler never faces ambiguous coercion choices.
+
+##### Algebraic Laws
+
+The type lattice satisfies the following laws, verified by property tests (`proptest`):
+
+```
+Reflexivity:      T <: T
+Transitivity:     A <: B ∧ B <: C  →  A <: C
+Antisymmetry:     A <: B ∧ B <: A  →  A ≡ B  (structural equivalence)
+Join (LUB):       A ∨ B = smallest C where A <: C and B <: C
+Meet (GLB):       A ∧ B = largest C where C <: A and C <: B
+```
+
+The cardinality sub-lattice additionally forms a **semiring**:
+
+```
+Additive identity:      [0,0] is the additive identity (∨)
+Multiplicative identity: [1,1] is the multiplicative identity (×)
+Distributivity:          a × (b ∨ c) = (a × b) ∨ (a × c)
+Commutativity:           a ∨ b = b ∨ a,  a ∧ b = b ∧ a
+Associativity:           (a ∨ b) ∨ c = a ∨ (b ∨ c)
+Idempotence:             a ∨ a = a,  a ∧ a = a
+Absorption:              a ∨ (a ∧ b) = a,  a ∧ (a ∨ b) = a
+```
+
+The predicate sub-lattice forms a **Heyting algebra** (intuitionistic logic):
+
+```
+Conjunction:    P ∧ Q  (both predicates must hold — set intersection)
+Disjunction:    P ∨ Q  (either predicate holds — set union)
+Implication:    P → Q  (entailment — if P holds, Q holds)
+Top:            True   (no constraint — full base set)
+Bottom:         False  (unsatisfiable — empty set)
+```
+
+Note: predicate negation is **not** classical (`¬P` does not always yield `P ∨ ¬P = True`) because some predicates are underdetermined (e.g., `NonEmpty` and `Matches(url)` are unrelated — neither entails nor contradicts the other). This is why it's Heyting, not Boolean. The compiler handles unrelated predicates by requiring explicit validation rather than inferring complement sets.
+
+##### What This Guarantees
+
+1. **Safe coercion is decidable.** Finite lattice, no cycles, no type-level computation. The compiler always terminates.
+2. **Coercion is unique.** At most one safe path between any two types (partial order, not preorder).
+3. **Coercion is monotone.** Inserting a coercion node widens the type (moves up the lattice) but preserves the value set.
+4. **Test generation is complete.** Refinement predicates carve out value sets whose boundaries are enumerable. The complement set provides invalid test cases. Products and sums decompose structurally.
+5. **Type resolution terminates.** Acyclic type DAG + no recursive types without explicit indirection (P9).
+6. **Generics preserve the model.** Type constructors are monotone functions on the lattice. Bounded generics restrict the domain but don't change the algebraic structure.
+7. **Brands extend cleanly.** Nominal disjointness adds partition structure on top of the subset lattice. The lattice laws still hold within each brand partition.
 
 ### 4.2 Pure Functions (Typed Functor Protocol)
 
@@ -1358,7 +1867,87 @@ Resource capability handles (`FilesystemHandle`, `NetworkHandle`, `ToolHandle`, 
 
 **gunbc implementation status:** Partially mitigated via a capability marker pattern (`CAPABILITY_MARKER` in `core/ir/src/resource/mod.rs`) and per-process secrets (`PROCESS_SECRET` in `handle.rs`). The DSL compiler should enforce this structurally — handles are never in the user-visible type namespace, so forgery is impossible at the language level.
 
-### 7.6 What This Replaces
+### 7.6 Infrastructure as Resources
+
+Cloud infrastructure (GCS buckets, Cloud Run services, Secret Manager secrets, service accounts, WIF providers) uses the **same resource model** as system resources. The `acquire` block IS the ensure/upsert pattern (check -> create -> resolve). Business logic `uses` infra resources the same way it uses `Filesystem` or `Network`.
+
+```
+resource GcsBucket {
+  kind: Capability
+  mode: ReadWrite
+  key: name                          // conflict detection per bucket name
+
+  config {
+    name: String
+    project: String
+    location: String = "us-central1"
+  }
+
+  acquire {
+    check = gcp.Storage.GetBucket(name: config.name)
+    create [when !check.exists] = gcp.Storage.CreateBucket(
+      project: config.project,
+      name: config.name,
+      location: config.location,
+      labels: { "managed-by": "gunbc", "spec-hash": hash(config) }
+    )
+    resolve = gcp.Storage.GetBucket(name: config.name) [after create]
+
+    @mock_response(check, status: 404)
+    @mock_response(create, status: 200, body: { "name": config.name })
+  }
+
+  release {}
+
+  capability read {
+    input { key: String }
+    output { content: Bytes, found: Bool }
+    @rest(GET, "https://storage.googleapis.com/.../o/{key}?alt=media")
+    @idempotent @readonly
+  }
+
+  capability write {
+    input { key: String, content: Bytes }
+    output { ok: Bool }
+    @rest(POST, "https://storage.googleapis.com/.../o?name={key}")
+  }
+}
+
+// Business logic -- identical syntax to Filesystem
+func store_artifact(key: String, content: Bytes) -> { ok: Bool }
+  uses bucket: GcsBucket(name: "my-bucket", project: "my-project")
+{
+  result = bucket.write(key: key, content: content)
+  return { ok: result.ok }
+}
+```
+
+**Why this is the right model:**
+
+1. **No new language constructs.** Infra provisioning is resource acquisition. The same compiler passes (TypeCheck, Lower, Validate, Derive) that handle Filesystem handles also handle GcsBucket handles.
+
+2. **Test generation for free.** The `@mock_response` annotations in `acquire` blocks feed the testgen probe-observer model. The compiler generates hermetic tests (DryRun with mocked transport), scenario tests (bucket exists / missing / creation fails), resource hygiene tests (lifecycle invariants), and live integration tests (real GCP APIs, gated by cost).
+
+3. **Drift detection.** The `labels: { "spec-hash": hash(config) }` pattern enables reconciliation: if the spec changes, the acquire block detects the hash mismatch and updates. This matches `gcp-service-modeling.md`'s fingerprinting design.
+
+4. **Composable bootstrap.** A full infra bootstrap is just a func that `uses` all the infra resources. The compiler orders acquisitions by dependency analysis:
+
+```
+func infra_bootstrap() -> { ready: Bool }
+  uses wif: WifProvider(...)
+  uses sa: GcpServiceAccount(...)   // after WIF (needs pool)
+  uses secret: ManagedSecret(...)   // after SA (needs IAM binding)
+  uses bucket: GcsBucket(...)       // independent
+{
+  return { ready: true }
+}
+```
+
+5. **Interface binding.** Abstract service interfaces (e.g., `Storage`) can be backed by infra resources (e.g., `GcsBucket`). The `service gcs.BucketStorage : Storage { backed_by: GcsBucket }` pattern composes interface contracts with infra provisioning.
+
+See `dsl/infra/gcp.dag` for the full resource library and `dsl/examples/integration_tests.dag` for the test generation model.
+
+### 7.7 What This Replaces
 
 ```rust
 // gunbc today: manual environment nodes + resource wiring

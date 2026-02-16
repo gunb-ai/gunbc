@@ -25,13 +25,13 @@ service git.Core {
 
   operation LsFiles {
     input {}
-    output { files: List<String> }
+    output { files: List<FilePath> }
     @shell(["git", "ls-files"])
     @hermetic @readonly
   }
 
   operation Diff {
-    input { base: String, head: String = "HEAD" }
+    input { base: GitRef, head: GitRef = "HEAD" }
     output { diff: String }
     @shell(["git", "diff", "{base}...{head}"])
     @hermetic @readonly
@@ -39,13 +39,13 @@ service git.Core {
 
   operation RevList {
     input { since: String }
-    output { commits: List<String> }
+    output { commits: List<CommitSha> }
     @shell(["git", "rev-list", "--since={since}", "HEAD"])
     @hermetic @readonly
   }
 
   operation Show {
-    input { ref: String, path: String }
+    input { ref: GitRef, path: FilePath }
     output { content: String }
     @shell(["git", "show", "{ref}:{path}"])
     @hermetic @readonly

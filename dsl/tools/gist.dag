@@ -28,7 +28,7 @@ import shared.gist_modes { branch_context, resolve_recent_base, share_content }
 
 // --- Pure functions ---------------------------------------------------
 
-fn gist_filename(branch: String, base_ref: String?, timestamp: String) -> String {
+fn gist_filename(branch: String, base_ref: CommitSha?, timestamp: String) -> String {
   let suffix = match base_ref {
     Some(ref) => "-vs-{ref}"
     None      => ""
@@ -58,7 +58,7 @@ fn render_recent(diffs: List<String>) -> String {
 
 // --- Upload (shared by all modes) ------------------------------------
 
-func gist_upload(markdown: String, branch: String, base_ref: String?) -> { url: String }
+func gist_upload(markdown: String, branch: String, base_ref: CommitSha?) -> { url: Url }
   uses net: Network
   uses clock: Clock
   uses auth: AuthContext
@@ -90,7 +90,7 @@ func gist_upload(markdown: String, branch: String, base_ref: String?) -> { url: 
 
 // --- Modes (each produces markdown, then shares via gist) ------------
 
-func gist_snapshot(base_ref: String?) -> { url: String }
+func gist_snapshot(base_ref: CommitSha?) -> { url: Url }
   uses fs: Filesystem(mode: Read)
 {
   ctx = branch_context()
@@ -111,7 +111,7 @@ func gist_snapshot(base_ref: String?) -> { url: String }
   return { url: result.url }
 }
 
-func gist_diff(base_ref: String) -> { url: String } {
+func gist_diff(base_ref: GitRef) -> { url: Url } {
   ctx = branch_context()
   diff = git.Core.Diff(base: base_ref)
   markdown = render_diff(diff: diff.diff)
@@ -124,7 +124,7 @@ func gist_diff(base_ref: String) -> { url: String } {
   return { url: result.url }
 }
 
-func gist_recent(since: String = "3.days.ago") -> { url: String } {
+func gist_recent(since: String = "3.days.ago") -> { url: Url } {
   recent = resolve_recent_base(since: since)
   commits = git.Core.RevList(since: since)
   diffs = for commit in commits.commits {

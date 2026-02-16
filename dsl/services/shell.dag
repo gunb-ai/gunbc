@@ -17,7 +17,7 @@ service gcloud.Auth {
   }
 
   operation ReadADC {
-    input { path: String = "~/.config/gcloud/application_default_credentials.json" }
+    input { path: FilePath = "~/.config/gcloud/application_default_credentials.json" }
     output {
       client_id: String
       client_secret: Secret
@@ -49,8 +49,8 @@ service oauth2.Google {
 
 service shell.Find {
   operation ListDirs {
-    input { path: String, max_depth: Int = 1, min_depth: Int = 1 }
-    output { dirs: List<String> }
+    input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
+    output { dirs: List<FilePath> }
     @shell(["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"])
     @hermetic @readonly
   }
@@ -79,7 +79,7 @@ service shell.Codegen {
 
 service rustup.Component {
   operation Add {
-    input { component: String }
+    input { component: NonEmptyStr }
     output { success: Bool }
     @shell(["rustup", "component", "add", "{component}"])
     @hermetic
@@ -88,8 +88,8 @@ service rustup.Component {
 
 service shell.Which {
   operation Check {
-    input { command: String }
-    output { exists: Bool, path: String? }
+    input { command: NonEmptyStr }
+    output { exists: Bool, path: FilePath? }
     @shell(["which", "{command}"])
     @hermetic @readonly
   }

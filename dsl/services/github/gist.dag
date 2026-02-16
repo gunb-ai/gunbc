@@ -15,7 +15,7 @@ service github.Gist {
       public: Bool = false
     }
     output {
-      url: String @json("html_url")
+      url: Url @json("html_url")
       id: GistId
     }
     @rest(POST, "/gists")

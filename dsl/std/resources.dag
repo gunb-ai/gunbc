@@ -20,13 +20,13 @@ resource Filesystem {
   release {}
 
   capability read {
-    input { path: String }
+    input { path: FilePath }
     output { content: String }
     @file(READ, "{path}")
   }
 
   capability write {
-    input { path: String, content: String }
+    input { path: FilePath, content: String }
     output { written: Bool }
     @file(WRITE, "{path}")
   }

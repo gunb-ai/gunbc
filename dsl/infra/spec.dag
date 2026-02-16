@@ -1,0 +1,134 @@
+// infra/spec.dag -- Infrastructure spec types and environment configs.
+//
+// Typed, compile-time descriptions of desired infrastructure state.
+// Same type system as business logic. Ported from gcp-service-modeling.md.
+//
+// Specs are pure data -- no I/O, no side effects. The ensure/acquire
+// logic lives in the resource declarations (gcp.dag).
+
+module infra.spec
+
+// --- Environments --------------------------------------------------------
+
+type Environment = Dev | Ci | Test | Prod
+
+type EnvironmentConfig {
+  project: String
+  project_number: String
+  region: String = "us-central1"
+  zone: String = "us-central1-a"
+  secrets_project: String
+  secrets_prefix: String
+}
+
+// --- Resource specs ------------------------------------------------------
+
+type ServiceAccountSpec {
+  name: String
+  display_name: String
+  description: String
+  project: String?
+  roles: List<String>
+  self_roles: List<String>
+  wif_bindings: List<WifBindingSpec>
+}
+
+type WifSpec {
+  pool_id: String
+  provider_id: String
+  issuer_uri: Url
+  attribute_mapping: Map<String, String>
+  attribute_condition: String?
+}
+
+type WifBindingSpec {
+  pool_id: String
+  provider_id: String
+  attribute: String
+}
+
+type SecretSpec {
+  env_name: String
+  secret_id: String
+  requirement: SecretRequirement
+  status: SecretStatus
+  rotation: RotationHandler
+  max_age_days: Int?
+  scopes: List<String>
+  description: String
+  accessor_sas: List<String>
+}
+
+type SecretRequirement = Required | Optional
+type SecretStatus = Active | Deleted
+type RotationHandler = Manual | GitHubPat | ServiceAccountKey | NoRotation
+
+type BucketSpec {
+  name: String
+  location: String = "us-central1"
+  storage_class: String = "STANDARD"
+  versioning: Bool = false
+}
+
+type CloudRunSpec {
+  name: String
+  region: String = "us-central1"
+  image: String
+  memory: String = "512Mi"
+  cpu: Int = 1
+  min_instances: Int = 0
+  max_instances: Int = 10
+  env: Map<String, String>?
+  service_account: String?
+}
+
+// --- Aggregate spec ------------------------------------------------------
+
+type InfraSpec {
+  environment: Environment
+  config: EnvironmentConfig
+  service_accounts: List<ServiceAccountSpec>
+  secrets: List<SecretSpec>
+  wif: WifSpec
+  buckets: List<BucketSpec>
+  cloud_run: List<CloudRunSpec>
+}
+
+// --- Reconciliation ------------------------------------------------------
+
+type ReconcileAction
+  = Created
+  | Updated { changed_fields: List<String> }
+  | Unchanged
+  | Deleted
+  | Skipped { reason: String }
+
+type ReconcileResult {
+  resource_kind: String
+  resource_name: String
+  action: ReconcileAction
+}
+
+// --- Fingerprinting (drift detection) ------------------------------------
+
+type ResourceFingerprint {
+  managed_by: String = "gunbc"
+  spec_hash: String
+}
+
+// --- Environment configs (compile-time constants) ------------------------
+
+fn dev_config() -> EnvironmentConfig {
+  {
+    project: "gunbai-auto",
+    project_number: "314501921854",
+    region: "us-central1",
+    zone: "us-central1-a",
+    secrets_project: "gunbai-secrets",
+    secrets_prefix: "dev-"
+  }
+}
+
+fn ci_config() -> EnvironmentConfig {
+  dev_config() with { secrets_prefix: "ci-" }
+}

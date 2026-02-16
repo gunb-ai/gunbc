@@ -10,7 +10,7 @@ service gcp.STS {
   operation Exchange {
     input {
       subject_token: Secret
-      audience: String
+      audience: NonEmptyStr
     }
     output {
       access_token: Secret @json("access_token")
@@ -31,7 +31,7 @@ service github.OIDC {
   @auth(BearerToken)   // uses ACTIONS_ID_TOKEN_REQUEST_TOKEN
 
   operation GetToken {
-    input { audience: String }
+    input { audience: NonEmptyStr }
     output { subject_token: Secret @json("value") }
     @rest(GET, "?audience={audience}")
     @readonly
@@ -42,7 +42,7 @@ service gcp.Metadata {
   @endpoint("http://metadata.google.internal")
 
   operation GetIdentityToken {
-    input { audience: String }
+    input { audience: NonEmptyStr }
     output { subject_token: Secret }
     @rest(GET, "/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}&format=full")
     @readonly

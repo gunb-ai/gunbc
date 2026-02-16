@@ -12,8 +12,8 @@ service gcp.IAM {
   operation GenerateAccessToken {
     input {
       access_token: Secret
-      target_sa: String
-      lifetime_seconds: Int = 3600
+      target_sa: ServiceAccountEmail
+      lifetime_seconds: Int @range(min: 1, max: 3600) = 3600
     }
     output {
       access_token: Secret @json("accessToken")
@@ -30,7 +30,7 @@ service gcp.ResourceManager {
   @auth(BearerToken)
 
   operation GetIamPolicy {
-    input { project: String }
+    input { project: ProjectId }
     output { bindings: Json, etag: String }
     @rest(POST, "/v1/projects/{project}:getIamPolicy")
     @readonly
@@ -38,9 +38,9 @@ service gcp.ResourceManager {
 
   operation SetIamPolicy {
     input {
-      project: String
+      project: ProjectId
       bindings: Json
-      etag: String
+      etag: NonEmptyStr
     }
     output { ok: Bool }
     @rest(POST, "/v1/projects/{project}:setIamPolicy")

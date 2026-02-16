@@ -1,0 +1,331 @@
+// infra/gcp.dag -- GCP infrastructure as first-class resources.
+//
+// Each cloud resource type is a `resource` declaration where the
+// `acquire` block IS the ensure/upsert pattern. Business logic just
+// `uses` these resources like Filesystem or Network.
+//
+// The compiler:
+//   1. Inserts acquire nodes (ensure/upsert DAG) at DAG boundaries
+//   2. Threads resource handles to consuming nodes
+//   3. Detects conflicts (e.g., two funcs writing same bucket)
+//   4. Generates integration tests for the acquire + business logic chain
+//   5. Manages release/cleanup lifecycle
+//
+// This unifies infra provisioning with the existing resource model.
+// A GcsBucket is acquired the same way a Filesystem is acquired --
+// the only difference is that acquire calls cloud APIs instead of
+// local syscalls.
+
+module infra.gcp
+
+import infra.spec { BucketSpec, CloudRunSpec, SecretSpec, ServiceAccountSpec, WifSpec, EnvironmentConfig, ReconcileAction, ResourceFingerprint }
+import services.gcp.secret_manager
+import services.gcp.iam
+import services.gcp.sts
+
+
+// =========================================================================
+// GCS Bucket
+// =========================================================================
+
+resource GcsBucket {
+  kind: Capability
+  mode: ReadWrite
+  key: name                      // conflict detection key
+
+  config {
+    name: String
+    location: String = "us-central1"
+    storage_class: String = "STANDARD"
+    project: String
+  }
+
+  acquire {
+    // This IS the ensure pattern. The compiler expands it to:
+    //   check_bucket -> [guard: !exists] -> create_bucket -> resolve_bucket
+    check = gcp.Storage.GetBucket(name: config.name)
+    create [when !check.exists] = gcp.Storage.CreateBucket(
+      project: config.project,
+      name: config.name,
+      location: config.location,
+      storage_class: config.storage_class,
+      labels: ResourceFingerprint { spec_hash: hash(config) }.to_labels()
+    )
+    resolve = gcp.Storage.GetBucket(name: config.name) [after create]
+
+    @mock_response(check, status: 404, body: { "error": { "code": 404 } })
+    @mock_response(create, status: 200, body: { "name": config.name })
+    @mock_response(resolve, status: 200, body: { "name": config.name, "selfLink": "https://storage.googleapis.com/storage/v1/b/{config.name}" })
+  }
+
+  release {
+    // Buckets are persistent -- no cleanup in normal operation.
+    // For test environments, an explicit teardown func can delete.
+  }
+
+  capability read {
+    input { key: String }
+    output { content: Bytes, found: Bool }
+    @rest(GET, "https://storage.googleapis.com/storage/v1/b/{config.name}/o/{key}?alt=media")
+    @idempotent @readonly
+  }
+
+  capability write {
+    input { key: String, content: Bytes }
+    output { ok: Bool }
+    @rest(POST, "https://storage.googleapis.com/upload/storage/v1/b/{config.name}/o?name={key}")
+  }
+
+  capability delete {
+    input { key: String }
+    output { ok: Bool }
+    @rest(DELETE, "https://storage.googleapis.com/storage/v1/b/{config.name}/o/{key}")
+  }
+
+  capability list {
+    input { prefix: String }
+    output { keys: List<String> }
+    @rest(GET, "https://storage.googleapis.com/storage/v1/b/{config.name}/o?prefix={prefix}")
+    @idempotent @readonly
+  }
+}
+
+
+// =========================================================================
+// Cloud Run Service
+// =========================================================================
+
+resource CloudRunService {
+  kind: Capability
+  mode: ReadWrite
+  key: name
+
+  config {
+    name: String
+    project: String
+    region: String = "us-central1"
+    image: String
+    memory: String = "512Mi"
+    cpu: Int = 1
+    min_instances: Int = 0
+    max_instances: Int = 10
+    env: Map<String, String>?
+    service_account: String?
+  }
+
+  acquire {
+    check = gcp.CloudRun.GetService(
+      project: config.project,
+      region: config.region,
+      name: config.name
+    )
+
+    create [when !check.exists] = gcp.CloudRun.CreateService(
+      project: config.project,
+      region: config.region,
+      name: config.name,
+      image: config.image,
+      memory: config.memory,
+      cpu: config.cpu,
+      min_instances: config.min_instances,
+      max_instances: config.max_instances,
+      env: config.env,
+      service_account: config.service_account,
+      labels: ResourceFingerprint { spec_hash: hash(config) }.to_labels()
+    )
+
+    // Update if spec changed (drift reconciliation)
+    update [when check.exists && check.labels.spec_hash != hash(config)] = gcp.CloudRun.UpdateService(
+      project: config.project,
+      region: config.region,
+      name: config.name,
+      image: config.image,
+      memory: config.memory,
+      env: config.env,
+      labels: ResourceFingerprint { spec_hash: hash(config) }.to_labels()
+    )
+
+    resolve = gcp.CloudRun.GetService(
+      project: config.project,
+      region: config.region,
+      name: config.name
+    ) [after create, after update]
+
+    @mock_response(check, status: 404, body: { "error": { "code": 404 } })
+    @mock_response(create, status: 200, body: { "name": config.name, "uri": "https://{config.name}-xyz.a.run.app" })
+  }
+
+  release {}
+
+  capability invoke {
+    input { path: String, body: Json }
+    output { response: Json, status: Int }
+    @rest(POST, "{resolve.uri}{path}")
+    @auth(BearerToken)
+  }
+
+  capability get_url {
+    input {}
+    output { url: Url }
+    // Returns the service URL from the resolve step
+  }
+}
+
+
+// =========================================================================
+// Managed Secret
+// =========================================================================
+
+resource ManagedSecret {
+  kind: Capability
+  mode: Read
+  key: secret_id
+  expires: true
+
+  config {
+    project: String
+    secret_id: String
+    prefix: String = ""
+  }
+
+  acquire {
+    full_name = "{config.prefix}{config.secret_id}"
+
+    check = gcp.SecretManager.GetSecret(
+      project: config.project,
+      secret: full_name
+    )
+
+    create [when !check.exists] = gcp.SecretManager.CreateSecret(
+      project: config.project,
+      secret_id: full_name
+    )
+
+    resolve = gcp.SecretManager.AccessVersion(
+      project: config.project,
+      secret: full_name
+    ) [after create]
+
+    @mock_response(check, status: 200, body: { "name": "projects/{config.project}/secrets/{full_name}" })
+    @mock_response(resolve, status: 200, body: { "payload": { "data": "bW9jay1zZWNyZXQ=" }, "name": "projects/{config.project}/secrets/{full_name}/versions/latest" })
+  }
+
+  release {}
+
+  capability read_value {
+    input {}
+    output { value: Secret }
+    // Returns the secret payload from the resolve step
+    @readonly
+  }
+}
+
+
+// =========================================================================
+// Service Account
+// =========================================================================
+
+resource GcpServiceAccount {
+  kind: Capability
+  mode: Read
+  key: name
+
+  config {
+    name: String
+    project: String
+    display_name: String
+    roles: List<String>
+  }
+
+  acquire {
+    email = "{config.name}@{config.project}.iam.gserviceaccount.com"
+
+    check = gcp.IAM.GetServiceAccount(project: config.project, email: email)
+
+    create [when !check.exists] = gcp.IAM.CreateServiceAccount(
+      project: config.project,
+      account_id: config.name,
+      display_name: config.display_name
+    )
+
+    // Grant roles
+    roles = for role in config.roles {
+      gcp.ResourceManager.SetIamBinding(
+        project: config.project,
+        role: role,
+        member: "serviceAccount:{email}"
+      )
+    } [after create]
+
+    @mock_response(check, status: 200, body: { "email": email })
+    @mock_response(create, status: 200, body: { "email": email })
+  }
+
+  release {}
+
+  capability impersonate {
+    input { scopes: List<String>, lifetime_seconds: Int = 3600 }
+    output { token: Secret, expires_at: String }
+    @rest(POST, "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{email}:generateAccessToken")
+    @auth(BearerToken)
+  }
+}
+
+
+// =========================================================================
+// Workload Identity Federation
+// =========================================================================
+
+resource WifProvider {
+  kind: Capability
+  mode: Read
+  key: pool_id
+
+  config {
+    project_number: String
+    pool_id: String
+    provider_id: String
+    issuer_uri: Url
+    attribute_mapping: Map<String, String>
+    attribute_condition: String?
+  }
+
+  acquire {
+    check_pool = gcp.WIF.GetPool(
+      project: config.project_number,
+      pool_id: config.pool_id
+    )
+
+    create_pool [when !check_pool.exists] = gcp.WIF.CreatePool(
+      project: config.project_number,
+      pool_id: config.pool_id,
+      display_name: config.pool_id
+    )
+
+    check_provider = gcp.WIF.GetProvider(
+      project: config.project_number,
+      pool_id: config.pool_id,
+      provider_id: config.provider_id
+    ) [after create_pool]
+
+    create_provider [when !check_provider.exists] = gcp.WIF.CreateProvider(
+      project: config.project_number,
+      pool_id: config.pool_id,
+      provider_id: config.provider_id,
+      issuer_uri: config.issuer_uri,
+      attribute_mapping: config.attribute_mapping,
+      attribute_condition: config.attribute_condition
+    )
+
+    @mock_response(check_pool, status: 200, body: { "name": "projects/{config.project_number}/locations/global/workloadIdentityPools/{config.pool_id}" })
+    @mock_response(check_provider, status: 200, body: { "name": "projects/{config.project_number}/locations/global/workloadIdentityPools/{config.pool_id}/providers/{config.provider_id}" })
+  }
+
+  release {}
+
+  capability get_token {
+    input { audience: String }
+    output { token: String }
+    // OIDC token exchange via the provider
+  }
+}

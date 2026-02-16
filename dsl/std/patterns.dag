@@ -28,7 +28,7 @@ pattern upsert<Check, Create, Resolve>() -> { handle: String } {
 // Replaces gunbc's add_content_upsert_chain().
 // The most common pattern: ~8 of 13 tools use this.
 
-pattern content_upsert(content: String, path: String) -> { written: Bool }
+pattern content_upsert(content: String, path: FilePath) -> { written: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {
   node read: fs.read(path: path)
@@ -42,7 +42,7 @@ pattern content_upsert(content: String, path: String) -> { written: Bool }
 // writes both the content file and a companion .hash file.
 // Used by codegen targets that need change detection.
 
-pattern emit(content: String, path: String) -> { written: Bool }
+pattern emit(content: String, path: FilePath) -> { written: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {
   node hash: content_hash(content: content)

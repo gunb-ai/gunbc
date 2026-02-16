@@ -33,7 +33,7 @@ func branch_context() -> { branch: String, remote_branch: String? } {
 }
 
 // Resolve the base ref for "recent" mode.
-func resolve_recent_base(since: String = "3.days.ago") -> { base_ref: String, branch: String } {
+func resolve_recent_base(since: String = "3.days.ago") -> { base_ref: CommitSha, branch: String } {
   ctx = branch_context()
   commits = git.Core.RevList(since: since)
   base_ref = commits.commits |> last()
@@ -45,7 +45,7 @@ func resolve_recent_base(since: String = "3.days.ago") -> { base_ref: String, br
 }
 
 // Share any markdown content as a gist.
-func share_content(markdown: String, branch: String?, base_ref: String?) -> { url: String } {
+func share_content(markdown: String, branch: String?, base_ref: CommitSha?) -> { url: Url } {
   resolved_branch = match branch {
     Some(b) => b
     None    => branch_context().branch

@@ -1,53 +1,117 @@
 // std/types.dag -- Base types and domain enums for the gunbc DSL.
 //
-// Primitives are structural (Identity DAGs). Refined types add validation
-// chains. Records and enums compose freely. The compiler's internal type
-// model uses a full cardinality algebra (Dag<TypeOp>), but the surface
-// syntax keeps cardinality simple: T, T?, List<T>.
+// SET-THEORETIC FOUNDATION:
+// Every type T denotes a set ⟦T⟧ of values. Subtyping is set inclusion:
+//   A <: B  iff  ⟦A⟧ ⊆ ⟦B⟧
 //
-// See dsl-design.md 4.1 for the type DAG model.
+// The type universe is a bounded lattice:
+//   ⊥ = Unit = {}        (empty set)
+//   ⊤ = Json             (universal structured value)
+//
+// See dsl-design.md §4.1 "Type-Theoretic Foundations" for the full
+// axiom system and coercion theorem.
+//
+// TYPES ARE DAGS: Every type T is itself a Dag<TypeOp>. The set ⟦T⟧
+// is the set of values that PASS the type's DAG when executed:
+//   ⟦T⟧ = {v | execute(T.dag, v) succeeds}
+//
+// Primitives are Identity DAGs (single node). Refinements add Validate
+// nodes. Records are Product nodes (parallel field DAGs). Enums are
+// Coproduct nodes (branching on variant tag). Generics are Apply nodes
+// (parameterized SubDags). Brands are Brand nodes (nominal disjointness).
+//
+// This means type checking is DAG analysis, coercion insertion is DAG
+// transformation, and test generation is DAG traversal. Same tooling
+// as business logic -- one recursive Dag<Op> structure for everything.
+//
+// The compiler's internal model uses full cardinality algebra (lattice +
+// semiring) and predicate entailment (Heyting algebra). The surface
+// syntax keeps it simple: T, T?, List<T>.
 
 module std.types
 
-// --- Primitives -------------------------------------------------------
-// These are Identity DAGs -- single-node, no validation.
-// Unit, Bool, String, Int, Float, Bytes, Json, Secret
+// --- Primitives (Level 0: Atoms) --------------------------------------
+// Each is a single-node Identity DAG -- no validation, just a base carrier.
+//
+// DAG representation:         Set denotation:
+//   String = Dag{Identity}      ⟦String⟧ = Σ*
+//   Int    = Dag{Identity}      ⟦Int⟧    = ℤ
+//   Bool   = Dag{Identity}      ⟦Bool⟧   = {true, false}
+//   Float  = Dag{Identity}      ⟦Float⟧  = 𝔽₆₄
+//   Bytes  = Dag{Identity}      ⟦Bytes⟧  = {0..255}*
+//   Secret = Dag{Identity}      ⟦Secret⟧ = Σ* (security-policy distinction)
+//   Unit   = Dag{Identity}      ⟦Unit⟧   = {} (bottom, ⊥)
+//   Json   = Dag{Identity}      ⟦Json⟧   = ⟦Bool⟧ ∪ ⟦Int⟧ ∪ ... ∪ {null} (top, ⊤)
+//
 // (built-in to the compiler, listed here for documentation)
 
-// --- Refinement types -------------------------------------------------
-// Constraints on primitives -- the compiler uses these for:
-//   1. Validation at type-check time
-//   2. Auto-generation of test inputs (proptest)
+// --- Refinement types (Level 1: Subset Comprehension) -----------------
+// Each adds a Validate node to the base type's DAG:
+//   Url = Dag { Identity("String") → Validate(NonEmpty) → Validate(Matches("^https?://")) }
+//
+// Set meaning: ⟦T @pred(P)⟧ = {x ∈ ⟦T⟧ | P(x)}
+// DAG meaning: execute base Identity, then each Validate; value passes iff all pass.
+//
+// Always a subtype of the base: T @pred(P) <: T  (the DAG is strictly longer)
+// Conjunction is intersection: @pred(P) @pred(Q) chains two Validate nodes
+//
+// The compiler uses refinements for:
+//   1. Validation at type-check time (compile error if ⟦source⟧ ⊄ ⟦target⟧)
+//   2. Auto-generation of test inputs (valid from ⟦T⟧, invalid from ⟦T⟧ᶜ)
 //   3. Documentation of expected shapes
 
-type CommitSha    = String @pattern("^[a-f0-9]{40}$")
-type RetryCount   = Int @range(min: 1, max: 5)
-type HttpStatus   = Int @range(min: 100, max: 599)
+type CommitSha    = String @pattern("^[a-f0-9]{40}$")     // ⟦CommitSha⟧ ⊂ ⟦String⟧
+type RetryCount   = Int @range(min: 1, max: 5)           // ⟦RetryCount⟧ = {1,2,3,4,5} ⊂ ⟦Int⟧
+type HttpStatus   = Int @range(min: 100, max: 599)       // |⟦HttpStatus⟧| = 500
 type Email        = String @pattern("^[^@]+@[^@]+\\.[^@]+$")
-type Port         = Int @range(min: 1, max: 65535)
-type GistId       = String @format(uuid)
-type SecretValue  = Secret @non_empty
-type Url          = String @pattern("^https?://")
-type FilePath     = String @non_empty
+type Port         = Int @range(min: 1, max: 65535)       // ⟦Port⟧ = {n ∈ ℤ | 1 ≤ n ≤ 65535}
+type GistId       = String @format(uuid)                 // ⟦GistId⟧ ⊂ ⟦String⟧
+type SecretValue  = Secret @non_empty                    // ⟦SecretValue⟧ = {s ∈ Σ* | s ≠ ""}
+type Url          = String @pattern("^https?://")        // ⟦Url⟧ ⊂ ⟦NonEmptyStr⟧ ⊂ ⟦String⟧
+type FilePath     = String @non_empty                    // ⟦FilePath⟧ = ⟦NonEmptyStr⟧
 type SemVer       = String @pattern("^\\d+\\.\\d+\\.\\d+")
-type NonEmptyStr  = String @non_empty
+type NonEmptyStr  = String @non_empty                    // ⟦NonEmptyStr⟧ = {s ∈ Σ* | |s| > 0}
 
-// --- Domain enums -----------------------------------------------------
+// --- Git types (refinements of String) ------------------------------------
+type GitRef       = String @non_empty                    // ⟦GitRef⟧ ⊂ ⟦String⟧ (branch name, tag, "HEAD", etc.)
+// Note: CommitSha <: GitRef <: String. A SHA is always a valid ref,
+// but a ref is not always a SHA (e.g., "main", "HEAD~1").
 
-type CloudRuntime = GitHubActions | Metadata | LocalDev
-type Platform     = Linux | MacOS | Windows
+// --- GCP types (refinements for cloud identifiers) -----------------------
+type ProjectId    = String @non_empty @pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")  // GCP project IDs
+type ServiceAccountEmail = String @pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$")
 
-// --- Auth types -------------------------------------------------------
+// Refinement chain example (transitive subtyping):
+//   ⟦Url⟧ ⊂ ⟦NonEmptyStr⟧ ⊂ ⟦String⟧ ⊂ ⟦Json⟧
+// Each step narrows by predicate (subset comprehension).
+// The compiler walks this chain for coercion: passing Url where String
+// expected is safe (⊆); passing String where Url expected is an error (⊄).
 
+// --- Domain enums (Level 4: Finite Coproducts) ------------------------
+
+type CloudRuntime = GitHubActions | Metadata | LocalDev  // |⟦CloudRuntime⟧| = 3
+type Platform     = Linux | MacOS | Windows              // |⟦Platform⟧| = 3
+
+// Simple enums are finite sets. Pattern matching must be exhaustive
+// (cover the full ⊔). CloudRuntime <: Json (by injection into String).
+
+// --- Auth types (Level 3+4: Product and Coproduct DAGs) ---------------
+// Records compile to Product nodes with parallel SubDag fields.
+// Sums compile to Coproduct nodes that branch on variant tag.
+
+// ⟦AuthScheme⟧ = {Bearer} ⊔ ({Header} × ⟦String⟧) ⊔ ({Basic} × ⟦String⟧)
+// Sum type with payloads: tagged disjoint union.
 type AuthScheme
   = Bearer
   | Header { name: String }
   | Basic { username: String }
 
+// ⟦AccessToken⟧ = ⟦Secret⟧ × ⟦AuthScheme⟧ × ⟦String?⟧
+//               = ⟦Secret⟧ × ⟦AuthScheme⟧ × (⟦String⟧ ∪ {none})
 type AccessToken {
   token: Secret
   scheme: AuthScheme
-  expires_at: String?
+  expires_at: String?          // Level 5: Optional -- ⟦String⟧ ∪ {none}
 }
 
 type CloudSecretConfig {
@@ -71,7 +135,7 @@ type Credential {
   expires_in: Int?
 }
 
-// --- Test / CI types --------------------------------------------------
+// --- Test / CI types (Level 3: Labeled Products) ----------------------
 
 type TestResult {
   name: String
@@ -95,7 +159,7 @@ type StageResult {
   skipped: Bool
 }
 
-// --- Tool registry ----------------------------------------------------
+// --- Tool registry (Level 3+6: Products with Collections) -------------
 
 type ToolEntry {
   name: String
@@ -107,8 +171,10 @@ type ToolRegistry {
   tools: List<ToolEntry>
 }
 
-// --- Dag visualization ------------------------------------------------
+// --- Dag visualization (nested products + collections) ----------------
 
+// DAG: Product { nodes: Wrap(List) → SubDag(TopologyNode), edges: ..., ... }
+// Set: ⟦DagTopology⟧ = (⋃ₙ ⟦TopologyNode⟧ⁿ) × (⋃ₘ ⟦TopologyEdge⟧ᵐ) × (⋃ₖ ⟦String⟧ᵏ)
 type DagTopology {
   nodes: List<TopologyNode>
   edges: List<TopologyEdge>
@@ -134,7 +200,7 @@ type DagDiff {
   changed: List<String>
 }
 
-// --- Codegen / pragma -------------------------------------------------
+// --- Codegen / pragma (simple products) --------------------------------
 
 type CodegenTarget {
   name: String
@@ -147,7 +213,7 @@ type PragmaDirective {
   scope: String?
 }
 
-// --- Docgen -----------------------------------------------------------
+// --- Docgen (product with refinement) ----------------------------------
 
 type DocSource {
   path: FilePath

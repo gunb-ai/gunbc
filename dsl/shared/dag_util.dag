@@ -68,7 +68,7 @@ fn generated_header(tool: String) -> String {
 // is already a pattern, this func just composes the render + upsert call
 // into a single step for tools that generate a single file.
 
-func render_and_upsert(content: String, path: String) -> { written: Bool } {
+func render_and_upsert(content: String, path: FilePath) -> { written: Bool } {
   result = content_upsert(content: content, path: path)
   return { written: result.written }
 }

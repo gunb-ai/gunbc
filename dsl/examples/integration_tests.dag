@@ -1,0 +1,292 @@
+// examples/integration_tests.dag -- Test generation for infra-backed funcs.
+//
+// Shows what the compiler generates for funcs that use infra resources.
+// The key insight: infra resources have @mock_response annotations in
+// their acquire blocks, plus testgen already knows the probe-observer
+// model. Combining these gives us multi-tier integration tests for free.
+//
+// Tiers (from cheapest to most expensive):
+//   1. Hermetic unit (mocked transport, structural validity)
+//   2. Contract (per-node correctness with mock probes/observers)
+//   3. Scenario (guard paths: resource exists / missing / stale)
+//   4. Resource hygiene (lifecycle invariants)
+//   5. Live integration (real GCP APIs, gated by cost + secrets)
+//   6. End-to-end (full pipeline with real infra)
+
+module examples.integration_tests
+
+import infra.gcp { GcsBucket, ManagedSecret, CloudRunService }
+import infra.spec { EnvironmentConfig }
+
+
+// =========================================================================
+// SOURCE FUNC (the thing we're testing)
+// =========================================================================
+
+func upload_artifact(key: String, content: Bytes) -> { url: String, stored: Bool }
+  uses bucket: GcsBucket(name: "gunbc-artifacts", project: "gunbai-auto")
+{
+  write = bucket.write(key: key, content: content)
+  url = "gs://gunbc-artifacts/{key}"
+  return { url: url, stored: write.ok }
+}
+
+
+// =========================================================================
+// TIER 1: HERMETIC UNIT (compiler generates automatically)
+// =========================================================================
+//
+// Generated test structure:
+//
+//   @test(tier: Unit, cost: XS, hermetic: true)
+//   func test_upload_artifact_dryrun() {
+//     // Probes: entry inputs
+//     probes = { key: "test/file.txt", content: bytes("hello") }
+//
+//     // All transport mocked using @mock_response from GcsBucket.acquire:
+//     mock(GcsBucket.acquire.check, status: 404)
+//     mock(GcsBucket.acquire.create, status: 200, body: { name: "gunbc-artifacts" })
+//     mock(GcsBucket.acquire.resolve, status: 200, body: { name: "gunbc-artifacts" })
+//     mock(bucket.write, status: 200, body: { ok: true })
+//
+//     // Run DAG
+//     result = execute(upload_artifact, probes)
+//
+//     // Observers: structural validity
+//     assert result.url is String
+//     assert result.stored is Bool
+//   }
+//
+// What the compiler knows to generate this:
+//   - Input types from func signature -> probe generation
+//   - @mock_response from GcsBucket resource -> transport mocks
+//   - Output types from func signature -> observer assertions
+//   - Seed policy: key/content are semantic carriers -> must be seeded
+
+
+// =========================================================================
+// TIER 2: NODE CONTRACTS (compiler generates per-node)
+// =========================================================================
+//
+// For each node in the expanded DAG, the compiler generates a focused test.
+// This includes the acquire nodes from the resource.
+//
+// Generated:
+//
+//   @test(tier: Contract, cost: S, hermetic: true)
+//   func test_acquire_bucket_check_missing() {
+//     mock(GcsBucket.acquire.check, status: 404)
+//     result = execute_node(GcsBucket.acquire.check, { name: "gunbc-artifacts" })
+//     assert result.exists == false
+//   }
+//
+//   @test(tier: Contract, cost: S, hermetic: true)
+//   func test_acquire_bucket_create() {
+//     mock(GcsBucket.acquire.create, status: 200, body: { name: "gunbc-artifacts" })
+//     result = execute_node(GcsBucket.acquire.create, { name: "gunbc-artifacts", ... })
+//     assert result.name == "gunbc-artifacts"
+//   }
+//
+//   @test(tier: Contract, cost: S, hermetic: true)
+//   func test_bucket_write() {
+//     mock(bucket.write, status: 200, body: { ok: true })
+//     result = execute_node(bucket.write, { key: "test/file.txt", content: bytes("hello") })
+//     assert result.ok == true
+//   }
+
+
+// =========================================================================
+// TIER 3: SCENARIO COVERAGE (guard path exploration)
+// =========================================================================
+//
+// The compiler knows the guards in GcsBucket.acquire:
+//   create [when !check.exists] -- so there are two paths.
+//
+// Generated scenarios:
+//
+//   @test(tier: Scenario, cost: S, hermetic: true, scenario: "bucket_exists")
+//   func test_upload_bucket_already_exists() {
+//     mock(GcsBucket.acquire.check, status: 200, body: { name: "gunbc-artifacts" })
+//     // create node is SKIPPED (guard !exists is false)
+//     mock(GcsBucket.acquire.resolve, status: 200, body: { name: "gunbc-artifacts" })
+//     mock(bucket.write, status: 200, body: { ok: true })
+//
+//     result = execute(upload_artifact, { key: "test.txt", content: bytes("x") })
+//     assert result.stored == true
+//     assert node_was_skipped(GcsBucket.acquire.create)
+//   }
+//
+//   @test(tier: Scenario, cost: S, hermetic: true, scenario: "bucket_missing")
+//   func test_upload_bucket_needs_creation() {
+//     mock(GcsBucket.acquire.check, status: 404)
+//     mock(GcsBucket.acquire.create, status: 200, body: { name: "gunbc-artifacts" })
+//     mock(GcsBucket.acquire.resolve, status: 200, body: { name: "gunbc-artifacts" })
+//     mock(bucket.write, status: 200, body: { ok: true })
+//
+//     result = execute(upload_artifact, { key: "test.txt", content: bytes("x") })
+//     assert result.stored == true
+//     assert node_was_executed(GcsBucket.acquire.create)
+//   }
+//
+//   @test(tier: Scenario, cost: S, hermetic: true, scenario: "create_fails")
+//   func test_upload_bucket_creation_fails() {
+//     mock(GcsBucket.acquire.check, status: 404)
+//     mock(GcsBucket.acquire.create, status: 503, body: { error: "unavailable" })
+//
+//     result = execute(upload_artifact, { key: "test.txt", content: bytes("x") })
+//     assert result.failed == true
+//     assert node_was_not_reached(bucket.write)
+//   }
+//
+// For CloudRunService, the compiler also generates update scenarios:
+//   - service exists + spec unchanged -> skip update
+//   - service exists + spec changed -> run update (drift reconciliation)
+//   - service missing -> create
+
+
+// =========================================================================
+// TIER 4: RESOURCE HYGIENE (lifecycle invariants)
+// =========================================================================
+//
+// These test the resource model's structural guarantees:
+//
+//   @test(tier: Hygiene, cost: XS, hermetic: true)
+//   func test_upload_resource_hygiene() {
+//     dag = compile(upload_artifact)
+//
+//     // Verify: acquire before first use
+//     assert dag.node_order(GcsBucket.acquire) < dag.node_order(bucket.write)
+//
+//     // Verify: handle flows from acquire to all consumers
+//     assert dag.resource_edge_exists(GcsBucket.acquire.resolve -> bucket.write)
+//
+//     // Verify: no dangling references
+//     assert dag.all_resource_refs_resolved()
+//
+//     // Verify: keyed conflict detection ran
+//     assert dag.resource_key("bucket") == "gunbc-artifacts"
+//   }
+
+
+// =========================================================================
+// TIER 5: LIVE INTEGRATION (real GCP, gated)
+// =========================================================================
+//
+// Runs the actual acquire + business logic against real APIs.
+// Gated by cost + env vars.
+//
+// Generated:
+//
+//   @test(tier: Integration, cost: M, hermetic: false)
+//   @requires(GUNBC_TEST_MAX_COST >= "M")
+//   @requires(env: "GCP_WIF_PROVIDER")
+//   func test_upload_artifact_live() {
+//     // Use unique names to avoid conflicts
+//     test_bucket = "test-gunbc-artifacts-{uuid()}"
+//
+//     // Override config for test isolation
+//     result = execute(upload_artifact, {
+//       key: "integration-test/{uuid()}.txt",
+//       content: bytes("integration test payload")
+//     }, config_overrides: { bucket.name: test_bucket })
+//
+//     assert result.stored == true
+//     assert result.url starts_with "gs://{test_bucket}/"
+//
+//     // Verify side effect: object actually exists in GCS
+//     verify = gcp.Storage.GetObject(bucket: test_bucket, key: result.key)
+//     assert verify.found == true
+//
+//     // Cleanup
+//     gcp.Storage.DeleteObject(bucket: test_bucket, key: result.key)
+//     gcp.Storage.DeleteBucket(name: test_bucket)
+//   }
+
+
+// =========================================================================
+// TIER 6: END-TO-END (full pipeline integration)
+// =========================================================================
+//
+// Tests the full flow: infra bootstrap + business logic + verification.
+//
+//   @test(tier: E2E, cost: L, hermetic: false)
+//   @requires(GUNBC_TEST_MAX_COST >= "L")
+//   @requires(env: "GCP_WIF_PROVIDER", "GCP_SECRETS_PROJECT")
+//   func test_gist_with_storage_e2e() {
+//     // Bootstrap test infra
+//     infra = execute(infra_bootstrap, {}, config_overrides: {
+//       bucket.name: "test-gist-{uuid()}",
+//       secret.prefix: "test-"
+//     })
+//     assert infra.ready == true
+//
+//     // Run business logic against live infra
+//     result = execute(gist_with_storage, { base_ref: null })
+//     assert result.stored == true
+//     assert result.url is String
+//
+//     // Teardown test infra
+//     cleanup(infra)
+//   }
+
+
+// =========================================================================
+// INTERFACE CONTRACT TESTS (from behavioral contracts)
+// =========================================================================
+//
+// When a service implements an interface with @contract annotations,
+// the compiler generates contract-verification tests.
+//
+// From Storage interface:
+//   @contract: Get(k) after Put(k, v) => { value: v, found: true }
+//
+// Generated for gcs.BucketStorage:
+//
+//   @test(tier: Contract, cost: M, hermetic: false)
+//   @requires(GUNBC_TEST_MAX_COST >= "M")
+//   func test_bucket_storage_get_after_put() {
+//     bucket = acquire(GcsBucket, { name: "test-contract-{uuid()}", project: "gunbai-auto" })
+//
+//     k = "contract-test/{uuid()}"
+//     v = bytes("contract test value")
+//
+//     put_result = gcs.BucketStorage.Put(key: k, value: v)
+//     assert put_result.ok == true
+//
+//     get_result = gcs.BucketStorage.Get(key: k)
+//     assert get_result.found == true
+//     assert get_result.value == v  // from @contract
+//
+//     cleanup(bucket)
+//   }
+//
+// This verifies that the GcsBucket-backed implementation of Storage
+// actually obeys the behavioral contracts. If the contract says
+// "Get after Put returns the Put value," the live test confirms it.
+
+
+// =========================================================================
+// TEST MATRIX SUMMARY
+// =========================================================================
+//
+// For a single func `upload_artifact` using GcsBucket:
+//
+// Tier      | Count | Cost | Hermetic | What it tests
+// ----------|-------|------|----------|-------------------------------
+// Unit      | 1     | XS   | Yes      | DAG completes with mocks
+// Contract  | 3     | S    | Yes      | Per-node input/output
+// Scenario  | 3     | S    | Yes      | Guard paths (exists/missing/fail)
+// Hygiene   | 1     | XS   | Yes      | Resource lifecycle invariants
+// Integr.   | 1     | M    | No       | Live GCP acquire + write + verify
+// E2E       | 0     | -    | -        | (composed at pipeline level)
+//
+// Total hermetic: 8 tests, all generated automatically from:
+//   - func signature (probes + observers)
+//   - resource @mock_response annotations (transport mocks)
+//   - resource acquire guards (scenario paths)
+//   - resource model invariants (hygiene)
+//
+// Total live: 1 test, gated by cost + env vars.
+// Contract tests: generated from interface @contract annotations.
+//
+// All of this is derived from the DAG structure. No hand-written tests.
