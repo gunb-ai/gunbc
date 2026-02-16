@@ -24,7 +24,9 @@ use daglang_cli::compile::{
     render_triplets, CompileOutput, OutputFormat,
 };
 use daglang_cli::path_utils;
-use daglang_cli::pipeline::{build_pipeline_dag, run_pipeline, PipelineContext, PipelineStop};
+use daglang_cli::pipeline::{
+    build_pipeline_dag, run_pipeline, PipelineContext, PipelineResult, PipelineStop,
+};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -103,16 +105,9 @@ fn main() {
                 roots,
                 target_file: None,
             };
-            match run_pipeline(&context, PipelineStop::Report) {
-                Ok(result) => {
-                    if let Some(report) = result.report() {
-                        println!("{report}");
-                    }
-                }
-                Err(error) => {
-                    eprintln!("pipeline error: {error}");
-                    std::process::exit(1);
-                }
+            let result = run_pipeline_or_exit(&context, PipelineStop::Report);
+            if let Some(report) = result.report() {
+                println!("{report}");
             }
         }
         "check" => {
@@ -136,21 +131,14 @@ fn main() {
             };
 
             let context = PipelineContext { roots, target_file };
-            match run_pipeline(&context, PipelineStop::Build) {
-                Ok(result) => {
-                    if result.diagnostics().is_empty() {
-                        println!("OK: checked {} file(s)", result.parsed_count());
-                    } else {
-                        for diagnostic in result.diagnostics() {
-                            eprintln!("{diagnostic}");
-                        }
-                        std::process::exit(1);
-                    }
+            let result = run_pipeline_or_exit(&context, PipelineStop::Build);
+            if result.diagnostics().is_empty() {
+                println!("OK: checked {} file(s)", result.parsed_count());
+            } else {
+                for diagnostic in result.diagnostics() {
+                    eprintln!("{diagnostic}");
                 }
-                Err(error) => {
-                    eprintln!("pipeline error: {error}");
-                    std::process::exit(1);
-                }
+                std::process::exit(1);
             }
         }
         "compile" => {
@@ -188,6 +176,16 @@ fn compile_target_or_exit(cwd: &std::path::Path, input: Option<&String>) -> Comp
         Ok(output) => output,
         Err(error) => {
             eprintln!("{error}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_pipeline_or_exit(context: &PipelineContext, stop: PipelineStop) -> PipelineResult {
+    match run_pipeline(context, stop) {
+        Ok(result) => result,
+        Err(error) => {
+            eprintln!("pipeline error: {error}");
             std::process::exit(1);
         }
     }
