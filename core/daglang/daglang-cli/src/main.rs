@@ -205,4 +205,35 @@ mod tests {
         let normalized = normalize_path_components(&path);
         assert_eq!(normalized, path);
     }
+
+    #[test]
+    fn normalize_path_components_drops_curdir_suffix_segment() {
+        let path = root_path().join("workspace").join("dsl").join(".");
+        let normalized = normalize_path_components(&path);
+        let expected = root_path().join("workspace").join("dsl");
+        assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn normalize_path_components_drops_curdir_suffix_with_redundant_separators() {
+        let path = PathBuf::from(format!(
+            "{}workspace//dsl//./.",
+            std::path::MAIN_SEPARATOR
+        ));
+        let normalized = normalize_path_components(&path);
+        let expected = root_path().join("workspace").join("dsl");
+        assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn normalize_path_components_drops_curdir_suffix_on_file_paths() {
+        let path = root_path()
+            .join("workspace")
+            .join("dsl")
+            .join("makegen.dag")
+            .join(".");
+        let normalized = normalize_path_components(&path);
+        let expected = root_path().join("workspace").join("dsl").join("makegen.dag");
+        assert_eq!(normalized, expected);
+    }
 }
