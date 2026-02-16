@@ -234,6 +234,37 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn expand_command_reports_unresolved_uses_lower_error() {
+    let fixture = unique_temp_file("unresolved_uses");
+    std::fs::write(
+        &fixture,
+        r#"module sample.resources
+func run() -> { ok: Bool } uses fs: MissingResource {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("expand")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang expand on unresolved uses fixture");
+
+    assert!(
+        !output.status.success(),
+        "expand should fail when uses target cannot be resolved"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("lower error: unresolved used resource"));
+    assert!(stderr.contains("fs: MissingResource"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_unresolved_imports() {
     let root = unique_temp_dir("unresolved_import");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
