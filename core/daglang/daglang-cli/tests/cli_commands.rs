@@ -111,6 +111,29 @@ fn check_command_reports_file_line_col_for_broken_file() {
 }
 
 #[test]
+fn check_command_reports_lex_diagnostic_for_unknown_character() {
+    let bad_file = unique_temp_file("lex_bad");
+    std::fs::write(&bad_file, "module tmp.bad\n$\n").expect("failed to create bad dag file");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&bad_file)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check for lex-bad file");
+
+    assert!(!output.status.success(), "lex-bad file should fail check");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(":2:1:"),
+        "expected lexical diagnostic line/column, got: {stderr}"
+    );
+    assert!(stderr.contains("unexpected character '$'"));
+
+    std::fs::remove_file(bad_file).expect("failed to remove bad dag file");
+}
+
+#[test]
 fn modules_command_reports_graph_diagnostics_without_failing() {
     let root = unique_temp_dir("modules_diag");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");

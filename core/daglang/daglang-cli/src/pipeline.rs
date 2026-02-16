@@ -747,6 +747,23 @@ mod tests {
     }
 
     #[test]
+    fn pipeline_topological_order_is_deterministic() {
+        let dag = build_pipeline_dag();
+        let order_a = topological_order(&dag).expect("topological order should succeed");
+        let order_b = topological_order(&dag).expect("topological order should succeed");
+        assert_eq!(order_a, order_b, "topological order should be stable");
+        assert_eq!(
+            order_a,
+            vec![
+                NODE_DISCOVER.to_string(),
+                NODE_PARSE.to_string(),
+                NODE_BUILD.to_string(),
+                NODE_REPORT.to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn parse_op_rejects_wrong_pipe_value_variant() {
         let context = PipelineContext {
             roots: vec![],
