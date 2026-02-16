@@ -236,6 +236,170 @@ func run() -> { ok: Bool } uses io: Storage provides io: Storage { return { ok: 
 }
 
 #[test]
+fn compile_command_single_file_fails_on_missing_resource_capability() {
+    let fixture = unique_temp_file("compile_single_file_missing_resource_capability");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  capability write {
+    input { path: String, body: String }
+    output { ok: Bool }
+  }
+}
+resource Disk implements Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for missing-resource-capability fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on missing resource capability"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("resource `Disk` is missing capability `write` for interface `Storage`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_single_file_fails_on_missing_service_operation() {
+    let fixture = unique_temp_file("compile_single_file_missing_service_operation");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  capability write {
+    input { path: String, body: String }
+    output { ok: Bool }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for missing-service-operation fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on missing service operation"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("service `FsStorage` is missing operation `write` for interface `Storage`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_single_file_fails_on_interface_signature_mismatch() {
+    let fixture = unique_temp_file("compile_single_file_interface_signature_mismatch");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: Int) -> { body: String }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for service-signature-mismatch fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on service signature mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("`FsStorage` does not match `Storage.read` contract"));
+    assert!(stderr.contains("expected `String` but found `Int`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_single_file_fails_on_resource_interface_signature_mismatch() {
+    let fixture = unique_temp_file("compile_single_file_resource_signature_mismatch");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource Disk implements Storage {
+  capability read {
+    input { path: Int }
+    output { body: String }
+  }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for resource-signature-mismatch fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on resource signature mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("`Disk` does not match `Storage.read` contract"));
+    assert!(stderr.contains("expected `String` but found `Int`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_single_file_unresolved_service_call_reports_lower_error() {
     let fixture = unique_temp_file("compile_unresolved_service_single_file");
     std::fs::write(
