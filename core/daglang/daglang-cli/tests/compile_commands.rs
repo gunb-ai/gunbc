@@ -78,6 +78,15 @@ fn assert_no_stage_failures(stderr: &str) {
     );
 }
 
+fn obligations_block(output: &str) -> String {
+    output
+        .lines()
+        .skip_while(|line| *line != "TestObligations:")
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
 #[test]
 fn compile_command_emits_summary_for_single_file() {
     let output = Command::new(daglang_bin())
@@ -10882,6 +10891,41 @@ fn run() -> Unit { }
     );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn manifest_and_obligations_commands_share_obligation_text_output() {
+    let manifest_output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest");
+    assert!(
+        manifest_output.status.success(),
+        "manifest command failed: {}",
+        String::from_utf8_lossy(&manifest_output.stderr)
+    );
+
+    let obligations_output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations");
+    assert!(
+        obligations_output.status.success(),
+        "obligations command failed: {}",
+        String::from_utf8_lossy(&obligations_output.stderr)
+    );
+
+    let manifest_stdout = String::from_utf8_lossy(&manifest_output.stdout);
+    let obligations_stdout = String::from_utf8_lossy(&obligations_output.stdout);
+    assert_eq!(
+        obligations_block(&manifest_stdout),
+        obligations_stdout,
+        "manifest obligation section should match standalone obligations output"
+    );
 }
 
 #[test]
