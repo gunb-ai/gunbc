@@ -223,6 +223,207 @@ fn compile_command_parent_segment_missing_root_is_normalized_and_equivalent() {
 }
 
 #[test]
+fn compile_command_relative_and_absolute_missing_single_file_targets_are_equivalent() {
+    let root = unique_temp_dir("compile_relative_absolute_missing_single_file_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing = root.join("missing.dag");
+
+    let relative = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("missing.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative missing single-file compile");
+    assert!(
+        !relative.status.success(),
+        "relative missing single-file compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&missing)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute missing single-file compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing single-file compile should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute missing single-file compile stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute missing single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&relative.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", missing.display())),
+        "missing single-file diagnostic should include normalized absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_parent_segment_missing_single_file_target_is_normalized_and_equivalent() {
+    let root = unique_temp_dir("compile_parent_segment_missing_single_file_target");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let missing = root.join("missing.dag");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("../missing.dag")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-segment missing single-file compile");
+    assert!(
+        !parent_segment.status.success(),
+        "parent-segment missing single-file compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&missing)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute missing single-file compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing single-file compile should fail"
+    );
+
+    assert_eq!(
+        parent_segment.stdout, absolute.stdout,
+        "parent-segment and absolute missing single-file compile stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, absolute.stderr,
+        "parent-segment and absolute missing single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_segment.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", missing.display())),
+        "parent-segment missing single-file diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_relative_and_absolute_single_file_targets_are_equivalent() {
+    let root = unique_temp_dir("compile_relative_absolute_single_file_target");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let source = root.join("sample/main.dag");
+    std::fs::write(&source, "module sample.main\nfn run() -> Unit { }")
+        .expect("failed to write single-file source");
+
+    let relative = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("sample/main.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative single-file compile");
+    assert!(
+        relative.status.success(),
+        "relative single-file compile should succeed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&source)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute single-file compile");
+    assert!(
+        absolute.status.success(),
+        "absolute single-file compile should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute single-file compile stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute single-file compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&relative.stderr));
+    assert!(
+        String::from_utf8_lossy(&relative.stdout).contains("Compiled 1 module(s)"),
+        "single-file compile summary missing: {}",
+        String::from_utf8_lossy(&relative.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_default_root_missing_in_cwd_exits_nonzero() {
+    let root = unique_temp_dir("compile_default_root_missing");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let expected = root.join("dsl");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run compile default-root check");
+
+    assert!(
+        !output.status.success(),
+        "compile default-root run should fail when dsl directory is missing"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "resolve error: invalid discovery root {}: does not exist",
+            expected.display()
+        )),
+        "default-root missing diagnostic should include normalized absolute dsl path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_default_root_non_directory_in_cwd_exits_nonzero() {
+    let root = unique_temp_dir("compile_default_root_non_directory");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dsl_file = root.join("dsl");
+    std::fs::write(&dsl_file, "not a directory").expect("failed to write dsl file");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run compile default-root check");
+
+    assert!(
+        !output.status.success(),
+        "compile default-root run should fail when dsl path is not a directory"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "resolve error: invalid discovery root {}: is not a directory",
+            dsl_file.display()
+        )),
+        "default-root non-directory diagnostic should include normalized absolute dsl path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_single_file_fails_on_duplicate_definition() {
     let fixture = unique_temp_file("compile_single_file_duplicate_definition");
     std::fs::write(
