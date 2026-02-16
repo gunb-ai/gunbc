@@ -1162,6 +1162,50 @@ fn compile_command_reports_diagnostics_for_invalid_file() {
 }
 
 #[test]
+fn expand_command_reports_diagnostics_for_invalid_file() {
+    let broken = unique_temp_file("expand_broken");
+    std::fs::write(&broken, "module sample.broken\nfn broken( -> String {")
+        .expect("failed to write broken source");
+
+    let output = Command::new(daglang_bin())
+        .arg("expand")
+        .arg(&broken)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang expand for broken file");
+
+    assert!(!output.status.success(), "broken source should fail expand");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    assert!(stderr.contains("compile diagnostics"));
+    assert!(stderr.contains(":2:"));
+
+    std::fs::remove_file(broken).expect("failed to remove temp broken source");
+}
+
+#[test]
+fn manifest_command_reports_diagnostics_for_invalid_file() {
+    let broken = unique_temp_file("manifest_broken");
+    std::fs::write(&broken, "module sample.broken\nfn broken( -> String {")
+        .expect("failed to write broken source");
+
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(&broken)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest for broken file");
+
+    assert!(!output.status.success(), "broken source should fail manifest");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    assert!(stderr.contains("compile diagnostics"));
+    assert!(stderr.contains(":2:"));
+
+    std::fs::remove_file(broken).expect("failed to remove temp broken source");
+}
+
+#[test]
 fn expand_command_reports_unresolved_service_call_lower_error() {
     let fixture = unique_temp_file("unresolved_service_call");
     std::fs::write(
