@@ -161,6 +161,36 @@ func run() -> { ok: Bool } provides out: MissingResource {
 }
 
 #[test]
+fn compile_command_single_file_allows_unresolved_imports() {
+    let fixture = unique_temp_file("compile_single_file_unresolved_import");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+import missing.dep
+fn run() -> Unit {}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for unresolved import fixture");
+
+    assert!(
+        output.status.success(),
+        "single-file compile should tolerate unresolved imports: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Compiled 1 module(s)"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn expand_command_shows_lowered_nodes_and_edges() {
     let output = Command::new(daglang_bin())
         .arg("expand")
