@@ -9048,6 +9048,52 @@ fn compile_command_dot_double_separator_trailing_slash_non_directory_root_matche
 }
 
 #[test]
+fn compile_command_dot_double_separator_trailing_slash_single_file_target_matches_plain_relative_output(
+) {
+    let root = unique_temp_dir("compile_dot_double_separator_trailing_slash_single_file_target");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let source = root.join("sample/main.dag");
+    std::fs::write(&source, "module sample.main\nfn run() -> Unit { }")
+        .expect("failed to write single-file source");
+
+    let plain = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("sample/main.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain single-file compile");
+    assert!(
+        plain.status.success(),
+        "plain single-file compile should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let dot_double_separator_trailing_slash = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(".//sample/main.dag/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run dot-double-separator-trailing-slash single-file compile");
+    assert!(
+        dot_double_separator_trailing_slash.status.success(),
+        "dot-double-separator-trailing-slash single-file compile should succeed: {}",
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, dot_double_separator_trailing_slash.stdout,
+        "plain and dot-double-separator-trailing-slash single-file compile stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, dot_double_separator_trailing_slash.stderr,
+        "plain and dot-double-separator-trailing-slash single-file compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&plain.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_curdir_segment_double_separator_root_matches_plain_relative_output() {
     let root = unique_temp_dir("compile_curdir_segment_double_separator_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
