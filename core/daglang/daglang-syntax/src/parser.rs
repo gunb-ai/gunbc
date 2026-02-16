@@ -723,7 +723,10 @@ impl Parser {
         let body = if self.eat(&TokenKind::LBrace) {
             self.parse_fn_body_lossy()?
         } else {
-            FnBody { stmts: Vec::new() }
+            FnBody {
+                stmts: Vec::new(),
+                lossy: false,
+            }
         };
         Ok(FnDef {
             name,
@@ -1249,7 +1252,10 @@ impl Parser {
         self.pos = start_pos;
         self.errors.truncate(start_errors);
         self.consume_brace_block_contents()?;
-        Ok(FnBody { stmts: Vec::new() })
+        Ok(FnBody {
+            stmts: Vec::new(),
+            lossy: true,
+        })
     }
 
     fn parse_func_body_lossy(&mut self) -> Result<FuncBody, ParseError> {
@@ -1266,7 +1272,10 @@ impl Parser {
         self.pos = start_pos;
         self.errors.truncate(start_errors);
         self.consume_brace_block_contents()?;
-        Ok(FuncBody { stmts: Vec::new() })
+        Ok(FuncBody {
+            stmts: Vec::new(),
+            lossy: true,
+        })
     }
 
     // ── fields / params ────────────────────────────────────────────
@@ -1467,12 +1476,14 @@ impl Parser {
     fn parse_fn_body(&mut self) -> Result<FnBody, ParseError> {
         Ok(FnBody {
             stmts: self.parse_stmts()?,
+            lossy: false,
         })
     }
 
     fn parse_func_body(&mut self) -> Result<FuncBody, ParseError> {
         Ok(FuncBody {
             stmts: self.parse_stmts()?,
+            lossy: false,
         })
     }
 
@@ -2310,6 +2321,28 @@ mod tests {
                 );
             }
             other => panic!("expected PatternDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_body_marks_lossy_for_unsupported_match_arms() {
+        let sf = parse_or_panic(
+            r#"module test
+type CloudConfig = GcpConfig { project: String } | AwsConfig { account: String }
+type CloudProvider = Gcp | Aws
+fn provider_of(config: CloudConfig) -> CloudProvider {
+  match config {
+    GcpConfig { ... } => Gcp
+    AwsConfig { ... } => Aws
+  }
+}"#,
+        );
+        match &sf.items[2].node {
+            Item::FnDef(f) => {
+                assert!(f.body.lossy);
+                assert!(f.body.stmts.is_empty());
+            }
+            other => panic!("expected FnDef, got {other:?}"),
         }
     }
 

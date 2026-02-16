@@ -582,7 +582,10 @@ fn collect_signatures(
                     &def.params,
                     ReturnContract::single(type_expr_to_string(&def.return_type)),
                     &[],
-                    &def.body.stmts,
+                    CallableBodyRef {
+                        stmts: &def.body.stmts,
+                        is_lossy: def.body.lossy,
+                    },
                     &body_context,
                     errors,
                 );
@@ -636,7 +639,10 @@ fn collect_signatures(
                     &def.params,
                     ReturnContract::record(field_signature_map(&def.outputs)),
                     &def.uses,
-                    &def.body.stmts,
+                    CallableBodyRef {
+                        stmts: &def.body.stmts,
+                        is_lossy: def.body.lossy,
+                    },
                     &body_context,
                     errors,
                 );
@@ -689,7 +695,10 @@ fn collect_signatures(
                     &def.params,
                     ReturnContract::record(field_signature_map(&def.outputs)),
                     &def.uses,
-                    &def.body.stmts,
+                    CallableBodyRef {
+                        stmts: &def.body.stmts,
+                        is_lossy: def.body.lossy,
+                    },
                     &body_context,
                     errors,
                 );
@@ -1364,6 +1373,11 @@ struct ExprInferenceContext<'a> {
     param_callable_contracts: &'a HashMap<String, CallableContract>,
 }
 
+struct CallableBodyRef<'a> {
+    stmts: &'a [Stmt],
+    is_lossy: bool,
+}
+
 fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
     let mut registry = InterfaceRegistry::default();
     for module in modules {
@@ -1752,7 +1766,7 @@ fn validate_callable_body(
     params: &[Param],
     return_contract: ReturnContract,
     uses: &[UsesClause],
-    stmts: &[Stmt],
+    body: CallableBodyRef<'_>,
     body_context: &BodyInferenceContext<'_>,
     errors: &mut Vec<TypeError>,
 ) {
@@ -1766,7 +1780,7 @@ fn validate_callable_body(
         param_callable_contracts: &param_callable_contracts,
     };
     let mut calls = Vec::new();
-    collect_calls_from_stmts(stmts, &mut calls);
+    collect_calls_from_stmts(body.stmts, &mut calls);
     for call in calls {
         let contract = match param_callable_contracts.get(&call.callee) {
             Some(contract) => contract,
@@ -1830,7 +1844,7 @@ fn validate_callable_body(
     }
 
     let mut service_calls = Vec::new();
-    collect_service_calls_from_stmts(stmts, &mut service_calls);
+    collect_service_calls_from_stmts(body.stmts, &mut service_calls);
     for call in service_calls {
         let service_call_name = call.path.join(".");
         let contract = match resolve_service_call_contract(&call.path, body_context.service_call_registry)
@@ -1911,7 +1925,7 @@ fn validate_callable_body(
     let mut saw_explicit_return = false;
     let mut trailing_expr_type = None;
     let mut trailing_expr = None;
-    for stmt in stmts {
+    for stmt in body.stmts {
         match stmt {
             Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
                 let inferred = infer_expr_type(
@@ -1948,7 +1962,7 @@ fn validate_callable_body(
             }
         }
     }
-    if !saw_explicit_return {
+    if !body.is_lossy && !saw_explicit_return {
         if let ReturnContract::Single { ty } = &return_contract {
             let inferred = match trailing_expr {
                 Some(expr) => infer_expr_type_for_expected_named_record(
@@ -3748,6 +3762,33 @@ fn env() -> Environment {
             },
         )
         .expect("zero-arity variants should be inferred from identifier expressions");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn strict_mode_skips_missing_tail_mismatch_for_lossy_fn_body() {
+        let graph = module_graph_from_sources(&[(
+            "sample/lossy_match.dag",
+            r#"module sample.lossy
+type CloudConfig
+  = GcpConfig { project: String }
+  | AwsConfig { account: String }
+type CloudProvider = Gcp | Aws
+
+fn provider_of(config: CloudConfig) -> CloudProvider {
+  match config {
+    GcpConfig { ... } => Gcp
+    AwsConfig { ... } => Aws
+  }
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("lossy fn bodies should not emit missing-tail unit mismatch diagnostics");
         assert_eq!(typed.modules.len(), 1);
     }
 

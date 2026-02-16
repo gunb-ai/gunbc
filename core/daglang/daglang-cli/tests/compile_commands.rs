@@ -13510,6 +13510,46 @@ fn env() -> Environment {
 }
 
 #[test]
+fn compile_command_directory_mode_accepts_lossy_match_body_without_tail_mismatch() {
+    let root = unique_temp_dir("lossy_match_body");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+type CloudConfig
+  = GcpConfig { project: String }
+  | AwsConfig { account: String }
+type CloudProvider = Gcp | Aws
+
+fn provider_of(config: CloudConfig) -> CloudProvider {
+  match config {
+    GcpConfig { ... } => Gcp
+    AwsConfig { ... } => Aws
+  }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should tolerate lossy match-body parsing without false tail mismatch: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_accepts_std_helper_intrinsic_call_targets() {
     let root = unique_temp_dir("std_helper_intrinsic_call_targets");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");

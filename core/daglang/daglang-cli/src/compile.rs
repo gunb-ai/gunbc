@@ -1218,6 +1218,48 @@ fn env() -> Environment {
     }
 
     #[test]
+    fn compile_directory_lossy_match_fn_body_does_not_fail_missing_tail_mismatch() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_lossy_match_body_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+type CloudConfig
+  = GcpConfig { project: String }
+  | AwsConfig { account: String }
+type CloudProvider = Gcp | Aws
+
+fn provider_of(config: CloudConfig) -> CloudProvider {
+  match config {
+    GcpConfig { ... } => Gcp
+    AwsConfig { ... } => Aws
+  }
+}
+"#,
+        )
+        .expect("failed to write lossy match source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn compile_directory_std_helper_intrinsics_typecheck_in_strict_mode() {
         let root = std::env::temp_dir().join(format!(
             "daglang_compile_std_helper_intrinsics_dir_{}_{}",

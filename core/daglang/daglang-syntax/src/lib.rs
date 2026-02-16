@@ -344,12 +344,14 @@ pub mod ast {
     #[derive(Debug, Clone)]
     pub struct FnBody {
         pub stmts: Vec<Stmt>,
+        pub lossy: bool,
     }
 
     /// Effectful function body (can include service calls, resource ops).
     #[derive(Debug, Clone)]
     pub struct FuncBody {
         pub stmts: Vec<Stmt>,
+        pub lossy: bool,
     }
 
     /// Statement in a function body.
