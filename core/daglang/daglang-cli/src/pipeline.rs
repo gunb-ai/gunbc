@@ -7,12 +7,14 @@ use daglang_syntax::ast::SourceFile;
 use daglang_syntax::diagnostic::{Diagnostic, DiagnosticKind};
 use daglang_syntax::parser;
 use gunbc_ir::{Dag, Edge, Node, Port};
+use gunbc_ir::types::Cardinality;
 
 const NODE_DISCOVER: &str = "discover_files";
 const NODE_PARSE: &str = "parse_all";
 const NODE_BUILD: &str = "build_module_graph";
 const NODE_REPORT: &str = "report_modules";
 
+const PORT_CONTEXT: &str = "context";
 const PORT_FILES: &str = "files";
 const PORT_PARSED_MODULES: &str = "parsed_modules";
 const PORT_MODULE_GRAPH: &str = "module_graph";
@@ -75,46 +77,50 @@ pub fn build_pipeline_dag() -> Dag<CompilerOp> {
 
     dag.add_node(Node::opaque(
         NODE_DISCOVER,
-        vec![],
+        vec![Port::with_cardinality(
+            PORT_CONTEXT,
+            "PipelineContext",
+            Cardinality::ONE,
+        )],
         vec![
-            Port::new(PORT_FILES, "Vec<FileSource>"),
-            Port::new(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
+            Port::with_cardinality(PORT_FILES, "Vec<FileSource>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
         ],
         CompilerOp::DiscoverFiles,
     ));
     dag.add_node(Node::opaque(
         NODE_PARSE,
         vec![
-            Port::new(PORT_FILES, "Vec<FileSource>"),
-            Port::new(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
+            Port::with_cardinality(PORT_FILES, "Vec<FileSource>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
         ],
         vec![
-            Port::new(PORT_PARSED_MODULES, "Vec<ParsedModule>"),
-            Port::new(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
+            Port::with_cardinality(PORT_PARSED_MODULES, "Vec<ParsedModule>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
         ],
         CompilerOp::ParseAll,
     ));
     dag.add_node(Node::opaque(
         NODE_BUILD,
         vec![
-            Port::new(PORT_PARSED_MODULES, "Vec<ParsedModule>"),
-            Port::new(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
+            Port::with_cardinality(PORT_PARSED_MODULES, "Vec<ParsedModule>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
         ],
         vec![
-            Port::new(PORT_MODULE_GRAPH, "ModuleGraph"),
-            Port::new(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
+            Port::with_cardinality(PORT_MODULE_GRAPH, "ModuleGraph", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
         ],
         CompilerOp::BuildModuleGraph,
     ));
     dag.add_node(Node::opaque(
         NODE_REPORT,
         vec![
-            Port::new(PORT_MODULE_GRAPH, "ModuleGraph"),
-            Port::new(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
+            Port::with_cardinality(PORT_MODULE_GRAPH, "ModuleGraph", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
         ],
         vec![
-            Port::new(PORT_REPORT, "String"),
-            Port::new(PORT_DIAGNOSTICS, "Vec<Diagnostic>"),
+            Port::with_cardinality(PORT_REPORT, "String", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
         ],
         CompilerOp::ReportModules,
     ));
@@ -544,13 +550,31 @@ fn topological_order(dag: &Dag<CompilerOp>) -> Result<Vec<String>, String> {
 
 fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
     let mut occupied_inputs: HashSet<(String, String)> = HashSet::new();
+    let mut incoming_by_node: HashMap<String, usize> = HashMap::new();
     for edge in &dag.edges {
+        *incoming_by_node.entry(edge.to_node.0.clone()).or_insert(0) += 1;
         let key = (edge.to_node.0.clone(), edge.to_port.0.clone());
         if !occupied_inputs.insert(key.clone()) {
             return Err(format!(
                 "implicit fan-in is not allowed for input port {}.{}",
                 key.0, key.1
             ));
+        }
+    }
+
+    for node in &dag.nodes {
+        let incoming = incoming_by_node.get(&node.id.0).copied().unwrap_or(0);
+        if incoming == 0 {
+            continue;
+        }
+        for input in &node.inputs {
+            let key = (node.id.0.clone(), input.name.0.clone());
+            if !occupied_inputs.contains(&key) {
+                return Err(format!(
+                    "unconnected input port {}.{} is not allowed on non-entrypoint nodes",
+                    key.0, key.1
+                ));
+            }
         }
     }
     Ok(())
@@ -829,5 +853,22 @@ mod tests {
         let err = validate_pipeline_semantics(&dag)
             .expect_err("duplicate edge to same input port should fail");
         assert!(err.contains("implicit fan-in is not allowed"));
+    }
+
+    #[test]
+    fn pipeline_rejects_unconnected_inputs_on_non_entrypoints() {
+        let mut dag = build_pipeline_dag();
+        let parse_node = dag
+            .nodes
+            .iter_mut()
+            .find(|node| node.id.0 == NODE_PARSE)
+            .expect("parse node should exist");
+        parse_node
+            .inputs
+            .push(Port::with_cardinality("extra", "Debug", Cardinality::ONE));
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("non-entrypoint with unconnected input should fail");
+        assert!(err.contains("unconnected input port"));
     }
 }
