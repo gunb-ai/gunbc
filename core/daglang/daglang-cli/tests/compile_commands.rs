@@ -3535,6 +3535,51 @@ fn compile_command_absolute_curdir_segment_double_separator_suffix_root_matches_
 }
 
 #[test]
+fn compile_command_absolute_curdir_segment_suffix_root_matches_canonical_absolute_output() {
+    let root = unique_temp_dir("compile_absolute_curdir_segment_suffix_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    write_minimal_directory_compile_fixture(&root);
+    let canonical_root = root.join("dsl");
+    let absolute_curdir_segment_suffix_root = root.join("dsl/./.");
+
+    let curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&absolute_curdir_segment_suffix_root)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment-suffix absolute root compile");
+    assert!(
+        curdir_segment_suffix.status.success(),
+        "curdir-segment-suffix absolute root compile should succeed: {}",
+        String::from_utf8_lossy(&curdir_segment_suffix.stderr)
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&canonical_root)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute root compile");
+    assert!(
+        canonical.status.success(),
+        "canonical absolute root compile should succeed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    assert_eq!(
+        curdir_segment_suffix.stdout, canonical.stdout,
+        "curdir-segment-suffix and canonical absolute-root compile stdout should match"
+    );
+    assert_eq!(
+        curdir_segment_suffix.stderr, canonical.stderr,
+        "curdir-segment-suffix and canonical absolute-root compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&curdir_segment_suffix.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_absolute_parent_curdir_segment_root_matches_canonical_absolute_output() {
     let root = unique_temp_dir("compile_absolute_parent_curdir_segment_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -4238,6 +4283,51 @@ fn compile_command_absolute_curdir_segment_double_separator_suffix_single_file_t
 }
 
 #[test]
+fn compile_command_absolute_curdir_segment_suffix_single_file_target_matches_canonical_output() {
+    let root = unique_temp_dir("compile_absolute_curdir_segment_suffix_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    write_minimal_directory_compile_fixture(&root);
+    let canonical_target = root.join("dsl/sample/main.dag");
+    let absolute_curdir_segment_suffix_target = root.join("dsl/sample/main.dag/./.");
+
+    let curdir_segment_suffix = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&absolute_curdir_segment_suffix_target)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment-suffix absolute single-file compile");
+    assert!(
+        curdir_segment_suffix.status.success(),
+        "curdir-segment-suffix absolute single-file compile should succeed: {}",
+        String::from_utf8_lossy(&curdir_segment_suffix.stderr)
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&canonical_target)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute single-file compile");
+    assert!(
+        canonical.status.success(),
+        "canonical absolute single-file compile should succeed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    assert_eq!(
+        curdir_segment_suffix.stdout, canonical.stdout,
+        "curdir-segment-suffix and canonical absolute single-file compile stdout should match"
+    );
+    assert_eq!(
+        curdir_segment_suffix.stderr, canonical.stderr,
+        "curdir-segment-suffix and canonical absolute single-file compile stderr should match"
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&curdir_segment_suffix.stderr));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_absolute_parent_curdir_segment_single_file_target_matches_canonical_output() {
     let root = unique_temp_dir("compile_absolute_parent_curdir_segment_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -4701,6 +4791,10 @@ fn compile_command_absolute_missing_root_variants_match_canonical_output() {
             "curdir_segment_double_separator_suffix",
             PathBuf::from(format!("{}//./.", canonical_missing_root.display())),
         ),
+        (
+            "curdir_segment_suffix",
+            PathBuf::from(format!("{}/./.", canonical_missing_root.display())),
+        ),
         ("parent", root.join("anchor/../missing_root")),
         (
             "parent_curdir_segment",
@@ -4807,6 +4901,10 @@ fn compile_command_absolute_non_directory_root_variants_match_canonical_output()
             "curdir_segment_double_separator_suffix",
             PathBuf::from(format!("{}//./.", canonical_non_directory_root.display())),
         ),
+        (
+            "curdir_segment_suffix",
+            PathBuf::from(format!("{}/./.", canonical_non_directory_root.display())),
+        ),
         ("parent", root.join("anchor/../input.txt")),
         (
             "parent_curdir_segment",
@@ -4910,6 +5008,10 @@ fn compile_command_absolute_missing_single_file_variants_match_canonical_output(
         (
             "curdir_segment_double_separator_suffix",
             PathBuf::from(format!("{}//./.", canonical_missing_single_file.display())),
+        ),
+        (
+            "curdir_segment_suffix",
+            PathBuf::from(format!("{}/./.", canonical_missing_single_file.display())),
         ),
         ("parent", root.join("dsl/sample/../sample/missing.dag")),
         (
@@ -5018,6 +5120,10 @@ fn compile_command_absolute_invalid_single_file_variants_match_canonical_output(
         (
             "curdir_segment_double_separator_suffix",
             PathBuf::from(format!("{}//./.", canonical_invalid_single_file.display())),
+        ),
+        (
+            "curdir_segment_suffix",
+            PathBuf::from(format!("{}/./.", canonical_invalid_single_file.display())),
         ),
         ("parent", root.join("anchor/../dsl/sample/invalid.dag")),
         (
