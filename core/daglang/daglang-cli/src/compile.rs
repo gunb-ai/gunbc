@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use crate::path_utils;
 use crate::pipeline::PipelineContext;
-use daglang_derive::{derive_artifacts, DerivedArtifacts};
+use daglang_derive::{derive_artifacts, DerivedArtifacts, TestObligations};
 use daglang_emit::{emit_rust_bundle, EmissionBundle};
 use daglang_lower::{lower_typed_project, LoweredOp};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
@@ -216,7 +216,6 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
 
 pub fn render_manifest(derived: &DerivedArtifacts) -> String {
     let manifest = &derived.manifest;
-    let obligations = &derived.obligations;
     let mut out = String::new();
     out.push_str("ProgressManifest:\n");
     writeln!(out, "  total_nodes: {}", manifest.total_nodes).ok();
@@ -241,38 +240,14 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
             manifest.boundary_nodes.join(", ")
         }
     ).ok();
-    out.push_str("TestObligations:\n");
-    writeln!(out, "  dry_run_completion_required: {}", obligations.dry_run_completion_required).ok();
-    writeln!(out, "  transport_execution_targets: {}", obligations.transport_execution_targets).ok();
-    writeln!(out, "  pure_node_determinism_targets: {}", obligations.pure_node_determinism_targets).ok();
-    writeln!(out, "  service_transport_prepare_targets: {}", obligations.service_transport_prepare_targets).ok();
-    writeln!(out, "  service_transport_execute_targets: {}", obligations.service_transport_execute_targets).ok();
-    writeln!(out, "  service_transport_parse_targets: {}", obligations.service_transport_parse_targets).ok();
-    writeln!(out, "  service_param_source_targets: {}", obligations.service_param_source_targets).ok();
-    writeln!(out, "  resource_provide_targets: {}", obligations.resource_provide_targets).ok();
-    writeln!(out, "  resource_acquire_targets: {}", obligations.resource_acquire_targets).ok();
-    writeln!(out, "  resource_release_targets: {}", obligations.resource_release_targets).ok();
+    out.push_str(&render_obligations_text(&derived.obligations));
     out
 }
 
 pub fn render_obligations(derived: &DerivedArtifacts, format: OutputFormat) -> String {
     let obligations = &derived.obligations;
     match format {
-        OutputFormat::Text => {
-            let mut out = String::new();
-            out.push_str("TestObligations:\n");
-            writeln!(out, "  dry_run_completion_required: {}", obligations.dry_run_completion_required).ok();
-            writeln!(out, "  transport_execution_targets: {}", obligations.transport_execution_targets).ok();
-            writeln!(out, "  pure_node_determinism_targets: {}", obligations.pure_node_determinism_targets).ok();
-            writeln!(out, "  service_transport_prepare_targets: {}", obligations.service_transport_prepare_targets).ok();
-            writeln!(out, "  service_transport_execute_targets: {}", obligations.service_transport_execute_targets).ok();
-            writeln!(out, "  service_transport_parse_targets: {}", obligations.service_transport_parse_targets).ok();
-            writeln!(out, "  service_param_source_targets: {}", obligations.service_param_source_targets).ok();
-            writeln!(out, "  resource_provide_targets: {}", obligations.resource_provide_targets).ok();
-            writeln!(out, "  resource_acquire_targets: {}", obligations.resource_acquire_targets).ok();
-            writeln!(out, "  resource_release_targets: {}", obligations.resource_release_targets).ok();
-            out
-        }
+        OutputFormat::Text => render_obligations_text(obligations),
         OutputFormat::Json => json!({
             "dry_run_completion_required": obligations.dry_run_completion_required,
             "transport_execution_targets": obligations.transport_execution_targets,
@@ -287,6 +262,22 @@ pub fn render_obligations(derived: &DerivedArtifacts, format: OutputFormat) -> S
         })
         .to_string(),
     }
+}
+
+fn render_obligations_text(obligations: &TestObligations) -> String {
+    let mut out = String::new();
+    out.push_str("TestObligations:\n");
+    writeln!(out, "  dry_run_completion_required: {}", obligations.dry_run_completion_required).ok();
+    writeln!(out, "  transport_execution_targets: {}", obligations.transport_execution_targets).ok();
+    writeln!(out, "  pure_node_determinism_targets: {}", obligations.pure_node_determinism_targets).ok();
+    writeln!(out, "  service_transport_prepare_targets: {}", obligations.service_transport_prepare_targets).ok();
+    writeln!(out, "  service_transport_execute_targets: {}", obligations.service_transport_execute_targets).ok();
+    writeln!(out, "  service_transport_parse_targets: {}", obligations.service_transport_parse_targets).ok();
+    writeln!(out, "  service_param_source_targets: {}", obligations.service_param_source_targets).ok();
+    writeln!(out, "  resource_provide_targets: {}", obligations.resource_provide_targets).ok();
+    writeln!(out, "  resource_acquire_targets: {}", obligations.resource_acquire_targets).ok();
+    writeln!(out, "  resource_release_targets: {}", obligations.resource_release_targets).ok();
+    out
 }
 
 pub fn render_triplets(dag: &Dag<LoweredOp>, format: OutputFormat) -> String {
@@ -620,6 +611,24 @@ mod tests {
         let first = render_triplets(&output.lowered_dag, OutputFormat::Text);
         let second = render_triplets(&output.lowered_dag, OutputFormat::Text);
         assert_eq!(first, second, "triplet rendering should be deterministic");
+    }
+
+    #[test]
+    fn render_manifest_reuses_obligations_text_block() {
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dsl/tools/makegen.dag");
+        let context = PipelineContext {
+            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            target_file: Some(file),
+        };
+        let output = compile_from_context(&context).expect("compile should succeed");
+
+        let manifest = render_manifest(&output.derived);
+        let obligations = render_obligations(&output.derived, OutputFormat::Text);
+        assert!(
+            manifest.ends_with(&obligations),
+            "manifest output should embed the same obligations text renderer"
+        );
     }
 
     #[test]
