@@ -3470,3 +3470,61 @@ fn compile_command_directory_mode_reports_module_path_mismatch() {
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
+
+#[test]
+fn expand_command_directory_mode_reports_module_path_mismatch() {
+    let root = unique_temp_dir("expand_path_mismatch");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("main.dag"),
+        "module wrong.name\nfn run() -> Unit {}",
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("expand")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang expand on mismatch directory");
+
+    assert!(
+        !output.status.success(),
+        "directory expand should fail on module path mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    assert!(stderr.contains("module path mismatches"));
+    assert!(stderr.contains("declared `wrong.name`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn manifest_command_directory_mode_reports_module_path_mismatch() {
+    let root = unique_temp_dir("manifest_path_mismatch");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("main.dag"),
+        "module wrong.name\nfn run() -> Unit {}",
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest on mismatch directory");
+
+    assert!(
+        !output.status.success(),
+        "directory manifest should fail on module path mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    assert!(stderr.contains("module path mismatches"));
+    assert!(stderr.contains("declared `wrong.name`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
