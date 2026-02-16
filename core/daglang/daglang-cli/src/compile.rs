@@ -4303,6 +4303,63 @@ func run(path: String) -> { body: String } {
     }
 
     #[test]
+    fn resolve_dag_preserves_makegen_edge_set() {
+        let context = makegen_context();
+        let output = compile_from_context(&context).expect("compile should succeed");
+        let lowered = output.lowered_dag.clone();
+        let resolved = resolve_dag(output.lowered_dag, &OpRegistry::makegen())
+            .expect("resolve should succeed");
+        let lowered_edges = lowered
+            .edges
+            .iter()
+            .map(|edge| {
+                (
+                    edge.from_node.0.clone(),
+                    edge.from_port.0.clone(),
+                    edge.to_node.0.clone(),
+                    edge.to_port.0.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let resolved_edges = resolved
+            .edges
+            .iter()
+            .map(|edge| {
+                (
+                    edge.from_node.0.clone(),
+                    edge.from_port.0.clone(),
+                    edge.to_node.0.clone(),
+                    edge.to_port.0.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            resolved_edges, lowered_edges,
+            "resolve_dag should preserve all lowered edge wiring"
+        );
+    }
+
+    #[test]
+    fn resolve_dag_rejects_pipeline_nodes_with_clear_error() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "sample.pipeline::ci",
+            vec![],
+            vec![Port::scalar("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "sample.pipeline".to_string(),
+                name: "ci".to_string(),
+                stages: 1,
+            },
+        ));
+        let error = resolve_dag(dag, &OpRegistry::makegen())
+            .expect_err("pipeline node should be unsupported in current resolver");
+        let rendered = error.to_string();
+        assert!(rendered.contains("sample.pipeline::ci"));
+        assert!(rendered.contains("pipeline lowering is not executable yet"));
+    }
+
+    #[test]
     fn compile_resolve_execute_makegen_runs_in_real_mode_with_check_mode() {
         let context = makegen_context();
         let temp_path = std::env::temp_dir().join(format!(

@@ -2401,6 +2401,15 @@ func run() -> { ok: Bool } provides out: Storage {
     }
 
     #[test]
+    fn canonical_ir_json_is_deterministic_for_makegen() {
+        let lowered = load_makegen_lowered();
+        let first = canonical_ir_json(&lowered).expect("first canonical json run should serialize");
+        let second =
+            canonical_ir_json(&lowered).expect("second canonical json run should serialize");
+        assert_eq!(first, second, "canonical IR json must be byte-stable");
+    }
+
+    #[test]
     fn parity_report_includes_changed_node_details() {
         let mut candidate = Dag::new();
         candidate.add_node(Node::opaque(
