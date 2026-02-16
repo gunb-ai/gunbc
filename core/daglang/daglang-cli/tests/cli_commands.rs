@@ -28,6 +28,14 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("daglang_cli_{name}_{}_{}", std::process::id(), nanos))
 }
 
+fn unique_name(name: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    format!("daglang_cli_{name}_{}_{}", std::process::id(), nanos)
+}
+
 fn expected_check_success_stdout(parsed_files: usize) -> String {
     format!("OK: parsed {parsed_files} file(s)\n")
 }
@@ -343,6 +351,103 @@ fn check_command_relative_and_absolute_root_are_equivalent() {
         relative.stderr, absolute.stderr,
         "relative and absolute root check stderr should match"
     );
+}
+
+#[test]
+fn check_command_relative_and_absolute_missing_roots_are_equivalent() {
+    let missing_relative = unique_name("check_relative_absolute_missing_root");
+    let cwd = workspace_root()
+        .canonicalize()
+        .unwrap_or_else(|_| workspace_root());
+
+    let relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&missing_relative)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run relative missing-root daglang check");
+    assert!(
+        !relative.status.success(),
+        "relative missing-root check should fail"
+    );
+
+    let absolute_root = cwd.join(&missing_relative);
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute missing-root daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-root check should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute missing-root check stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute missing-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&relative.stderr).contains(&format!(
+            "input root does not exist: {}",
+            absolute_root.display()
+        )),
+        "missing-root diagnostic should contain normalized absolute path: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+}
+
+#[test]
+fn check_command_relative_and_absolute_non_directory_roots_are_equivalent() {
+    let cwd = unique_temp_dir("check_relative_absolute_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp directory");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run relative non-directory-root daglang check");
+    assert!(
+        !relative.status.success(),
+        "relative non-directory-root check should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute non-directory-root daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute non-directory-root check should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute non-directory-root check stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute non-directory-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&relative.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostic should contain normalized absolute path: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp directory");
 }
 
 #[test]
@@ -664,6 +769,103 @@ fn modules_command_relative_and_absolute_root_are_equivalent() {
         relative.stderr, absolute.stderr,
         "relative and absolute root modules stderr should match"
     );
+}
+
+#[test]
+fn modules_command_relative_and_absolute_missing_roots_are_equivalent() {
+    let missing_relative = unique_name("modules_relative_absolute_missing_root");
+    let cwd = workspace_root()
+        .canonicalize()
+        .unwrap_or_else(|_| workspace_root());
+
+    let relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&missing_relative)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run relative missing-root daglang modules");
+    assert!(
+        !relative.status.success(),
+        "relative missing-root modules should fail"
+    );
+
+    let absolute_root = cwd.join(&missing_relative);
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute missing-root daglang modules");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-root modules should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute missing-root modules stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute missing-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&relative.stderr).contains(&format!(
+            "input root does not exist: {}",
+            absolute_root.display()
+        )),
+        "missing-root diagnostic should contain normalized absolute path: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+}
+
+#[test]
+fn modules_command_relative_and_absolute_non_directory_roots_are_equivalent() {
+    let cwd = unique_temp_dir("modules_relative_absolute_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp directory");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run relative non-directory-root daglang modules");
+    assert!(
+        !relative.status.success(),
+        "relative non-directory-root modules should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute non-directory-root daglang modules");
+    assert!(
+        !absolute.status.success(),
+        "absolute non-directory-root modules should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute non-directory-root modules stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute non-directory-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&relative.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostic should contain normalized absolute path: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp directory");
 }
 
 #[test]

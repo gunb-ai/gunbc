@@ -69,7 +69,7 @@ fn main() {
             }
         }
         "check" => {
-            let input = args.get(2).map(PathBuf::from);
+            let input = args.get(2).map(|value| normalize_cli_path(PathBuf::from(value)));
             let (roots, target_file) = match input {
                 Some(path) if path.extension().and_then(|ext| ext.to_str()) == Some("dag") => {
                     let root = path
@@ -113,8 +113,16 @@ fn main() {
 
 fn resolve_root(arg: Option<&String>) -> PathBuf {
     if let Some(path) = arg {
-        return PathBuf::from(path);
+        return normalize_cli_path(PathBuf::from(path));
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     cwd.join("dsl")
+}
+
+fn normalize_cli_path(path: PathBuf) -> PathBuf {
+    if path.is_absolute() {
+        return path;
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    cwd.join(path)
 }
