@@ -386,6 +386,34 @@ fn relative_path_to_module_path(relative: &Path) -> Vec<String> {
         .collect()
 }
 
+fn choose_preferred_relative(
+    current: Option<PathBuf>,
+    candidate: &Path,
+) -> Option<PathBuf> {
+    let candidate_buf = candidate.to_path_buf();
+    match current {
+        None => Some(candidate_buf),
+        Some(existing) => {
+            let existing_depth = existing.components().count();
+            let candidate_depth = candidate_buf.components().count();
+            if candidate_depth < existing_depth {
+                return Some(candidate_buf);
+            }
+            if candidate_depth > existing_depth {
+                return Some(existing);
+            }
+
+            let existing_key = existing.as_os_str().to_string_lossy();
+            let candidate_key = candidate_buf.as_os_str().to_string_lossy();
+            if candidate_key < existing_key {
+                Some(candidate_buf)
+            } else {
+                Some(existing)
+            }
+        }
+    }
+}
+
 fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     roots
         .iter()
@@ -395,20 +423,24 @@ fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
 
 fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
     let canonical_path = fs::canonicalize(path).ok();
+    let mut best_relative: Option<PathBuf> = None;
     for root in roots {
         if let Ok(relative) = path.strip_prefix(root) {
-            return relative_path_to_module_path(relative);
+            best_relative = choose_preferred_relative(best_relative, relative);
         }
     }
     for canonical_root in canonical_roots {
         if let Ok(relative) = path.strip_prefix(canonical_root) {
-            return relative_path_to_module_path(relative);
+            best_relative = choose_preferred_relative(best_relative, relative);
         }
         if let Some(canonical_path) = &canonical_path {
             if let Ok(relative) = canonical_path.strip_prefix(canonical_root) {
-                return relative_path_to_module_path(relative);
+                best_relative = choose_preferred_relative(best_relative, relative);
             }
         }
+    }
+    if let Some(relative) = best_relative {
+        return relative_path_to_module_path(&relative);
     }
     vec![
         path.file_stem()
@@ -1355,6 +1387,42 @@ mod tests {
 
         assert_eq!(first.diagnostics, second.diagnostics);
         assert_eq!(first.report, second.report);
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn report_pipeline_fallback_module_path_is_independent_of_overlapping_root_order() {
+        let root = unique_temp_dir("report_overlapping_root_order_no_module");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("failed to create nested root");
+        fs::write(nested.join("no_module.dag"), "fn ok() -> Unit {}")
+            .expect("failed to write source");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.clone(), nested.clone()],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("first pipeline run should execute");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![nested, root.clone()],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("second pipeline run should execute");
+
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.report, second.report);
+        let report = first.report.expect("report should be present");
+        assert!(
+            report.contains("no_module"),
+            "expected fallback module-path output: {report}"
+        );
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }

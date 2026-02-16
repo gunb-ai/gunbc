@@ -729,6 +729,31 @@ fn discovery_fallback_module_path_is_independent_of_symlink_alias_root_order() {
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
 
+#[test]
+fn discovery_fallback_module_path_is_independent_of_overlapping_root_order() {
+    let root = unique_temp_dir("overlapping_root_order_no_module");
+    let nested = root.join("nested");
+    write_file(&nested.join("no_module.dag"), "fn ok() -> Unit {}");
+
+    let first = ModuleGraph::discover(&[root.clone(), nested.clone()]).expect("first discover");
+    let second = ModuleGraph::discover(&[nested, root.clone()]).expect("second discover");
+
+    let first_paths: Vec<String> = first
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    let second_paths: Vec<String> = second
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    assert_eq!(first_paths, second_paths);
+    assert_eq!(first_paths, vec!["no_module".to_string()]);
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
 #[cfg(unix)]
 #[test]
 fn discovery_handles_directory_symlink_cycle_without_recursing_forever() {

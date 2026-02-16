@@ -189,6 +189,31 @@ fn relative_path_to_module_path(relative: &Path) -> Vec<String> {
         .collect()
 }
 
+fn choose_preferred_relative(current: Option<PathBuf>, candidate: &Path) -> Option<PathBuf> {
+    let candidate_buf = candidate.to_path_buf();
+    match current {
+        None => Some(candidate_buf),
+        Some(existing) => {
+            let existing_depth = existing.components().count();
+            let candidate_depth = candidate_buf.components().count();
+            if candidate_depth < existing_depth {
+                return Some(candidate_buf);
+            }
+            if candidate_depth > existing_depth {
+                return Some(existing);
+            }
+
+            let existing_key = existing.as_os_str().to_string_lossy();
+            let candidate_key = candidate_buf.as_os_str().to_string_lossy();
+            if candidate_key < existing_key {
+                Some(candidate_buf)
+            } else {
+                Some(existing)
+            }
+        }
+    }
+}
+
 fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     roots
         .iter()
@@ -198,20 +223,24 @@ fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
 
 fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
     let canonical_path = std::fs::canonicalize(path).ok();
+    let mut best_relative: Option<PathBuf> = None;
     for root in roots {
         if let Ok(rel) = path.strip_prefix(root) {
-            return relative_path_to_module_path(rel);
+            best_relative = choose_preferred_relative(best_relative, rel);
         }
     }
     for canonical_root in canonical_roots {
         if let Ok(rel) = path.strip_prefix(canonical_root) {
-            return relative_path_to_module_path(rel);
+            best_relative = choose_preferred_relative(best_relative, rel);
         }
         if let Some(canonical_path) = &canonical_path {
             if let Ok(rel) = canonical_path.strip_prefix(canonical_root) {
-                return relative_path_to_module_path(rel);
+                best_relative = choose_preferred_relative(best_relative, rel);
             }
         }
+    }
+    if let Some(relative) = best_relative {
+        return relative_path_to_module_path(&relative);
     }
     vec![path
         .file_stem()
