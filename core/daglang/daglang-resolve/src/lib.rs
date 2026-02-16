@@ -28,7 +28,7 @@ use daglang_syntax::parser;
 type ParsedModuleRecord = (PathBuf, Vec<String>, Vec<Vec<String>>, SourceFile);
 
 /// Case-insensitive check for `.dag` file extension.
-fn has_dag_extension(path: &Path) -> bool {
+pub fn has_dag_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| ext.eq_ignore_ascii_case("dag"))
@@ -211,7 +211,7 @@ fn collect_dag_files(
 
 /// Derive a module path from a filesystem path relative to any root.
 /// `dsl/tools/makegen.dag` with root `dsl/` -> `["tools", "makegen"]`
-fn relative_path_to_module_path(relative: &Path) -> Vec<String> {
+pub fn relative_path_to_module_path(relative: &Path) -> Vec<String> {
     relative
         .with_extension("")
         .components()
@@ -219,7 +219,8 @@ fn relative_path_to_module_path(relative: &Path) -> Vec<String> {
         .collect()
 }
 
-fn choose_preferred_relative(current: Option<PathBuf>, candidate: &Path) -> Option<PathBuf> {
+/// Pick the shorter (or lexicographically smaller) relative path.
+pub fn choose_preferred_relative(current: Option<PathBuf>, candidate: &Path) -> Option<PathBuf> {
     let candidate_buf = candidate.to_path_buf();
     match current {
         None => Some(candidate_buf),
@@ -244,9 +245,9 @@ fn choose_preferred_relative(current: Option<PathBuf>, candidate: &Path) -> Opti
     }
 }
 
-// Compiler pipeline: deduplicates equivalent root paths
+/// Deduplicate root paths via filesystem canonicalization.
 #[allow(clippy::disallowed_methods)]
-fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
+pub fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut seen = HashSet::new();
     let mut canonical_roots = Vec::new();
     for root in roots {
@@ -259,9 +260,9 @@ fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     canonical_roots
 }
 
-// Compiler pipeline: resolves module paths via canonical path comparison
+/// Resolve a filesystem path to a module path using canonical path comparison.
 #[allow(clippy::disallowed_methods)]
-fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
+pub fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
     let canonical_path = std::fs::canonicalize(path).ok();
     let mut best_relative: Option<PathBuf> = None;
     for root in roots {

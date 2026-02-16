@@ -6,7 +6,7 @@ use daglang_derive::{derive_artifacts, DerivedArtifacts};
 use daglang_emit::{emit_rust_bundle, EmissionBundle};
 use daglang_lower::{lower_typed_project, LoweredOp};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
-use daglang_syntax::diagnostic::{Diagnostic, DiagnosticKind};
+use daglang_syntax::diagnostic::{self, Diagnostic};
 use daglang_syntax::parser;
 use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions};
 use gunbc_ir::Dag;
@@ -21,7 +21,7 @@ pub struct CompileOutput {
 pub fn build_context(input: Option<&String>) -> PipelineContext {
     let parsed = input.map(|value| path_utils::normalize_cli_path(PathBuf::from(value)));
     let (roots, target_file) = match parsed {
-        Some(path) if path_utils::has_dag_extension(&path) && !path.is_dir() => {
+        Some(path) if path_utils::has_dag_extension(&path) => {
             let root = path
                 .parent()
                 .map(PathBuf::from)
@@ -128,36 +128,8 @@ fn format_resolve_error(error: ResolveError) -> String {
     }
 }
 
-fn normalize_diagnostics(mut diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
-    diagnostics.sort_by_key(|diag| {
-        (
-            diagnostic_kind_rank(&diag.kind),
-            diag.file
-                .as_ref()
-                .map(|file| file.display().to_string())
-                .unwrap_or_default(),
-            diag.line.unwrap_or_default(),
-            diag.column.unwrap_or_default(),
-            diag.message.clone(),
-        )
-    });
-    diagnostics.dedup_by(|a, b| {
-        a.kind == b.kind
-            && a.file == b.file
-            && a.line == b.line
-            && a.column == b.column
-            && a.message == b.message
-    });
-    diagnostics
-}
-
-fn diagnostic_kind_rank(kind: &DiagnosticKind) -> u8 {
-    match kind {
-        DiagnosticKind::Lex => 0,
-        DiagnosticKind::Parse => 1,
-        DiagnosticKind::Resolve => 2,
-        DiagnosticKind::Pipeline => 3,
-    }
+fn normalize_diagnostics(diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diagnostic::normalize_diagnostics(diagnostics)
 }
 
 fn validate_module_path_consistency(
@@ -194,13 +166,7 @@ fn validate_module_path_consistency(
 fn derive_module_path(path: &std::path::Path, roots: &[PathBuf]) -> Option<Vec<String>> {
     for root in roots {
         if let Ok(relative) = path.strip_prefix(root) {
-            return Some(
-                relative
-                    .with_extension("")
-                    .components()
-                    .filter_map(|segment| segment.as_os_str().to_str().map(String::from))
-                    .collect(),
-            );
+            return Some(daglang_resolve::relative_path_to_module_path(relative));
         }
     }
     None

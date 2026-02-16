@@ -190,7 +190,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("cloud.gcp.credential".into(), 5),
         ("examples.abstract_services".into(), 0),
         ("examples.deployment".into(), 9),
-        ("examples.integration_tests".into(), 1),
+        ("examples.integration_tests".into(), 2),
         ("examples.rich_types".into(), 0),
         ("infra.aws.config".into(), 2),
         ("infra.aws.resources".into(), 3),
@@ -212,7 +212,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("services.github.gist".into(), 0),
         ("services.shell".into(), 0),
         ("shared.dag_util".into(), 2),
-        ("shared.gist_modes".into(), 2),
+        ("shared.gist_modes".into(), 4),
         ("std.patterns".into(), 4),
         ("std.resources".into(), 0),
         ("std.types".into(), 0),
@@ -223,7 +223,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("tools.dag_viz".into(), 5),
         ("tools.deps".into(), 4),
         ("tools.docgen".into(), 2),
-        ("tools.gist".into(), 6),
+        ("tools.gist".into(), 5),
         ("tools.makegen".into(), 3),
         ("tools.pragma".into(), 3),
         ("tools.testgen".into(), 2),
@@ -236,22 +236,10 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
 fn real_corpus_acyclic_dependencies_precede_dependents() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
-    let cyclic_modules: HashSet<&str> = HashSet::from([
-        "examples.deployment",
-        "shared.gist_modes",
-        "tools.dag_viz",
-        "tools.gist",
-    ]);
-
     for (module_idx, module) in graph.modules.iter().enumerate() {
         let module_name = module.module_path.join(".");
         for dep_idx in &module.dependencies {
             let dep_name = graph.modules[*dep_idx].module_path.join(".");
-            if cyclic_modules.contains(module_name.as_str())
-                || cyclic_modules.contains(dep_name.as_str())
-            {
-                continue;
-            }
 
             assert!(
                 *dep_idx < module_idx,

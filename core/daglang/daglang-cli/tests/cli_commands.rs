@@ -277,17 +277,7 @@ fn reported_diagnostics_in_order(stdout: &str) -> Vec<String> {
 }
 
 fn expected_real_corpus_modules_diagnostics() -> Vec<String> {
-    let unresolved_file = workspace_root().join("dsl/examples/integration_tests.dag");
-    let unresolved_file = unresolved_file
-        .canonicalize()
-        .unwrap_or(unresolved_file);
-    vec![
-        "cyclic dependencies detected among modules: examples.deployment, shared.gist_modes, tools.dag_viz, tools.gist".to_string(),
-        format!(
-            "{}: unresolved import: examples.integration_tests -> infra.gcp",
-            unresolved_file.display()
-        ),
-    ]
+    vec![]
 }
 
 #[test]
@@ -16196,18 +16186,8 @@ fn modules_command_reports_expected_real_corpus_diagnostics() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Diagnostics:"),
-        "modules output should include diagnostics section for real corpus: {stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "cyclic dependencies detected among modules: examples.deployment, shared.gist_modes, tools.dag_viz, tools.gist"
-        ),
-        "modules output should include expected cycle diagnostic: {stdout}"
-    );
-    assert!(
-        stdout.contains("unresolved import: examples.integration_tests -> infra.gcp"),
-        "modules output should include expected unresolved import diagnostic: {stdout}"
+        !stdout.contains("Diagnostics:"),
+        "modules output should not include diagnostics for clean corpus: {stdout}"
     );
 }
 
@@ -29055,8 +29035,8 @@ fn check_command_ignores_non_dag_files_when_dag_files_exist() {
 }
 
 #[test]
-fn check_command_does_not_run_resolve_stage_for_unresolved_imports() {
-    let root = unique_temp_dir("check_parse_only_unresolved_import");
+fn check_command_reports_unresolved_imports() {
+    let root = unique_temp_dir("check_reports_unresolved_import");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
     std::fs::write(
         root.join("main.dag"),
@@ -29072,15 +29052,13 @@ fn check_command_does_not_run_resolve_stage_for_unresolved_imports() {
         .expect("failed to run daglang check on unresolved-import source");
 
     assert!(
-        output.status.success(),
-        "check should parse successfully without resolve-stage diagnostics"
+        !output.status.success(),
+        "check should fail when unresolved imports are present"
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stdout.contains("OK: checked 1 file(s)"));
     assert!(
-        stderr.trim().is_empty(),
-        "check should not emit resolve diagnostics: {stderr}"
+        stderr.contains("unresolved import"),
+        "check should report unresolved import diagnostic: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");

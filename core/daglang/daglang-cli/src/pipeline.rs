@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use daglang_resolve::{ModuleGraph, ResolvedModule};
+use daglang_resolve::{self, ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::SourceFile;
-use daglang_syntax::diagnostic::{Diagnostic, DiagnosticKind};
+use daglang_syntax::diagnostic::{self, Diagnostic, DiagnosticKind};
 use daglang_syntax::parser;
 use gunbc_ir::{Dag, Edge, Node, Port};
 use gunbc_ir::types::Cardinality;
@@ -245,7 +245,7 @@ fn execute_op(
             let files = take_files(&mut inputs)?;
             let mut diagnostics = take_diagnostics_from_inputs(&mut inputs);
             let mut parsed = Vec::new();
-            let canonical_roots = canonicalize_roots(&context.roots);
+            let canonical_roots = daglang_resolve::canonicalize_roots(&context.roots);
 
             for file in files {
                 match parser::parse_with_file_diagnostics(&file.path, &file.source) {
@@ -255,7 +255,7 @@ fn execute_op(
                             .as_ref()
                             .map(|module| module.node.segments.clone())
                             .unwrap_or_else(|| {
-                                path_to_module_path(&file.path, &context.roots, &canonical_roots)
+                                daglang_resolve::path_to_module_path(&file.path, &context.roots, &canonical_roots)
                             });
                         let imports = ast
                             .imports
@@ -391,93 +391,11 @@ fn collect_dag_files(
         let path = entry.path();
         if path.is_dir() {
             collect_dag_files(&path, out, visited_dirs)?;
-        } else if crate::path_utils::has_dag_extension(&path) {
+        } else if daglang_resolve::has_dag_extension(&path) {
             out.push(path);
         }
     }
     Ok(())
-}
-
-fn relative_path_to_module_path(relative: &Path) -> Vec<String> {
-    relative
-        .with_extension("")
-        .components()
-        .filter_map(|segment| segment.as_os_str().to_str().map(String::from))
-        .collect()
-}
-
-fn choose_preferred_relative(
-    current: Option<PathBuf>,
-    candidate: &Path,
-) -> Option<PathBuf> {
-    let candidate_buf = candidate.to_path_buf();
-    match current {
-        None => Some(candidate_buf),
-        Some(existing) => {
-            let existing_depth = existing.components().count();
-            let candidate_depth = candidate_buf.components().count();
-            if candidate_depth < existing_depth {
-                return Some(candidate_buf);
-            }
-            if candidate_depth > existing_depth {
-                return Some(existing);
-            }
-
-            let existing_key = existing.as_os_str().to_string_lossy();
-            let candidate_key = candidate_buf.as_os_str().to_string_lossy();
-            if candidate_key < existing_key {
-                Some(candidate_buf)
-            } else {
-                Some(existing)
-            }
-        }
-    }
-}
-
-// Compiler pipeline: deduplicates equivalent root paths
-#[allow(clippy::disallowed_methods)]
-fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
-    let mut seen = HashSet::new();
-    let mut canonical_roots = Vec::new();
-    for root in roots {
-        if let Ok(canonical_root) = fs::canonicalize(root) {
-            if seen.insert(canonical_root.clone()) {
-                canonical_roots.push(canonical_root);
-            }
-        }
-    }
-    canonical_roots
-}
-
-// Compiler pipeline: resolves module paths via canonical path comparison
-#[allow(clippy::disallowed_methods)]
-fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
-    let canonical_path = fs::canonicalize(path).ok();
-    let mut best_relative: Option<PathBuf> = None;
-    for root in roots {
-        if let Ok(relative) = path.strip_prefix(root) {
-            best_relative = choose_preferred_relative(best_relative, relative);
-        }
-    }
-    for canonical_root in canonical_roots {
-        if let Ok(relative) = path.strip_prefix(canonical_root) {
-            best_relative = choose_preferred_relative(best_relative, relative);
-        }
-        if let Some(canonical_path) = &canonical_path {
-            if let Ok(relative) = canonical_path.strip_prefix(canonical_root) {
-                best_relative = choose_preferred_relative(best_relative, relative);
-            }
-        }
-    }
-    if let Some(relative) = best_relative {
-        return relative_path_to_module_path(&relative);
-    }
-    vec![
-        path.file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or("unknown")
-            .to_string(),
-    ]
 }
 
 fn build_module_graph(
@@ -874,36 +792,8 @@ fn edge_key(node: &str, port: &str) -> String {
     format!("{node}.{port}")
 }
 
-fn normalize_diagnostics(mut diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
-    diagnostics.sort_by_key(|diag| {
-        (
-            diagnostic_kind_rank(&diag.kind),
-            diag.file
-                .as_ref()
-                .map(|file| file.display().to_string())
-                .unwrap_or_default(),
-            diag.line.unwrap_or_default(),
-            diag.column.unwrap_or_default(),
-            diag.message.clone(),
-        )
-    });
-    diagnostics.dedup_by(|a, b| {
-        a.kind == b.kind
-            && a.file == b.file
-            && a.line == b.line
-            && a.column == b.column
-            && a.message == b.message
-    });
-    diagnostics
-}
-
-fn diagnostic_kind_rank(kind: &DiagnosticKind) -> u8 {
-    match kind {
-        DiagnosticKind::Lex => 0,
-        DiagnosticKind::Parse => 1,
-        DiagnosticKind::Resolve => 2,
-        DiagnosticKind::Pipeline => 3,
-    }
+fn normalize_diagnostics(diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diagnostic::normalize_diagnostics(diagnostics)
 }
 
 #[cfg(test)]
@@ -1045,7 +935,7 @@ mod tests {
 
         let canonical_root = fs::canonicalize(&root).expect("temp root should canonicalize");
         let duplicate_via_curdir = root.join(".");
-        let canonical_roots = canonicalize_roots(&[
+        let canonical_roots = daglang_resolve::canonicalize_roots(&[
             root.clone(),
             duplicate_via_curdir,
             canonical_root.clone(),

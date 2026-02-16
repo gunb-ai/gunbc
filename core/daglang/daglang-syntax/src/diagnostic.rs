@@ -63,3 +63,36 @@ impl std::fmt::Display for Diagnostic {
         write!(f, "{}", self.render())
     }
 }
+
+/// Sort diagnostics by kind → file → line → column → message and deduplicate.
+pub fn normalize_diagnostics(mut diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    diagnostics.sort_by_key(|diag| {
+        (
+            diagnostic_kind_rank(&diag.kind),
+            diag.file
+                .as_ref()
+                .map(|file| file.display().to_string())
+                .unwrap_or_default(),
+            diag.line.unwrap_or_default(),
+            diag.column.unwrap_or_default(),
+            diag.message.clone(),
+        )
+    });
+    diagnostics.dedup_by(|a, b| {
+        a.kind == b.kind
+            && a.file == b.file
+            && a.line == b.line
+            && a.column == b.column
+            && a.message == b.message
+    });
+    diagnostics
+}
+
+fn diagnostic_kind_rank(kind: &DiagnosticKind) -> u8 {
+    match kind {
+        DiagnosticKind::Lex => 0,
+        DiagnosticKind::Parse => 1,
+        DiagnosticKind::Resolve => 2,
+        DiagnosticKind::Pipeline => 3,
+    }
+}
