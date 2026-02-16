@@ -461,6 +461,60 @@ fn check_command_directory_named_dag_extension_with_errors_matches_trailing_slas
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[cfg(unix)]
+#[test]
+fn check_command_symlink_directory_named_dag_extension_matches_real_directory_output() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_directory_named_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.dag");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    std::fs::write(real_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .dag directory symlink");
+
+    let symlink_dir = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on .dag directory symlink");
+    assert!(
+        symlink_dir.status.success(),
+        ".dag directory symlink check should succeed: {}",
+        String::from_utf8_lossy(&symlink_dir.stderr)
+    );
+
+    let real = Command::new(daglang_bin())
+        .arg("check")
+        .arg("real")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on real directory");
+    assert!(
+        real.status.success(),
+        "real directory check should succeed: {}",
+        String::from_utf8_lossy(&real.stderr)
+    );
+
+    assert_eq!(
+        symlink_dir.stdout, real.stdout,
+        "symlink .dag directory and real directory check stdout should match"
+    );
+    assert_eq!(
+        symlink_dir.stderr, real.stderr,
+        "symlink .dag directory and real directory check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&symlink_dir.stdout),
+        expected_check_success_stdout(1),
+        "symlink .dag directory check should parse exactly one file"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[test]
 fn check_command_absolute_mixed_segment_root_matches_canonical_absolute_output() {
     let cwd = workspace_root().join("core");
