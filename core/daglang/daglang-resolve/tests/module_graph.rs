@@ -1,5 +1,6 @@
 use daglang_resolve::{ModuleGraph, ResolveError};
 use daglang_syntax::diagnostic::DiagnosticKind;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -103,6 +104,64 @@ fn discovered_module_paths_match_ast_module_declarations() {
             module.path.display()
         );
     }
+}
+
+#[test]
+fn real_corpus_dependency_counts_match_expected_snapshot() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+    let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
+
+    let actual: BTreeMap<String, usize> = graph
+        .modules
+        .iter()
+        .map(|module| (module.module_path.join("."), module.dependencies.len()))
+        .collect();
+    let expected: BTreeMap<String, usize> = BTreeMap::from([
+        ("cloud.aws.credential".into(), 2),
+        ("cloud.azure.credential".into(), 2),
+        ("cloud.gcp.credential".into(), 5),
+        ("examples.abstract_services".into(), 0),
+        ("examples.deployment".into(), 9),
+        ("examples.integration_tests".into(), 1),
+        ("examples.rich_types".into(), 0),
+        ("infra.aws.config".into(), 2),
+        ("infra.aws.resources".into(), 3),
+        ("infra.aws.services".into(), 0),
+        ("infra.azure.config".into(), 2),
+        ("infra.azure.resources".into(), 3),
+        ("infra.azure.services".into(), 0),
+        ("infra.core".into(), 0),
+        ("infra.gcp.config".into(), 2),
+        ("infra.gcp.resources".into(), 3),
+        ("infra.gcp.services".into(), 0),
+        ("infra.spec".into(), 1),
+        ("pipelines.ci".into(), 10),
+        ("services.cargo".into(), 0),
+        ("services.gcp.iam".into(), 0),
+        ("services.gcp.secret_manager".into(), 0),
+        ("services.gcp.sts".into(), 0),
+        ("services.git".into(), 0),
+        ("services.github.gist".into(), 0),
+        ("services.shell".into(), 0),
+        ("shared.dag_util".into(), 2),
+        ("shared.gist_modes".into(), 2),
+        ("std.patterns".into(), 4),
+        ("std.resources".into(), 0),
+        ("std.types".into(), 0),
+        ("tools.bootstrap".into(), 4),
+        ("tools.build".into(), 3),
+        ("tools.clippy".into(), 4),
+        ("tools.codegen".into(), 2),
+        ("tools.dag_viz".into(), 5),
+        ("tools.deps".into(), 4),
+        ("tools.docgen".into(), 2),
+        ("tools.gist".into(), 6),
+        ("tools.makegen".into(), 3),
+        ("tools.pragma".into(), 3),
+        ("tools.testgen".into(), 2),
+    ]);
+
+    assert_eq!(actual, expected);
 }
 
 #[test]
