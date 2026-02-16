@@ -87,6 +87,142 @@ fn compile_command_emits_summary_for_single_file() {
 }
 
 #[test]
+fn compile_command_relative_and_absolute_missing_roots_are_equivalent() {
+    let root = unique_temp_dir("compile_relative_absolute_missing_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing = root.join("missing_root");
+
+    let relative = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("missing_root")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative missing-root compile");
+    assert!(
+        !relative.status.success(),
+        "relative missing-root compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&missing)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute missing-root compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-root compile should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute missing-root compile stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute missing-root compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&relative.stderr);
+    assert!(
+        stderr.contains(&missing.display().to_string()),
+        "missing-root diagnostic should contain normalized absolute path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_relative_and_absolute_non_directory_roots_are_equivalent() {
+    let root = unique_temp_dir("compile_relative_absolute_non_directory_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let file_path = root.join("input.txt");
+    std::fs::write(&file_path, "not a directory").expect("failed to write non-directory root");
+
+    let relative = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("input.txt")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative non-directory-root compile");
+    assert!(
+        !relative.status.success(),
+        "relative non-directory-root compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&file_path)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute non-directory-root compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute non-directory-root compile should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute non-directory-root compile stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute non-directory-root compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&relative.stderr);
+    assert!(
+        stderr.contains(&file_path.display().to_string()),
+        "non-directory-root diagnostic should contain normalized absolute path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_parent_segment_missing_root_is_normalized_and_equivalent() {
+    let root = unique_temp_dir("compile_parent_segment_missing_root");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let missing = root.join("missing_root");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("../missing_root")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-segment missing-root compile");
+    assert!(
+        !parent_segment.status.success(),
+        "parent-segment missing-root compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&missing)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute missing-root compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-root compile should fail"
+    );
+
+    assert_eq!(
+        parent_segment.stdout, absolute.stdout,
+        "parent-segment and absolute missing-root compile stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, absolute.stderr,
+        "parent-segment and absolute missing-root compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_segment.stderr);
+    assert!(
+        stderr.contains(&missing.display().to_string()),
+        "parent-segment missing-root diagnostic should normalize to absolute path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_single_file_fails_on_duplicate_definition() {
     let fixture = unique_temp_file("compile_single_file_duplicate_definition");
     std::fs::write(

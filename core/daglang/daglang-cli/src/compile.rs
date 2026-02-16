@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 use crate::pipeline::PipelineContext;
 use daglang_derive::{derive_artifacts, DerivedArtifacts};
@@ -17,7 +17,7 @@ pub struct CompileOutput {
 }
 
 pub fn build_context(input: Option<&String>) -> PipelineContext {
-    let parsed = input.map(PathBuf::from);
+    let parsed = input.map(|value| normalize_cli_path(PathBuf::from(value)));
     let (roots, target_file) = match parsed {
         Some(path) if path.extension().and_then(|ext| ext.to_str()) == Some("dag") => {
             let root = path
@@ -36,6 +36,32 @@ pub fn build_context(input: Option<&String>) -> PipelineContext {
 pub fn resolve_default_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     cwd.join("dsl")
+}
+
+fn normalize_cli_path(path: PathBuf) -> PathBuf {
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        cwd.join(path)
+    };
+    normalize_path_components(&absolute)
+}
+
+fn normalize_path_components(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(Path::new(std::path::MAIN_SEPARATOR_STR)),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(segment) => normalized.push(segment),
+        }
+    }
+    normalized
 }
 
 pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, String> {
