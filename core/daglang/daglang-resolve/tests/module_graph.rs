@@ -433,3 +433,20 @@ fn discovery_ignores_non_dag_files() {
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
+
+#[test]
+fn discovery_deduplicates_files_from_overlapping_roots() {
+    let root = unique_temp_dir("overlapping_roots");
+    let nested = root.join("nested");
+    write_file(
+        &nested.join("main.dag"),
+        "module sample.main\nfn ok() -> Unit {}",
+    );
+
+    let graph =
+        ModuleGraph::discover(&[root.clone(), nested]).expect("discover should dedupe file paths");
+    assert_eq!(graph.modules.len(), 1);
+    assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}

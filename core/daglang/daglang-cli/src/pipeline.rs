@@ -334,6 +334,7 @@ fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> 
             .map_err(|error| format!("failed to collect .dag files in {}: {error}", root.display()))?;
     }
     dag_files.sort();
+    dag_files.dedup();
 
     let mut out = Vec::new();
     for path in dag_files {
@@ -1152,6 +1153,31 @@ mod tests {
             .expect("empty roots should be valid for parse pipeline");
         assert_eq!(result.parsed_count, 0);
         assert!(result.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_pipeline_deduplicates_files_from_overlapping_roots() {
+        let root = unique_temp_dir("overlapping_roots");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("failed to create nested root");
+        fs::write(
+            nested.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone(), nested],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+        assert_eq!(
+            result.parsed_count, 1,
+            "overlapping roots should not duplicate parsed files"
+        );
+        assert!(result.diagnostics.is_empty());
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
     #[test]

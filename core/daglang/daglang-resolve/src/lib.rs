@@ -66,6 +66,7 @@ impl ModuleGraph {
             collect_dag_files(root, &mut dag_files)?;
         }
         dag_files.sort();
+        dag_files.dedup();
 
         let mut parsed: Vec<(PathBuf, Vec<String>, Vec<Vec<String>>, SourceFile)> = Vec::new();
         let mut parse_errors: Vec<(PathBuf, Vec<Diagnostic>)> = Vec::new();
