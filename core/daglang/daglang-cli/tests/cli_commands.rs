@@ -3432,6 +3432,44 @@ fn check_command_dot_double_separator_double_separator_root_matches_plain_relati
 }
 
 #[test]
+fn check_command_dot_double_separator_trailing_slash_root_matches_plain_relative_output() {
+    let cwd = workspace_root();
+
+    let dot_double_separator_trailing_slash = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//dsl/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run dot-double-separator-trailing-slash-root daglang check");
+    assert!(
+        dot_double_separator_trailing_slash.status.success(),
+        "dot-double-separator-trailing-slash-root check should succeed: {}",
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative-root daglang check");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative-root check should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        dot_double_separator_trailing_slash.stdout, plain_relative.stdout,
+        "dot-double-separator-trailing-slash and plain-relative check outputs should match"
+    );
+    assert_eq!(
+        dot_double_separator_trailing_slash.stderr, plain_relative.stderr,
+        "dot-double-separator-trailing-slash and plain-relative check stderr should match"
+    );
+}
+
+#[test]
 fn check_command_dot_double_separator_curdir_suffix_double_separator_root_matches_plain_relative_output(
 ) {
     let cwd = workspace_root();
@@ -4490,6 +4528,52 @@ fn check_command_dot_double_separator_double_separator_missing_root_matches_plai
 }
 
 #[test]
+fn check_command_dot_double_separator_trailing_slash_missing_root_matches_plain_relative_output() {
+    let cwd = unique_temp_dir("check_dot_double_separator_trailing_slash_missing_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let missing_root = cwd.join("missing_root");
+
+    let dot_double_separator_trailing_slash = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//missing_root/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run dot-double-separator-trailing-slash missing-root daglang check");
+    assert!(
+        !dot_double_separator_trailing_slash.status.success(),
+        "dot-double-separator-trailing-slash missing-root check should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing_root")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative missing-root daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative missing-root check should fail"
+    );
+
+    assert_eq!(
+        dot_double_separator_trailing_slash.stdout, plain_relative.stdout,
+        "dot-double-separator-trailing-slash and plain-relative missing-root check stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_trailing_slash.stderr, plain_relative.stderr,
+        "dot-double-separator-trailing-slash and plain-relative missing-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
+            .contains(&format!("input root does not exist: {}", missing_root.display())),
+        "missing-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
 fn check_command_dot_double_separator_curdir_suffix_double_separator_missing_root_matches_plain_relative_output(
 ) {
     let cwd = unique_temp_dir(
@@ -5190,6 +5274,56 @@ fn check_command_dot_double_separator_double_separator_non_directory_root_matche
             .contains(&format!("input root is not a directory: {}", root_file.display())),
         "non-directory-root diagnostics should include normalized absolute path: {}",
         String::from_utf8_lossy(&dot_double_separator_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn check_command_dot_double_separator_trailing_slash_non_directory_root_matches_plain_relative_output(
+) {
+    let cwd = unique_temp_dir("check_dot_double_separator_trailing_slash_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let dot_double_separator_trailing_slash = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".//input.txt/")
+        .current_dir(&cwd)
+        .output()
+        .expect(
+            "failed to run dot-double-separator-trailing-slash non-directory-root daglang check",
+        );
+    assert!(
+        !dot_double_separator_trailing_slash.status.success(),
+        "dot-double-separator-trailing-slash non-directory-root check should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative non-directory-root daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative non-directory-root check should fail"
+    );
+
+    assert_eq!(
+        dot_double_separator_trailing_slash.stdout, plain_relative.stdout,
+        "dot-double-separator-trailing-slash and plain-relative non-directory-root check stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_trailing_slash.stderr, plain_relative.stderr,
+        "dot-double-separator-trailing-slash and plain-relative non-directory-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
+            .contains(&format!("input root is not a directory: {}", root_file.display())),
+        "non-directory-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
@@ -17123,6 +17257,44 @@ fn modules_command_dot_double_separator_double_separator_root_matches_plain_rela
 }
 
 #[test]
+fn modules_command_dot_double_separator_trailing_slash_root_matches_plain_relative_output() {
+    let cwd = workspace_root();
+
+    let dot_double_separator_trailing_slash = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".//dsl/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run dot-double-separator-trailing-slash-root daglang modules");
+    assert!(
+        dot_double_separator_trailing_slash.status.success(),
+        "dot-double-separator-trailing-slash-root modules should succeed: {}",
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative-root daglang modules");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative-root modules should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        dot_double_separator_trailing_slash.stdout, plain_relative.stdout,
+        "dot-double-separator-trailing-slash and plain-relative modules stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_trailing_slash.stderr, plain_relative.stderr,
+        "dot-double-separator-trailing-slash and plain-relative modules stderr should match"
+    );
+}
+
+#[test]
 fn modules_command_dot_double_separator_curdir_suffix_double_separator_root_matches_plain_relative_output(
 ) {
     let cwd = workspace_root();
@@ -18334,6 +18506,55 @@ fn modules_command_dot_double_separator_double_separator_missing_root_matches_pl
 }
 
 #[test]
+fn modules_command_dot_double_separator_trailing_slash_missing_root_matches_plain_relative_output(
+) {
+    let cwd = unique_temp_dir("modules_dot_double_separator_trailing_slash_missing_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let missing_root = cwd.join("missing_root");
+
+    let dot_double_separator_trailing_slash = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".//missing_root/")
+        .current_dir(&cwd)
+        .output()
+        .expect(
+            "failed to run dot-double-separator-trailing-slash missing-root daglang modules",
+        );
+    assert!(
+        !dot_double_separator_trailing_slash.status.success(),
+        "dot-double-separator-trailing-slash missing-root modules should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("missing_root")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative missing-root daglang modules");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative missing-root modules should fail"
+    );
+
+    assert_eq!(
+        dot_double_separator_trailing_slash.stdout, plain_relative.stdout,
+        "dot-double-separator-trailing-slash and plain-relative missing-root modules stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_trailing_slash.stderr, plain_relative.stderr,
+        "dot-double-separator-trailing-slash and plain-relative missing-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
+            .contains(&format!("input root does not exist: {}", missing_root.display())),
+        "missing-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
 fn modules_command_dot_double_separator_curdir_suffix_double_separator_missing_root_matches_plain_relative_output(
 ) {
     let cwd = unique_temp_dir(
@@ -19036,6 +19257,56 @@ fn modules_command_dot_double_separator_double_separator_non_directory_root_matc
             .contains(&format!("input root is not a directory: {}", root_file.display())),
         "non-directory-root diagnostics should include normalized absolute path: {}",
         String::from_utf8_lossy(&dot_double_separator_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_dot_double_separator_trailing_slash_non_directory_root_matches_plain_relative_output(
+) {
+    let cwd = unique_temp_dir("modules_dot_double_separator_trailing_slash_non_directory_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = cwd.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let dot_double_separator_trailing_slash = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".//input.txt/")
+        .current_dir(&cwd)
+        .output()
+        .expect(
+            "failed to run dot-double-separator-trailing-slash non-directory-root daglang modules",
+        );
+    assert!(
+        !dot_double_separator_trailing_slash.status.success(),
+        "dot-double-separator-trailing-slash non-directory-root modules should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("input.txt")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative non-directory-root daglang modules");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative non-directory-root modules should fail"
+    );
+
+    assert_eq!(
+        dot_double_separator_trailing_slash.stdout, plain_relative.stdout,
+        "dot-double-separator-trailing-slash and plain-relative non-directory-root modules stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_trailing_slash.stderr, plain_relative.stderr,
+        "dot-double-separator-trailing-slash and plain-relative non-directory-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
+            .contains(&format!("input root is not a directory: {}", root_file.display())),
+        "non-directory-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
@@ -19761,6 +20032,55 @@ fn modules_command_dot_double_separator_double_separator_single_file_root_matche
             .contains(&format!("input root is not a directory: {}", file_path.display())),
         "single-file-root diagnostics should include normalized absolute path: {}",
         String::from_utf8_lossy(&dot_double_separator_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
+fn modules_command_dot_double_separator_trailing_slash_single_file_root_matches_plain_relative_output(
+) {
+    let cwd = unique_temp_dir("modules_dot_double_separator_trailing_slash_single_file_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let file_path = cwd.join("one.dag");
+    std::fs::write(&file_path, "module sample.one\nfn ok() -> Unit {}")
+        .expect("failed to write .dag file");
+
+    let dot_double_separator_trailing_slash = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".//one.dag/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run dot-double-separator-trailing-slash single-file-root daglang modules");
+    assert!(
+        !dot_double_separator_trailing_slash.status.success(),
+        "dot-double-separator-trailing-slash single-file-root modules should fail"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("one.dag")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative single-file-root daglang modules");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative single-file-root modules should fail"
+    );
+
+    assert_eq!(
+        dot_double_separator_trailing_slash.stdout, plain_relative.stdout,
+        "dot-double-separator-trailing-slash and plain-relative single-file-root modules stdout should match"
+    );
+    assert_eq!(
+        dot_double_separator_trailing_slash.stderr, plain_relative.stderr,
+        "dot-double-separator-trailing-slash and plain-relative single-file-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
+            .contains(&format!("input root is not a directory: {}", file_path.display())),
+        "single-file-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&dot_double_separator_trailing_slash.stderr)
     );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
