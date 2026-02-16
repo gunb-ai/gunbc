@@ -13477,6 +13477,39 @@ fn make_gcp() -> CloudConfig {
 }
 
 #[test]
+fn compile_command_directory_mode_accepts_zero_arity_variant_identifier_returns() {
+    let root = unique_temp_dir("zero_arity_variant_identifier_returns");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+type Environment = Dev | Ci
+fn env() -> Environment {
+  Dev
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept zero-arity variant identifier returns: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_accepts_std_helper_intrinsic_call_targets() {
     let root = unique_temp_dir("std_helper_intrinsic_call_targets");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");

@@ -2074,7 +2074,25 @@ fn infer_expr_type(
             daglang_syntax::ast::Literal::Bool(_) => ValueType::Named("Bool".to_string()),
             daglang_syntax::ast::Literal::None => ValueType::Named("Unit".to_string()),
         },
-        Expr::Ident(name) => local_bindings.get(name).cloned().unwrap_or(ValueType::Unknown),
+        Expr::Ident(name) => local_bindings
+            .get(name)
+            .cloned()
+            .or_else(|| {
+                infer_context
+                    .param_callable_contracts
+                    .get(name)
+                    .filter(|contract| callable_contract_max_arity(contract) == 0)
+                    .map(|contract| contract.output.clone())
+            })
+            .or_else(|| {
+                infer_context
+                    .callable_registry
+                    .get(name)
+                    .and_then(|entry| entry.as_ref())
+                    .filter(|contract| callable_contract_max_arity(contract) == 0)
+                    .map(|contract| contract.output.clone())
+            })
+            .unwrap_or(ValueType::Unknown),
         Expr::FieldAccess(base, field) => {
             let base_type = infer_expr_type(base, local_bindings, infer_context, errors);
             match base_type {
@@ -3711,6 +3729,26 @@ fn make_gcp() -> CloudConfig {
                 got
             } if caller == "make_gcp" && callee == "GcpConfig" && *expected == 2 && *got == 1
         )));
+    }
+
+    #[test]
+    fn strict_mode_accepts_zero_arity_variant_as_identifier_value() {
+        let graph = module_graph_from_sources(&[(
+            "sample/variant_ident.dag",
+            r#"module sample.variant
+type Environment = Dev | Ci
+fn env() -> Environment {
+  Dev
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("zero-arity variants should be inferred from identifier expressions");
+        assert_eq!(typed.modules.len(), 1);
     }
 
     #[test]
