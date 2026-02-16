@@ -350,6 +350,8 @@ mod tests {
         let error = compile_from_context(&context).expect_err("compile should fail");
         assert!(error.contains("compile diagnostics"));
         assert!(error.contains(":2:"));
+        assert!(!error.contains("typecheck errors"));
+        assert!(!error.contains("lower error"));
 
         std::fs::remove_file(broken_file).expect("failed to cleanup broken source");
     }
@@ -378,6 +380,8 @@ mod tests {
         let error = compile_from_context(&context).expect_err("compile should fail");
         assert!(error.contains("module path mismatches"));
         assert!(error.contains("main"));
+        assert!(!error.contains("typecheck errors"));
+        assert!(!error.contains("lower error"));
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
