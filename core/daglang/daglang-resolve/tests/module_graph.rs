@@ -455,6 +455,19 @@ fn discovery_order_is_deterministic_across_runs() {
 }
 
 #[test]
+fn display_tree_output_is_deterministic_across_runs() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+    let graph_a = ModuleGraph::discover(&[dsl_root.clone()]).expect("first discover should succeed");
+    let graph_b = ModuleGraph::discover(&[dsl_root]).expect("second discover should succeed");
+
+    assert_eq!(
+        graph_a.display_tree(),
+        graph_b.display_tree(),
+        "display tree output should be deterministic"
+    );
+}
+
+#[test]
 fn display_tree_contains_expected_summary_fields() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("discover should succeed");

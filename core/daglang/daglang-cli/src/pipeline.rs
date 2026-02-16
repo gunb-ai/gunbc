@@ -1476,6 +1476,32 @@ mod tests {
     }
 
     #[test]
+    fn report_pipeline_output_is_deterministic_for_same_input_with_diagnostics() {
+        let root = unique_temp_dir("report_deterministic_with_diags");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(
+            root.join("z_resolve.dag"),
+            "module sample.resolve\nimport missing.dep\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write resolve source");
+        fs::write(root.join("a_lex.dag"), "module sample.lex\n$\n")
+            .expect("failed to write lex source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let first = run_pipeline(&context, PipelineStop::Report).expect("first run should succeed");
+        let second =
+            run_pipeline(&context, PipelineStop::Report).expect("second run should succeed");
+
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.report, second.report);
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn pipeline_rejects_implicit_fanin_on_single_input_port() {
         let mut dag = build_pipeline_dag();
         dag.add_edge(Edge::new(
