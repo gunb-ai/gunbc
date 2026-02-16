@@ -28,6 +28,10 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("daglang_cli_{name}_{}_{}", std::process::id(), nanos))
 }
 
+fn expected_check_success_stdout(parsed_files: usize) -> String {
+    format!("OK: parsed {parsed_files} file(s)\n")
+}
+
 fn expected_dsl_modules_sorted() -> Vec<&'static str> {
     vec![
         "cloud.aws.credential",
@@ -243,6 +247,29 @@ fn check_command_parses_full_dsl_corpus() {
     assert!(
         !stdout.contains("Diagnostics:"),
         "parse-only check over golden corpus should not emit diagnostics: {stdout}"
+    );
+}
+
+#[test]
+fn check_command_real_corpus_stdout_matches_expected_snapshot() {
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check");
+
+    assert!(
+        output.status.success(),
+        "check command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected_check_success_stdout(42));
+    assert!(
+        output.stderr.is_empty(),
+        "check over golden corpus should not emit stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }
 
