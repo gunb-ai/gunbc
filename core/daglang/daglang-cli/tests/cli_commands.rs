@@ -284,6 +284,38 @@ fn check_command_directory_mode_aggregates_multiple_file_diagnostics() {
 }
 
 #[test]
+fn check_command_directory_mode_outputs_deterministic_diagnostic_order() {
+    let root = unique_temp_dir("directory_mode_order");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("z_broken.dag"), "module sample.z\nfn")
+        .expect("failed to write z_broken");
+    std::fs::write(root.join("a_broken.dag"), "module sample.a\nfn")
+        .expect("failed to write a_broken");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory check should fail when files are invalid"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut lines = stderr.lines().filter(|line| !line.trim().is_empty());
+    let first_line = lines.next().expect("expected at least one diagnostic line");
+    assert!(
+        first_line.contains("a_broken.dag"),
+        "diagnostics should be deterministically sorted by path: {stderr}"
+    );
+    assert!(stderr.contains("z_broken.dag"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_defaults_to_workspace_dsl_root() {
     let output = Command::new(daglang_bin())
         .arg("check")
