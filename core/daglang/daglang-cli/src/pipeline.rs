@@ -428,10 +428,16 @@ fn choose_preferred_relative(
 }
 
 fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
-    roots
-        .iter()
-        .filter_map(|root| fs::canonicalize(root).ok())
-        .collect()
+    let mut seen = HashSet::new();
+    let mut canonical_roots = Vec::new();
+    for root in roots {
+        if let Ok(canonical_root) = fs::canonicalize(root) {
+            if seen.insert(canonical_root.clone()) {
+                canonical_roots.push(canonical_root);
+            }
+        }
+    }
+    canonical_roots
 }
 
 fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
@@ -1016,6 +1022,28 @@ mod tests {
         };
 
         (graph, diagnostics)
+    }
+
+    #[test]
+    fn canonicalize_roots_deduplicates_equivalent_paths() {
+        let root = unique_temp_dir("canonicalize_roots_dedup");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+
+        let canonical_root = fs::canonicalize(&root).expect("temp root should canonicalize");
+        let duplicate_via_curdir = root.join(".");
+        let canonical_roots = canonicalize_roots(&[
+            root.clone(),
+            duplicate_via_curdir,
+            canonical_root.clone(),
+        ]);
+
+        assert_eq!(
+            canonical_roots,
+            vec![canonical_root],
+            "canonical roots should deduplicate equivalent paths while preserving order"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
     #[test]
