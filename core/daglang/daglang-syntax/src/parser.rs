@@ -879,11 +879,9 @@ impl Parser {
             inputs = self.parse_field_list_until_rparen()?;
             self.expect(&TokenKind::RParen)?;
         }
-        if self.eat(&TokenKind::Arrow) {
-            if self.eat(&TokenKind::LBrace) {
-                outputs = self.parse_field_list_until_rbrace()?;
-                self.expect(&TokenKind::RBrace)?;
-            }
+        if self.eat(&TokenKind::Arrow) && self.eat(&TokenKind::LBrace) {
+            outputs = self.parse_field_list_until_rbrace()?;
+            self.expect(&TokenKind::RBrace)?;
         }
         while self.check(&TokenKind::At) {
             annotations.push(self.parse_annotation()?);
@@ -1346,9 +1344,8 @@ impl Parser {
         }
 
         if self.eat(&TokenKind::Colon) {
-            match self.parse_expr(0) {
-                Ok(e) => args.push(e),
-                Err(_) => {}
+            if let Ok(e) = self.parse_expr(0) {
+                args.push(e);
             }
             self.skip_annotation_value();
         }
@@ -2058,7 +2055,7 @@ impl Parser {
             kind if Self::token_kind_as_ident(&kind).is_some() => {
                 let name = Self::token_kind_as_ident(&kind).unwrap();
                 self.advance();
-                if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                if name.chars().next().is_some_and(|c| c.is_uppercase()) {
                     if self.eat(&TokenKind::LParen) {
                         let mut fields = Vec::new();
                         let mut positional_index = 0usize;

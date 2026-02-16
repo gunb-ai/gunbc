@@ -25,6 +25,8 @@ use daglang_syntax::ast::SourceFile;
 use daglang_syntax::diagnostic::Diagnostic;
 use daglang_syntax::parser;
 
+type ParsedModuleRecord = (PathBuf, Vec<String>, Vec<Vec<String>>, SourceFile);
+
 /// A resolved module in the dependency graph.
 #[derive(Debug)]
 pub struct ResolvedModule {
@@ -55,7 +57,7 @@ impl ModuleGraph {
         }
         dag_files.sort();
 
-        let mut parsed: Vec<(PathBuf, Vec<String>, Vec<Vec<String>>, SourceFile)> = Vec::new();
+        let mut parsed: Vec<ParsedModuleRecord> = Vec::new();
         let mut parse_errors: Vec<(PathBuf, Vec<Diagnostic>)> = Vec::new();
 
         for path in &dag_files {
@@ -200,8 +202,8 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
         for idx in &order {
             seen[*idx] = true;
         }
-        for idx in 0..n {
-            if !seen[idx] {
+        for (idx, visited) in seen.iter().enumerate().take(n) {
+            if !visited {
                 order.push(idx);
             }
         }
