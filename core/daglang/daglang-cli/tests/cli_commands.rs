@@ -1095,6 +1095,107 @@ fn check_command_dangling_symlink_single_file_target_exits_nonzero() {
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[cfg(unix)]
+#[test]
+fn check_command_relative_and_absolute_dangling_symlink_targets_are_equivalent() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_relative_absolute_dangling_symlink_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.dag");
+    let dangling_link = root.join("broken.dag");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink target");
+
+    let relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative dangling-target daglang check");
+    assert!(
+        !relative.status.success(),
+        "relative dangling-target check should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&dangling_link)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute dangling-target daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute dangling-target check should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute dangling-target check stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute dangling-target check stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&relative.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "failed to canonicalize {}",
+            dangling_link.display()
+        )),
+        "dangling-target diagnostics should include normalized absolute path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_relative_and_absolute_missing_single_file_targets_are_equivalent() {
+    let root = unique_temp_dir("check_relative_absolute_missing_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let missing_file = root.join("missing.dag");
+
+    let relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative missing-target daglang check");
+    assert!(
+        !relative.status.success(),
+        "relative missing-target check should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&missing_file)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute missing-target daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-target check should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute missing-target check stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute missing-target check stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&relative.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "failed to canonicalize {}",
+            missing_file.display()
+        )),
+        "missing-target diagnostics should include normalized absolute path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[test]
 fn check_command_missing_single_file_exits_nonzero() {
     let missing_file = unique_temp_file("missing_single_file");
@@ -2568,6 +2669,56 @@ fn modules_command_single_dag_file_path_exits_nonzero() {
     );
 
     std::fs::remove_file(file_path).expect("failed to cleanup .dag file");
+}
+
+#[test]
+fn modules_command_relative_and_absolute_single_file_roots_are_equivalent() {
+    let root = unique_temp_dir("modules_relative_absolute_single_file_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let file_path = root.join("one.dag");
+    std::fs::write(&file_path, "module sample.one\nfn ok() -> Unit {}")
+        .expect("failed to write temp dag file");
+
+    let relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("one.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative single-file-root daglang modules");
+    assert!(
+        !relative.status.success(),
+        "relative single-file-root modules should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&file_path)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute single-file-root daglang modules");
+    assert!(
+        !absolute.status.success(),
+        "absolute single-file-root modules should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute single-file-root modules stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute single-file-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&relative.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            file_path.display()
+        )),
+        "single-file-root diagnostic should contain normalized absolute path: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
 #[test]
