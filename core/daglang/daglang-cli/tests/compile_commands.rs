@@ -316,6 +316,112 @@ fn compile_command_directory_named_dag_extension_with_nested_errors_still_fails_
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[test]
+fn compile_command_directory_named_uppercase_dag_extension_is_treated_as_invalid_single_file_target(
+) {
+    let root = unique_temp_dir("compile_directory_named_uppercase_dag_extension");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(dag_dir.join("sample"))
+        .expect("failed to create .DAG directory root");
+    std::fs::write(
+        dag_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in .DAG directory");
+
+    let dag_extension_dir = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run compile on .DAG directory without trailing slash");
+    assert!(
+        !dag_extension_dir.status.success(),
+        ".DAG directory root compile should fail"
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("bundle.DAG/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run compile on .DAG directory with trailing slash");
+    assert!(
+        !trailing_slash.status.success(),
+        ".DAG directory trailing-slash compile should fail"
+    );
+
+    assert_eq!(
+        dag_extension_dir.stdout, trailing_slash.stdout,
+        ".DAG directory and trailing-slash compile stdout should match"
+    );
+    assert_eq!(
+        dag_extension_dir.stderr, trailing_slash.stderr,
+        ".DAG directory and trailing-slash compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&dag_extension_dir.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", dag_dir.display())),
+        ".DAG directory compile should fail with normalized invalid single-file target path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_directory_named_mixed_case_dag_extension_is_treated_as_invalid_single_file_target(
+) {
+    let root = unique_temp_dir("compile_directory_named_mixed_case_dag_extension");
+    let dag_dir = root.join("bundle.DaG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory root");
+    std::fs::write(dag_dir.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DaG directory");
+
+    let dag_extension_dir = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run compile on .DaG directory without trailing slash");
+    assert!(
+        !dag_extension_dir.status.success(),
+        ".DaG directory root compile should fail"
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("bundle.DaG/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run compile on .DaG directory with trailing slash");
+    assert!(
+        !trailing_slash.status.success(),
+        ".DaG directory trailing-slash compile should fail"
+    );
+
+    assert_eq!(
+        dag_extension_dir.stdout, trailing_slash.stdout,
+        ".DaG directory and trailing-slash compile stdout should match"
+    );
+    assert_eq!(
+        dag_extension_dir.stderr, trailing_slash.stderr,
+        ".DaG directory and trailing-slash compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&dag_extension_dir.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", dag_dir.display())),
+        ".DaG directory compile should fail with normalized single-file target path: {stderr}"
+    );
+    assert!(
+        !stderr.contains("broken.dag:2:3"),
+        "directory target should fail before parsing nested files: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[cfg(unix)]
 #[test]
 fn compile_command_dangling_symlink_single_file_target_exits_nonzero() {
