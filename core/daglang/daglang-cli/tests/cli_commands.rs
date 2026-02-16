@@ -225,6 +225,10 @@ fn check_command_non_directory_root_exits_nonzero() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root is not a directory"));
+    assert!(
+        stderr.contains(&root_file.display().to_string()),
+        "non-directory root error should include offending path: {stderr}"
+    );
 
     std::fs::remove_file(root_file).expect("failed to cleanup root file");
 }
@@ -1027,6 +1031,10 @@ fn modules_command_non_directory_root_exits_nonzero() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root is not a directory"));
+    assert!(
+        stderr.contains(&root_file.display().to_string()),
+        "non-directory root error should include offending path: {stderr}"
+    );
 
     std::fs::remove_file(root_file).expect("failed to cleanup root file");
 }
