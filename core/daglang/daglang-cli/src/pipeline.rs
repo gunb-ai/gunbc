@@ -43,12 +43,19 @@ pub enum PipelineStop {
 }
 
 #[derive(Debug)]
-pub struct PipelineResult {
+pub struct PipelineResultData {
     stage: PipelineStage,
     diagnostics: Vec<Diagnostic>,
     parsed_count: usize,
     module_graph: Option<ModuleGraph>,
     report: Option<String>,
+}
+
+#[derive(Debug)]
+pub enum PipelineResult {
+    Parse(PipelineResultData),
+    Build(PipelineResultData),
+    Report(PipelineResultData),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,14 +66,20 @@ pub enum PipelineStage {
 }
 
 impl PipelineResult {
+    fn data(&self) -> &PipelineResultData {
+        match self {
+            Self::Parse(data) | Self::Build(data) | Self::Report(data) => data,
+        }
+    }
+
     fn parsed(diagnostics: Vec<Diagnostic>, parsed_count: usize) -> Self {
-        Self {
+        Self::Parse(PipelineResultData {
             stage: PipelineStage::Parse,
             diagnostics,
             parsed_count,
             module_graph: None,
             report: None,
-        }
+        })
     }
 
     fn built(
@@ -74,13 +87,13 @@ impl PipelineResult {
         parsed_count: usize,
         module_graph: ModuleGraph,
     ) -> Self {
-        Self {
+        Self::Build(PipelineResultData {
             stage: PipelineStage::Build,
             diagnostics,
             parsed_count,
             module_graph: Some(module_graph),
             report: None,
-        }
+        })
     }
 
     fn reported(
@@ -89,33 +102,41 @@ impl PipelineResult {
         module_graph: ModuleGraph,
         report: String,
     ) -> Self {
-        Self {
+        Self::Report(PipelineResultData {
             stage: PipelineStage::Report,
             diagnostics,
             parsed_count,
             module_graph: Some(module_graph),
             report: Some(report),
-        }
+        })
     }
 
     pub fn stage(&self) -> PipelineStage {
-        self.stage
+        self.data().stage
     }
 
     pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.diagnostics
+        &self.data().diagnostics
     }
 
     pub fn parsed_count(&self) -> usize {
-        self.parsed_count
+        self.data().parsed_count
     }
 
     pub fn module_graph(&self) -> Option<&ModuleGraph> {
-        self.module_graph.as_ref()
+        self.data().module_graph.as_ref()
     }
 
     pub fn report(&self) -> Option<&str> {
-        self.report.as_deref()
+        self.data().report.as_deref()
+    }
+}
+
+impl std::ops::Deref for PipelineResult {
+    type Target = PipelineResultData;
+
+    fn deref(&self) -> &Self::Target {
+        self.data()
     }
 }
 
@@ -1569,7 +1590,7 @@ mod tests {
         };
         let result =
             run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
-        let report = result.report.expect("report output should be present");
+        let report = result.report().expect("report output should be present");
         assert!(
             report.contains("nested.no_module"),
             "target-file symlink fallback should derive nested module path via real root: {report}"
@@ -1644,7 +1665,7 @@ mod tests {
 
         assert_eq!(first.diagnostics, second.diagnostics);
         assert_eq!(first.report, second.report);
-        let report = first.report.expect("report should be present");
+        let report = first.report().expect("report should be present");
         assert!(
             report.contains("no_module"),
             "expected fallback module-path output: {report}"
@@ -2137,7 +2158,7 @@ mod tests {
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
 
         assert!(result.diagnostics.is_empty());
-        let report = result.report.expect("report output should be present");
+        let report = result.report().expect("report output should be present");
         assert!(
             report.contains("nested.no_module"),
             "module-path fallback should be derived relative to symlink root: {report}"
@@ -2222,7 +2243,7 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Report)
             .expect("empty roots should be valid for report pipeline");
-        let report = result.report.expect("report should be generated");
+        let report = result.report().expect("report should be generated");
         assert!(report.contains("Discovered modules:"));
         assert!(!report.contains("Diagnostics:"));
         assert!(result.diagnostics.is_empty());
