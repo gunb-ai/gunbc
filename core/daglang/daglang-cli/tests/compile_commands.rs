@@ -156,6 +156,47 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn manifest_command_reports_zero_service_param_source_targets_for_literal_args() {
+    let fixture = unique_temp_file("manifest_param_sources_zero");
+    std::fs::write(
+        &fixture,
+        r#"module sample.literal
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run() -> { body: String } {
+  let response = FsStorage.read(path: "README.md")
+  return { body: response.body }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest on fixture");
+
+    assert!(
+        output.status.success(),
+        "manifest command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("service_param_source_targets: 0"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn viz_command_renders_mermaid_for_compiled_file() {
     let output = Command::new(daglang_bin())
         .arg("viz")
