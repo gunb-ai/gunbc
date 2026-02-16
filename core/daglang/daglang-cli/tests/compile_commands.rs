@@ -58,6 +58,47 @@ fn compile_command_emits_summary_for_single_file() {
 }
 
 #[test]
+fn compile_command_single_file_unresolved_service_call_reports_lower_error() {
+    let fixture = unique_temp_file("compile_unresolved_service_single_file");
+    std::fs::write(
+        &fixture,
+        r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = MissingStorage.read(path: path)
+  return { body: response.body }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for unresolved service call fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail for unresolved service call"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("lower error: unresolved service call"));
+    assert!(stderr.contains("MissingStorage.read"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn expand_command_shows_lowered_nodes_and_edges() {
     let output = Command::new(daglang_bin())
         .arg("expand")
