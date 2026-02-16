@@ -139,6 +139,12 @@ pub enum LowerError {
         binding: String,
         resource_type: String,
     },
+    /// `provides` clause references an unknown resource/interface source.
+    UnresolvedProvidedResource {
+        caller: String,
+        binding: String,
+        resource_type: String,
+    },
     /// No executable declarations were available for lowering.
     NoLowerableItems,
 }
@@ -173,6 +179,14 @@ impl std::fmt::Display for LowerError {
             } => write!(
                 f,
                 "unresolved used resource `{binding}: {resource_type}` in `{caller}`"
+            ),
+            Self::UnresolvedProvidedResource {
+                caller,
+                binding,
+                resource_type,
+            } => write!(
+                f,
+                "unresolved provided resource `{binding}: {resource_type}` in `{caller}`"
             ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
         }
@@ -262,6 +276,13 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
     let resource_registry = add_resource_lifecycle_nodes(&mut dag, project);
     let known_uses_types = collect_known_uses_types(project);
     add_used_resource_edges(
+        &mut dag,
+        project,
+        &endpoints_by_full,
+        &resource_registry,
+        &known_uses_types,
+    )?;
+    add_provided_resource_nodes(
         &mut dag,
         project,
         &endpoints_by_full,
@@ -1247,6 +1268,80 @@ fn add_used_resource_edges(
     Ok(())
 }
 
+fn add_provided_resource_nodes(
+    dag: &mut Dag<LoweredOp>,
+    project: &TypedProject,
+    endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
+    resource_registry: &ResourceLifecycleRegistry,
+    known_uses_types: &KnownUsesTypes,
+) -> Result<(), LowerError> {
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Some((item_name, provides)) = item_callable_provides(&item.node) else {
+                continue;
+            };
+            let Some(target) =
+                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            else {
+                continue;
+            };
+            for provided in provides {
+                let resource_type = resource_type_name(&provided.resource_type);
+                let has_endpoint = resolve_resource_endpoint(
+                    module_name.as_str(),
+                    resource_type.as_str(),
+                    resource_registry,
+                )
+                .is_some();
+                if !has_endpoint && !known_uses_types.contains(&resource_type) {
+                    return Err(LowerError::UnresolvedProvidedResource {
+                        caller: format!("{module_name}::{item_name}"),
+                        binding: provided.binding.clone(),
+                        resource_type,
+                    });
+                }
+
+                let provider_node_id = format!(
+                    "provide_resource_{}",
+                    sanitize_identifier(&format!(
+                        "{module_name}_{item_name}_{}",
+                        provided.binding
+                    ))
+                );
+                add_node_once(
+                    dag,
+                    Node::opaque(
+                        provider_node_id.clone(),
+                        vec![Port::scalar("trigger", "Any")],
+                        vec![Port::with_cardinality(
+                            provided.binding.as_str(),
+                            resource_type.as_str(),
+                            Cardinality::ONE,
+                        )],
+                        LoweredOp::Callable {
+                            module: module_name.clone(),
+                            kind: CallableKind::Pattern,
+                            name: format!(
+                                "resource_provide::{}::{}",
+                                item_name, provided.binding
+                            ),
+                        },
+                    ),
+                );
+                add_edge_once(
+                    dag,
+                    target.node_id.as_str(),
+                    target.primary_output.as_str(),
+                    provider_node_id.as_str(),
+                    "trigger",
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 fn resolve_resource_endpoint(
     module_name: &str,
     resource_type: &str,
@@ -1427,6 +1522,15 @@ fn item_callable_uses(item: &Item) -> Option<(&str, &[daglang_syntax::ast::UsesC
     match item {
         Item::FuncDef(def) => Some((def.name.as_str(), def.uses.as_slice())),
         Item::PatternDef(def) => Some((def.name.as_str(), def.uses.as_slice())),
+        _ => None,
+    }
+}
+
+fn item_callable_provides(
+    item: &Item,
+) -> Option<(&str, &[daglang_syntax::ast::ProvidesClause])> {
+    match item {
+        Item::FuncDef(def) => Some((def.name.as_str(), def.provides.as_slice())),
         _ => None,
     }
 }
@@ -1935,6 +2039,54 @@ func run() -> { ok: Bool } uses fs: MissingResource {
                 resource_type,
             } if caller == "sample.resources::run"
                 && binding == "fs"
+                && resource_type == "MissingResource"
+        ));
+    }
+
+    #[test]
+    fn provides_clause_adds_provider_node_and_edge() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/provides_wiring.dag",
+            r#"module sample.resources
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } provides out: Storage {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let provider = "provide_resource_sample_resources_run_out";
+        assert!(dag.nodes.iter().any(|node| node.id.0 == provider));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.resources::run"
+                && edge.from_port.0 == "ok"
+                && edge.to_node.0 == provider
+                && edge.to_port.0 == "trigger"
+        }));
+    }
+
+    #[test]
+    fn unresolved_provides_clause_reports_lower_error() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/unresolved_provides.dag",
+            r#"module sample.resources
+func run() -> { ok: Bool } provides out: MissingResource {
+  return { ok: true }
+}"#,
+        )]);
+        let error = lower_typed_project(&typed).expect_err("lowering should fail");
+        assert!(matches!(
+            error,
+            LowerError::UnresolvedProvidedResource {
+                caller,
+                binding,
+                resource_type,
+            } if caller == "sample.resources::run"
+                && binding == "out"
                 && resource_type == "MissingResource"
         ));
     }
