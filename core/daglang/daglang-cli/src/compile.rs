@@ -2150,4 +2150,262 @@ func run() -> { body: String } {
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
+
+    #[test]
+    fn compile_single_file_duplicate_parameter_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_duplicate_parameter");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+fn run(a: String, a: Int) -> String { a }
+"#,
+        )
+        .expect("failed to write duplicate-parameter fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate parameter `a` in `run`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_duplicate_output_field_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_duplicate_output_field");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+func run() -> { ok: Bool, ok: String } { return { ok: true } }
+"#,
+        )
+        .expect("failed to write duplicate-output fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate output field `ok` in `run`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_duplicate_uses_binding_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_duplicate_uses_binding");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+interface Storage { capability read { input { path: String } output { body: String } } }
+func run() -> { ok: Bool } uses fs: Storage uses fs: Storage { return { ok: true } }
+"#,
+        )
+        .expect("failed to write duplicate-uses fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate uses binding `fs` in `run`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_duplicate_provides_binding_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_duplicate_provides_binding");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+interface Storage { capability read { input { path: String } output { body: String } } }
+func run() -> { ok: Bool } provides out: Storage provides out: Storage { return { ok: true } }
+"#,
+        )
+        .expect("failed to write duplicate-provides fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate provides binding `out` in `run`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_use_provide_binding_conflict_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_use_provide_binding_conflict");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+interface Storage { capability read { input { path: String } output { body: String } } }
+func run() -> { ok: Bool } uses io: Storage provides io: Storage { return { ok: true } }
+"#,
+        )
+        .expect("failed to write use/provide conflict fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("binding `io` is declared in both uses/provides in `run`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_missing_resource_capability_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_missing_resource_capability");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  capability write {
+    input { path: String, body: String }
+    output { ok: Bool }
+  }
+}
+resource Disk implements Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+"#,
+        )
+        .expect("failed to write missing-resource-capability fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("resource `Disk` is missing capability `write` for interface `Storage`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_missing_service_operation_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_missing_service_operation");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  capability write {
+    input { path: String, body: String }
+    output { ok: Bool }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+"#,
+        )
+        .expect("failed to write missing-service-operation fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("service `FsStorage` is missing operation `write` for interface `Storage`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_service_interface_signature_mismatch_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_interface_signature_mismatch");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: Int) -> { body: String }
+}
+"#,
+        )
+        .expect("failed to write service-signature-mismatch fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("`FsStorage` does not match `Storage.read` contract"));
+        assert!(error.contains("expected `String` but found `Int`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_resource_interface_signature_mismatch_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_resource_signature_mismatch");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource Disk implements Storage {
+  capability read {
+    input { path: Int }
+    output { body: String }
+  }
+}
+"#,
+        )
+        .expect("failed to write resource-signature-mismatch fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("`Disk` does not match `Storage.read` contract"));
+        assert!(error.contains("expected `String` but found `Int`"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
 }
