@@ -533,6 +533,35 @@ fn run() -> Unit {}
 }
 
 #[test]
+fn compile_command_single_file_allows_unit_return_without_tail_expression() {
+    let fixture = unique_temp_file("compile_single_file_unit_missing_tail");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+fn run() -> Unit { let x = 42 }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for unit-missing-tail fixture");
+
+    assert!(
+        output.status.success(),
+        "single-file compile should allow missing tail for Unit return: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Compiled 1 module(s)"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_single_file_allows_unresolved_call_targets() {
     let fixture = unique_temp_file("compile_single_file_unresolved_call_target");
     std::fs::write(
@@ -2417,6 +2446,34 @@ fn compile_command_directory_mode_fails_on_implicit_return_type_mismatch() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("type mismatch: expected `String`, got `Int`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_allows_unit_return_without_tail_expression() {
+    let root = unique_temp_dir("unit_missing_tail");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit { let x = 42 }",
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should allow missing tail for Unit return: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Compiled 1 module(s)"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
