@@ -641,6 +641,28 @@ fn check_command_defaults_to_workspace_dsl_root() {
 }
 
 #[test]
+fn check_command_default_root_missing_in_cwd_exits_nonzero() {
+    let cwd = unique_temp_dir("check_default_missing_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run daglang check with missing default root");
+
+    assert!(
+        !output.status.success(),
+        "default check should fail when cwd lacks dsl/ root"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("input root does not exist"));
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+}
+
+#[test]
 fn modules_command_defaults_to_workspace_dsl_root() {
     let output = Command::new(daglang_bin())
         .arg("modules")
@@ -656,6 +678,28 @@ fn modules_command_defaults_to_workspace_dsl_root() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Discovered modules:"));
     assert!(stdout.contains("std.types"));
+}
+
+#[test]
+fn modules_command_default_root_missing_in_cwd_exits_nonzero() {
+    let cwd = unique_temp_dir("modules_default_missing_root");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run daglang modules with missing default root");
+
+    assert!(
+        !output.status.success(),
+        "default modules should fail when cwd lacks dsl/ root"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("input root does not exist"));
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
 }
 
 #[test]
