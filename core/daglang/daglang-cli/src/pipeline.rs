@@ -1056,6 +1056,31 @@ mod tests {
     }
 
     #[test]
+    fn parse_pipeline_does_not_emit_resolve_diagnostics_for_unresolved_imports() {
+        let root = unique_temp_dir("parse_only_unresolved_import");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(
+            root.join("main.dag"),
+            "module sample.main\nimport missing.dep\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+
+        assert_eq!(result.parsed_count, 1, "expected parsed module count");
+        assert!(
+            result.diagnostics.is_empty(),
+            "parse pipeline should not emit resolve diagnostics"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn target_file_mode_limits_pipeline_input_to_single_file() {
         let root = unique_temp_dir("target_file_mode");
         fs::create_dir_all(&root).expect("failed to create temp root");
