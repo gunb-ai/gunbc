@@ -394,6 +394,46 @@ fn check_command_absolute_mixed_segment_root_matches_canonical_absolute_output()
 }
 
 #[test]
+fn check_command_absolute_parent_segment_root_matches_canonical_absolute_output() {
+    let cwd = workspace_root().join("core");
+    let absolute_parent_segment = workspace_root().join("dsl/std/..");
+    let absolute_canonical = workspace_root().join("dsl");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_parent_segment)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment absolute-root daglang check");
+    assert!(
+        parent_segment.status.success(),
+        "parent-segment absolute-root check should succeed: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_canonical)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute-root daglang check");
+    assert!(
+        canonical.status.success(),
+        "canonical absolute-root check should succeed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    assert_eq!(
+        parent_segment.stdout, canonical.stdout,
+        "parent-segment and canonical absolute-root check stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, canonical.stderr,
+        "parent-segment and canonical absolute-root check stderr should match"
+    );
+}
+
+#[test]
 fn check_command_absolute_mixed_segment_missing_root_matches_canonical_output() {
     let cwd = unique_temp_dir("check_absolute_mixed_segment_missing_root");
     std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
@@ -1362,6 +1402,58 @@ fn check_command_absolute_mixed_segment_invalid_target_matches_canonical_output(
 }
 
 #[test]
+fn check_command_absolute_parent_segment_invalid_target_matches_canonical_output() {
+    let root = unique_temp_dir("check_absolute_parent_segment_invalid_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let broken_file = root.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed dag source");
+    let absolute_parent_segment = root.join("nested/../broken.dag");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_parent_segment)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run parent-segment absolute invalid-target daglang check");
+    assert!(
+        !parent_segment.status.success(),
+        "parent-segment absolute invalid-target check should fail"
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&broken_file)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute invalid-target daglang check");
+    assert!(
+        !canonical.status.success(),
+        "canonical absolute invalid-target check should fail"
+    );
+
+    assert_eq!(
+        parent_segment.stdout, canonical.stdout,
+        "parent-segment and canonical absolute invalid-target stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, canonical.stderr,
+        "parent-segment and canonical absolute invalid-target stderr should match"
+    );
+    let canonical_target = broken_file
+        .canonicalize()
+        .expect("broken file should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&parent_segment.stderr)
+            .contains(&format!("{}:2:3:", canonical_target.display())),
+        "expected parse diagnostic with canonicalized absolute path: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn modules_command_prints_module_graph_summary() {
     let output = Command::new(daglang_bin())
         .arg("modules")
@@ -1611,6 +1703,46 @@ fn modules_command_absolute_mixed_segment_root_matches_canonical_absolute_output
     assert_eq!(
         mixed.stderr, canonical.stderr,
         "mixed-segment and canonical absolute-root modules stderr should match"
+    );
+}
+
+#[test]
+fn modules_command_absolute_parent_segment_root_matches_canonical_absolute_output() {
+    let cwd = workspace_root().join("core");
+    let absolute_parent_segment = workspace_root().join("dsl/std/..");
+    let absolute_canonical = workspace_root().join("dsl");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_parent_segment)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment absolute-root daglang modules");
+    assert!(
+        parent_segment.status.success(),
+        "parent-segment absolute-root modules should succeed: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_canonical)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run canonical absolute-root daglang modules");
+    assert!(
+        canonical.status.success(),
+        "canonical absolute-root modules should succeed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    assert_eq!(
+        parent_segment.stdout, canonical.stdout,
+        "parent-segment and canonical absolute-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, canonical.stderr,
+        "parent-segment and canonical absolute-root modules stderr should match"
     );
 }
 
