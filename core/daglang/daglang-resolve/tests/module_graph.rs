@@ -637,3 +637,34 @@ fn discovery_deduplicates_files_from_symlink_and_real_roots() {
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
+
+#[cfg(unix)]
+#[test]
+fn discovery_deduplicates_parse_errors_from_symlink_and_real_roots() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("symlink_and_real_roots_parse_errors");
+    let real = root.join("real");
+    let link = root.join("link");
+    write_file(&real.join("broken.dag"), "module sample.broken\nfn");
+    symlink(&real, &link).expect("failed to create root symlink");
+
+    let err = ModuleGraph::discover(&[real.clone(), link])
+        .expect_err("expected parse error for symlink+real roots");
+    match err {
+        ResolveError::ParseErrors(files) => {
+            assert_eq!(
+                files.len(),
+                1,
+                "real+symlink roots should not duplicate parse error file entries"
+            );
+            assert_eq!(
+                files[0].0.file_name().and_then(|name| name.to_str()),
+                Some("broken.dag")
+            );
+        }
+        other => panic!("expected ParseErrors, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}

@@ -1352,6 +1352,37 @@ mod tests {
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn parse_pipeline_deduplicates_diagnostics_from_symlink_and_real_roots() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("symlink_and_real_roots_diags");
+        let real = root.join("real");
+        let link = root.join("link");
+        fs::create_dir_all(&real).expect("failed to create real root");
+        fs::write(real.join("broken.dag"), "module sample.broken\nfn")
+            .expect("failed to write invalid source");
+        symlink(&real, &link).expect("failed to create root symlink");
+
+        let context = PipelineContext {
+            roots: vec![real.clone(), link],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+        let broken_hits = result
+            .diagnostics
+            .iter()
+            .filter(|diag| diag.render().contains("broken.dag"))
+            .count();
+        assert_eq!(
+            broken_hits, 1,
+            "real+symlink roots should not duplicate parse diagnostics for the same file"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
     #[test]
     fn report_pipeline_with_empty_roots_emits_empty_graph_report() {
         let context = PipelineContext {
