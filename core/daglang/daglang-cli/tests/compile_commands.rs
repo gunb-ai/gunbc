@@ -491,6 +491,39 @@ fn compile_command_directory_mode_fails_on_unresolved_imports() {
 }
 
 #[test]
+fn compile_command_directory_mode_fails_on_duplicate_definitions() {
+    let root = unique_temp_dir("duplicate_definitions");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+fn run() -> Unit {}
+func run() -> { ok: Bool } {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on duplicate definitions"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate definition `run` in module `sample.main`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_ambiguous_interface_reference() {
     let root = unique_temp_dir("ambiguous_interface_reference");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");

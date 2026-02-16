@@ -1809,6 +1809,25 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_definition_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "duplicate_definition.dag",
+            r#"module sample.dup
+fn run() -> Unit {}
+func run() -> { ok: Bool } {
+  return { ok: true }
+}
+"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("duplicate item name should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateDefinition { module, name }
+                if module == "sample.dup" && name == "run"
+        )));
+    }
+
+    #[test]
     fn strict_mode_reports_unresolved_imports() {
         let graph = module_graph_from_sources(&[(
             "missing_import.dag",
