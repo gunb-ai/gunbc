@@ -353,6 +353,46 @@ fn modules_command_defaults_to_workspace_dsl_root() {
 }
 
 #[test]
+fn modules_command_output_is_deterministic_for_same_input() {
+    let first = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang modules");
+    assert!(first.status.success(), "first modules run should succeed");
+
+    let second = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang modules");
+    assert!(second.status.success(), "second modules run should succeed");
+
+    assert_eq!(
+        first.stdout, second.stdout,
+        "modules output should be deterministic for identical inputs"
+    );
+}
+
+#[test]
+fn unknown_command_exits_nonzero_with_message() {
+    let output = Command::new(daglang_bin())
+        .arg("unknown-cmd")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang with unknown command");
+
+    assert!(
+        !output.status.success(),
+        "unknown command should fail with non-zero exit code"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Unknown command"));
+}
+
+#[test]
 fn placeholder_commands_remain_non_blocking() {
     for command in ["expand", "manifest", "compile"] {
         let output = Command::new(daglang_bin())
