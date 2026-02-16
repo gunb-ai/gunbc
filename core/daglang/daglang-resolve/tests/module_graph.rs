@@ -178,6 +178,32 @@ fn parse_errors_are_aggregated_across_multiple_files() {
 }
 
 #[test]
+fn parse_error_file_order_is_deterministic() {
+    let root = unique_temp_dir("parse_error_order");
+    write_file(&root.join("z_broken.dag"), "module sample.z\nfn");
+    write_file(&root.join("a_broken.dag"), "module sample.a\nimport");
+
+    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected parse errors");
+    match err {
+        ResolveError::ParseErrors(files) => {
+            assert_eq!(files.len(), 2, "expected diagnostics for both broken files");
+            let names: Vec<String> = files
+                .iter()
+                .map(|(path, _)| path.file_name().unwrap().to_string_lossy().to_string())
+                .collect();
+            assert_eq!(
+                names,
+                vec!["a_broken.dag".to_string(), "z_broken.dag".to_string()],
+                "parse error file ordering should be deterministic and path-sorted"
+            );
+        }
+        other => panic!("expected ParseErrors, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn parse_error_display_includes_all_files_and_locations() {
     let root = unique_temp_dir("parse_error_display");
     write_file(&root.join("broken_a.dag"), "module sample.a\nfn");
