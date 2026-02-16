@@ -1820,6 +1820,35 @@ fn run() -> String { return 42 }
 }
 
 #[test]
+fn compile_command_reports_implicit_return_type_mismatch_typecheck_error() {
+    let fixture = unique_temp_file("implicit_return_type_mismatch");
+    std::fs::write(
+        &fixture,
+        r#"module sample.types
+fn run() -> String { 42 }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on implicit return type mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("type mismatch: expected `String`, got `Int`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_reports_no_such_field_typecheck_error() {
     let fixture = unique_temp_file("no_such_field");
     std::fs::write(
@@ -2327,6 +2356,34 @@ fn compile_command_directory_mode_fails_on_type_mismatch() {
     assert!(
         !output.status.success(),
         "directory compile should fail on return type mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("type mismatch: expected `String`, got `Int`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_fails_on_implicit_return_type_mismatch() {
+    let root = unique_temp_dir("implicit_type_mismatch");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        "module sample.main\nfn run() -> String { 42 }",
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on implicit return type mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));

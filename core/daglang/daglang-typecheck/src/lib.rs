@@ -1389,6 +1389,8 @@ fn validate_callable_body(
             )
         })
         .collect::<HashMap<_, _>>();
+    let mut saw_explicit_return = false;
+    let mut trailing_expr_type = None;
     for stmt in stmts {
         match stmt {
             Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
@@ -1399,16 +1401,19 @@ fn validate_callable_body(
                     errors,
                 );
                 local_bindings.insert(name.clone(), inferred);
+                trailing_expr_type = None;
             }
             Stmt::Expr(expr) => {
-                infer_expr_type(
+                trailing_expr_type = Some(infer_expr_type(
                     expr,
                     &local_bindings,
                     body_context,
                     errors,
-                );
+                ));
             }
             Stmt::Return(fields) => {
+                saw_explicit_return = true;
+                trailing_expr_type = None;
                 validate_return_stmt(
                     caller,
                     &return_contract,
@@ -1417,6 +1422,13 @@ fn validate_callable_body(
                     body_context,
                     errors,
                 );
+            }
+        }
+    }
+    if !saw_explicit_return {
+        if let ReturnContract::Single { ty } = &return_contract {
+            if let Some(inferred) = trailing_expr_type {
+                push_type_mismatch_if_needed(ty, &inferred, errors);
             }
         }
     }
@@ -3237,6 +3249,22 @@ func run() -> { ok: Bool } uses io: Storage provides io: Storage {
 fn run() -> String { return 42 }"#,
         )]);
         let errors = typecheck_module_graph(graph).expect_err("type mismatch should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::TypeMismatch { expected, got }
+                if expected == "String" && got == "Int"
+        )));
+    }
+
+    #[test]
+    fn implicit_type_mismatch_in_fn_return_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "implicit_type_mismatch_fn_return.dag",
+            r#"module sample.types
+fn run() -> String { 42 }"#,
+        )]);
+        let errors = typecheck_module_graph(graph)
+            .expect_err("implicit return type mismatch should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::TypeMismatch { expected, got }
