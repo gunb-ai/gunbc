@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+use serde_json::Value;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
@@ -10718,6 +10719,96 @@ func run() -> { ok: Bool } provides out: Storage {
     assert!(stdout.contains("resource_release_targets: 0"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn obligations_command_shows_derived_obligation_summary() {
+    let output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations");
+
+    assert!(
+        output.status.success(),
+        "obligations command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("TestObligations:"));
+    assert!(stdout.contains("transport_execution_targets:"));
+    assert!(stdout.contains("resource_provide_targets:"));
+}
+
+#[test]
+fn obligations_command_json_format_emits_valid_json_object() {
+    let output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations --format json");
+
+    assert!(
+        output.status.success(),
+        "obligations --format json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout)
+        .expect("obligations --format json should emit valid JSON");
+    assert!(parsed.get("dry_run_completion_required").is_some());
+    assert!(parsed.get("service_transport_prepare_targets").is_some());
+}
+
+#[test]
+fn show_triplets_command_shows_transport_expansion_for_makegen() {
+    let output = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang show-triplets");
+
+    assert!(
+        output.status.success(),
+        "show-triplets command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("TransportTriplets:"));
+    assert!(stdout.contains("prepare_read_makegen"));
+    assert!(stdout.contains("execute_read_makegen"));
+}
+
+#[test]
+fn show_triplets_command_json_format_emits_triplet_list() {
+    let output = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang show-triplets --format json");
+
+    assert!(
+        output.status.success(),
+        "show-triplets --format json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout)
+        .expect("show-triplets --format json should emit valid JSON");
+    let triplets = parsed
+        .get("triplets")
+        .and_then(Value::as_array)
+        .expect("triplets should be a JSON array");
+    assert!(
+        !triplets.is_empty(),
+        "triplet list should include at least one transport chain"
+    );
 }
 
 #[test]

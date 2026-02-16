@@ -1,5 +1,6 @@
 use std::fmt::Write;
 use std::path::PathBuf;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::path_utils;
 use crate::pipeline::PipelineContext;
@@ -10,13 +11,20 @@ use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
 use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions};
-use gunbc_ir::Dag;
+use gunbc_ir::{Dag, Node};
+use serde_json::json;
 
 #[derive(Debug)]
 pub struct CompileOutput {
     pub lowered_dag: Dag<LoweredOp>,
     pub derived: DerivedArtifacts,
     pub emitted: EmissionBundle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputFormat {
+    Text,
+    Json,
 }
 
 pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
@@ -245,6 +253,146 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
     writeln!(out, "  resource_acquire_targets: {}", obligations.resource_acquire_targets).ok();
     writeln!(out, "  resource_release_targets: {}", obligations.resource_release_targets).ok();
     out
+}
+
+pub fn render_obligations(derived: &DerivedArtifacts, format: OutputFormat) -> String {
+    let obligations = &derived.obligations;
+    match format {
+        OutputFormat::Text => {
+            let mut out = String::new();
+            out.push_str("TestObligations:\n");
+            writeln!(out, "  dry_run_completion_required: {}", obligations.dry_run_completion_required).ok();
+            writeln!(out, "  transport_execution_targets: {}", obligations.transport_execution_targets).ok();
+            writeln!(out, "  pure_node_determinism_targets: {}", obligations.pure_node_determinism_targets).ok();
+            writeln!(out, "  service_transport_prepare_targets: {}", obligations.service_transport_prepare_targets).ok();
+            writeln!(out, "  service_transport_execute_targets: {}", obligations.service_transport_execute_targets).ok();
+            writeln!(out, "  service_transport_parse_targets: {}", obligations.service_transport_parse_targets).ok();
+            writeln!(out, "  service_param_source_targets: {}", obligations.service_param_source_targets).ok();
+            writeln!(out, "  resource_provide_targets: {}", obligations.resource_provide_targets).ok();
+            writeln!(out, "  resource_acquire_targets: {}", obligations.resource_acquire_targets).ok();
+            writeln!(out, "  resource_release_targets: {}", obligations.resource_release_targets).ok();
+            out
+        }
+        OutputFormat::Json => json!({
+            "dry_run_completion_required": obligations.dry_run_completion_required,
+            "transport_execution_targets": obligations.transport_execution_targets,
+            "pure_node_determinism_targets": obligations.pure_node_determinism_targets,
+            "service_transport_prepare_targets": obligations.service_transport_prepare_targets,
+            "service_transport_execute_targets": obligations.service_transport_execute_targets,
+            "service_transport_parse_targets": obligations.service_transport_parse_targets,
+            "service_param_source_targets": obligations.service_param_source_targets,
+            "resource_provide_targets": obligations.resource_provide_targets,
+            "resource_acquire_targets": obligations.resource_acquire_targets,
+            "resource_release_targets": obligations.resource_release_targets
+        })
+        .to_string(),
+    }
+}
+
+pub fn render_triplets(dag: &Dag<LoweredOp>, format: OutputFormat) -> String {
+    let triplets = collect_transport_triplets(dag);
+    match format {
+        OutputFormat::Text => {
+            let mut out = String::new();
+            out.push_str("TransportTriplets:\n");
+            if triplets.is_empty() {
+                out.push_str("  (none)\n");
+                return out;
+            }
+            for (index, triplet) in triplets.iter().enumerate() {
+                writeln!(out, "  [{index}]").ok();
+                writeln!(out, "    prepare: {}", triplet.prepare_node).ok();
+                writeln!(out, "    execute: {}", triplet.execute_node).ok();
+                if triplet.parse_nodes.is_empty() {
+                    out.push_str("    parse: (none)\n");
+                } else {
+                    writeln!(out, "    parse: {}", triplet.parse_nodes.join(", ")).ok();
+                }
+            }
+            out
+        }
+        OutputFormat::Json => {
+            let triplets_json = triplets
+                .iter()
+                .map(|triplet| {
+                    json!({
+                        "prepare_node": triplet.prepare_node,
+                        "execute_node": triplet.execute_node,
+                        "parse_nodes": triplet.parse_nodes
+                    })
+                })
+                .collect::<Vec<_>>();
+            json!({ "triplets": triplets_json }).to_string()
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct TransportTriplet {
+    prepare_node: String,
+    execute_node: String,
+    parse_nodes: Vec<String>,
+}
+
+fn collect_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> {
+    let node_by_id = dag
+        .nodes
+        .iter()
+        .map(|node| (node.id.0.as_str(), node))
+        .collect::<HashMap<_, _>>();
+    let mut unique = BTreeSet::<TransportTriplet>::new();
+
+    for edge in &dag.edges {
+        let Some(prepare_node) = node_by_id.get(edge.from_node.0.as_str()).copied() else {
+            continue;
+        };
+        let Some(execute_node) = node_by_id.get(edge.to_node.0.as_str()).copied() else {
+            continue;
+        };
+        if node_output_port_type(prepare_node, edge.from_port.0.as_str()) != Some("TransportRequest")
+            || node_input_port_type(execute_node, edge.to_port.0.as_str()) != Some("TransportRequest")
+        {
+            continue;
+        }
+
+        let mut parse_nodes = dag
+            .edges
+            .iter()
+            .filter(|next_edge| next_edge.from_node.0 == edge.to_node.0)
+            .filter_map(|next_edge| {
+                let parse_node = node_by_id.get(next_edge.to_node.0.as_str()).copied()?;
+                (node_output_port_type(execute_node, next_edge.from_port.0.as_str())
+                    == Some("TransportResponse")
+                    && node_input_port_type(parse_node, next_edge.to_port.0.as_str())
+                        == Some("TransportResponse"))
+                .then_some(next_edge.to_node.0.clone())
+            })
+            .collect::<Vec<_>>();
+        parse_nodes.sort();
+        parse_nodes.dedup();
+
+        unique.insert(TransportTriplet {
+            prepare_node: edge.from_node.0.clone(),
+            execute_node: edge.to_node.0.clone(),
+            parse_nodes,
+        });
+    }
+
+    unique.into_iter().collect()
+}
+
+fn node_input_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Option<&'a str> {
+    node.inputs
+        .iter()
+        .find(|port| port.name.0 == port_name)
+        .map(|port| port.type_id.0.as_str())
+}
+
+fn node_output_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Option<&'a str> {
+    node.outputs
+        .iter()
+        .find(|port| port.name.0 == port_name)
+        .map(|port| port.type_id.0.as_str())
 }
 
 #[cfg(test)]

@@ -16,7 +16,8 @@
 use std::path::PathBuf;
 
 use daglang_cli::compile::{
-    build_context, compile_from_context, render_expand, render_manifest,
+    build_context, compile_from_context, render_expand, render_manifest, render_obligations,
+    render_triplets, OutputFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{build_pipeline_dag, run_pipeline, PipelineContext, PipelineStop};
@@ -32,6 +33,10 @@ fn main() {
         eprintln!("  viz <file.dag>       ASCII DAG visualization");
         eprintln!("  expand <file.dag>    Show lowered GraphIR (nodes/edges/ports)");
         eprintln!("  manifest <file.dag>  Show derived ProgressManifest");
+        eprintln!("  obligations <file.dag> [--format text|json]");
+        eprintln!("                      Show derived test obligations summary");
+        eprintln!("  show-triplets <file.dag> [--format text|json]");
+        eprintln!("                      Show transport triplet expansions");
         eprintln!("  modules [dir]        Show discovered module graph");
         eprintln!("  check <file.dag>     Parse + typecheck (no lowering)");
         eprintln!("  compile <file.dag>   Full compilation pipeline");
@@ -85,6 +90,34 @@ fn main() {
                 Ok(output) => {
                     println!("{}", render_manifest(&output.derived));
                 }
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "obligations" => {
+            if args.len() != 3 && args.len() != 5 {
+                exit_usage("obligations <file.dag> [--format text|json]");
+            }
+            let format = parse_output_format("obligations", &args);
+            let context = build_context(&cwd, args.get(2));
+            match compile_from_context(&context) {
+                Ok(output) => println!("{}", render_obligations(&output.derived, format)),
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "show-triplets" => {
+            if args.len() != 3 && args.len() != 5 {
+                exit_usage("show-triplets <file.dag> [--format text|json]");
+            }
+            let format = parse_output_format("show-triplets", &args);
+            let context = build_context(&cwd, args.get(2));
+            match compile_from_context(&context) {
+                Ok(output) => println!("{}", render_triplets(&output.lowered_dag, format)),
                 Err(error) => {
                     eprintln!("{error}");
                     std::process::exit(1);
@@ -185,6 +218,20 @@ fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
         return path_utils::normalize_cli_path(cwd, &PathBuf::from(path));
     }
     path_utils::default_root_from_cwd(cwd)
+}
+
+fn parse_output_format(command: &str, args: &[String]) -> OutputFormat {
+    if args.len() == 3 {
+        return OutputFormat::Text;
+    }
+    if args.len() != 5 || args[3] != "--format" {
+        exit_usage(&format!("{command} <file.dag> [--format text|json]"));
+    }
+    match args[4].as_str() {
+        "text" => OutputFormat::Text,
+        "json" => OutputFormat::Json,
+        _ => exit_usage(&format!("{command} <file.dag> [--format text|json]")),
+    }
 }
 
 fn exit_usage(command: &str) -> ! {
