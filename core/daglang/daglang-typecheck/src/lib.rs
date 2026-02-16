@@ -124,8 +124,17 @@ pub enum TypeError {
     DuplicateOutputField { item: String, field: String },
     /// Import target does not exist in the available module graph.
     UnresolvedImport { module: String, target: String },
-    /// Resource declares an interface that cannot be resolved.
-    UnresolvedInterface { resource: String, interface: String },
+    /// Resource/service declares an interface that cannot be resolved.
+    UnresolvedInterface {
+        implementor: String,
+        interface: String,
+    },
+    /// Service omits an operation required by its interface.
+    MissingOperation {
+        service: String,
+        interface: String,
+        operation: String,
+    },
     /// Call expression used wrong number of arguments.
     CallArityMismatch {
         caller: String,
@@ -183,11 +192,19 @@ impl std::fmt::Display for TypeError {
                 write!(f, "unresolved import `{target}` in module `{module}`")
             }
             Self::UnresolvedInterface {
-                resource,
+                implementor,
                 interface,
             } => write!(
                 f,
-                "resource `{resource}` references unresolved interface `{interface}`"
+                "`{implementor}` references unresolved interface `{interface}`"
+            ),
+            Self::MissingOperation {
+                service,
+                interface,
+                operation,
+            } => write!(
+                f,
+                "service `{service}` is missing operation `{operation}` for interface `{interface}`"
             ),
             Self::CallArityMismatch {
                 caller,
@@ -403,6 +420,7 @@ fn collect_signatures(
             }
             Item::ServiceDef(def) => {
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
+                validate_service_interface_conformance(def, interface_registry, errors);
                 signatures.push(TypedItemSignature::Service {
                     name: def.name.clone(),
                     operations: def.operations.len(),
@@ -644,7 +662,7 @@ fn validate_resource_interface_conformance(
     let Some(required_capabilities) = resolve_interface_capabilities(implemented, interface_registry)
     else {
         errors.push(TypeError::UnresolvedInterface {
-            resource: resource.name.clone(),
+            implementor: resource.name.clone(),
             interface: implemented.to_string(),
         });
         return;
@@ -661,6 +679,39 @@ fn validate_resource_interface_conformance(
                 resource: resource.name.clone(),
                 interface: interface_name.clone(),
                 capability,
+            });
+        }
+    }
+}
+
+fn validate_service_interface_conformance(
+    service: &daglang_syntax::ast::ServiceDef,
+    interface_registry: &InterfaceRegistry,
+    errors: &mut Vec<TypeError>,
+) {
+    let Some(implemented) = service.implements.as_deref() else {
+        return;
+    };
+    let Some(required_capabilities) = resolve_interface_capabilities(implemented, interface_registry)
+    else {
+        errors.push(TypeError::UnresolvedInterface {
+            implementor: service.name.clone(),
+            interface: implemented.to_string(),
+        });
+        return;
+    };
+    let provided_operations = service
+        .operations
+        .iter()
+        .map(|operation| operation.name.clone())
+        .collect::<HashSet<_>>();
+    let interface_name = canonical_interface_name(implemented);
+    for capability in required_capabilities {
+        if !provided_operations.contains(&capability) {
+            errors.push(TypeError::MissingOperation {
+                service: service.name.clone(),
+                interface: interface_name.clone(),
+                operation: capability,
             });
         }
     }
@@ -1025,8 +1076,52 @@ resource Disk implements ObjectStorage {
         let errors = typecheck_module_graph(graph).expect_err("unknown interface should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
-            TypeError::UnresolvedInterface { resource, interface }
-                if resource == "Disk" && interface == "MissingStorage"
+            TypeError::UnresolvedInterface { implementor, interface }
+                if implementor == "Disk" && interface == "MissingStorage"
+        )));
+    }
+
+    #[test]
+    fn service_missing_interface_operation_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "missing_operation.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  capability write {
+    input { path: String, body: String }
+    output { ok: Bool }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("missing operation should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::MissingOperation {
+                service,
+                interface,
+                operation
+            } if service == "FsStorage" && interface == "Storage" && operation == "write"
+        )));
+    }
+
+    #[test]
+    fn unresolved_interface_on_service_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "missing_service_interface.dag",
+            "module sample.services\nservice FsStorage implements MissingStorage { operation read(path: String) -> { body: String } }",
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("unknown interface should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnresolvedInterface { implementor, interface }
+                if implementor == "FsStorage" && interface == "MissingStorage"
         )));
     }
 }
