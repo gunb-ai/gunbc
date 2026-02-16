@@ -755,6 +755,38 @@ fn check_command_ignores_non_dag_files_when_dag_files_exist() {
 }
 
 #[test]
+fn check_command_does_not_run_resolve_stage_for_unresolved_imports() {
+    let root = unique_temp_dir("check_parse_only_unresolved_import");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("main.dag"),
+        "module sample.main\nimport missing.dep\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write dag file");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on unresolved-import source");
+
+    assert!(
+        output.status.success(),
+        "check should parse successfully without resolve-stage diagnostics"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stdout.contains("OK: parsed 1 file(s)"));
+    assert!(
+        stderr.trim().is_empty(),
+        "check should not emit resolve diagnostics: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_defaults_to_workspace_dsl_root() {
     let output = Command::new(daglang_bin())
         .arg("check")
