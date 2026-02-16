@@ -604,6 +604,43 @@ fn check_command_directory_mode_outputs_deterministic_diagnostic_order() {
 }
 
 #[test]
+fn check_command_diagnostic_output_is_deterministic_for_same_input() {
+    let root = unique_temp_dir("check_output_deterministic");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("z_lex.dag"), "module sample.lex\n$\n")
+        .expect("failed to write z_lex");
+    std::fs::write(root.join("a_parse.dag"), "module sample.parse\nfn")
+        .expect("failed to write a_parse");
+
+    let first = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang check");
+    assert!(!first.status.success(), "first check run should fail");
+
+    let second = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang check");
+    assert!(!second.status.success(), "second check run should fail");
+
+    assert_eq!(
+        first.stderr, second.stderr,
+        "check diagnostics should be deterministic for identical inputs"
+    );
+    assert_eq!(
+        first.stdout, second.stdout,
+        "check stdout should be deterministic for identical inputs"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_sorts_lex_diagnostics_before_parse_diagnostics() {
     let root = unique_temp_dir("check_kind_order");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
