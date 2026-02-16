@@ -90,6 +90,28 @@ fn non_directory_discovery_root_is_rejected() {
 }
 
 #[test]
+fn invalid_root_path_error_display_includes_path_and_reason() {
+    let missing_root = unique_temp_dir("display_missing_root");
+    let missing_err =
+        ModuleGraph::discover(&[missing_root.clone()]).expect_err("expected invalid root error");
+    let missing_rendered = missing_err.to_string();
+    assert!(missing_rendered.contains("invalid discovery root"));
+    assert!(missing_rendered.contains(&missing_root.display().to_string()));
+    assert!(missing_rendered.contains("does not exist"));
+
+    let non_dir_root = unique_temp_dir("display_non_dir_root");
+    write_file(&non_dir_root, "not a directory");
+    let non_dir_err =
+        ModuleGraph::discover(&[non_dir_root.clone()]).expect_err("expected invalid root error");
+    let non_dir_rendered = non_dir_err.to_string();
+    assert!(non_dir_rendered.contains("invalid discovery root"));
+    assert!(non_dir_rendered.contains(&non_dir_root.display().to_string()));
+    assert!(non_dir_rendered.contains("is not a directory"));
+
+    fs::remove_file(non_dir_root).expect("failed to clean temp file");
+}
+
+#[test]
 fn unresolved_imports_are_tolerated_for_phase_zero_discovery() {
     let root = unique_temp_dir("unresolved");
     write_file(
