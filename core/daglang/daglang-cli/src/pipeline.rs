@@ -132,14 +132,6 @@ impl PipelineResult {
     }
 }
 
-impl std::ops::Deref for PipelineResult {
-    type Target = PipelineResultData;
-
-    fn deref(&self) -> &Self::Target {
-        self.data()
-    }
-}
-
 #[derive(Debug)]
 pub struct FileSource {
     pub path: PathBuf,
@@ -1009,12 +1001,12 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         assert!(
-            !result.diagnostics.is_empty(),
+            !result.diagnostics().is_empty(),
             "invalid source should produce diagnostics"
         );
         assert!(
             result
-                .diagnostics
+                .diagnostics()
                 .iter()
                 .any(|diag| diag.render().contains("broken.dag:2:")),
             "diagnostics should contain file:line:col locations"
@@ -1035,14 +1027,14 @@ mod tests {
         )
         .expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count, 42);
+        assert_eq!(result.parsed_count(), 42);
         assert!(
-            result.diagnostics.is_empty(),
+            result.diagnostics().is_empty(),
             "real corpus parse stop should not emit parse diagnostics: {:?}",
-            result.diagnostics
+            result.diagnostics()
         );
-        assert!(result.report.is_none());
-        assert!(result.module_graph.is_none());
+        assert!(result.report().is_none());
+        assert!(result.module_graph().is_none());
     }
 
     #[test]
@@ -1058,11 +1050,11 @@ mod tests {
         .expect("pipeline should execute");
 
         assert!(
-            result.diagnostics.is_empty(),
+            result.diagnostics().is_empty(),
             "real corpus report should emit no resolve diagnostics, got: {:?}",
-            result.diagnostics
+            result.diagnostics()
         );
-        let report = result.report.as_ref().expect("report should be available");
+        let report = result.report().expect("report should be available");
         assert!(report.contains("Discovered modules:"));
         assert!(report.contains("tools.makegen"));
     }
@@ -1079,7 +1071,7 @@ mod tests {
         )
         .expect("pipeline should execute");
         assert_eq!(
-            result.parsed_count, 42,
+            result.parsed_count(), 42,
             "report stop should retain parse-stage file count for real corpus"
         );
     }
@@ -1095,7 +1087,7 @@ mod tests {
             PipelineStop::Report,
         )
         .expect("pipeline should execute");
-        let report = result.report.as_ref().expect("report should be available");
+        let report = result.report().expect("report should be available");
         let actual = reported_modules_in_order(report);
         let expected: Vec<String> = expected_real_corpus_module_order()
             .into_iter()
@@ -1338,20 +1330,20 @@ mod tests {
 
         assert!(
             result
-                .diagnostics
+                .diagnostics()
                 .iter()
                 .any(|diag| diag.render().contains("z_broken.dag")),
             "expected diagnostics to include z_broken.dag"
         );
         assert!(
             result
-                .diagnostics
+                .diagnostics()
                 .iter()
                 .any(|diag| diag.render().contains("a_broken.dag")),
             "expected diagnostics to include a_broken.dag"
         );
         assert!(
-            result.diagnostics[0].render().contains("a_broken.dag"),
+            result.diagnostics()[0].render().contains("a_broken.dag"),
             "diagnostics should be deterministically sorted by path"
         );
 
@@ -1374,17 +1366,17 @@ mod tests {
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
 
         assert!(
-            result.diagnostics.len() >= 2,
+            result.diagnostics().len() >= 2,
             "expected lexical and parse diagnostics"
         );
         assert_eq!(
-            result.diagnostics[0].kind,
+            result.diagnostics()[0].kind,
             DiagnosticKind::Lex,
             "lex diagnostics should sort before parse diagnostics"
         );
         assert!(
             result
-                .diagnostics
+                .diagnostics()
                 .iter()
                 .any(|diag| diag.kind == DiagnosticKind::Parse),
             "expected at least one parse diagnostic"
@@ -1422,10 +1414,10 @@ mod tests {
         )
         .expect("second run should complete");
 
-        assert_eq!(first.parsed_count, second.parsed_count);
-        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.parsed_count(), second.parsed_count());
+        assert_eq!(first.diagnostics(), second.diagnostics());
         assert!(
-            first.diagnostics.len() >= 2,
+            first.diagnostics().len() >= 2,
             "expected diagnostics from both parse and lexical failures"
         );
 
@@ -1448,9 +1440,9 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count, 1, "expected parsed module count");
+        assert_eq!(result.parsed_count(), 1, "expected parsed module count");
         assert!(
-            result.diagnostics.is_empty(),
+            result.diagnostics().is_empty(),
             "parse pipeline should not emit resolve diagnostics"
         );
 
@@ -1472,9 +1464,9 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count, 1, "target file mode should parse one file");
+        assert_eq!(result.parsed_count(), 1, "target file mode should parse one file");
         assert!(
-            result.diagnostics.is_empty(),
+            result.diagnostics().is_empty(),
             "target file mode should ignore sibling invalid files"
         );
 
@@ -1516,8 +1508,8 @@ mod tests {
             target_file: Some(link),
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
-        assert_eq!(result.parsed_count, 1);
-        assert!(result.diagnostics.is_empty());
+        assert_eq!(result.parsed_count(), 1);
+        assert!(result.diagnostics().is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -1562,23 +1554,30 @@ mod tests {
             target_file: Some(link.clone()),
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
-        assert_eq!(result.parsed_count, 0, "malformed target should not parse successfully");
+        assert_eq!(
+            result.parsed_count(),
+            0,
+            "malformed target should not parse successfully"
+        );
         assert!(
-            !result.diagnostics.is_empty(),
+            !result.diagnostics().is_empty(),
             "malformed target should emit parse diagnostics"
         );
         assert!(
-            result.diagnostics.iter().all(|diag| diag.file.as_ref() == Some(&real)),
+            result
+                .diagnostics()
+                .iter()
+                .all(|diag| diag.file.as_ref() == Some(&real)),
             "target-file parse diagnostics should reference canonical real path: {:?}",
-            result.diagnostics
+            result.diagnostics()
         );
         assert!(
             result
-                .diagnostics
+                .diagnostics()
                 .iter()
                 .all(|diag| !diag.render().contains("link.dag")),
             "diagnostics should not reference symlink alias path: {:?}",
-            result.diagnostics
+            result.diagnostics()
         );
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -1609,7 +1608,7 @@ mod tests {
             report.contains("nested.no_module"),
             "target-file symlink fallback should derive nested module path via real root: {report}"
         );
-        assert!(result.diagnostics.is_empty());
+        assert!(result.diagnostics().is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -1646,8 +1645,8 @@ mod tests {
         )
         .expect("second pipeline run should execute");
 
-        assert_eq!(first.diagnostics, second.diagnostics);
-        assert_eq!(first.report, second.report);
+        assert_eq!(first.diagnostics(), second.diagnostics());
+        assert_eq!(first.report(), second.report());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -1677,8 +1676,8 @@ mod tests {
         )
         .expect("second pipeline run should execute");
 
-        assert_eq!(first.diagnostics, second.diagnostics);
-        assert_eq!(first.report, second.report);
+        assert_eq!(first.diagnostics(), second.diagnostics());
+        assert_eq!(first.report(), second.report());
         let report = first.report().expect("report should be present");
         assert!(
             report.contains("no_module"),
@@ -1703,8 +1702,8 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse)
             .expect("target-file mode should not require directory roots");
-        assert_eq!(result.parsed_count, 1);
-        assert!(result.diagnostics.is_empty());
+        assert_eq!(result.parsed_count(), 1);
+        assert!(result.diagnostics().is_empty());
 
         fs::remove_dir_all(valid_root).expect("failed to cleanup temp root");
     }
@@ -1717,8 +1716,8 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse)
             .expect("empty roots should be valid for parse pipeline");
-        assert_eq!(result.parsed_count, 0);
-        assert!(result.diagnostics.is_empty());
+        assert_eq!(result.parsed_count(), 0);
+        assert!(result.diagnostics().is_empty());
     }
 
     #[test]
@@ -1738,10 +1737,10 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         assert_eq!(
-            result.parsed_count, 1,
+            result.parsed_count(), 1,
             "overlapping roots should not duplicate parsed files"
         );
-        assert!(result.diagnostics.is_empty());
+        assert!(result.diagnostics().is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -1759,10 +1758,10 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         assert_eq!(
-            result.parsed_count, 1,
+            result.parsed_count(), 1,
             "duplicate roots should not duplicate parsed files"
         );
-        assert!(result.diagnostics.is_empty());
+        assert!(result.diagnostics().is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -1780,10 +1779,10 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         assert_eq!(
-            result.parsed_count, 1,
+            result.parsed_count(), 1,
             "equivalent roots should not duplicate parsed files"
         );
-        assert!(result.diagnostics.is_empty());
+        assert!(result.diagnostics().is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -1801,7 +1800,7 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         let broken_hits = result
-            .diagnostics
+            .diagnostics()
             .iter()
             .filter(|diag| diag.render().contains("broken.dag"))
             .count();
@@ -1826,7 +1825,7 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         let broken_hits = result
-            .diagnostics
+            .diagnostics()
             .iter()
             .filter(|diag| diag.render().contains("broken.dag"))
             .count();
@@ -1862,10 +1861,10 @@ mod tests {
         )
         .expect("second run should complete");
 
-        assert_eq!(first.parsed_count, second.parsed_count);
-        assert_eq!(first.diagnostics, second.diagnostics);
-        assert_eq!(first.parsed_count, 1);
-        assert!(first.diagnostics.is_empty());
+        assert_eq!(first.parsed_count(), second.parsed_count());
+        assert_eq!(first.diagnostics(), second.diagnostics());
+        assert_eq!(first.parsed_count(), 1);
+        assert!(first.diagnostics().is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -1894,10 +1893,10 @@ mod tests {
         )
         .expect("second run should complete");
 
-        assert_eq!(first.parsed_count, second.parsed_count);
-        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.parsed_count(), second.parsed_count());
+        assert_eq!(first.diagnostics(), second.diagnostics());
         assert!(
-            !first.diagnostics.is_empty(),
+            !first.diagnostics().is_empty(),
             "expected parse diagnostics from malformed source"
         );
 
@@ -1923,10 +1922,10 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         assert_eq!(
-            result.parsed_count, 1,
+            result.parsed_count(), 1,
             "real+symlink roots should not duplicate parsed files"
         );
-        assert!(result.diagnostics.is_empty());
+        assert!(result.diagnostics().is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -1949,8 +1948,8 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse)
             .expect("pipeline should handle directory cycle symlink");
-        assert_eq!(result.parsed_count, 1);
-        assert!(result.diagnostics.is_empty());
+        assert_eq!(result.parsed_count(), 1);
+        assert!(result.diagnostics().is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -1985,8 +1984,8 @@ mod tests {
         )
         .expect("second run should complete");
 
-        assert_eq!(first.parsed_count, second.parsed_count);
-        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.parsed_count(), second.parsed_count());
+        assert_eq!(first.diagnostics(), second.diagnostics());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -2021,10 +2020,10 @@ mod tests {
         )
         .expect("second run should complete");
 
-        assert_eq!(first.parsed_count, second.parsed_count);
-        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.parsed_count(), second.parsed_count());
+        assert_eq!(first.diagnostics(), second.diagnostics());
         assert!(
-            !first.diagnostics.is_empty(),
+            !first.diagnostics().is_empty(),
             "expected parse diagnostics for malformed source"
         );
 
@@ -2050,7 +2049,7 @@ mod tests {
         let result = run_pipeline(&context, PipelineStop::Parse)
             .expect("pipeline should handle directory cycle symlink");
         let broken_hits = result
-            .diagnostics
+            .diagnostics()
             .iter()
             .filter(|diag| diag.render().contains("broken.dag"))
             .count();
@@ -2091,8 +2090,8 @@ mod tests {
         )
         .expect("second pipeline run should complete");
 
-        assert_eq!(first.parsed_count, second.parsed_count);
-        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.parsed_count(), second.parsed_count());
+        assert_eq!(first.diagnostics(), second.diagnostics());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -2116,7 +2115,7 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         let broken_hits = result
-            .diagnostics
+            .diagnostics()
             .iter()
             .filter(|diag| diag.render().contains("broken.dag"))
             .count();
@@ -2171,7 +2170,7 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
 
-        assert!(result.diagnostics.is_empty());
+        assert!(result.diagnostics().is_empty());
         let report = result.report().expect("report output should be present");
         assert!(
             report.contains("nested.no_module"),
@@ -2202,7 +2201,7 @@ mod tests {
         )
         .expect("report pipeline should execute");
         let broken_hits = result
-            .diagnostics
+            .diagnostics()
             .iter()
             .filter(|diag| diag.render().contains("broken.dag"))
             .count();
@@ -2243,8 +2242,8 @@ mod tests {
         )
         .expect("second report pipeline run should execute");
 
-        assert_eq!(first.diagnostics, second.diagnostics);
-        assert_eq!(first.report, second.report);
+        assert_eq!(first.diagnostics(), second.diagnostics());
+        assert_eq!(first.report(), second.report());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -2260,7 +2259,7 @@ mod tests {
         let report = result.report().expect("report should be generated");
         assert!(report.contains("Discovered modules:"));
         assert!(!report.contains("Diagnostics:"));
-        assert!(result.diagnostics.is_empty());
+        assert!(result.diagnostics().is_empty());
     }
 
     #[test]
@@ -2358,7 +2357,7 @@ mod tests {
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
 
         let unresolved = result
-            .diagnostics
+            .diagnostics()
             .iter()
             .find(|diag| diag.render().contains("unresolved import"))
             .expect("expected unresolved import diagnostic in report pipeline");
@@ -2390,7 +2389,7 @@ mod tests {
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
 
         let duplicate = result
-            .diagnostics
+            .diagnostics()
             .iter()
             .find(|diag| diag.render().contains("duplicate module path"))
             .expect("expected duplicate module diagnostic in report pipeline");
@@ -2421,7 +2420,7 @@ mod tests {
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
 
         let cycle = result
-            .diagnostics
+            .diagnostics()
             .iter()
             .find(|diag| diag.render().contains("cyclic dependencies detected"))
             .expect("expected cycle diagnostic in report pipeline");
@@ -2448,7 +2447,7 @@ mod tests {
 
         assert!(
             result
-                .diagnostics
+                .diagnostics()
                 .iter()
                 .any(|diag| diag.render().contains("unresolved import")),
             "expected unresolved import diagnostic in report pipeline"
@@ -2474,7 +2473,7 @@ mod tests {
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
 
         let unresolved_count = result
-            .diagnostics
+            .diagnostics()
             .iter()
             .filter(|diag| diag.render().contains("unresolved import"))
             .count();
@@ -2505,16 +2504,16 @@ mod tests {
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
 
         assert!(
-            result.diagnostics.len() >= 2,
+            result.diagnostics().len() >= 2,
             "expected at least two diagnostics from lex + resolve phases"
         );
         assert_eq!(
-            result.diagnostics[0].kind,
+            result.diagnostics()[0].kind,
             DiagnosticKind::Lex,
             "lex diagnostics should be sorted before resolve diagnostics"
         );
         assert!(
-            result.diagnostics
+            result.diagnostics()
                 .iter()
                 .any(|diag| diag.kind == DiagnosticKind::Resolve),
             "expected at least one resolve diagnostic"
@@ -2543,8 +2542,8 @@ mod tests {
         let second =
             run_pipeline(&context, PipelineStop::Report).expect("second run should succeed");
 
-        assert_eq!(first.diagnostics, second.diagnostics);
-        assert_eq!(first.report, second.report);
+        assert_eq!(first.diagnostics(), second.diagnostics());
+        assert_eq!(first.report(), second.report());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -2578,8 +2577,8 @@ mod tests {
         )
         .expect("second run should succeed");
 
-        assert_eq!(first.diagnostics, second.diagnostics);
-        assert_eq!(first.report, second.report);
+        assert_eq!(first.diagnostics(), second.diagnostics());
+        assert_eq!(first.report(), second.report());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -2608,8 +2607,8 @@ mod tests {
         )
         .expect("second run should succeed");
 
-        assert_eq!(first.diagnostics, second.diagnostics);
-        assert_eq!(first.report, second.report);
+        assert_eq!(first.diagnostics(), second.diagnostics());
+        assert_eq!(first.report(), second.report());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -2638,10 +2637,10 @@ mod tests {
         )
         .expect("second run should complete");
 
-        assert_eq!(first.diagnostics, second.diagnostics);
-        assert_eq!(first.report, second.report);
+        assert_eq!(first.diagnostics(), second.diagnostics());
+        assert_eq!(first.report(), second.report());
         assert!(
-            !first.diagnostics.is_empty(),
+            !first.diagnostics().is_empty(),
             "expected diagnostics from malformed source"
         );
 
@@ -2678,8 +2677,8 @@ mod tests {
         )
         .expect("second run should succeed");
 
-        assert_eq!(first.diagnostics, second.diagnostics);
-        assert_eq!(first.report, second.report);
+        assert_eq!(first.diagnostics(), second.diagnostics());
+        assert_eq!(first.report(), second.report());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -2714,10 +2713,10 @@ mod tests {
         )
         .expect("second run should complete");
 
-        assert_eq!(first.diagnostics, second.diagnostics);
-        assert_eq!(first.report, second.report);
+        assert_eq!(first.diagnostics(), second.diagnostics());
+        assert_eq!(first.report(), second.report());
         assert!(
-            !first.diagnostics.is_empty(),
+            !first.diagnostics().is_empty(),
             "expected report diagnostics for malformed source"
         );
 
