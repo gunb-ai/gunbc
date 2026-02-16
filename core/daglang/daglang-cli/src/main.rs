@@ -237,7 +237,7 @@ fn normalize_path_components(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_root_from_cwd, normalize_path_components};
+    use super::{default_root_from_cwd, has_dag_extension, normalize_path_components};
     use std::path::{Path, PathBuf};
 
     fn root_path() -> PathBuf {
@@ -374,5 +374,19 @@ mod tests {
         let path = PathBuf::from("tools/../.");
         let normalized = normalize_path_components(&path);
         assert_eq!(normalized, PathBuf::from("."));
+    }
+
+    #[test]
+    fn has_dag_extension_is_case_insensitive() {
+        assert!(has_dag_extension(Path::new("main.dag")));
+        assert!(has_dag_extension(Path::new("main.DAG")));
+        assert!(has_dag_extension(Path::new("main.DaG")));
+    }
+
+    #[test]
+    fn has_dag_extension_rejects_non_dag_extensions() {
+        assert!(!has_dag_extension(Path::new("main.dag.bak")));
+        assert!(!has_dag_extension(Path::new("main.txt")));
+        assert!(!has_dag_extension(Path::new("main")));
     }
 }
