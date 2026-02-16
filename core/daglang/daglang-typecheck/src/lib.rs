@@ -24,6 +24,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
+use daglang_syntax::ast_utils::{
+    canonical_type_name, resource_type_name, service_call_lookup_keys,
+    should_track_call_name as should_validate_call_name, type_expr_to_string, walk_stmts,
+};
 use daglang_syntax::ast::{
     Expr, Field, Item, Param, ProvidesClause, SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
 };
@@ -1986,8 +1990,8 @@ fn validate_return_stmt(
     fields: &[(String, Expr)],
     local_bindings: &HashMap<String, ValueType>,
     infer_context: &ExprInferenceContext<'_>,
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     match return_contract {
         ReturnContract::Single { ty } => {
             if fields.len() != 1 {
@@ -1995,16 +1999,16 @@ fn validate_return_stmt(
                     expected: ty.clone(),
                     got: "Record".to_string(),
                 });
-                return;
+                return errors;
             }
-            let inferred = infer_expr_type_for_expected_named_record(
+            let (inferred, infer_errors) = infer_expr_type_for_expected_named_record(
                 &fields[0].1,
                 ty,
                 local_bindings,
                 infer_context,
-                errors,
             );
-            push_type_mismatch_if_needed(ty, &inferred, errors);
+            errors.extend(infer_errors);
+            errors.extend(push_type_mismatch_if_needed(ty, &inferred));
         }
         ReturnContract::Record { fields: expected } => {
             for (field, expr) in fields {
@@ -2015,16 +2019,17 @@ fn validate_return_stmt(
                     });
                     continue;
                 };
-                let inferred = infer_expr_type(
+                let (inferred, infer_errors) = infer_expr_type(
                     expr,
                     local_bindings,
                     infer_context,
-                    errors,
                 );
-                push_type_mismatch_if_needed(expected_ty, &inferred, errors);
+                errors.extend(infer_errors);
+                errors.extend(push_type_mismatch_if_needed(expected_ty, &inferred));
             }
         }
     }
+    errors
 }
 
 fn infer_expr_type_for_expected_named_record(
@@ -2032,20 +2037,21 @@ fn infer_expr_type_for_expected_named_record(
     expected_type: &str,
     local_bindings: &HashMap<String, ValueType>,
     infer_context: &ExprInferenceContext<'_>,
-    errors: &mut Vec<TypeError>,
-) -> ValueType {
+) -> (ValueType, Vec<TypeError>) {
     let Expr::Record(None, fields) = expr else {
-        return infer_expr_type(expr, local_bindings, infer_context, errors);
+        return infer_expr_type(expr, local_bindings, infer_context);
     };
 
     let Some(expected_fields) = resolve_record_fields(expected_type, infer_context.record_type_registry) else {
-        return infer_expr_type(expr, local_bindings, infer_context, errors);
+        return infer_expr_type(expr, local_bindings, infer_context);
     };
 
+    let mut errors = Vec::new();
     let mut inferred_fields = HashMap::new();
     let mut compatible = true;
     for (name, value_expr) in fields {
-        let inferred = infer_expr_type(value_expr, local_bindings, infer_context, errors);
+        let (inferred, val_errors) = infer_expr_type(value_expr, local_bindings, infer_context);
+        errors.extend(val_errors);
         let inferred_name = inferred
             .display_name()
             .unwrap_or_else(|| "Any".to_string());
@@ -2067,20 +2073,21 @@ fn infer_expr_type_for_expected_named_record(
         }
     }
 
-    if compatible {
+    let value = if compatible {
         ValueType::Named(expected_type.to_string())
     } else {
         ValueType::Record(inferred_fields)
-    }
+    };
+    (value, errors)
 }
 
 fn infer_expr_type(
     expr: &Expr,
     local_bindings: &HashMap<String, ValueType>,
     infer_context: &ExprInferenceContext<'_>,
-    errors: &mut Vec<TypeError>,
-) -> ValueType {
-    match expr {
+) -> (ValueType, Vec<TypeError>) {
+    let mut errors = Vec::new();
+    let value = match expr {
         Expr::Literal(literal) => match literal {
             daglang_syntax::ast::Literal::Int(_) => ValueType::Named("Int".to_string()),
             daglang_syntax::ast::Literal::Float(_) => ValueType::Named("Float".to_string()),
@@ -2108,7 +2115,8 @@ fn infer_expr_type(
             })
             .unwrap_or(ValueType::Unknown),
         Expr::FieldAccess(base, field) => {
-            let base_type = infer_expr_type(base, local_bindings, infer_context, errors);
+            let (base_type, base_errors) = infer_expr_type(base, local_bindings, infer_context);
+            errors.extend(base_errors);
             match base_type {
                 ValueType::Record(fields) => match fields.get(field) {
                     Some(ty) => ValueType::Named(ty.clone()),
@@ -2140,7 +2148,8 @@ fn infer_expr_type(
         }
         Expr::Call(name, args) => {
             for (_, arg) in args {
-                infer_expr_type(arg, local_bindings, infer_context, errors);
+                let (_, arg_errors) = infer_expr_type(arg, local_bindings, infer_context);
+                errors.extend(arg_errors);
             }
             if let Some(contract) = infer_context.param_callable_contracts.get(name) {
                 contract.output.clone()
@@ -2155,7 +2164,8 @@ fn infer_expr_type(
         }
         Expr::ServiceCall(path, args) => {
             for (_, arg) in args {
-                infer_expr_type(arg, local_bindings, infer_context, errors);
+                let (_, arg_errors) = infer_expr_type(arg, local_bindings, infer_context);
+                errors.extend(arg_errors);
             }
             match resolve_service_call_contract(path, infer_context.service_call_registry) {
                 ServiceCallResolution::Resolved(contract) => ValueType::Record(contract.outputs),
@@ -2176,8 +2186,10 @@ fn infer_expr_type(
             }
         }
         Expr::BinOp(lhs, op, rhs) => {
-            let lhs_ty = infer_expr_type(lhs, local_bindings, infer_context, errors);
-            let rhs_ty = infer_expr_type(rhs, local_bindings, infer_context, errors);
+            let (lhs_ty, lhs_errors) = infer_expr_type(lhs, local_bindings, infer_context);
+            errors.extend(lhs_errors);
+            let (rhs_ty, rhs_errors) = infer_expr_type(rhs, local_bindings, infer_context);
+            errors.extend(rhs_errors);
             match op {
                 daglang_syntax::ast::BinOp::Eq
                 | daglang_syntax::ast::BinOp::Ne
@@ -2198,7 +2210,8 @@ fn infer_expr_type(
             }
         }
         Expr::UnaryOp(op, inner) => {
-            let inner_ty = infer_expr_type(inner, local_bindings, infer_context, errors);
+            let (inner_ty, inner_errors) = infer_expr_type(inner, local_bindings, infer_context);
+            errors.extend(inner_errors);
             match op {
                 daglang_syntax::ast::UnaryOp::Not => ValueType::Named("Bool".to_string()),
                 daglang_syntax::ast::UnaryOp::Neg => inner_ty,
@@ -2207,14 +2220,16 @@ fn infer_expr_type(
         Expr::StringInterp(parts) => {
             for part in parts {
                 if let daglang_syntax::ast::StringPart::Expr(inner) = part {
-                    infer_expr_type(inner, local_bindings, infer_context, errors);
+                    let (_, inner_errors) = infer_expr_type(inner, local_bindings, infer_context);
+                    errors.extend(inner_errors);
                 }
             }
             ValueType::Named("String".to_string())
         }
         Expr::Record(type_name, fields) => {
             for (_, value) in fields {
-                infer_expr_type(value, local_bindings, infer_context, errors);
+                let (_, val_errors) = infer_expr_type(value, local_bindings, infer_context);
+                errors.extend(val_errors);
             }
             if let Some(name) = type_name {
                 ValueType::Named(name.clone())
@@ -2223,10 +2238,11 @@ fn infer_expr_type(
                     fields
                         .iter()
                         .map(|(name, expr)| {
+                            let (val, val_errors) = infer_expr_type(expr, local_bindings, infer_context);
+                            errors.extend(val_errors);
                             (
                                 name.clone(),
-                                infer_expr_type(expr, local_bindings, infer_context, errors)
-                                    .display_name()
+                                val.display_name()
                                     .unwrap_or_else(|| "Any".to_string()),
                             )
                         })
@@ -2235,20 +2251,27 @@ fn infer_expr_type(
             }
         }
         Expr::Match(scrutinee, arms) => {
-            infer_expr_type(scrutinee, local_bindings, infer_context, errors);
+            let (_, scr_errors) = infer_expr_type(scrutinee, local_bindings, infer_context);
+            errors.extend(scr_errors);
             for arm in arms {
                 if let Some(guard) = &arm.guard {
-                    infer_expr_type(guard, local_bindings, infer_context, errors);
+                    let (_, guard_errors) = infer_expr_type(guard, local_bindings, infer_context);
+                    errors.extend(guard_errors);
                 }
-                infer_expr_type(&arm.body, local_bindings, infer_context, errors);
+                let (_, body_errors) = infer_expr_type(&arm.body, local_bindings, infer_context);
+                errors.extend(body_errors);
             }
             ValueType::Unknown
         }
         Expr::If(cond, then_expr, else_expr) => {
-            infer_expr_type(cond, local_bindings, infer_context, errors);
-            let then_ty = infer_expr_type(then_expr, local_bindings, infer_context, errors);
+            let (_, cond_errors) = infer_expr_type(cond, local_bindings, infer_context);
+            errors.extend(cond_errors);
+            let (then_ty, then_errors) = infer_expr_type(then_expr, local_bindings, infer_context);
+            errors.extend(then_errors);
             let else_ty = else_expr.as_ref().map(|otherwise| {
-                infer_expr_type(otherwise, local_bindings, infer_context, errors)
+                let (ty, else_errors) = infer_expr_type(otherwise, local_bindings, infer_context);
+                errors.extend(else_errors);
+                ty
             });
             match else_ty {
                 Some(otherwise)
@@ -2261,48 +2284,68 @@ fn infer_expr_type(
             }
         }
         Expr::For(_, iterable, body) => {
-            infer_expr_type(iterable, local_bindings, infer_context, errors);
-            infer_expr_type(body, local_bindings, infer_context, errors);
+            let (_, iter_errors) = infer_expr_type(iterable, local_bindings, infer_context);
+            errors.extend(iter_errors);
+            let (_, body_errors) = infer_expr_type(body, local_bindings, infer_context);
+            errors.extend(body_errors);
             ValueType::Unknown
         }
         Expr::Pipe(lhs, rhs) => {
-            infer_expr_type(lhs, local_bindings, infer_context, errors);
-            infer_expr_type(rhs, local_bindings, infer_context, errors)
+            let (_, lhs_errors) = infer_expr_type(lhs, local_bindings, infer_context);
+            errors.extend(lhs_errors);
+            let (rhs_val, rhs_errors) = infer_expr_type(rhs, local_bindings, infer_context);
+            errors.extend(rhs_errors);
+            rhs_val
         }
-        Expr::Lambda(_, body) => infer_expr_type(body, local_bindings, infer_context, errors),
+        Expr::Lambda(_, body) => {
+            let (val, body_errors) = infer_expr_type(body, local_bindings, infer_context);
+            errors.extend(body_errors);
+            val
+        }
         Expr::List(items) => {
             for item in items {
-                infer_expr_type(item, local_bindings, infer_context, errors);
+                let (_, item_errors) = infer_expr_type(item, local_bindings, infer_context);
+                errors.extend(item_errors);
             }
             ValueType::Named("List".to_string())
         }
         Expr::Map(entries) => {
             for (key, value) in entries {
-                infer_expr_type(key, local_bindings, infer_context, errors);
-                infer_expr_type(value, local_bindings, infer_context, errors);
+                let (_, key_errors) = infer_expr_type(key, local_bindings, infer_context);
+                errors.extend(key_errors);
+                let (_, val_errors) = infer_expr_type(value, local_bindings, infer_context);
+                errors.extend(val_errors);
             }
             ValueType::Named("Map".to_string())
         }
         Expr::Guarded(inner, guard) => {
-            infer_expr_type(inner, local_bindings, infer_context, errors);
-            infer_expr_type(guard, local_bindings, infer_context, errors);
+            let (_, inner_errors) = infer_expr_type(inner, local_bindings, infer_context);
+            errors.extend(inner_errors);
+            let (_, guard_errors) = infer_expr_type(guard, local_bindings, infer_context);
+            errors.extend(guard_errors);
             ValueType::Unknown
         }
-        Expr::After(inner, _) => infer_expr_type(inner, local_bindings, infer_context, errors),
+        Expr::After(inner, _) => {
+            let (val, inner_errors) = infer_expr_type(inner, local_bindings, infer_context);
+            errors.extend(inner_errors);
+            val
+        }
         Expr::Return(fields) => ValueType::Record(
             fields
                 .iter()
                 .map(|(name, expr)| {
+                    let (val, val_errors) = infer_expr_type(expr, local_bindings, infer_context);
+                    errors.extend(val_errors);
                     (
                         name.clone(),
-                        infer_expr_type(expr, local_bindings, infer_context, errors)
-                            .display_name()
+                        val.display_name()
                             .unwrap_or_else(|| "Any".to_string()),
                     )
                 })
                 .collect(),
         ),
-    }
+    };
+    (value, errors)
 }
 
 impl ValueType {
@@ -2400,14 +2443,13 @@ fn validate_resource_interface_conformance(
             });
             continue;
         };
-        validate_capability_contract(
+        errors.extend(validate_capability_contract(
             &resource.name,
             &interface_name,
             &capability_name,
             provided_contract,
             &required_contract,
-            errors,
-        );
+        ));
     }
 }
 
@@ -2417,26 +2459,25 @@ fn validate_capability_contract(
     capability: &str,
     provided: &CapabilityContract,
     required: &CapabilityContract,
-    errors: &mut Vec<TypeError>,
-) {
-    validate_signature_map(
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
+    errors.extend(validate_signature_map(
         implementor,
         interface,
         capability,
         "input",
         &provided.inputs,
         &required.inputs,
-        errors,
-    );
-    validate_signature_map(
+    ));
+    errors.extend(validate_signature_map(
         implementor,
         interface,
         capability,
         "output",
         &provided.outputs,
         &required.outputs,
-        errors,
-    );
+    ));
+    errors
 }
 
 fn validate_signature_map(
@@ -2446,8 +2487,8 @@ fn validate_signature_map(
     direction: &str,
     provided: &HashMap<String, String>,
     required: &HashMap<String, String>,
-    errors: &mut Vec<TypeError>,
-) {
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     for (field, expected_ty) in required {
         let Some(provided_ty) = provided.get(field) else {
             errors.push(TypeError::InterfaceSignatureMismatch {
@@ -2469,6 +2510,7 @@ fn validate_signature_map(
             });
         }
     }
+    errors
 }
 
 fn validate_service_interface_conformance(
@@ -2519,14 +2561,13 @@ fn validate_service_interface_conformance(
             });
             continue;
         };
-        validate_capability_contract(
+        errors.extend(validate_capability_contract(
             &service.name,
             &interface_name,
             &capability_name,
             provided_contract,
             &required_contract,
-            errors,
-        );
+        ));
     }
 }
 
@@ -2576,19 +2617,9 @@ fn resolve_service_call_contract(
     call_path: &[String],
     registry: &ServiceCallRegistry,
 ) -> ServiceCallResolution {
-    if call_path.len() < 2 {
-        return ServiceCallResolution::Missing;
-    }
-    let Some(operation) = call_path.last() else {
+    let Some(keys) = service_call_lookup_keys(call_path) else {
         return ServiceCallResolution::Missing;
     };
-    let service_name = call_path[..call_path.len() - 1].join(".");
-    let short_service = call_path[call_path.len() - 2].clone();
-    let keys = [
-        format!("{service_name}.{operation}"),
-        format!("{short_service}.{operation}"),
-        call_path.join("."),
-    ];
     let mut saw_ambiguous = false;
     for key in keys {
         if let Some(entry) = registry.by_key.get(&key) {
@@ -2684,26 +2715,6 @@ fn resolve_bound_service_call_contract(
     }
 }
 
-fn canonical_type_name(name: &str) -> String {
-    name.split('<').next().unwrap_or(name).trim().to_string()
-}
-
-fn canonical_resource_type_name(name: &str) -> String {
-    let base_without_config = name.split('(').next().unwrap_or(name).trim();
-    let base_without_annotations = base_without_config
-        .split_whitespace()
-        .next()
-        .unwrap_or(base_without_config);
-    canonical_type_name(base_without_annotations)
-}
-
-fn resource_type_name(resource_type: &TypeExpr) -> String {
-    match resource_type {
-        TypeExpr::Named(name) | TypeExpr::Generic(name, _) => canonical_resource_type_name(name),
-        TypeExpr::Optional(inner) | TypeExpr::Annotated(inner, _) => resource_type_name(inner),
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BodyCall {
     callee: String,
@@ -2719,23 +2730,8 @@ struct BodyServiceCall {
 }
 
 fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<BodyCall>) {
-    for stmt in stmts {
-        match stmt {
-            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
-                collect_calls_from_expr(expr, calls);
-            }
-            Stmt::Return(fields) => {
-                for (_, expr) in fields {
-                    collect_calls_from_expr(expr, calls);
-                }
-            }
-        }
-    }
-}
-
-fn collect_calls_from_expr(expr: &Expr, calls: &mut Vec<BodyCall>) {
-    match expr {
-        Expr::Call(name, args) => {
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::Call(name, args) = expr {
             if should_validate_call_name(name) {
                 calls.push(BodyCall {
                     callee: name.clone(),
@@ -2746,106 +2742,13 @@ fn collect_calls_from_expr(expr: &Expr, calls: &mut Vec<BodyCall>) {
                         .collect::<Vec<_>>(),
                 });
             }
-            for (_, arg) in args {
-                collect_calls_from_expr(arg, calls);
-            }
         }
-        Expr::ServiceCall(_, args) => {
-            for (_, arg) in args {
-                collect_calls_from_expr(arg, calls);
-            }
-        }
-        Expr::FieldAccess(base, _) => collect_calls_from_expr(base, calls),
-        Expr::BinOp(lhs, _, rhs) => {
-            collect_calls_from_expr(lhs, calls);
-            collect_calls_from_expr(rhs, calls);
-        }
-        Expr::UnaryOp(_, inner) => collect_calls_from_expr(inner, calls),
-        Expr::StringInterp(parts) => {
-            for part in parts {
-                if let daglang_syntax::ast::StringPart::Expr(inner) = part {
-                    collect_calls_from_expr(inner, calls);
-                }
-            }
-        }
-        Expr::Record(_, fields) => {
-            for (_, value) in fields {
-                collect_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Match(scrutinee, arms) => {
-            collect_calls_from_expr(scrutinee, calls);
-            for arm in arms {
-                if let Some(guard) = &arm.guard {
-                    collect_calls_from_expr(guard, calls);
-                }
-                collect_calls_from_expr(&arm.body, calls);
-            }
-        }
-        Expr::If(cond, then_expr, else_expr) => {
-            collect_calls_from_expr(cond, calls);
-            collect_calls_from_expr(then_expr, calls);
-            if let Some(otherwise) = else_expr {
-                collect_calls_from_expr(otherwise, calls);
-            }
-        }
-        Expr::For(_, iterable, body) => {
-            collect_calls_from_expr(iterable, calls);
-            collect_calls_from_expr(body, calls);
-        }
-        Expr::Pipe(lhs, rhs) => {
-            collect_calls_from_expr(lhs, calls);
-            collect_calls_from_expr(rhs, calls);
-        }
-        Expr::Lambda(_, body) => collect_calls_from_expr(body, calls),
-        Expr::List(items) => {
-            for item in items {
-                collect_calls_from_expr(item, calls);
-            }
-        }
-        Expr::Map(entries) => {
-            for (key, value) in entries {
-                collect_calls_from_expr(key, calls);
-                collect_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Guarded(inner, guard) => {
-            collect_calls_from_expr(inner, calls);
-            collect_calls_from_expr(guard, calls);
-        }
-        Expr::After(inner, _) => collect_calls_from_expr(inner, calls),
-        Expr::Return(fields) => {
-            for (_, value) in fields {
-                collect_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Literal(_) | Expr::Ident(_) => {}
-    }
+    });
 }
 
 fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<BodyServiceCall>) {
-    for stmt in stmts {
-        match stmt {
-            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
-                collect_service_calls_from_expr(expr, calls);
-            }
-            Stmt::Return(fields) => {
-                for (_, expr) in fields {
-                    collect_service_calls_from_expr(expr, calls);
-                }
-            }
-        }
-    }
-}
-
-fn collect_service_calls_from_expr(expr: &Expr, calls: &mut Vec<BodyServiceCall>) {
-    match expr {
-        Expr::Call(_, args) => {
-            for (_, arg) in args {
-                collect_service_calls_from_expr(arg, calls);
-            }
-        }
-        Expr::ServiceCall(path, args) => {
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::ServiceCall(path, args) = expr {
             calls.push(BodyServiceCall {
                 path: path.clone(),
                 arg_count: args.len(),
@@ -2854,80 +2757,8 @@ fn collect_service_calls_from_expr(expr: &Expr, calls: &mut Vec<BodyServiceCall>
                     .filter_map(|(name, _)| name.clone())
                     .collect::<Vec<_>>(),
             });
-            for (_, arg) in args {
-                collect_service_calls_from_expr(arg, calls);
-            }
         }
-        Expr::FieldAccess(base, _) => collect_service_calls_from_expr(base, calls),
-        Expr::BinOp(lhs, _, rhs) => {
-            collect_service_calls_from_expr(lhs, calls);
-            collect_service_calls_from_expr(rhs, calls);
-        }
-        Expr::UnaryOp(_, inner) => collect_service_calls_from_expr(inner, calls),
-        Expr::StringInterp(parts) => {
-            for part in parts {
-                if let daglang_syntax::ast::StringPart::Expr(inner) = part {
-                    collect_service_calls_from_expr(inner, calls);
-                }
-            }
-        }
-        Expr::Record(_, fields) => {
-            for (_, value) in fields {
-                collect_service_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Match(scrutinee, arms) => {
-            collect_service_calls_from_expr(scrutinee, calls);
-            for arm in arms {
-                if let Some(guard) = &arm.guard {
-                    collect_service_calls_from_expr(guard, calls);
-                }
-                collect_service_calls_from_expr(&arm.body, calls);
-            }
-        }
-        Expr::If(cond, then_expr, else_expr) => {
-            collect_service_calls_from_expr(cond, calls);
-            collect_service_calls_from_expr(then_expr, calls);
-            if let Some(otherwise) = else_expr {
-                collect_service_calls_from_expr(otherwise, calls);
-            }
-        }
-        Expr::For(_, iterable, body) => {
-            collect_service_calls_from_expr(iterable, calls);
-            collect_service_calls_from_expr(body, calls);
-        }
-        Expr::Pipe(lhs, rhs) => {
-            collect_service_calls_from_expr(lhs, calls);
-            collect_service_calls_from_expr(rhs, calls);
-        }
-        Expr::Lambda(_, body) => collect_service_calls_from_expr(body, calls),
-        Expr::List(items) => {
-            for item in items {
-                collect_service_calls_from_expr(item, calls);
-            }
-        }
-        Expr::Map(entries) => {
-            for (key, value) in entries {
-                collect_service_calls_from_expr(key, calls);
-                collect_service_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Guarded(inner, guard) => {
-            collect_service_calls_from_expr(inner, calls);
-            collect_service_calls_from_expr(guard, calls);
-        }
-        Expr::After(inner, _) => collect_service_calls_from_expr(inner, calls),
-        Expr::Return(fields) => {
-            for (_, value) in fields {
-                collect_service_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Literal(_) | Expr::Ident(_) => {}
-    }
-}
-
-fn should_validate_call_name(name: &str) -> bool {
-    !matches!(name, "<expr>" | "as" | "with" | "fn")
+    });
 }
 
 fn validate_type_expr(
@@ -2969,7 +2800,7 @@ fn validate_type_expr(
             }
         }
         TypeExpr::Optional(inner) => {
-            validate_type_expr(inner, known_types, generic_arity_registry, context, errors)
+            validate_type_expr(inner, known_types, generic_arity_registry, context, errors);
         }
         TypeExpr::Annotated(inner, annotations) => {
             validate_type_expr(inner, known_types, generic_arity_registry, context, errors);
@@ -3045,29 +2876,6 @@ fn extract_int_literal(expr: &Expr) -> Option<i64> {
 fn should_validate_named_type(name: &str) -> bool {
     name.chars()
         .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '.'))
-}
-
-fn type_expr_to_string(expr: &TypeExpr) -> String {
-    match expr {
-        TypeExpr::Named(name) => name.clone(),
-        TypeExpr::Generic(name, args) => format!(
-            "{name}<{}>",
-            args.iter()
-                .map(type_expr_to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        TypeExpr::Optional(inner) => format!("{}?", type_expr_to_string(inner)),
-        TypeExpr::Annotated(inner, annotations) => format!(
-            "{} {}",
-            type_expr_to_string(inner),
-            annotations
-                .iter()
-                .map(|annotation| format!("@{}", annotation.name))
-                .collect::<Vec<_>>()
-                .join(" ")
-        ),
-    }
 }
 
 #[cfg(test)]

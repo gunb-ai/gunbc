@@ -18,7 +18,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use daglang_syntax::ast::{Expr, Item, Stmt, StringPart, TypeExpr};
+use daglang_syntax::ast::{Expr, Item, Stmt};
+use daglang_syntax::ast_utils::{
+    canonical_resource_type_name as canonical_type_name, resource_type_name, service_call_lookup_keys,
+    should_track_call_name as should_track_call, type_expr_to_string, walk_stmts,
+};
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::{diff_topologies, Cardinality, Dag, Edge, Node, Port};
 
@@ -863,29 +867,6 @@ fn sanitize_identifier(value: &str) -> String {
     out
 }
 
-fn type_expr_to_string(expr: &TypeExpr) -> String {
-    match expr {
-        TypeExpr::Named(name) => name.clone(),
-        TypeExpr::Generic(name, args) => format!(
-            "{name}<{}>",
-            args.iter()
-                .map(type_expr_to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        TypeExpr::Optional(inner) => format!("{}?", type_expr_to_string(inner)),
-        TypeExpr::Annotated(inner, annotations) => format!(
-            "{} {}",
-            type_expr_to_string(inner),
-            annotations
-                .iter()
-                .map(|annotation| format!("@{}", annotation.name))
-                .collect::<Vec<_>>()
-                .join(" ")
-        ),
-    }
-}
-
 fn add_makegen_scaffolding(
     builder: &mut DagBuilder,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
@@ -1375,27 +1356,6 @@ fn collect_known_uses_types(project: &TypedProject) -> KnownUsesTypes {
     known
 }
 
-fn resource_type_name(ty: &TypeExpr) -> String {
-    match ty {
-        TypeExpr::Named(name) | TypeExpr::Generic(name, _) => canonical_type_name(name),
-        TypeExpr::Optional(inner) | TypeExpr::Annotated(inner, _) => resource_type_name(inner),
-    }
-}
-
-fn canonical_type_name(name: &str) -> String {
-    let base_without_config = name.split('(').next().unwrap_or(name).trim();
-    let base_without_annotations = base_without_config
-        .split_whitespace()
-        .next()
-        .unwrap_or(base_without_config);
-    base_without_annotations
-        .split('<')
-        .next()
-        .unwrap_or(base_without_annotations)
-        .trim()
-        .to_string()
-}
-
 fn add_resource_lifecycle_nodes(
     builder: &mut DagBuilder,
     project: &TypedProject,
@@ -1465,17 +1425,7 @@ fn resolve_service_endpoint(
     call_path: &[String],
     registry: &ServiceEndpointRegistry,
 ) -> Option<ServiceTransportEndpoint> {
-    if call_path.len() < 2 {
-        return None;
-    }
-    let operation = call_path.last()?;
-    let service_name = call_path[..call_path.len() - 1].join(".");
-    let short_service = call_path[call_path.len() - 2].clone();
-    let keys = [
-        format!("{service_name}.{operation}"),
-        format!("{short_service}.{operation}"),
-        call_path.join("."),
-    ];
+    let keys = service_call_lookup_keys(call_path)?;
     for key in keys {
         if let Some(Some(endpoint)) = registry.by_key.get(&key) {
             return Some(endpoint.clone());
@@ -1535,18 +1485,13 @@ fn item_callable_provides(
 }
 
 fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut HashSet<String>) {
-    for stmt in stmts {
-        match stmt {
-            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
-                collect_calls_from_expr(expr, calls);
-            }
-            Stmt::Return(fields) => {
-                for (_, expr) in fields {
-                    collect_calls_from_expr(expr, calls);
-                }
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::Call(name, _) = expr {
+            if should_track_call(name) {
+                calls.insert(name.clone());
             }
         }
-    }
+    });
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1562,111 +1507,8 @@ struct ServiceCallSite {
 }
 
 fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallSite>) {
-    for stmt in stmts {
-        match stmt {
-            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
-                collect_service_calls_from_expr(expr, calls);
-            }
-            Stmt::Return(fields) => {
-                for (_, expr) in fields {
-                    collect_service_calls_from_expr(expr, calls);
-                }
-            }
-        }
-    }
-}
-
-fn collect_calls_from_expr(expr: &Expr, calls: &mut HashSet<String>) {
-    match expr {
-        Expr::Call(name, args) => {
-            if should_track_call(name) {
-                calls.insert(name.clone());
-            }
-            for (_, arg) in args {
-                collect_calls_from_expr(arg, calls);
-            }
-        }
-        Expr::ServiceCall(_, args) => {
-            for (_, arg) in args {
-                collect_calls_from_expr(arg, calls);
-            }
-        }
-        Expr::FieldAccess(base, _) => collect_calls_from_expr(base, calls),
-        Expr::BinOp(lhs, _, rhs) => {
-            collect_calls_from_expr(lhs, calls);
-            collect_calls_from_expr(rhs, calls);
-        }
-        Expr::UnaryOp(_, inner) => collect_calls_from_expr(inner, calls),
-        Expr::StringInterp(parts) => {
-            for part in parts {
-                if let StringPart::Expr(inner) = part {
-                    collect_calls_from_expr(inner, calls);
-                }
-            }
-        }
-        Expr::Record(_, fields) => {
-            for (_, value) in fields {
-                collect_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Match(scrutinee, arms) => {
-            collect_calls_from_expr(scrutinee, calls);
-            for arm in arms {
-                if let Some(guard) = &arm.guard {
-                    collect_calls_from_expr(guard, calls);
-                }
-                collect_calls_from_expr(&arm.body, calls);
-            }
-        }
-        Expr::If(cond, then_expr, else_expr) => {
-            collect_calls_from_expr(cond, calls);
-            collect_calls_from_expr(then_expr, calls);
-            if let Some(otherwise) = else_expr {
-                collect_calls_from_expr(otherwise, calls);
-            }
-        }
-        Expr::For(_, iterable, body) => {
-            collect_calls_from_expr(iterable, calls);
-            collect_calls_from_expr(body, calls);
-        }
-        Expr::Pipe(lhs, rhs) => {
-            collect_calls_from_expr(lhs, calls);
-            collect_calls_from_expr(rhs, calls);
-        }
-        Expr::Lambda(_, body) => collect_calls_from_expr(body, calls),
-        Expr::List(items) => {
-            for item in items {
-                collect_calls_from_expr(item, calls);
-            }
-        }
-        Expr::Map(entries) => {
-            for (key, value) in entries {
-                collect_calls_from_expr(key, calls);
-                collect_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Guarded(inner, guard) => {
-            collect_calls_from_expr(inner, calls);
-            collect_calls_from_expr(guard, calls);
-        }
-        Expr::After(inner, _) => collect_calls_from_expr(inner, calls),
-        Expr::Return(fields) => {
-            for (_, value) in fields {
-                collect_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Literal(_) | Expr::Ident(_) => {}
-    }
-}
-
-fn collect_service_calls_from_expr(expr: &Expr, calls: &mut Vec<ServiceCallSite>) {
-    match expr {
-        Expr::Call(_, args) => {
-            for (_, arg) in args {
-                collect_service_calls_from_expr(arg, calls);
-            }
-        }
-        Expr::ServiceCall(path, args) => {
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::ServiceCall(path, args) = expr {
             calls.push(ServiceCallSite {
                 path: path.clone(),
                 args: args
@@ -1680,80 +1522,8 @@ fn collect_service_calls_from_expr(expr: &Expr, calls: &mut Vec<ServiceCallSite>
                     })
                     .collect::<Vec<_>>(),
             });
-            for (_, arg) in args {
-                collect_service_calls_from_expr(arg, calls);
-            }
         }
-        Expr::FieldAccess(base, _) => collect_service_calls_from_expr(base, calls),
-        Expr::BinOp(lhs, _, rhs) => {
-            collect_service_calls_from_expr(lhs, calls);
-            collect_service_calls_from_expr(rhs, calls);
-        }
-        Expr::UnaryOp(_, inner) => collect_service_calls_from_expr(inner, calls),
-        Expr::StringInterp(parts) => {
-            for part in parts {
-                if let StringPart::Expr(inner) = part {
-                    collect_service_calls_from_expr(inner, calls);
-                }
-            }
-        }
-        Expr::Record(_, fields) => {
-            for (_, value) in fields {
-                collect_service_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Match(scrutinee, arms) => {
-            collect_service_calls_from_expr(scrutinee, calls);
-            for arm in arms {
-                if let Some(guard) = &arm.guard {
-                    collect_service_calls_from_expr(guard, calls);
-                }
-                collect_service_calls_from_expr(&arm.body, calls);
-            }
-        }
-        Expr::If(cond, then_expr, else_expr) => {
-            collect_service_calls_from_expr(cond, calls);
-            collect_service_calls_from_expr(then_expr, calls);
-            if let Some(otherwise) = else_expr {
-                collect_service_calls_from_expr(otherwise, calls);
-            }
-        }
-        Expr::For(_, iterable, body) => {
-            collect_service_calls_from_expr(iterable, calls);
-            collect_service_calls_from_expr(body, calls);
-        }
-        Expr::Pipe(lhs, rhs) => {
-            collect_service_calls_from_expr(lhs, calls);
-            collect_service_calls_from_expr(rhs, calls);
-        }
-        Expr::Lambda(_, body) => collect_service_calls_from_expr(body, calls),
-        Expr::List(items) => {
-            for item in items {
-                collect_service_calls_from_expr(item, calls);
-            }
-        }
-        Expr::Map(entries) => {
-            for (key, value) in entries {
-                collect_service_calls_from_expr(key, calls);
-                collect_service_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Guarded(inner, guard) => {
-            collect_service_calls_from_expr(inner, calls);
-            collect_service_calls_from_expr(guard, calls);
-        }
-        Expr::After(inner, _) => collect_service_calls_from_expr(inner, calls),
-        Expr::Return(fields) => {
-            for (_, value) in fields {
-                collect_service_calls_from_expr(value, calls);
-            }
-        }
-        Expr::Literal(_) | Expr::Ident(_) => {}
-    }
-}
-
-fn should_track_call(name: &str) -> bool {
-    !matches!(name, "<expr>" | "as" | "with" | "fn")
+    });
 }
 
 #[cfg(test)]
