@@ -8068,6 +8068,219 @@ fn check_command_mixed_case_dag_extension_missing_target_is_treated_as_single_fi
 }
 
 #[test]
+fn check_command_uppercase_dag_extension_curdir_suffix_single_file_target_matches_plain_uppercase_output(
+) {
+    let root = unique_temp_dir("check_uppercase_dag_extension_curdir_suffix_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("main.DAG"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid uppercase-extension dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+
+    let uppercase_curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("main.DAG/.")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run uppercase curdir-suffix target daglang check");
+    assert!(
+        uppercase_curdir_suffix.status.success(),
+        "uppercase curdir-suffix target check should succeed: {}",
+        String::from_utf8_lossy(&uppercase_curdir_suffix.stderr)
+    );
+
+    let plain_uppercase = Command::new(daglang_bin())
+        .arg("check")
+        .arg("main.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-uppercase target daglang check");
+    assert!(
+        plain_uppercase.status.success(),
+        "plain-uppercase target check should succeed: {}",
+        String::from_utf8_lossy(&plain_uppercase.stderr)
+    );
+
+    assert_eq!(
+        uppercase_curdir_suffix.stdout, plain_uppercase.stdout,
+        "uppercase curdir-suffix and plain-uppercase single-file check stdout should match"
+    );
+    assert_eq!(
+        uppercase_curdir_suffix.stderr, plain_uppercase.stderr,
+        "uppercase curdir-suffix and plain-uppercase single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&uppercase_curdir_suffix.stdout),
+        expected_check_success_stdout(1),
+        "uppercase curdir-suffix single-file check should parse exactly one file"
+    );
+    assert!(
+        uppercase_curdir_suffix.stderr.is_empty(),
+        "uppercase curdir-suffix single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&uppercase_curdir_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_uppercase_dag_extension_curdir_segment_trailing_slash_single_file_target_matches_plain_uppercase_output(
+) {
+    let root =
+        unique_temp_dir("check_uppercase_dag_extension_curdir_segment_trailing_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("main.DAG"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid uppercase-extension dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+
+    let uppercase_curdir_segment_trailing = Command::new(daglang_bin())
+        .arg("check")
+        .arg("main.DAG/./")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run uppercase curdir-segment-trailing target daglang check");
+    assert!(
+        uppercase_curdir_segment_trailing.status.success(),
+        "uppercase curdir-segment-trailing target check should succeed: {}",
+        String::from_utf8_lossy(&uppercase_curdir_segment_trailing.stderr)
+    );
+
+    let plain_uppercase = Command::new(daglang_bin())
+        .arg("check")
+        .arg("main.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-uppercase target daglang check");
+    assert!(
+        plain_uppercase.status.success(),
+        "plain-uppercase target check should succeed: {}",
+        String::from_utf8_lossy(&plain_uppercase.stderr)
+    );
+
+    assert_eq!(
+        uppercase_curdir_segment_trailing.stdout, plain_uppercase.stdout,
+        "uppercase curdir-segment-trailing and plain-uppercase single-file check stdout should match"
+    );
+    assert_eq!(
+        uppercase_curdir_segment_trailing.stderr, plain_uppercase.stderr,
+        "uppercase curdir-segment-trailing and plain-uppercase single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&uppercase_curdir_segment_trailing.stdout),
+        expected_check_success_stdout(1),
+        "uppercase curdir-segment-trailing single-file check should parse exactly one file"
+    );
+    assert!(
+        uppercase_curdir_segment_trailing.stderr.is_empty(),
+        "uppercase curdir-segment-trailing single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&uppercase_curdir_segment_trailing.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_uppercase_dag_extension_curdir_suffix_missing_target_matches_plain_uppercase_output(
+) {
+    let root = unique_temp_dir("check_uppercase_dag_extension_curdir_suffix_missing_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    let missing_target = root.join("missing.DAG");
+
+    let uppercase_curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing.DAG/.")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run uppercase curdir-suffix missing-target daglang check");
+    assert!(
+        !uppercase_curdir_suffix.status.success(),
+        "uppercase curdir-suffix missing-target check should fail"
+    );
+
+    let plain_uppercase = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-uppercase missing-target daglang check");
+    assert!(
+        !plain_uppercase.status.success(),
+        "plain-uppercase missing-target check should fail"
+    );
+
+    assert_eq!(
+        uppercase_curdir_suffix.stdout, plain_uppercase.stdout,
+        "uppercase curdir-suffix and plain-uppercase missing-target check stdout should match"
+    );
+    assert_eq!(
+        uppercase_curdir_suffix.stderr, plain_uppercase.stderr,
+        "uppercase curdir-suffix and plain-uppercase missing-target check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&uppercase_curdir_suffix.stderr).contains(&format!(
+            "failed to canonicalize {}",
+            missing_target.display()
+        )),
+        "uppercase curdir-suffix missing-target diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&uppercase_curdir_suffix.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_uppercase_dag_extension_curdir_segment_trailing_slash_missing_target_matches_plain_uppercase_output(
+) {
+    let root = unique_temp_dir(
+        "check_uppercase_dag_extension_curdir_segment_trailing_missing_target",
+    );
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    let missing_target = root.join("missing.DAG");
+
+    let uppercase_curdir_segment_trailing = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing.DAG/./")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run uppercase curdir-segment-trailing missing-target daglang check");
+    assert!(
+        !uppercase_curdir_segment_trailing.status.success(),
+        "uppercase curdir-segment-trailing missing-target check should fail"
+    );
+
+    let plain_uppercase = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-uppercase missing-target daglang check");
+    assert!(
+        !plain_uppercase.status.success(),
+        "plain-uppercase missing-target check should fail"
+    );
+
+    assert_eq!(
+        uppercase_curdir_segment_trailing.stdout, plain_uppercase.stdout,
+        "uppercase curdir-segment-trailing and plain-uppercase missing-target check stdout should match"
+    );
+    assert_eq!(
+        uppercase_curdir_segment_trailing.stderr, plain_uppercase.stderr,
+        "uppercase curdir-segment-trailing and plain-uppercase missing-target check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&uppercase_curdir_segment_trailing.stderr).contains(&format!(
+            "failed to canonicalize {}",
+            missing_target.display()
+        )),
+        "uppercase curdir-segment-trailing missing-target diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&uppercase_curdir_segment_trailing.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_parent_segment_single_file_target_matches_absolute_output() {
     let root = unique_temp_dir("check_parent_segment_single_file");
     let cwd = root.join("cwd");
