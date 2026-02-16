@@ -265,6 +265,49 @@ fn modules_command_reports_lex_diagnostics_without_failing() {
 }
 
 #[test]
+fn modules_command_sorts_lex_diagnostics_before_resolve_diagnostics() {
+    let root = unique_temp_dir("modules_diag_kind_order");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("z_resolve.dag"),
+        "module sample.resolve\nimport missing.dep\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write resolve-error source");
+    std::fs::write(root.join("a_lex.dag"), "module sample.lex\n$\n")
+        .expect("failed to write lex-error source");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules for mixed diagnostics");
+
+    assert!(
+        output.status.success(),
+        "modules command should remain non-failing when diagnostics are present"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let diagnostics = stdout
+        .split("Diagnostics:\n")
+        .nth(1)
+        .expect("expected diagnostics section in modules output");
+    let first = diagnostics
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .expect("expected at least one diagnostic line");
+    assert!(
+        first.contains("a_lex.dag"),
+        "lex diagnostics should be sorted before resolve diagnostics: {stdout}"
+    );
+    assert!(stdout.contains("z_resolve.dag"));
+    assert!(stdout.contains("unexpected character '$'"));
+    assert!(stdout.contains("unresolved import"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn modules_command_reports_cycle_diagnostics_without_failing() {
     let root = unique_temp_dir("modules_cycle_diag");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
