@@ -910,6 +910,35 @@ fn run() -> String { fmt(text: "ok") }
 }
 
 #[test]
+fn compile_command_reports_undefined_type_typecheck_error() {
+    let fixture = unique_temp_file("undefined_type");
+    std::fs::write(
+        &fixture,
+        r#"module sample.types
+fn run(input: MissingType) -> String { "ok" }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on undefined type"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("undefined type `MissingType"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_reports_service_call_arity_typecheck_error() {
     let fixture = unique_temp_file("service_call_arity");
     std::fs::write(
