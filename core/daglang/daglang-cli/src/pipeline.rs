@@ -587,6 +587,12 @@ fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
     for node in &dag.nodes {
         let incoming = incoming_by_node.get(&node.id.0).copied().unwrap_or(0);
         if incoming == 0 {
+            if node.id.0 != NODE_DISCOVER && !node.inputs.is_empty() {
+                return Err(format!(
+                    "non-entrypoint node {} has unconnected inputs; only {} may define entrypoint inputs",
+                    node.id.0, NODE_DISCOVER
+                ));
+            }
             continue;
         }
         for input in &node.inputs {
@@ -1186,5 +1192,15 @@ mod tests {
         let dag = build_pipeline_dag();
         validate_pipeline_semantics(&dag)
             .expect("discover node should allow unconnected entrypoint input ports");
+    }
+
+    #[test]
+    fn pipeline_rejects_disconnected_non_entrypoint_with_inputs() {
+        let mut dag = build_pipeline_dag();
+        dag.edges.retain(|edge| edge.to_node.0 != NODE_PARSE);
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("non-entrypoint without inbound edges should fail");
+        assert!(err.contains("non-entrypoint node"));
     }
 }
