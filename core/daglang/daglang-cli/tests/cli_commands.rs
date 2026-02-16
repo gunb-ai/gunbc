@@ -105,6 +105,41 @@ fn check_command_parses_full_dsl_corpus() {
 }
 
 #[test]
+fn check_command_default_root_matches_explicit_dsl_output() {
+    let explicit = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run explicit-root daglang check");
+    assert!(
+        explicit.status.success(),
+        "explicit-root check should succeed: {}",
+        String::from_utf8_lossy(&explicit.stderr)
+    );
+
+    let default = Command::new(daglang_bin())
+        .arg("check")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run default-root daglang check");
+    assert!(
+        default.status.success(),
+        "default-root check should succeed: {}",
+        String::from_utf8_lossy(&default.stderr)
+    );
+
+    assert_eq!(
+        default.stdout, explicit.stdout,
+        "default check output should match explicit 'check dsl' output"
+    );
+    assert_eq!(
+        default.stderr, explicit.stderr,
+        "default check stderr should match explicit-root stderr"
+    );
+}
+
+#[test]
 fn modules_command_prints_module_graph_summary() {
     let output = Command::new(daglang_bin())
         .arg("modules")
@@ -128,6 +163,41 @@ fn modules_command_prints_module_graph_summary() {
     assert_eq!(
         reported_modules, expected_modules,
         "modules command should report the complete 42-module corpus"
+    );
+}
+
+#[test]
+fn modules_command_default_root_matches_explicit_dsl_output() {
+    let explicit = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run explicit-root daglang modules");
+    assert!(
+        explicit.status.success(),
+        "explicit-root modules should succeed: {}",
+        String::from_utf8_lossy(&explicit.stderr)
+    );
+
+    let default = Command::new(daglang_bin())
+        .arg("modules")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run default-root daglang modules");
+    assert!(
+        default.status.success(),
+        "default-root modules should succeed: {}",
+        String::from_utf8_lossy(&default.stderr)
+    );
+
+    assert_eq!(
+        default.stdout, explicit.stdout,
+        "default modules output should match explicit 'modules dsl' output"
+    );
+    assert_eq!(
+        default.stderr, explicit.stderr,
+        "default modules stderr should match explicit-root stderr"
     );
 }
 
