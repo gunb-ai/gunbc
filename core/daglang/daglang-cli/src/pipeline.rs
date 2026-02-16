@@ -1181,6 +1181,27 @@ mod tests {
     }
 
     #[test]
+    fn parse_pipeline_deduplicates_files_from_duplicate_roots() {
+        let root = unique_temp_dir("duplicate_roots");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+            .expect("failed to write source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone(), root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+        assert_eq!(
+            result.parsed_count, 1,
+            "duplicate roots should not duplicate parsed files"
+        );
+        assert!(result.diagnostics.is_empty());
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn report_pipeline_with_empty_roots_emits_empty_graph_report() {
         let context = PipelineContext {
             roots: vec![],

@@ -450,3 +450,19 @@ fn discovery_deduplicates_files_from_overlapping_roots() {
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
+
+#[test]
+fn discovery_deduplicates_files_from_duplicate_roots() {
+    let root = unique_temp_dir("duplicate_roots");
+    write_file(
+        &root.join("main.dag"),
+        "module sample.main\nfn ok() -> Unit {}",
+    );
+
+    let graph = ModuleGraph::discover(&[root.clone(), root.clone()])
+        .expect("discover should dedupe duplicate root entries");
+    assert_eq!(graph.modules.len(), 1);
+    assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
