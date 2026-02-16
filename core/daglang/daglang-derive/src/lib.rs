@@ -673,4 +673,106 @@ mod tests {
         assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
         assert_eq!(artifacts.obligations.resource_release_targets, 1);
     }
+
+    #[test]
+    fn derive_manifest_contract_fields_include_topology_capture_and_resources() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "root_a",
+            vec![],
+            vec![Port::scalar("path", "String")],
+            LoweredOp::Callable {
+                module: "sample.pipeline".to_string(),
+                kind: CallableKind::Fn,
+                name: "root_a".to_string(),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "root_b",
+            vec![],
+            vec![Port::scalar("content", "String")],
+            LoweredOp::Callable {
+                module: "sample.pipeline".to_string(),
+                kind: CallableKind::Fn,
+                name: "root_b".to_string(),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "prepare_write",
+            vec![
+                Port::scalar("path", "String"),
+                Port::scalar("content", "String"),
+                Port::scalar("res:file:Makefile", "FilesystemHandle"),
+            ],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: "sample.pipeline".to_string(),
+                kind: CallableKind::Pattern,
+                name: "content_upsert::prepare_write".to_string(),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "execute_write",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "sample.pipeline".to_string(),
+                kind: CallableKind::Pattern,
+                name: "content_upsert::execute_write".to_string(),
+            },
+        ));
+        dag.add_edge(Edge::new("root_a", "path", "prepare_write", "path"));
+        dag.add_edge(Edge::new("root_b", "content", "prepare_write", "content"));
+        dag.add_edge(Edge::new("prepare_write", "request", "execute_write", "request"));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert_eq!(artifacts.manifest.topology.len(), 4);
+        assert_eq!(
+            artifacts
+                .manifest
+                .topology
+                .iter()
+                .filter(|node| node.depth == 0)
+                .count(),
+            2,
+            "two roots should occupy depth 0"
+        );
+        assert!(
+            artifacts
+                .manifest
+                .parallel_groups
+                .iter()
+                .any(|group| group.depth == 0
+                    && group.nodes
+                        == vec!["root_a".to_string(), "root_b".to_string()]),
+            "root wave should form a parallel group"
+        );
+        assert_eq!(
+            artifacts
+                .manifest
+                .labels
+                .get("execute_write")
+                .expect("execute label should exist"),
+            "sample.pipeline.content_upsert::execute_write"
+        );
+        assert_eq!(
+            artifacts
+                .manifest
+                .capture_modes
+                .get("execute_write")
+                .copied(),
+            Some(CaptureMode::Captured),
+            "transport execute node should be marked captured"
+        );
+        let resources = artifacts
+            .manifest
+            .resources
+            .get("prepare_write")
+            .expect("prepare_write should include resource usage");
+        assert_eq!(resources.len(), 1);
+        assert_eq!(resources[0].resource, "file:Makefile");
+        assert!(artifacts.manifest.subdag_boundaries.is_empty());
+        assert!(artifacts.manifest.interactive_nodes.is_empty());
+        assert!(artifacts.manifest.stage_groups.is_empty());
+    }
 }

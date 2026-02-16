@@ -10603,7 +10603,29 @@ fn manifest_command_supports_json_output_format() {
     assert!(stdout.contains("\"manifest\""));
     assert!(stdout.contains("\"topology\""));
     assert!(stdout.contains("\"parallel_groups\""));
+    assert!(stdout.contains("\"capture_modes\""));
+    assert!(stdout.contains("\"resources\""));
     assert!(stdout.contains("\"obligations\""));
+}
+
+#[test]
+fn manifest_command_supports_equals_json_output_format() {
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg("--format=json")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest --format=json");
+
+    assert!(
+        output.status.success(),
+        "manifest --format=json command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"manifest\""));
+    assert!(stdout.contains("\"topology\""));
 }
 
 #[test]
