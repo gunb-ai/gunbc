@@ -105,12 +105,7 @@ pub fn parse_with_file_diagnostics(
 }
 
 pub fn parse_or_panic(source: &str) -> SourceFile {
-    parse(source).unwrap_or_else(|errs| {
-        for e in &errs {
-            eprintln!("{e}");
-        }
-        panic!("parse failed with {} error(s)", errs.len());
-    })
+    parse(source).unwrap_or_else(|errs| panic!("parse failed with {} error(s): {:?}", errs.len(), errs))
 }
 
 struct Parser {
