@@ -157,6 +157,12 @@ pub enum TypeError {
         callee: String,
         argument: String,
     },
+    /// Call expression reuses the same named argument multiple times.
+    DuplicateCallArgument {
+        caller: String,
+        callee: String,
+        argument: String,
+    },
     /// Service call expression used wrong number of arguments.
     ServiceCallArityMismatch {
         caller: String,
@@ -166,6 +172,12 @@ pub enum TypeError {
     },
     /// Service call expression used an unknown named argument.
     UnknownServiceCallArgument {
+        caller: String,
+        service_call: String,
+        argument: String,
+    },
+    /// Service call expression reuses the same named argument multiple times.
+    DuplicateServiceCallArgument {
         caller: String,
         service_call: String,
         argument: String,
@@ -272,6 +284,14 @@ impl std::fmt::Display for TypeError {
                 f,
                 "unknown named argument `{argument}` in call to `{callee}` within `{caller}`"
             ),
+            Self::DuplicateCallArgument {
+                caller,
+                callee,
+                argument,
+            } => write!(
+                f,
+                "duplicate named argument `{argument}` in call to `{callee}` within `{caller}`"
+            ),
             Self::ServiceCallArityMismatch {
                 caller,
                 service_call,
@@ -288,6 +308,14 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "unknown named argument `{argument}` in service call `{service_call}` within `{caller}`"
+            ),
+            Self::DuplicateServiceCallArgument {
+                caller,
+                service_call,
+                argument,
+            } => write!(
+                f,
+                "duplicate named argument `{argument}` in service call `{service_call}` within `{caller}`"
             ),
             Self::UnknownUsedResourceType {
                 item,
@@ -968,7 +996,16 @@ fn validate_callable_body(
                 got: call.arg_count,
             });
         }
+        let mut seen_named = HashSet::new();
         for named in call.named_args {
+            if !seen_named.insert(named.clone()) {
+                errors.push(TypeError::DuplicateCallArgument {
+                    caller: caller.to_string(),
+                    callee: call.callee.clone(),
+                    argument: named,
+                });
+                continue;
+            }
             if !contract.params.contains(&named) {
                 errors.push(TypeError::UnknownCallArgument {
                     caller: caller.to_string(),
@@ -993,7 +1030,16 @@ fn validate_callable_body(
                 got: call.arg_count,
             });
         }
+        let mut seen_named = HashSet::new();
         for named in call.named_args {
+            if !seen_named.insert(named.clone()) {
+                errors.push(TypeError::DuplicateServiceCallArgument {
+                    caller: caller.to_string(),
+                    service_call: call.path.join("."),
+                    argument: named,
+                });
+                continue;
+            }
             if !contract.params.contains(&named) {
                 errors.push(TypeError::UnknownServiceCallArgument {
                     caller: caller.to_string(),
@@ -1637,6 +1683,24 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_named_call_argument_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "duplicate_arg.dag",
+            "module sample.calls\nfn fmt(value: String) -> String { value }\nfn run() -> String { fmt(value: \"a\", value: \"b\") }",
+        )]);
+        let errors =
+            typecheck_module_graph(graph).expect_err("duplicate named argument should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateCallArgument {
+                caller,
+                callee,
+                argument
+            } if caller == "run" && callee == "fmt" && argument == "value"
+        )));
+    }
+
+    #[test]
     fn service_call_arity_mismatch_is_reported() {
         let graph = module_graph_from_sources(&[(
             "service_arity_mismatch.dag",
@@ -1699,6 +1763,37 @@ func run(path: String) -> { body: String } {
                 service_call,
                 argument
             } if caller == "run" && service_call == "FsStorage.read" && argument == "file"
+        )));
+    }
+
+    #[test]
+    fn duplicate_named_service_call_argument_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "service_duplicate_arg.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path, path: path)
+  return { body: response.body }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph)
+            .expect_err("duplicate named service call argument should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateServiceCallArgument {
+                caller,
+                service_call,
+                argument
+            } if caller == "run" && service_call == "FsStorage.read" && argument == "path"
         )));
     }
 
