@@ -2408,4 +2408,334 @@ resource Disk implements Storage {
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
     }
+
+    #[test]
+    fn compile_directory_duplicate_parameter_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_duplicate_parameter_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn run(a: String, a: Int) -> String { a }
+"#,
+        )
+        .expect("failed to write duplicate-parameter source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate parameter `a` in `run`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_duplicate_output_field_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_duplicate_output_field_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+func run() -> { ok: Bool, ok: String } { return { ok: true } }
+"#,
+        )
+        .expect("failed to write duplicate-output source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate output field `ok` in `run`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_duplicate_uses_binding_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_duplicate_uses_binding_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage { capability read { input { path: String } output { body: String } } }
+func run() -> { ok: Bool } uses fs: Storage uses fs: Storage { return { ok: true } }
+"#,
+        )
+        .expect("failed to write duplicate-uses source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate uses binding `fs` in `run`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_duplicate_provides_binding_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_duplicate_provides_binding_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage { capability read { input { path: String } output { body: String } } }
+func run() -> { ok: Bool } provides out: Storage provides out: Storage { return { ok: true } }
+"#,
+        )
+        .expect("failed to write duplicate-provides source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate provides binding `out` in `run`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_use_provide_binding_conflict_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_use_provide_binding_conflict_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage { capability read { input { path: String } output { body: String } } }
+func run() -> { ok: Bool } uses io: Storage provides io: Storage { return { ok: true } }
+"#,
+        )
+        .expect("failed to write use/provide conflict source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("binding `io` is declared in both uses/provides in `run`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_missing_resource_capability_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_missing_resource_capability_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  capability write {
+    input { path: String, body: String }
+    output { ok: Bool }
+  }
+}
+resource Disk implements Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+"#,
+        )
+        .expect("failed to write missing-resource-capability source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("resource `Disk` is missing capability `write` for interface `Storage`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_missing_service_operation_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_missing_service_operation_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  capability write {
+    input { path: String, body: String }
+    output { ok: Bool }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+"#,
+        )
+        .expect("failed to write missing-service-operation source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("service `FsStorage` is missing operation `write` for interface `Storage`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_service_interface_signature_mismatch_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_service_signature_mismatch_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: Int) -> { body: String }
+}
+"#,
+        )
+        .expect("failed to write service-signature-mismatch source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("`FsStorage` does not match `Storage.read` contract"));
+        assert!(error.contains("expected `String` but found `Int`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_resource_interface_signature_mismatch_fails_in_typecheck_stage() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_resource_signature_mismatch_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource Disk implements Storage {
+  capability read {
+    input { path: Int }
+    output { body: String }
+  }
+}
+"#,
+        )
+        .expect("failed to write resource-signature-mismatch source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("`Disk` does not match `Storage.read` contract"));
+        assert!(error.contains("expected `String` but found `Int`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
 }
