@@ -104,12 +104,6 @@ pub fn parse_with_file_diagnostics(
         .map_err(|errors| errors.iter().map(|error| error.to_diagnostic(file, source)).collect())
 }
 
-#[cfg(test)]
-fn parse_or_panic(source: &str) -> SourceFile {
-    parse(source)
-        .unwrap_or_else(|errs| panic!("parse failed with {} error(s): {:?}", errs.len(), errs))
-}
-
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
@@ -2201,6 +2195,11 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse_or_panic(source: &str) -> SourceFile {
+        parse(source)
+            .unwrap_or_else(|errs| panic!("parse failed with {} error(s): {:?}", errs.len(), errs))
+    }
 
     fn parse_expr_only(source: &str) -> Expr {
         let tokens = Lexer::tokenize(source);
