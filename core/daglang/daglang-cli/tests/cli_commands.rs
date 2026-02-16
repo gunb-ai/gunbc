@@ -202,6 +202,30 @@ fn check_command_missing_directory_exits_nonzero() {
 }
 
 #[test]
+fn check_command_non_directory_root_exits_nonzero() {
+    let root_file = unique_temp_file("check_non_directory_root")
+        .with_extension("txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root_file)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check for non-directory root");
+
+    assert!(
+        !output.status.success(),
+        "check should fail when root path is not a directory"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("input root is not a directory"));
+
+    std::fs::remove_file(root_file).expect("failed to cleanup root file");
+}
+
+#[test]
 fn check_command_reports_lex_diagnostic_for_unknown_character() {
     let bad_file = unique_temp_file("lex_bad");
     std::fs::write(&bad_file, "module tmp.bad\n$\n").expect("failed to create bad dag file");
@@ -705,6 +729,30 @@ fn modules_command_missing_directory_exits_nonzero() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root does not exist"));
+}
+
+#[test]
+fn modules_command_non_directory_root_exits_nonzero() {
+    let root_file = unique_temp_file("modules_non_directory_root")
+        .with_extension("txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root_file)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules for non-directory root");
+
+    assert!(
+        !output.status.success(),
+        "modules should fail when root path is not a directory"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("input root is not a directory"));
+
+    std::fs::remove_file(root_file).expect("failed to cleanup root file");
 }
 
 #[test]
