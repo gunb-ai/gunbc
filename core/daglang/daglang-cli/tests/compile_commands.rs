@@ -100,6 +100,59 @@ fn manifest_command_shows_derived_progress_manifest() {
 }
 
 #[test]
+fn manifest_command_reports_non_zero_transport_and_lifecycle_obligations() {
+    let fixture = unique_temp_file("manifest_obligations");
+    std::fs::write(
+        &fixture,
+        r#"module sample.obligations
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+resource TempFile {
+  acquire {
+    let path = "/tmp/file"
+  }
+  release {
+    let done = true
+  }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest on fixture");
+
+    assert!(
+        output.status.success(),
+        "manifest command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("service_transport_prepare_targets: 1"));
+    assert!(stdout.contains("service_transport_execute_targets: 1"));
+    assert!(stdout.contains("service_transport_parse_targets: 1"));
+    assert!(stdout.contains("resource_acquire_targets: 1"));
+    assert!(stdout.contains("resource_release_targets: 1"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn viz_command_renders_mermaid_for_compiled_file() {
     let output = Command::new(daglang_bin())
         .arg("viz")
