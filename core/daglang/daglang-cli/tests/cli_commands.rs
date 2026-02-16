@@ -1210,6 +1210,45 @@ fn check_command_parent_curdir_double_separator_root_matches_absolute_output() {
 }
 
 #[test]
+fn check_command_parent_curdir_trailing_slash_root_matches_absolute_output() {
+    let cwd = workspace_root().join("core");
+    let absolute_root = workspace_root().join("dsl");
+
+    let parent_curdir_trailing_slash = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".././dsl/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-curdir-trailing-slash-root daglang check");
+    assert!(
+        parent_curdir_trailing_slash.status.success(),
+        "parent-curdir-trailing-slash-root check should succeed: {}",
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute-root daglang check from nested cwd");
+    assert!(
+        absolute.status.success(),
+        "absolute-root check should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        parent_curdir_trailing_slash.stdout, absolute.stdout,
+        "parent-curdir-trailing-slash and absolute-root check outputs should match"
+    );
+    assert_eq!(
+        parent_curdir_trailing_slash.stderr, absolute.stderr,
+        "parent-curdir-trailing-slash and absolute-root check stderr should match"
+    );
+}
+
+#[test]
 fn check_command_curdir_segment_root_matches_plain_relative_output() {
     let cwd = workspace_root();
 
@@ -2034,6 +2073,55 @@ fn check_command_parent_curdir_double_separator_missing_root_is_normalized_and_e
 }
 
 #[test]
+fn check_command_parent_curdir_trailing_slash_missing_root_is_normalized_and_equivalent() {
+    let parent = unique_temp_dir("check_parent_curdir_trailing_slash_missing_root");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let absolute_root = parent.join("missing_root");
+
+    let parent_curdir_trailing_slash = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".././missing_root/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-curdir-trailing-slash relative missing-root daglang check");
+    assert!(
+        !parent_curdir_trailing_slash.status.success(),
+        "parent-curdir-trailing-slash relative missing-root check should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute missing-root daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-root check should fail"
+    );
+
+    assert_eq!(
+        parent_curdir_trailing_slash.stdout, absolute.stdout,
+        "parent-curdir-trailing-slash and absolute missing-root check stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_trailing_slash.stderr, absolute.stderr,
+        "parent-curdir-trailing-slash and absolute missing-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr).contains(&format!(
+            "input root does not exist: {}",
+            absolute_root.display()
+        )),
+        "missing-root diagnostic should contain normalized parent-curdir-trailing-slash path: {}",
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
 fn check_command_parent_segment_non_directory_root_matches_absolute_output() {
     let parent = unique_temp_dir("check_parent_segment_non_directory_root");
     let cwd = parent.join("cwd");
@@ -2228,6 +2316,56 @@ fn check_command_parent_curdir_double_separator_non_directory_root_matches_absol
         )),
         "non-directory-root diagnostics should include normalized parent-curdir-double-separator path: {}",
         String::from_utf8_lossy(&parent_curdir_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
+fn check_command_parent_curdir_trailing_slash_non_directory_root_matches_absolute_output() {
+    let parent = unique_temp_dir("check_parent_curdir_trailing_slash_non_directory_root");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = parent.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let parent_curdir_trailing_slash = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".././input.txt/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-curdir-trailing-slash non-directory-root daglang check");
+    assert!(
+        !parent_curdir_trailing_slash.status.success(),
+        "parent-curdir-trailing-slash non-directory-root check should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute non-directory-root daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute non-directory-root check should fail"
+    );
+
+    assert_eq!(
+        parent_curdir_trailing_slash.stdout, absolute.stdout,
+        "parent-curdir-trailing-slash and absolute non-directory-root check stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_trailing_slash.stderr, absolute.stderr,
+        "parent-curdir-trailing-slash and absolute non-directory-root check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostics should include normalized parent-curdir-trailing-slash path: {}",
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
     );
 
     std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
@@ -2561,6 +2699,63 @@ fn check_command_parent_curdir_double_separator_single_file_target_matches_absol
         parent_curdir_double_separator.stderr.is_empty(),
         "parent-curdir-double-separator single-file check should not emit stderr: {}",
         String::from_utf8_lossy(&parent_curdir_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_parent_curdir_trailing_slash_single_file_target_matches_absolute_output() {
+    let root = unique_temp_dir("check_parent_curdir_trailing_slash_single_file");
+    let cwd = root.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    std::fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+
+    let parent_curdir_trailing_slash = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".././main.dag/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-curdir-trailing-slash target daglang check");
+    assert!(
+        parent_curdir_trailing_slash.status.success(),
+        "parent-curdir-trailing-slash target check should succeed: {}",
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
+    );
+
+    let absolute_target = root.join("main.dag");
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_target)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute-target daglang check from nested cwd");
+    assert!(
+        absolute.status.success(),
+        "absolute-target check should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        parent_curdir_trailing_slash.stdout, absolute.stdout,
+        "parent-curdir-trailing-slash and absolute single-file check stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_trailing_slash.stderr, absolute.stderr,
+        "parent-curdir-trailing-slash and absolute single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stdout),
+        expected_check_success_stdout(1),
+        "parent-curdir-trailing-slash single-file check should parse exactly one file"
+    );
+    assert!(
+        parent_curdir_trailing_slash.stderr.is_empty(),
+        "parent-curdir-trailing-slash single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -3234,6 +3429,58 @@ fn check_command_parent_curdir_double_separator_invalid_single_file_target_match
             .contains(&format!("{}:2:3:", canonical_target.display())),
         "expected parse diagnostic with normalized path for parent-curdir-double-separator invalid target: {}",
         String::from_utf8_lossy(&parent_curdir_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
+fn check_command_parent_curdir_trailing_slash_invalid_single_file_target_matches_absolute_output() {
+    let parent = unique_temp_dir("check_parent_curdir_trailing_slash_invalid_single_file");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let broken_file = parent.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed dag source");
+
+    let parent_curdir_trailing_slash = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".././broken.dag/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-curdir-trailing-slash invalid-target daglang check");
+    assert!(
+        !parent_curdir_trailing_slash.status.success(),
+        "parent-curdir-trailing-slash invalid-target check should fail for malformed source"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&broken_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute invalid-target daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute invalid-target check should fail for malformed source"
+    );
+
+    assert_eq!(
+        parent_curdir_trailing_slash.stdout, absolute.stdout,
+        "parent-curdir-trailing-slash and absolute invalid-target check stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_trailing_slash.stderr, absolute.stderr,
+        "parent-curdir-trailing-slash and absolute invalid-target check stderr should match"
+    );
+    let canonical_target = broken_file
+        .canonicalize()
+        .expect("broken file should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
+            .contains(&format!("{}:2:3:", canonical_target.display())),
+        "expected parse diagnostic with normalized path for parent-curdir-trailing-slash invalid target: {}",
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
     );
 
     std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
@@ -5667,6 +5914,45 @@ fn modules_command_parent_curdir_double_separator_root_matches_absolute_output()
 }
 
 #[test]
+fn modules_command_parent_curdir_trailing_slash_root_matches_absolute_output() {
+    let cwd = workspace_root().join("core");
+    let absolute_root = workspace_root().join("dsl");
+
+    let parent_curdir_trailing_slash = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".././dsl/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-curdir-trailing-slash-root daglang modules");
+    assert!(
+        parent_curdir_trailing_slash.status.success(),
+        "parent-curdir-trailing-slash-root modules should succeed: {}",
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute-root daglang modules from nested cwd");
+    assert!(
+        absolute.status.success(),
+        "absolute-root modules should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        parent_curdir_trailing_slash.stdout, absolute.stdout,
+        "parent-curdir-trailing-slash and absolute-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_trailing_slash.stderr, absolute.stderr,
+        "parent-curdir-trailing-slash and absolute-root modules stderr should match"
+    );
+}
+
+#[test]
 fn modules_command_curdir_segment_root_matches_plain_relative_output() {
     let cwd = workspace_root();
 
@@ -6691,6 +6977,55 @@ fn modules_command_parent_curdir_double_separator_missing_root_is_normalized_and
 }
 
 #[test]
+fn modules_command_parent_curdir_trailing_slash_missing_root_is_normalized_and_equivalent() {
+    let parent = unique_temp_dir("modules_parent_curdir_trailing_slash_missing_root");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let absolute_root = parent.join("missing_root");
+
+    let parent_curdir_trailing_slash = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".././missing_root/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-curdir-trailing-slash relative missing-root daglang modules");
+    assert!(
+        !parent_curdir_trailing_slash.status.success(),
+        "parent-curdir-trailing-slash relative missing-root modules should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute missing-root daglang modules");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-root modules should fail"
+    );
+
+    assert_eq!(
+        parent_curdir_trailing_slash.stdout, absolute.stdout,
+        "parent-curdir-trailing-slash and absolute missing-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_trailing_slash.stderr, absolute.stderr,
+        "parent-curdir-trailing-slash and absolute missing-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr).contains(&format!(
+            "input root does not exist: {}",
+            absolute_root.display()
+        )),
+        "missing-root diagnostics should include normalized parent-curdir-trailing-slash path: {}",
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
 fn modules_command_parent_segment_non_directory_root_matches_absolute_output() {
     let parent = unique_temp_dir("modules_parent_segment_non_directory_root");
     let cwd = parent.join("cwd");
@@ -6886,6 +7221,56 @@ fn modules_command_parent_curdir_double_separator_non_directory_root_matches_abs
         )),
         "non-directory-root diagnostics should include normalized parent-curdir-double-separator path: {}",
         String::from_utf8_lossy(&parent_curdir_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
+fn modules_command_parent_curdir_trailing_slash_non_directory_root_matches_absolute_output() {
+    let parent = unique_temp_dir("modules_parent_curdir_trailing_slash_non_directory_root");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let root_file = parent.join("input.txt");
+    std::fs::write(&root_file, "not a directory").expect("failed to create root file");
+
+    let parent_curdir_trailing_slash = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".././input.txt/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-curdir-trailing-slash non-directory-root daglang modules");
+    assert!(
+        !parent_curdir_trailing_slash.status.success(),
+        "parent-curdir-trailing-slash non-directory-root modules should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute non-directory-root daglang modules");
+    assert!(
+        !absolute.status.success(),
+        "absolute non-directory-root modules should fail"
+    );
+
+    assert_eq!(
+        parent_curdir_trailing_slash.stdout, absolute.stdout,
+        "parent-curdir-trailing-slash and absolute non-directory-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_trailing_slash.stderr, absolute.stderr,
+        "parent-curdir-trailing-slash and absolute non-directory-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            root_file.display()
+        )),
+        "non-directory-root diagnostics should include normalized parent-curdir-trailing-slash path: {}",
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
     );
 
     std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
@@ -7090,6 +7475,57 @@ fn modules_command_parent_curdir_double_separator_single_file_root_matches_absol
         )),
         "single-file-root diagnostics should include normalized parent-curdir-double-separator path: {}",
         String::from_utf8_lossy(&parent_curdir_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
+fn modules_command_parent_curdir_trailing_slash_single_file_root_matches_absolute_output() {
+    let parent = unique_temp_dir("modules_parent_curdir_trailing_slash_single_file_root");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let file_path = parent.join("one.dag");
+    std::fs::write(&file_path, "module sample.one\nfn ok() -> Unit {}")
+        .expect("failed to write .dag file");
+
+    let parent_curdir_trailing_slash = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".././one.dag/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-curdir-trailing-slash single-file-root daglang modules");
+    assert!(
+        !parent_curdir_trailing_slash.status.success(),
+        "parent-curdir-trailing-slash single-file-root modules should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&file_path)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute single-file-root daglang modules");
+    assert!(
+        !absolute.status.success(),
+        "absolute single-file-root modules should fail"
+    );
+
+    assert_eq!(
+        parent_curdir_trailing_slash.stdout, absolute.stdout,
+        "parent-curdir-trailing-slash and absolute single-file-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_trailing_slash.stderr, absolute.stderr,
+        "parent-curdir-trailing-slash and absolute single-file-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            file_path.display()
+        )),
+        "single-file-root diagnostics should include normalized parent-curdir-trailing-slash path: {}",
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
     );
 
     std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
@@ -7667,6 +8103,56 @@ fn check_command_parent_curdir_double_separator_missing_single_file_target_is_no
         )),
         "missing-target diagnostics should include normalized parent-curdir-double-separator path: {}",
         String::from_utf8_lossy(&parent_curdir_double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
+fn check_command_parent_curdir_trailing_slash_missing_single_file_target_is_normalized_and_equivalent(
+) {
+    let parent = unique_temp_dir("check_parent_curdir_trailing_slash_missing_single_file");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let missing_file = parent.join("missing.dag");
+
+    let parent_curdir_trailing_slash = Command::new(daglang_bin())
+        .arg("check")
+        .arg(".././missing.dag/")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-curdir-trailing-slash relative missing-target daglang check");
+    assert!(
+        !parent_curdir_trailing_slash.status.success(),
+        "parent-curdir-trailing-slash relative missing-target check should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&missing_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute missing-target daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute missing-target check should fail"
+    );
+
+    assert_eq!(
+        parent_curdir_trailing_slash.stdout, absolute.stdout,
+        "parent-curdir-trailing-slash and absolute missing-target check stdout should match"
+    );
+    assert_eq!(
+        parent_curdir_trailing_slash.stderr, absolute.stderr,
+        "parent-curdir-trailing-slash and absolute missing-target check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr).contains(&format!(
+            "failed to canonicalize {}",
+            missing_file.display()
+        )),
+        "missing-target diagnostics should include normalized parent-curdir-trailing-slash path: {}",
+        String::from_utf8_lossy(&parent_curdir_trailing_slash.stderr)
     );
 
     std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
