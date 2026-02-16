@@ -10708,6 +10708,57 @@ fn show_triplets_command_supports_json_output_format() {
 }
 
 #[test]
+fn show_triplets_command_supports_equals_json_output_format() {
+    let output = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("--format=json")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang show-triplets --format=json");
+
+    assert!(
+        output.status.success(),
+        "show-triplets --format=json command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"triplets\""));
+    assert!(stdout.contains("\"prepare_nodes\""));
+}
+
+#[test]
+fn show_triplets_json_output_is_deterministic_for_same_input() {
+    let run_triplets_json = || {
+        Command::new(daglang_bin())
+            .arg("show-triplets")
+            .arg("--format")
+            .arg("json")
+            .arg(makegen_file())
+            .current_dir(workspace_root())
+            .output()
+            .expect("failed to run daglang show-triplets --format json")
+    };
+
+    let first = run_triplets_json();
+    assert!(
+        first.status.success(),
+        "first show-triplets json run failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let second = run_triplets_json();
+    assert!(
+        second.status.success(),
+        "second show-triplets json run failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert_eq!(
+        first.stdout, second.stdout,
+        "show-triplets json output should be byte-stable across runs"
+    );
+}
+
+#[test]
 fn obligations_command_shows_four_bucket_summary() {
     let output = Command::new(daglang_bin())
         .arg("obligations")
@@ -10775,6 +10826,36 @@ fn obligations_command_supports_json_output_format() {
     assert!(stdout.contains("\"pure_node_determinism\""));
     assert!(stdout.contains("\"resource_lifecycle\""));
     assert!(stdout.contains("\"triplet_total_targets\": 5"));
+}
+
+#[test]
+fn obligations_json_output_is_deterministic_for_same_input() {
+    let run_obligations_json = || {
+        Command::new(daglang_bin())
+            .arg("obligations")
+            .arg("--format=json")
+            .arg(makegen_file())
+            .current_dir(workspace_root())
+            .output()
+            .expect("failed to run daglang obligations --format=json")
+    };
+
+    let first = run_obligations_json();
+    assert!(
+        first.status.success(),
+        "first obligations json run failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let second = run_obligations_json();
+    assert!(
+        second.status.success(),
+        "second obligations json run failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert_eq!(
+        first.stdout, second.stdout,
+        "obligations json output should be byte-stable across runs"
+    );
 }
 
 #[test]
