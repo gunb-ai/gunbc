@@ -850,6 +850,60 @@ mod tests {
     }
 
     #[test]
+    fn content_upsert_expansion_wires_transport_chain_for_makegen() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dsl/tools/makegen.dag");
+        let source = fs::read_to_string(file).expect("should read makegen source");
+        let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        assert_eq!(dag.nodes.len(), 7, "expected callable + content_upsert chain nodes");
+        let required_edges = [
+            (
+                "prepare_read_makegen",
+                "request",
+                "execute_read_makegen",
+                "request",
+            ),
+            (
+                "execute_read_makegen",
+                "response",
+                "compare_makegen_content",
+                "response",
+            ),
+            (
+                "prepare_write_makegen",
+                "request",
+                "execute_makegen_transport",
+                "request",
+            ),
+            (
+                "compare_makegen_content",
+                "skip",
+                "execute_makegen_transport",
+                "skip",
+            ),
+            (
+                "execute_makegen_transport",
+                "makegen_response",
+                "tools.makegen::makegen",
+                "__deps",
+            ),
+        ];
+        for (from_node, from_port, to_node, to_port) in required_edges {
+            assert!(
+                dag.edges.iter().any(|edge| {
+                    edge.from_node.0 == from_node
+                        && edge.from_port.0 == from_port
+                        && edge.to_node.0 == to_node
+                        && edge.to_port.0 == to_port
+                }),
+                "missing edge {from_node}.{from_port} -> {to_node}.{to_port}"
+            );
+        }
+    }
+
+    #[test]
     fn lower_errors_when_no_callable_items_exist() {
         let typed = typed_project_from_sources(&[(
             "dsl/types_only.dag",
