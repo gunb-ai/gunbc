@@ -1264,6 +1264,10 @@ fn compile_command_directory_mode_fails_on_unresolved_imports() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("unresolved import"));
+    assert!(
+        !stderr.contains("lower error"),
+        "unresolved imports should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -1480,6 +1484,10 @@ fn compile_command_directory_mode_fails_on_ambiguous_interface_reference() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("ambiguous interface `Storage`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "ambiguous interface references should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -1518,6 +1526,10 @@ fn compile_command_directory_mode_fails_on_ambiguous_resource_interface_referenc
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("`Disk` references ambiguous interface `Storage`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "ambiguous interface references should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -1546,6 +1558,10 @@ fn compile_command_directory_mode_fails_on_unresolved_interface_reference() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("references unresolved interface `MissingStorage`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "unresolved interface references should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -1574,6 +1590,10 @@ fn compile_command_directory_mode_fails_on_unresolved_resource_interface_referen
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("`Disk` references unresolved interface `MissingStorage`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "unresolved interface references should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -1886,6 +1906,10 @@ fn compile_command_directory_mode_fails_on_ambiguous_uses_resource_type() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("ambiguous used resource type `SharedResource`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "ambiguous uses resource types should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -2027,6 +2051,10 @@ fn compile_command_directory_mode_fails_on_ambiguous_provides_resource_type() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("ambiguous provided resource type `SharedResource`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "ambiguous provides resource types should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -2858,6 +2886,10 @@ func run(path: String) -> { body: String } {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("ambiguous service call `SharedService.read`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "ambiguous service calls should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -2896,6 +2928,10 @@ fn compile_command_directory_mode_fails_on_ambiguous_callable_target() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("ambiguous call target `render`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "ambiguous callable targets should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -2957,6 +2993,10 @@ fn compile_command_directory_mode_fails_on_unresolved_callable_target() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("unresolved call target `missing`"));
+    assert!(
+        !stderr.contains("lower error"),
+        "unresolved callable targets should fail in typecheck stage: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
