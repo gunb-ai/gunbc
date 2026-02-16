@@ -221,6 +221,107 @@ pub fn compare_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> Pa
     }
 }
 
+/// Compare makegen topology with normalization rules for known scaffold deltas.
+///
+/// Normalization currently:
+/// - strips `tools.makegen::` node-id prefixes
+/// - drops the wrapper `makegen` callable node
+/// - removes synthetic `__deps` ports/edges
+/// - canonicalizes `render_makefile.return` output to `makefile_content`
+/// - ignores environment-scaffold edge `fs_env -> prepare_read_makegen`
+pub fn compare_makegen_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
+    let normalized = normalize_makegen_candidate(candidate);
+    compare_topology(&normalized, reference)
+}
+
+fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
+    let mut normalized = Dag::new();
+    let mut kept_nodes = HashSet::<String>::new();
+
+    for node in &candidate.nodes {
+        let Some(op) = node_body_as_opaque(&node.body).cloned() else {
+            continue;
+        };
+        let canonical_id = canonical_makegen_node_id(&node.id.0);
+        if canonical_id == "makegen" {
+            continue;
+        }
+
+        let mut inputs = node
+            .inputs
+            .iter()
+            .filter(|port| port.name.0 != "__deps")
+            .cloned()
+            .collect::<Vec<_>>();
+        inputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
+
+        let mut outputs = node.outputs.clone();
+        if canonical_id == "render_makefile" {
+            for output in &mut outputs {
+                if output.name.0 == "return" {
+                    output.name.0 = "makefile_content".to_string();
+                }
+            }
+        }
+        outputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
+
+        normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, op));
+        kept_nodes.insert(canonical_id);
+    }
+
+    let mut seen_edges = HashSet::<(String, String, String, String)>::new();
+    for edge in &candidate.edges {
+        let from_node = canonical_makegen_node_id(&edge.from_node.0);
+        let to_node = canonical_makegen_node_id(&edge.to_node.0);
+        if from_node == "makegen" || to_node == "makegen" {
+            continue;
+        }
+        if !kept_nodes.contains(&from_node) || !kept_nodes.contains(&to_node) {
+            continue;
+        }
+        if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
+            continue;
+        }
+        if from_node == "fs_env"
+            && to_node == "prepare_read_makegen"
+            && edge.to_port.0 == "res:file:Makefile"
+        {
+            continue;
+        }
+
+        let from_port = if from_node == "render_makefile" && edge.from_port.0 == "return" {
+            "makefile_content".to_string()
+        } else {
+            edge.from_port.0.clone()
+        };
+        let key = (
+            from_node,
+            from_port,
+            to_node,
+            edge.to_port.0.clone(),
+        );
+        if seen_edges.insert(key.clone()) {
+            normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
+        }
+    }
+
+    normalized
+}
+
+fn canonical_makegen_node_id(node_id: &str) -> String {
+    node_id
+        .strip_prefix("tools.makegen::")
+        .unwrap_or(node_id)
+        .to_string()
+}
+
+fn node_body_as_opaque(body: &gunbc_ir::node::NodeBody<LoweredOp>) -> Option<&LoweredOp> {
+    match body {
+        gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
+        gunbc_ir::node::NodeBody::SubDag(_) => None,
+    }
+}
+
 fn lower_callable(
     callable: &TypedCallableSignature,
     module_name: &str,
@@ -1025,6 +1126,22 @@ mod tests {
         assert!(
             report_a.added_nodes + report_a.removed_nodes + report_a.changed_nodes > 0,
             "parity report should continue surfacing remaining topology differences"
+        );
+    }
+
+    #[test]
+    fn makegen_normalized_parity_can_reach_exact_match() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dsl/tools/makegen.dag");
+        let source = fs::read_to_string(file).expect("should read makegen source");
+        let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
+        let lowered = lower_typed_project(&typed).expect("lowering should succeed");
+        let reference = reference_makegen_shape();
+
+        let report = compare_makegen_topology(&lowered, &reference);
+        assert!(
+            report.is_exact_match(),
+            "normalized makegen parity should currently match reference topology"
         );
     }
 
