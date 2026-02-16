@@ -319,3 +319,44 @@ fn modules_command_defaults_to_workspace_dsl_root() {
     assert!(stdout.contains("Discovered modules:"));
     assert!(stdout.contains("std.types"));
 }
+
+#[test]
+fn placeholder_commands_remain_non_blocking() {
+    for command in ["expand", "manifest", "compile"] {
+        let output = Command::new(daglang_bin())
+            .arg(command)
+            .arg("dsl/tools/makegen.dag")
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|err| panic!("failed to run {command}: {err}"));
+        assert!(
+            output.status.success(),
+            "{command} placeholder command should remain non-blocking"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("TODO"),
+            "{command} placeholder should make TODO status explicit"
+        );
+    }
+}
+
+#[test]
+fn viz_without_self_is_non_blocking_placeholder() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz placeholder mode");
+
+    assert!(
+        output.status.success(),
+        "viz placeholder mode should remain non-blocking"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("TODO"),
+        "viz placeholder mode should surface TODO guidance"
+    );
+}
