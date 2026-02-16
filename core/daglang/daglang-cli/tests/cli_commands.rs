@@ -26340,6 +26340,11 @@ fn unknown_command_exits_nonzero_with_message() {
         !output.status.success(),
         "unknown command should fail with non-zero exit code"
     );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "unknown command should use exit code 1"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Unknown command"));
 }
@@ -26356,6 +26361,11 @@ fn placeholder_commands_exit_nonzero_with_unimplemented_message() {
         assert!(
             !output.status.success(),
             "{command} placeholder command should fail until implemented"
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{command} placeholder command should use unimplemented exit code"
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
@@ -26377,6 +26387,11 @@ fn viz_without_self_exits_nonzero_with_unimplemented_message() {
     assert!(
         !output.status.success(),
         "viz placeholder mode should fail until file visualization ships"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "viz placeholder mode should use unimplemented exit code"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
