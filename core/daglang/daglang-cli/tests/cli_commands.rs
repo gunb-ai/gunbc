@@ -319,6 +319,57 @@ fn check_command_relative_and_absolute_root_are_equivalent() {
 }
 
 #[test]
+fn check_command_relative_and_absolute_single_file_targets_are_equivalent() {
+    let root = unique_temp_dir("check_relative_absolute_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+
+    let relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("main.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative-target daglang check");
+    assert!(
+        relative.status.success(),
+        "relative-target check should succeed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute_target = root.join("main.dag");
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_target)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute-target daglang check");
+    assert!(
+        absolute.status.success(),
+        "absolute-target check should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert!(
+        String::from_utf8_lossy(&relative.stdout).contains("OK: parsed 1 file(s)"),
+        "relative-target check should parse one file: {}",
+        String::from_utf8_lossy(&relative.stdout)
+    );
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute single-file check outputs should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute single-file check stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn modules_command_prints_module_graph_summary() {
     let output = Command::new(daglang_bin())
         .arg("modules")
