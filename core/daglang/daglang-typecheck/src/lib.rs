@@ -131,6 +131,11 @@ pub enum TypeError {
         implementor: String,
         interface: String,
     },
+    /// Resource/service declares an interface that resolves ambiguously.
+    AmbiguousInterface {
+        implementor: String,
+        interface: String,
+    },
     /// Service omits an operation required by its interface.
     MissingOperation {
         service: String,
@@ -275,6 +280,13 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "`{implementor}` references unresolved interface `{interface}`"
+            ),
+            Self::AmbiguousInterface {
+                implementor,
+                interface,
+            } => write!(
+                f,
+                "`{implementor}` references ambiguous interface `{interface}`"
             ),
             Self::MissingOperation {
                 service,
@@ -712,6 +724,13 @@ struct ServiceCallRegistry {
 #[derive(Debug, Clone)]
 enum ServiceCallResolution {
     Resolved(ServiceCallContract),
+    Ambiguous,
+    Missing,
+}
+
+#[derive(Debug, Clone)]
+enum InterfaceResolution {
+    Resolved(InterfaceContract),
     Ambiguous,
     Missing,
 }
@@ -1184,13 +1203,22 @@ fn validate_resource_interface_conformance(
     let Some(implemented) = resource.implements.as_deref() else {
         return;
     };
-    let Some(interface_contract) = resolve_interface_contract(implemented, interface_registry)
-    else {
-        errors.push(TypeError::UnresolvedInterface {
-            implementor: resource.name.clone(),
-            interface: implemented.to_string(),
-        });
-        return;
+    let interface_contract = match resolve_interface_contract(implemented, interface_registry) {
+        InterfaceResolution::Resolved(contract) => contract,
+        InterfaceResolution::Ambiguous => {
+            errors.push(TypeError::AmbiguousInterface {
+                implementor: resource.name.clone(),
+                interface: implemented.to_string(),
+            });
+            return;
+        }
+        InterfaceResolution::Missing => {
+            errors.push(TypeError::UnresolvedInterface {
+                implementor: resource.name.clone(),
+                interface: implemented.to_string(),
+            });
+            return;
+        }
     };
     let provided_capabilities = resource
         .capabilities
@@ -1294,13 +1322,22 @@ fn validate_service_interface_conformance(
     let Some(implemented) = service.implements.as_deref() else {
         return;
     };
-    let Some(interface_contract) = resolve_interface_contract(implemented, interface_registry)
-    else {
-        errors.push(TypeError::UnresolvedInterface {
-            implementor: service.name.clone(),
-            interface: implemented.to_string(),
-        });
-        return;
+    let interface_contract = match resolve_interface_contract(implemented, interface_registry) {
+        InterfaceResolution::Resolved(contract) => contract,
+        InterfaceResolution::Ambiguous => {
+            errors.push(TypeError::AmbiguousInterface {
+                implementor: service.name.clone(),
+                interface: implemented.to_string(),
+            });
+            return;
+        }
+        InterfaceResolution::Missing => {
+            errors.push(TypeError::UnresolvedInterface {
+                implementor: service.name.clone(),
+                interface: implemented.to_string(),
+            });
+            return;
+        }
     };
     let provided_operations = service
         .operations
@@ -1346,13 +1383,17 @@ fn field_signature_map(fields: &[Field]) -> HashMap<String, String> {
 fn resolve_interface_contract(
     implemented: &str,
     registry: &InterfaceRegistry,
-) -> Option<InterfaceContract> {
+) -> InterfaceResolution {
     let canonical = canonical_type_name(implemented);
     if let Some(contract) = registry.full.get(&canonical) {
-        return Some(contract.clone());
+        return InterfaceResolution::Resolved(contract.clone());
     }
     let short = canonical.rsplit('.').next().unwrap_or(canonical.as_str());
-    registry.short.get(short).and_then(|entry| entry.clone())
+    match registry.short.get(short) {
+        Some(Some(contract)) => InterfaceResolution::Resolved(contract.clone()),
+        Some(None) => InterfaceResolution::Ambiguous,
+        None => InterfaceResolution::Missing,
+    }
 }
 
 fn canonical_interface_name(name: &str) -> String {
@@ -2129,6 +2170,33 @@ resource Disk implements ObjectStorage {
     }
 
     #[test]
+    fn ambiguous_interface_on_resource_is_reported() {
+        let graph = module_graph_from_sources(&[
+            (
+                "sample/first.dag",
+                "module sample.first\ninterface Storage { capability read { input { path: String } output { body: String } } }",
+            ),
+            (
+                "sample/second.dag",
+                "module sample.second\ninterface Storage { capability read { input { path: String } output { body: String } } }",
+            ),
+            (
+                "sample/main.dag",
+                "module sample.main\nresource Disk implements Storage { capability read { input { path: String } output { body: String } } }",
+            ),
+        ]);
+        let errors =
+            typecheck_module_graph(graph).expect_err("ambiguous interface should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousInterface {
+                implementor,
+                interface
+            } if implementor == "Disk" && interface == "Storage"
+        )));
+    }
+
+    #[test]
     fn service_missing_interface_operation_is_reported() {
         let graph = module_graph_from_sources(&[(
             "missing_operation.dag",
@@ -2169,6 +2237,33 @@ service FsStorage implements Storage {
             error,
             TypeError::UnresolvedInterface { implementor, interface }
                 if implementor == "FsStorage" && interface == "MissingStorage"
+        )));
+    }
+
+    #[test]
+    fn ambiguous_interface_on_service_is_reported() {
+        let graph = module_graph_from_sources(&[
+            (
+                "sample/first.dag",
+                "module sample.first\ninterface Storage { capability read { input { path: String } output { body: String } } }",
+            ),
+            (
+                "sample/second.dag",
+                "module sample.second\ninterface Storage { capability read { input { path: String } output { body: String } } }",
+            ),
+            (
+                "sample/main.dag",
+                "module sample.main\nservice FsStorage implements Storage { operation read(path: String) -> { body: String } }",
+            ),
+        ]);
+        let errors =
+            typecheck_module_graph(graph).expect_err("ambiguous interface should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousInterface {
+                implementor,
+                interface
+            } if implementor == "FsStorage" && interface == "Storage"
         )));
     }
 
