@@ -1042,10 +1042,8 @@ fn collect_resource_types(modules: &[ResolvedModule]) -> ResourceTypeRegistry {
                 .short
                 .entry(name.to_string())
                 .and_modify(|existing| {
-                    if let Some(current) = existing {
-                        if current != &full {
-                            *existing = None;
-                        }
+                    if existing.is_some() {
+                        *existing = None;
                     }
                 })
                 .or_insert_with(|| Some(full));
@@ -2495,6 +2493,47 @@ service FsStorage implements Storage {
     }
 
     #[test]
+    fn strict_mode_duplicate_interface_definition_also_reports_ambiguous_implements() {
+        let graph = module_graph_from_sources(&[(
+            "duplicate_interface_definition_strict.dag",
+            r#"module sample.dup
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+"#,
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for duplicate interface definitions");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateDefinition { module, name }
+                if module == "sample.dup" && name == "Storage"
+        )));
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousInterface { implementor, interface }
+                if implementor == "FsStorage" && interface == "Storage"
+        )));
+    }
+
+    #[test]
     fn strict_mode_reports_unresolved_imports() {
         let graph = module_graph_from_sources(&[(
             "missing_import.dag",
@@ -2582,6 +2621,29 @@ fn run() -> String { helper() }"#,
                 if module == "sample.main" && name == "helper"
         )));
         assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousCallTarget { caller, callee }
+                if caller == "run" && callee == "helper"
+        )));
+    }
+
+    #[test]
+    fn relaxed_mode_duplicate_callable_definition_suppresses_ambiguous_call_target() {
+        let graph = module_graph_from_sources(&[(
+            "sample/single.dag",
+            r#"module sample.single
+fn helper() -> String { "a" }
+fn helper() -> String { "b" }
+fn run() -> String { helper() }"#,
+        )]);
+        let errors = typecheck_module_graph(graph)
+            .expect_err("relaxed mode should still fail for duplicate callable definition");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateDefinition { module, name }
+                if module == "sample.single" && name == "helper"
+        )));
+        assert!(!errors.iter().any(|error| matches!(
             error,
             TypeError::AmbiguousCallTarget { caller, callee }
                 if caller == "run" && callee == "helper"
@@ -3185,6 +3247,39 @@ func run() -> { ok: Bool } uses fs: SharedResource {
     }
 
     #[test]
+    fn strict_mode_duplicate_resource_definition_also_reports_ambiguous_used_resource_type() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            r#"module sample.main
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } uses fs: SharedResource {
+  return { ok: true }
+}"#,
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for duplicate resource definitions");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateDefinition { module, name }
+                if module == "sample.main" && name == "SharedResource"
+        )));
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousUsedResourceType {
+                item,
+                binding,
+                resource_type,
+            } if item == "run" && binding == "fs" && resource_type == "SharedResource"
+        )));
+    }
+
+    #[test]
     fn relaxed_mode_allows_unknown_used_resource_type() {
         let graph = module_graph_from_sources(&[(
             "unknown_uses_relaxed.dag",
@@ -3192,6 +3287,34 @@ func run() -> { ok: Bool } uses fs: SharedResource {
         )]);
         let typed = typecheck_module_graph(graph).expect("relaxed mode should allow unknown uses");
         assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn relaxed_mode_duplicate_resource_definition_suppresses_ambiguous_used_resource_type() {
+        let graph = module_graph_from_sources(&[(
+            "sample/single.dag",
+            r#"module sample.single
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } uses fs: SharedResource {
+  return { ok: true }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph)
+            .expect_err("relaxed mode should still fail for duplicate resource definition");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateDefinition { module, name }
+                if module == "sample.single" && name == "SharedResource"
+        )));
+        assert!(!errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousUsedResourceType {
+                item,
+                binding,
+                resource_type,
+            } if item == "run" && binding == "fs" && resource_type == "SharedResource"
+        )));
     }
 
     #[test]
@@ -3243,6 +3366,67 @@ func run() -> { ok: Bool } provides out: SharedResource {
             },
         )
         .expect_err("strict mode should fail for ambiguous provided resource type");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousProvidedResourceType {
+                item,
+                binding,
+                resource_type,
+            } if item == "run" && binding == "out" && resource_type == "SharedResource"
+        )));
+    }
+
+    #[test]
+    fn relaxed_mode_duplicate_resource_definition_suppresses_ambiguous_provided_resource_type() {
+        let graph = module_graph_from_sources(&[(
+            "sample/single.dag",
+            r#"module sample.single
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } provides out: SharedResource {
+  return { ok: true }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph)
+            .expect_err("relaxed mode should still fail for duplicate resource definition");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateDefinition { module, name }
+                if module == "sample.single" && name == "SharedResource"
+        )));
+        assert!(!errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousProvidedResourceType {
+                item,
+                binding,
+                resource_type,
+            } if item == "run" && binding == "out" && resource_type == "SharedResource"
+        )));
+    }
+
+    #[test]
+    fn strict_mode_duplicate_resource_definition_also_reports_ambiguous_provided_resource_type() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            r#"module sample.main
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } provides out: SharedResource {
+  return { ok: true }
+}"#,
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for duplicate resource definitions");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateDefinition { module, name }
+                if module == "sample.main" && name == "SharedResource"
+        )));
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::AmbiguousProvidedResourceType {

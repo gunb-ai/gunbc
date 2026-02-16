@@ -259,6 +259,43 @@ func run() -> { ok: Bool } uses fs: Storage uses fs: Storage { return { ok: true
 }
 
 #[test]
+fn compile_command_single_file_duplicate_resource_uses_does_not_report_ambiguous_used_type() {
+    let fixture = unique_temp_file("compile_single_file_duplicate_resource_uses_relaxed");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for duplicate-resource-uses fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on duplicate resource definition"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains(
+        "duplicate definition `SharedResource` in module `sample.single`"
+    ));
+    assert!(
+        !stderr.contains("ambiguous used resource type `SharedResource`"),
+        "single-file relaxed mode should suppress ambiguous used resource diagnostics: {stderr}"
+    );
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_single_file_fails_on_duplicate_provides_binding() {
     let fixture = unique_temp_file("compile_single_file_duplicate_provides_binding");
     std::fs::write(
@@ -284,6 +321,43 @@ func run() -> { ok: Bool } provides out: Storage provides out: Storage { return 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("duplicate provides binding `out` in `run`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_single_file_duplicate_resource_provides_does_not_report_ambiguous_provided_type() {
+    let fixture = unique_temp_file("compile_single_file_duplicate_resource_provides_relaxed");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for duplicate-resource-provides fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on duplicate resource definition"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains(
+        "duplicate definition `SharedResource` in module `sample.single`"
+    ));
+    assert!(
+        !stderr.contains("ambiguous provided resource type `SharedResource`"),
+        "single-file relaxed mode should suppress ambiguous provided resource diagnostics: {stderr}"
+    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -1805,6 +1879,39 @@ fn compile_command_directory_mode_fails_on_ambiguous_uses_resource_type() {
 }
 
 #[test]
+fn compile_command_directory_mode_duplicate_resource_uses_also_reports_ambiguous_used_type() {
+    let root = unique_temp_dir("duplicate_resource_uses_ambiguous");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on duplicate resource definitions"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate definition `SharedResource` in module `sample.main`"));
+    assert!(stderr.contains("ambiguous used resource type `SharedResource`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_duplicate_provides_binding() {
     let root = unique_temp_dir("duplicate_provides_binding");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
@@ -1903,6 +2010,39 @@ fn compile_command_directory_mode_fails_on_ambiguous_provides_resource_type() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("ambiguous provided resource type `SharedResource`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_duplicate_resource_provides_also_reports_ambiguous_provided_type() {
+    let root = unique_temp_dir("duplicate_resource_provides_ambiguous");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on duplicate resource definitions"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate definition `SharedResource` in module `sample.main`"));
     assert!(stderr.contains("ambiguous provided resource type `SharedResource`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
