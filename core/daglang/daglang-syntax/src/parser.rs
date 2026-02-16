@@ -1857,7 +1857,12 @@ impl Parser {
                             | TokenKind::Fn
                     ) =>
             {
-                let name = Self::token_kind_as_ident(&kind).unwrap();
+                let Some(name) = Self::token_kind_as_ident(&kind) else {
+                    return Err(self.err(format!(
+                        "expected identifier, found {}",
+                        self.peek().kind.desc()
+                    )));
+                };
                 if self.peek2().kind == TokenKind::FatArrow {
                     self.advance();
                     self.advance();
@@ -2102,7 +2107,12 @@ impl Parser {
     fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
         match self.peek().kind.clone() {
             kind if Self::token_kind_as_ident(&kind).is_some() => {
-                let name = Self::token_kind_as_ident(&kind).unwrap();
+                let Some(name) = Self::token_kind_as_ident(&kind) else {
+                    return Err(self.err(format!(
+                        "expected identifier, found {}",
+                        self.peek().kind.desc()
+                    )));
+                };
                 self.advance();
                 if name.chars().next().is_some_and(|c| c.is_uppercase()) {
                     if self.eat(&TokenKind::LParen) {

@@ -185,7 +185,14 @@ fn normalize_path_components(path: &Path) -> PathBuf {
             Component::RootDir => normalized.push(Path::new(std::path::MAIN_SEPARATOR_STR)),
             Component::CurDir => {}
             Component::ParentDir => {
-                normalized.pop();
+                let has_root = normalized.has_root();
+                if normalized.as_os_str().is_empty() || normalized.ends_with("..") {
+                    if !has_root {
+                        normalized.push("..");
+                    }
+                } else if !normalized.pop() && !has_root {
+                    normalized.push("..");
+                }
             }
             Component::Normal(segment) => normalized.push(segment),
         }
@@ -303,5 +310,21 @@ mod tests {
         let normalized_root = default_root_from_cwd(&cwd);
         let expected = root_path().join("workspace").join("project").join("dsl");
         assert_eq!(normalized_root, expected);
+    }
+
+    #[test]
+    fn normalize_path_components_preserves_leading_relative_parent_segments() {
+        let path = PathBuf::from("../workspace/./dsl/tools/..");
+        let normalized = normalize_path_components(&path);
+        let expected = PathBuf::from("../workspace/dsl");
+        assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn normalize_path_components_preserves_multiple_relative_parent_segments() {
+        let path = PathBuf::from("../../workspace/dsl");
+        let normalized = normalize_path_components(&path);
+        let expected = PathBuf::from("../../workspace/dsl");
+        assert_eq!(normalized, expected);
     }
 }

@@ -296,7 +296,11 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
 
     let mut tmp: Vec<Option<ResolvedModule>> = modules.drain(..).map(Some).collect();
     for old_idx in &order {
-        let mut module = tmp[*old_idx].take().unwrap();
+        let mut module = tmp[*old_idx].take().ok_or_else(|| {
+            ResolveError::InternalInvariant(format!(
+                "topological order referenced missing module index {old_idx}"
+            ))
+        })?;
         for dep in &mut module.dependencies {
             if *dep < n {
                 *dep = old_to_new[*dep];
@@ -325,6 +329,8 @@ pub enum ResolveError {
     DuplicateModule(Vec<String>),
     /// Discovery root path is invalid.
     InvalidRootPath { path: PathBuf, reason: String },
+    /// Internal invariant violation while resolving modules.
+    InternalInvariant(String),
 }
 
 impl std::fmt::Display for ResolveError {
@@ -363,6 +369,9 @@ impl std::fmt::Display for ResolveError {
             Self::DuplicateModule(path) => write!(f, "duplicate module: {}", path.join(".")),
             Self::InvalidRootPath { path, reason } => {
                 write!(f, "invalid discovery root {}: {reason}", path.display())
+            }
+            Self::InternalInvariant(message) => {
+                write!(f, "internal resolver invariant failed: {message}")
             }
         }
     }
