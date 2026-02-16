@@ -25666,6 +25666,58 @@ fn check_command_symlink_and_real_invalid_single_file_targets_are_equivalent() {
 
 #[cfg(unix)]
 #[test]
+fn check_command_symlink_and_real_invalid_uppercase_single_file_targets_are_equivalent() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_real_invalid_uppercase_single_file_equivalent");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let real = root.join("real.DAG");
+    let link = root.join("link.DAG");
+    std::fs::write(&real, "module sample.broken\nfn")
+        .expect("failed to write malformed real source");
+    symlink(&real, &link).expect("failed to create symlinked target");
+
+    let real_output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&real)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on real malformed uppercase target");
+    assert!(
+        !real_output.status.success(),
+        "real malformed uppercase single-file target should fail"
+    );
+
+    let link_output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on symlinked malformed uppercase target");
+    assert!(
+        !link_output.status.success(),
+        "symlinked malformed uppercase single-file target should fail"
+    );
+
+    assert_eq!(
+        real_output.stdout, link_output.stdout,
+        "real and symlink invalid uppercase target check stdout should match"
+    );
+    assert_eq!(
+        real_output.stderr, link_output.stderr,
+        "real and symlink invalid uppercase target check stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&real_output.stderr);
+    assert!(
+        stderr.contains("real.DAG:2:3:"),
+        "expected canonicalized parse diagnostic path in stderr for uppercase target: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn check_command_dangling_symlink_single_file_target_exits_nonzero() {
     use std::os::unix::fs::symlink;
 
@@ -25792,6 +25844,59 @@ fn check_command_relative_and_absolute_dangling_symlink_targets_are_equivalent()
             dangling_link.display()
         )),
         "dangling-target diagnostics should include normalized absolute path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_relative_and_absolute_uppercase_dangling_symlink_targets_are_equivalent() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_relative_absolute_uppercase_dangling_symlink_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.DAG");
+    let dangling_link = root.join("broken.DAG");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink target");
+
+    let relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative uppercase dangling-target daglang check");
+    assert!(
+        !relative.status.success(),
+        "relative uppercase dangling-target check should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&dangling_link)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute uppercase dangling-target daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute uppercase dangling-target check should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute uppercase dangling-target check stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute uppercase dangling-target check stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&relative.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "failed to canonicalize {}",
+            dangling_link.display()
+        )),
+        "uppercase dangling-target diagnostics should include normalized absolute path: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -27688,6 +27793,40 @@ fn modules_command_single_dag_file_path_exits_nonzero() {
     );
 
     std::fs::remove_file(file_path).expect("failed to cleanup .dag file");
+}
+
+#[test]
+fn modules_command_single_uppercase_dag_file_path_exits_nonzero() {
+    let file_path = unique_temp_file("modules_single_uppercase_file_root")
+        .with_extension("DAG");
+    std::fs::write(&file_path, "module sample.one\nfn ok() -> Unit {}")
+        .expect("failed to create .DAG file");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&file_path)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules for uppercase single-file path");
+
+    assert!(
+        !output.status.success(),
+        "modules should fail when given an uppercase-extension file path instead of directory root"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "uppercase single-file-root modules should use exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("input root is not a directory"));
+    assert!(
+        stderr.contains(&file_path.display().to_string()),
+        "uppercase single-file-root error should include offending path: {stderr}"
+    );
+
+    std::fs::remove_file(file_path).expect("failed to cleanup .DAG file");
 }
 
 #[test]
