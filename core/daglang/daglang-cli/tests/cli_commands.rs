@@ -664,6 +664,32 @@ fn check_command_empty_directory_succeeds_with_zero_files() {
 }
 
 #[test]
+fn check_command_ignores_non_dag_files_in_directory() {
+    let root = unique_temp_dir("check_ignore_non_dag");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("notes.txt"), "module fake\n$").expect("failed to write txt file");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on non-dag-only directory");
+
+    assert!(
+        output.status.success(),
+        "check should ignore non-.dag files in directory mode"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("OK: parsed 0 file(s)"),
+        "non-.dag files should be ignored during check: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_defaults_to_workspace_dsl_root() {
     let output = Command::new(daglang_bin())
         .arg("check")
@@ -792,6 +818,36 @@ fn modules_command_empty_directory_succeeds_without_diagnostics() {
     assert!(
         !stdout.contains("Diagnostics:"),
         "empty directory should not produce diagnostics: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn modules_command_ignores_non_dag_files_in_directory() {
+    let root = unique_temp_dir("modules_ignore_non_dag");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("notes.txt"), "module fake\n$").expect("failed to write txt file");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules on non-dag-only directory");
+
+    assert!(
+        output.status.success(),
+        "modules should ignore non-.dag files in directory mode"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Discovered modules:"),
+        "modules output should include summary header"
+    );
+    assert!(
+        !stdout.contains("Diagnostics:"),
+        "non-.dag files should not produce diagnostics: {stdout}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
