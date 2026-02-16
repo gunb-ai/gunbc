@@ -49,6 +49,7 @@ pub struct TestObligations {
     pub service_transport_prepare_targets: usize,
     pub service_transport_execute_targets: usize,
     pub service_transport_parse_targets: usize,
+    pub resource_provide_targets: usize,
     pub resource_acquire_targets: usize,
     pub resource_release_targets: usize,
 }
@@ -122,6 +123,7 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         service_transport_prepare_targets: obligation_counts.service_transport_prepare_targets,
         service_transport_execute_targets: obligation_counts.service_transport_execute_targets,
         service_transport_parse_targets: obligation_counts.service_transport_parse_targets,
+        resource_provide_targets: obligation_counts.resource_provide_targets,
         resource_acquire_targets: obligation_counts.resource_acquire_targets,
         resource_release_targets: obligation_counts.resource_release_targets,
     };
@@ -250,6 +252,7 @@ struct ObligationCounts {
     service_transport_prepare_targets: usize,
     service_transport_execute_targets: usize,
     service_transport_parse_targets: usize,
+    resource_provide_targets: usize,
     resource_acquire_targets: usize,
     resource_release_targets: usize,
 }
@@ -275,6 +278,8 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
             counts.service_transport_execute_targets += 1;
         } else if name.starts_with("service_transport::parse::") {
             counts.service_transport_parse_targets += 1;
+        } else if name.starts_with("resource_provide::") {
+            counts.resource_provide_targets += 1;
         } else if name.starts_with("resource_lifecycle::acquire::") {
             counts.resource_acquire_targets += 1;
         } else if name.starts_with("resource_lifecycle::release::") {
@@ -399,6 +404,16 @@ mod tests {
             },
         ));
         dag.add_node(Node::opaque(
+            "provide_resource",
+            vec![Port::scalar("trigger", "Any")],
+            vec![Port::scalar("out", "Storage")],
+            LoweredOp::Callable {
+                module: "sample.resources".to_string(),
+                kind: CallableKind::Pattern,
+                name: "resource_provide::run::out".to_string(),
+            },
+        ));
+        dag.add_node(Node::opaque(
             "acquire_resource",
             vec![],
             vec![Port::scalar("resource_handle", "ResourceHandle")],
@@ -431,6 +446,12 @@ mod tests {
             "response",
         ));
         dag.add_edge(Edge::new(
+            "provide_resource",
+            "out",
+            "release_resource",
+            "resource_handle",
+        ));
+        dag.add_edge(Edge::new(
             "acquire_resource",
             "resource_handle",
             "release_resource",
@@ -439,10 +460,11 @@ mod tests {
 
         let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
         assert_eq!(artifacts.obligations.transport_execution_targets, 1);
-        assert_eq!(artifacts.obligations.pure_node_determinism_targets, 4);
+        assert_eq!(artifacts.obligations.pure_node_determinism_targets, 5);
         assert_eq!(artifacts.obligations.service_transport_prepare_targets, 1);
         assert_eq!(artifacts.obligations.service_transport_execute_targets, 1);
         assert_eq!(artifacts.obligations.service_transport_parse_targets, 1);
+        assert_eq!(artifacts.obligations.resource_provide_targets, 1);
         assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
         assert_eq!(artifacts.obligations.resource_release_targets, 1);
     }
