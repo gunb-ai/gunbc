@@ -848,6 +848,68 @@ fn compile_command_directory_mode_fails_on_ambiguous_provides_resource_type() {
 }
 
 #[test]
+fn compile_command_reports_call_arity_typecheck_error() {
+    let fixture = unique_temp_file("call_arity");
+    std::fs::write(
+        &fixture,
+        r#"module sample.calls
+fn fmt(value: String) -> String { value }
+fn run() -> String { fmt() }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on call arity mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("call arity mismatch"));
+    assert!(stderr.contains("fmt"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_reports_unknown_named_call_argument_typecheck_error() {
+    let fixture = unique_temp_file("call_unknown_arg");
+    std::fs::write(
+        &fixture,
+        r#"module sample.calls
+fn fmt(value: String) -> String { value }
+fn run() -> String { fmt(text: "ok") }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on unknown named call argument"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("unknown named argument `text`"));
+    assert!(stderr.contains("call to `fmt`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_reports_service_call_arity_typecheck_error() {
     let fixture = unique_temp_file("service_call_arity");
     std::fs::write(
