@@ -19,7 +19,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use daglang_lower::LoweredOp;
+use daglang_lower::{classify_obligation, LoweredOp, ObligationCategory};
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node};
 
 /// Derived artifacts produced from lowered GraphIR.
@@ -272,23 +272,32 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
         } else {
             counts.pure_node_determinism_targets += 1;
         }
-        let Some(LoweredOp::Callable { name, .. }) = node.body.as_opaque() else {
+        let Some(op) = node.body.as_opaque() else {
             continue;
         };
-        if name.starts_with("service_transport::prepare::") {
-            counts.service_transport_prepare_targets += 1;
-        } else if name.starts_with("service_transport::execute::") {
-            counts.service_transport_execute_targets += 1;
-        } else if name.starts_with("service_transport::parse::") {
-            counts.service_transport_parse_targets += 1;
-        } else if name.starts_with("call_param_source::") {
-            counts.service_param_source_targets += 1;
-        } else if name.starts_with("resource_provide::") {
-            counts.resource_provide_targets += 1;
-        } else if name.starts_with("resource_lifecycle::acquire::") {
-            counts.resource_acquire_targets += 1;
-        } else if name.starts_with("resource_lifecycle::release::") {
-            counts.resource_release_targets += 1;
+        match classify_obligation(op) {
+            ObligationCategory::ServiceTransportPrepare => {
+                counts.service_transport_prepare_targets += 1;
+            }
+            ObligationCategory::ServiceTransportExecute => {
+                counts.service_transport_execute_targets += 1;
+            }
+            ObligationCategory::ServiceTransportParse => {
+                counts.service_transport_parse_targets += 1;
+            }
+            ObligationCategory::ServiceParamSource => {
+                counts.service_param_source_targets += 1;
+            }
+            ObligationCategory::ResourceProvide => {
+                counts.resource_provide_targets += 1;
+            }
+            ObligationCategory::ResourceAcquire => {
+                counts.resource_acquire_targets += 1;
+            }
+            ObligationCategory::ResourceRelease => {
+                counts.resource_release_targets += 1;
+            }
+            ObligationCategory::None => {}
         }
     }
     counts
@@ -310,7 +319,7 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, LoweredOp};
+    use daglang_lower::{CallableKind, LoweredOp, ObligationCategory};
     use gunbc_ir::{Edge, Node, Port};
 
     fn callable_node(id: &str, module: &str, name: &str) -> Node<LoweredOp> {
@@ -322,6 +331,7 @@ mod tests {
                 module: module.to_string(),
                 kind: CallableKind::Func,
                 name: name.to_string(),
+                obligation: ObligationCategory::None,
             },
         )
     }
@@ -386,6 +396,7 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "call_param_source::run::path".to_string(),
+                obligation: ObligationCategory::ServiceParamSource,
             },
         ));
         dag.add_node(Node::opaque(
@@ -396,6 +407,7 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::prepare::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportPrepare,
             },
         ));
         dag.add_node(Node::opaque(
@@ -406,6 +418,7 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::execute::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
             },
         ));
         dag.add_node(Node::opaque(
@@ -416,6 +429,7 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::parse::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportParse,
             },
         ));
         dag.add_node(Node::opaque(
@@ -426,6 +440,7 @@ mod tests {
                 module: "sample.resources".to_string(),
                 kind: CallableKind::Pattern,
                 name: "resource_provide::run::out".to_string(),
+                obligation: ObligationCategory::ResourceProvide,
             },
         ));
         dag.add_node(Node::opaque(
@@ -436,6 +451,7 @@ mod tests {
                 module: "sample.resources".to_string(),
                 kind: CallableKind::Pattern,
                 name: "resource_lifecycle::acquire::TempFile".to_string(),
+                obligation: ObligationCategory::ResourceAcquire,
             },
         ));
         dag.add_node(Node::opaque(
@@ -446,6 +462,7 @@ mod tests {
                 module: "sample.resources".to_string(),
                 kind: CallableKind::Pattern,
                 name: "resource_lifecycle::release::TempFile".to_string(),
+                obligation: ObligationCategory::ResourceRelease,
             },
         ));
         dag.add_edge(Edge::new(
