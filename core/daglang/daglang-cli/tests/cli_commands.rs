@@ -393,6 +393,44 @@ fn check_command_parent_segment_root_matches_absolute_output() {
 }
 
 #[test]
+fn check_command_curdir_segment_root_matches_plain_relative_output() {
+    let cwd = workspace_root();
+
+    let curdir_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run curdir-segment-root daglang check");
+    assert!(
+        curdir_segment.status.success(),
+        "curdir-segment-root check should succeed: {}",
+        String::from_utf8_lossy(&curdir_segment.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative-root daglang check");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative-root check should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        curdir_segment.stdout, plain_relative.stdout,
+        "curdir-segment and plain-relative check outputs should match"
+    );
+    assert_eq!(
+        curdir_segment.stderr, plain_relative.stderr,
+        "curdir-segment and plain-relative check stderr should match"
+    );
+}
+
+#[test]
 fn check_command_relative_and_absolute_missing_roots_are_equivalent() {
     let missing_relative = unique_name("check_relative_absolute_missing_root");
     let cwd = workspace_root()
@@ -646,6 +684,61 @@ fn check_command_parent_segment_single_file_target_matches_absolute_output() {
         parent_segment.stderr.is_empty(),
         "parent-segment single-file check should not emit stderr: {}",
         String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_curdir_segment_single_file_target_matches_plain_relative_output() {
+    let root = unique_temp_dir("check_curdir_segment_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+
+    let curdir_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./main.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment target daglang check");
+    assert!(
+        curdir_segment.status.success(),
+        "curdir-segment target check should succeed: {}",
+        String::from_utf8_lossy(&curdir_segment.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("main.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative target daglang check");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative target check should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        curdir_segment.stdout, plain_relative.stdout,
+        "curdir-segment and plain-relative single-file check stdout should match"
+    );
+    assert_eq!(
+        curdir_segment.stderr, plain_relative.stderr,
+        "curdir-segment and plain-relative single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&curdir_segment.stdout),
+        expected_check_success_stdout(1),
+        "curdir-segment single-file check should parse exactly one file"
+    );
+    assert!(
+        curdir_segment.stderr.is_empty(),
+        "curdir-segment single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&curdir_segment.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -952,6 +1045,44 @@ fn modules_command_parent_segment_root_matches_absolute_output() {
     assert_eq!(
         parent_segment.stderr, absolute.stderr,
         "parent-segment and absolute-root modules stderr should match"
+    );
+}
+
+#[test]
+fn modules_command_curdir_segment_root_matches_plain_relative_output() {
+    let cwd = workspace_root();
+
+    let curdir_segment = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run curdir-segment-root daglang modules");
+    assert!(
+        curdir_segment.status.success(),
+        "curdir-segment-root modules should succeed: {}",
+        String::from_utf8_lossy(&curdir_segment.stderr)
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run plain-relative-root daglang modules");
+    assert!(
+        plain_relative.status.success(),
+        "plain-relative-root modules should succeed: {}",
+        String::from_utf8_lossy(&plain_relative.stderr)
+    );
+
+    assert_eq!(
+        curdir_segment.stdout, plain_relative.stdout,
+        "curdir-segment and plain-relative modules stdout should match"
+    );
+    assert_eq!(
+        curdir_segment.stderr, plain_relative.stderr,
+        "curdir-segment and plain-relative modules stderr should match"
     );
 }
 
