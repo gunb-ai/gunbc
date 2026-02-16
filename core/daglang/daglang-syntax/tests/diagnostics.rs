@@ -75,3 +75,16 @@ fn parse_with_file_diagnostics_preserves_parse_diagnostic_kind() {
     assert_eq!(diagnostics[0].line, Some(2));
     assert_eq!(diagnostics[0].column, Some(12));
 }
+
+#[test]
+fn parse_with_file_diagnostics_aggregates_multiple_lex_diagnostics() {
+    let src = "module test\n$\n&\n";
+    let diagnostics = parse_with_file_diagnostics(Path::new("sample.dag"), src)
+        .expect_err("source should fail with lexical diagnostics");
+    assert_eq!(diagnostics.len(), 2, "expected both lexical diagnostics");
+    assert!(diagnostics.iter().all(|diag| diag.kind == DiagnosticKind::Lex));
+    assert_eq!(diagnostics[0].line, Some(2));
+    assert_eq!(diagnostics[0].column, Some(1));
+    assert_eq!(diagnostics[1].line, Some(3));
+    assert_eq!(diagnostics[1].column, Some(1));
+}
