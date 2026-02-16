@@ -850,4 +850,124 @@ fn run() -> String { helper() }
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
+
+    #[test]
+    fn compile_single_file_duplicate_resource_uses_suppresses_ambiguous_used_type() {
+        let fixture = unique_temp_file("single_file_duplicate_resource_uses");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
+"#,
+        )
+        .expect("failed to write duplicate resource-uses fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate definition `SharedResource`"));
+        assert!(!error.contains("ambiguous used resource type"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_directory_duplicate_resource_uses_reports_ambiguous_used_type() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_duplicate_resource_uses_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
+"#,
+        )
+        .expect("failed to write duplicate resource-uses source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate definition `SharedResource`"));
+        assert!(error.contains("ambiguous used resource type"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_single_file_duplicate_resource_provides_suppresses_ambiguous_provided_type() {
+        let fixture = unique_temp_file("single_file_duplicate_resource_provides");
+        std::fs::write(
+            &fixture,
+            r#"module sample.single
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
+"#,
+        )
+        .expect("failed to write duplicate resource-provides fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate definition `SharedResource`"));
+        assert!(!error.contains("ambiguous provided resource type"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_directory_duplicate_resource_provides_reports_ambiguous_provided_type() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_duplicate_resource_provides_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+resource SharedResource {}
+resource SharedResource {}
+func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
+"#,
+        )
+        .expect("failed to write duplicate resource-provides source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate definition `SharedResource`"));
+        assert!(error.contains("ambiguous provided resource type"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
 }
