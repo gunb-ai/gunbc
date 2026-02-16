@@ -100,3 +100,48 @@ fn cyclic_dependencies_are_tolerated_for_phase_zero_discovery() {
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
+
+#[test]
+fn parse_error_contains_file_line_col_rendering() {
+    let root = unique_temp_dir("parse_error_location");
+    write_file(&root.join("broken.dag"), "module sample.broken\nfn");
+
+    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected parse error");
+    match err {
+        ResolveError::ParseErrors(files) => {
+            assert_eq!(files.len(), 1);
+            assert_eq!(files[0].0.file_name().and_then(|n| n.to_str()), Some("broken.dag"));
+            assert!(
+                files[0].1.iter().any(|diag| diag.render().contains(":2:")),
+                "expected diagnostic to include line/column: {:?}",
+                files[0].1
+            );
+        }
+        other => panic!("expected ParseErrors, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
+fn parse_errors_are_aggregated_across_multiple_files() {
+    let root = unique_temp_dir("parse_error_many");
+    write_file(&root.join("broken_a.dag"), "module sample.a\nfn");
+    write_file(&root.join("broken_b.dag"), "module sample.b\nimport");
+
+    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected parse errors");
+    match err {
+        ResolveError::ParseErrors(files) => {
+            assert_eq!(files.len(), 2, "expected diagnostics for both broken files");
+            let names: Vec<String> = files
+                .into_iter()
+                .map(|(path, _)| path.file_name().unwrap().to_string_lossy().to_string())
+                .collect();
+            assert!(names.iter().any(|name| name == "broken_a.dag"));
+            assert!(names.iter().any(|name| name == "broken_b.dag"));
+        }
+        other => panic!("expected ParseErrors, got {other:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
