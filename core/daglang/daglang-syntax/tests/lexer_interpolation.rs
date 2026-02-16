@@ -36,3 +36,14 @@ fn interpolation_does_not_start_on_escaped_brace() {
         ]
     );
 }
+
+#[test]
+fn interpolation_does_not_start_on_numeric_brace_sequences() {
+    assert_eq!(
+        kinds(r#""regex \d{2}-\w{3}""#),
+        vec![
+            TokenKind::Str(r"regex \d{2}-\w{3}".into()),
+            TokenKind::Eof,
+        ]
+    );
+}
