@@ -411,6 +411,34 @@ fn mixed_lex_and_parse_error_file_order_is_path_sorted() {
 }
 
 #[test]
+fn parse_errors_are_independent_of_root_argument_order() {
+    let root = unique_temp_dir("parse_error_root_order");
+    let a = root.join("a");
+    let b = root.join("b");
+    write_file(&a.join("a_parse.dag"), "module sample.a\nfn");
+    write_file(&b.join("b_lex.dag"), "module sample.b\n$\n");
+
+    let first = ModuleGraph::discover(&[a.clone(), b.clone()])
+        .expect_err("first discover should produce parse errors");
+    let second =
+        ModuleGraph::discover(&[b, a]).expect_err("second discover should produce parse errors");
+
+    let (files_first, files_second) = match (first, second) {
+        (ResolveError::ParseErrors(files_first), ResolveError::ParseErrors(files_second)) => {
+            (files_first, files_second)
+        }
+        (left, right) => panic!(
+            "expected ParseErrors for both runs, got left={left:?}, right={right:?}"
+        ),
+    };
+
+    assert_eq!(files_first, files_second);
+    assert_eq!(files_first.len(), 2, "expected diagnostics from both roots");
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn parse_error_display_includes_all_files_and_locations() {
     let root = unique_temp_dir("parse_error_display");
     write_file(&root.join("broken_a.dag"), "module sample.a\nfn");

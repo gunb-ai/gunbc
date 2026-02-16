@@ -1101,6 +1101,45 @@ mod tests {
     }
 
     #[test]
+    fn parse_pipeline_is_independent_of_root_argument_order() {
+        let root = unique_temp_dir("parse_root_order");
+        let a = root.join("a");
+        let b = root.join("b");
+        fs::create_dir_all(&a).expect("failed to create root a");
+        fs::create_dir_all(&b).expect("failed to create root b");
+        fs::write(a.join("a_parse.dag"), "module broken.a\nfn")
+            .expect("failed to write parse-broken source");
+        fs::write(b.join("b_lex.dag"), "module broken.b\n$\n")
+            .expect("failed to write lex-broken source");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![a.clone(), b.clone()],
+                target_file: None,
+            },
+            PipelineStop::Parse,
+        )
+        .expect("first run should complete");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![b, a],
+                target_file: None,
+            },
+            PipelineStop::Parse,
+        )
+        .expect("second run should complete");
+
+        assert_eq!(first.parsed_count, second.parsed_count);
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert!(
+            first.diagnostics.len() >= 2,
+            "expected diagnostics from both parse and lexical failures"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn parse_pipeline_does_not_emit_resolve_diagnostics_for_unresolved_imports() {
         let root = unique_temp_dir("parse_only_unresolved_import");
         fs::create_dir_all(&root).expect("failed to create temp root");
