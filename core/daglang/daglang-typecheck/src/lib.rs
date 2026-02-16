@@ -192,6 +192,12 @@ pub enum TypeError {
         binding: String,
         resource_type: String,
     },
+    /// `uses` clause references an ambiguous short resource/interface type.
+    AmbiguousUsedResourceType {
+        item: String,
+        binding: String,
+        resource_type: String,
+    },
     /// Duplicate `uses` binding within a callable declaration.
     DuplicateUsesBinding { item: String, binding: String },
     /// Duplicate `provides` binding within a callable declaration.
@@ -200,6 +206,12 @@ pub enum TypeError {
     UseProvideBindingConflict { item: String, binding: String },
     /// `provides` clause references an unknown resource/interface type.
     UnknownProvidedResourceType {
+        item: String,
+        binding: String,
+        resource_type: String,
+    },
+    /// `provides` clause references an ambiguous short resource/interface type.
+    AmbiguousProvidedResourceType {
         item: String,
         binding: String,
         resource_type: String,
@@ -343,6 +355,14 @@ impl std::fmt::Display for TypeError {
                 f,
                 "unknown used resource type `{resource_type}` for binding `{binding}` in `{item}`"
             ),
+            Self::AmbiguousUsedResourceType {
+                item,
+                binding,
+                resource_type,
+            } => write!(
+                f,
+                "ambiguous used resource type `{resource_type}` for binding `{binding}` in `{item}`"
+            ),
             Self::DuplicateUsesBinding { item, binding } => write!(
                 f,
                 "duplicate uses binding `{binding}` in `{item}`"
@@ -362,6 +382,14 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "unknown provided resource type `{resource_type}` for binding `{binding}` in `{item}`"
+            ),
+            Self::AmbiguousProvidedResourceType {
+                item,
+                binding,
+                resource_type,
+            } => write!(
+                f,
+                "ambiguous provided resource type `{resource_type}` for binding `{binding}` in `{item}`"
             ),
         }
     }
@@ -670,6 +698,13 @@ enum ServiceCallResolution {
     Missing,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ResourceTypeResolution {
+    Resolved(String),
+    Ambiguous,
+    Missing,
+}
+
 fn collect_unique_callables(
     modules: &[ResolvedModule],
 ) -> HashMap<String, Option<CallableContract>> {
@@ -930,12 +965,22 @@ fn validate_uses_clauses(
         }
         if !allow_unresolved_references {
             let resource_type = canonical_type_name(&type_expr_to_string(&usage.resource_type));
-            if resolve_resource_type_name(&resource_type, registry).is_none() {
-                errors.push(TypeError::UnknownUsedResourceType {
-                    item: item_name.to_string(),
-                    binding: usage.binding.clone(),
-                    resource_type,
-                });
+            match resolve_resource_type_name(&resource_type, registry) {
+                ResourceTypeResolution::Resolved(_) => {}
+                ResourceTypeResolution::Ambiguous => {
+                    errors.push(TypeError::AmbiguousUsedResourceType {
+                        item: item_name.to_string(),
+                        binding: usage.binding.clone(),
+                        resource_type,
+                    });
+                }
+                ResourceTypeResolution::Missing => {
+                    errors.push(TypeError::UnknownUsedResourceType {
+                        item: item_name.to_string(),
+                        binding: usage.binding.clone(),
+                        resource_type,
+                    });
+                }
             }
         }
     }
@@ -958,12 +1003,22 @@ fn validate_provides_clauses(
         }
         if !allow_unresolved_references {
             let resource_type = canonical_type_name(&type_expr_to_string(&provided.resource_type));
-            if resolve_resource_type_name(&resource_type, registry).is_none() {
-                errors.push(TypeError::UnknownProvidedResourceType {
-                    item: item_name.to_string(),
-                    binding: provided.binding.clone(),
-                    resource_type,
-                });
+            match resolve_resource_type_name(&resource_type, registry) {
+                ResourceTypeResolution::Resolved(_) => {}
+                ResourceTypeResolution::Ambiguous => {
+                    errors.push(TypeError::AmbiguousProvidedResourceType {
+                        item: item_name.to_string(),
+                        binding: provided.binding.clone(),
+                        resource_type,
+                    });
+                }
+                ResourceTypeResolution::Missing => {
+                    errors.push(TypeError::UnknownProvidedResourceType {
+                        item: item_name.to_string(),
+                        binding: provided.binding.clone(),
+                        resource_type,
+                    });
+                }
             }
         }
     }
@@ -1271,12 +1326,16 @@ fn canonical_interface_name(name: &str) -> String {
 fn resolve_resource_type_name(
     resource_type: &str,
     registry: &ResourceTypeRegistry,
-) -> Option<String> {
+) -> ResourceTypeResolution {
     if registry.full.contains(resource_type) {
-        return Some(resource_type.to_string());
+        return ResourceTypeResolution::Resolved(resource_type.to_string());
     }
     let short = resource_type.rsplit('.').next().unwrap_or(resource_type);
-    registry.short.get(short).and_then(|entry| entry.clone())
+    match registry.short.get(short) {
+        Some(Some(resolved)) => ResourceTypeResolution::Resolved(resolved.clone()),
+        Some(None) => ResourceTypeResolution::Ambiguous,
+        None => ResourceTypeResolution::Missing,
+    }
 }
 
 fn resolve_service_call_contract(
@@ -2103,6 +2162,42 @@ service FsStorage implements Storage {
     }
 
     #[test]
+    fn strict_mode_reports_ambiguous_used_resource_type() {
+        let graph = module_graph_from_sources(&[
+            (
+                "sample/one.dag",
+                "module sample.one\nresource SharedResource {}",
+            ),
+            (
+                "sample/two.dag",
+                "module sample.two\nresource SharedResource {}",
+            ),
+            (
+                "sample/main.dag",
+                r#"module sample.main
+func run() -> { ok: Bool } uses fs: SharedResource {
+  return { ok: true }
+}"#,
+            ),
+        ]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for ambiguous used resource type");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousUsedResourceType {
+                item,
+                binding,
+                resource_type,
+            } if item == "run" && binding == "fs" && resource_type == "SharedResource"
+        )));
+    }
+
+    #[test]
     fn relaxed_mode_allows_unknown_used_resource_type() {
         let graph = module_graph_from_sources(&[(
             "unknown_uses_relaxed.dag",
@@ -2132,6 +2227,42 @@ service FsStorage implements Storage {
                 binding,
                 resource_type,
             } if item == "run" && binding == "out" && resource_type == "MissingResource"
+        )));
+    }
+
+    #[test]
+    fn strict_mode_reports_ambiguous_provided_resource_type() {
+        let graph = module_graph_from_sources(&[
+            (
+                "sample/one.dag",
+                "module sample.one\nresource SharedResource {}",
+            ),
+            (
+                "sample/two.dag",
+                "module sample.two\nresource SharedResource {}",
+            ),
+            (
+                "sample/main.dag",
+                r#"module sample.main
+func run() -> { ok: Bool } provides out: SharedResource {
+  return { ok: true }
+}"#,
+            ),
+        ]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for ambiguous provided resource type");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousProvidedResourceType {
+                item,
+                binding,
+                resource_type,
+            } if item == "run" && binding == "out" && resource_type == "SharedResource"
         )));
     }
 

@@ -519,6 +519,44 @@ fn compile_command_directory_mode_fails_on_unknown_uses_resource_type() {
 }
 
 #[test]
+fn compile_command_directory_mode_fails_on_ambiguous_uses_resource_type() {
+    let root = unique_temp_dir("ambiguous_uses_type");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/one.dag"),
+        "module sample.one\nresource SharedResource {}",
+    )
+    .expect("failed to write source");
+    std::fs::write(
+        root.join("sample/two.dag"),
+        "module sample.two\nresource SharedResource {}",
+    )
+    .expect("failed to write source");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        "module sample.main\nfunc run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }",
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on ambiguous uses resource type"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("ambiguous used resource type `SharedResource`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_unknown_provides_resource_type() {
     let root = unique_temp_dir("unknown_provides_type");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
@@ -542,6 +580,44 @@ fn compile_command_directory_mode_fails_on_unknown_provides_resource_type() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("unknown provided resource type `MissingResource`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_fails_on_ambiguous_provides_resource_type() {
+    let root = unique_temp_dir("ambiguous_provides_type");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/one.dag"),
+        "module sample.one\nresource SharedResource {}",
+    )
+    .expect("failed to write source");
+    std::fs::write(
+        root.join("sample/two.dag"),
+        "module sample.two\nresource SharedResource {}",
+    )
+    .expect("failed to write source");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        "module sample.main\nfunc run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }",
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on ambiguous provides resource type"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("ambiguous provided resource type `SharedResource`"));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
