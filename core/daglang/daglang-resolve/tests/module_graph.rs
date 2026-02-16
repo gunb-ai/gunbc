@@ -468,6 +468,33 @@ fn display_tree_output_is_deterministic_across_runs() {
 }
 
 #[test]
+fn discovery_is_independent_of_root_argument_order() {
+    let root = unique_temp_dir("root_order");
+    let a = root.join("a");
+    let b = root.join("b");
+    write_file(&a.join("a.dag"), "module sample.a\nfn ok() -> Unit {}");
+    write_file(&b.join("b.dag"), "module sample.b\nfn ok() -> Unit {}");
+
+    let graph_ab = ModuleGraph::discover(&[a.clone(), b.clone()]).expect("first discover");
+    let graph_ba = ModuleGraph::discover(&[b, a]).expect("second discover");
+
+    let order_ab: Vec<String> = graph_ab
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    let order_ba: Vec<String> = graph_ba
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    assert_eq!(order_ab, order_ba);
+    assert_eq!(graph_ab.display_tree(), graph_ba.display_tree());
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn display_tree_contains_expected_summary_fields() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("discover should succeed");

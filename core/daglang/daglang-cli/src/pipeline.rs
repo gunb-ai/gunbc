@@ -1546,6 +1546,41 @@ mod tests {
     }
 
     #[test]
+    fn report_pipeline_is_independent_of_root_argument_order() {
+        let root = unique_temp_dir("report_root_order");
+        let a = root.join("a");
+        let b = root.join("b");
+        fs::create_dir_all(&a).expect("failed to create root a");
+        fs::create_dir_all(&b).expect("failed to create root b");
+        fs::write(a.join("a.dag"), "module sample.a\nfn ok() -> Unit {}")
+            .expect("failed to write source a");
+        fs::write(b.join("b.dag"), "module sample.b\nfn ok() -> Unit {}")
+            .expect("failed to write source b");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![a.clone(), b.clone()],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("first run should succeed");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![b, a],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("second run should succeed");
+
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.report, second.report);
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn pipeline_rejects_implicit_fanin_on_single_input_port() {
         let mut dag = build_pipeline_dag();
         dag.add_edge(Edge::new(
