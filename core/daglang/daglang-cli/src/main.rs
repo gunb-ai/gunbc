@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use daglang_cli::compile::{
     build_context, compile_from_context, render_expand, render_manifest, render_obligations,
-    render_triplets, OutputFormat,
+    render_triplets, CompileOutput, OutputFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{build_pipeline_dag, run_pipeline, PipelineContext, PipelineStop};
@@ -56,16 +56,8 @@ fn main() {
                     println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
                 }
                 3 => {
-                    let context = build_context(&cwd, args.get(2));
-                    match compile_from_context(&context) {
-                        Ok(output) => {
-                            println!("{}", output.lowered_dag.to_mermaid("daglang-compiled"));
-                        }
-                        Err(error) => {
-                            eprintln!("{error}");
-                            std::process::exit(1);
-                        }
-                    }
+                    let output = compile_target_or_exit(&cwd, args.get(2));
+                    println!("{}", output.lowered_dag.to_mermaid("daglang-compiled"));
                 }
                 _ => exit_usage("viz <file.dag>|viz --self"),
             }
@@ -74,31 +66,15 @@ fn main() {
             if args.len() != 3 {
                 exit_usage("expand <file.dag>");
             }
-            let context = build_context(&cwd, args.get(2));
-            match compile_from_context(&context) {
-                Ok(output) => {
-                    println!("{}", render_expand(&output.lowered_dag));
-                }
-                Err(error) => {
-                    eprintln!("{error}");
-                    std::process::exit(1);
-                }
-            }
+            let output = compile_target_or_exit(&cwd, args.get(2));
+            println!("{}", render_expand(&output.lowered_dag));
         }
         "manifest" => {
             if args.len() != 3 {
                 exit_usage("manifest <file.dag>");
             }
-            let context = build_context(&cwd, args.get(2));
-            match compile_from_context(&context) {
-                Ok(output) => {
-                    println!("{}", render_manifest(&output.derived));
-                }
-                Err(error) => {
-                    eprintln!("{error}");
-                    std::process::exit(1);
-                }
-            }
+            let output = compile_target_or_exit(&cwd, args.get(2));
+            println!("{}", render_manifest(&output.derived));
         }
         "obligations" => {
             if args.len() != 3 && args.len() != 5 {
@@ -106,14 +82,8 @@ fn main() {
             }
             let format = parse_output_format("obligations", &args)
                 .unwrap_or_else(|usage| exit_usage(&usage));
-            let context = build_context(&cwd, args.get(2));
-            match compile_from_context(&context) {
-                Ok(output) => println!("{}", render_obligations(&output.derived, format)),
-                Err(error) => {
-                    eprintln!("{error}");
-                    std::process::exit(1);
-                }
-            }
+            let output = compile_target_or_exit(&cwd, args.get(2));
+            println!("{}", render_obligations(&output.derived, format));
         }
         "show-triplets" => {
             if args.len() != 3 && args.len() != 5 {
@@ -121,14 +91,8 @@ fn main() {
             }
             let format = parse_output_format("show-triplets", &args)
                 .unwrap_or_else(|usage| exit_usage(&usage));
-            let context = build_context(&cwd, args.get(2));
-            match compile_from_context(&context) {
-                Ok(output) => println!("{}", render_triplets(&output.lowered_dag, format)),
-                Err(error) => {
-                    eprintln!("{error}");
-                    std::process::exit(1);
-                }
-            }
+            let output = compile_target_or_exit(&cwd, args.get(2));
+            println!("{}", render_triplets(&output.lowered_dag, format));
         }
         "modules" => {
             if args.len() > 3 {
@@ -193,23 +157,15 @@ fn main() {
             if args.len() > 3 {
                 exit_usage("compile <file.dag|dir>");
             }
-            let context = build_context(&cwd, args.get(2));
-            match compile_from_context(&context) {
-                Ok(output) => {
-                    println!(
-                        "Compiled {} module(s) to {} node(s), {} file(s) emitted.",
-                        output.emitted.summary.module_count,
-                        output.derived.manifest.total_nodes,
-                        output.emitted.files.len()
-                    );
-                    for file in &output.emitted.files {
-                        println!("  - {}", file.path);
-                    }
-                }
-                Err(error) => {
-                    eprintln!("{error}");
-                    std::process::exit(1);
-                }
+            let output = compile_target_or_exit(&cwd, args.get(2));
+            println!(
+                "Compiled {} module(s) to {} node(s), {} file(s) emitted.",
+                output.emitted.summary.module_count,
+                output.derived.manifest.total_nodes,
+                output.emitted.files.len()
+            );
+            for file in &output.emitted.files {
+                println!("  - {}", file.path);
             }
         }
         cmd => {
@@ -224,6 +180,17 @@ fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
         return path_utils::normalize_cli_path(cwd, &PathBuf::from(path));
     }
     path_utils::default_root_from_cwd(cwd)
+}
+
+fn compile_target_or_exit(cwd: &std::path::Path, input: Option<&String>) -> CompileOutput {
+    let context = build_context(cwd, input);
+    match compile_from_context(&context) {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    }
 }
 
 fn parse_output_format(command: &str, args: &[String]) -> Result<OutputFormat, String> {
