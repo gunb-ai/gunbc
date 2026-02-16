@@ -693,6 +693,57 @@ mod tests {
         assert!(ids.iter().any(|id| id == NODE_PARSE));
         assert!(ids.iter().any(|id| id == NODE_BUILD));
         assert!(ids.iter().any(|id| id == NODE_REPORT));
+
+        let discover = dag
+            .nodes
+            .iter()
+            .find(|node| node.id.0 == NODE_DISCOVER)
+            .expect("discover node should exist");
+        assert_eq!(discover.inputs.len(), 1);
+        assert_eq!(discover.inputs[0].name.0, PORT_CONTEXT);
+        assert_eq!(discover.inputs[0].cardinality, Cardinality::ONE);
+
+        for node in &dag.nodes {
+            for port in node.inputs.iter().chain(node.outputs.iter()) {
+                assert_eq!(
+                    port.cardinality,
+                    Cardinality::ONE,
+                    "phase-0 pipeline ports should be scalar by default"
+                );
+            }
+        }
+
+        let expected_edges = HashSet::from([
+            (NODE_DISCOVER, PORT_FILES, NODE_PARSE, PORT_FILES),
+            (NODE_DISCOVER, PORT_DIAGNOSTICS, NODE_PARSE, PORT_DIAGNOSTICS),
+            (
+                NODE_PARSE,
+                PORT_PARSED_MODULES,
+                NODE_BUILD,
+                PORT_PARSED_MODULES,
+            ),
+            (NODE_PARSE, PORT_DIAGNOSTICS, NODE_BUILD, PORT_DIAGNOSTICS),
+            (
+                NODE_BUILD,
+                PORT_MODULE_GRAPH,
+                NODE_REPORT,
+                PORT_MODULE_GRAPH,
+            ),
+            (NODE_BUILD, PORT_DIAGNOSTICS, NODE_REPORT, PORT_DIAGNOSTICS),
+        ]);
+        let actual_edges: HashSet<(&str, &str, &str, &str)> = dag
+            .edges
+            .iter()
+            .map(|edge| {
+                (
+                    edge.from_node.0.as_str(),
+                    edge.from_port.0.as_str(),
+                    edge.to_node.0.as_str(),
+                    edge.to_port.0.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(actual_edges, expected_edges);
     }
 
     #[test]

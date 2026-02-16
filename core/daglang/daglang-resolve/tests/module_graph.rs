@@ -165,3 +165,23 @@ fn discovery_order_is_deterministic_across_runs() {
 
     assert_eq!(order_a, order_b, "module discovery order should be stable");
 }
+
+#[test]
+fn display_tree_contains_expected_summary_fields() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+    let graph = ModuleGraph::discover(&[dsl_root]).expect("discover should succeed");
+    let tree = graph.display_tree();
+
+    assert!(
+        tree.contains("std.types"),
+        "display tree should include module path names"
+    );
+    assert!(
+        tree.contains("items"),
+        "display tree should include item counts"
+    );
+    assert!(
+        tree.contains("deps"),
+        "display tree should include dependency counts"
+    );
+}
