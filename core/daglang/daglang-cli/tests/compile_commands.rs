@@ -38,6 +38,14 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     ))
 }
 
+fn assert_typecheck_stage_failure(stderr: &str) {
+    assert!(stderr.contains("typecheck errors"));
+    assert!(
+        !stderr.contains("lower error"),
+        "expected failure to remain in typecheck stage: {stderr}"
+    );
+}
+
 #[test]
 fn compile_command_emits_summary_for_single_file() {
     let output = Command::new(daglang_bin())
@@ -81,7 +89,7 @@ fn run() -> String { "b" }
         "single-file compile should fail on duplicate definition"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `run` in module `sample.single`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -112,7 +120,7 @@ fn run() -> String { helper() }
         "single-file compile should fail on duplicate callable definition"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `helper` in module `sample.single`"));
     assert!(
         !stderr.contains("ambiguous call target `helper`"),
@@ -164,7 +172,7 @@ func run(path: String) -> { body: String } {
         "single-file compile should fail on duplicate service definition"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `FsStorage` in module `sample.single`"));
     assert!(
         !stderr.contains("ambiguous service call `FsStorage.read`"),
@@ -201,7 +209,7 @@ fn run(a: String, a: Int) -> String { a }
         "single-file compile should fail on duplicate parameter"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate parameter `a` in `run`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -230,7 +238,7 @@ func run() -> { ok: Bool, ok: String } { return { ok: true } }
         "single-file compile should fail on duplicate output field"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate output field `ok` in `run`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -260,7 +268,7 @@ func run() -> { ok: Bool } uses fs: Storage uses fs: Storage { return { ok: true
         "single-file compile should fail on duplicate uses binding"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate uses binding `fs` in `run`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -291,7 +299,7 @@ func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
         "single-file compile should fail on duplicate resource definition"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains(
         "duplicate definition `SharedResource` in module `sample.single`"
     ));
@@ -331,7 +339,7 @@ func run() -> { ok: Bool } provides out: Storage provides out: Storage { return 
         "single-file compile should fail on duplicate provides binding"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate provides binding `out` in `run`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -362,7 +370,7 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
         "single-file compile should fail on duplicate resource definition"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains(
         "duplicate definition `SharedResource` in module `sample.single`"
     ));
@@ -402,7 +410,7 @@ func run() -> { ok: Bool } uses io: Storage provides io: Storage { return { ok: 
         "single-file compile should fail on use/provide binding conflict"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("binding `io` is declared in both uses/provides in `run`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -446,7 +454,7 @@ resource Disk implements Storage {
         "single-file compile should fail on missing resource capability"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("resource `Disk` is missing capability `write` for interface `Storage`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -487,7 +495,7 @@ service FsStorage implements Storage {
         "single-file compile should fail on missing service operation"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("service `FsStorage` is missing operation `write` for interface `Storage`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -524,7 +532,7 @@ service FsStorage implements Storage {
         "single-file compile should fail on service signature mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("`FsStorage` does not match `Storage.read` contract"));
     assert!(stderr.contains("expected `String` but found `Int`"));
 
@@ -565,7 +573,7 @@ resource Disk implements Storage {
         "single-file compile should fail on resource signature mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("`Disk` does not match `Storage.read` contract"));
     assert!(stderr.contains("expected `String` but found `Int`"));
 
@@ -827,12 +835,8 @@ service FsStorage implements MissingStorage {
         "single-file compile should fail on unresolved service interface"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("`FsStorage` references unresolved interface `MissingStorage`"));
-    assert!(
-        !stderr.contains("lower error"),
-        "unresolved interface should fail in typecheck stage: {stderr}"
-    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -865,12 +869,8 @@ resource Disk implements MissingStorage {
         "single-file compile should fail on unresolved resource interface"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("`Disk` references unresolved interface `MissingStorage`"));
-    assert!(
-        !stderr.contains("lower error"),
-        "unresolved interface should fail in typecheck stage: {stderr}"
-    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -912,13 +912,9 @@ service FsStorage implements Storage {
         "single-file compile should fail for duplicate interface definitions"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("typecheck errors"));
+    assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `Storage` in module `sample.single`"));
     assert!(stderr.contains("`FsStorage` references ambiguous interface `Storage`"));
-    assert!(
-        !stderr.contains("lower error"),
-        "single-file duplicate-interface layering should fail in typecheck stage: {stderr}"
-    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
