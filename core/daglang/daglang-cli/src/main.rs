@@ -36,6 +36,9 @@ fn main() {
     match args[1].as_str() {
         "viz" => {
             if args.get(2).map(String::as_str) == Some("--self") {
+                if args.len() != 3 {
+                    exit_usage("viz --self");
+                }
                 let dag = build_pipeline_dag();
                 println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
             } else {
@@ -58,6 +61,9 @@ fn main() {
             );
         }
         "modules" => {
+            if args.len() > 3 {
+                exit_usage("modules [dir]");
+            }
             let roots = vec![resolve_root(args.get(2))];
             let context = PipelineContext {
                 roots,
@@ -76,6 +82,9 @@ fn main() {
             }
         }
         "check" => {
+            if args.len() > 3 {
+                exit_usage("check <file.dag|dir>");
+            }
             let input = args.get(2).map(|value| normalize_cli_path(PathBuf::from(value)));
             let (roots, target_file) = match input {
                 Some(path) if path.extension().and_then(|ext| ext.to_str()) == Some("dag") => {
@@ -132,6 +141,11 @@ fn exit_unimplemented(command: &str, detail: &str) -> ! {
     eprintln!("command `{command}` is not implemented.");
     eprintln!("{detail}");
     std::process::exit(2);
+}
+
+fn exit_usage(command: &str) -> ! {
+    eprintln!("Usage: daglang {command}");
+    std::process::exit(1);
 }
 
 fn normalize_cli_path(path: PathBuf) -> PathBuf {

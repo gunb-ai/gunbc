@@ -26442,6 +26442,84 @@ fn no_command_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn check_command_with_extra_args_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl")
+        .arg("extra")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check with extra args");
+
+    assert!(
+        !output.status.success(),
+        "check with extra args should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "check with extra args should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang check <file.dag|dir>"),
+        "check with extra args should print command usage: {stderr}"
+    );
+}
+
+#[test]
+fn modules_command_with_extra_args_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .arg("extra")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules with extra args");
+
+    assert!(
+        !output.status.success(),
+        "modules with extra args should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "modules with extra args should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang modules [dir]"),
+        "modules with extra args should print command usage: {stderr}"
+    );
+}
+
+#[test]
+fn viz_self_with_extra_args_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--self")
+        .arg("extra")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz --self with extra args");
+
+    assert!(
+        !output.status.success(),
+        "viz --self with extra args should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "viz --self with extra args should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang viz --self"),
+        "viz --self with extra args should print command usage: {stderr}"
+    );
+}
+
+#[test]
 fn placeholder_commands_exit_nonzero_with_unimplemented_message() {
     for command in ["expand", "manifest", "compile"] {
         let output = Command::new(daglang_bin())
