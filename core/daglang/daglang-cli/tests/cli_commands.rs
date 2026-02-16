@@ -29225,6 +29225,56 @@ fn modules_command_relative_and_absolute_uppercase_single_file_roots_are_equival
 }
 
 #[test]
+fn modules_command_relative_and_absolute_mixed_case_single_file_roots_are_equivalent() {
+    let root = unique_temp_dir("modules_relative_absolute_mixed_case_single_file_root");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let file_path = root.join("one.DaG");
+    std::fs::write(&file_path, "module sample.one\nfn ok() -> Unit {}")
+        .expect("failed to write temp mixed-case dag file");
+
+    let relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("one.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative mixed-case single-file-root daglang modules");
+    assert!(
+        !relative.status.success(),
+        "relative mixed-case single-file-root modules should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&file_path)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute mixed-case single-file-root daglang modules");
+    assert!(
+        !absolute.status.success(),
+        "absolute mixed-case single-file-root modules should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute mixed-case single-file-root modules stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute mixed-case single-file-root modules stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&relative.stderr).contains(&format!(
+            "input root is not a directory: {}",
+            file_path.display()
+        )),
+        "mixed-case single-file-root diagnostics should include normalized absolute path: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn modules_command_relative_and_absolute_single_file_roots_are_equivalent() {
     let root = unique_temp_dir("modules_relative_absolute_single_file_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
