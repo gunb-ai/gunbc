@@ -841,6 +841,47 @@ service FsStorage implements Storage {
 }
 
 #[test]
+fn compile_command_directory_mode_fails_on_resource_interface_signature_mismatch() {
+    let root = unique_temp_dir("resource_interface_signature_mismatch");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource Disk implements Storage {
+  capability read {
+    input { path: Int }
+    output { body: String }
+  }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on resource interface signature mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("`Disk` does not match `Storage.read` contract"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_use_provide_binding_conflict() {
     let root = unique_temp_dir("use_provide_binding_conflict");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
