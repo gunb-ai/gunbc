@@ -397,6 +397,53 @@ fn check_command_relative_and_absolute_single_file_targets_are_equivalent() {
 }
 
 #[test]
+fn check_command_relative_and_absolute_invalid_single_file_targets_are_equivalent() {
+    let root = unique_temp_dir("check_relative_absolute_invalid_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write malformed dag source");
+
+    let relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative-target daglang check");
+    assert!(
+        !relative.status.success(),
+        "relative-target check should fail for malformed source"
+    );
+
+    let absolute_target = root.join("broken.dag");
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_target)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute-target daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute-target check should fail for malformed source"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute invalid single-file check stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute invalid single-file check stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&relative.stderr).contains("broken.dag:2:3:"),
+        "expected parse diagnostic with location for malformed single-file target: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn modules_command_prints_module_graph_summary() {
     let output = Command::new(daglang_bin())
         .arg("modules")
@@ -773,7 +820,7 @@ fn check_command_dangling_symlink_single_file_target_exits_nonzero() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
-    assert!(stderr.contains("failed to read"));
+    assert!(stderr.contains("failed to canonicalize"));
     assert!(
         stderr.contains("broken.dag"),
         "dangling symlink single-file failure should include offending path: {stderr}"

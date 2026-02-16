@@ -322,10 +322,16 @@ fn execute_op(
 
 fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> {
     if let Some(target_file) = &context.target_file {
-        let source = fs::read_to_string(target_file)
-            .map_err(|error| format!("failed to read {}: {error}", target_file.display()))?;
+        let canonical_target = fs::canonicalize(target_file).map_err(|error| {
+            format!(
+                "failed to canonicalize {}: {error}",
+                target_file.display()
+            )
+        })?;
+        let source = fs::read_to_string(&canonical_target)
+            .map_err(|error| format!("failed to read {}: {error}", canonical_target.display()))?;
         return Ok(vec![FileSource {
-            path: target_file.clone(),
+            path: canonical_target,
             source,
         }]);
     }
@@ -1721,7 +1727,7 @@ mod tests {
         };
         let err = run_pipeline(&context, PipelineStop::Parse)
             .expect_err("missing target file should fail pipeline execution");
-        assert!(err.contains("failed to read"));
+        assert!(err.contains("failed to canonicalize"));
         assert!(err.contains("missing.dag"));
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -1753,7 +1759,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn target_file_mode_reports_dangling_symlink_read_error() {
+    fn target_file_mode_reports_dangling_symlink_canonicalize_error() {
         use std::os::unix::fs::symlink;
 
         let root = unique_temp_dir("target_file_dangling_symlink");
@@ -1768,7 +1774,7 @@ mod tests {
         };
         let err = run_pipeline(&context, PipelineStop::Parse)
             .expect_err("dangling symlink target file should fail");
-        assert!(err.contains("failed to read"));
+        assert!(err.contains("failed to canonicalize"));
         assert!(err.contains("broken.dag"));
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
