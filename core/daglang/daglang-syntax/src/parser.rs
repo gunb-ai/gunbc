@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::lexer::{Lexer, Token, TokenKind};
 use crate::span::{Span, Spanned};
 use std::path::Path;
@@ -27,8 +28,15 @@ impl ParseError {
 
     /// Format this parse error with file + line/column information.
     pub fn format_with_source(&self, file: &Path, source: &str) -> String {
+        self.to_diagnostic(file, source).render()
+    }
+
+    pub fn to_diagnostic(&self, file: &Path, source: &str) -> Diagnostic {
         let (line, col) = self.line_col(source);
-        format!("{}:{line}:{col}: {}", file.display(), self.message)
+        Diagnostic::new(DiagnosticKind::Parse, self.message.clone())
+            .with_file(file)
+            .with_span(self.span)
+            .with_line_col(line, col)
     }
 }
 

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::SourceFile;
+use daglang_syntax::diagnostic::{Diagnostic, DiagnosticKind};
 use daglang_syntax::parser;
 use gunbc_ir::{Dag, Edge, Node, Port};
 
@@ -40,7 +41,7 @@ pub enum PipelineStop {
 
 #[derive(Debug)]
 pub struct PipelineResult {
-    pub diagnostics: Vec<String>,
+    pub diagnostics: Vec<Diagnostic>,
     pub parsed_count: usize,
     pub module_graph: Option<ModuleGraph>,
     pub report: Option<String>,
@@ -65,7 +66,7 @@ enum PipeValue {
     Files(Vec<FileSource>),
     ParsedModules(Vec<ParsedModule>),
     ModuleGraph(ModuleGraph),
-    Diagnostics(Vec<String>),
+    Diagnostics(Vec<Diagnostic>),
     Report(String),
 }
 
@@ -251,11 +252,11 @@ fn execute_op(
                         });
                     }
                     Err(errors) => {
-                        diagnostics.extend(
-                            errors
-                                .iter()
-                                .map(|error| error.format_with_source(&file.path, &file.source)),
-                        );
+                    diagnostics.extend(
+                        errors
+                            .iter()
+                            .map(|error| error.to_diagnostic(&file.path, &file.source)),
+                    );
                     }
                 }
             }
@@ -293,7 +294,7 @@ fn execute_op(
             if !diagnostics.is_empty() {
                 report.push_str("\nDiagnostics:\n");
                 for diagnostic in &diagnostics {
-                    report.push_str(&format!("  {diagnostic}\n"));
+                    report.push_str(&format!("  {}\n", diagnostic.render()));
                 }
             }
 
@@ -368,7 +369,10 @@ fn path_to_module_path(path: &Path, roots: &[PathBuf]) -> Vec<String> {
     ]
 }
 
-fn build_module_graph(parsed_modules: Vec<ParsedModule>, diagnostics: &mut Vec<String>) -> ModuleGraph {
+fn build_module_graph(
+    parsed_modules: Vec<ParsedModule>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> ModuleGraph {
     let mut modules = Vec::new();
     let mut module_index = HashMap::new();
     let mut seen_duplicates = HashSet::new();
@@ -377,11 +381,13 @@ fn build_module_graph(parsed_modules: Vec<ParsedModule>, diagnostics: &mut Vec<S
         match module_index.insert(module.module_path.clone(), idx) {
             Some(_) => {
                 if seen_duplicates.insert(module.module_path.join(".")) {
-                    diagnostics.push(format!(
-                        "{}: duplicate module path {}",
-                        module.path.display(),
-                        module.module_path.join(".")
-                    ));
+                    diagnostics.push(
+                        Diagnostic::new(
+                            DiagnosticKind::Resolve,
+                            format!("duplicate module path {}", module.module_path.join(".")),
+                        )
+                        .with_file(&module.path),
+                    );
                 }
             }
             None => {}
@@ -531,14 +537,14 @@ fn take_module_graph(inputs: &mut HashMap<String, PipeValue>) -> Result<ModuleGr
     }
 }
 
-fn take_diagnostics_from_inputs(inputs: &mut HashMap<String, PipeValue>) -> Vec<String> {
+fn take_diagnostics_from_inputs(inputs: &mut HashMap<String, PipeValue>) -> Vec<Diagnostic> {
     match inputs.remove(PORT_DIAGNOSTICS) {
         Some(PipeValue::Diagnostics(diagnostics)) => diagnostics,
         _ => Vec::new(),
     }
 }
 
-fn take_diagnostics(values: &mut HashMap<String, PipeValue>) -> Result<Vec<String>, String> {
+fn take_diagnostics(values: &mut HashMap<String, PipeValue>) -> Result<Vec<Diagnostic>, String> {
     if let Some(PipeValue::Diagnostics(diagnostics)) =
         values.remove(&edge_key(NODE_REPORT, PORT_DIAGNOSTICS))
     {
@@ -605,7 +611,10 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             PORT_FILES.to_string(),
-            PipeValue::Diagnostics(vec!["not files".into()]),
+            PipeValue::Diagnostics(vec![Diagnostic::new(
+                DiagnosticKind::Pipeline,
+                "not files",
+            )]),
         );
         inputs.insert(
             PORT_DIAGNOSTICS.to_string(),
@@ -641,7 +650,7 @@ mod tests {
             result
                 .diagnostics
                 .iter()
-                .any(|diag| diag.contains("broken.dag:2:")),
+                .any(|diag| diag.render().contains("broken.dag:2:")),
             "diagnostics should contain file:line:col locations"
         );
 
@@ -667,14 +676,14 @@ mod tests {
             result
                 .diagnostics
                 .iter()
-                .any(|diag| diag.contains("broken_a.dag")),
+                .any(|diag| diag.render().contains("broken_a.dag")),
             "expected diagnostics to include broken_a.dag"
         );
         assert!(
             result
                 .diagnostics
                 .iter()
-                .any(|diag| diag.contains("broken_b.dag")),
+                .any(|diag| diag.render().contains("broken_b.dag")),
             "expected diagnostics to include broken_b.dag"
         );
 

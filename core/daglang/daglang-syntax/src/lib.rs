@@ -24,6 +24,7 @@
 
 pub mod lexer;
 pub mod parser;
+pub mod diagnostic;
 
 /// Source location tracking for error messages.
 pub mod span {
