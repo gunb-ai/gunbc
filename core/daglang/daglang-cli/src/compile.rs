@@ -4432,6 +4432,9 @@ func run(path: String) -> { body: String } {
             "__deps",
             Value::List(Vec::new()),
         );
+        if temp_path.exists() {
+            std::fs::remove_file(&temp_path).expect("failed to remove stale dry-run output");
+        }
 
         let mut dry_run_mocks = BoundaryMocks::new();
         dry_run_mocks.set_value(
@@ -4462,6 +4465,10 @@ func run(path: String) -> { body: String } {
         )
         .expect("compiled makegen dry-run execution should succeed");
         assert!(log.has_intercepted(), "dry-run should intercept transport nodes");
+        assert!(
+            !temp_path.exists(),
+            "dry-run mode should not create output files"
+        );
     }
 
     #[test]

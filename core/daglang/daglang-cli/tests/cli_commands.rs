@@ -30297,6 +30297,37 @@ fn expand_and_manifest_with_extra_args_exit_with_usage_message() {
 }
 
 #[test]
+fn manifest_with_unknown_format_exits_nonzero_with_clear_error() {
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg("--format")
+        .arg("yaml")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest with unknown format");
+
+    assert!(
+        !output.status.success(),
+        "manifest with unknown format should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "manifest with unknown format should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown manifest format `yaml`"),
+        "manifest should report unknown format explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang manifest [--format text|json] <file.dag>"),
+        "manifest should print usage guidance for unknown format: {stderr}"
+    );
+}
+
+#[test]
 fn compile_family_commands_execute_real_pipeline_paths() {
     for command in ["expand", "manifest", "compile"] {
         let output = Command::new(daglang_bin())
