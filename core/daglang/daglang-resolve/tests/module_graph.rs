@@ -37,6 +37,16 @@ fn discovers_all_real_dsl_modules() {
 }
 
 #[test]
+fn discovery_with_empty_roots_returns_empty_graph() {
+    let graph = ModuleGraph::discover(&[]).expect("empty roots should be valid");
+    assert!(graph.modules.is_empty(), "expected no discovered modules");
+    assert!(
+        graph.display_tree().is_empty(),
+        "empty graph display should be empty"
+    );
+}
+
+#[test]
 fn duplicate_module_paths_are_rejected() {
     let root = unique_temp_dir("duplicate");
     write_file(
