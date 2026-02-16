@@ -1056,6 +1056,70 @@ mod tests {
     }
 
     #[test]
+    fn parse_pipeline_parses_full_real_dsl_corpus_without_diagnostics() {
+        let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+        let result = run_pipeline(
+            &PipelineContext {
+                roots: vec![dsl_root],
+                target_file: None,
+            },
+            PipelineStop::Parse,
+        )
+        .expect("pipeline should execute");
+
+        assert_eq!(result.parsed_count, 42);
+        assert!(
+            result.diagnostics.is_empty(),
+            "real corpus parse stop should not emit parse diagnostics: {:?}",
+            result.diagnostics
+        );
+        assert!(result.report.is_none());
+        assert!(result.module_graph.is_none());
+    }
+
+    #[test]
+    fn report_pipeline_emits_expected_real_corpus_resolve_diagnostics() {
+        let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+        let result = run_pipeline(
+            &PipelineContext {
+                roots: vec![dsl_root],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("pipeline should execute");
+
+        assert_eq!(
+            result.diagnostics.len(),
+            2,
+            "real corpus report should emit expected resolve diagnostics"
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .all(|diag| diag.kind == DiagnosticKind::Resolve),
+            "real corpus report diagnostics should be resolve-kind only"
+        );
+        let rendered: Vec<String> = result.diagnostics.iter().map(|diag| diag.render()).collect();
+        assert!(
+            rendered.iter().any(|line| line.contains(
+                "cyclic dependencies detected among modules: examples.deployment, shared.gist_modes, tools.dag_viz, tools.gist"
+            )),
+            "expected cycle diagnostic in report diagnostics: {rendered:?}"
+        );
+        assert!(
+            rendered
+                .iter()
+                .any(|line| line.contains("unresolved import: examples.integration_tests -> infra.gcp")),
+            "expected unresolved-import diagnostic in report diagnostics: {rendered:?}"
+        );
+        let report = result.report.as_ref().expect("report should be available");
+        assert!(report.contains("Discovered modules:"));
+        assert!(report.contains("tools.makegen"));
+    }
+
+    #[test]
     fn parse_stop_does_not_emit_module_graph_or_report_values() {
         let root = unique_temp_dir("parse_stop_outputs");
         fs::create_dir_all(&root).expect("failed to create temp root");
