@@ -859,6 +859,62 @@ mod tests {
     }
 
     #[test]
+    fn build_op_rejects_wrong_pipe_value_variant() {
+        let context = PipelineContext {
+            roots: vec![],
+            target_file: None,
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            PORT_PARSED_MODULES.to_string(),
+            PipeValue::Diagnostics(vec![Diagnostic::new(
+                DiagnosticKind::Pipeline,
+                "not parsed modules",
+            )]),
+        );
+        inputs.insert(
+            PORT_DIAGNOSTICS.to_string(),
+            PipeValue::Diagnostics(Vec::new()),
+        );
+
+        let err = execute_op(
+            &gunbc_ir::node::NodeBody::Opaque(CompilerOp::BuildModuleGraph),
+            &context,
+            inputs,
+        )
+        .expect_err("expected build op to reject wrong input variant");
+        assert!(err.contains("expected parsed modules input"));
+    }
+
+    #[test]
+    fn report_op_rejects_wrong_pipe_value_variant() {
+        let context = PipelineContext {
+            roots: vec![],
+            target_file: None,
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            PORT_MODULE_GRAPH.to_string(),
+            PipeValue::Diagnostics(vec![Diagnostic::new(
+                DiagnosticKind::Pipeline,
+                "not module graph",
+            )]),
+        );
+        inputs.insert(
+            PORT_DIAGNOSTICS.to_string(),
+            PipeValue::Diagnostics(Vec::new()),
+        );
+
+        let err = execute_op(
+            &gunbc_ir::node::NodeBody::Opaque(CompilerOp::ReportModules),
+            &context,
+            inputs,
+        )
+        .expect_err("expected report op to reject wrong input variant");
+        assert!(err.contains("expected module graph input"));
+    }
+
+    #[test]
     fn parse_pipeline_collects_diagnostics_for_invalid_source() {
         let root = unique_temp_dir("invalid");
         fs::create_dir_all(&root).expect("failed to create temp root");
