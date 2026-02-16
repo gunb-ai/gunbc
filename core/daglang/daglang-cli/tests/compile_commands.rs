@@ -97,6 +97,7 @@ fn manifest_command_shows_derived_progress_manifest() {
     assert!(stdout.contains("waves:"));
     assert!(stdout.contains("TestObligations:"));
     assert!(stdout.contains("service_transport_prepare_targets:"));
+    assert!(stdout.contains("service_param_source_targets:"));
     assert!(stdout.contains("resource_provide_targets:"));
 }
 
@@ -147,6 +148,7 @@ func run(path: String) -> { body: String } {
     assert!(stdout.contains("service_transport_prepare_targets: 1"));
     assert!(stdout.contains("service_transport_execute_targets: 1"));
     assert!(stdout.contains("service_transport_parse_targets: 1"));
+    assert!(stdout.contains("service_param_source_targets: 1"));
     assert!(stdout.contains("resource_acquire_targets: 1"));
     assert!(stdout.contains("resource_release_targets: 1"));
 

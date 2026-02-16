@@ -49,6 +49,7 @@ pub struct TestObligations {
     pub service_transport_prepare_targets: usize,
     pub service_transport_execute_targets: usize,
     pub service_transport_parse_targets: usize,
+    pub service_param_source_targets: usize,
     pub resource_provide_targets: usize,
     pub resource_acquire_targets: usize,
     pub resource_release_targets: usize,
@@ -123,6 +124,7 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         service_transport_prepare_targets: obligation_counts.service_transport_prepare_targets,
         service_transport_execute_targets: obligation_counts.service_transport_execute_targets,
         service_transport_parse_targets: obligation_counts.service_transport_parse_targets,
+        service_param_source_targets: obligation_counts.service_param_source_targets,
         resource_provide_targets: obligation_counts.resource_provide_targets,
         resource_acquire_targets: obligation_counts.resource_acquire_targets,
         resource_release_targets: obligation_counts.resource_release_targets,
@@ -252,6 +254,7 @@ struct ObligationCounts {
     service_transport_prepare_targets: usize,
     service_transport_execute_targets: usize,
     service_transport_parse_targets: usize,
+    service_param_source_targets: usize,
     resource_provide_targets: usize,
     resource_acquire_targets: usize,
     resource_release_targets: usize,
@@ -278,6 +281,8 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
             counts.service_transport_execute_targets += 1;
         } else if name.starts_with("service_transport::parse::") {
             counts.service_transport_parse_targets += 1;
+        } else if name.starts_with("call_param_source::") {
+            counts.service_param_source_targets += 1;
         } else if name.starts_with("resource_provide::") {
             counts.resource_provide_targets += 1;
         } else if name.starts_with("resource_lifecycle::acquire::") {
@@ -374,6 +379,16 @@ mod tests {
     fn derive_obligations_count_transport_and_lifecycle_targets() {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
+            "param_source",
+            vec![],
+            vec![Port::scalar("path", "String")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "call_param_source::run::path".to_string(),
+            },
+        ));
+        dag.add_node(Node::opaque(
             "prepare_transport",
             vec![Port::scalar("path", "String")],
             vec![Port::scalar("request", "TransportRequest")],
@@ -434,6 +449,12 @@ mod tests {
             },
         ));
         dag.add_edge(Edge::new(
+            "param_source",
+            "path",
+            "prepare_transport",
+            "path",
+        ));
+        dag.add_edge(Edge::new(
             "prepare_transport",
             "request",
             "execute_transport",
@@ -460,10 +481,11 @@ mod tests {
 
         let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
         assert_eq!(artifacts.obligations.transport_execution_targets, 1);
-        assert_eq!(artifacts.obligations.pure_node_determinism_targets, 5);
+        assert_eq!(artifacts.obligations.pure_node_determinism_targets, 6);
         assert_eq!(artifacts.obligations.service_transport_prepare_targets, 1);
         assert_eq!(artifacts.obligations.service_transport_execute_targets, 1);
         assert_eq!(artifacts.obligations.service_transport_parse_targets, 1);
+        assert_eq!(artifacts.obligations.service_param_source_targets, 1);
         assert_eq!(artifacts.obligations.resource_provide_targets, 1);
         assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
         assert_eq!(artifacts.obligations.resource_release_targets, 1);

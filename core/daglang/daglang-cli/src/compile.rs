@@ -276,6 +276,10 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
         obligations.service_transport_parse_targets
     ));
     out.push_str(&format!(
+        "  service_param_source_targets: {}\n",
+        obligations.service_param_source_targets
+    ));
+    out.push_str(&format!(
         "  resource_provide_targets: {}\n",
         obligations.resource_provide_targets
     ));
@@ -323,6 +327,7 @@ mod tests {
         let rendered = render_manifest(&output.derived);
         assert!(rendered.contains("TestObligations:"));
         assert!(rendered.contains("service_transport_prepare_targets:"));
+        assert!(rendered.contains("service_param_source_targets:"));
         assert!(rendered.contains("resource_provide_targets:"));
     }
 
