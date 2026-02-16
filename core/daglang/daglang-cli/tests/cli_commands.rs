@@ -690,6 +690,34 @@ fn check_command_ignores_non_dag_files_in_directory() {
 }
 
 #[test]
+fn check_command_ignores_non_dag_files_when_dag_files_exist() {
+    let root = unique_temp_dir("check_ignore_non_dag_mixed");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("good.dag"), "module sample.good\nfn ok() -> Unit {}")
+        .expect("failed to write dag file");
+    std::fs::write(root.join("notes.txt"), "module fake\n$").expect("failed to write txt file");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on mixed dag/non-dag directory");
+
+    assert!(
+        output.status.success(),
+        "check should parse only .dag files and ignore non-.dag files"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("OK: parsed 1 file(s)"),
+        "expected only the .dag file to be parsed: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_defaults_to_workspace_dsl_root() {
     let output = Command::new(daglang_bin())
         .arg("check")
@@ -848,6 +876,35 @@ fn modules_command_ignores_non_dag_files_in_directory() {
     assert!(
         !stdout.contains("Diagnostics:"),
         "non-.dag files should not produce diagnostics: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn modules_command_ignores_non_dag_files_when_dag_files_exist() {
+    let root = unique_temp_dir("modules_ignore_non_dag_mixed");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write dag file");
+    std::fs::write(root.join("notes.txt"), "module fake\n$").expect("failed to write txt file");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules on mixed dag/non-dag directory");
+
+    assert!(
+        output.status.success(),
+        "modules should report only discovered .dag modules"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("sample.main"));
+    assert!(
+        !stdout.contains("Diagnostics:"),
+        "ignored non-.dag files should not produce diagnostics: {stdout}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
