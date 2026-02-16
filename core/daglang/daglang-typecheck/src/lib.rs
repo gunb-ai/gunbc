@@ -20,11 +20,11 @@
 //! - `@contract` annotation validation (behavioral specs are well-typed)
 //! - Subtyping via the bounded lattice (§4.1.4 of dsl-design.md)
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
-use daglang_syntax::ast::{Field, Item, Param, SourceFile, TypeExpr};
+use daglang_syntax::ast::{Expr, Field, Item, Param, SourceFile, Stmt, TypeExpr};
 
 /// A typechecked project snapshot.
 #[derive(Debug)]
@@ -124,6 +124,19 @@ pub enum TypeError {
     DuplicateOutputField { item: String, field: String },
     /// Import target does not exist in the available module graph.
     UnresolvedImport { module: String, target: String },
+    /// Call expression used wrong number of arguments.
+    CallArityMismatch {
+        caller: String,
+        callee: String,
+        expected: usize,
+        got: usize,
+    },
+    /// Call expression used an unknown named argument.
+    UnknownCallArgument {
+        caller: String,
+        callee: String,
+        argument: String,
+    },
 }
 
 impl std::fmt::Display for TypeError {
@@ -167,6 +180,23 @@ impl std::fmt::Display for TypeError {
             Self::UnresolvedImport { module, target } => {
                 write!(f, "unresolved import `{target}` in module `{module}`")
             }
+            Self::CallArityMismatch {
+                caller,
+                callee,
+                expected,
+                got,
+            } => write!(
+                f,
+                "call arity mismatch in `{caller}` for `{callee}`: expected {expected}, got {got}"
+            ),
+            Self::UnknownCallArgument {
+                caller,
+                callee,
+                argument,
+            } => write!(
+                f,
+                "unknown named argument `{argument}` in call to `{callee}` within `{caller}`"
+            ),
         }
     }
 }
@@ -182,6 +212,7 @@ pub fn typecheck_module_graph_with_options(
     options: TypecheckOptions,
 ) -> Result<TypedProject, Vec<TypeError>> {
     let known_types = collect_known_types(&graph.modules);
+    let callable_registry = collect_unique_callables(&graph.modules);
     let available_modules = graph
         .modules
         .iter()
@@ -209,7 +240,13 @@ pub fn typecheck_module_graph_with_options(
                 }
             }
         }
-        let signatures = collect_signatures(&module, &known_types, &module_name, &mut errors);
+        let signatures = collect_signatures(
+            &module,
+            &known_types,
+            &callable_registry,
+            &module_name,
+            &mut errors,
+        );
         typed_modules.push(TypedModule {
             path: module.path,
             module_path: module.module_path,
@@ -231,6 +268,7 @@ pub fn typecheck_module_graph_with_options(
 fn collect_signatures(
     module: &ResolvedModule,
     known_types: &HashSet<String>,
+    callable_registry: &HashMap<String, Option<CallableContract>>,
     module_name: &str,
     errors: &mut Vec<TypeError>,
 ) -> Vec<TypedItemSignature> {
@@ -272,6 +310,12 @@ fn collect_signatures(
                     name: "return".to_string(),
                     ty: type_expr_to_string(&def.return_type),
                 }];
+                validate_callable_body(
+                    &def.name,
+                    &def.body.stmts,
+                    callable_registry,
+                    errors,
+                );
                 signatures.push(TypedItemSignature::Fn(TypedCallableSignature {
                     name: def.name.clone(),
                     params: def
@@ -289,6 +333,12 @@ fn collect_signatures(
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
                 validate_params(&def.name, &def.params, &module_known_types, errors);
                 validate_outputs(&def.name, &def.outputs, &module_known_types, errors);
+                validate_callable_body(
+                    &def.name,
+                    &def.body.stmts,
+                    callable_registry,
+                    errors,
+                );
                 signatures.push(TypedItemSignature::Func(TypedCallableSignature {
                     name: def.name.clone(),
                     params: def
@@ -313,6 +363,12 @@ fn collect_signatures(
                 record_duplicate_item_name(module_name, &def.name, &mut seen_items, errors);
                 validate_params(&def.name, &def.params, &module_known_types, errors);
                 validate_outputs(&def.name, &def.outputs, &module_known_types, errors);
+                validate_callable_body(
+                    &def.name,
+                    &def.body.stmts,
+                    callable_registry,
+                    errors,
+                );
                 signatures.push(TypedItemSignature::Pattern(TypedCallableSignature {
                     name: def.name.clone(),
                     params: def
@@ -379,6 +435,41 @@ fn collect_known_types(modules: &[ResolvedModule]) -> HashSet<String> {
         }
     }
     known
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CallableContract {
+    arity: usize,
+    params: HashSet<String>,
+}
+
+fn collect_unique_callables(
+    modules: &[ResolvedModule],
+) -> HashMap<String, Option<CallableContract>> {
+    let mut callables = HashMap::<String, Option<CallableContract>>::new();
+    for module in modules {
+        for item in &module.ast.items {
+            let (name, params) = match &item.node {
+                Item::FnDef(def) => (&def.name, &def.params),
+                Item::FuncDef(def) => (&def.name, &def.params),
+                Item::PatternDef(def) => (&def.name, &def.params),
+                _ => continue,
+            };
+            let contract = CallableContract {
+                arity: params.len(),
+                params: params.iter().map(|param| param.name.clone()).collect(),
+            };
+            callables
+                .entry(name.clone())
+                .and_modify(|existing| {
+                    if existing.is_some() {
+                        *existing = None;
+                    }
+                })
+                .or_insert_with(|| Some(contract));
+        }
+    }
+    callables
 }
 
 fn builtin_type_names() -> HashSet<String> {
@@ -459,6 +550,154 @@ fn validate_outputs(
             errors,
         );
     }
+}
+
+fn validate_callable_body(
+    caller: &str,
+    stmts: &[Stmt],
+    callable_registry: &HashMap<String, Option<CallableContract>>,
+    errors: &mut Vec<TypeError>,
+) {
+    let mut calls = Vec::new();
+    collect_calls_from_stmts(stmts, &mut calls);
+    for call in calls {
+        let Some(Some(contract)) = callable_registry.get(&call.callee) else {
+            continue;
+        };
+        if call.arg_count != contract.arity {
+            errors.push(TypeError::CallArityMismatch {
+                caller: caller.to_string(),
+                callee: call.callee.clone(),
+                expected: contract.arity,
+                got: call.arg_count,
+            });
+        }
+        for named in call.named_args {
+            if !contract.params.contains(&named) {
+                errors.push(TypeError::UnknownCallArgument {
+                    caller: caller.to_string(),
+                    callee: call.callee.clone(),
+                    argument: named,
+                });
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BodyCall {
+    callee: String,
+    arg_count: usize,
+    named_args: Vec<String>,
+}
+
+fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<BodyCall>) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+                collect_calls_from_expr(expr, calls);
+            }
+            Stmt::Return(fields) => {
+                for (_, expr) in fields {
+                    collect_calls_from_expr(expr, calls);
+                }
+            }
+        }
+    }
+}
+
+fn collect_calls_from_expr(expr: &Expr, calls: &mut Vec<BodyCall>) {
+    match expr {
+        Expr::Call(name, args) => {
+            if should_validate_call_name(name) {
+                calls.push(BodyCall {
+                    callee: name.clone(),
+                    arg_count: args.len(),
+                    named_args: args
+                        .iter()
+                        .filter_map(|(name, _)| name.clone())
+                        .collect::<Vec<_>>(),
+                });
+            }
+            for (_, arg) in args {
+                collect_calls_from_expr(arg, calls);
+            }
+        }
+        Expr::ServiceCall(_, args) => {
+            for (_, arg) in args {
+                collect_calls_from_expr(arg, calls);
+            }
+        }
+        Expr::FieldAccess(base, _) => collect_calls_from_expr(base, calls),
+        Expr::BinOp(lhs, _, rhs) => {
+            collect_calls_from_expr(lhs, calls);
+            collect_calls_from_expr(rhs, calls);
+        }
+        Expr::UnaryOp(_, inner) => collect_calls_from_expr(inner, calls),
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let daglang_syntax::ast::StringPart::Expr(inner) = part {
+                    collect_calls_from_expr(inner, calls);
+                }
+            }
+        }
+        Expr::Record(_, fields) => {
+            for (_, value) in fields {
+                collect_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Match(scrutinee, arms) => {
+            collect_calls_from_expr(scrutinee, calls);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_calls_from_expr(guard, calls);
+                }
+                collect_calls_from_expr(&arm.body, calls);
+            }
+        }
+        Expr::If(cond, then_expr, else_expr) => {
+            collect_calls_from_expr(cond, calls);
+            collect_calls_from_expr(then_expr, calls);
+            if let Some(otherwise) = else_expr {
+                collect_calls_from_expr(otherwise, calls);
+            }
+        }
+        Expr::For(_, iterable, body) => {
+            collect_calls_from_expr(iterable, calls);
+            collect_calls_from_expr(body, calls);
+        }
+        Expr::Pipe(lhs, rhs) => {
+            collect_calls_from_expr(lhs, calls);
+            collect_calls_from_expr(rhs, calls);
+        }
+        Expr::Lambda(_, body) => collect_calls_from_expr(body, calls),
+        Expr::List(items) => {
+            for item in items {
+                collect_calls_from_expr(item, calls);
+            }
+        }
+        Expr::Map(entries) => {
+            for (key, value) in entries {
+                collect_calls_from_expr(key, calls);
+                collect_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Guarded(inner, guard) => {
+            collect_calls_from_expr(inner, calls);
+            collect_calls_from_expr(guard, calls);
+        }
+        Expr::After(inner, _) => collect_calls_from_expr(inner, calls),
+        Expr::Return(fields) => {
+            for (_, value) in fields {
+                collect_calls_from_expr(value, calls);
+            }
+        }
+        Expr::Literal(_) | Expr::Ident(_) => {}
+    }
+}
+
+fn should_validate_call_name(name: &str) -> bool {
+    !matches!(name, "<expr>" | "as" | "with" | "fn")
 }
 
 fn validate_type_expr(
@@ -606,6 +845,42 @@ mod tests {
             error,
             TypeError::UnresolvedImport { module, target }
                 if module == "sample.main" && target == "missing.dep"
+        )));
+    }
+
+    #[test]
+    fn call_arity_mismatch_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "arity_mismatch.dag",
+            "module sample.calls\nfn fmt(value: String) -> String { value }\nfn run() -> String { fmt() }",
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("call arity mismatch should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::CallArityMismatch {
+                caller,
+                callee,
+                expected,
+                got
+            } if caller == "run" && callee == "fmt" && *expected == 1 && *got == 0
+        )));
+    }
+
+    #[test]
+    fn unknown_named_call_argument_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "unknown_arg.dag",
+            "module sample.calls\nfn fmt(value: String) -> String { value }\nfn run() -> String { fmt(text: \"ok\") }",
+        )]);
+        let errors =
+            typecheck_module_graph(graph).expect_err("unknown named argument should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnknownCallArgument {
+                caller,
+                callee,
+                argument
+            } if caller == "run" && callee == "fmt" && argument == "text"
         )));
     }
 }
