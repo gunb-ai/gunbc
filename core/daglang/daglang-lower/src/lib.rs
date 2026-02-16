@@ -91,6 +91,11 @@ pub enum LowerError {
     InvalidAcquireBlock { resource: String, reason: String },
     /// Interface could not be resolved to a concrete resource.
     UnresolvedInterface { interface: String },
+    /// Service call in a callable body could not be resolved to a transport endpoint.
+    UnresolvedServiceCall {
+        caller: String,
+        service_call: String,
+    },
     /// No executable declarations were available for lowering.
     NoLowerableItems,
 }
@@ -111,6 +116,13 @@ impl std::fmt::Display for LowerError {
             Self::UnresolvedInterface { interface } => {
                 write!(f, "unresolved interface `{interface}`")
             }
+            Self::UnresolvedServiceCall {
+                caller,
+                service_call,
+            } => write!(
+                f,
+                "unresolved service call `{service_call}` in `{caller}`"
+            ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
         }
     }
@@ -195,7 +207,7 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
     add_dependency_edges(&mut dag, project, &endpoints_by_full, &endpoints_by_name);
     add_makegen_scaffolding(&mut dag, &endpoints_by_full);
     let service_registry = add_service_transport_triplets(&mut dag, project);
-    add_service_call_edges(&mut dag, project, &endpoints_by_full, &service_registry);
+    add_service_call_edges(&mut dag, project, &endpoints_by_full, &service_registry)?;
     add_resource_lifecycle_nodes(&mut dag, project);
 
     if dag.nodes.is_empty() {
@@ -1066,7 +1078,7 @@ fn add_service_call_edges(
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     service_registry: &ServiceEndpointRegistry,
-) {
+) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
@@ -1082,7 +1094,10 @@ fn add_service_call_edges(
             collect_service_calls_from_stmts(stmts, &mut service_calls);
             for call_path in service_calls {
                 let Some(source) = resolve_service_endpoint(&call_path, service_registry) else {
-                    continue;
+                    return Err(LowerError::UnresolvedServiceCall {
+                        caller: format!("{module_name}::{item_name}"),
+                        service_call: call_path.join("."),
+                    });
                 };
                 add_edge_once(
                     dag,
@@ -1094,6 +1109,7 @@ fn add_service_call_edges(
             }
         }
     }
+    Ok(())
 }
 
 fn add_resource_lifecycle_nodes(dag: &mut Dag<LoweredOp>, project: &TypedProject) {
@@ -1595,6 +1611,33 @@ func run(path: String) -> { body: String } {
                 && edge.to_node.0 == "sample.services::run"
                 && edge.to_port.0 == "__deps"
         }));
+    }
+
+    #[test]
+    fn unresolved_service_call_reports_lower_error() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/unresolved_call.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = MissingStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        )]);
+        let error = lower_typed_project(&typed).expect_err("lowering should fail");
+        assert!(matches!(
+            error,
+            LowerError::UnresolvedServiceCall { caller, service_call }
+                if caller == "sample.services::run" && service_call == "MissingStorage.read"
+        ));
     }
 
     #[test]
