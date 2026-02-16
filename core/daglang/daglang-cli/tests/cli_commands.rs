@@ -30254,8 +30254,12 @@ fn expand_and_manifest_without_required_target_exit_with_usage_message() {
             "{command} without required target should use usage exit code 1"
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let expected_usage = match command {
+            "manifest" => "Usage: daglang manifest [--format text|json] <file.dag>".to_string(),
+            _ => format!("Usage: daglang {command} <file.dag>"),
+        };
         assert!(
-            stderr.contains(&format!("Usage: daglang {command} <file.dag>")),
+            stderr.contains(&expected_usage),
             "{command} without required target should print command usage: {stderr}"
         );
     }
@@ -30281,8 +30285,12 @@ fn expand_and_manifest_with_extra_args_exit_with_usage_message() {
             "{command} with extra args should use usage exit code 1"
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let expected_usage = match command {
+            "manifest" => "Usage: daglang manifest [--format text|json] <file.dag>".to_string(),
+            _ => format!("Usage: daglang {command} <file.dag>"),
+        };
         assert!(
-            stderr.contains(&format!("Usage: daglang {command} <file.dag>")),
+            stderr.contains(&expected_usage),
             "{command} with extra args should print command usage: {stderr}"
         );
     }

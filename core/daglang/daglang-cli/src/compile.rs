@@ -11,12 +11,29 @@ use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
 use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions};
 use gunbc_ir::Dag;
+use serde::Serialize;
 
 #[derive(Debug)]
 pub struct CompileOutput {
     pub lowered_dag: Dag<LoweredOp>,
     pub derived: DerivedArtifacts,
     pub emitted: EmissionBundle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManifestFormat {
+    Text,
+    Json,
+}
+
+impl ManifestFormat {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "text" => Some(Self::Text),
+            "json" => Some(Self::Json),
+            _ => None,
+        }
+    }
 }
 
 pub fn build_context(input: Option<&String>) -> PipelineContext {
@@ -240,6 +257,32 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
     writeln!(out, "  resource_acquire_targets: {}", obligations.resource_acquire_targets).ok();
     writeln!(out, "  resource_release_targets: {}", obligations.resource_release_targets).ok();
     out
+}
+
+pub fn render_manifest_json(derived: &DerivedArtifacts) -> Result<String, String> {
+    #[derive(Serialize)]
+    struct ManifestEnvelope<'a> {
+        manifest: &'a daglang_derive::ProgressManifest,
+        obligations: &'a daglang_derive::TestObligations,
+        tool_metadata: &'a daglang_derive::ToolMetadata,
+    }
+
+    serde_json::to_string_pretty(&ManifestEnvelope {
+        manifest: &derived.manifest,
+        obligations: &derived.obligations,
+        tool_metadata: &derived.tool_metadata,
+    })
+    .map_err(|error| format!("failed to serialize manifest json: {error}"))
+}
+
+pub fn render_manifest_with_format(
+    derived: &DerivedArtifacts,
+    format: ManifestFormat,
+) -> Result<String, String> {
+    match format {
+        ManifestFormat::Text => Ok(render_manifest(derived)),
+        ManifestFormat::Json => render_manifest_json(derived),
+    }
 }
 
 #[cfg(test)]

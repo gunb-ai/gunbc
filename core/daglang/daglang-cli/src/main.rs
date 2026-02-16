@@ -16,7 +16,7 @@
 use std::path::PathBuf;
 
 use daglang_cli::compile::{
-    build_context, compile_from_context, render_expand, render_manifest,
+    build_context, compile_from_context, render_expand, render_manifest_with_format, ManifestFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{build_pipeline_dag, run_pipeline, PipelineContext, PipelineStop};
@@ -30,7 +30,7 @@ fn main() {
         eprintln!("Commands:");
         eprintln!("  viz <file.dag>       ASCII DAG visualization");
         eprintln!("  expand <file.dag>    Show lowered GraphIR (nodes/edges/ports)");
-        eprintln!("  manifest <file.dag>  Show derived ProgressManifest");
+        eprintln!("  manifest [--format text|json] <file.dag>  Show derived ProgressManifest");
         eprintln!("  modules [dir]        Show discovered module graph");
         eprintln!("  check <file.dag>     Parse + typecheck (no lowering)");
         eprintln!("  compile <file.dag>   Full compilation pipeline");
@@ -76,13 +76,23 @@ fn main() {
             }
         }
         "manifest" => {
-            if args.len() != 3 {
-                exit_usage("manifest <file.dag>");
-            }
-            let context = build_context(args.get(2));
+            let (manifest_path, manifest_format) = match parse_manifest_args(&args) {
+                Ok(values) => values,
+                Err(error) => {
+                    eprintln!("{error}");
+                    exit_usage("manifest [--format text|json] <file.dag>");
+                }
+            };
+            let context = build_context(Some(&manifest_path));
             match compile_from_context(&context) {
                 Ok(output) => {
-                    println!("{}", render_manifest(&output.derived));
+                    match render_manifest_with_format(&output.derived, manifest_format) {
+                        Ok(rendered) => println!("{rendered}"),
+                        Err(error) => {
+                            eprintln!("{error}");
+                            std::process::exit(1);
+                        }
+                    }
                 }
                 Err(error) => {
                     eprintln!("{error}");
@@ -185,6 +195,41 @@ fn resolve_root(arg: Option<&String>) -> PathBuf {
     path_utils::default_root_from_cwd(&cwd)
 }
 
+fn parse_manifest_args(args: &[String]) -> Result<(String, ManifestFormat), String> {
+    let mut format = ManifestFormat::Text;
+    let mut path = None::<String>;
+    let mut index = 2usize;
+    while index < args.len() {
+        let arg = args[index].as_str();
+        if arg == "--format" {
+            let value = args
+                .get(index + 1)
+                .ok_or_else(|| "--format requires a value: text or json".to_string())?;
+            format = ManifestFormat::parse(value)
+                .ok_or_else(|| format!("unknown manifest format `{value}`"))?;
+            index += 2;
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--format=") {
+            format = ManifestFormat::parse(value)
+                .ok_or_else(|| format!("unknown manifest format `{value}`"))?;
+            index += 1;
+            continue;
+        }
+        if arg.starts_with("--") {
+            return Err(format!("unknown manifest flag `{arg}`"));
+        }
+        if path.is_some() {
+            return Err("manifest takes exactly one input path".to_string());
+        }
+        path = Some(args[index].clone());
+        index += 1;
+    }
+
+    let path = path.ok_or_else(|| "manifest requires <file.dag>".to_string())?;
+    Ok((path, format))
+}
+
 fn exit_usage(command: &str) -> ! {
     eprintln!("Usage: daglang {command}");
     std::process::exit(1);
@@ -193,7 +238,9 @@ fn exit_usage(command: &str) -> ! {
 
 #[cfg(test)]
 mod tests {
+    use super::parse_manifest_args;
     use crate::path_utils::{default_root_from_cwd, has_dag_extension, normalize_path_components};
+    use daglang_cli::compile::ManifestFormat;
     use std::path::{Path, PathBuf};
 
     fn root_path() -> PathBuf {
@@ -344,5 +391,38 @@ mod tests {
         assert!(!has_dag_extension(Path::new("main.dag.bak")));
         assert!(!has_dag_extension(Path::new("main.txt")));
         assert!(!has_dag_extension(Path::new("main")));
+    }
+
+    #[test]
+    fn parse_manifest_args_supports_default_text_format() {
+        let args = vec![
+            "daglang".to_string(),
+            "manifest".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let (path, format) = parse_manifest_args(&args).expect("parse should succeed");
+        assert_eq!(path, "dsl/tools/makegen.dag");
+        assert_eq!(format, ManifestFormat::Text);
+    }
+
+    #[test]
+    fn parse_manifest_args_supports_json_format_flag() {
+        let args = vec![
+            "daglang".to_string(),
+            "manifest".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let (path, format) = parse_manifest_args(&args).expect("parse should succeed");
+        assert_eq!(path, "dsl/tools/makegen.dag");
+        assert_eq!(format, ManifestFormat::Json);
+    }
+
+    #[test]
+    fn parse_manifest_args_requires_a_path() {
+        let args = vec!["daglang".to_string(), "manifest".to_string()];
+        let error = parse_manifest_args(&args).expect_err("parse should fail");
+        assert!(error.contains("requires <file.dag>"));
     }
 }

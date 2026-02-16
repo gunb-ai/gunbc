@@ -10582,6 +10582,31 @@ fn manifest_command_shows_derived_progress_manifest() {
 }
 
 #[test]
+fn manifest_command_supports_json_output_format() {
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg("--format")
+        .arg("json")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest --format json");
+
+    assert!(
+        output.status.success(),
+        "manifest --format json command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"manifest\""));
+    assert!(stdout.contains("\"topology\""));
+    assert!(stdout.contains("\"parallel_groups\""));
+    assert!(stdout.contains("\"obligations\""));
+}
+
+#[test]
 fn manifest_command_reports_non_zero_transport_and_lifecycle_obligations() {
     let fixture = unique_temp_file("manifest_obligations");
     std::fs::write(

@@ -137,6 +137,8 @@ dependencies = [
  "daglang-syntax",
  "daglang-typecheck",
  "gunbc-ir",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -145,6 +147,7 @@ version = "0.1.0"
 dependencies = [
  "daglang-lower",
  "gunbc-ir",
+ "serde",
 ]
 
 [[package]]
