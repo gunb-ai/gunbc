@@ -1152,6 +1152,36 @@ mod tests {
     }
 
     #[test]
+    fn pipeline_rejects_edge_with_unknown_source_node() {
+        let mut dag = build_pipeline_dag();
+        dag.add_edge(Edge::new(
+            "missing-node",
+            PORT_FILES,
+            NODE_PARSE,
+            PORT_FILES,
+        ));
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("edge from unknown source node should fail");
+        assert!(err.contains("edge source node does not exist"));
+    }
+
+    #[test]
+    fn pipeline_rejects_edge_with_unknown_target_node() {
+        let mut dag = build_pipeline_dag();
+        dag.add_edge(Edge::new(
+            NODE_DISCOVER,
+            PORT_FILES,
+            "missing-node",
+            PORT_FILES,
+        ));
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("edge to unknown target node should fail");
+        assert!(err.contains("edge target node does not exist"));
+    }
+
+    #[test]
     fn pipeline_allows_unconnected_entrypoint_inputs() {
         let dag = build_pipeline_dag();
         validate_pipeline_semantics(&dag)

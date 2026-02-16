@@ -229,6 +229,40 @@ fn modules_command_reports_duplicate_module_diagnostics_without_failing() {
 }
 
 #[test]
+fn modules_command_diagnostic_output_is_deterministic_for_same_input() {
+    let root = unique_temp_dir("modules_diag_deterministic");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("main.dag"),
+        "module sample.main\nimport missing.dep\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write temp dag file");
+
+    let first = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first modules command");
+    assert!(first.status.success(), "first modules run should succeed");
+
+    let second = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second modules command");
+    assert!(second.status.success(), "second modules run should succeed");
+
+    assert_eq!(
+        first.stdout, second.stdout,
+        "modules diagnostic output should be deterministic"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_single_file_mode_ignores_sibling_broken_files() {
     let root = unique_temp_dir("single_file_mode");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
