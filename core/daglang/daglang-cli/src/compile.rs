@@ -4407,6 +4407,60 @@ func run(path: String) -> { body: String } {
         assert!(log.has_intercepted(), "dry-run should intercept transport nodes");
     }
 
+    #[test]
+    fn compile_resolve_execute_makegen_writes_output_in_real_mode() {
+        let context = makegen_context();
+        let temp_path = std::env::temp_dir().join(format!(
+            "daglang_compiled_makegen_output_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        if temp_path.exists() {
+            std::fs::remove_file(&temp_path).expect("failed to clear previous temp output");
+        }
+
+        let mut input_mocks = BoundaryMocks::new();
+        input_mocks.set_input(
+            "prepare_read_makegen",
+            "path",
+            Value::Str(temp_path.to_string_lossy().to_string()),
+        );
+        input_mocks.set_input(
+            "prepare_write_makegen",
+            "path",
+            Value::Str(temp_path.to_string_lossy().to_string()),
+        );
+        input_mocks.set_input(
+            "tools.makegen::render_makefile",
+            "__deps",
+            Value::List(Vec::new()),
+        );
+
+        let log = compile_resolve_execute_from_context(
+            &context,
+            ExecutionMode::Real,
+            Some(&input_mocks),
+        )
+        .expect("compiled makegen execution should succeed");
+        let makegen_entry = log
+            .entries
+            .iter()
+            .find(|entry| entry.node_id == "tools.makegen::makegen")
+            .expect("makegen wrapper node should execute");
+        assert_eq!(makegen_entry.outputs.get("written"), Some(&Value::Bool(true)));
+
+        let rendered = std::fs::read_to_string(&temp_path).expect("makegen should write file");
+        assert!(
+            rendered.contains(".PHONY: makegen"),
+            "generated output should contain makegen target"
+        );
+
+        std::fs::remove_file(temp_path).expect("failed to remove temp output");
+    }
+
     fn makegen_context() -> PipelineContext {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../dsl/tools/makegen.dag");
