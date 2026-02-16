@@ -44,10 +44,18 @@ pub enum PipelineStop {
 
 #[derive(Debug)]
 pub struct PipelineResult {
+    pub stage: PipelineStage,
     pub diagnostics: Vec<Diagnostic>,
     pub parsed_count: usize,
     pub module_graph: Option<ModuleGraph>,
     pub report: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PipelineStage {
+    Parse,
+    Build,
+    Report,
 }
 
 #[derive(Debug)]
@@ -163,6 +171,7 @@ pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<Pip
 
     if matches!(stop, PipelineStop::Parse) {
         return Ok(PipelineResult {
+            stage: PipelineStage::Parse,
             diagnostics: parse_diagnostics,
             parsed_count,
             module_graph: None,
@@ -175,6 +184,7 @@ pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<Pip
     let diagnostics = diagnostic::normalize_diagnostics(diagnostics);
     if matches!(stop, PipelineStop::Build) {
         return Ok(PipelineResult {
+            stage: PipelineStage::Build,
             diagnostics,
             parsed_count,
             module_graph: Some(graph),
@@ -184,6 +194,7 @@ pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<Pip
 
     let report = format_module_report(&graph, &diagnostics);
     Ok(PipelineResult {
+        stage: PipelineStage::Report,
         diagnostics,
         parsed_count,
         module_graph: Some(graph),
@@ -1168,8 +1179,30 @@ mod tests {
             target_file: None,
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+        assert_eq!(result.stage, PipelineStage::Parse);
         assert_eq!(result.parsed_count, 1);
         assert!(result.module_graph.is_none());
+        assert!(result.report.is_none());
+        assert!(result.diagnostics.is_empty());
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn build_stop_emits_module_graph_without_report() {
+        let root = unique_temp_dir("build_stop_outputs");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+            .expect("failed to write source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Build).expect("pipeline should execute");
+        assert_eq!(result.stage, PipelineStage::Build);
+        assert_eq!(result.parsed_count, 1);
+        assert!(result.module_graph.is_some());
         assert!(result.report.is_none());
         assert!(result.diagnostics.is_empty());
 
@@ -1192,6 +1225,7 @@ mod tests {
             result.parsed_count, 1,
             "report stop should retain parsed count from parse stage"
         );
+        assert_eq!(result.stage, PipelineStage::Report);
         assert!(
             result.module_graph.is_some(),
             "report stop should preserve module graph for downstream callers"
