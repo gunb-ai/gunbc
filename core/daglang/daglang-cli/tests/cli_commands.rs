@@ -199,6 +199,10 @@ fn check_command_missing_directory_exits_nonzero() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root does not exist"));
+    assert!(
+        stderr.contains(&missing_dir.display().to_string()),
+        "missing-root error should include path context: {stderr}"
+    );
 }
 
 #[test]
@@ -997,6 +1001,10 @@ fn modules_command_missing_directory_exits_nonzero() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("pipeline error"));
     assert!(stderr.contains("input root does not exist"));
+    assert!(
+        stderr.contains(&missing_dir.display().to_string()),
+        "missing-root error should include path context: {stderr}"
+    );
 }
 
 #[test]
