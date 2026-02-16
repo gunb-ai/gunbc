@@ -172,6 +172,40 @@ fn modules_command_reports_cycle_diagnostics_without_failing() {
 }
 
 #[test]
+fn modules_command_reports_duplicate_module_diagnostics_without_failing() {
+    let root = unique_temp_dir("modules_duplicate_diag");
+    std::fs::create_dir_all(root.join("a")).expect("failed to create temp dir a");
+    std::fs::create_dir_all(root.join("b")).expect("failed to create temp dir b");
+    std::fs::write(
+        root.join("a/one.dag"),
+        "module dup.mod\nfn one() -> Unit {}",
+    )
+    .expect("failed to write file one");
+    std::fs::write(
+        root.join("b/two.dag"),
+        "module dup.mod\nfn two() -> Unit {}",
+    )
+    .expect("failed to write file two");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules for duplicate dir");
+
+    assert!(
+        output.status.success(),
+        "modules command should still succeed while reporting duplicate diagnostics"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Diagnostics:"));
+    assert!(stdout.contains("duplicate module path"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_single_file_mode_ignores_sibling_broken_files() {
     let root = unique_temp_dir("single_file_mode");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");

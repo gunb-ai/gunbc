@@ -874,13 +874,44 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
 
-        assert!(
-            result
-                .diagnostics
-                .iter()
-                .any(|diag| diag.render().contains("unresolved import")),
-            "expected unresolved import diagnostic in report pipeline"
-        );
+        let unresolved = result
+            .diagnostics
+            .iter()
+            .find(|diag| diag.render().contains("unresolved import"))
+            .expect("expected unresolved import diagnostic in report pipeline");
+        assert_eq!(unresolved.kind, DiagnosticKind::Resolve);
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn report_pipeline_emits_duplicate_module_diagnostic() {
+        let root = unique_temp_dir("duplicate_module_diag");
+        fs::create_dir_all(root.join("a")).expect("failed to create temp root A");
+        fs::create_dir_all(root.join("b")).expect("failed to create temp root B");
+        fs::write(
+            root.join("a/one.dag"),
+            "module dup.mod\nfn one() -> Unit {}",
+        )
+        .expect("failed to write source one");
+        fs::write(
+            root.join("b/two.dag"),
+            "module dup.mod\nfn two() -> Unit {}",
+        )
+        .expect("failed to write source two");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+
+        let duplicate = result
+            .diagnostics
+            .iter()
+            .find(|diag| diag.render().contains("duplicate module path"))
+            .expect("expected duplicate module diagnostic in report pipeline");
+        assert_eq!(duplicate.kind, DiagnosticKind::Resolve);
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -906,12 +937,38 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
 
+        let cycle = result
+            .diagnostics
+            .iter()
+            .find(|diag| diag.render().contains("cyclic dependencies detected"))
+            .expect("expected cycle diagnostic in report pipeline");
+        assert_eq!(cycle.kind, DiagnosticKind::Resolve);
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn report_pipeline_emits_unresolved_import_diagnostic_rendered() {
+        let root = unique_temp_dir("unresolved_import_render");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(
+            root.join("main.dag"),
+            "module sample.main\nimport missing.dep\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+
         assert!(
             result
                 .diagnostics
                 .iter()
-                .any(|diag| diag.render().contains("cyclic dependencies detected")),
-            "expected cycle diagnostic in report pipeline"
+                .any(|diag| diag.render().contains("unresolved import")),
+            "expected unresolved import diagnostic in report pipeline"
         );
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
