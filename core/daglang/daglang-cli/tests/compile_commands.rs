@@ -10804,6 +10804,86 @@ fn compile_command_single_file_mode_ignores_sibling_broken_files() {
 }
 
 #[test]
+fn compile_command_empty_directory_reports_lower_stage_error() {
+    let root = unique_temp_dir("compile_empty_directory_lower_error");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on empty directory");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail for empty directory roots"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_lower_stage_failure(&stderr);
+    assert!(stderr.contains("no callable or pipeline declarations to lower"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_non_dag_only_directory_reports_lower_stage_error() {
+    let root = unique_temp_dir("compile_non_dag_only_directory");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("notes.txt"), "this should be ignored")
+        .expect("failed to write non-dag file");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on non-dag-only directory");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail with lower-stage error when no .dag files exist"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_lower_stage_failure(&stderr);
+    assert!(stderr.contains("no callable or pipeline declarations to lower"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_ignores_non_dag_files_when_dag_files_exist() {
+    let root = unique_temp_dir("compile_ignore_non_dag_mixed");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(root.join("sample/main.dag"), "module sample.main\nfn run() -> Unit { }")
+        .expect("failed to write dag file");
+    std::fs::write(root.join("notes.txt"), "module fake\n$").expect("failed to write txt file");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on mixed dag/non-dag directory");
+
+    assert!(
+        output.status.success(),
+        "compile should succeed when dag files exist even with non-dag siblings: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.trim().is_empty(), "compile success should not emit stderr");
+    assert_no_stage_failures(&stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Compiled 1 module(s)"),
+        "expected compile summary to report one dag module: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn expand_command_reports_diagnostics_for_invalid_file() {
     let broken = unique_temp_file("expand_broken");
     std::fs::write(&broken, "module sample.broken\nfn broken( -> String {")
