@@ -88,6 +88,55 @@ fn viz_self_renders_pipeline_mermaid() {
 }
 
 #[test]
+fn viz_self_output_is_deterministic_for_same_input() {
+    let first = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--self")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang viz --self");
+    assert!(first.status.success(), "first viz --self run should succeed");
+
+    let second = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--self")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang viz --self");
+    assert!(second.status.success(), "second viz --self run should succeed");
+
+    assert_eq!(
+        first.stdout, second.stdout,
+        "viz --self output should be deterministic across runs"
+    );
+}
+
+#[test]
+fn viz_self_contains_expected_pipeline_edge_labels() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--self")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz --self");
+
+    assert!(output.status.success(), "viz --self should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("files:files"),
+        "viz --self should include discover->parse files edge label"
+    );
+    assert!(
+        stdout.contains("diagnostics:diagnostics"),
+        "viz --self should include diagnostics flow edges"
+    );
+    assert!(
+        stdout.contains("module_graph:module_graph"),
+        "viz --self should include build->report module graph edge label"
+    );
+}
+
+#[test]
 fn check_command_reports_file_line_col_for_broken_file() {
     let broken_file = unique_temp_file("broken");
     std::fs::write(&broken_file, "module tmp.bad\nfn broken( -> String {\n  \"oops\"\n}\n")
