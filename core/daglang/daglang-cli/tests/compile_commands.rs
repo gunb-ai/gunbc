@@ -11098,6 +11098,39 @@ fn viz_command_explicit_ascii_matches_default_output() {
 }
 
 #[test]
+fn viz_command_equals_ascii_matches_default_output() {
+    let default_output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz with default format");
+    assert!(
+        default_output.status.success(),
+        "default viz run failed: {}",
+        String::from_utf8_lossy(&default_output.stderr)
+    );
+
+    let equals_ascii_output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg("--format=ascii")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz --format=ascii");
+    assert!(
+        equals_ascii_output.status.success(),
+        "equals ascii viz run failed: {}",
+        String::from_utf8_lossy(&equals_ascii_output.stderr)
+    );
+
+    assert_eq!(
+        default_output.stdout, equals_ascii_output.stdout,
+        "equals ascii format should match default viz output"
+    );
+}
+
+#[test]
 fn viz_command_ascii_output_is_deterministic_for_same_input() {
     let first = Command::new(daglang_bin())
         .arg("viz")

@@ -818,6 +818,24 @@ mod tests {
     }
 
     #[test]
+    fn parse_viz_args_supports_equals_ascii_format_for_file_target() {
+        let args = vec![
+            "daglang".to_string(),
+            "viz".to_string(),
+            "--format=ascii".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = parse_viz_args(&args).expect("parse should succeed");
+        assert_eq!(
+            parsed,
+            VizArgs {
+                target: VizTarget::File("dsl/tools/makegen.dag".to_string()),
+                format: VizFormat::Ascii,
+            }
+        );
+    }
+
+    #[test]
     fn parse_viz_args_rejects_self_and_file_combination() {
         let args = vec![
             "daglang".to_string(),
