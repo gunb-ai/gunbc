@@ -1221,6 +1221,53 @@ mod tests {
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn target_file_mode_accepts_symlinked_file() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("target_file_symlink");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let real = root.join("real.dag");
+        let link = root.join("link.dag");
+        fs::write(&real, "module sample.real\nfn ok() -> Unit {}")
+            .expect("failed to write real source");
+        symlink(&real, &link).expect("failed to create file symlink");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: Some(link),
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+        assert_eq!(result.parsed_count, 1);
+        assert!(result.diagnostics.is_empty());
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn target_file_mode_reports_dangling_symlink_read_error() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("target_file_dangling_symlink");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let dangling_target = root.join("missing.dag");
+        let dangling_link = root.join("broken.dag");
+        symlink(&dangling_target, &dangling_link).expect("failed to create dangling file symlink");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: Some(dangling_link),
+        };
+        let err = run_pipeline(&context, PipelineStop::Parse)
+            .expect_err("dangling symlink target file should fail");
+        assert!(err.contains("failed to read"));
+        assert!(err.contains("broken.dag"));
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
     #[test]
     fn target_file_mode_ignores_directory_roots() {
         let valid_root = unique_temp_dir("target_file_ignores_roots");

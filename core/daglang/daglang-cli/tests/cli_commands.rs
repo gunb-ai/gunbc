@@ -159,6 +159,73 @@ fn check_command_reports_file_line_col_for_broken_file() {
     std::fs::remove_file(broken_file).expect("failed to remove broken dag file");
 }
 
+#[cfg(unix)]
+#[test]
+fn check_command_accepts_symlink_single_file_target() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let real = root.join("real.dag");
+    let link = root.join("link.dag");
+    std::fs::write(&real, "module sample.real\nfn ok() -> Unit {}")
+        .expect("failed to write real source");
+    symlink(&real, &link).expect("failed to create symlinked target");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on symlinked target");
+
+    assert!(
+        output.status.success(),
+        "check should succeed for symlinked single-file target: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("OK: parsed 1 file(s)"),
+        "symlinked single-file target should parse successfully: {stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_dangling_symlink_single_file_target_exits_nonzero() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_dangling_symlink_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.dag");
+    let dangling_link = root.join("broken.dag");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink target");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&dangling_link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on dangling symlink target");
+
+    assert!(
+        !output.status.success(),
+        "check should fail for dangling symlink single-file target"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("failed to read"));
+    assert!(
+        stderr.contains("broken.dag"),
+        "dangling symlink single-file failure should include offending path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[test]
 fn check_command_missing_single_file_exits_nonzero() {
     let missing_file = unique_temp_file("missing_single_file");
