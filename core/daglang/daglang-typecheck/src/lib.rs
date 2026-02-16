@@ -3198,6 +3198,22 @@ func run() -> { body: String } {
     }
 
     #[test]
+    fn no_such_field_on_named_record_type_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "no_such_field_named_record.dag",
+            r#"module sample.fields
+type Payload { body: String }
+fn run(input: Payload) -> String { input.missing }"#,
+        )]);
+        let errors =
+            typecheck_module_graph(graph).expect_err("no such field on named record should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::NoSuchField { ty, field } if ty == "Payload" && field == "missing"
+        )));
+    }
+
+    #[test]
     fn unsatisfiable_refinement_is_reported() {
         let graph = module_graph_from_sources(&[(
             "unsat_refinement.dag",
@@ -3227,6 +3243,26 @@ fn run(items: Map<String>) -> Int { 1 }"#,
                 expected,
                 got,
             } if name == "Map" && *expected == 2 && *got == 1
+        )));
+    }
+
+    #[test]
+    fn user_defined_generic_arity_mismatch_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "user_generic_arity_mismatch.dag",
+            r#"module sample.generics
+type Box<T> = T
+fn run(value: Box<String, Int>) -> String { value }"#,
+        )]);
+        let errors = typecheck_module_graph(graph)
+            .expect_err("user-defined generic arity mismatch should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::ArityMismatch {
+                name,
+                expected,
+                got,
+            } if name == "Box" && *expected == 1 && *got == 2
         )));
     }
 }

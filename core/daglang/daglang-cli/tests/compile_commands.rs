@@ -1644,6 +1644,36 @@ func run() -> { body: String } {
 }
 
 #[test]
+fn compile_command_reports_no_such_field_for_named_record_type() {
+    let fixture = unique_temp_file("no_such_field_named_record");
+    std::fs::write(
+        &fixture,
+        r#"module sample.types
+type Payload { body: String }
+fn run(input: Payload) -> String { input.missing }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on missing field access for named record type"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("type `Payload` has no field `missing`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_reports_unsatisfiable_refinement_typecheck_error() {
     let fixture = unique_temp_file("unsatisfiable_refinement");
     std::fs::write(
@@ -1697,6 +1727,36 @@ fn run(values: Map<String>) -> Int { 1 }
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("typecheck errors"));
     assert!(stderr.contains("generic arity mismatch for `Map`: expected 2, got 1"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_reports_user_defined_generic_arity_mismatch_typecheck_error() {
+    let fixture = unique_temp_file("user_defined_generic_arity_mismatch");
+    std::fs::write(
+        &fixture,
+        r#"module sample.types
+type Box<T> = T
+fn run(values: Box<String, Int>) -> String { values }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile");
+
+    assert!(
+        !output.status.success(),
+        "compile should fail on user-defined generic arity mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("generic arity mismatch for `Box`: expected 1, got 2"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
