@@ -136,6 +136,7 @@ dependencies = [
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
+ "gunbc-ir",
 ]
 
 [[package]]
@@ -159,6 +160,7 @@ dependencies = [
 name = "daglang-lower"
 version = "0.1.0"
 dependencies = [
+ "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
  "gunbc-ir",

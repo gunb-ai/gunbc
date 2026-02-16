@@ -24,6 +24,8 @@
 
 pub mod lexer;
 pub mod parser;
+pub mod diagnostic;
+pub mod ast_utils;
 
 /// Source location tracking for error messages.
 pub mod span {
@@ -44,8 +46,7 @@ pub mod span {
 
 /// Abstract Syntax Tree types for the .dag DSL.
 pub mod ast {
-    #[allow(unused_imports)]
-    use crate::span::{Span, Spanned};
+    use crate::span::Spanned;
 
     // ── Top-level ───────────────────────────────────────────────────
 
@@ -129,6 +130,7 @@ pub mod ast {
     #[derive(Debug)]
     pub struct FnDef {
         pub name: String,
+        pub type_params: Vec<String>,
         pub params: Vec<Param>,
         pub return_type: TypeExpr,
         pub body: FnBody,
@@ -138,6 +140,7 @@ pub mod ast {
     #[derive(Debug)]
     pub struct FuncDef {
         pub name: String,
+        pub type_params: Vec<String>,
         pub params: Vec<Param>,
         pub outputs: Vec<Field>,
         pub uses: Vec<UsesClause>,
@@ -150,6 +153,7 @@ pub mod ast {
     #[derive(Debug)]
     pub struct PatternDef {
         pub name: String,
+        pub type_params: Vec<String>,
         pub params: Vec<Param>,
         pub outputs: Vec<Field>,
         pub uses: Vec<UsesClause>,
@@ -340,12 +344,14 @@ pub mod ast {
     #[derive(Debug, Clone)]
     pub struct FnBody {
         pub stmts: Vec<Stmt>,
+        pub lossy: bool,
     }
 
     /// Effectful function body (can include service calls, resource ops).
     #[derive(Debug, Clone)]
     pub struct FuncBody {
         pub stmts: Vec<Stmt>,
+        pub lossy: bool,
     }
 
     /// Statement in a function body.

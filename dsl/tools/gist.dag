@@ -20,21 +20,12 @@
 module tools.gist
 
 import services.git
-import services.github.gist
-import std.patterns { credential_chain, read_text_files }
-import std.resources { Filesystem, Network, AuthContext, Clock }
-import std.types { CloudRuntime, AccessToken, TextFilePath }
+import std.patterns { read_text_files }
+import std.resources { Filesystem }
+import std.types { TextFilePath }
 import shared.gist_modes { branch_context, resolve_recent_base, share_content }
 
 // --- Pure functions ---------------------------------------------------
-
-fn gist_filename(branch: String, base_ref: CommitSha?, timestamp: String) -> String {
-  let suffix = match base_ref {
-    Some(ref) => "-vs-{ref}"
-    None      => ""
-  }
-  "snapshot-{branch}{suffix}-{timestamp}.md"
-}
 
 fn render_snapshot(files: List<{ path: TextFilePath, content: String }>) -> String {
   let header = "# Code Snapshot\n\n"
@@ -54,38 +45,6 @@ fn render_recent(diffs: List<String>) -> String {
     |> map(d => "```diff\n{d}\n```")
     |> join("\n\n---\n\n")
   "{header}{sections}"
-}
-
-// --- Upload (shared by all modes) ------------------------------------
-
-func gist_upload(markdown: String, branch: String, base_ref: CommitSha?) -> { url: Url }
-  uses net: Network
-  uses clock: Clock
-  uses auth: AuthContext
-{
-  timestamp = clock.now()
-  filename = gist_filename(
-    branch: branch,
-    base_ref: base_ref,
-    timestamp: timestamp.timestamp
-  )
-
-  cred = credential_chain(
-    runtime: detect_runtime(),
-    audience: "sigstore",
-    project: "gunbc",
-    secret_name: "github-token",
-    source_id: "gist",
-    required_scopes: ["gist"],
-    service_account: None
-  )
-
-  result = github.Gist.Create(
-    description: "Snapshot from {branch}",
-    files: { filename: markdown }
-  )
-
-  return { url: result.url }
 }
 
 // --- Modes (each produces markdown, then shares via gist) ------------

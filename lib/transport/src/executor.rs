@@ -1169,7 +1169,7 @@ mod tests {
 
         let Some((port, handle)) = spawn_single_connection_server(
             stringify!(test_execute_transport_rest_dispatch),
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 12\r\nConnection: close\r\n\r\n{\"ok\":true}"
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}"
                 .to_string(),
         ) else {
             return;

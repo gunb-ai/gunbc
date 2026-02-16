@@ -9,3 +9,6 @@ description = "Lowers typed .dag AST to gunbc GraphIR (Dag/Node/Port/Edge)"
 daglang-syntax = { path = "../daglang-syntax" }
 daglang-typecheck = { path = "../daglang-typecheck" }
 gunbc-ir = { path = "../../ir" }
+
+[dev-dependencies]
+daglang-resolve = { path = "../daglang-resolve" }

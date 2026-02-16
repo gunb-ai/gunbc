@@ -31,7 +31,7 @@ fn build_status_message() -> String {
         req.provider.as_str(),
         req.runtime.as_str()
     );
-    let is_ci = env_truthy("CI") || env_truthy("GITHUB_ACTIONS");
+    let is_ci = env_truthy("GITHUB_ACTIONS") || env_truthy("GITLAB_CI");
     let missing = collect_missing_requirements(&req);
     let missing_groups: Vec<String> = missing
         .missing_any_of

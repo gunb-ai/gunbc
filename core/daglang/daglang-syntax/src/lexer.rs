@@ -1,3 +1,4 @@
+use crate::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::span::Span;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -12,7 +13,7 @@ pub enum TokenKind {
     Module, Import, Type, Fn, Func, Pattern, Service, Resource, Interface, Pipeline,
     Let, Return, Match, If, Else, For, In, When, After, Node, Uses, Provides,
     Acquire, Release, Capability, Operation, Input, Output, Stage,
-    True, False, NoneLit, As, Parallel, Config, With, SelfKw,
+    True, False, NoneLit, As, Implements, Parallel, Config, With, SelfKw,
     // Delimiters
     LBrace, RBrace, LParen, RParen, LBracket, RBracket,
     // Operators
@@ -25,6 +26,8 @@ pub enum TokenKind {
     Int(i64), Float(f64),
     // Identifier
     Ident(String),
+    // Invalid token encountered during lexing.
+    Unknown(char),
     // End
     Eof,
 }
@@ -44,7 +47,8 @@ impl TokenKind {
             Self::Capability => "capability", Self::Operation => "operation",
             Self::Input => "input", Self::Output => "output", Self::Stage => "stage",
             Self::True => "true", Self::False => "false", Self::NoneLit => "none",
-            Self::As => "as", Self::Parallel => "parallel", Self::Config => "config",
+            Self::As => "as", Self::Implements => "implements",
+            Self::Parallel => "parallel", Self::Config => "config",
             Self::With => "with", Self::SelfKw => "self",
             Self::LBrace => "{", Self::RBrace => "}", Self::LParen => "(",
             Self::RParen => ")", Self::LBracket => "[", Self::RBracket => "]",
@@ -58,8 +62,21 @@ impl TokenKind {
             Self::Str(_) => "string", Self::StrBegin(_) => "string-begin",
             Self::StrMid(_) => "string-mid", Self::StrEnd(_) => "string-end",
             Self::Int(_) => "integer", Self::Float(_) => "float",
-            Self::Ident(_) => "identifier", Self::Eof => "EOF",
+            Self::Ident(_) => "identifier", Self::Unknown(_) => "unknown-token",
+            Self::Eof => "EOF",
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LexError {
+    pub message: String,
+    pub span: Span,
+}
+
+impl LexError {
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        Diagnostic::new(DiagnosticKind::Lex, self.message.clone()).with_span(self.span)
     }
 }
 
@@ -67,14 +84,34 @@ pub struct Lexer<'a> {
     source: &'a [u8],
     pos: usize,
     interp_depth: Vec<usize>,
+    errors: Vec<LexError>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
-        Self { source: source.as_bytes(), pos: 0, interp_depth: Vec::new() }
+        Self {
+            source: source.as_bytes(),
+            pos: 0,
+            interp_depth: Vec::new(),
+            errors: Vec::new(),
+        }
     }
 
     pub fn tokenize(source: &str) -> Vec<Token> {
+        let (tokens, _) = Self::tokenize_with_errors(source);
+        tokens
+    }
+
+    pub fn tokenize_with_diagnostics(source: &str) -> (Vec<Token>, Vec<Diagnostic>) {
+        let (tokens, errors) = Self::tokenize_with_errors(source);
+        let diagnostics = errors
+            .into_iter()
+            .map(|error| error.to_diagnostic())
+            .collect();
+        (tokens, diagnostics)
+    }
+
+    pub fn tokenize_with_errors(source: &str) -> (Vec<Token>, Vec<LexError>) {
         let mut lexer = Lexer::new(source);
         let mut tokens = Vec::new();
         loop {
@@ -83,7 +120,7 @@ impl<'a> Lexer<'a> {
             tokens.push(tok);
             if done { break; }
         }
-        tokens
+        (tokens, lexer.errors)
     }
 
     fn peek(&self) -> u8 {
@@ -109,6 +146,13 @@ impl<'a> Lexer<'a> {
         Token { kind, span: Span { start, end: self.pos } }
     }
 
+    fn push_error(&mut self, message: impl Into<String>, span: Span) {
+        self.errors.push(LexError {
+            message: message.into(),
+            span,
+        });
+    }
+
     fn skip_ws(&mut self) {
         loop {
             while self.pos < self.source.len()
@@ -128,10 +172,29 @@ impl<'a> Lexer<'a> {
 
     pub fn next_token(&mut self) -> Token {
         self.skip_ws();
-        let start = self.pos;
         if self.pos >= self.source.len() {
-            return self.tok(TokenKind::Eof, start);
+            if !self.interp_depth.is_empty() {
+                self.push_error(
+                    "unterminated interpolated string literal".to_string(),
+                    Span {
+                        start: self.pos,
+                        end: self.pos,
+                    },
+                );
+                self.interp_depth.clear();
+            }
+            return self.tok(TokenKind::Eof, self.pos);
         }
+
+        // Inside string interpolation expressions, authors often escape inner
+        // quotes as `\"` because the interpolation is lexed from within an
+        // outer string literal. Treat that pair as a normal quote in interp
+        // mode by dropping the escape slash.
+        if !self.interp_depth.is_empty() && self.peek() == b'\\' && self.peek_at(1) == b'"' {
+            self.pos += 1;
+        }
+
+        let start = self.pos;
         let ch = self.peek();
 
         if ch == b'}' {
@@ -168,9 +231,28 @@ impl<'a> Lexer<'a> {
             b'<' => { self.advance(); if self.peek() == b'=' { self.advance(); self.tok(TokenKind::Le, start) } else { self.tok(TokenKind::Lt, start) } }
             b'>' => { self.advance(); if self.peek() == b'=' { self.advance(); self.tok(TokenKind::Ge, start) } else { self.tok(TokenKind::Gt, start) } }
             b'|' => { self.advance(); if self.peek() == b'>' { self.advance(); self.tok(TokenKind::PipeArrow, start) } else if self.peek() == b'|' { self.advance(); self.tok(TokenKind::Or, start) } else { self.tok(TokenKind::Pipe, start) } }
-            b'&' => { self.advance(); if self.peek() == b'&' { self.advance(); self.tok(TokenKind::And, start) } else { self.tok(TokenKind::Ident("&".into()), start) } }
+            b'&' => {
+                self.advance();
+                if self.peek() == b'&' {
+                    self.advance();
+                    self.tok(TokenKind::And, start)
+                } else {
+                    self.push_error("unexpected character '&'".to_string(), Span { start, end: self.pos });
+                    self.tok(TokenKind::Unknown('&'), start)
+                }
+            }
             b'?' => { self.advance(); if self.peek() == b'?' { self.advance(); self.tok(TokenKind::NullCoalesce, start) } else { self.tok(TokenKind::Question, start) } }
-            _ => { self.advance(); self.tok(TokenKind::Ident(format!("<unknown:{}>", ch as char)), start) }
+            _ => {
+                self.advance();
+                self.push_error(
+                    format!("unexpected character '{}'", ch as char),
+                    Span {
+                        start,
+                        end: self.pos,
+                    },
+                );
+                self.tok(TokenKind::Unknown(ch as char), start)
+            }
         }
     }
 
@@ -197,6 +279,7 @@ impl<'a> Lexer<'a> {
             "output" => TokenKind::Output, "stage" => TokenKind::Stage,
             "true" => TokenKind::True, "false" => TokenKind::False,
             "none" => TokenKind::NoneLit, "as" => TokenKind::As,
+            "implements" => TokenKind::Implements,
             "parallel" => TokenKind::Parallel, "config" => TokenKind::Config,
             "with" => TokenKind::With, "self" | "Self" => TokenKind::SelfKw,
             _ => TokenKind::Ident(text.to_string()),
@@ -241,11 +324,37 @@ impl<'a> Lexer<'a> {
             if self.pos >= self.source.len() { break; }
             match self.peek() {
                 b'"' => { self.pos += 1; return self.tok(TokenKind::Str(buf), start); }
-                b'{' => { self.pos += 1; self.interp_depth.push(0); return self.tok(TokenKind::StrBegin(buf), start); }
-                b'\\' => { self.pos += 1; self.scan_escape(&mut buf); }
+                b'{' => {
+                    if self.should_start_interpolation() {
+                        self.pos += 1;
+                        self.interp_depth.push(0);
+                        return self.tok(TokenKind::StrBegin(buf), start);
+                    }
+                    buf.push('{');
+                    self.pos += 1;
+                }
+                b'\\' => {
+                    if !self.interp_depth.is_empty() && self.peek_at(1) == b'"' {
+                        // Inside interpolation expressions, callers may escape
+                        // quotes as `\"` while still expecting normal string
+                        // lexing. Drop the slash and let the quote handling
+                        // path run on the next iteration.
+                        self.pos += 1;
+                        continue;
+                    }
+                    self.pos += 1;
+                    self.scan_escape(&mut buf);
+                }
                 ch => { buf.push(ch as char); self.pos += 1; }
             }
         }
+        self.push_error(
+            "unterminated string literal".to_string(),
+            Span {
+                start,
+                end: self.pos,
+            },
+        );
         self.tok(TokenKind::Str(buf), start)
     }
 
@@ -255,12 +364,33 @@ impl<'a> Lexer<'a> {
             if self.pos >= self.source.len() { break; }
             match self.peek() {
                 b'"' => { self.pos += 1; return self.tok(TokenKind::StrEnd(buf), start); }
-                b'{' => { self.pos += 1; self.interp_depth.push(0); return self.tok(TokenKind::StrMid(buf), start); }
+                b'{' => {
+                    if self.should_start_interpolation() {
+                        self.pos += 1;
+                        self.interp_depth.push(0);
+                        return self.tok(TokenKind::StrMid(buf), start);
+                    }
+                    buf.push('{');
+                    self.pos += 1;
+                }
                 b'\\' => { self.pos += 1; self.scan_escape(&mut buf); }
                 ch => { buf.push(ch as char); self.pos += 1; }
             }
         }
+        self.push_error(
+            "unterminated interpolated string literal".to_string(),
+            Span {
+                start,
+                end: self.pos,
+            },
+        );
         self.tok(TokenKind::StrEnd(buf), start)
+    }
+
+    fn should_start_interpolation(&self) -> bool {
+        let next = self.peek_at(1);
+        matches!(next, b'a'..=b'z' | b'A'..=b'Z' | b'_')
+            || matches!(next, b'(' | b'!' | b'-')
     }
 }
 
@@ -290,9 +420,39 @@ mod tests {
     }
 
     #[test]
+    fn longest_match_operators() {
+        assert_eq!(kinds("|>| => = > -> - !="), vec![
+            TokenKind::PipeArrow,
+            TokenKind::Pipe,
+            TokenKind::FatArrow,
+            TokenKind::Eq,
+            TokenKind::Gt,
+            TokenKind::Arrow,
+            TokenKind::Minus,
+            TokenKind::Ne,
+            TokenKind::Eof,
+        ]);
+    }
+
+    #[test]
+    fn longest_match_comparison_and_question_operators() {
+        assert_eq!(kinds("<= < >= > ?? ? != !"), vec![
+            TokenKind::Le,
+            TokenKind::Lt,
+            TokenKind::Ge,
+            TokenKind::Gt,
+            TokenKind::NullCoalesce,
+            TokenKind::Question,
+            TokenKind::Ne,
+            TokenKind::Bang,
+            TokenKind::Eof,
+        ]);
+    }
+
+    #[test]
     fn numbers() {
-        assert_eq!(kinds("42 3.14"), vec![
-            TokenKind::Int(42), TokenKind::Float(3.14), TokenKind::Eof,
+        assert_eq!(kinds("42 2.5"), vec![
+            TokenKind::Int(42), TokenKind::Float(2.5), TokenKind::Eof,
         ]);
     }
 
@@ -323,5 +483,44 @@ mod tests {
         assert_eq!(kinds("foo // comment\nbar"), vec![
             TokenKind::Ident("foo".into()), TokenKind::Ident("bar".into()), TokenKind::Eof,
         ]);
+    }
+
+    #[test]
+    fn unknown_token_reports_lex_error() {
+        let (_tokens, errors) = Lexer::tokenize_with_errors("module test\n$");
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].message.contains("unexpected character '$'"));
+    }
+
+    #[test]
+    fn unknown_token_reports_lex_diagnostic() {
+        let (_tokens, diagnostics) = Lexer::tokenize_with_diagnostics("module test\n$");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].kind, DiagnosticKind::Lex);
+        assert!(diagnostics[0].message.contains("unexpected character '$'"));
+    }
+
+    #[test]
+    fn unterminated_string_reports_lex_error() {
+        let (_tokens, errors) = Lexer::tokenize_with_errors("module test\n\"unterminated");
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].message.contains("unterminated string literal"));
+    }
+
+    #[test]
+    fn unterminated_interpolated_string_reports_lex_error() {
+        let (_tokens, errors) = Lexer::tokenize_with_errors("module test\n\"hello {name");
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0]
+            .message
+            .contains("unterminated interpolated string literal"));
+    }
+
+    #[test]
+    fn single_ampersand_reports_lex_error() {
+        let (tokens, errors) = Lexer::tokenize_with_errors("module test\n&");
+        assert!(matches!(tokens[2].kind, TokenKind::Unknown('&')));
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].message.contains("unexpected character '&'"));
     }
 }

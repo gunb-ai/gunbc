@@ -210,14 +210,16 @@ Edge  render_makefile.String        → prepare_write_makegen.String
 
 **Acceptance Gates**
 
-- [ ] "Compile-only" smoke test discovers `.dag` files and reports modules without executing anything
-- [ ] Can compile one `.dag` file into a valid gunbc IR structure (even with stubby node bodies)
-- [ ] Parity harness can canonicalize and diff two IR graphs
-- [ ] IR snapshot test passes for at least one compiled `.dag` file
-- [ ] **`dag viz` produces ASCII graph for at least one `.dag` file**
-- [ ] **`dag expand` produces full node/edge/port listing matching the existing builder IR**
-- [ ] **`dag manifest` produces ProgressManifest matching expected topology**
-- [ ] **`dag modules` shows the discovered module graph**
+- [x] "Compile-only" smoke test discovers `.dag` files and reports modules without executing anything — *`check` command runs pipeline to `Parse` and prints diagnostics*
+- [x] Can compile one `.dag` file into a valid gunbc IR structure (even with stubby node bodies) — *`compile_from_context()` returns `Dag<LoweredOp>` via discover → typecheck → lower → derive → emit*
+- [~] Parity harness can canonicalize and diff two IR graphs — *`compare_topology()` returns `ParityReport` with node/edge deltas; `compare_makegen_topology()` adds normalization rules. Needs expansion from topology-only to full IR shape (ports, node kinds, labels).*
+- [ ] IR snapshot test passes for at least one compiled `.dag` file — **Missing: no insta/snapshot-style tests yet**
+- [~] **`dag viz` produces ASCII graph for at least one `.dag` file** — *Implemented via Mermaid output (`to_mermaid`), not ASCII. Needs ASCII default with `--format mermaid` flag.*
+- [~] **`dag expand` produces full node/edge/port listing matching the existing builder IR** — *Command exists with text listing of nodes/edges/ports. Needs golden tests for output stability and verification against builder IR.*
+- [~] **`dag manifest` produces ProgressManifest matching expected topology** — *Command exists but manifest struct is `{total_nodes, total_edges, waves, entrypoint_nodes, boundary_nodes}` — does not match the roadmap contract (missing: topology list, labels, subdag_boundaries, parallel_groups, scatter_points, capture_modes, stage_groups, resources). See Bridge Milestone below.*
+- [x] **`dag modules` shows the discovered module graph** — *`modules [dir]` runs pipeline to `Report` and prints dependency-ordered module listing*
+
+**Status: ~75% complete.** Core compiler spine + CLI scaffolding are in place. Remaining gaps: viz format mismatch, manifest contract mismatch, IR snapshot tests, parity harness needs full IR shape comparison.
 
 **Why first**: visualization is not a nice-to-have that ships later. It's the development tool that makes every subsequent phase implementable. If you can't see the DAG, the manifest, and the lowered IR, you're implementing blind. The design doc's Appendix M explicitly says "essential for trust and debugging from day one."
 
@@ -247,13 +249,375 @@ For each workflow being targeted in Phases 1-2:
 | gist | `tools/gist.dag` | Loop nodes, SubDag composition; validates nested manifest |
 
 **Deliverables**:
-- [ ] `.dag` files written for at least makegen + one other workflow
+- [x] `.dag` files written for at least makegen + one other workflow — *DSL corpus exists under `dsl/` with modules spanning tools, services, pipelines, infra, cloud, and examples*
 - [ ] Side-by-side `dag viz` comparison (existing builder vs target `.dag` shape)
 - [ ] Modeling preview document per workflow (gaps, insertions, manifest differences)
-- [ ] `dag show-triplets` works (shows service call → prepare/execute/parse expansion)
-- [ ] `dag obligations` works (shows 4-bucket test obligations derived from DAG)
+- [~] `dag show-triplets` works (shows service call → prepare/execute/parse expansion) — *Not a CLI command yet; triplet derivation exists in obligation counting logic*
+- [~] `dag obligations` works (shows 4-bucket test obligations derived from DAG) — *`TestObligations` is derived and rendered by `dag manifest`, but not a standalone command; obligation counts are present but CLI UX needs work*
+
+**Status: ~30% complete.** The corpus exists and obligation counting works, but the developer-facing CLI commands (`show-triplets`, `obligations`) and modeling preview documents are missing.
 
 **Why this step**: you surface modeling gaps *before* you've committed to an implementation. If the `.dag` shape doesn't match the builder shape, or the manifest is missing information the renderer needs, you catch it here — not after weeks of compiler work.
+
+---
+
+### Bridge Milestone: Phase 0 → Phase 1 (parallel workstreams)
+
+> **Goal**: Close the remaining Phase 0 acceptance gates and establish the shared contracts that Phase 1 depends on. Structured as 6 independent workstreams so multiple contributors can work in parallel with minimal merge conflicts.
+
+**Context (February 2026 reconciliation)**: The compiler pipeline spine (discover → typecheck → lower → derive → emit) is functional and the CLI commands exist. However, several Phase 0 acceptance gates are only partially met, and the Phase 1 acceptance gates (makegen IR parity, manifest contract, test parity) depend on closing these gaps first.
+
+The main structural mismatch is the **ProgressManifest**: the roadmap contract specifies `topology`, `labels`, `subdag_boundaries`, `parallel_groups`, `scatter_points`, `capture_modes`, `stage_groups`, and `resources`, but the current implementation has `{total_nodes, total_edges, waves, entrypoint_nodes, boundary_nodes}`. This must be resolved before Phase 1 gates can be evaluated.
+
+#### Workstream A — Manifest Contract + Derive Correctness
+
+**Goal:** Bring `daglang_derive::ProgressManifest` into exact alignment with the roadmap contract.
+
+**Scope:** `daglang-derive` + `dag manifest` rendering.
+
+| Deliverable | Details |
+|---|---|
+| Manifest struct expansion | Add `topology: Vec<TopologyNode>`, `labels: Map<NodeId, String>`, `subdag_boundaries`, `parallel_groups`, `scatter_points`, `interactive_nodes`, `capture_modes`, optional `stage_groups`, `resources` |
+| Derivation from lowered DAG | Compute depth (wave) and parent for SubDag boundaries; derive labels from DSL identifiers; derive parallel groups (siblings at same depth with no ordering constraints); derive capture modes from annotations/op kinds |
+| `dag manifest` JSON output | Add `--format json` (recommended for stability + snapshot tests); keep pretty text view layered on top of the contract object |
+
+**Dependencies:** None. **PR strategy:** Land first — other workstreams consume the contract.
+
+#### Workstream B — Visualization + `dag expand` UX
+
+**Goal:** Make the Phase 0 CLI outputs match the acceptance gates.
+
+**Scope:** `daglang-viz` / `core/ir/src/dag.rs` + CLI formatting.
+
+| Deliverable | Details |
+|---|---|
+| `dag viz` ASCII default | Add ASCII rendering as default (roadmap asks for ASCII). Keep Mermaid behind `--format mermaid`. |
+| `dag expand` stability | Ensure deterministic, full listing: nodes, input/output ports, edges, SubDag boundaries. Add golden tests. |
+
+**Dependencies:** Can proceed in parallel; benefits from Workstream A's manifest for SubDag boundary display.
+
+#### Workstream C — Parity Harness + IR Snapshot Tests
+
+**Goal:** Finish the Phase 0 acceptance gate around parity + snapshots, and set up the Phase 1 parity target.
+
+**Scope:** `daglang-lower` parity module + new snapshot test infrastructure.
+
+| Deliverable | Details |
+|---|---|
+| Expand parity to full IR shape | Beyond topology: compare ports (names + type IDs), node kinds (at least as a tag), SubDag structure. |
+| Canonical JSON serialization | Stable JSON format for lowered DAG + derived manifest (stable sort, ID normalization). |
+| Snapshot tests | Per-module IR snapshots (at minimum for `tools/makegen.dag`). Detect accidental semantic changes. |
+
+**Dependencies:** Minimal. Stable sorting/canonicalization rules are independent of other workstreams.
+
+#### Workstream D — Discovery / Module-Path Consistency
+
+**Goal:** Align discovery with Phase 1 "no manual lists", robust multi-root projects.
+
+**Scope:** `daglang-resolve` + CLI.
+
+| Deliverable | Details |
+|---|---|
+| Config-driven discovery | Project manifest behavior so roots are driven by config, not just `cwd/dsl`. |
+| Module-path consistency enforcement | Strengthen `validate_module_path_consistency()` for whole-root compilation. |
+| `dag modules` enrichment | Include dependency order, unresolved import diagnostics, cycle detection summaries. |
+
+**Dependencies:** None. Mostly `daglang-resolve` + CLI.
+
+#### Workstream E — Phase 0.5 "Model Preview" Commands
+
+**Goal:** Land the Phase 0.5 developer-facing tools.
+
+**Scope:** CLI + derive presentation.
+
+| Deliverable | Details |
+|---|---|
+| `dag show-triplets <file.dag>` | Show pre/post lowering expansion (especially prepare/execute/parse triplets). |
+| `dag obligations <file.dag>` | Output the 4-bucket obligations summary the roadmap calls for. |
+| Modeling preview docs | "What `.dag` looks like vs what IR looks like" examples for makegen + one other workflow. |
+
+**Dependencies:** Can proceed immediately — obligation counts already derived.
+
+#### Workstream F — Phase 1 Gate: Makegen Parity
+
+**Goal:** Satisfy Phase 1 acceptance: compiled makegen matches existing builder IR shape and tests line up.
+
+**Scope:** Parity harness integration + execution path.
+
+| Deliverable | Details |
+|---|---|
+| IR parity test | Compile `tools/makegen.dag` → lowered IR, build existing Rust makegen IR → compare using parity harness (Workstream C). |
+| ProgressManifest parity | Ensure derived manifest matches the shared contract shape and has expected topology/labels/groups for makegen. |
+| Execution path | Compile → execute IR directly with existing runtime (quickest path to end-to-end proof). |
+
+**Dependencies:** Needs Workstream A (manifest contract) and Workstream C (parity + canonicalization).
+
+#### PR / Merge Strategy
+
+Stack PRs by "API provider → API consumers" to minimize conflicts:
+
+1. **PR 1 (Workstream A skeleton):** new manifest contract structs + `dag manifest` JSON output
+2. **PR 2 (Workstream C snapshots):** canonical JSON + snapshot infra using the new manifest
+3. **PR 3 (Workstream B viz/expand):** ASCII viz + expand formatting consuming the manifest
+4. **PR 4 (Workstream E commands):** show-triplets / obligations
+5. **PR 5 (Workstream F parity):** parity harness comparing compiled makegen vs builder makegen
+6. **PR 6 (Workstream D discovery):** config-driven discovery improvements
+
+#### Bridge Milestone Acceptance Gate
+
+The bridge is complete when:
+
+- [ ] `dag viz` defaults to ASCII and is deterministic
+- [ ] `dag manifest` emits the **contract ProgressManifest** (JSON)
+- [ ] IR snapshot tests exist for `tools/makegen.dag`
+- [ ] Parity harness can compare compiled makegen vs builder makegen and report diffs
+- [ ] `dag obligations` and `dag show-triplets` exist (even if obligations are initially "best effort")
+
+This set unblocks Phase 1 without risking a giant "run makegen end-to-end" rewrite before the compiler outputs are stable.
+
+---
+
+### Execution Plan: Two-Worker Bridge → Phase 1
+
+> **Context**: The Bridge Milestone's 6 workstreams have a real dependency graph. Two parallel workers can complete the bridge and Phase 1 without stepping on each other, because the work splits cleanly into "critical-path contracts" (manifest, parity, execution) and "code quality" (pure helpers, typed pipeline, structural obligation classification). Visualization tooling is explicitly deferred — the `.dag` source is self-documenting, and Mermaid output already exists for when a picture is needed. Each worker owns distinct crates and files.
+
+#### Why this matters
+
+The compiler pipeline *works* — it compiles `.dag` files to `Dag<LoweredOp>` with correct topology. But three things are missing before we can say "the DSL produces the same thing as the hand-wired builders":
+
+1. **The manifest contract doesn't match the spec.** Renderers, tests, and parity comparisons all need the full `ProgressManifest` shape — topology, labels, SubDag boundaries, parallel groups. Without this, Phase 1's acceptance gates can't even be evaluated.
+2. **Parity is topology-only.** We can diff node/edge counts, but not ports, node kinds, or SubDag structure. The parity harness needs to compare *full IR shape* to prove equivalence.
+3. **No execution path.** The compiled `Dag<LoweredOp>` has the right shape but `LoweredOp` doesn't implement `Executable`. We need a dispatch layer that maps DSL-declared names to the existing concrete ops (`MakegenOp`, `TransportOps`, etc.) so the existing `execute_dag()` can run compiled output.
+
+Each of these feeds the next. The manifest contract defines what "correct" looks like. The parity harness proves we match it. The execution path proves it actually runs. That's Worker 1's job.
+
+Meanwhile, the compiler codebase itself has structural debt — impure helpers, dynamic pipeline execution, stringly-typed obligation classification, and large monolithic files. Cleaning this up now (while the crate APIs are still young) prevents the debt from compounding as Phase 1+ features land. That's Worker 2's job: make the codebase clean, modular, and honest before it gets bigger.
+
+---
+
+#### Worker 1: Critical Path — Contracts → Parity → Execution
+
+**Mission**: Make the compiler's output *provably equivalent* to the hand-wired builders, then make it *executable*. This is the spine of the entire migration — everything in Part 2 (porting workflows) depends on this worker's output being correct and stable.
+
+**Crates owned**: `daglang-derive`, `daglang-lower` (parity module), `daglang-emit`, `daglang-cli/src/compile.rs`
+
+**Why you're first**: Nothing else matters if the compiled IR doesn't match the builder IR. Viz is nice. Commands are nice. But if the parity proof fails, we're building on sand. Your job is to make the foundation solid.
+
+##### Step 1: Manifest Contract (Workstream A)
+
+Expand `daglang_derive::ProgressManifest` to match the roadmap contract. The current struct has `{total_nodes, total_edges, waves, entrypoint_nodes, boundary_nodes}`. The contract requires:
+
+| Field | Type | Derived from |
+|---|---|---|
+| `topology` | `Vec<TopologyNode>` | Node IDs + depth (wave index) |
+| `labels` | `HashMap<NodeId, String>` | DSL identifiers (`module.name`) |
+| `subdag_boundaries` | `Vec<SubDagBoundary>` | `NodeBody::SubDag` nodes in the lowered DAG |
+| `parallel_groups` | `Vec<ParallelGroup>` | Siblings at same depth with no ordering edge |
+| `scatter_points` | `Vec<NodeId>` | Loop expansion nodes (Phase 3, stub empty for now) |
+| `interactive_nodes` | `Vec<NodeId>` | `@interactive` annotated nodes (Phase 3, stub empty) |
+| `capture_modes` | `HashMap<NodeId, CaptureMode>` | Transport nodes → `Captured`, others → default |
+| `stage_groups` | `Vec<StageGroup>` | Pipeline stages (Phase 4, stub empty) |
+| `resources` | `HashMap<NodeId, Vec<ResourceUsage>>` | `uses`/`provides` clauses from typed project |
+
+Add `dag manifest --format json` for stable, machine-readable output. Keep the existing text rendering as the default, layered on the contract object.
+
+**Acceptance criteria**:
+- [ ] `ProgressManifest` struct has all contract fields (Phase 3/4 fields can be empty `Vec`s)
+- [ ] `derive_artifacts()` populates `topology`, `labels`, `parallel_groups` correctly for makegen
+- [ ] `dag manifest tools/makegen.dag` produces the expected 8-node, 4-wave manifest
+- [ ] `dag manifest --format json tools/makegen.dag` produces stable, parseable JSON
+- [ ] All existing tests pass (the struct expansion must be backward-compatible)
+
+##### Step 2: Parity Infrastructure (Workstream C)
+
+Expand the parity harness beyond topology-only comparison. Currently `compare_topology()` counts nodes/edges and reports deltas. It needs to compare:
+
+| Comparison | What to diff |
+|---|---|
+| Ports | Input/output port names and type IDs per node |
+| Node kinds | At minimum a tag: `callable`, `transport`, `pattern-expanded`, `resource-lifecycle` |
+| SubDag structure | Which nodes are inside SubDags, boundary nesting |
+| Labels | DSL-derived labels match builder-derived labels |
+
+Add canonical JSON serialization for the lowered DAG (stable sort by node ID, normalized edge ordering). This becomes the snapshot format.
+
+Create IR snapshot tests: compile `tools/makegen.dag`, serialize to canonical JSON, compare against a checked-in snapshot. Any change to the compiler that alters the IR shape fails the test — forcing explicit acknowledgment.
+
+**Acceptance criteria**:
+- [ ] `compare_topology()` (or a new `compare_ir()`) diffs ports, node kinds, and labels — not just counts
+- [ ] `ParityReport` includes per-node detail: which nodes differ and how
+- [ ] Canonical JSON serialization for `Dag<LoweredOp>` is deterministic (same input → same bytes)
+- [ ] At least one IR snapshot test exists for `tools/makegen.dag` and passes
+- [ ] Snapshot test is in CI (fails if compiler changes alter makegen IR)
+
+##### Step 3: Makegen Parity + Execution (Workstream F)
+
+Wire the parity harness as a real test: compile `tools/makegen.dag` → lowered DAG, load the hand-wired `build_makegen_graph()` reference DAG, compare using the expanded parity harness. Get the delta to zero.
+
+Then build the dispatch layer: a registry that maps `LoweredOp` descriptions to concrete `Executable` implementations. For makegen, this is ~8-10 entries:
+
+| `LoweredOp::Callable` | Maps to |
+|---|---|
+| `tools.makegen::render_makefile` | `MakegenOp::RenderMakefile` |
+| `tools.makegen::makegen` | `MakegenOp::Makegen` |
+| `load_registry` | `MakegenOp::LoadRegistry` (or equivalent) |
+| `fs_env` | Environment node producing `FilesystemHandle` |
+| `prepare_read_makegen` | `PrepareFileReadOp` |
+| `execute_read_makegen` | `TransportOps::Execute` |
+| `compare_makegen_content` | `FreshnessStep` |
+| `prepare_write_makegen` | `PrepareFileWriteOp` |
+| `execute_makegen_transport` | `TransportOps::Execute` |
+
+Write `fn resolve_dag(dag: Dag<LoweredOp>, registry: &OpRegistry) -> Result<Dag<Box<dyn Executable>>, ResolveError>` that walks the compiled DAG, replaces each `LoweredOp` node with its concrete `Executable`, and preserves all edges/ports.
+
+Then execute: pass the resolved DAG to the existing `execute_dag()` in `core/exec`. Verify it produces the same Makefile output as running the hand-wired builder.
+
+**Acceptance criteria**:
+- [ ] Parity test: compiled makegen IR matches builder IR (zero delta in `ParityReport`)
+- [ ] `OpRegistry` exists with entries for all makegen nodes
+- [ ] `resolve_dag()` converts `Dag<LoweredOp>` → `Dag<Box<dyn Executable>>` for makegen
+- [ ] End-to-end test: `compile → resolve → execute_dag()` produces valid Makefile output
+- [ ] DryRun mode works: compiled makegen executes in DryRun with transport interception
+- [ ] Existing `make test-all` still passes (no regressions)
+
+##### Worker 1 Definition of Done
+
+All three steps complete. The sentence "compile `tools/makegen.dag` and run it, producing the same Makefile as the hand-wired builder" is true and proven by tests.
+
+---
+
+#### Worker 2: Code Quality — Pure Helpers, Typed Pipeline, Modular CLI
+
+**Mission**: Make the compiler codebase *clean and honest* before it gets bigger. Phase 1+ will add service transport, resource lifecycle, pattern expansion, and multi-backend emission — each touching multiple crates. If the foundation has impure helpers, dynamic typing where static typing would do, and 3000-line files, every future change is harder than it needs to be. Your job is to pay down the structural debt now, while the crate boundaries are still young.
+
+**Crates owned**: `daglang-cli/src/pipeline.rs`, `daglang-cli/src/main.rs`, `daglang-cli/src/path_utils.rs`, `daglang-resolve/src/lib.rs`, `daglang-lower/src/lib.rs` (obligation classification only)
+
+**Why you matter**: Worker 1 is building new capabilities (manifest contract, parity harness, execution dispatch). Every line they write inherits the code patterns that exist today. If helpers are impure, Worker 1 will write impure helpers. If the pipeline runner uses string-keyed HashMaps, new pipelines will too. You're setting the standard that all future code follows. Get it right now and everything downstream is cleaner.
+
+##### Step 1: Pure Helper Libraries
+
+The codebase has several helpers that call `std::env::current_dir()` internally, making them impure and environment-dependent. The fix is straightforward: effectful boundary at `main()`, pure core everywhere else.
+
+**`path_utils.rs`**: `resolve_default_root()` and `normalize_cli_path()` both call `current_dir()`. Refactor them to take `cwd: &Path` as a parameter. Have `main.rs` call `current_dir()` once at startup and thread `cwd` down through command dispatch.
+
+**`compile.rs`**: `build_context()` calls `resolve_default_root()` which calls `current_dir()`. After the `path_utils` refactor, `build_context()` should take `cwd: &Path` too.
+
+**`pipeline.rs`**: `collect_dag_files()` constructs paths relative to an implicit cwd. Make the root path an explicit parameter.
+
+The pattern: every function in the `daglang-cli` crate below `main()` should be a pure function of its arguments. I/O happens exactly at the boundary — `main()` reads the environment, commands write to stdout/stderr.
+
+**Acceptance criteria**:
+- [ ] `path_utils::resolve_default_root(cwd: &Path)` — no `current_dir()` call
+- [ ] `path_utils::normalize_cli_path(cwd: &Path, path: &Path)` — no `current_dir()` call
+- [ ] `main.rs` calls `current_dir()` exactly once, threads `cwd` to all subcommands
+- [ ] `build_context()` takes `cwd: &Path`, not implicitly reading environment
+- [ ] No function in `path_utils.rs`, `compile.rs`, or `pipeline.rs` calls `std::env::current_dir()`
+- [ ] All existing tests pass (behavior is identical, only the call site of `current_dir()` moved)
+
+##### Step 2: Typed Pipeline Runner
+
+`pipeline.rs` runs the 4-stage compiler pipeline (discover → parse → build graph → report) through a `HashMap<String, PipeValue>` with string keys and 5 `take_*` extraction functions. This is dynamic typing in a statically typed language — a mismatch with the "imperative pure functions" style.
+
+The `build_pipeline_dag()` function that constructs the pipeline as a `Dag<CompilerOp>` should stay — it powers `dag viz --self` and is structurally interesting. But *execution* should be a plain imperative function with typed locals:
+
+```rust
+fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<PipelineResult, PipelineError> {
+    let files = discover_dag_files(&context.roots)?;
+    if stop == PipelineStop::Discover { return Ok(PipelineResult::Discovered(files)); }
+
+    let (modules, diagnostics) = parse_all_files(&files)?;
+    if stop == PipelineStop::Parse { return Ok(PipelineResult::Parsed(modules, diagnostics)); }
+
+    let graph = build_module_graph(&modules, &context.roots)?;
+    if stop == PipelineStop::Build { return Ok(PipelineResult::Built(graph, diagnostics)); }
+
+    let report = format_module_report(&graph, &diagnostics);
+    Ok(PipelineResult::Reported(report))
+}
+```
+
+No HashMap, no string keys, no `remove()` semantics, no fan-out ambiguity. Each stage is a pure function call. The types enforce that you can't accidentally consume a value twice or forget to produce one.
+
+**Acceptance criteria**:
+- [ ] `run_pipeline()` is an imperative function with typed locals — no `HashMap<String, PipeValue>`
+- [ ] `PipelineResult` is a typed enum (not string-keyed values)
+- [ ] The 5 `take_*` functions are deleted
+- [ ] `build_pipeline_dag()` still exists (for `dag viz --self`)
+- [ ] `dag check`, `dag modules`, and `dag compile` produce identical output
+- [ ] All existing pipeline tests pass
+
+##### Step 3: Obligation Classification + CLI Commands
+
+Obligation counts are currently derived from string prefix matching (`"service_transport::prepare::"`, port type equality `"TransportRequest"`). This is brittle — a rename in the lowerer silently breaks obligation counts with no compiler error.
+
+Add a classification function on `LoweredOp` that returns a typed enum:
+
+```rust
+enum ObligationCategory {
+    Callable,
+    Pipeline,
+    ServiceTransport,
+    ResourceLifecycle,
+    PatternExpanded,
+    None,
+}
+
+fn classify_obligation(op: &LoweredOp) -> ObligationCategory { ... }
+```
+
+Centralize the string constants (or better, make classification structural — based on `LoweredOp` variant, not string content). Then rewrite `derive_test_obligations()` to use this classifier instead of ad-hoc string matching.
+
+While touching the CLI, add two standalone commands that are cheap to implement (the data already exists in `derive_artifacts()`):
+
+- `dag show-triplets <file.dag>` — print service call → transport triplet expansion (prepare/execute/parse nodes and edges)
+- `dag obligations <file.dag>` — print the 4-bucket test obligation summary (currently embedded in `dag manifest` output, extract to standalone)
+
+**Acceptance criteria**:
+- [ ] `ObligationCategory` enum exists with typed variants
+- [ ] `classify_obligation()` is a pure function on `LoweredOp` — no string prefix matching
+- [ ] `derive_test_obligations()` uses `classify_obligation()` internally
+- [ ] Obligation counts for `tools/makegen.dag` are unchanged (behavioral parity)
+- [ ] `dag show-triplets tools/makegen.dag` shows the content_upsert triplet expansion
+- [ ] `dag obligations tools/makegen.dag` shows the 4-bucket obligation summary
+- [ ] Both new commands support `--format json`
+
+##### Worker 2 Definition of Done
+
+The compiler codebase follows the "effectful boundary, pure core" principle. Every function below `main()` is a pure function of its arguments. The pipeline runner is typed and imperative. Obligation classification is structural, not stringly-typed. The two CLI commands (`show-triplets`, `obligations`) work and are useful for parity debugging.
+
+**Deferred (explicitly not in scope)**:
+- ASCII viz renderer — the `.dag` source is self-documenting; Mermaid exists for when you need a picture
+- File splitting of `compile.rs` / `pipeline.rs` — do this when the files actually cause merge conflicts, not preemptively
+- `daglang.toml` config-driven discovery — premature until we have more than one project consuming it
+- Enriched `dag modules` (dependency counts, inline warnings) — nice-to-have, not blocking Phase 1
+
+---
+
+#### Coordination Protocol
+
+The two workers share the `daglang-cli` crate but touch different files:
+
+| File | Worker 1 | Worker 2 |
+|---|---|---|
+| `daglang-derive/src/lib.rs` | **owns** (manifest expansion) | reads (obligation refactor touches `derive_test_obligations`) |
+| `daglang-lower/src/lib.rs` | **owns** (parity module) | reads (obligation classification on `LoweredOp`) |
+| `daglang-emit/src/lib.rs` | **owns** (execution path) | — |
+| `daglang-cli/src/compile.rs` | **owns** (resolve_dag, execution) | touches (cwd threading into `build_context`) |
+| `daglang-cli/src/main.rs` | — | **owns** (cwd threading, new commands) |
+| `daglang-cli/src/pipeline.rs` | — | **owns** (typed runner refactor) |
+| `daglang-cli/src/path_utils.rs` | — | **owns** (pure helper refactor) |
+| `daglang-resolve/src/lib.rs` | — | — (stable) |
+| `daglang-syntax/` | — | — (stable, neither touches) |
+| `daglang-typecheck/` | — | — (stable, neither touches) |
+
+**Potential overlap**: Worker 2's `cwd` threading touches `compile.rs` (changing `build_context` signature), which Worker 1 also owns. Resolve this by having Worker 2 do the `cwd` refactor first (it's mechanical, no new logic), then Worker 1 builds on the new signature.
+
+**Sync points**:
+1. Worker 2 completes Step 1 (pure helpers + cwd threading) first. This changes function signatures in `path_utils.rs` and `compile.rs` that Worker 1 depends on. Merge this before Worker 1 starts Step 3.
+2. Worker 2's Step 3 (obligation classification) touches `LoweredOp` typing in `daglang-lower`. Coordinate with Worker 1 if they're simultaneously changing lowering logic for parity.
+3. After Worker 1 completes Step 3 (execution), Worker 2's `dag show-triplets` can optionally show dispatch mappings using the `OpRegistry`.
+
+**Branch strategy**: Each worker gets their own feature branch off the current branch. Merge Worker 2 Step 1 first (signature changes), then both proceed independently. Worker 2 Step 3 and Worker 1 Step 2-3 should coordinate on `daglang-lower` if running concurrently.
 
 ---
 
@@ -399,13 +763,16 @@ For each workflow being targeted in Phases 1-2:
 ### Phase Summary
 
 ```
-Phase   Proving Workflow          Deliverables                          Key Risk
-─────   ─────────────────         ─────────────────────────────         ─────────────────────────
-  0     (scaffolding)             Discover + Parse + Module Graph       IR integration boundary
+Phase   Proving Workflow          Deliverables                          Key Risk                  Status
+─────   ─────────────────         ─────────────────────────────         ─────────────────────────  ──────
+  0     (scaffolding)             Discover + Parse + Module Graph       IR integration boundary    ~75%
                                   + dag viz/expand/manifest/modules
-  0.5   (modeling preview)        .dag files + side-by-side viz         Gaps found too late
+  0.5   (modeling preview)        .dag files + side-by-side viz         Gaps found too late        ~30%
                                   + modeling preview docs
-  1     makegen (S1)              types, func, pattern, resource        Pattern expansion fidelity
+  0→1   (bridge milestone)        Manifest contract + ASCII viz         Contract mismatch          Not started
+                                  + parity snapshots + model preview
+                                  commands (6 parallel workstreams)
+  1     makegen (S1)              types, func, pattern, resource        Pattern expansion fidelity Skeleton in place
                                   + plain/inline renderers
   2     acquire_gcp_secret (S2)   service, match/when, resource LC      Generic IR chokepoint
         GcsBucket:ObjectStorage   interface, implements, CloudConfig    Interface resolution
@@ -1285,71 +1652,54 @@ The effort lands cleanly when all six criteria are met:
 
 ## Immediate Next Steps
 
-Concrete actions in priority order. Visualization and modeling previews come first — before compiler implementation.
+> **Updated February 2026.** The compiler pipeline spine, CLI scaffolding, and DSL corpus are in place. The immediate priority is the **Bridge Milestone** (closing Phase 0 gaps and establishing shared contracts for Phase 1). See the Bridge Milestone section above for the full workstream breakdown.
 
-### 0. Inventory workflow contracts (Part 0)
+### What's been accomplished
 
-> The foundation everything else builds on.
+- [x] `core/daglang/` workspace area with crate split: `daglang-syntax`, `daglang-resolve`, `daglang-typecheck`, `daglang-lower`, `daglang-derive`, `daglang-emit`, `daglang-cli`
+- [x] Compiler entrypoint: `compile_from_context()` does discover → typecheck → lower → derive → emit
+- [x] CLI commands: `viz`, `expand`, `manifest`, `modules`, `check`, `compile`
+- [x] Module graph: filesystem discovery, import resolution, dependency-ordered module listing
+- [x] Parity harness (partial): `compare_topology()` + `compare_makegen_topology()` returning `ParityReport`
+- [x] DSL corpus: `.dag` files for tools, services, pipelines, infra, cloud, examples
+- [x] `TestObligations` derivation with 4-bucket obligation counting
+- [x] `ToolMetadata` derivation (module-level callable/pipeline counts)
 
-- [ ] Fill out the workflow matrix for all 7-8 discrete workflows (entry points, inputs, semantics, outputs, error model, side effects)
-- [ ] Create at least one golden fixture per workflow (representative config + expected behavior snapshot)
-- [ ] Wire golden fixture checks into CI (even if they just assert "old builder produces expected output" for now)
+### Priority 1: Bridge Milestone (parallel workstreams)
 
-### 1. Build visualization tooling (Phase 0 — before compiler implementation)
+> The #1 structural blocker is the ProgressManifest contract mismatch. Fix this first.
 
-> You need to see the DAGs before you build the compiler that produces them.
+- [ ] **Workstream A (Manifest contract):** Expand `ProgressManifest` to match the roadmap contract; add `dag manifest --format json`
+- [ ] **Workstream C (Parity + snapshots):** Canonical JSON serialization + IR snapshot tests for at least `tools/makegen.dag`
+- [ ] **Workstream B (Viz + expand):** ASCII default for `dag viz`; golden tests for `dag expand`
+- [ ] **Workstream E (Model preview commands):** `dag show-triplets` and `dag obligations` as standalone commands
+- [ ] **Workstream F (Makegen parity):** Compile `tools/makegen.dag` → compare against `build_makegen_graph()` using parity harness
+- [ ] **Workstream D (Discovery):** Config-driven roots; enriched `dag modules` output
 
-- [ ] Implement `dag viz` — ASCII DAG from existing builder IR (so you can see current shapes immediately)
-- [ ] Implement `dag expand` — full node/edge/port dump from existing builder IR
-- [ ] Implement `dag manifest` — ProgressManifest derivation from existing builder IR
-- [ ] Implement `dag modules` — discovered module graph display
-- [ ] Run these against every existing builder to produce a baseline visualization set
+### Priority 2: Phase 1 makegen (S1)
 
-### 2. Write `.dag` files + modeling previews (Phase 0.5 — before compiler implementation)
+> Once the bridge is crossed, makegen becomes the proving workflow.
 
-> See the target shape, compare to current shape, document the gaps.
+- [x] Write `tools/makegen.dag` — *exists in DSL corpus*
+- [x] Implement parser for `func` + `pattern` + `uses` syntax — *parser handles full language surface*
+- [x] Implement `Lower` phase producing gunbc IR — *`daglang-lower` produces `Dag<LoweredOp>`*
+- [ ] Run parity harness against existing `build_makegen_graph()` — *Workstream F*
+- [ ] Verify golden fixture passes for compiled `.dag` output — *Workstream C*
 
-- [ ] Write `tools/makegen.dag`, `tools/clippy.dag`, `cloud/gcp/credential.dag`, `tools/gist.dag`
-- [ ] Produce side-by-side `dag viz` comparisons (existing builder vs target `.dag` shape)
-- [ ] Write modeling preview documents: current → target → gaps → plan per workflow
-- [ ] Implement `dag show-triplets` and `dag obligations` to preview test and transport implications
+### Priority 3: Workflow contracts (Part 0, ongoing)
 
-### 3. Add the parity harness (Workstream A)
+> The foundation everything else builds on. Can proceed in parallel with bridge work.
 
-> Turns "one big refactor" into a safe, bounded final step.
+- [ ] Fill out the workflow matrix for all 7-8 discrete workflows
+- [ ] Create at least one golden fixture per workflow
+- [ ] Wire golden fixture checks into CI
 
-- [ ] Create `core/daglang/` workspace area
-- [ ] Implement IR canonicalization (stable sort, ID normalization)
-- [ ] Implement graph diff (node/edge count, port types, boundary sets)
-- [ ] Wire into CI as an optional check
+### Standing gates (must not regress)
 
-### 2. Start Phase 1 on makegen (S1)
-
-> Exercises: pattern expansion (`content_upsert`), resource declaration, manifest derivation, minimal codegen. This is the "starting wedge" — the reference implementation that makes remaining ports mechanical.
-
-- [ ] Write `tools/makegen.dag` (target: ~5 lines of authoring surface)
-- [ ] Implement parser for minimal `func` + `pattern` + `uses` syntax
-- [ ] Implement `Lower` phase producing gunbc IR
-- [ ] Run parity harness against existing `build_makegen_graph()`
-- [ ] Verify golden fixture passes for compiled `.dag` output
-
-### 3. Write `.dag` files early (even if compilation is partial)
-
-> Mapping is the best way to surface modeling gaps.
-
-- [ ] `tools/gist.dag` — composition + loop constructs
-- [ ] `pipelines/ci.dag` — pipeline + stage constructs
-- [ ] `tools/review.dag` — service + credential constructs
-- [ ] `cloud/gcp/credential.dag` — resource lifecycle + branching
-
-### 4. Keep existing invariants as gates
-
-> The handbook's pipeline and invariants are exactly what to preserve while changing the authoring surface.
-
-- [ ] I/O only at boundaries (no regression during migration)
+- [x] I/O only at boundaries (clippy guardrails enforce transport-only I/O)
 - [ ] DryRun interception works for compiled `.dag` output
 - [ ] Generated tests derived from DAG structure (4-bucket model)
-- [ ] No hidden env access (resource declarations required)
+- [x] No hidden env access (resource declarations required; CI detection hardened against spurious env vars)
 
 ---
 

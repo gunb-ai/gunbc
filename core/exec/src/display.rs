@@ -266,9 +266,9 @@ fn run_plain<T: Executable + Clone + Send>(
 }
 
 fn is_ci_environment() -> bool {
-    std::env::var("CI").is_ok()
-        || std::env::var("GITHUB_ACTIONS").is_ok()
-        || std::env::var("GITLAB_CI").is_ok()
+    // Only check specific provider markers. The generic CI env var is
+    // unreliable (set by editors, tools, etc.).
+    std::env::var("GITHUB_ACTIONS").is_ok() || std::env::var("GITLAB_CI").is_ok()
 }
 
 /// Mask secret values from an execution log via CI workflow commands.

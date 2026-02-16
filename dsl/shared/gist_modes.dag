@@ -15,7 +15,9 @@
 module shared.gist_modes
 
 import services.git
-import tools.gist { gist_upload }
+import services.github.gist
+import std.patterns { credential_chain }
+import std.resources { Network, AuthContext, Clock }
 
 // Get branch context for any mode.
 func branch_context() -> { branch: String, remote_branch: String? } {
@@ -42,6 +44,46 @@ func resolve_recent_base(since: String = "3.days.ago") -> { base_ref: CommitSha,
     base_ref: base_ref,
     branch: ctx.branch
   }
+}
+
+// Filename for a gist upload.
+fn gist_filename(branch: String, base_ref: CommitSha?, timestamp: String) -> String {
+  let suffix = match base_ref {
+    Some(ref) => "-vs-{ref}"
+    None      => ""
+  }
+  "snapshot-{branch}{suffix}-{timestamp}.md"
+}
+
+// Upload markdown content as a GitHub gist.
+func gist_upload(markdown: String, branch: String, base_ref: CommitSha?) -> { url: Url }
+  uses net: Network
+  uses clock: Clock
+  uses auth: AuthContext
+{
+  timestamp = clock.now()
+  filename = gist_filename(
+    branch: branch,
+    base_ref: base_ref,
+    timestamp: timestamp.timestamp
+  )
+
+  cred = credential_chain(
+    runtime: detect_runtime(),
+    audience: "sigstore",
+    project: "gunbc",
+    secret_name: "github-token",
+    source_id: "gist",
+    required_scopes: ["gist"],
+    service_account: None
+  )
+
+  result = github.Gist.Create(
+    description: "Snapshot from {branch}",
+    files: { filename: markdown }
+  )
+
+  return { url: result.url }
 }
 
 // Share any markdown content as a gist.

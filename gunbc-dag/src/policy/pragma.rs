@@ -45,10 +45,14 @@ const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowPattern] = &[
         pattern: "core/exec/src/freshness.rs",
         rationale: "freshness steps run external tooling as child processes",
     },
+    DisallowedMethodsAllowPattern {
+        pattern: "core/daglang/",
+        rationale: "compiler pipeline: filesystem discovery for .dag module resolution",
+    },
 ];
 
 const PRAGMA_LINT_POLICY: PragmaLintPolicy = PragmaLintPolicy {
-    allow_dead_code: &[],
+    allow_dead_code: &["core/daglang/daglang-syntax/src/parser.rs"],
     allow_lints: &[
         LintId::clippy("too_many_arguments"),
         LintId::clippy("vec_init_then_push"),
