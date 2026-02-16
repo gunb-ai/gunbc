@@ -1248,11 +1248,15 @@ mod tests {
             target_file: None,
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
-        assert_eq!(result.stage, PipelineStage::Parse);
-        assert_eq!(result.parsed_count, 1);
-        assert!(result.module_graph.is_none());
-        assert!(result.report.is_none());
-        assert!(result.diagnostics.is_empty());
+        assert!(
+            matches!(result, PipelineResult::Parse(_)),
+            "parse stop should return parse variant"
+        );
+        assert_eq!(result.stage(), PipelineStage::Parse);
+        assert_eq!(result.parsed_count(), 1);
+        assert!(result.module_graph().is_none());
+        assert!(result.report().is_none());
+        assert!(result.diagnostics().is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -1269,11 +1273,15 @@ mod tests {
             target_file: None,
         };
         let result = run_pipeline(&context, PipelineStop::Build).expect("pipeline should execute");
-        assert_eq!(result.stage, PipelineStage::Build);
-        assert_eq!(result.parsed_count, 1);
-        assert!(result.module_graph.is_some());
-        assert!(result.report.is_none());
-        assert!(result.diagnostics.is_empty());
+        assert!(
+            matches!(result, PipelineResult::Build(_)),
+            "build stop should return build variant"
+        );
+        assert_eq!(result.stage(), PipelineStage::Build);
+        assert_eq!(result.parsed_count(), 1);
+        assert!(result.module_graph().is_some());
+        assert!(result.report().is_none());
+        assert!(result.diagnostics().is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -1290,19 +1298,25 @@ mod tests {
             target_file: None,
         };
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+        assert!(
+            matches!(result, PipelineResult::Report(_)),
+            "report stop should return report variant"
+        );
         assert_eq!(
-            result.parsed_count, 1,
+            result.parsed_count(), 1,
             "report stop should retain parsed count from parse stage"
         );
-        assert_eq!(result.stage, PipelineStage::Report);
+        assert_eq!(result.stage(), PipelineStage::Report);
         assert!(
-            result.module_graph.is_some(),
+            result.module_graph().is_some(),
             "report stop should preserve module graph for downstream callers"
         );
-        let report = result.report.as_ref().expect("report stop should include report text");
+        let report = result
+            .report()
+            .expect("report stop should include report text");
         assert!(report.contains("Discovered modules:"));
         assert!(report.contains("sample.main"));
-        assert!(result.diagnostics.is_empty());
+        assert!(result.diagnostics().is_empty());
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
