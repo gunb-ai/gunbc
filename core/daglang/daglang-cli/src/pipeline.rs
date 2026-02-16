@@ -156,6 +156,7 @@ pub fn build_pipeline_dag() -> Dag<CompilerOp> {
 
 pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<PipelineResult, String> {
     let dag = build_pipeline_dag();
+    validate_pipeline_semantics(&dag)?;
     let topo = topological_order(&dag)?;
     let mut values: HashMap<String, PipeValue> = HashMap::new();
 
@@ -541,6 +542,20 @@ fn topological_order(dag: &Dag<CompilerOp>) -> Result<Vec<String>, String> {
     Ok(order)
 }
 
+fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
+    let mut occupied_inputs: HashSet<(String, String)> = HashSet::new();
+    for edge in &dag.edges {
+        let key = (edge.to_node.0.clone(), edge.to_port.0.clone());
+        if !occupied_inputs.insert(key.clone()) {
+            return Err(format!(
+                "implicit fan-in is not allowed for input port {}.{}",
+                key.0, key.1
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn take_files(inputs: &mut HashMap<String, PipeValue>) -> Result<Vec<FileSource>, String> {
     match inputs.remove(PORT_FILES) {
         Some(PipeValue::Files(files)) => Ok(files),
@@ -799,5 +814,20 @@ mod tests {
         );
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn pipeline_rejects_implicit_fanin_on_single_input_port() {
+        let mut dag = build_pipeline_dag();
+        dag.add_edge(Edge::new(
+            NODE_DISCOVER,
+            PORT_FILES,
+            NODE_PARSE,
+            PORT_FILES,
+        ));
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("duplicate edge to same input port should fail");
+        assert!(err.contains("implicit fan-in is not allowed"));
     }
 }
