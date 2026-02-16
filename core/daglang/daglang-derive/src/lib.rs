@@ -17,9 +17,316 @@
 //!                                      → ToolMetadata
 //! ```
 
+use std::collections::{BTreeMap, VecDeque};
+
+use daglang_lower::LoweredOp;
+use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node};
+
+/// Derived artifacts produced from lowered GraphIR.
+#[derive(Debug, Clone)]
+pub struct DerivedArtifacts {
+    pub manifest: ProgressManifest,
+    pub obligations: TestObligations,
+    pub tool_metadata: ToolMetadata,
+}
+
+/// Minimal progress manifest for Phase-1 compiler scaffolding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProgressManifest {
+    pub total_nodes: usize,
+    pub total_edges: usize,
+    pub waves: Vec<Vec<String>>,
+    pub entrypoint_nodes: Vec<String>,
+    pub boundary_nodes: Vec<String>,
+}
+
+/// Minimal obligation summary derived from graph structure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestObligations {
+    pub dry_run_completion_required: bool,
+    pub transport_execution_targets: usize,
+    pub pure_node_determinism_targets: usize,
+}
+
+/// Metadata summary for lowered modules.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolMetadata {
+    pub modules: Vec<ModuleMetadata>,
+}
+
+/// Module-level metadata counts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleMetadata {
+    pub module: String,
+    pub callable_count: usize,
+    pub pipeline_count: usize,
+}
+
 /// Errors during derivation.
 #[derive(Debug)]
 pub enum DeriveError {
     /// The IR graph is not valid for manifest derivation.
     InvalidGraph(String),
+}
+
+impl std::fmt::Display for DeriveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidGraph(reason) => write!(f, "invalid graph for derivation: {reason}"),
+        }
+    }
+}
+
+/// Derive manifest, obligations, and metadata from a lowered daglang graph.
+pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, DeriveError> {
+    if dag.nodes.is_empty() {
+        return Err(DeriveError::InvalidGraph(
+            "cannot derive artifacts for an empty graph".to_string(),
+        ));
+    }
+
+    let manifest = ProgressManifest {
+        total_nodes: dag.nodes.len(),
+        total_edges: dag.edges.len(),
+        waves: compute_waves(dag)?,
+        entrypoint_nodes: {
+            let mut nodes = detect_entrypoints(dag)
+                .entrypoint_nodes
+                .into_iter()
+                .map(|node_id| node_id.0)
+                .collect::<Vec<_>>();
+            nodes.sort();
+            nodes
+        },
+        boundary_nodes: {
+            let mut nodes = detect_boundaries(dag)
+                .boundary_nodes
+                .into_iter()
+                .map(|node_id| node_id.0)
+                .collect::<Vec<_>>();
+            nodes.sort();
+            nodes
+        },
+    };
+
+    let obligations = TestObligations {
+        dry_run_completion_required: true,
+        transport_execution_targets: dag
+            .nodes
+            .iter()
+            .filter(|node| {
+                node.inputs
+                    .iter()
+                    .any(|port| port.type_id.0 == "TransportRequest")
+            })
+            .count(),
+        pure_node_determinism_targets: dag
+            .nodes
+            .iter()
+            .filter(|node| {
+                !node
+                    .inputs
+                    .iter()
+                    .any(|port| port.type_id.0 == "TransportRequest")
+            })
+            .count(),
+    };
+
+    let tool_metadata = ToolMetadata {
+        modules: derive_module_metadata(&dag.nodes),
+    };
+
+    Ok(DerivedArtifacts {
+        manifest,
+        obligations,
+        tool_metadata,
+    })
+}
+
+fn compute_waves(dag: &Dag<LoweredOp>) -> Result<Vec<Vec<String>>, DeriveError> {
+    let mut indegree = BTreeMap::<String, usize>::new();
+    let mut outgoing = BTreeMap::<String, Vec<String>>::new();
+
+    for node in &dag.nodes {
+        indegree.insert(node.id.0.clone(), 0);
+        outgoing.insert(node.id.0.clone(), Vec::new());
+    }
+
+    for edge in &dag.edges {
+        let to = edge.to_node.0.clone();
+        let from = edge.from_node.0.clone();
+        let degree = indegree
+            .get_mut(&to)
+            .ok_or_else(|| DeriveError::InvalidGraph(format!("edge targets missing node `{to}`")))?;
+        *degree += 1;
+        outgoing
+            .get_mut(&from)
+            .ok_or_else(|| DeriveError::InvalidGraph(format!("edge source missing node `{from}`")))?
+            .push(to);
+    }
+
+    let mut current_wave = indegree
+        .iter()
+        .filter_map(|(node, degree)| (*degree == 0).then_some(node.clone()))
+        .collect::<Vec<_>>();
+    current_wave.sort();
+
+    if current_wave.is_empty() {
+        return Err(DeriveError::InvalidGraph(
+            "graph has no entrypoint wave (likely cyclic)".to_string(),
+        ));
+    }
+
+    let mut waves = Vec::new();
+    let mut processed = 0usize;
+
+    while !current_wave.is_empty() {
+        waves.push(current_wave.clone());
+        processed += current_wave.len();
+        let mut next_wave = Vec::new();
+
+        for node in &current_wave {
+            let mut queue = outgoing
+                .get(node)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .collect::<VecDeque<_>>();
+            while let Some(target) = queue.pop_front() {
+                let degree = indegree.get_mut(&target).ok_or_else(|| {
+                    DeriveError::InvalidGraph(format!("missing indegree for `{target}`"))
+                })?;
+                *degree = degree.saturating_sub(1);
+                if *degree == 0 {
+                    next_wave.push(target);
+                }
+            }
+        }
+
+        next_wave.sort();
+        next_wave.dedup();
+        current_wave = next_wave;
+    }
+
+    if processed != dag.nodes.len() {
+        return Err(DeriveError::InvalidGraph(
+            "graph contains a cycle and cannot be wave-partitioned".to_string(),
+        ));
+    }
+
+    Ok(waves)
+}
+
+fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
+    let mut by_module: BTreeMap<String, ModuleMetadata> = BTreeMap::new();
+    for node in nodes {
+        let Some(op) = node.body.as_opaque() else {
+            continue;
+        };
+        match op {
+            LoweredOp::Callable { module, .. } => {
+                let entry = by_module
+                    .entry(module.clone())
+                    .or_insert_with(|| ModuleMetadata {
+                        module: module.clone(),
+                        callable_count: 0,
+                        pipeline_count: 0,
+                    });
+                entry.callable_count += 1;
+            }
+            LoweredOp::Pipeline { module, .. } => {
+                let entry = by_module
+                    .entry(module.clone())
+                    .or_insert_with(|| ModuleMetadata {
+                        module: module.clone(),
+                        callable_count: 0,
+                        pipeline_count: 0,
+                    });
+                entry.pipeline_count += 1;
+            }
+        }
+    }
+    by_module.into_values().collect()
+}
+
+trait NodeBodyExt {
+    fn as_opaque(&self) -> Option<&LoweredOp>;
+}
+
+impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
+    fn as_opaque(&self) -> Option<&LoweredOp> {
+        match self {
+            gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
+            gunbc_ir::node::NodeBody::SubDag(_) => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use daglang_lower::{CallableKind, LoweredOp};
+    use gunbc_ir::{Edge, Node, Port};
+
+    fn callable_node(id: &str, module: &str, name: &str) -> Node<LoweredOp> {
+        Node::opaque(
+            id,
+            vec![Port::scalar("input", "String")],
+            vec![Port::scalar("output", "String")],
+            LoweredOp::Callable {
+                module: module.to_string(),
+                kind: CallableKind::Func,
+                name: name.to_string(),
+            },
+        )
+    }
+
+    #[test]
+    fn derive_manifest_builds_stable_waves() {
+        let mut dag = Dag::new();
+        dag.add_node(callable_node("a", "tools.makegen", "a"));
+        dag.add_node(callable_node("b", "tools.makegen", "b"));
+        dag.add_node(callable_node("c", "tools.makegen", "c"));
+        dag.add_edge(Edge::new("a", "output", "c", "input"));
+        dag.add_edge(Edge::new("b", "output", "c", "input"));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert_eq!(
+            artifacts.manifest.waves,
+            vec![
+                vec!["a".to_string(), "b".to_string()],
+                vec!["c".to_string()]
+            ]
+        );
+        assert_eq!(artifacts.manifest.total_nodes, 3);
+        assert_eq!(artifacts.manifest.total_edges, 2);
+    }
+
+    #[test]
+    fn derive_module_metadata_counts_callable_and_pipeline_nodes() {
+        let mut dag = Dag::new();
+        dag.add_node(callable_node("makegen", "tools.makegen", "makegen"));
+        dag.add_node(Node::opaque(
+            "ci",
+            vec![],
+            vec![Port::scalar("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines.ci".to_string(),
+                name: "ci".to_string(),
+                stages: 12,
+            },
+        ));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert!(artifacts
+            .tool_metadata
+            .modules
+            .iter()
+            .any(|module| module.module == "tools.makegen" && module.callable_count == 1));
+        assert!(artifacts
+            .tool_metadata
+            .modules
+            .iter()
+            .any(|module| module.module == "pipelines.ci" && module.pipeline_count == 1));
+    }
 }

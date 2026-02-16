@@ -15,6 +15,9 @@
 
 use std::path::PathBuf;
 
+use daglang_cli::compile::{
+    build_context, compile_from_context, render_expand, render_manifest, resolve_default_root,
+};
 use daglang_cli::pipeline::{build_pipeline_dag, run_pipeline, PipelineContext, PipelineStop};
 
 fn main() {
@@ -39,19 +42,47 @@ fn main() {
                 let dag = build_pipeline_dag();
                 println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
             } else {
-                eprintln!("TODO: dag viz <file.dag> -- file visualization is not implemented yet.");
+                let context = build_context(args.get(2));
+                match compile_from_context(&context) {
+                    Ok(output) => {
+                        println!("{}", output.lowered_dag.to_mermaid("daglang-compiled"));
+                    }
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(1);
+                    }
+                }
             }
         }
         "expand" => {
-            eprintln!("TODO: dag expand -- Phase 0 deliverable");
-            eprintln!("Will show lowered GraphIR: every Node, Edge, Port.");
+            let context = build_context(args.get(2));
+            match compile_from_context(&context) {
+                Ok(output) => {
+                    println!("{}", render_expand(&output.lowered_dag));
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
         }
         "manifest" => {
-            eprintln!("TODO: dag manifest -- Phase 0 deliverable");
-            eprintln!("Will show derived ProgressManifest: topology, waves, boundaries.");
+            let context = build_context(args.get(2));
+            match compile_from_context(&context) {
+                Ok(output) => {
+                    println!("{}", render_manifest(&output.derived.manifest));
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
         }
         "modules" => {
-            let roots = vec![resolve_root(args.get(2))];
+            let roots = vec![args
+                .get(2)
+                .map(PathBuf::from)
+                .unwrap_or_else(resolve_default_root)];
             let context = PipelineContext {
                 roots,
                 target_file: None,
@@ -79,7 +110,7 @@ fn main() {
                     (vec![root], Some(path))
                 }
                 Some(path) => (vec![path], None),
-                None => (vec![resolve_root(None)], None),
+                None => (vec![resolve_default_root()], None),
             };
 
             let context = PipelineContext { roots, target_file };
@@ -101,25 +132,28 @@ fn main() {
             }
         }
         "compile" => {
-            eprintln!("TODO: dag compile -- Phase 1 deliverable");
-            eprintln!("Will run full pipeline: parse → resolve → typecheck → lower → validate → derive → emit.");
+            let context = build_context(args.get(2));
+            match compile_from_context(&context) {
+                Ok(output) => {
+                    println!(
+                        "Compiled {} module(s) to {} node(s), {} file(s) emitted.",
+                        output.emitted.summary.module_count,
+                        output.derived.manifest.total_nodes,
+                        output.emitted.files.len()
+                    );
+                    for file in &output.emitted.files {
+                        println!("  - {}", file.path);
+                    }
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
         }
         cmd => {
             eprintln!("Unknown command: {cmd}");
             std::process::exit(1);
         }
-    }
-}
-
-fn resolve_root(arg: Option<&String>) -> PathBuf {
-    if let Some(path) = arg {
-        return PathBuf::from(path);
-    }
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let dsl = cwd.join("dsl");
-    if dsl.exists() {
-        dsl
-    } else {
-        PathBuf::from("dsl")
     }
 }
