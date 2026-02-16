@@ -25,7 +25,7 @@ use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, Item, Param, ProvidesClause, SourceFile, Stmt, TypeExpr, UsesClause,
+    Expr, Field, Item, Param, ProvidesClause, SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 
 /// A typechecked project snapshot.
@@ -865,37 +865,76 @@ fn collect_unique_callables(
     let mut callables = HashMap::<String, Option<CallableContract>>::new();
     for module in modules {
         for item in &module.ast.items {
-            let (name, params, output) = match &item.node {
-                Item::FnDef(def) => (
-                    &def.name,
-                    &def.params,
-                    ValueType::Named(type_expr_to_string(&def.return_type)),
+            match &item.node {
+                Item::FnDef(def) => register_callable_contract(
+                    &mut callables,
+                    def.name.clone(),
+                    CallableContract {
+                        arity: def.params.len(),
+                        params: def.params.iter().map(|param| param.name.clone()).collect(),
+                        output: ValueType::Named(type_expr_to_string(&def.return_type)),
+                    },
                 ),
-                Item::FuncDef(def) => (&def.name, &def.params, ValueType::Record(field_signature_map(&def.outputs))),
-                Item::PatternDef(def) => {
-                    (&def.name, &def.params, ValueType::Record(field_signature_map(&def.outputs)))
-                }
-                _ => continue,
-            };
-            let contract = CallableContract {
-                arity: params.len(),
-                params: params.iter().map(|param| param.name.clone()).collect(),
-                output,
-            };
-            callables
-                .entry(name.clone())
-                .and_modify(|existing| {
-                    if existing.is_some() {
-                        *existing = None;
+                Item::FuncDef(def) => register_callable_contract(
+                    &mut callables,
+                    def.name.clone(),
+                    CallableContract {
+                        arity: def.params.len(),
+                        params: def.params.iter().map(|param| param.name.clone()).collect(),
+                        output: ValueType::Record(field_signature_map(&def.outputs)),
+                    },
+                ),
+                Item::PatternDef(def) => register_callable_contract(
+                    &mut callables,
+                    def.name.clone(),
+                    CallableContract {
+                        arity: def.params.len(),
+                        params: def.params.iter().map(|param| param.name.clone()).collect(),
+                        output: ValueType::Record(field_signature_map(&def.outputs)),
+                    },
+                ),
+                Item::TypeDef(def) => {
+                    if let TypeBody::Sum(variants) = &def.body {
+                        for variant in variants {
+                            register_callable_contract(
+                                &mut callables,
+                                variant.name.clone(),
+                                CallableContract {
+                                    arity: variant.fields.len(),
+                                    params: variant
+                                        .fields
+                                        .iter()
+                                        .map(|field| field.name.clone())
+                                        .collect(),
+                                    output: ValueType::Named(def.name.clone()),
+                                },
+                            );
+                        }
                     }
-                })
-                .or_insert_with(|| Some(contract));
+                }
+                _ => {}
+            }
         }
     }
     for (name, contract) in builtin_callable_contracts() {
         callables.entry(name).or_insert(Some(contract));
     }
     callables
+}
+
+fn register_callable_contract(
+    callables: &mut HashMap<String, Option<CallableContract>>,
+    name: String,
+    contract: CallableContract,
+) {
+    callables
+        .entry(name)
+        .and_modify(|existing| {
+            if existing.is_some() {
+                *existing = None;
+            }
+        })
+        .or_insert(Some(contract));
 }
 
 fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
@@ -3145,6 +3184,61 @@ fn apply(callback: fn(Int) -> Int) -> Int {
                 expected,
                 got
             } if caller == "apply" && callee == "callback" && *expected == 1 && *got == 0
+        )));
+    }
+
+    #[test]
+    fn strict_mode_accepts_sum_variant_constructor_call_targets() {
+        let graph = module_graph_from_sources(&[(
+            "sample/constructors.dag",
+            r#"module sample.constructors
+type CloudConfig
+  = GcpConfig { project: String, region: String }
+  | AwsConfig { region: String }
+
+fn make_gcp() -> CloudConfig {
+  GcpConfig(project: "gunbc", region: "us-central1")
+}
+"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("sum variant constructors should resolve as callable targets");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
+    fn sum_variant_constructor_call_reports_arity_mismatch() {
+        let graph = module_graph_from_sources(&[(
+            "sample/constructor_arity.dag",
+            r#"module sample.constructors
+type CloudConfig
+  = GcpConfig { project: String, region: String }
+
+fn make_gcp() -> CloudConfig {
+  GcpConfig(project: "gunbc")
+}
+"#,
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("variant constructor calls should enforce field arity");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::CallArityMismatch {
+                caller,
+                callee,
+                expected,
+                got
+            } if caller == "make_gcp" && callee == "GcpConfig" && *expected == 2 && *got == 1
         )));
     }
 

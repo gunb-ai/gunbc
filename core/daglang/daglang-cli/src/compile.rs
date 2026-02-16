@@ -1145,6 +1145,44 @@ fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
     }
 
     #[test]
+    fn compile_directory_sum_variant_constructor_calls_typecheck_in_strict_mode() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_sum_variant_constructor_calls_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+type CloudConfig
+  = GcpConfig { project: String, region: String }
+  | AwsConfig { region: String }
+
+fn make_gcp() -> CloudConfig {
+  GcpConfig(project: "gunbc", region: "us-central1")
+}
+"#,
+        )
+        .expect("failed to write constructor source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn compile_single_file_duplicate_service_suppresses_ambiguous_service_call() {
         let fixture = unique_temp_file("single_file_duplicate_service");
         std::fs::write(

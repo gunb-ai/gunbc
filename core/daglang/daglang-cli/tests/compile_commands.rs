@@ -13184,6 +13184,42 @@ fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
 }
 
 #[test]
+fn compile_command_directory_mode_accepts_sum_variant_constructor_calls() {
+    let root = unique_temp_dir("sum_variant_constructor_calls");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+type CloudConfig
+  = GcpConfig { project: String, region: String }
+  | AwsConfig { region: String }
+
+fn make_gcp() -> CloudConfig {
+  GcpConfig(project: "gunbc", region: "us-central1")
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept sum variant constructor calls: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_type_mismatch() {
     let root = unique_temp_dir("type_mismatch");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
