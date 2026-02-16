@@ -12,7 +12,7 @@ pub enum TokenKind {
     Module, Import, Type, Fn, Func, Pattern, Service, Resource, Interface, Pipeline,
     Let, Return, Match, If, Else, For, In, When, After, Node, Uses, Provides,
     Acquire, Release, Capability, Operation, Input, Output, Stage,
-    True, False, NoneLit, As, Parallel, Config, With, SelfKw,
+    True, False, NoneLit, As, Implements, Parallel, Config, With, SelfKw,
     // Delimiters
     LBrace, RBrace, LParen, RParen, LBracket, RBracket,
     // Operators
@@ -44,7 +44,8 @@ impl TokenKind {
             Self::Capability => "capability", Self::Operation => "operation",
             Self::Input => "input", Self::Output => "output", Self::Stage => "stage",
             Self::True => "true", Self::False => "false", Self::NoneLit => "none",
-            Self::As => "as", Self::Parallel => "parallel", Self::Config => "config",
+            Self::As => "as", Self::Implements => "implements",
+            Self::Parallel => "parallel", Self::Config => "config",
             Self::With => "with", Self::SelfKw => "self",
             Self::LBrace => "{", Self::RBrace => "}", Self::LParen => "(",
             Self::RParen => ")", Self::LBracket => "[", Self::RBracket => "]",
@@ -128,10 +129,19 @@ impl<'a> Lexer<'a> {
 
     pub fn next_token(&mut self) -> Token {
         self.skip_ws();
-        let start = self.pos;
         if self.pos >= self.source.len() {
-            return self.tok(TokenKind::Eof, start);
+            return self.tok(TokenKind::Eof, self.pos);
         }
+
+        // Inside string interpolation expressions, authors often escape inner
+        // quotes as `\"` because the interpolation is lexed from within an
+        // outer string literal. Treat that pair as a normal quote in interp
+        // mode by dropping the escape slash.
+        if !self.interp_depth.is_empty() && self.peek() == b'\\' && self.peek_at(1) == b'"' {
+            self.pos += 1;
+        }
+
+        let start = self.pos;
         let ch = self.peek();
 
         if ch == b'}' {
@@ -197,6 +207,7 @@ impl<'a> Lexer<'a> {
             "output" => TokenKind::Output, "stage" => TokenKind::Stage,
             "true" => TokenKind::True, "false" => TokenKind::False,
             "none" => TokenKind::NoneLit, "as" => TokenKind::As,
+            "implements" => TokenKind::Implements,
             "parallel" => TokenKind::Parallel, "config" => TokenKind::Config,
             "with" => TokenKind::With, "self" | "Self" => TokenKind::SelfKw,
             _ => TokenKind::Ident(text.to_string()),
@@ -241,8 +252,23 @@ impl<'a> Lexer<'a> {
             if self.pos >= self.source.len() { break; }
             match self.peek() {
                 b'"' => { self.pos += 1; return self.tok(TokenKind::Str(buf), start); }
-                b'{' => { self.pos += 1; self.interp_depth.push(0); return self.tok(TokenKind::StrBegin(buf), start); }
-                b'\\' => { self.pos += 1; self.scan_escape(&mut buf); }
+                b'{' => {
+                    if self.should_start_interpolation() {
+                        self.pos += 1;
+                        self.interp_depth.push(0);
+                        return self.tok(TokenKind::StrBegin(buf), start);
+                    }
+                    buf.push('{');
+                    self.pos += 1;
+                }
+                b'\\' => {
+                    if !self.interp_depth.is_empty() && self.peek_at(1) == b'"' {
+                        self.pos += 2;
+                        return self.tok(TokenKind::Str(buf), start);
+                    }
+                    self.pos += 1;
+                    self.scan_escape(&mut buf);
+                }
                 ch => { buf.push(ch as char); self.pos += 1; }
             }
         }
@@ -255,12 +281,26 @@ impl<'a> Lexer<'a> {
             if self.pos >= self.source.len() { break; }
             match self.peek() {
                 b'"' => { self.pos += 1; return self.tok(TokenKind::StrEnd(buf), start); }
-                b'{' => { self.pos += 1; self.interp_depth.push(0); return self.tok(TokenKind::StrMid(buf), start); }
+                b'{' => {
+                    if self.should_start_interpolation() {
+                        self.pos += 1;
+                        self.interp_depth.push(0);
+                        return self.tok(TokenKind::StrMid(buf), start);
+                    }
+                    buf.push('{');
+                    self.pos += 1;
+                }
                 b'\\' => { self.pos += 1; self.scan_escape(&mut buf); }
                 ch => { buf.push(ch as char); self.pos += 1; }
             }
         }
         self.tok(TokenKind::StrEnd(buf), start)
+    }
+
+    fn should_start_interpolation(&self) -> bool {
+        let next = self.peek_at(1);
+        matches!(next, b'a'..=b'z' | b'A'..=b'Z' | b'_')
+            || matches!(next, b'(' | b'!' | b'-')
     }
 }
 
