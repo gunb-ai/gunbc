@@ -1626,6 +1626,74 @@ mod tests {
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn report_pipeline_deduplicates_parse_diagnostics_in_directory_symlink_cycle() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("report_symlink_cycle_parse_dedup");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("failed to create nested root");
+        fs::write(nested.join("broken.dag"), "module sample.broken\nfn")
+            .expect("failed to write invalid source");
+        symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+        let result = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.clone()],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("report pipeline should execute");
+        let broken_hits = result
+            .diagnostics
+            .iter()
+            .filter(|diag| diag.render().contains("broken.dag"))
+            .count();
+        assert_eq!(
+            broken_hits, 1,
+            "report pipeline should not duplicate parse diagnostics in symlink cycle"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn report_pipeline_output_is_deterministic_in_directory_symlink_cycle_with_errors() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("report_symlink_cycle_deterministic_errors");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("failed to create nested root");
+        fs::write(nested.join("broken.dag"), "module sample.broken\nfn")
+            .expect("failed to write invalid source");
+        symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
+
+        let first = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.clone()],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("first report pipeline run should execute");
+        let second = run_pipeline(
+            &PipelineContext {
+                roots: vec![root.clone()],
+                target_file: None,
+            },
+            PipelineStop::Report,
+        )
+        .expect("second report pipeline run should execute");
+
+        assert_eq!(first.diagnostics, second.diagnostics);
+        assert_eq!(first.report, second.report);
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
     #[test]
     fn report_pipeline_with_empty_roots_emits_empty_graph_report() {
         let context = PipelineContext {
