@@ -95,6 +95,8 @@ fn manifest_command_shows_derived_progress_manifest() {
     assert!(stdout.contains("ProgressManifest:"));
     assert!(stdout.contains("total_nodes:"));
     assert!(stdout.contains("waves:"));
+    assert!(stdout.contains("TestObligations:"));
+    assert!(stdout.contains("service_transport_prepare_targets:"));
 }
 
 #[test]

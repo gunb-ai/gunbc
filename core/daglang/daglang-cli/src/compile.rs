@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::pipeline::PipelineContext;
-use daglang_derive::{derive_artifacts, DerivedArtifacts, ProgressManifest};
+use daglang_derive::{derive_artifacts, DerivedArtifacts};
 use daglang_emit::{emit_rust_bundle, EmissionBundle};
 use daglang_lower::{lower_typed_project, LoweredOp};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
@@ -223,7 +223,9 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
     out
 }
 
-pub fn render_manifest(manifest: &ProgressManifest) -> String {
+pub fn render_manifest(derived: &DerivedArtifacts) -> String {
+    let manifest = &derived.manifest;
+    let obligations = &derived.obligations;
     let mut out = String::new();
     out.push_str("ProgressManifest:\n");
     out.push_str(&format!("  total_nodes: {}\n", manifest.total_nodes));
@@ -247,6 +249,39 @@ pub fn render_manifest(manifest: &ProgressManifest) -> String {
         } else {
             manifest.boundary_nodes.join(", ")
         }
+    ));
+    out.push_str("TestObligations:\n");
+    out.push_str(&format!(
+        "  dry_run_completion_required: {}\n",
+        obligations.dry_run_completion_required
+    ));
+    out.push_str(&format!(
+        "  transport_execution_targets: {}\n",
+        obligations.transport_execution_targets
+    ));
+    out.push_str(&format!(
+        "  pure_node_determinism_targets: {}\n",
+        obligations.pure_node_determinism_targets
+    ));
+    out.push_str(&format!(
+        "  service_transport_prepare_targets: {}\n",
+        obligations.service_transport_prepare_targets
+    ));
+    out.push_str(&format!(
+        "  service_transport_execute_targets: {}\n",
+        obligations.service_transport_execute_targets
+    ));
+    out.push_str(&format!(
+        "  service_transport_parse_targets: {}\n",
+        obligations.service_transport_parse_targets
+    ));
+    out.push_str(&format!(
+        "  resource_acquire_targets: {}\n",
+        obligations.resource_acquire_targets
+    ));
+    out.push_str(&format!(
+        "  resource_release_targets: {}\n",
+        obligations.resource_release_targets
     ));
     out
 }
@@ -281,6 +316,9 @@ mod tests {
         assert!(!output.lowered_dag.nodes.is_empty());
         assert!(output.derived.manifest.total_nodes > 0);
         assert!(!output.emitted.files.is_empty());
+        let rendered = render_manifest(&output.derived);
+        assert!(rendered.contains("TestObligations:"));
+        assert!(rendered.contains("service_transport_prepare_targets:"));
     }
 
     #[test]

@@ -70,7 +70,7 @@ fn main() {
             let context = build_context(args.get(2));
             match compile_from_context(&context) {
                 Ok(output) => {
-                    println!("{}", render_manifest(&output.derived.manifest));
+                    println!("{}", render_manifest(&output.derived));
                 }
                 Err(error) => {
                     eprintln!("{error}");
