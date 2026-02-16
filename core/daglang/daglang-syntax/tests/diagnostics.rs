@@ -53,6 +53,25 @@ fn parse_with_file_diagnostics_preserves_lex_diagnostic_kind() {
         .expect_err("source should fail with lexical diagnostic");
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].kind, DiagnosticKind::Lex);
+    assert_eq!(
+        diagnostics[0].file.as_ref().and_then(|f| f.to_str()),
+        Some("sample.dag")
+    );
     assert_eq!(diagnostics[0].line, Some(2));
     assert_eq!(diagnostics[0].column, Some(1));
+}
+
+#[test]
+fn parse_with_file_diagnostics_preserves_parse_diagnostic_kind() {
+    let src = "module test\nfn broken( -> String {\n";
+    let diagnostics = parse_with_file_diagnostics(Path::new("sample.dag"), src)
+        .expect_err("source should fail with parse diagnostic");
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].kind, DiagnosticKind::Parse);
+    assert_eq!(
+        diagnostics[0].file.as_ref().and_then(|f| f.to_str()),
+        Some("sample.dag")
+    );
+    assert_eq!(diagnostics[0].line, Some(2));
+    assert_eq!(diagnostics[0].column, Some(12));
 }

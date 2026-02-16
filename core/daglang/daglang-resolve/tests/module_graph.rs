@@ -178,6 +178,30 @@ fn parse_errors_are_aggregated_across_multiple_files() {
 }
 
 #[test]
+fn parse_error_display_includes_all_files_and_locations() {
+    let root = unique_temp_dir("parse_error_display");
+    write_file(&root.join("broken_a.dag"), "module sample.a\nfn");
+    write_file(&root.join("broken_b.dag"), "module sample.b\nimport");
+
+    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected parse errors");
+    let rendered = err.to_string();
+    assert!(
+        rendered.contains("broken_a.dag"),
+        "display should include first broken file path"
+    );
+    assert!(
+        rendered.contains("broken_b.dag"),
+        "display should include second broken file path"
+    );
+    assert!(
+        rendered.contains(":2:"),
+        "display should include line/column data"
+    );
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
 fn discovery_order_is_deterministic_across_runs() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph_a = ModuleGraph::discover(&[dsl_root.clone()]).expect("first discover should succeed");
