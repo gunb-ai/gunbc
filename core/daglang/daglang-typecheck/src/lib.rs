@@ -163,6 +163,11 @@ pub enum TypeError {
         callee: String,
         argument: String,
     },
+    /// Call expression target resolves to multiple callable contracts.
+    AmbiguousCallTarget {
+        caller: String,
+        callee: String,
+    },
     /// Service call expression used wrong number of arguments.
     ServiceCallArityMismatch {
         caller: String,
@@ -307,6 +312,10 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "duplicate named argument `{argument}` in call to `{callee}` within `{caller}`"
+            ),
+            Self::AmbiguousCallTarget { caller, callee } => write!(
+                f,
+                "ambiguous call target `{callee}` in `{caller}`"
             ),
             Self::ServiceCallArityMismatch {
                 caller,
@@ -1055,8 +1064,18 @@ fn validate_callable_body(
     let mut calls = Vec::new();
     collect_calls_from_stmts(stmts, &mut calls);
     for call in calls {
-        let Some(Some(contract)) = callable_registry.get(&call.callee) else {
-            continue;
+        let contract = match callable_registry.get(&call.callee) {
+            Some(Some(contract)) => contract,
+            Some(None) => {
+                if !allow_unresolved_references {
+                    errors.push(TypeError::AmbiguousCallTarget {
+                        caller: caller.to_string(),
+                        callee: call.callee.clone(),
+                    });
+                }
+                continue;
+            }
+            None => continue,
         };
         if call.arg_count != contract.arity {
             errors.push(TypeError::CallArityMismatch {
@@ -1764,6 +1783,36 @@ mod tests {
                 expected,
                 got
             } if caller == "run" && callee == "fmt" && *expected == 1 && *got == 0
+        )));
+    }
+
+    #[test]
+    fn strict_mode_reports_ambiguous_call_target() {
+        let graph = module_graph_from_sources(&[
+            (
+                "sample/one.dag",
+                "module sample.one\nfn render(value: String) -> String { value }",
+            ),
+            (
+                "sample/two.dag",
+                "module sample.two\nfn render(value: String) -> String { value }",
+            ),
+            (
+                "sample/main.dag",
+                "module sample.main\nfn run() -> String { render(value: \"ok\") }",
+            ),
+        ]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for ambiguous callable target");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousCallTarget { caller, callee }
+                if caller == "run" && callee == "render"
         )));
     }
 

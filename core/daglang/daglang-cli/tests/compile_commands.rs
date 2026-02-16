@@ -862,6 +862,44 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn compile_command_directory_mode_fails_on_ambiguous_callable_target() {
+    let root = unique_temp_dir("ambiguous_callable_target");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/one.dag"),
+        "module sample.one\nfn render(value: String) -> String { value }",
+    )
+    .expect("failed to write first callable source");
+    std::fs::write(
+        root.join("sample/two.dag"),
+        "module sample.two\nfn render(value: String) -> String { value }",
+    )
+    .expect("failed to write second callable source");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        "module sample.main\nfn run() -> String { render(value: \"ok\") }",
+    )
+    .expect("failed to write main source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on ambiguous callable target"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("ambiguous call target `render`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_reports_module_path_mismatch() {
     let root = unique_temp_dir("path_mismatch");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
