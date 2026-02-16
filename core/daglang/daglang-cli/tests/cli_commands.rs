@@ -30443,10 +30443,18 @@ fn obligations_and_show_triplets_with_missing_format_value_exit_with_usage_messa
 
 #[test]
 fn compile_family_commands_execute_real_pipeline_paths() {
-    for command in ["expand", "manifest", "compile"] {
+    let commands: [(&str, &[&str]); 5] = [
+        ("expand", &[]),
+        ("manifest", &[]),
+        ("compile", &[]),
+        ("obligations", &["--format", "json"]),
+        ("show-triplets", &["--format", "json"]),
+    ];
+    for (command, trailing_args) in commands {
         let output = Command::new(daglang_bin())
             .arg(command)
             .arg("dsl/tools/makegen.dag")
+            .args(trailing_args)
             .current_dir(workspace_root())
             .output()
             .unwrap_or_else(|err| panic!("failed to run {command}: {err}"));
