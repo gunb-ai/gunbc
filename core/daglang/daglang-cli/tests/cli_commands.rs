@@ -140,6 +140,43 @@ fn check_command_default_root_matches_explicit_dsl_output() {
 }
 
 #[test]
+fn check_command_relative_and_absolute_root_are_equivalent() {
+    let relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run relative-root daglang check");
+    assert!(
+        relative.status.success(),
+        "relative-root check should succeed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute_root = workspace_root().join("dsl");
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run absolute-root daglang check");
+    assert!(
+        absolute.status.success(),
+        "absolute-root check should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute root check outputs should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute root check stderr should match"
+    );
+}
+
+#[test]
 fn modules_command_prints_module_graph_summary() {
     let output = Command::new(daglang_bin())
         .arg("modules")
@@ -198,6 +235,43 @@ fn modules_command_default_root_matches_explicit_dsl_output() {
     assert_eq!(
         default.stderr, explicit.stderr,
         "default modules stderr should match explicit-root stderr"
+    );
+}
+
+#[test]
+fn modules_command_relative_and_absolute_root_are_equivalent() {
+    let relative = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run relative-root daglang modules");
+    assert!(
+        relative.status.success(),
+        "relative-root modules should succeed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute_root = workspace_root().join("dsl");
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run absolute-root daglang modules");
+    assert!(
+        absolute.status.success(),
+        "absolute-root modules should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute root modules outputs should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute root modules stderr should match"
     );
 }
 
