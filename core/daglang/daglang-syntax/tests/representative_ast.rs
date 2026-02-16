@@ -1,0 +1,83 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use daglang_syntax::ast::{Item, TypeBody};
+
+fn dsl_file(path: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../dsl")
+        .join(path)
+}
+
+fn parse_dsl(path: &str) -> daglang_syntax::ast::SourceFile {
+    let file = dsl_file(path);
+    let source = fs::read_to_string(&file).expect("failed to read representative .dag file");
+    daglang_syntax::parser::parse(&source)
+        .unwrap_or_else(|errors| panic!("failed to parse {}: {errors:?}", file.display()))
+}
+
+#[test]
+fn makegen_contains_fn_and_func_items() {
+    let source = parse_dsl("tools/makegen.dag");
+    assert_eq!(
+        source.module_path.as_ref().map(|module| module.node.segments.clone()),
+        Some(vec!["tools".into(), "makegen".into()])
+    );
+    assert!(source
+        .items
+        .iter()
+        .any(|item| matches!(item.node, Item::FnDef(_))));
+    assert!(source
+        .items
+        .iter()
+        .any(|item| matches!(item.node, Item::FuncDef(_))));
+}
+
+#[test]
+fn types_file_contains_record_sum_and_alias_definitions() {
+    let source = parse_dsl("std/types.dag");
+
+    let mut saw_record = false;
+    let mut saw_sum = false;
+    let mut saw_alias = false;
+    for item in &source.items {
+        if let Item::TypeDef(typedef) = &item.node {
+            match typedef.body {
+                TypeBody::Record(_) => saw_record = true,
+                TypeBody::Sum(_) => saw_sum = true,
+                TypeBody::Alias(_) => saw_alias = true,
+            }
+        }
+    }
+
+    assert!(saw_record, "expected at least one record type definition");
+    assert!(saw_sum, "expected at least one sum type definition");
+    assert!(saw_alias, "expected at least one alias type definition");
+}
+
+#[test]
+fn patterns_file_contains_pattern_defs() {
+    let source = parse_dsl("std/patterns.dag");
+    assert!(source
+        .items
+        .iter()
+        .any(|item| matches!(item.node, Item::PatternDef(_))));
+}
+
+#[test]
+fn shell_service_file_contains_service_defs() {
+    let source = parse_dsl("services/shell.dag");
+    assert!(source
+        .items
+        .iter()
+        .any(|item| matches!(item.node, Item::ServiceDef(_))));
+}
+
+#[test]
+fn resources_file_contains_resource_defs() {
+    let source = parse_dsl("std/resources.dag");
+    assert!(source
+        .items
+        .iter()
+        .any(|item| matches!(item.node, Item::ResourceDef(_))));
+}

@@ -1,0 +1,18 @@
+#[test]
+fn malformed_inputs_return_errors_without_panicking() {
+    let malformed_sources = [
+        "module bad\nfn",
+        "module bad\nimport",
+        "module bad\ntype",
+        "module bad\n@",
+    ];
+
+    for source in malformed_sources {
+        let result = std::panic::catch_unwind(|| daglang_syntax::parser::parse(source));
+        assert!(result.is_ok(), "parser should not panic for malformed source");
+        assert!(
+            result.unwrap().is_err(),
+            "malformed source should return parser diagnostics: {source:?}"
+        );
+    }
+}
