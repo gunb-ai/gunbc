@@ -340,6 +340,50 @@ func run() -> { ok: Bool } provides out: MissingResource {
 }
 
 #[test]
+fn expand_command_shows_param_source_wiring_for_identifier_service_args() {
+    let fixture = unique_temp_file("service_param_source_expand");
+    std::fs::write(
+        &fixture,
+        r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = FsStorage.read(path: path)
+  return { body: response.body }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("expand")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang expand on fixture");
+
+    assert!(
+        output.status.success(),
+        "expand command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("param_source_sample_services_run_path"));
+    assert!(stdout.contains(
+        "param_source_sample_services_run_path.path -> prepare_transport_sample_services_FsStorage_read.path"
+    ));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_unresolved_imports() {
     let root = unique_temp_dir("unresolved_import");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
