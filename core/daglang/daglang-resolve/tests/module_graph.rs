@@ -19,21 +19,70 @@ fn write_file(path: &Path, content: &str) {
     fs::write(path, content).expect("failed to write test file");
 }
 
+fn expected_dsl_modules_sorted() -> Vec<&'static str> {
+    vec![
+        "cloud.aws.credential",
+        "cloud.azure.credential",
+        "cloud.gcp.credential",
+        "examples.abstract_services",
+        "examples.deployment",
+        "examples.integration_tests",
+        "examples.rich_types",
+        "infra.aws.config",
+        "infra.aws.resources",
+        "infra.aws.services",
+        "infra.azure.config",
+        "infra.azure.resources",
+        "infra.azure.services",
+        "infra.core",
+        "infra.gcp.config",
+        "infra.gcp.resources",
+        "infra.gcp.services",
+        "infra.spec",
+        "pipelines.ci",
+        "services.cargo",
+        "services.gcp.iam",
+        "services.gcp.secret_manager",
+        "services.gcp.sts",
+        "services.git",
+        "services.github.gist",
+        "services.shell",
+        "shared.dag_util",
+        "shared.gist_modes",
+        "std.patterns",
+        "std.resources",
+        "std.types",
+        "tools.bootstrap",
+        "tools.build",
+        "tools.clippy",
+        "tools.codegen",
+        "tools.dag_viz",
+        "tools.deps",
+        "tools.docgen",
+        "tools.gist",
+        "tools.makegen",
+        "tools.pragma",
+        "tools.testgen",
+    ]
+}
+
 #[test]
 fn discovers_all_real_dsl_modules() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
 
     assert_eq!(graph.modules.len(), 42, "expected 42 discovered modules");
-    let module_names: Vec<String> = graph
+    let mut module_names: Vec<String> = graph
         .modules
         .iter()
         .map(|module| module.module_path.join("."))
         .collect();
-    assert!(module_names.iter().any(|m| m == "tools.makegen"));
-    assert!(module_names.iter().any(|m| m == "std.types"));
-    assert!(module_names.iter().any(|m| m == "infra.core"));
-    assert!(module_names.iter().any(|m| m == "pipelines.ci"));
+    module_names.sort();
+    let expected: Vec<String> = expected_dsl_modules_sorted()
+        .into_iter()
+        .map(String::from)
+        .collect();
+    assert_eq!(module_names, expected);
 }
 
 #[test]

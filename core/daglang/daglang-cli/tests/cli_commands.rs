@@ -26,6 +26,53 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("daglang_cli_{name}_{}_{}", std::process::id(), nanos))
 }
 
+fn expected_dsl_modules_sorted() -> Vec<&'static str> {
+    vec![
+        "cloud.aws.credential",
+        "cloud.azure.credential",
+        "cloud.gcp.credential",
+        "examples.abstract_services",
+        "examples.deployment",
+        "examples.integration_tests",
+        "examples.rich_types",
+        "infra.aws.config",
+        "infra.aws.resources",
+        "infra.aws.services",
+        "infra.azure.config",
+        "infra.azure.resources",
+        "infra.azure.services",
+        "infra.core",
+        "infra.gcp.config",
+        "infra.gcp.resources",
+        "infra.gcp.services",
+        "infra.spec",
+        "pipelines.ci",
+        "services.cargo",
+        "services.gcp.iam",
+        "services.gcp.secret_manager",
+        "services.gcp.sts",
+        "services.git",
+        "services.github.gist",
+        "services.shell",
+        "shared.dag_util",
+        "shared.gist_modes",
+        "std.patterns",
+        "std.resources",
+        "std.types",
+        "tools.bootstrap",
+        "tools.build",
+        "tools.clippy",
+        "tools.codegen",
+        "tools.dag_viz",
+        "tools.deps",
+        "tools.docgen",
+        "tools.gist",
+        "tools.makegen",
+        "tools.pragma",
+        "tools.testgen",
+    ]
+}
+
 #[test]
 fn check_command_parses_full_dsl_corpus() {
     let output = Command::new(daglang_bin())
@@ -63,8 +110,13 @@ fn modules_command_prints_module_graph_summary() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Discovered modules:"));
-    assert!(stdout.contains("tools.makegen"));
-    assert!(stdout.contains("std.types"));
+    for module in expected_dsl_modules_sorted() {
+        let entry = format!("  {module}  (");
+        assert!(
+            stdout.contains(&entry),
+            "modules output is missing expected module entry '{module}':\n{stdout}"
+        );
+    }
 }
 
 #[test]
