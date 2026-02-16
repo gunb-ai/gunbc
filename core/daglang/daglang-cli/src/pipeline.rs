@@ -1383,6 +1383,36 @@ mod tests {
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn report_pipeline_derives_module_path_for_symlink_root_without_module_decl() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_temp_dir("symlink_root_module_path_fallback");
+        let real = root.join("real");
+        let link = root.join("link");
+        let nested = real.join("nested");
+        fs::create_dir_all(&nested).expect("failed to create nested root");
+        fs::write(nested.join("no_module.dag"), "fn ok() -> Unit {}")
+            .expect("failed to write source");
+        symlink(&real, &link).expect("failed to create root symlink");
+
+        let context = PipelineContext {
+            roots: vec![link],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+
+        assert!(result.diagnostics.is_empty());
+        let report = result.report.expect("report output should be present");
+        assert!(
+            report.contains("nested.no_module"),
+            "module-path fallback should be derived relative to symlink root: {report}"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
     #[test]
     fn report_pipeline_with_empty_roots_emits_empty_graph_report() {
         let context = PipelineContext {

@@ -668,3 +668,24 @@ fn discovery_deduplicates_parse_errors_from_symlink_and_real_roots() {
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
+
+#[cfg(unix)]
+#[test]
+fn discovery_derives_module_path_for_symlink_root_without_module_decl() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("symlink_root_module_path_fallback");
+    let real = root.join("real");
+    let link = root.join("link");
+    write_file(&real.join("nested/no_module.dag"), "fn ok() -> Unit {}");
+    symlink(&real, &link).expect("failed to create root symlink");
+
+    let graph = ModuleGraph::discover(&[link]).expect("discover should succeed");
+    assert_eq!(graph.modules.len(), 1);
+    assert_eq!(
+        graph.modules[0].module_path,
+        vec!["nested".to_string(), "no_module".to_string()]
+    );
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
