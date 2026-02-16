@@ -1097,6 +1097,27 @@ mod tests {
     }
 
     #[test]
+    fn target_file_mode_ignores_directory_roots() {
+        let valid_root = unique_temp_dir("target_file_ignores_roots");
+        fs::create_dir_all(&valid_root).expect("failed to create valid temp root");
+        let target = valid_root.join("good.dag");
+        fs::write(&target, "module sample.good\nfn ok() -> Unit {}")
+            .expect("failed to write valid source");
+
+        let missing_root = unique_temp_dir("target_file_missing_root");
+        let context = PipelineContext {
+            roots: vec![missing_root],
+            target_file: Some(target),
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse)
+            .expect("target-file mode should not require directory roots");
+        assert_eq!(result.parsed_count, 1);
+        assert!(result.diagnostics.is_empty());
+
+        fs::remove_dir_all(valid_root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn parse_pipeline_with_empty_roots_succeeds_with_zero_files() {
         let context = PipelineContext {
             roots: vec![],
