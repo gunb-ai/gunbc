@@ -549,9 +549,35 @@ fn topological_order(dag: &Dag<CompilerOp>) -> Result<Vec<String>, String> {
 }
 
 fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
+    let node_by_id: HashMap<String, &Node<CompilerOp>> =
+        dag.nodes.iter().map(|node| (node.id.0.clone(), node)).collect();
     let mut occupied_inputs: HashSet<(String, String)> = HashSet::new();
     let mut incoming_by_node: HashMap<String, usize> = HashMap::new();
     for edge in &dag.edges {
+        let from_node = node_by_id
+            .get(&edge.from_node.0)
+            .ok_or_else(|| format!("edge source node does not exist: {}", edge.from_node.0))?;
+        if !from_node
+            .outputs
+            .iter()
+            .any(|port| port.name.0 == edge.from_port.0)
+        {
+            return Err(format!(
+                "edge source port does not exist: {}.{}",
+                edge.from_node.0, edge.from_port.0
+            ));
+        }
+
+        let to_node = node_by_id
+            .get(&edge.to_node.0)
+            .ok_or_else(|| format!("edge target node does not exist: {}", edge.to_node.0))?;
+        if !to_node.inputs.iter().any(|port| port.name.0 == edge.to_port.0) {
+            return Err(format!(
+                "edge target port does not exist: {}.{}",
+                edge.to_node.0, edge.to_port.0
+            ));
+        }
+
         *incoming_by_node.entry(edge.to_node.0.clone()).or_insert(0) += 1;
         let key = (edge.to_node.0.clone(), edge.to_port.0.clone());
         if !occupied_inputs.insert(key.clone()) {
@@ -870,5 +896,35 @@ mod tests {
         let err = validate_pipeline_semantics(&dag)
             .expect_err("non-entrypoint with unconnected input should fail");
         assert!(err.contains("unconnected input port"));
+    }
+
+    #[test]
+    fn pipeline_rejects_edge_with_unknown_source_port() {
+        let mut dag = build_pipeline_dag();
+        dag.add_edge(Edge::new(
+            NODE_DISCOVER,
+            "missing_output",
+            NODE_PARSE,
+            PORT_FILES,
+        ));
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("edge from unknown source port should fail");
+        assert!(err.contains("edge source port does not exist"));
+    }
+
+    #[test]
+    fn pipeline_rejects_edge_with_unknown_target_port() {
+        let mut dag = build_pipeline_dag();
+        dag.add_edge(Edge::new(
+            NODE_DISCOVER,
+            PORT_FILES,
+            NODE_PARSE,
+            "missing_input",
+        ));
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("edge to unknown target port should fail");
+        assert!(err.contains("edge target port does not exist"));
     }
 }
