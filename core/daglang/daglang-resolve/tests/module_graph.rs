@@ -943,6 +943,53 @@ fn discovery_deduplicates_parse_errors_from_equivalent_curdir_suffix_roots() {
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
 
+#[test]
+fn discovery_is_independent_of_equivalent_curdir_suffix_root_order() {
+    let root = unique_temp_dir("equivalent_curdir_suffix_root_order");
+    write_file(
+        &root.join("main.dag"),
+        "module sample.main\nfn ok() -> Unit {}",
+    );
+
+    let first = ModuleGraph::discover(&[root.clone(), root.join(".")]).expect("first discover");
+    let second = ModuleGraph::discover(&[root.join("."), root.clone()]).expect("second discover");
+
+    let first_paths: Vec<String> = first
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    let second_paths: Vec<String> = second
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect();
+    assert_eq!(first_paths, second_paths);
+    assert_eq!(first.display_tree(), second.display_tree());
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
+#[test]
+fn discovery_parse_errors_are_independent_of_equivalent_curdir_suffix_root_order() {
+    let root = unique_temp_dir("equivalent_curdir_suffix_root_order_parse_errors");
+    write_file(&root.join("broken.dag"), "module sample.broken\nfn");
+
+    let first = ModuleGraph::discover(&[root.clone(), root.join(".")])
+        .expect_err("first discover should return parse errors");
+    let second = ModuleGraph::discover(&[root.join("."), root.clone()])
+        .expect_err("second discover should return parse errors");
+
+    match (first, second) {
+        (ResolveError::ParseErrors(first_files), ResolveError::ParseErrors(second_files)) => {
+            assert_eq!(first_files, second_files);
+        }
+        (left, right) => panic!("expected parse errors for both runs, got {left:?} and {right:?}"),
+    }
+
+    fs::remove_dir_all(root).expect("failed to clean temp directory");
+}
+
 #[cfg(unix)]
 #[test]
 fn discovery_deduplicates_files_from_symlink_and_real_roots() {
