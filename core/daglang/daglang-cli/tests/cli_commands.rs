@@ -102,6 +102,15 @@ fn check_command_parses_full_dsl_corpus() {
         stdout.contains("OK: parsed 42 file(s)"),
         "unexpected check output: {stdout}"
     );
+    assert!(
+        output.stderr.is_empty(),
+        "check over golden corpus should not emit stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !stdout.contains("Diagnostics:"),
+        "parse-only check over golden corpus should not emit diagnostics: {stdout}"
+    );
 }
 
 #[test]
@@ -200,6 +209,37 @@ fn modules_command_prints_module_graph_summary() {
     assert_eq!(
         reported_modules, expected_modules,
         "modules command should report the complete 42-module corpus"
+    );
+}
+
+#[test]
+fn modules_command_reports_expected_real_corpus_diagnostics() {
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules");
+
+    assert!(
+        output.status.success(),
+        "modules command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Diagnostics:"),
+        "modules output should include diagnostics section for real corpus: {stdout}"
+    );
+    assert!(
+        stdout.contains(
+            "cyclic dependencies detected among modules: examples.deployment, shared.gist_modes, tools.dag_viz, tools.gist"
+        ),
+        "modules output should include expected cycle diagnostic: {stdout}"
+    );
+    assert!(
+        stdout.contains("unresolved import: examples.integration_tests -> infra.gcp"),
+        "modules output should include expected unresolved import diagnostic: {stdout}"
     );
 }
 
