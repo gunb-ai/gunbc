@@ -1316,4 +1316,18 @@ mod tests {
             .expect_err("duplicate output ports should fail validation");
         assert!(err.contains("duplicate output port"));
     }
+
+    #[test]
+    fn pipeline_topological_order_rejects_cycles() {
+        let mut dag = build_pipeline_dag();
+        dag.add_edge(Edge::new(
+            NODE_REPORT,
+            PORT_DIAGNOSTICS,
+            NODE_DISCOVER,
+            PORT_CONTEXT,
+        ));
+
+        let err = topological_order(&dag).expect_err("cyclic pipeline DAG should fail ordering");
+        assert!(err.contains("contains a cycle"));
+    }
 }
