@@ -193,6 +193,47 @@ fn compile_command_reports_diagnostics_for_invalid_file() {
 }
 
 #[test]
+fn expand_command_reports_unresolved_service_call_lower_error() {
+    let fixture = unique_temp_file("unresolved_service_call");
+    std::fs::write(
+        &fixture,
+        r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run(path: String) -> { body: String } {
+  let response = MissingStorage.read(path: path)
+  return { body: response.body }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("expand")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang expand on unresolved service fixture");
+
+    assert!(
+        !output.status.success(),
+        "expand should fail when service call endpoint cannot be resolved"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("lower error: unresolved service call"));
+    assert!(stderr.contains("MissingStorage.read"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_unresolved_imports() {
     let root = unique_temp_dir("unresolved_import");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
