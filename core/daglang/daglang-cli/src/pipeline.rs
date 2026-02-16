@@ -165,6 +165,7 @@ pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<Pip
     validate_pipeline_semantics(&dag)?;
     let topo = topological_order(&dag)?;
     let mut values: HashMap<String, PipeValue> = HashMap::new();
+    let mut parsed_count = 0usize;
 
     for node_id in topo {
         let node = dag
@@ -181,6 +182,11 @@ pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<Pip
         }
 
         let outputs = execute_op(&node.body, context, inputs)?;
+        if node_id == NODE_PARSE {
+            if let Some(PipeValue::ParsedModules(parsed)) = outputs.get(PORT_PARSED_MODULES) {
+                parsed_count = parsed.len();
+            }
+        }
         for (port, value) in outputs {
             values.insert(edge_key(&node_id, &port), value);
         }
@@ -192,10 +198,11 @@ pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<Pip
     }
 
     let diagnostics = take_diagnostics(&mut values)?;
-    let parsed_count = match values.remove(&edge_key(NODE_PARSE, PORT_PARSED_MODULES)) {
+    let parsed_count_from_values = match values.remove(&edge_key(NODE_PARSE, PORT_PARSED_MODULES)) {
         Some(PipeValue::ParsedModules(parsed)) => parsed.len(),
         _ => 0,
     };
+    let parsed_count = parsed_count.max(parsed_count_from_values);
     let module_graph = match values.remove(&edge_key(NODE_BUILD, PORT_MODULE_GRAPH)) {
         Some(PipeValue::ModuleGraph(graph)) => Some(graph),
         _ => None,
@@ -1510,6 +1517,10 @@ mod tests {
             target_file: None,
         };
         let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+        assert_eq!(
+            result.parsed_count, 1,
+            "report stop should retain parsed count from parse stage"
+        );
         assert!(
             result.module_graph.is_none(),
             "report stop currently consumes module graph into report stage"
