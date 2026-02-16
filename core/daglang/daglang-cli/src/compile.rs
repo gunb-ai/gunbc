@@ -1294,4 +1294,187 @@ fn run() -> String {
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
+
+    #[test]
+    fn compile_single_file_call_arity_mismatch_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_call_arity_mismatch");
+        std::fs::write(
+            &fixture,
+            r#"module sample.calls
+fn fmt(value: String) -> String { value }
+fn run() -> String { fmt() }
+"#,
+        )
+        .expect("failed to write call-arity fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("call arity mismatch"));
+        assert!(error.contains("fmt"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_unknown_named_call_argument_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_unknown_named_call_argument");
+        std::fs::write(
+            &fixture,
+            r#"module sample.calls
+fn fmt(value: String) -> String { value }
+fn run() -> String { fmt(text: "ok") }
+"#,
+        )
+        .expect("failed to write unknown-arg fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("unknown named argument"));
+        assert!(error.contains("text"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_duplicate_named_call_argument_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_duplicate_named_call_argument");
+        std::fs::write(
+            &fixture,
+            r#"module sample.calls
+fn fmt(value: String) -> String { value }
+fn run() -> String { fmt(value: "a", value: "b") }
+"#,
+        )
+        .expect("failed to write duplicate-arg fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate named argument"));
+        assert!(error.contains("value"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_service_call_arity_mismatch_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_service_call_arity_mismatch");
+        std::fs::write(
+            &fixture,
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run() -> { body: String } {
+  let response = FsStorage.read()
+  return { body: response.body }
+}
+"#,
+        )
+        .expect("failed to write service call-arity fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("service call arity mismatch"));
+        assert!(error.contains("FsStorage.read"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_unknown_named_service_argument_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_unknown_named_service_argument");
+        std::fs::write(
+            &fixture,
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run() -> { body: String } {
+  let response = FsStorage.read(name: "README.md")
+  return { body: response.body }
+}
+"#,
+        )
+        .expect("failed to write unknown service-arg fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("unknown named argument"));
+        assert!(error.contains("name"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
+
+    #[test]
+    fn compile_single_file_duplicate_named_service_argument_fails_in_typecheck_stage() {
+        let fixture = unique_temp_file("single_file_duplicate_named_service_argument");
+        std::fs::write(
+            &fixture,
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run() -> { body: String } {
+  let response = FsStorage.read(path: "a", path: "b")
+  return { body: response.body }
+}
+"#,
+        )
+        .expect("failed to write duplicate service-arg fixture");
+
+        let context = PipelineContext {
+            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            target_file: Some(fixture.clone()),
+        };
+
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("duplicate named argument"));
+        assert!(error.contains("path"));
+
+        std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+    }
 }
