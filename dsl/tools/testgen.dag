@@ -12,22 +12,13 @@ module tools.testgen
 import std.patterns { content_upsert }
 import std.types { CodegenTarget }
 
-// The generate function is target-specific: each DagSpecDef has its own
-// generate fn that produces test source code. In the DSL, we model this
-// as a generic function that the compiler instantiates per target.
 fn generate_tests(target: CodegenTarget) -> String {
-  // Compiler fills this from DagSpecDef::generate
-  // Each target produces its own test file content
   target |> generate()
 }
 
-journey testgen {
-  input { targets: List<CodegenTarget> }
-  output { all_fresh: Bool }
+func testgen(targets: List<CodegenTarget>) -> { all_fresh: Bool }
   uses fs: Filesystem(mode: ReadWrite)
-
-  // Parallel content_upsert for each target.
-  // Each iteration is independent -- no cross-target dependencies.
+{
   results = for target in targets {
     content = generate_tests(target: target)
     content_upsert(content: content, path: target.path)

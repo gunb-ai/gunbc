@@ -28,13 +28,6 @@ type DocgenSources {
 }
 
 fn render_ab_workflows_doc(sources: DocgenSources) -> String {
-  // Replaces 7 marker sections in the template with rendered content:
-  //   clippy_mock_spec, clippy_generated_test_excerpt,
-  //   appendix_a_clippy, appendix_a_gist, appendix_b,
-  //   appendix_c, appendix_d
-  //
-  // The actual rendering logic is complex string interpolation
-  // with markdown formatting. The compiler compiles this fn body.
   sources.template
     |> replace_section("clippy_mock_spec", sources.clippy_graph_mock)
     |> replace_section("clippy_generated_test_excerpt", sources.clippy_generated_tests)
@@ -45,11 +38,9 @@ fn render_ab_workflows_doc(sources: DocgenSources) -> String {
     |> replace_section("appendix_d", render_source_artifacts(sources: sources))
 }
 
-journey docgen {
-  input {}
-  output { written: Bool }
+func docgen() -> { written: Bool }
   uses fs: Filesystem(mode: ReadWrite)
-
+{
   // Read all 13 source files (parallel -- no dependencies between reads)
   template = fs.read(path: "docs/ab-writing-workflows.md")
   clippy_graph_mock = fs.read(path: "lib/tools/clippy/src/graph_mock.rs")
@@ -63,9 +54,8 @@ journey docgen {
   gist_graph_mock = fs.read(path: "lib/tools/gist/src/graph_mock.rs")
   gist_generated_tests = fs.read(path: "lib/tools/gist/src/generated_tests_snapshot.rs")
   gist_integration_tests = fs.read(path: "lib/tools/gist/tests/generated_tests.rs")
-  gist_codegen_cli = fs.read(path: "target/codegen/bin/gist/main.rs")  // may not exist
+  gist_codegen_cli = fs.read(path: "target/codegen/bin/gist/main.rs")
 
-  // Render the documentation
   content = render_ab_workflows_doc(sources: {
     template: template.content,
     clippy_graph_mock: clippy_graph_mock.content,
@@ -82,7 +72,6 @@ journey docgen {
     gist_codegen_cli: gist_codegen_cli.content
   })
 
-  // Write if changed
   result = content_upsert(content: content, path: "docs/ab-writing-workflows.md")
 
   return { written: result.written }

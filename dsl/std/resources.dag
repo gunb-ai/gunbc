@@ -66,7 +66,7 @@ resource AuthContext {
   mode: Read
   expires: true
   acquire {
-    // Acquisition is itself a journey (see credential_chain pattern).
+    // Acquisition is itself a func (see credential_chain pattern).
     // The compiler wires credential_chain output to this resource.
   }
   release {}

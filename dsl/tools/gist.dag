@@ -4,15 +4,17 @@
 //   gist_snapshot -- list files, read contents, render markdown, upload
 //   gist_diff     -- git diff, render markdown, upload
 //   gist_recent   -- rev-list since N days, diff each commit, upload
-//   gist_upload   -- shared upload journey (credential + GitHub API)
+//   gist_upload   -- shared upload func (credential + GitHub API)
 //
-// Total: ~90 lines (vs. 1,449 lines in lib/tools/gist/src/graph.rs)
+// Composition: snapshot/diff/recent use shared helpers from gist_modes.dag
+// for branch detection, base ref resolution, and gist upload. Only the
+// content-production logic (what to snapshot, how to diff) is tool-specific.
 //
 // Two kinds of parallelism:
 //   Task-parallel: `for file in files { fs.read(path: file) }` -> LoopBuilder
 //   Data-parallel: `|> map(...)` in fn bodies -> MapNode/JoinNode in IR
 //
-// Replaces: lib/tools/gist/src/graph.rs
+// Replaces: lib/tools/gist/src/graph.rs (1,449 lines)
 //           gunbc-dag/src/workspace/subdags/gist.rs
 
 module tools.gist
@@ -22,6 +24,7 @@ import services.github.gist
 import std.patterns { credential_chain }
 import std.resources { Filesystem, Network, AuthContext, Clock }
 import std.types { CloudRuntime, AccessToken }
+import shared.gist_modes { branch_context, resolve_recent_base, share_content }
 
 // --- Pure functions ---------------------------------------------------
 
@@ -53,20 +56,13 @@ fn render_recent(diffs: List<String>) -> String {
   "{header}{sections}"
 }
 
-// --- Journeys ---------------------------------------------------------
+// --- Upload (shared by all modes) ------------------------------------
 
-// Shared upload: acquires credential, calls GitHub Gist API
-journey gist_upload {
-  input {
-    markdown: String
-    branch: String
-    base_ref: String?
-  }
-  output { url: String }
+func gist_upload(markdown: String, branch: String, base_ref: String?) -> { url: String }
   uses net: Network
   uses clock: Clock
   uses auth: AuthContext
-
+{
   timestamp = clock.now()
   filename = gist_filename(
     branch: branch,
@@ -92,14 +88,12 @@ journey gist_upload {
   return { url: result.url }
 }
 
-// Snapshot: list all tracked files, read contents, render, upload
-journey gist_snapshot {
-  input { base_ref: String? }
-  output { url: String }
-  uses fs: Filesystem(mode: Read)
+// --- Modes (each produces markdown, then shares via gist) ------------
 
-  branch = git.Core.CurrentBranch()
-  remote = git.Core.RemoteBranches()
+func gist_snapshot(base_ref: String?) -> { url: String }
+  uses fs: Filesystem(mode: Read)
+{
+  ctx = branch_context()
   files = git.Core.LsFiles()
 
   contents = for file in files.files {
@@ -108,46 +102,39 @@ journey gist_snapshot {
   }
 
   markdown = render_snapshot(files: contents)
-  result = gist_upload(
+  result = share_content(
     markdown: markdown,
-    branch: branch.branch,
+    branch: ctx.branch,
     base_ref: base_ref
   )
 
   return { url: result.url }
 }
 
-// Diff: compare against base ref
-journey gist_diff {
-  input { base_ref: String }
-  output { url: String }
-
-  branch = git.Core.CurrentBranch()
+func gist_diff(base_ref: String) -> { url: String } {
+  ctx = branch_context()
   diff = git.Core.Diff(base: base_ref)
   markdown = render_diff(diff: diff.diff)
-  result = gist_upload(
+  result = share_content(
     markdown: markdown,
-    branch: branch.branch,
+    branch: ctx.branch,
     base_ref: base_ref
   )
 
   return { url: result.url }
 }
 
-// Recent: changes since N days ago
-journey gist_recent {
-  input { since: String = "3.days.ago" }
-  output { url: String }
-
-  branch = git.Core.CurrentBranch()
+func gist_recent(since: String = "3.days.ago") -> { url: String } {
+  recent = resolve_recent_base(since: since)
   commits = git.Core.RevList(since: since)
   diffs = for commit in commits.commits {
     git.Core.Diff(base: "{commit}~1", head: commit)
   }
   markdown = render_recent(diffs: diffs |> map(d => d.diff))
-  result = gist_upload(
+  result = share_content(
     markdown: markdown,
-    branch: branch.branch
+    branch: recent.branch,
+    base_ref: recent.base_ref
   )
 
   return { url: result.url }

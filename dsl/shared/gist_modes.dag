@@ -1,0 +1,61 @@
+// shared/gist_modes.dag -- Shared helpers for the snapshot/diff/recent pattern.
+//
+// Both gist and dag-viz (and any future tool that wants to share content
+// as a gist) follow the same 3-mode structure:
+//
+//   snapshot:  produce_content()               -> share
+//   diff:      produce_content(base_ref)       -> share
+//   recent:    resolve_base(since) -> diff mode -> share
+//
+// This module factors out the shared pieces:
+//   resolve_recent_base  -- "recent" mode base ref resolution
+//   share_content        -- branch detection + gist upload
+//   branch_context       -- branch detection (used by snapshot/diff modes)
+
+module shared.gist_modes
+
+import services.git
+import tools.gist { gist_upload }
+
+// Get branch context for any mode.
+func branch_context() -> { branch: String, remote_branch: String? } {
+  current = git.Core.CurrentBranch()
+  remotes = git.Core.RemoteBranches()
+
+  remote = remotes.branches
+    |> filter(b => b |> ends_with("/{current.branch}"))
+    |> first()
+
+  return {
+    branch: current.branch,
+    remote_branch: remote
+  }
+}
+
+// Resolve the base ref for "recent" mode.
+func resolve_recent_base(since: String = "3.days.ago") -> { base_ref: String, branch: String } {
+  ctx = branch_context()
+  commits = git.Core.RevList(since: since)
+  base_ref = commits.commits |> last()
+
+  return {
+    base_ref: base_ref,
+    branch: ctx.branch
+  }
+}
+
+// Share any markdown content as a gist.
+func share_content(markdown: String, branch: String?, base_ref: String?) -> { url: String } {
+  resolved_branch = match branch {
+    Some(b) => b
+    None    => branch_context().branch
+  }
+
+  result = gist_upload(
+    markdown: markdown,
+    branch: resolved_branch,
+    base_ref: base_ref
+  )
+
+  return { url: result.url }
+}

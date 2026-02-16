@@ -12,7 +12,7 @@
 1. [Problem Statement](#1-problem-statement)
 2. [Three Generations of Evidence](#2-three-generations-of-evidence)
 3. [Design Principles](#3-design-principles)
-4. [Language Constructs](#4-language-constructs) — types, fn (functor protocol), resources, services, patterns, journeys, pipelines
+4. [Language Constructs](#4-language-constructs) — types, fn (functor protocol), resources, services, patterns, func (composed flows), pipelines
 5. [Module System and Discovery](#5-module-system-and-discovery)
 6. [Terminal Progress Model](#6-terminal-progress-model)
 7. [Resource Model](#7-resource-model) — conflict keying, mode inference
@@ -63,9 +63,9 @@ Each requirement maps to language constructs, a compiler pass, and a concrete ou
 
 | Requirement | Language mechanism | Compiler pass | Output artifact |
 |---|---|---|---|
-| 1. Compress graph authoring | `journey`, `pattern`, implicit edges, `fn` | PatternExpand → Lower | GraphIR (same Nodes/Edges as hand-wired builders) |
+| 1. Compress graph authoring | `func`, `pattern`, implicit edges, `fn` | PatternExpand → Lower | GraphIR (same Nodes/Edges as hand-wired builders) |
 | 2. Structural progress | SubDag boundaries, loop expansion points, `@interactive` | Derive | ProgressManifest (topology, groups, scatter points) |
-| 3. Discovery by construction | Filesystem module graph, `dag.toml` manifest | Discover | ModuleGraph = workspace catalog of journeys/tools |
+| 3. Discovery by construction | Filesystem module graph, `dag.toml` manifest | Discover | ModuleGraph = workspace catalog of funcs/tools |
 | 4. Resources with lifecycle | `resource`, `uses`, conflict keys, `@auth` | TypeCheck → Lower → Validate | Acquire/release nodes, conflict errors, mock specs |
 | 5. Language-agnostic | Target-independent IR, `CodegenBackend` trait | Emit | Rust / Go / Python / TypeScript code |
 | 6. 100% generated host code | Functor protocol (`fn`), service descriptors, `@mock_response` | Emit | Types, transports, CLI, tests, progress, Makefile/CI YAML |
@@ -185,7 +185,7 @@ pub fn build_workspace_dag() -> Result<Dag<WorkspaceOp>, BuilderError> {
 
 **P8: Resources have lifecycle.** Acquire, use, release. The compiler inserts lifecycle nodes, detects conflicts, and generates mock specs. (From V2 P6, extending gunbc's `res:` model.)
 
-**P9: The language is total.** The DSL is declarative and total. `fn` functors are pure and operate on finite data — no general recursion, no I/O primitives, no unbounded loops. Journeys and pipelines are the imperative shell that sequences I/O through services and resources. Side effects occur only at runtime at transport boundaries. Compilation always terminates. (From Dhall inspiration.)
+**P9: The language is total.** The DSL is declarative and total. `fn` functors are pure and operate on finite data — no general recursion, no I/O primitives, no unbounded loops. `func` definitions and pipelines are the imperative shell that sequences I/O through services and resources. Side effects occur only at runtime at transport boundaries. Compilation always terminates. (From Dhall inspiration.)
 
 **P10: Language-agnostic.** `.dag` files are like `.proto` files. The IR is the contract. Codegen backends are plugins. The semantics (node = pure function, transport = syscall, edge = data flow) map to any execution model.
 
@@ -278,10 +278,24 @@ type        — data shapes
 fn          — pure transformations (constrained functor protocol)
 resource    — acquirable capabilities with lifecycle
 service     — operations with typed I/O and transport annotations
-pattern     — reusable DAG shapes with typed slots
-journey     — composed flows (main authoring surface)
-pipeline    — staged multi-journey workflows
+pattern     — reusable DAG shapes with typed slots (C-style signatures)
+func        — composed flows with I/O (main authoring surface, C-style signatures)
+pipeline    — staged multi-func workflows
 module      — namespace, visibility, discovery metadata
+```
+
+**Syntax note:** `func` and `pattern` use C-style function signatures: parameters in parentheses, return type after `->`, resource clauses between signature and body. `fn` uses the same style for pure functions. This keeps the language familiar to C/Rust/Go programmers.
+
+```
+// Three levels of "function":
+fn render(items: List<Item>) -> String { ... }                      // pure, no I/O
+func gist_upload(md: String, branch: String) -> { url: String }    // effectful, can call services
+  uses net: Network
+  uses auth: AuthContext
+{ ... }
+pattern content_upsert(content: String, path: String) -> { written: Bool }  // reusable DAG template
+  uses fs: Filesystem(mode: ReadWrite)
+{ ... }
 ```
 
 ### 4.1 Types
@@ -532,7 +546,7 @@ Every collection operation is visible in the IR as a first-class node. The execu
 - **Partition** `GroupByNode` for distributed reduce
 - **Prove** data-race freedom (all parallelism is structural, no shared mutable state)
 
-This makes the IR a complete dataflow graph — nothing is opaque. The same property that makes journey-level `for` loops parallelizable (the scheduler sees each iteration as an independent node) extends to every collection operation in every `fn` body.
+This makes the IR a complete dataflow graph — nothing is opaque. The same property that makes func-level `for` loops parallelizable (the scheduler sees each iteration as an independent node) extends to every collection operation in every `fn` body.
 
 **The enforcement rule:** `fn` bodies may contain collection operations syntactically (the DSL surface is clean), but the compiler MUST lower them to IR collection nodes. A `fn` body that survives lowering as a single IR node contains only Tier 1 scalar operations.
 
@@ -553,7 +567,7 @@ This makes the IR a complete dataflow graph — nothing is opaque. The same prop
 | `AllNode` | `list \|> all(p)` | Forall | Parallel (short-circuit on false) |
 | `JoinNode` | `list \|> join(sep)` | Concatenate strings | Sequential (order matters) |
 
-**Relationship to journey-level `for`:** Journey-level `for` loops (§8.6) handle **task-parallel** iteration where each iteration involves I/O (service calls, resource access). Collection IR nodes handle **data-parallel** iteration where each element is a pure transform. Both are visible in the IR; both can be parallelized. The distinction is that journey `for` creates SubDag instances with transport boundaries, while collection nodes operate on in-memory values.
+**Relationship to func-level `for`:** Func-level `for` loops (§8.6) handle **task-parallel** iteration where each iteration involves I/O (service calls, resource access). Collection IR nodes handle **data-parallel** iteration where each element is a pure transform. Both are visible in the IR; both can be parallelized. The distinction is that func `for` creates SubDag instances with transport boundaries, while collection nodes operate on in-memory values.
 
 **Standard library** (~30 functions, grows per phase):
 
@@ -616,14 +630,14 @@ resource AuthContext {
   mode: Read
   expires: true             // runtime tracks expiry
   acquire {
-    // acquisition is itself a journey (see credential_chain pattern)
+    // acquisition is itself a func (see credential_chain pattern)
   }
   release {}
 }
 ```
 
 Lifecycle kinds (from V2 P6):
-- `Ephemeral` — created and destroyed within journey scope
+- `Ephemeral` -- created and destroyed within func scope
 - `Persistent` — survives across invocations
 - `Borrowed` — referenced but not owned
 
@@ -701,9 +715,9 @@ service github.Gist {
 }
 ```
 
-Key: services are pure declarations. Every service call in a journey compiles to a transport triplet (prepare/execute/parse). The author never sees the triplet — the compiler emits it.
+Key: services are pure declarations. Every service call in a func compiles to a transport triplet (prepare/execute/parse). The author never sees the triplet — the compiler emits it.
 
-**Authentication model:** Services that need auth declare `@auth(BearerToken)` (or `@auth(ApiKey)`, `@auth(Basic)`, etc.) at the service level. Journeys that call authenticated services must declare `uses auth: AuthContext` — the compiler threads the auth resource to all authenticated service calls automatically. No "magic credential argument" at call sites. Per guardrail G1, `@auth` desugars to a structural `AuthContext` resource requirement on every operation in the service.
+**Authentication model:** Services that need auth declare `@auth(BearerToken)` (or `@auth(ApiKey)`, `@auth(Basic)`, etc.) at the service level. Funcs that call authenticated services must declare `uses auth: AuthContext` — the compiler threads the auth resource to all authenticated service calls automatically. No "magic credential argument" at call sites. Per guardrail G1, `@auth` desugars to a structural `AuthContext` resource requirement on every operation in the service.
 
 **Base URL composition:** `@endpoint` on the service provides the base URL. Operation-level `@rest` paths are relative to the endpoint. An absolute URL on `@rest` overrides the endpoint entirely.
 
@@ -793,27 +807,21 @@ pattern credential_chain {
 }
 ```
 
-### 4.6 Journeys
+### 4.6 Func (Composed Flows)
 
-The main authoring surface. Composes services, patterns, and other journeys.
+The main authoring surface. Composes services, patterns, and other funcs. Uses C-style function headers: parameters in parentheses, return type after `->`, resource/auth clauses between signature and body.
 
 ```
-journey makegen {
-  input { registry: ToolRegistry }
-  output { written: Bool }
-
+func makegen(registry: ToolRegistry) -> { written: Bool } {
   content = render_makefile(registry: registry)
   result = content_upsert(content: content, path: "Makefile")
-
   return { written: result.written }
 }
 
-journey gist_snapshot {
-  input { base_ref: String? }
-  output { url: String }
+func gist_snapshot(base_ref: String?) -> { url: String }
   uses fs: Filesystem(mode: Read)
   uses auth: AuthContext               // threaded to github.Gist.Create via @auth
-
+{
   branch = git.Core.CurrentBranch()
   files = git.Core.LsFiles()
 
@@ -830,9 +838,20 @@ journey gist_snapshot {
 
 Edges are implicit — references create dependencies. The compiler resolves `branch.branch` to an edge from `git.Core.CurrentBranch`'s `branch` output port. The `uses auth: AuthContext` declaration is threaded by the compiler to any service call with `@auth` — no magic credential argument at call sites.
 
+**Grammar:**
+```
+func <name>(<param>: <Type>, ...) -> { <output>: <Type>, ... }
+  [uses <name>: <Resource>(<config>)]
+  [provides <name>: <Resource>]
+{
+  <body>
+  return { <output>: <expr>, ... }
+}
+```
+
 ### 4.7 Pipelines
 
-Stages with ordering constraints, parallel groups, and aggregation.
+Staged multi-func workflows with ordering constraints, parallel groups, and aggregation.
 
 ```
 pipeline ci {
@@ -929,14 +948,14 @@ default_mode = "inline"   # plain | inline | tui | jsonl
 4. The module graph IS the workspace DAG. No separate `build_workspace_dag()`.
 5. `meta/dag_viz.dag` can reference itself because it's in the same module graph.
 6. The `module` declaration at the top of each file is a **consistency assertion**: the compiler errors if it doesn't match the derived path. Case normalization: paths are lowercased, `_` separates words. Windows/macOS case-insensitive filesystem quirks are handled by canonical-casing the derived path.
-7. **Canonical identity = module path + local name.** The fully qualified identity of any construct is `module.path.LocalName`. A prefix like `gcp.SecretManager` in a journey is an import alias, not an identity source. Import aliases are resolved at compile time: `import cloud.gcp.secret_manager as gcp` then `gcp.SecretManager.AccessVersion(...)`. The compiler warns when a service name duplicates its module prefix (e.g., `service SecretManager` in module `secret_manager`).
+7. **Canonical identity = module path + local name.** The fully qualified identity of any construct is `module.path.LocalName`. A prefix like `gcp.SecretManager` in a func is an import alias, not an identity source. Import aliases are resolved at compile time: `import cloud.gcp.secret_manager as gcp` then `gcp.SecretManager.AccessVersion(...)`. The compiler warns when a service name duplicates its module prefix (e.g., `service SecretManager` in module `secret_manager`).
 
 ### 5.4 What This Replaces
 
 | gunbc system | Replaced by |
 |---|---|
 | `#[tool_target]` proc macro | filesystem discovery |
-| `#[testgen_target]` proc macro | every journey has test obligations |
+| `#[testgen_target]` proc macro | every func has test obligations |
 | `build_workspace_dag()` hardcoded list | module graph |
 | `ToolRegistry::default_registry()` | project manifest |
 | `inventory` crate | eliminated |
@@ -959,12 +978,12 @@ In gunb.ai, groups were manually specified (`ProgressOptions.Groups`). That work
 
 The renderer CAN create arbitrary groupings for visualization (collapsing parallel nodes, grouping by SubDag parent), but it MUST NOT require the DAG to declare them.
 
-**Journey vs Pattern expansion boundaries:**
+**Func vs Pattern expansion boundaries:**
 
-- **Journey calls** create SubDag boundaries. They appear as expandable/collapsible sections in progress (e.g., `› credential` can expand to show inner nodes). Journey boundaries are meaningful to the user — they represent named workflows.
-- **Small patterns** (`content_upsert`, `upsert`) are compile-time expansion and do NOT create runtime SubDag boundaries by default. They expand inline into the calling journey's node list. This keeps progress stable and author-meaningful rather than cluttered with implementation details.
-- **Large patterns** that represent significant self-contained workflows (e.g., `credential_chain` — which internally has 8+ transport triplets, branching, and its own resource lifecycle) should be defined as **journeys**, not patterns, precisely because they warrant a progress boundary. The rule: if the expanded nodes are meaningful to the user as a group, it's a journey; if they're implementation detail, it's a pattern.
-- A pattern MAY opt into boundary creation via `@boundary` on its definition for edge cases, but this is rare — prefer making it a journey if it needs a boundary.
+- **Func calls** create SubDag boundaries. They appear as expandable/collapsible sections in progress (e.g., `> credential` can expand to show inner nodes). Func boundaries are meaningful to the user -- they represent named workflows.
+- **Small patterns** (`content_upsert`, `upsert`) are compile-time expansion and do NOT create runtime SubDag boundaries by default. They expand inline into the calling func's node list. This keeps progress stable and author-meaningful rather than cluttered with implementation details.
+- **Large patterns** that represent significant self-contained workflows (e.g., `credential_chain` -- which internally has 8+ transport triplets, branching, and its own resource lifecycle) should be defined as **funcs**, not patterns, precisely because they warrant a progress boundary. The rule: if the expanded nodes are meaningful to the user as a group, it's a func; if they're implementation detail, it's a pattern.
+- A pattern MAY opt into boundary creation via `@boundary` on its definition for edge cases, but this is rare -- prefer making it a func if it needs a boundary.
 - `dag expand` tooling can show pattern expansion in its output even though it doesn't create runtime boundaries.
 
 **Pure vs boundary node distinction:** Prepare/parse nodes are pure. Execute nodes are the only transport boundaries where effects occur and the only nodes that receive capture buffers. This is a compiler invariant and simplifies test categorization: only execute nodes need mocking.
@@ -1011,8 +1030,8 @@ service gcloud.Auth {
   }
 }
 
-// In a journey:
-journey authenticate {
+// In a func:
+func authenticate() -> { token: AccessToken } {
   // ...
   node login [when needs_reauth]: gcloud.Auth.Login()
   // During execution:
@@ -1057,34 +1076,32 @@ The terminal output the user showed:
    ○ Login complete (as briansrls@gunb.ai)
 ```
 
-This emerges from a journey like:
+This emerges from a func like:
 
 ```
-journey login {
-  output { ok: Bool }
+func login() -> { ok: Bool }
   provides auth: AuthContext     // login PRODUCES auth for downstream callers
+{
+  // These nodes form a sequential chain -- they render as a flat list
+  // The func name "login" doesn't appear; the SubDag names do.
 
-  // These nodes form a sequential chain → they render as a flat list
-  // The journey name "login" doesn't appear; the SubDag names do.
-
-  auth_result = authenticate()   // SubDag → becomes "› Authentication" section
-  secrets = fetch_secrets()      // SubDag → becomes "› Fetching Secrets" section
+  auth_result = authenticate()   // SubDag -- becomes "> Authentication" section
+  secrets = fetch_secrets()      // SubDag -- becomes "> Fetching Secrets" section
                                  // uses auth: AuthContext threaded from authenticate()
 
   return { ok: secrets.ok }
 }
 
-journey authenticate {
-  output { token: AccessToken }
-  provides auth: AuthContext     // this journey PRODUCES an auth context
-
+func authenticate() -> { token: AccessToken }
+  provides auth: AuthContext     // this func PRODUCES an auth context
+{
   clear_cache = cache.Clear()
   env = detect_environment()
   account = check_account()
   adc = check_adc()
   tokens = check_tokens(adc: adc)
 
-  // Interactive step — @interactive on the service operation
+  // Interactive step -- @interactive on the service operation
   node login [when tokens.needs_reauth]: gcloud.Auth.Login()
 
   configure = configure_gcloud(tokens: tokens)
@@ -1093,7 +1110,7 @@ journey authenticate {
 ```
 
 **How the sections emerge**:
-1. `login` journey calls `authenticate()` and `fetch_secrets()` — both are journey calls that expand to SubDags.
+1. `login` func calls `authenticate()` and `fetch_secrets()` -- both are func calls that expand to SubDags.
 2. The progress renderer sees two SubDag nodes at the top level.
 3. SubDag boundaries become `›` section headers.
 4. Nodes inside each SubDag become the indented status lines.
@@ -1115,7 +1132,7 @@ type ProgressManifest {
   labels: Map<NodeId, String>
 
   // Structural features (for renderers to use as they see fit)
-  subdag_boundaries: List<SubDagBoundary>  // journey calls (patterns expand inline unless @boundary)
+  subdag_boundaries: List<SubDagBoundary>  // func calls (patterns expand inline unless @boundary)
   parallel_groups: List<ParallelGroup>     // siblings at same depth
   scatter_points: List<NodeId>             // loop expansion points
   interactive_nodes: List<NodeId>          // @interactive transport nodes
@@ -1136,7 +1153,7 @@ type TopologyNode {
 
 type SubDagBoundary {
   node_id: NodeId                         // the SubDag node in the parent
-  label: String                           // journey/pattern name
+  label: String                           // func/pattern name
   inner_nodes: List<NodeId>               // nodes inside the SubDag
 }
 
@@ -1283,13 +1300,14 @@ The runtime needs only:
 ### 7.1 Declaration
 
 ```
-journey write_config {
+func write_config() -> { ok: Bool }
   uses fs: Filesystem(mode: Write)
   uses clock: Clock
-
+{
   timestamp = clock.now()
   content = render_config(timestamp: timestamp)
   fs.write(path: "config.toml", content: content)
+  return { ok: true }
 }
 ```
 
@@ -1313,9 +1331,9 @@ Treating `Filesystem` as a single shared resource is too coarse — it would ban
 
 ### 7.4 Resource Mode Inference and Alias Rules
 
-When a journey calls a pattern that declares resources, the caller must declare compatible modes:
+When a func calls a pattern that declares resources, the caller must declare compatible modes:
 
-- If `content_upsert` declares `uses fs: Filesystem(mode: ReadWrite)`, the calling journey must declare `uses fs: Filesystem(mode: ReadWrite)` (or a superset).
+- If `content_upsert` declares `uses fs: Filesystem(mode: ReadWrite)`, the calling func must declare `uses fs: Filesystem(mode: ReadWrite)` (or a superset).
 - Mode mismatch is a compile error. The compiler does NOT automatically escalate `Read` to `ReadWrite`.
 - The `provides` keyword (used in `credential_chain`) indicates a pattern that *produces* a resource context rather than *consuming* one.
 
@@ -1354,8 +1372,9 @@ builder.add_edge(fs_env.out("FilesystemHandle"), node.in_port("res:file:Makefile
 
 ```
 // DSL: declared once, compiler handles the rest
-journey makegen {
+func makegen(registry: ToolRegistry) -> { written: Bool }
   uses fs: Filesystem(mode: Write)
+{
   // fs.write(...) automatically threads the resource
 }
 ```
@@ -1436,7 +1455,7 @@ The compiler verifies at compile time that no unbounded repetition exists in the
 
 There are two kinds of collection iteration in the DSL, both visible as IR nodes:
 
-**Task-parallel: journey-level `for`** — iterates over a collection with I/O per element. Each iteration expands to independent SubDag nodes. Used when the loop body contains service calls or resource access.
+**Task-parallel: func-level `for`** -- iterates over a collection with I/O per element. Each iteration expands to independent SubDag nodes. Used when the loop body contains service calls or resource access.
 
 ```
 contents = for file in files.files {
@@ -1463,27 +1482,27 @@ Collection IR nodes follow the same ordering rule: output order matches input or
 
 **Fusion optimization:** The compiler MAY fuse adjacent collection nodes into a single pass when the inner transforms are trivial (e.g., `MapNode` → `FilterNode` with microsecond predicates). This is a performance optimization, not a semantic change — the fused result is identical to the unfused pipeline. The IR retains the unfused representation for analysis; fusion happens at emit time.
 
-**Why both exist:** Journey `for` and collection IR nodes serve different granularities. A `for` loop that calls `fs.read(path: file)` needs transport boundaries, resource threading, and failure handling per iteration — that's task-parallel. A `map(t => t.name)` over an in-memory list is data-parallel with no I/O. Making both IR-visible means the complete dataflow graph is available for scheduling, optimization, and correctness analysis. No computation is hidden inside opaque function bodies.
+**Why both exist:** Func `for` and collection IR nodes serve different granularities. A `for` loop that calls `fs.read(path: file)` needs transport boundaries, resource threading, and failure handling per iteration — that's task-parallel. A `map(t => t.name)` over an in-memory list is data-parallel with no I/O. Making both IR-visible means the complete dataflow graph is available for scheduling, optimization, and correctness analysis. No computation is hidden inside opaque function bodies.
 
 ### 8.7 NodeId Stability
 
 NodeIds must be stable across compilations of the same source, enabling progress replay and deterministic testing.
 
-**Scheme:** hierarchical path from module + journey/pattern + local name.
+**Scheme:** hierarchical path from module + func/pattern + local name.
 
 ```
-tools.gist/gist_snapshot/branch          — top-level node
-tools.gist/gist_snapshot/loop:contents   — loop expansion point
-tools.gist/gist_snapshot/loop:contents[3] — loop instance (runtime, index-based)
-tools.gist/gist_snapshot/cred_chain/token — node inside expanded SubDag
+tools.gist/gist_snapshot/branch          -- top-level node
+tools.gist/gist_snapshot/loop:contents   -- loop expansion point
+tools.gist/gist_snapshot/loop:contents[3] -- loop instance (runtime, index-based)
+tools.gist/gist_snapshot/cred_chain/token -- node inside expanded SubDag
 ```
 
 **Rules:**
-- Module path derived from filesystem (`tools/gist.dag` → `tools.gist`)
-- Local names are the binding name in the journey (`branch = git.Core.CurrentBranch()` → `branch`)
+- Module path derived from filesystem (`tools/gist.dag` -> `tools.gist`)
+- Local names are the binding name in the func (`branch = git.Core.CurrentBranch()` -> `branch`)
 - Loop instances use deterministic index: `loop:<name>[<index>]` based on input order
-- SubDag expansion preserves parent path: `journey/subdag_name/inner_name`
-- Collisions are compile errors (two nodes in the same journey cannot have the same binding name)
+- SubDag expansion preserves parent path: `func/subdag_name/inner_name`
+- Collisions are compile errors (two nodes in the same func cannot have the same binding name)
 
 ### 8.8 Fan-In/Fan-Out Semantics
 
@@ -1506,12 +1525,10 @@ When multiple upstream outputs connect to a single downstream input (**fan-in**)
 
 ### 8.9 Workflow Signatures
 
-Every journey has a **workflow signature** — a declared contract of typed inputs and outputs — that is verified against the inferred signature (computed from unconnected ports).
+Every func has a **workflow signature** -- its C-style parameter list and return type -- that is verified against the inferred signature (computed from unconnected ports).
 
 ```
-journey gist_snapshot {
-  input { extensions: List<String> }     // declared input
-  output { url: String }                 // declared output
+func gist_snapshot(extensions: List<String>) -> { url: String } {
   ...
 }
 ```
@@ -1519,15 +1536,15 @@ journey gist_snapshot {
 **Invariant:** `DeclaredSignature == InferredSignature`. This catches:
 
 - **Silent interface drift**: Forgot to wire an edge? Now it's a new public input/output.
-- **Wiring bugs**: Intended `A → B` but forgot the edge — validation fails instead of silently exposing ports.
+- **Wiring bugs**: Intended `A -> B` but forgot the edge -- validation fails instead of silently exposing ports.
 - **Cardinality drift**: Changed `T?` to `T`? Signature check catches it.
 - **Dead work**: Pure nodes not contributing to any output can be flagged.
 
-The compiler infers the signature from unconnected ports and compares it to the declared `input`/`output` blocks. Mismatches are compile errors. Tool ports (framework-provided capabilities like `tool:<id>`) are excluded from the user-facing signature.
+The compiler infers the signature from unconnected ports and compares it to the declared parameter list and return type. Mismatches are compile errors. Tool ports (framework-provided capabilities like `tool:<id>`) are excluded from the user-facing signature.
 
 ### 8.10 Recursion
 
-The journey/pattern call graph must be acyclic. The compiler rejects recursive calls at compile time. If a journey `A` calls `B` which calls `A`, this is a compile error. There is no fixpoint construct — unbounded recursion violates P9 (totality).
+The func/pattern call graph must be acyclic. The compiler rejects recursive calls at compile time. If a func `A` calls `B` which calls `A`, this is a compile error. There is no fixpoint construct -- unbounded recursion violates P9 (totality).
 
 ---
 
@@ -1606,7 +1623,7 @@ trait CodegenBackend {
   fn emit_type(ty: &TypeDef) -> String
   fn emit_fn(func: &FnDef) -> String             // compile functor body to target language
   fn emit_transport(spec: &TransportSpec) -> String
-  fn emit_journey(journey: &JourneyDef) -> String // orchestration + wiring
+  fn emit_func(func_def: &FuncDef) -> String      // orchestration + wiring
   fn emit_test(obligation: &TestObligation) -> String
   fn emit_cli(entrypoints: &[Port]) -> String
   fn emit_progress(manifest: &ProgressManifest) -> String
@@ -1732,7 +1749,7 @@ Proves: parser, types, patterns (content_upsert), discovery, progress manifest, 
 
 **Target**: Express `gist_snapshot`.
 
-- `for` loops, journey composition, SubDag expansion
+- `for` loops, func composition, SubDag expansion
 - TUI progress renderer driven by ProgressManifest
 - Static DAG visualization (before execution)
 
@@ -1869,13 +1886,9 @@ module tools.makegen
 
 import std.patterns { content_upsert }
 
-journey makegen {
-  input { registry: ToolRegistry }
-  output { written: Bool }
-
+func makegen(registry: ToolRegistry) -> { written: Bool } {
   content = render_makefile(registry: registry)
   result = content_upsert(content: content, path: "Makefile")
-
   return { written: result.written }
 }
 ```
@@ -2067,17 +2080,15 @@ import cloud.gcp.iam
 import cloud.gcp.sts
 import std.patterns { credential_chain }
 
-journey acquire_gcp_secret {
-  input {
-    runtime: CloudRuntime
-    project: String
-    secret_name: String
-    audience: String = "sigstore"
-    service_account: String?
-  }
-  output { token: AccessToken }
+func acquire_gcp_secret(
+  runtime: CloudRuntime,
+  project: String,
+  secret_name: String,
+  audience: String = "sigstore",
+  service_account: String?
+) -> { token: AccessToken }
   provides auth: AuthContext
-
+{
   cred = credential_chain(
     runtime: runtime,
     audience: audience,
@@ -2125,7 +2136,7 @@ Bucket D: TransportResourceDeclared × 4, ResourceInputConnected × 4
 
 # Appendix C: Service Composition (Gist Snapshot)
 
-Shows journey composition, loops, and multi-service orchestration.
+Shows func composition, loops, and multi-service orchestration.
 
 ## C.1 Today: Rust (gunbc)
 
@@ -2200,16 +2211,10 @@ import services.git
 import services.github.gist
 import std.patterns { credential_chain }
 
-journey gist_upload {
-  input {
-    markdown: String
-    branch: String
-    base_ref: String?
-  }
-  output { url: String }
+func gist_upload(markdown: String, branch: String, base_ref: String?) -> { url: String }
   uses net: Network
   uses auth: AuthContext                 // threaded to github.Gist.Create via @auth
-
+{
   filename = gist_filename(branch: branch, base_ref: base_ref)
   cred = credential_chain(runtime: detect_runtime(), ...)
 
@@ -2221,11 +2226,9 @@ journey gist_upload {
   return { url: result.url }
 }
 
-journey gist_snapshot {
-  input { base_ref: String? }
-  output { url: String }
+func gist_snapshot(base_ref: String?) -> { url: String }
   uses fs: Filesystem(mode: Read)
-
+{
   branch = git.Core.CurrentBranch()
   files = git.Core.LsFiles()
 
@@ -2243,10 +2246,7 @@ journey gist_snapshot {
   return { url: result.url }
 }
 
-journey gist_diff {
-  input { base_ref: String }
-  output { url: String }
-
+func gist_diff(base_ref: String) -> { url: String } {
   branch = git.Core.CurrentBranch()
   diff = git.Core.Diff(base: base_ref)
   markdown = render_diff(diff: diff.diff)
@@ -2259,10 +2259,7 @@ journey gist_diff {
   return { url: result.url }
 }
 
-journey gist_recent {
-  input { since: String = "3.days.ago" }
-  output { url: String }
-
+func gist_recent(since: String = "3.days.ago") -> { url: String } {
   branch = git.Core.CurrentBranch()
   commits = git.Core.RevList(since: since)
   diffs = for commit in commits.commits {
@@ -2433,11 +2430,9 @@ resource Clippy {
   }
 }
 
-journey clippy_lint {
-  input { paths: List<String>? }
-  output { clean: Bool, findings: String }
+func clippy_lint(paths: List<String>?) -> { clean: Bool, findings: String }
   uses clippy: Clippy             // tool availability as a resource
-
+{
   result = shell(["cargo", "clippy", "--", "-D", "warnings"])
   return { clean: result.exit_code == 0, findings: result.stdout }
 }
@@ -2486,15 +2481,10 @@ type TokenUsage {
   completion_tokens: Int
 }
 
-journey review_diff {
-  input {
-    base_ref: String
-    system_prompt: String?
-  }
-  output { review: String }
+func review_diff(base_ref: String, system_prompt: String?) -> { review: String }
   uses net: Network
   uses auth: AuthContext                 // threaded to llm.OpenAI via @auth
-
+{
   diff = git.Core.Diff(base: base_ref)
   cred = credential_chain(runtime: detect_runtime(), ...)
 
@@ -2583,7 +2573,7 @@ pattern retry<Op> {
 
 ### Loop (iterate over collection)
 ```
-// Expressed inline in journeys:
+// Expressed inline in funcs:
 contents = for file in files.files {
   fs.read(path: file)
 }
@@ -2593,8 +2583,8 @@ contents = for file in files.files {
 ```
 // Expressed inline:
 node result = match condition {
-  A => journey_a(...)
-  B => journey_b(...)
+  A => func_a(...)
+  B => func_b(...)
 }
 
 // Or with when:
@@ -2686,7 +2676,7 @@ What each repo contributes to the DSL, organized by concern. Per-scenario detail
 |---|---|---|
 | 4-bucket obligation model | gunbc testgen | Compiler's `Derive` phase produces `TestObligations` |
 | Anti-tautology rule | gunbc testgen | Same: only generate tests for Unknown/RuntimeOnly obligations |
-| DryRun completion test | gunbc | Generated for every journey |
+| DryRun completion test | gunbc | Generated for every func |
 | Transport interception test | gunbc | Generated for every service call |
 | N+1 scenario coverage | gunbc | Generated: all-succeed + per-transport failure |
 | Guard branch coverage | gunbc | Generated from `when` / `match` constructs |
@@ -2731,7 +2721,7 @@ What each repo contributes to the DSL, organized by concern. Per-scenario detail
 |---|---|---|
 | Manual hardcoded lists | gunb.ai, the-gunbai | Eliminated |
 | `#[tool_target]` proc macro | gunbc | Eliminated (filesystem discovery) |
-| `#[testgen_target]` proc macro | gunbc | Eliminated (every journey has test obligations) |
+| `#[testgen_target]` proc macro | gunbc | Eliminated (every func has test obligations) |
 | `build_workspace_dag()` | gunbc | Eliminated (module graph IS workspace DAG) |
 | `inventory` crate | gunbc | Eliminated |
 
@@ -2860,7 +2850,7 @@ Each gunbc pain point mapped to the DSL construct that eliminates it and the com
 
 | # | Pain Point | Root Cause | DSL Construct | Compiler Pass | Evidence |
 |---|---|---|---|---|---|
-| 1 | 7,000+ lines of hand-wired builders | No front-end language | `.dag` files with journey/pattern syntax | Parse → Lower | `dsl-design.md` §1 |
+| 1 | 7,000+ lines of hand-wired builders | No front-end language | `.dag` files with func/pattern syntax | Parse → Lower | `dsl-design.md` §1 |
 | 2 | 6 registration islands | No unified discovery | Filesystem as registry | Discover | `unified-registration.md` |
 | 3 | `all_tools()` hardcoded vec (360 lines) | Manual bottleneck | Every `.dag` file auto-discovered | Discover | `unified-registration.md` §3 |
 | 4 | `GraphBuilderId` string coupling | Meaning outside model (C) | Function pointers from module graph | Discover + Resolve | `consolidation-plan.md` §3 |
@@ -3027,11 +3017,9 @@ out = graph.invoke({"base_ref": "origin/main"})
 ### DSL `review_diff`
 
 ```
-journey review_diff {
-  input { base_ref: String }
-  output { review: String }
+func review_diff(base_ref: String) -> { review: String }
   uses net: Network
-
+{
   diff = git.Core.Diff(base: base_ref)
   prompt = build_review_prompt(diff: diff.diff)
   result = llm.OpenAI.ChatCompletion(messages: prompt)
@@ -3061,7 +3049,7 @@ LangGraph's first-class durability semantics (interrupt at any node, persist sta
 
 1. **Ignore it.** The DSL targets deterministic workflow orchestration, not agentic HITL systems. Different problems.
 
-2. **Model it structurally.** Add a `@durable` annotation on journeys that compiles to checkpointing infrastructure (state serialization at each transport boundary, resume from checkpoint). This extends the resource model — durable state becomes a resource with lifecycle.
+2. **Model it structurally.** Add a `@durable` annotation on funcs that compiles to checkpointing infrastructure (state serialization at each transport boundary, resume from checkpoint). This extends the resource model — durable state becomes a resource with lifecycle.
 
 3. **Treat LangGraph as an execution backend.** The DSL's Python codegen backend could emit LangGraph `StateGraph` code instead of raw Python. This borrows LangGraph's runtime (durability, HITL, tracing) while keeping the DSL's compile-time guarantees (typed ports, test derivation, progress manifest). The `.dag` file remains the contract; LangGraph is the execution engine.
 
@@ -3478,7 +3466,7 @@ fuzz_timeout_ms = 5000  # per-property timeout
 
 A DAG with 20 pure `fn` nodes at 100 iterations = 2,000 fuzz tests, which is manageable. Default of 100 (not proptest's default 256) balances coverage with CI time.
 
-- **Cross-field invariants**: acknowledged as outside the scope of auto-fuzzing. The compiler generates a note in the test output: `// NOTE: cross-field invariants (e.g., start_date < end_date) require manual test cases or runtime guards`. Authors add these via explicit `@test` annotations on the journey.
+- **Cross-field invariants**: acknowledged as outside the scope of auto-fuzzing. The compiler generates a note in the test output: `// NOTE: cross-field invariants (e.g., start_date < end_date) require manual test cases or runtime guards`. Authors add these via explicit `@test` annotations on the func.
 
 ## N.9 Error Response Templates (Failure Scenario Mocking)
 
@@ -3530,7 +3518,7 @@ Without `@error_response`, the compiler falls back to a generic transport error 
 ```
 1. Write .dag file                   (~20 lines)
    - service declarations with @mock_response (if needed)
-   - journey with pattern composition
+   - func with pattern composition
    - refinement types on domain types (if needed)
 2. Write pure transformation logic   (~20 lines Rust/Go/Python)
    Total manual: ~40 lines
@@ -3547,7 +3535,7 @@ gunbc already has the seeds of this system in `core/test/`:
 | Existing infrastructure | How it evolves in the DSL |
 |---|---|
 | `Simulator { generator, validator }` | Becomes the runtime representation of refinement type generators |
-| `IoContract { input: Map<Simulator>, output: Map<Simulator> }` | Compiler-derived from journey port types + refinement constraints |
+| `IoContract { input: Map<Simulator>, output: Map<Simulator> }` | Compiler-derived from func port types + refinement constraints |
 | `non_empty_string()`, `boolean()`, `exit_code()`, `int_range()` | Become built-in generator presets mapped from `@non_empty`, `@range`, etc. |
 | `MockSpec::node_example(NodeExample { inputs, outputs })` | Compiler generates `NodeExample` from refinement types + `@mock_response` |
 | `OutputMatcher::Exact`, `Contains`, `NonEmpty` | Compiler generates matchers from output port refinement types |
@@ -3562,7 +3550,7 @@ If a test is generated, it **must** run. There are no silent skips.
 
 1. Every transport boundary node must have a `@mock_response` annotation OR the compiler generates a generic transport error mock. Missing mocks for transport boundaries produce a **compile error**, not a skipped test.
 2. Generated tests are hermetic — they never require live credentials, network access, or external services.
-3. `#[ignore]` / `@skip` is reserved only for explicitly user-marked tests (via `@skip_test` annotation on the journey). The compiler never generates ignored tests.
+3. `#[ignore]` / `@skip` is reserved only for explicitly user-marked tests (via `@skip_test` annotation on the func). The compiler never generates ignored tests.
 4. DAG-level failure propagation tests cover every node: for each transport boundary, the compiler generates a scenario where that node fails, verifying that downstream nodes are skipped and no global "success" is reported.
 5. If a resource mock is required (e.g., `resource Credential` with `acquire` logic), the compiler derives it from the resource definition's lifecycle specification. Missing resource mocks are compile errors.
 
@@ -3610,13 +3598,13 @@ This appendix captures features and ideas from the three repos (gunb.ai, the-gun
 
 **Why it matters:** The DSL doesn't address caching. As workflows grow, re-executing unchanged subgraphs is wasteful. Deterministic NodeIds (§8.7) and content hashing (`core/infra`) are prerequisites.
 
-**Recommendation:** Defer to post-Phase 3. The DSL's deterministic NodeIds and content hashing infrastructure provide the foundation. A `@cacheable` annotation on journeys (with explicit cache key from input ports) would compose with the freshness model. Key rule: "if you cannot describe what invalidates a result, you must not cache it."
+**Recommendation:** Defer to post-Phase 3. The DSL's deterministic NodeIds and content hashing infrastructure provide the foundation. A `@cacheable` annotation on funcs (with explicit cache key from input ports) would compose with the freshness model. Key rule: "if you cannot describe what invalidates a result, you must not cache it."
 
 ## O.3 Requirements Propagation (the-gunbai `spec.md` §2.4)
 
 **What it is:** A requirement declared by a node propagates to its dependents. Every dependent must acknowledge, exclude, or propagate it. Enforcement levels: Advisory, Warning, Enforced, Deprecated.
 
-**Why it matters:** This enables behavioral contracts to flow from infrastructure to application code. Example: a database service declares `@requires(backup_strategy)` — every journey using it must acknowledge or propagate this requirement.
+**Why it matters:** This enables behavioral contracts to flow from infrastructure to application code. Example: a database service declares `@requires(backup_strategy)` — every func using it must acknowledge or propagate this requirement.
 
 **Recommendation:** Consider for Phase 4 (pipelines). Requirements are most useful for multi-team workflows where pipeline stages cross ownership boundaries. The DSL's type system handles many requirement-like concerns (e.g., `@auth` is effectively a requirement). A general `@requires` mechanism would complement this.
 
@@ -3626,7 +3614,7 @@ This appendix captures features and ideas from the three repos (gunb.ai, the-gun
 
 **Why it matters:** The DSL's `resource` construct with `acquire` blocks handles the main case (tool installation, credential acquisition). Prerequisites generalize this: "ensure workspace lock acquired," "ensure schema migration complete."
 
-**Recommendation:** The DSL's resource model covers 80% of prerequisite use cases. The remaining 20% (cross-journey preconditions) could be modeled as `resource` types with `Persistent` lifecycle. Defer general prerequisite syntax unless resource modeling proves insufficient.
+**Recommendation:** The DSL's resource model covers 80% of prerequisite use cases. The remaining 20% (cross-func preconditions) could be modeled as `resource` types with `Persistent` lifecycle. Defer general prerequisite syntax unless resource modeling proves insufficient.
 
 ## O.5 ExecutionContext — Infrastructure-Derived Requirements (the-gunbai `spec.md` §2.6)
 

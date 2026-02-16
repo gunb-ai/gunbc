@@ -15,7 +15,7 @@ import services.cargo
 resource Clippy {
   kind: Capability
   mode: Read
-  lifecycle: Persistent           // survives across invocations
+  lifecycle: Persistent
 
   capability check {
     input {}
@@ -39,19 +39,15 @@ resource Clippy {
   }
 }
 
-journey clippy_lint {
-  input { paths: List<String>? }
-  output { clean: Bool, findings: String }
+func clippy_lint(paths: List<String>?) -> { clean: Bool, findings: String }
   uses clippy: Clippy
-
-  // Ensure clippy is installed (upsert pattern)
+{
   tool = upsert(
     check: clippy.check(),
     create: clippy.install(),
     resolve: clippy.resolve()
   )
 
-  // Run lint (after installation confirmed)
   result = cargo.Build.Clippy() [after tool]
 
   return {

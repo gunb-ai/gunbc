@@ -9,18 +9,20 @@
 //   dag_viz_recent     -- diff current vs 3 days ago
 //   dag_viz_save       -- write topology JSON to .dag-snapshots/
 //
+// Composition: snapshot/diff/recent use shared helpers from gist_modes.dag.
+// The content-production logic (topology introspection, rendering) is
+// specific to this tool; the mode scaffolding is shared.
+//
 // Replaces: gunbc-dag/src/dag_viz/graph.rs
 
 module tools.dag_viz
 
 import services.git
-import tools.gist { gist_upload }
 import std.resources { Filesystem }
 import std.types { DagTopology, DagDiff }
+import shared.gist_modes { branch_context, resolve_recent_base, share_content }
 
-// --- Services ---------------------------------------------------------
-// workspace.Introspect is a special service: it reads compiled DAG builders
-// at runtime and extracts topology. No external I/O.
+// --- Services --------------------------------------------------------
 
 service workspace.Introspect {
   operation BuildTopology {
@@ -31,7 +33,6 @@ service workspace.Introspect {
       total_node_count: Int
     }
     @hermetic @readonly
-    // Calls build_workspace_dag() and serializes DagTopology to JSON
   }
 }
 
@@ -44,18 +45,13 @@ service shell.Browser {
   }
 }
 
-// --- Pure functions ---------------------------------------------------
+// --- Pure functions --------------------------------------------------
 
 fn render_topology_snapshot(
   topology_json: String,
   branch: String,
   format: String
 ) -> { content: String, ext: String } {
-  // Renders DagTopology as:
-  //   format="html" -> Cytoscape.js interactive viewer
-  //   format="md"   -> Mermaid diagram in markdown
-  // The actual rendering is complex (CSS, JS embedding for HTML mode).
-  // The compiler compiles this; it's a pure string transformation.
   match format {
     "html" => {
       content: render_cytoscape_html(topology: topology_json, title: branch),
@@ -68,12 +64,7 @@ fn render_topology_snapshot(
   }
 }
 
-fn diff_topologies(
-  current_json: String,
-  base_json: String
-) -> DagDiff {
-  // Compares two DagTopology JSON strings and returns structural diff:
-  // added nodes, removed nodes, changed edges.
+fn diff_topologies(current_json: String, base_json: String) -> DagDiff {
   compute_topology_diff(current: current_json, base: base_json)
 }
 
@@ -83,8 +74,6 @@ fn render_topology_diff(
   branch: String,
   base_ref: String
 ) -> String {
-  // Renders annotated Mermaid diagram with color-coded changes:
-  //   green = added, red = removed, yellow = changed
   render_annotated_mermaid(
     diff: diff,
     topology: current_json,
@@ -96,125 +85,100 @@ fn topology_snapshot_path() -> String {
   ".dag-snapshots/workspace.json"
 }
 
-// --- Journeys ---------------------------------------------------------
+fn produce_topology_diff_markdown(
+  current_json: String,
+  base_json: String,
+  branch: String,
+  base_ref: String
+) -> String {
+  let diff = diff_topologies(current_json: current_json, base_json: base_json)
+  render_topology_diff(
+    diff: diff,
+    current_json: current_json,
+    branch: branch,
+    base_ref: base_ref
+  )
+}
 
-// Snapshot: build topology, render as HTML, upload to gist, save locally
-journey dag_viz_snapshot {
-  input { format: String = "html" }
-  output { url: String, local_path: String }
+// --- Funcs -----------------------------------------------------------
+
+func dag_viz_snapshot(format: String = "html") -> { url: String, local_path: String }
   uses fs: Filesystem(mode: ReadWrite)
-
-  // Build current topology
+{
   topo = workspace.Introspect.BuildTopology()
-  branch = git.Core.CurrentBranch()
+  ctx = branch_context()
 
-  // Render to HTML or markdown
   rendered = render_topology_snapshot(
     topology_json: topo.topology_json,
-    branch: branch.branch,
+    branch: ctx.branch,
     format: format
   )
 
-  // Save locally for browser viewing
   local_path = "target/dag-viz/workspace.{rendered.ext}"
   save = fs.write(path: local_path, content: rendered.content)
   open = shell.Browser.Open(path: local_path) [after save]
 
-  // Upload to gist
-  result = gist_upload(
+  result = share_content(
     markdown: rendered.content,
-    branch: branch.branch
+    branch: ctx.branch
   )
 
   return { url: result.url, local_path: local_path }
 }
 
-// Diff: compare current topology against a base branch
-journey dag_viz_diff {
-  input { base_ref: String = "main" }
-  output { url: String }
-  uses fs: Filesystem(mode: Read)
-
-  // Build current topology
+func dag_viz_diff(base_ref: String = "main") -> { url: String } {
   topo = workspace.Introspect.BuildTopology()
-  branch = git.Core.CurrentBranch()
+  ctx = branch_context()
 
-  // Get base topology from git
   base_content = git.Core.Show(
     ref: base_ref,
-    path: ".dag-snapshots/workspace.json"
+    path: topology_snapshot_path()
   )
 
-  // Diff and render
-  diff = diff_topologies(
+  markdown = produce_topology_diff_markdown(
     current_json: topo.topology_json,
-    base_json: base_content.content
-  )
-  markdown = render_topology_diff(
-    diff: diff,
-    current_json: topo.topology_json,
-    branch: branch.branch,
+    base_json: base_content.content,
+    branch: ctx.branch,
     base_ref: base_ref
   )
 
-  // Upload
-  result = gist_upload(
+  result = share_content(
     markdown: markdown,
-    branch: branch.branch,
+    branch: ctx.branch,
     base_ref: base_ref
   )
 
   return { url: result.url }
 }
 
-// Recent: compare current topology against 3 days ago
-journey dag_viz_recent {
-  input { since: String = "3.days.ago" }
-  output { url: String }
-  uses fs: Filesystem(mode: Read)
-
-  // Build current topology
+func dag_viz_recent(since: String = "3.days.ago") -> { url: String } {
   topo = workspace.Introspect.BuildTopology()
-  branch = git.Core.CurrentBranch()
+  recent = resolve_recent_base(since: since)
 
-  // Find the oldest commit in the range
-  commits = git.Core.RevList(since: since)
-  base_ref = commits.commits |> last()
-
-  // Get base topology from that commit
   base_content = git.Core.Show(
-    ref: base_ref,
-    path: ".dag-snapshots/workspace.json"
+    ref: recent.base_ref,
+    path: topology_snapshot_path()
   )
 
-  // Diff and render
-  diff = diff_topologies(
+  markdown = produce_topology_diff_markdown(
     current_json: topo.topology_json,
-    base_json: base_content.content
-  )
-  markdown = render_topology_diff(
-    diff: diff,
-    current_json: topo.topology_json,
-    branch: branch.branch,
-    base_ref: base_ref
+    base_json: base_content.content,
+    branch: recent.branch,
+    base_ref: recent.base_ref
   )
 
-  // Upload
-  result = gist_upload(
+  result = share_content(
     markdown: markdown,
-    branch: branch.branch,
-    base_ref: base_ref
+    branch: recent.branch,
+    base_ref: recent.base_ref
   )
 
   return { url: result.url }
 }
 
-// Save: write topology JSON to .dag-snapshots/ for future diffing
-journey dag_viz_save {
-  input {}
-  output { node_count: Int, total_node_count: Int }
+func dag_viz_save() -> { node_count: Int, total_node_count: Int }
   uses fs: Filesystem(mode: ReadWrite)
-
+{
   topo = workspace.Introspect.BuildTopology()
   write = fs.write(
     path: topology_snapshot_path(),

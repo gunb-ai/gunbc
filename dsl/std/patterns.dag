@@ -1,10 +1,10 @@
-// std/patterns.dag — Reusable DAG shapes for the gunbc DSL.
+// std/patterns.dag -- Reusable DAG shapes for the gunbc DSL.
 //
 // Patterns are compile-time expansion templates. Small patterns expand
 // inline (no runtime SubDag boundary). Large patterns that represent
-// meaningful user-facing workflows should be journeys instead.
+// meaningful user-facing workflows should be funcs instead.
 //
-// See dsl-design.md §4.5 and Appendix G for the full pattern catalog.
+// See dsl-design.md 4.5 and Appendix G for the full pattern catalog.
 
 module std.patterns
 
@@ -13,73 +13,69 @@ import services.gcp.secret_manager
 import services.gcp.iam
 import services.gcp.sts
 
-// ─── Upsert (check → create → resolve) ───────────────────────────────
+// --- Upsert (check -> create -> resolve) ------------------------------
 // Generic: parameterized over the check/create/resolve operations.
 // Replaces gunbc's UpsertBuilder.
 
-pattern upsert<Check, Create, Resolve> {
+pattern upsert<Check, Create, Resolve>() -> { handle: String } {
   node check: Check -> { exists: Bool }
   node create [after check, when !check.exists]: Create
   node resolve [after check, after create]: Resolve -> { handle: String }
+  return { handle: resolve.handle }
 }
 
-// ─── Content Upsert (generate → read → compare → skip-if-unchanged) ─
+// --- Content Upsert (generate -> read -> compare -> skip-if-unchanged)
 // Replaces gunbc's add_content_upsert_chain().
 // The most common pattern: ~8 of 13 tools use this.
 
-pattern content_upsert {
-  input { content: String, path: String }
+pattern content_upsert(content: String, path: String) -> { written: Bool }
   uses fs: Filesystem(mode: ReadWrite)
-
+{
   node read: fs.read(path: path)
   node equal: eq(a: content, b: read.content) -> { equal: Bool }
   node write [when !equal.equal]: fs.write(path: path, content: content)
-
-  output { written: Bool = !equal.equal }
+  return { written: !equal.equal }
 }
 
-// ─── Emit (content-hash → compare → write content + hash) ────────────
+// --- Emit (content-hash -> compare -> write content + hash) -----------
 // Like content_upsert but uses content hashing for comparison and
 // writes both the content file and a companion .hash file.
 // Used by codegen targets that need change detection.
 
-pattern emit {
-  input { content: String, path: String }
+pattern emit(content: String, path: String) -> { written: Bool }
   uses fs: Filesystem(mode: ReadWrite)
-
+{
   node hash: content_hash(content: content)
   node read_existing: fs.read(path: "{path}.hash")
   node equal: eq(a: hash.hash, b: read_existing.content) -> { equal: Bool }
   node write_content [when !equal.equal]: fs.write(path: path, content: content)
   node write_hash [when !equal.equal]: fs.write(path: "{path}.hash", content: hash.hash)
-
-  output { written: Bool = !equal.equal }
+  return { written: !equal.equal }
 }
 
-// ─── Credential Chain ─────────────────────────────────────────────────
-// OIDC → STS → optional impersonation → secret access → credential.
-// This is the largest pattern — it expands to 8+ transport triplets
-// with runtime branching. Defined as a pattern (not journey) because
-// it's always embedded inside a parent journey's SubDag.
+// --- Credential Chain -------------------------------------------------
+// OIDC -> STS -> optional impersonation -> secret access -> credential.
+// This is the largest pattern -- it expands to 8+ transport triplets
+// with runtime branching. Defined as a pattern (not func) because
+// it's always embedded inside a parent func's SubDag.
 //
 // Replaces: lib/gcp-ops/src/graph.rs (1,700+ lines)
 
-pattern credential_chain {
-  input {
-    runtime: CloudRuntime
-    audience: String
-    service_account: String?
-    secret_name: String
-    project: String
-    scheme: AuthScheme = Bearer
-    header_name: String?
-    source_id: String
-    required_scopes: List<String>
-    lifetime_seconds: Int = 3600
-  }
+pattern credential_chain(
+  runtime: CloudRuntime,
+  audience: String,
+  service_account: String?,
+  secret_name: String,
+  project: String,
+  scheme: AuthScheme = Bearer,
+  header_name: String?,
+  source_id: String,
+  required_scopes: List<String>,
+  lifetime_seconds: Int = 3600
+) -> { token: AccessToken }
   uses net: Network
   provides auth: AuthContext
-
+{
   // Phase 1: Acquire subject token (runtime-dependent)
   node token = match runtime {
     GitHubActions => github_oidc(audience: audience)
@@ -110,8 +106,8 @@ pattern credential_chain {
   )
 
   // Phase 5: Assemble credential
-  output {
-    token: AccessToken = build_token(
+  return {
+    token: build_token(
       payload: secret.payload,
       scheme: scheme,
       header_name: header_name,
@@ -121,19 +117,19 @@ pattern credential_chain {
   }
 }
 
-// ─── Transaction (begin → body → commit/rollback) ─────────────────────
+// --- Transaction (begin -> body -> commit/rollback) --------------------
 
-pattern transaction<Begin, Body, Commit, Rollback> {
+pattern transaction<Begin, Body, Commit, Rollback>() -> { tx_id: String } {
   node begin: Begin -> { tx_id: String }
   node body: Body
   node commit [when body.success]: Commit
   node rollback [when !body.success]: Rollback
+  return { tx_id: begin.tx_id }
 }
 
-// ─── Retry ────────────────────────────────────────────────────────────
+// --- Retry ------------------------------------------------------------
 
-pattern retry<Op> {
-  input { max_attempts: Int = 3, backoff_ms: Int = 1000 }
+pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Int = 1000) -> {} {
   node op: Op
   @retry(max: max_attempts, backoff: exponential(backoff_ms))
 }

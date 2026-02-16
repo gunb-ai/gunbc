@@ -1,0 +1,317 @@
+// examples/abstract_services.dag -- EXPLORATION: Abstract service modeling.
+//
+// STATUS: Forward-looking proposal. Not yet part of the spec.
+//
+// PROBLEM: Current service declarations are concrete -- every service has
+// hard-coded transport annotations (@rest, @shell). This means:
+//   1. You can't swap implementations (test vs staging vs production)
+//   2. You can't compose services (higher-level from lower-level)
+//   3. You can't write funcs against an abstract contract
+//   4. You can't bind the implementation at deploy time
+//
+// PROPOSAL: Three-layer model:
+//   interface  -- abstract contract (what operations, what types, what properties)
+//   service    -- concrete implementation (how operations are fulfilled)
+//   bind       -- deployment-time wiring (which implementation to use where)
+//
+// This is dependency injection at the language level.
+
+module examples.abstract_services
+
+
+// =========================================================================
+// LAYER 1: Interfaces (Abstract Contracts)
+// =========================================================================
+//
+// An interface defines WHAT a service provides, not HOW.
+// Think: Go interface, Rust trait, Java interface.
+//
+// Key properties:
+//   - Pure declarations (no transport, no endpoints)
+//   - Behavioral contracts (@contract) for verification
+//   - Composable (interfaces can extend other interfaces)
+
+// --- Storage interface ---------------------------------------------------
+// Any key-value storage backend: GCS, S3, local filesystem, Redis, etc.
+
+interface Storage {
+  operation Get(key: String) -> { value: Bytes?, found: Bool }
+    @idempotent @readonly
+
+  operation Put(key: String, value: Bytes) -> { ok: Bool }
+
+  operation Delete(key: String) -> { ok: Bool }
+
+  operation List(prefix: String) -> { keys: List<String> }
+    @idempotent @readonly
+
+  // Behavioral contracts -- the compiler uses these for:
+  //   1. Test generation (verify implementations obey the contract)
+  //   2. Static analysis (reason about program behavior)
+  //   3. Documentation
+  @contract: Get(k) after Put(k, v) => { value: v, found: true }
+  @contract: Get(k) after Delete(k) => { found: false }
+  @contract: List(p) after Put(p + "/x", v) => keys contains p + "/x"
+}
+
+// --- LLM interface -------------------------------------------------------
+// Any language model backend: OpenAI, Gemini, Claude, local llama.cpp, etc.
+
+interface LLM {
+  type Message {
+    role: String          // "system" | "user" | "assistant"
+    content: String
+  }
+
+  type Usage {
+    prompt_tokens: Int
+    completion_tokens: Int
+    total_tokens: Int
+  }
+
+  operation Complete(
+    messages: List<Message>,
+    temperature: Float = 0.3,
+    max_tokens: Int?
+  ) -> { content: String, usage: Usage }
+
+  operation Embed(text: String) -> { embedding: List<Float>, dimensions: Int }
+    @idempotent @readonly
+
+  // Contracts
+  @contract: Complete(msgs).content is non-empty when msgs is non-empty
+  @contract: Embed(t).dimensions == Embed(t2).dimensions  // consistent dimensionality
+}
+
+// --- Queue interface -----------------------------------------------------
+// Any pub/sub backend: Pub/Sub, SQS, Kafka, in-memory channel, etc.
+
+interface Queue<T> {
+  operation Publish(message: T) -> { message_id: String }
+  operation Pull(max_messages: Int = 1) -> { messages: List<{ id: String, body: T }> }
+  operation Ack(message_id: String) -> { ok: Bool }
+}
+
+// --- Interface composition -----------------------------------------------
+// Interfaces can extend other interfaces.
+
+interface DurableStorage : Storage {
+  operation Snapshot(key: String) -> { version: String }
+    @idempotent @readonly
+
+  operation Restore(key: String, version: String) -> { ok: Bool }
+}
+
+
+// =========================================================================
+// LAYER 2: Services (Concrete Implementations)
+// =========================================================================
+//
+// A service implements an interface with specific transport and endpoints.
+// The `service X : InterfaceName` syntax means X fulfills InterfaceName.
+//
+// The compiler verifies that every operation in the interface is implemented
+// and that the types match.
+
+// --- GCS implements Storage ----------------------------------------------
+
+service gcs.Storage : Storage {
+  @endpoint("https://storage.googleapis.com/storage/v1")
+  @auth(BearerToken)
+
+  config {
+    bucket: String          // bound at deploy time
+    project: String
+  }
+
+  operation Get {
+    @rest(GET, "/b/{config.bucket}/o/{key}?alt=media")
+  }
+
+  operation Put {
+    @rest(POST, "/upload/storage/v1/b/{config.bucket}/o?name={key}")
+  }
+
+  operation Delete {
+    @rest(DELETE, "/b/{config.bucket}/o/{key}")
+  }
+
+  operation List {
+    @rest(GET, "/b/{config.bucket}/o?prefix={prefix}")
+  }
+}
+
+// --- S3 implements Storage -----------------------------------------------
+
+service aws.S3 : Storage {
+  @endpoint("https://{config.bucket}.s3.{config.region}.amazonaws.com")
+  @auth(AwsSigV4)
+
+  config {
+    bucket: String
+    region: String = "us-east-1"
+  }
+
+  operation Get {
+    @rest(GET, "/{key}")
+  }
+
+  operation Put {
+    @rest(PUT, "/{key}")
+  }
+
+  operation Delete {
+    @rest(DELETE, "/{key}")
+  }
+
+  operation List {
+    @rest(GET, "/?prefix={prefix}")
+  }
+}
+
+// --- Local filesystem implements Storage ---------------------------------
+// For testing and local development.
+
+service local.FileStore : Storage {
+  config {
+    base_dir: FilePath = "/tmp/dag-store"
+  }
+
+  operation Get {
+    @shell(["cat", "{config.base_dir}/{key}"])
+    @hermetic
+  }
+
+  operation Put {
+    @shell(["mkdir", "-p", "$(dirname {config.base_dir}/{key})", "&&",
+            "tee", "{config.base_dir}/{key}"])
+    @hermetic
+  }
+
+  operation Delete {
+    @shell(["rm", "-f", "{config.base_dir}/{key}"])
+    @hermetic
+  }
+
+  operation List {
+    @shell(["find", "{config.base_dir}/{prefix}", "-type", "f"])
+    @hermetic
+  }
+}
+
+// --- OpenAI implements LLM -----------------------------------------------
+
+service openai.ChatGPT : LLM {
+  @endpoint("https://api.openai.com/v1")
+  @auth(BearerToken)
+
+  config {
+    model: String = "gpt-4"
+    organization: String?
+  }
+
+  operation Complete {
+    @rest(POST, "/chat/completions")
+    @mock_response(
+      status: 200,
+      body: {
+        "choices": [{"message": {"content": "Mock review"}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+      }
+    )
+  }
+
+  operation Embed {
+    @rest(POST, "/embeddings")
+  }
+}
+
+// --- Vertex AI implements LLM --------------------------------------------
+
+service gcp.VertexAI : LLM {
+  @endpoint("https://{config.region}-aiplatform.googleapis.com/v1")
+  @auth(BearerToken)
+
+  config {
+    project: String
+    region: String = "us-central1"
+    model: String = "gemini-pro"
+  }
+
+  operation Complete {
+    @rest(POST, "/projects/{config.project}/locations/{config.region}/publishers/google/models/{config.model}:generateContent")
+  }
+
+  operation Embed {
+    @rest(POST, "/projects/{config.project}/locations/{config.region}/publishers/google/models/textembedding-gecko:predict")
+  }
+}
+
+
+// =========================================================================
+// LAYER 3: Writing funcs against interfaces
+// =========================================================================
+//
+// Funcs declare dependency on INTERFACES, not concrete services.
+// The compiler threads the interface through the func's node graph.
+// Which concrete service fulfills the interface is decided at deploy time.
+
+// A func that works with ANY storage backend
+func save_artifact(key: String, content: Bytes) -> { ok: Bool }
+  uses store: Storage                    // abstract -- not gcs, not s3, not local
+{
+  existing = store.Get(key: key)
+  result = match existing.found {
+    true  => store.Put(key: "{key}.v2", value: content)
+    false => store.Put(key: key, value: content)
+  }
+  return { ok: result.ok }
+}
+
+// A func that works with ANY LLM backend
+func review_code(diff: String, system_prompt: String?) -> { review: String }
+  uses llm: LLM                         // abstract -- not openai, not vertex
+{
+  messages = [
+    { role: "system", content: system_prompt ?? "You are a code reviewer." },
+    { role: "user", content: "Review this diff:\n\n{diff}" }
+  ]
+  result = llm.Complete(messages: messages, temperature: 0.3)
+  return { review: result.content }
+}
+
+// Composing multiple abstract services
+func review_and_store(diff: String) -> { review: String, stored: Bool }
+  uses llm: LLM
+  uses store: Storage
+{
+  review = review_code(diff: diff)
+  stored = save_artifact(
+    key: "reviews/{hash(diff)}.md",
+    content: review.review |> to_bytes()
+  )
+  return { review: review.review, stored: stored.ok }
+}
+
+
+// =========================================================================
+// WHAT THIS ENABLES
+// =========================================================================
+//
+// 1. TESTING: The compiler auto-generates tests against Storage/LLM
+//    contracts. `review_code` can be tested with a mock LLM that
+//    verifies the contract (non-empty response for non-empty messages).
+//
+// 2. PORTABILITY: The same func works on GCS, S3, or local filesystem.
+//    No code changes, just different deploy bindings.
+//
+// 3. COMPOSITION: Services compose through interfaces. A `CachedStorage`
+//    could implement Storage by wrapping another Storage + a Cache.
+//
+// 4. SCALING: New backends (Azure Blob, MinIO, etc.) just implement
+//    the Storage interface. All existing funcs work automatically.
+//
+// 5. GRADUAL MIGRATION: Start with local.FileStore for development,
+//    switch to gcs.Storage for production, without touching func code.
+//
+// The binding happens in deploy blocks (see deployment.dag).

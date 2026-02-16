@@ -3,10 +3,8 @@
 // Runs cargo build first, then test and clippy in parallel (both
 // depend on build success). Aggregates results into a summary.
 //
-// The aggregate fn contains filter |> count chains that lower to
-// FilterNode -> CountNode in the IR. CountNode is a parallel reduce
-// (sum of 1s) -- trivial here with 3 items, but the structure
-// generalizes to arbitrary-size result lists.
+// The aggregate fn uses shared/dag_util helpers instead of inline
+// aggregation logic.
 //
 // Replaces: gunbc-dag/src/build/graph.rs (~13 nodes)
 
@@ -14,28 +12,9 @@ module tools.build
 
 import std.types { Summary, StageResult }
 import services.cargo
+import shared.dag_util { aggregate_results, stage_from_output }
 
-fn aggregate_build_results(
-  build: StageResult,
-  test: StageResult,
-  clippy: StageResult
-) -> Summary {
-  let results = [build, test, clippy]
-  let passed = results |> filter(r => r.success) |> count()
-  let failed = results |> filter(r => !r.success) |> count()
-  { total: 3, passed: passed, failed: failed }
-}
-
-journey build_all {
-  input {}
-  output {
-    success: Bool
-    summary: Summary
-    build_stderr: String
-    test_stderr: String
-    clippy_stderr: String
-  }
-
+func build_all() -> { success: Bool, summary: Summary, build_stderr: String, test_stderr: String, clippy_stderr: String } {
   // Phase 1: Build (must succeed before test/clippy)
   build = cargo.Build.Build()
 
@@ -43,12 +22,13 @@ journey build_all {
   test = cargo.Build.Test() [after build, when build.success]
   clippy = cargo.Build.Clippy() [after build, when build.success]
 
-  // Phase 3: Aggregate
-  summary = aggregate_build_results(
-    build: { name: "build", success: build.success, stdout: build.stdout, stderr: build.stderr, skipped: false },
-    test: { name: "test", success: test.success, stdout: test.stdout, stderr: test.stderr, skipped: !build.success },
-    clippy: { name: "clippy", success: clippy.success, stdout: clippy.stdout, stderr: clippy.stderr, skipped: !build.success }
-  )
+  // Phase 3: Aggregate using shared helper
+  stages = [
+    stage_from_output(name: "build",  success: build.success,  stdout: build.stdout,  stderr: build.stderr,  skipped: false),
+    stage_from_output(name: "test",   success: test.success,   stdout: test.stdout,   stderr: test.stderr,   skipped: !build.success),
+    stage_from_output(name: "clippy", success: clippy.success, stdout: clippy.stdout, stderr: clippy.stderr, skipped: !build.success)
+  ]
+  summary = aggregate_results(stages: stages)
 
   return {
     success: build.success && test.success && clippy.success,

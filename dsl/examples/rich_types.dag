@@ -1,0 +1,218 @@
+// examples/rich_types.dag -- EXPLORATION: Richer type system.
+//
+// STATUS: Forward-looking proposal. Not yet part of the spec.
+//
+// PROBLEM: Current types.dag has records, enums, refinement types, and
+// optionals. This covers gunbc's needs, but for the DSL to scale to
+// the-gunbai's vision, we need:
+//   1. Generic types (Result<T, E>, List<T> -- some exist but not user-definable)
+//   2. Type bounds / interfaces (like Rust traits or Go interfaces)
+//   3. Sum types with payloads (tagged unions, ADTs)
+//   4. Type-level properties (for the compiler to reason about)
+//
+// RECOMMENDATION: The DSL should own type definitions fully because:
+//   - Types are the contract language between services, funcs, and infra
+//   - The compiler needs types for testgen, mock generation, validation
+//   - Cross-module type sharing requires a module system (DSL has this)
+//   - Refinement types + generics enable powerful automatic test generation
+//   - Types flow through deploy boundaries (serialization format selection)
+
+module examples.rich_types
+
+
+// =========================================================================
+// GENERIC TYPES
+// =========================================================================
+//
+// The DSL already uses List<T> and Map<K, V> as built-ins.
+// The question: can users DEFINE new generic types?
+
+// Result type -- the universal error-handling type.
+type Result<T, E>
+  = Ok { value: T }
+  | Err { error: E }
+
+// Convenience alias
+type ApiResult<T> = Result<T, ApiError>
+
+type ApiError {
+  code: HttpStatus
+  message: String
+  details: Json?
+}
+
+// Page of results -- generic over the item type
+type Page<T> {
+  items: List<T>
+  next_cursor: String?
+  total_count: Int?
+}
+
+// Validated wrapper -- carries proof of validation
+type Validated<T> {
+  value: T
+  validated_at: String
+  validator: String
+}
+
+// Either -- one of two types
+type Either<L, R>
+  = Left { value: L }
+  | Right { value: R }
+
+
+// =========================================================================
+// SUM TYPES WITH PAYLOADS (ADTs)
+// =========================================================================
+//
+// Current enums are simple (CloudRuntime = GitHubActions | Metadata | LocalDev).
+// Real-world modeling needs payloads on variants.
+
+type DeployEvent
+  = BuildStarted { commit: CommitSha, branch: String }
+  | BuildSucceeded { commit: CommitSha, duration_ms: Int, artifacts: List<String> }
+  | BuildFailed { commit: CommitSha, error: String, stage: String }
+  | Deployed { commit: CommitSha, target: String, url: Url }
+  | RolledBack { commit: CommitSha, reason: String, rolled_to: CommitSha }
+
+// Transport descriptor -- what the compiler resolves for each service call
+type Transport
+  = Http { method: String, url: Url, headers: Map<String, String> }
+  | Shell { command: List<String>, env: Map<String, String>? }
+  | Grpc { service_name: String, method: String, endpoint: Url }
+  | InProcess { handler: String }
+
+
+// =========================================================================
+// TYPE BOUNDS / INTERFACES
+// =========================================================================
+//
+// "A type that has certain operations" -- connects to the service
+// interface model. Type bounds let you write generic funcs that work
+// with any type satisfying a contract.
+
+interface Serializable {
+  fn to_json(self) -> Json
+  fn from_json(json: Json) -> Result<Self, String>
+}
+
+interface Comparable {
+  fn compare(self, other: Self) -> Int
+}
+
+interface Hashable {
+  fn hash(self) -> Int
+}
+
+interface Display {
+  fn display(self) -> String
+}
+
+// Built-in types automatically implement appropriate interfaces:
+//   String : Serializable, Comparable, Hashable, Display
+//   Int    : Serializable, Comparable, Hashable, Display
+//   Records with all Serializable fields auto-derive Serializable.
+
+
+// =========================================================================
+// BOUNDED GENERICS
+// =========================================================================
+
+fn serialize<T: Serializable>(value: T) -> Json {
+  value |> to_json()
+}
+
+fn sort_by_field<T, K: Comparable>(items: List<T>, key_fn: fn(T) -> K) -> List<T> {
+  items |> sort_by(item => key_fn(item))
+}
+
+// Generic func: store any serializable value
+func store_value<T: Serializable>(key: String, value: T) -> { ok: Bool }
+  uses store: Storage
+{
+  bytes = serialize(value: value) |> to_bytes()
+  result = store.Put(key: key, value: bytes)
+  return { ok: result.ok }
+}
+
+// Generic func: load and deserialize
+func load_value<T: Serializable>(key: String) -> { value: Result<T, String> }
+  uses store: Storage
+{
+  raw = store.Get(key: key)
+  result = match raw.found {
+    true  => Ok(value: T.from_json(json: raw.value |> from_bytes()))
+    false => Err(error: "Key not found: {key}")
+  }
+  return { value: result }
+}
+
+
+// =========================================================================
+// REFINEMENT TYPES (EXTENDED)
+// =========================================================================
+
+// Dependent refinement: cross-field constraints
+type DateRange {
+  start: String @pattern("^\\d{4}-\\d{2}-\\d{2}$")
+  end: String @pattern("^\\d{4}-\\d{2}-\\d{2}$")
+  @invariant: start <= end
+}
+
+// Branded types: nominal wrappers that prevent mixing
+type UserId = String @brand("UserId")
+type TeamId = String @brand("TeamId")
+// Compiler prevents: let team: TeamId = some_user_id  // type error!
+
+// Unit types with semantic meaning
+type Milliseconds = Int @brand("Milliseconds") @range(min: 0)
+type Seconds      = Int @brand("Seconds") @range(min: 0)
+// Prevents: let timeout: Seconds = duration_ms  // type error!
+
+
+// =========================================================================
+// COMPOSITE EXAMPLE
+// =========================================================================
+
+type ReviewArtifact<M: Serializable> {
+  id: String @format(uuid)
+  created_at: String @pattern("^\\d{4}-\\d{2}-\\d{2}T")
+  author: UserId
+  metadata: M
+  content: NonEmptyStr
+  status: ReviewStatus
+}
+
+type ReviewStatus
+  = Pending
+  | InProgress { reviewer: UserId, started_at: String }
+  | Completed { reviewer: UserId, score: Int @range(min: 1, max: 5) }
+  | Rejected { reason: String }
+
+func submit_review<M: Serializable>(
+  artifact: ReviewArtifact<M>,
+  reviewer: UserId
+) -> { result: ReviewArtifact<M> }
+  uses store: Storage
+{
+  updated = artifact with {
+    status: InProgress(reviewer: reviewer, started_at: now())
+  }
+  stored = store_value(key: "reviews/{artifact.id}", value: updated)
+  return { result: updated }
+}
+
+
+// =========================================================================
+// PHASING RECOMMENDATION
+// =========================================================================
+//
+// Phase 1 (DONE): Records, enums, refinement types, optionals
+// Phase 2: Sum types with payloads, branded types
+// Phase 3: Generics, type bounds, interfaces
+// Phase 4: Cross-field invariants
+//
+// The IR should represent the FULL type model from day one.
+// The surface syntax can grow incrementally.
+// The compiler's internal type algebra (Dag<TypeOp>) already supports
+// all of this -- we're just deciding how much to expose in the surface.

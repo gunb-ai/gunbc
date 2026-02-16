@@ -16,7 +16,8 @@ Start with the foundation, then work outward:
 std/          Foundation: types, resources, patterns
 services/     Pure declarations: typed I/O + transport annotations
 cloud/        Credential acquisition (uses services + patterns)
-tools/        Journeys that compose everything above
+shared/       Composition helpers + utility library
+tools/        Funcs that compose everything above
 pipelines/    Multi-stage composition of tools
 ```
 
@@ -25,9 +26,30 @@ pipelines/    Multi-stage composition of tools
 1. `std/types.dag` -- see all the types
 2. `std/resources.dag` -- Filesystem, Network, Clock, AuthContext
 3. `std/patterns.dag` -- content_upsert, credential_chain (the reusable shapes)
-4. `tools/makegen.dag` -- simplest tool (~30 lines, uses content_upsert)
-5. `tools/gist.dag` -- complex tool (4 modes, loops, service composition)
-6. `pipelines/ci.dag` -- everything wired together
+4. `shared/dag_util.dag` -- utility helpers (aggregate, report, stage construction)
+5. `tools/makegen.dag` -- simplest tool (~30 lines, uses content_upsert)
+6. `tools/gist.dag` -- complex tool (4 modes, loops, service composition)
+7. `pipelines/ci.dag` -- everything wired together
+
+## Syntax overview
+
+Three levels of "function" in the DSL, all using C-style signatures:
+
+```
+// Pure function (no I/O, no side effects)
+fn render(items: List<Item>) -> String { ... }
+
+// Effectful function (can call services, use resources)
+func gist_upload(md: String, branch: String) -> { url: String }
+  uses net: Network
+  uses auth: AuthContext
+{ ... }
+
+// Reusable DAG template (compile-time expansion)
+pattern content_upsert(content: String, path: String) -> { written: Bool }
+  uses fs: Filesystem(mode: ReadWrite)
+{ ... }
+```
 
 ## Rust mapping
 
@@ -57,7 +79,7 @@ Each `.dag` file replaces a specific Rust graph builder:
 
 - **`types.dag`** -- Primitives, refinement types, domain enums, records. Everything from `Unit` to `DagTopology`.
 - **`resources.dag`** -- `Filesystem`, `Network`, `Clock`, `AuthContext`. Resource lifecycle declarations with capabilities.
-- **`patterns.dag`** -- `content_upsert`, `upsert`, `emit`, `credential_chain`, `transaction`, `retry`. The reusable DAG shapes that tools compose.
+- **`patterns.dag`** -- `content_upsert`, `upsert`, `emit`, `credential_chain`, `transaction`, `retry`. C-style signatures: `pattern name(params) -> { outputs } { body }`.
 
 ### `services/` -- Service declarations
 
@@ -71,25 +93,30 @@ Each `.dag` file replaces a specific Rust graph builder:
 
 ### `cloud/` -- Cloud provider integration
 
-- **`gcp/credential.dag`** -- `acquire_gcp_secret` journey. Wraps `credential_chain` pattern. Entry point for all GCP-authenticated tools.
+- **`gcp/credential.dag`** -- `acquire_gcp_secret` func. Wraps `credential_chain` pattern. Entry point for all GCP-authenticated tools.
 
-### `tools/` -- Tool journeys
+### `shared/` -- Composition helpers
 
-- **`makegen.dag`** -- Simplest: `render_makefile` fn + `content_upsert` pattern
-- **`gist.dag`** -- 4 modes: `gist_upload`, `gist_snapshot`, `gist_diff`, `gist_recent`. Loops, service composition, credential chain.
-- **`dag_viz.dag`** -- 4 modes: `dag_viz_snapshot`, `dag_viz_diff`, `dag_viz_recent`, `dag_viz_save`. Meta-tool that introspects the DAG system.
+- **`dag_util.dag`** -- Common utility functions: `aggregate_results`, `all_succeeded`, `format_report`, `stage_result`, `stage_from_output`, `generated_header`, `render_and_upsert`. Extracted from duplicated logic across tool files.
+- **`gist_modes.dag`** -- `branch_context`, `resolve_recent_base`, `share_content`. The shared scaffolding for the snapshot/diff/recent mode pattern. Both `gist.dag` and `dag_viz.dag` import from here.
+
+### `tools/` -- Tool funcs
+
+- **`makegen.dag`** -- Simplest: `render_makefile` fn + `content_upsert` pattern. Uses `generated_header` from dag_util.
+- **`gist.dag`** -- 4 modes: `gist_upload`, `gist_snapshot`, `gist_diff`, `gist_recent`. Composes `shared/gist_modes.dag` for mode scaffolding.
+- **`dag_viz.dag`** -- 4 modes: `dag_viz_snapshot`, `dag_viz_diff`, `dag_viz_recent`, `dag_viz_save`. Same composition pattern as gist.
 - **`clippy.dag`** -- `upsert` pattern (check/install/resolve) + lint run
-- **`deps.dag`** -- Dependency install (platform-aware loop) + config generation
-- **`bootstrap.dag`** -- Workspace scan + 2 parallel content_upserts (Makefile, .gitignore)
+- **`deps.dag`** -- Dependency install (platform-aware loop) + config generation. Uses `generated_header` from dag_util.
+- **`bootstrap.dag`** -- Workspace scan + 2 parallel content_upserts (Makefile, .gitignore). Uses `generated_header`.
 - **`codegen.dag`** -- Conditional execution: check stamp, run if stale, write stamp
 - **`testgen.dag`** -- Dynamic parallel: N targets, each with independent content_upsert
-- **`pragma.dag`** -- 3 parallel content_upserts (clippy.toml, allowlist, policy)
-- **`build.dag`** -- `cargo build` then parallel `cargo test` + `cargo clippy`, aggregate
+- **`pragma.dag`** -- 3 parallel content_upserts (clippy.toml, allowlist, policy). Uses `generated_header`.
+- **`build.dag`** -- `cargo build` then parallel `cargo test` + `cargo clippy`. Uses `aggregate_results` and `stage_from_output` from dag_util.
 - **`docgen.dag`** -- Read 13 source files, render single doc, content_upsert
 
 ### `pipelines/` -- Multi-stage pipelines
 
-- **`ci.dag`** -- 12-stage CI pipeline composing all tools with `after` dependencies, parallel groups, conditional execution (`when`), and aggregate reporting.
+- **`ci.dag`** -- 12-stage CI pipeline composing all tools with `after` dependencies, parallel groups, conditional execution (`when`), and aggregate reporting. Uses `aggregate_results`, `format_report`, `stage_result`, `stage_from_output` from dag_util.
 
 ## Collection operations as IR nodes
 
@@ -98,7 +125,7 @@ A key design property: collection operations (`map`, `filter`, `fold`, `join`, e
 This means every program is a complete dataflow graph -- nothing is hidden. The executor can parallelize `MapNode` across workers, stream `MapNode -> FilterNode` without materializing intermediates, and fuse trivial adjacent maps into single passes.
 
 Two kinds of parallelism are visible in the IR:
-- **Task-parallel**: journey-level `for` loops (each iteration has I/O)
+- **Task-parallel**: func-level `for` loops (each iteration has I/O)
 - **Data-parallel**: `fn`-level `|> map/filter/fold` (each element is a pure transform)
 
 See `dsl-design.md` section 4.2 for the full two-tier model.

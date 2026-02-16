@@ -1,0 +1,214 @@
+// examples/deployment.dag -- EXPLORATION: Deployment topology.
+//
+// STATUS: Forward-looking proposal. Not yet part of the spec.
+//
+// KEY INSIGHT: The service triplet (prepare/execute/parse) already
+// handles cross-process communication. Deployment just determines
+// WHICH transport is used. The existing architecture naturally
+// supports multi-infra -- we just need a model to drive transport
+// selection.
+
+module examples.deployment
+
+import tools.gist { gist_snapshot, gist_diff, gist_recent }
+import tools.build { build_all }
+import tools.clippy { clippy_lint }
+import pipelines.ci { ci }
+import examples.abstract_services { Storage, LLM }
+
+
+// =========================================================================
+// DEPLOYMENT TARGETS
+// =========================================================================
+
+type GitHubActionsTarget {
+  runs_on: String = "ubuntu-latest"
+  timeout_minutes: Int = 30
+  concurrency: String?
+}
+
+type CloudRunTarget {
+  region: String = "us-central1"
+  memory: String = "512Mi"
+  cpu: Int = 1
+  min_instances: Int = 0
+  max_instances: Int = 10
+  concurrency: Int = 80
+  gpu: Bool = false
+  vpc_connector: String?
+}
+
+type CloudFunctionTarget {
+  region: String = "us-central1"
+  memory: String = "256Mi"
+  timeout_seconds: Int = 60
+  trigger: FunctionTrigger
+}
+
+type FunctionTrigger
+  = Http
+  | PubSub { topic: String }
+  | Schedule { cron: String }
+  | StorageEvent { bucket: String, event: String }
+
+type LocalTarget {}
+
+
+// =========================================================================
+// DEPLOY BLOCKS
+// =========================================================================
+
+// CI pipeline on GitHub Actions
+deploy ci_pipeline {
+  target: GitHubActionsTarget {
+    runs_on: "ubuntu-latest"
+    timeout_minutes: 45
+  }
+
+  entrypoints: [ci]
+
+  bind {
+    Storage => local.FileStore(base_dir: "/tmp/ci-artifacts")
+  }
+
+  env {
+    RUST_BACKTRACE: "1"
+    CARGO_INCREMENTAL: "0"
+  }
+
+  auth {
+    gcp: WorkloadIdentityFederation {
+      provider: "projects/123/locations/global/workloadIdentityPools/github/providers/github"
+      service_account: "ci-sa@gunbc.iam.gserviceaccount.com"
+    }
+  }
+}
+
+// Gist tool as a Cloud Run API
+deploy gist_service {
+  target: CloudRunTarget {
+    region: "us-central1"
+    memory: "512Mi"
+    min_instances: 0
+    max_instances: 5
+  }
+
+  entrypoints: [gist_snapshot, gist_diff, gist_recent]
+
+  bind {
+    Storage => gcs.Storage(bucket: "gunbc-gist-artifacts", project: "gunbc")
+  }
+
+  auth {
+    github: SecretManager { project: "gunbc", secret: "github-token" }
+  }
+
+  // Compiler generates: Dockerfile, Cloud Run YAML, HTTP handler, health check
+}
+
+// Local development
+deploy local_dev {
+  target: LocalTarget {}
+
+  entrypoints: [gist_snapshot, gist_diff, gist_recent, build_all, clippy_lint]
+
+  bind {
+    Storage => local.FileStore(base_dir: "~/.gunbc/artifacts")
+    LLM => openai.ChatGPT(model: "gpt-4")
+  }
+
+  auth {
+    gcp: ApplicationDefaultCredentials {}
+    github: EnvVar { name: "GITHUB_TOKEN" }
+  }
+}
+
+
+// =========================================================================
+// CROSS-INFRA FUNC COMPOSITION
+// =========================================================================
+//
+// A func that calls services deployed on DIFFERENT infrastructure.
+// The compiler detects the LLM interface is bound to Cloud Run and
+// automatically inserts HTTP transport boundaries. Transparent to author.
+
+func full_review_pipeline(pr_number: Int) -> { review: String, url: String }
+  uses store: Storage
+  uses llm: LLM
+{
+  diff = git.Core.Diff(base: "main")
+
+  // If LLM is bound to VertexAI on Cloud Run, compiler:
+  //   a) Serializes the diff
+  //   b) Makes HTTP call to Cloud Run
+  //   c) Deserializes response
+  review = llm.Complete(
+    messages: [
+      { role: "system", content: "You are a code reviewer." },
+      { role: "user", content: "Review this diff:\n{diff.diff}" }
+    ]
+  )
+
+  store.Put(key: "reviews/pr-{pr_number}.md", value: review.content |> to_bytes())
+
+  result = gist_snapshot(base_ref: "main")
+
+  return { review: review.content, url: result.url }
+}
+
+deploy review_service {
+  target: CloudRunTarget { region: "us-central1", memory: "1Gi" }
+
+  entrypoints: [full_review_pipeline]
+
+  bind {
+    Storage => gcs.Storage(bucket: "review-artifacts", project: "gunbc")
+    LLM => gcp.VertexAI(project: "gunbc", model: "gemini-pro")
+  }
+}
+
+
+// =========================================================================
+// PARTITIONED DEPLOYMENT (FUTURE / PHASE 3+)
+// =========================================================================
+//
+// A SINGLE func split across multiple infra targets.
+// NOT Phase 1, but the architecture supports it because
+// every node has typed I/O and transport handles serialization.
+//
+// Conceptual:
+//
+//   deploy partitioned_review {
+//     target: GitHubActionsTarget {}
+//
+//     partition llm_ops {
+//       target: CloudRunTarget { gpu: true, memory: "4Gi" }
+//       match: operations_using(LLM)
+//     }
+//   }
+//
+// Compiler: analyze graph -> assign nodes -> insert boundaries -> generate manifests
+
+
+// =========================================================================
+// COMPILER OUTPUT PER DEPLOY BLOCK
+// =========================================================================
+//
+// 1. INFRASTRUCTURE MANIFEST
+//    GitHub Actions: .github/workflows/<name>.yml
+//    Cloud Run: service.yaml + Dockerfile
+//    Cloud Function: config + handler
+//    Terraform/Pulumi: resource definitions
+//
+// 2. BINDING WIRING
+//    Replace abstract interface calls with concrete transport
+//    Thread config values into constructors
+//
+// 3. SERIALIZATION BOUNDARIES
+//    Cross-infra calls: insert serialize/deserialize
+//    Format: protobuf (Grpc), JSON (HTTP)
+//    Type safety preserved across boundaries
+//
+// 4. AUTH WIRING
+//    Per-target credential acquisition
+//    Workload Identity for GHA, metadata server for Cloud Run
