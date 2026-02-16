@@ -992,6 +992,109 @@ fn check_command_relative_and_absolute_invalid_single_file_targets_are_equivalen
 }
 
 #[test]
+fn check_command_parent_segment_invalid_single_file_target_matches_absolute_output() {
+    let parent = unique_temp_dir("check_parent_segment_invalid_single_file");
+    let cwd = parent.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    let broken_file = parent.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed dag source");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg("../broken.dag")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment invalid-target daglang check");
+    assert!(
+        !parent_segment.status.success(),
+        "parent-segment invalid-target check should fail for malformed source"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&broken_file)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute invalid-target daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute invalid-target check should fail for malformed source"
+    );
+
+    assert_eq!(
+        parent_segment.stdout, absolute.stdout,
+        "parent-segment and absolute invalid-target check stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, absolute.stderr,
+        "parent-segment and absolute invalid-target check stderr should match"
+    );
+    let canonical_target = broken_file
+        .canonicalize()
+        .expect("broken file should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&parent_segment.stderr)
+            .contains(&format!("{}:2:3:", canonical_target.display())),
+        "expected parse diagnostic with normalized path for parent-segment invalid target: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(parent).expect("failed to cleanup temp directory");
+}
+
+#[test]
+fn check_command_curdir_segment_invalid_single_file_target_matches_plain_relative_output() {
+    let root = unique_temp_dir("check_curdir_segment_invalid_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let broken_file = root.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed dag source");
+
+    let curdir_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./broken.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run curdir-segment invalid-target daglang check");
+    assert!(
+        !curdir_segment.status.success(),
+        "curdir-segment invalid-target check should fail for malformed source"
+    );
+
+    let plain_relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run plain-relative invalid-target daglang check");
+    assert!(
+        !plain_relative.status.success(),
+        "plain-relative invalid-target check should fail for malformed source"
+    );
+
+    assert_eq!(
+        curdir_segment.stdout, plain_relative.stdout,
+        "curdir-segment and plain-relative invalid-target check stdout should match"
+    );
+    assert_eq!(
+        curdir_segment.stderr, plain_relative.stderr,
+        "curdir-segment and plain-relative invalid-target check stderr should match"
+    );
+    let canonical_target = broken_file
+        .canonicalize()
+        .expect("broken file should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&curdir_segment.stderr)
+            .contains(&format!("{}:2:3:", canonical_target.display())),
+        "expected parse diagnostic with normalized path for curdir invalid target: {}",
+        String::from_utf8_lossy(&curdir_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn modules_command_prints_module_graph_summary() {
     let output = Command::new(daglang_bin())
         .arg("modules")
