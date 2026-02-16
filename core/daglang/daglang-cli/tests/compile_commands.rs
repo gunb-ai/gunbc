@@ -117,6 +117,35 @@ fn run(a: String, a: Int) -> String { a }
 }
 
 #[test]
+fn compile_command_single_file_fails_on_duplicate_output_field() {
+    let fixture = unique_temp_file("compile_single_file_duplicate_output_field");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+func run() -> { ok: Bool, ok: String } { return { ok: true } }
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for duplicate-output fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on duplicate output field"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate output field `ok` in `run`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_single_file_unresolved_service_call_reports_lower_error() {
     let fixture = unique_temp_file("compile_unresolved_service_single_file");
     std::fs::write(
