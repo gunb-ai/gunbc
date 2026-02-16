@@ -45,8 +45,7 @@ pub mod span {
 
 /// Abstract Syntax Tree types for the .dag DSL.
 pub mod ast {
-    #[allow(unused_imports)]
-    use crate::span::{Span, Spanned};
+    use crate::span::Spanned;
 
     // ── Top-level ───────────────────────────────────────────────────
 

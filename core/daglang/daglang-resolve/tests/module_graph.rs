@@ -1,7 +1,5 @@
 // Test infrastructure: filesystem access for test fixtures
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
-// Discovery API takes &[PathBuf] slices; cloning for single-root calls is idiomatic
-#![allow(clippy::cloned_ref_to_slice_refs)]
 
 use daglang_resolve::{ModuleGraph, ResolveError};
 use daglang_syntax::diagnostic::DiagnosticKind;
@@ -349,7 +347,7 @@ fn duplicate_module_paths_are_rejected() {
         "module dup.mod\nfn two() -> Unit {}",
     );
 
-    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected duplicate module error");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected duplicate module error");
     match err {
         ResolveError::DuplicateModule(path) => {
             assert_eq!(path.join("."), "dup.mod");
@@ -363,7 +361,7 @@ fn duplicate_module_paths_are_rejected() {
 #[test]
 fn missing_discovery_root_is_rejected() {
     let root = unique_temp_dir("missing_root");
-    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected invalid root error");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected invalid root error");
     match err {
         ResolveError::InvalidRootPath { path, reason } => {
             assert_eq!(path, root);
@@ -400,7 +398,7 @@ fn non_directory_discovery_root_is_rejected() {
     let root = unique_temp_dir("non_directory_root");
     write_file(&root, "not a directory");
 
-    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected invalid root error");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected invalid root error");
     match err {
         ResolveError::InvalidRootPath { path, reason } => {
             assert_eq!(path, root);
@@ -440,7 +438,7 @@ fn discovery_fails_when_any_root_is_non_directory() {
 fn invalid_root_path_error_display_includes_path_and_reason() {
     let missing_root = unique_temp_dir("display_missing_root");
     let missing_err =
-        ModuleGraph::discover(&[missing_root.clone()]).expect_err("expected invalid root error");
+        ModuleGraph::discover(std::slice::from_ref(&missing_root)).expect_err("expected invalid root error");
     let missing_rendered = missing_err.to_string();
     assert!(missing_rendered.contains("invalid discovery root"));
     assert!(missing_rendered.contains(&missing_root.display().to_string()));
@@ -449,7 +447,7 @@ fn invalid_root_path_error_display_includes_path_and_reason() {
     let non_dir_root = unique_temp_dir("display_non_dir_root");
     write_file(&non_dir_root, "not a directory");
     let non_dir_err =
-        ModuleGraph::discover(&[non_dir_root.clone()]).expect_err("expected invalid root error");
+        ModuleGraph::discover(std::slice::from_ref(&non_dir_root)).expect_err("expected invalid root error");
     let non_dir_rendered = non_dir_err.to_string();
     assert!(non_dir_rendered.contains("invalid discovery root"));
     assert!(non_dir_rendered.contains(&non_dir_root.display().to_string()));
@@ -466,7 +464,7 @@ fn unresolved_imports_are_tolerated_for_phase_zero_discovery() {
         "module a.main\nimport missing.dep\nfn run() -> Unit {}",
     );
 
-    let graph = ModuleGraph::discover(&[root.clone()]).expect("expected graph discovery success");
+    let graph = ModuleGraph::discover(std::slice::from_ref(&root)).expect("expected graph discovery success");
     assert_eq!(graph.modules.len(), 1);
     assert_eq!(graph.modules[0].module_path.join("."), "a.main");
     assert!(
@@ -489,7 +487,7 @@ fn cyclic_dependencies_are_reported_as_resolve_errors() {
         "module cycle.b\nimport cycle.a\nfn b() -> Unit {}",
     );
 
-    let err = ModuleGraph::discover_strict(&[root.clone()]).expect_err("expected cycle error");
+    let err = ModuleGraph::discover_strict(std::slice::from_ref(&root)).expect_err("expected cycle error");
     match err {
         ResolveError::CyclicDependency(cycle) => {
             let module_names = cycle
@@ -510,7 +508,7 @@ fn parse_error_contains_file_line_col_rendering() {
     let root = unique_temp_dir("parse_error_location");
     write_file(&root.join("broken.dag"), "module sample.broken\nfn");
 
-    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected parse error");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected parse error");
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 1);
@@ -539,7 +537,7 @@ fn lex_error_is_reported_with_lex_diagnostic_kind() {
     let root = unique_temp_dir("lex_error_location");
     write_file(&root.join("broken.dag"), "module sample.broken\n$\n");
 
-    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected lex error");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected lex error");
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 1);
@@ -563,7 +561,7 @@ fn lex_error_file_order_is_deterministic() {
     write_file(&root.join("z_lex.dag"), "module sample.z\n$\n");
     write_file(&root.join("a_lex.dag"), "module sample.a\n$\n");
 
-    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected lex errors");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected lex errors");
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 2, "expected diagnostics for both lex-broken files");
@@ -594,7 +592,7 @@ fn lex_errors_are_aggregated_within_single_file() {
     let root = unique_temp_dir("lex_error_multi");
     write_file(&root.join("broken.dag"), "module sample.broken\n$\n&\n");
 
-    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected lex errors");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected lex errors");
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 1);
@@ -622,7 +620,7 @@ fn parse_errors_are_aggregated_across_multiple_files() {
     write_file(&root.join("broken_a.dag"), "module sample.a\nfn");
     write_file(&root.join("broken_b.dag"), "module sample.b\nimport");
 
-    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected parse errors");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected parse errors");
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 2, "expected diagnostics for both broken files");
@@ -645,7 +643,7 @@ fn parse_error_file_order_is_deterministic() {
     write_file(&root.join("z_broken.dag"), "module sample.z\nfn");
     write_file(&root.join("a_broken.dag"), "module sample.a\nimport");
 
-    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected parse errors");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected parse errors");
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 2, "expected diagnostics for both broken files");
@@ -671,7 +669,7 @@ fn mixed_lex_and_parse_error_file_order_is_path_sorted() {
     write_file(&root.join("a_parse.dag"), "module sample.a\nfn");
     write_file(&root.join("z_lex.dag"), "module sample.z\n$\n");
 
-    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected mixed errors");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected mixed errors");
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 2, "expected diagnostics for both broken files");
@@ -739,7 +737,7 @@ fn parse_error_display_includes_all_files_and_locations() {
     write_file(&root.join("broken_a.dag"), "module sample.a\nfn");
     write_file(&root.join("broken_b.dag"), "module sample.b\nimport");
 
-    let err = ModuleGraph::discover(&[root.clone()]).expect_err("expected parse errors");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected parse errors");
     let rendered = err.to_string();
     assert!(
         rendered.contains("broken_a.dag"),
@@ -760,7 +758,7 @@ fn parse_error_display_includes_all_files_and_locations() {
 #[test]
 fn discovery_order_is_deterministic_across_runs() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
-    let graph_a = ModuleGraph::discover(&[dsl_root.clone()]).expect("first discover should succeed");
+    let graph_a = ModuleGraph::discover(std::slice::from_ref(&dsl_root)).expect("first discover should succeed");
     let graph_b = ModuleGraph::discover(&[dsl_root]).expect("second discover should succeed");
 
     let order_a: Vec<String> = graph_a
@@ -780,7 +778,7 @@ fn discovery_order_is_deterministic_across_runs() {
 #[test]
 fn display_tree_output_is_deterministic_across_runs() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
-    let graph_a = ModuleGraph::discover(&[dsl_root.clone()]).expect("first discover should succeed");
+    let graph_a = ModuleGraph::discover(std::slice::from_ref(&dsl_root)).expect("first discover should succeed");
     let graph_b = ModuleGraph::discover(&[dsl_root]).expect("second discover should succeed");
 
     assert_eq!(
@@ -846,7 +844,7 @@ fn discovery_ignores_non_dag_files() {
     );
     write_file(&root.join("notes.txt"), "module not.real\n$");
 
-    let graph = ModuleGraph::discover(&[root.clone()]).expect("discover should ignore non-dag");
+    let graph = ModuleGraph::discover(std::slice::from_ref(&root)).expect("discover should ignore non-dag");
     assert_eq!(graph.modules.len(), 1);
     assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
 
@@ -1150,7 +1148,7 @@ fn discovery_handles_directory_symlink_cycle_without_recursing_forever() {
     );
     symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
 
-    let graph = ModuleGraph::discover(&[root.clone()])
+    let graph = ModuleGraph::discover(std::slice::from_ref(&root))
         .expect("discover should handle directory cycle symlink");
     assert_eq!(graph.modules.len(), 1);
     assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
@@ -1168,7 +1166,7 @@ fn discovery_deduplicates_parse_errors_in_directory_symlink_cycle() {
     write_file(&nested.join("broken.dag"), "module sample.broken\nfn");
     symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
 
-    let err = ModuleGraph::discover(&[root.clone()])
+    let err = ModuleGraph::discover(std::slice::from_ref(&root))
         .expect_err("discover should return parse errors for malformed source");
     match err {
         ResolveError::ParseErrors(files) => {
@@ -1198,9 +1196,9 @@ fn discovery_parse_errors_are_deterministic_in_directory_symlink_cycle() {
     write_file(&nested.join("broken.dag"), "module sample.broken\nfn");
     symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
 
-    let first = ModuleGraph::discover(&[root.clone()])
+    let first = ModuleGraph::discover(std::slice::from_ref(&root))
         .expect_err("first discover should return parse errors");
-    let second = ModuleGraph::discover(&[root.clone()])
+    let second = ModuleGraph::discover(std::slice::from_ref(&root))
         .expect_err("second discover should return parse errors");
 
     match (first, second) {
@@ -1280,7 +1278,7 @@ fn discovery_reports_io_error_for_dangling_dag_symlink() {
     symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink");
 
     let err =
-        ModuleGraph::discover(&[root.clone()]).expect_err("dangling symlink should fail discover");
+        ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("dangling symlink should fail discover");
     match err {
         ResolveError::IoError(path, io_error) => {
             assert_eq!(
