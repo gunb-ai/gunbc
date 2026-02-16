@@ -7787,7 +7787,7 @@ fn check_command_relative_and_absolute_single_file_targets_are_equivalent() {
 }
 
 #[test]
-fn check_command_uppercase_dag_extension_single_file_target_matches_lowercase_output() {
+fn check_command_uppercase_dag_extension_single_file_target_matches_absolute_output() {
     let root = unique_temp_dir("check_uppercase_dag_extension_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
     std::fs::write(root.join("main.DAG"), "module sample.main\nfn ok() -> Unit {}")
@@ -7843,6 +7843,62 @@ fn check_command_uppercase_dag_extension_single_file_target_matches_lowercase_ou
 }
 
 #[test]
+fn check_command_mixed_case_dag_extension_single_file_target_matches_absolute_output() {
+    let root = unique_temp_dir("check_mixed_case_dag_extension_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    std::fs::write(root.join("main.DaG"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid mixed-case-extension dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+
+    let mixed_case_target = Command::new(daglang_bin())
+        .arg("check")
+        .arg("main.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run mixed-case-extension target daglang check");
+    assert!(
+        mixed_case_target.status.success(),
+        "mixed-case-extension target check should succeed: {}",
+        String::from_utf8_lossy(&mixed_case_target.stderr)
+    );
+
+    let absolute_target = root.join("main.DaG");
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_target)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute mixed-case-extension target daglang check");
+    assert!(
+        absolute.status.success(),
+        "absolute mixed-case-extension target check should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        mixed_case_target.stdout, absolute.stdout,
+        "relative and absolute mixed-case-extension single-file check stdout should match"
+    );
+    assert_eq!(
+        mixed_case_target.stderr, absolute.stderr,
+        "relative and absolute mixed-case-extension single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&mixed_case_target.stdout),
+        expected_check_success_stdout(1),
+        "mixed-case-extension single-file check should parse exactly one file"
+    );
+    assert!(
+        mixed_case_target.stderr.is_empty(),
+        "mixed-case-extension single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&mixed_case_target.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_uppercase_dag_extension_missing_target_is_treated_as_single_file() {
     let root = unique_temp_dir("check_uppercase_dag_extension_missing_target");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
@@ -7871,6 +7927,40 @@ fn check_command_uppercase_dag_extension_missing_target_is_treated_as_single_fil
     assert!(
         !stderr.contains("input root is not a directory"),
         "uppercase-extension missing-target should not be treated as directory-root validation failure: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_mixed_case_dag_extension_missing_target_is_treated_as_single_file() {
+    let root = unique_temp_dir("check_mixed_case_dag_extension_missing_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    let missing_target = root.join("missing.DaG");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg("missing.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run mixed-case-extension missing-target daglang check");
+    assert!(
+        !output.status.success(),
+        "mixed-case-extension missing-target check should fail"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("pipeline error"),
+        "mixed-case-extension missing-target check should surface pipeline error: {stderr}"
+    );
+    assert!(
+        stderr.contains(&format!("failed to canonicalize {}", missing_target.display())),
+        "mixed-case-extension missing-target should be treated as single-file canonicalization failure: {stderr}"
+    );
+    assert!(
+        !stderr.contains("input root is not a directory"),
+        "mixed-case-extension missing-target should not be treated as directory-root validation failure: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
