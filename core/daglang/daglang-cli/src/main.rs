@@ -35,26 +35,34 @@ fn main() {
 
     match args[1].as_str() {
         "viz" => {
-            if args.get(2).map(String::as_str) == Some("--self") {
-                if args.len() != 3 {
-                    exit_usage("viz --self");
+            match args.len() {
+                2 => exit_usage("viz <file.dag>|viz --self"),
+                3 if args[2] == "--self" => {
+                    let dag = build_pipeline_dag();
+                    println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
                 }
-                let dag = build_pipeline_dag();
-                println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
-            } else {
-                exit_unimplemented(
-                    "viz <file.dag>",
-                    "file visualization is not implemented in Phase 0. Use `daglang viz --self` to inspect the compiler pipeline DAG.",
-                );
+                3 => {
+                    exit_unimplemented(
+                        "viz <file.dag>",
+                        "file visualization is not implemented in Phase 0. Use `daglang viz --self` to inspect the compiler pipeline DAG.",
+                    );
+                }
+                _ => exit_usage("viz <file.dag>|viz --self"),
             }
         }
         "expand" => {
+            if args.len() != 3 {
+                exit_usage("expand <file.dag>");
+            }
             exit_unimplemented(
                 "expand <file.dag>",
                 "GraphIR expansion is not implemented in Phase 0.",
             );
         }
         "manifest" => {
+            if args.len() != 3 {
+                exit_usage("manifest <file.dag>");
+            }
             exit_unimplemented(
                 "manifest <file.dag>",
                 "manifest derivation is not implemented in Phase 0.",
@@ -117,6 +125,9 @@ fn main() {
             }
         }
         "compile" => {
+            if args.len() != 3 {
+                exit_usage("compile <file.dag>");
+            }
             exit_unimplemented(
                 "compile <file.dag>",
                 "full compilation pipeline is not implemented in Phase 0.",

@@ -26518,9 +26518,85 @@ fn viz_self_with_extra_args_exits_nonzero_with_usage_message() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Usage: daglang viz --self"),
+        stderr.contains("Usage: daglang viz <file.dag>|viz --self"),
         "viz --self with extra args should print command usage: {stderr}"
     );
+}
+
+#[test]
+fn viz_without_args_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz without args");
+
+    assert!(
+        !output.status.success(),
+        "viz without args should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "viz without args should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang viz <file.dag>|viz --self"),
+        "viz without args should print usage guidance: {stderr}"
+    );
+}
+
+#[test]
+fn placeholder_commands_without_required_target_exit_with_usage_message() {
+    for command in ["expand", "manifest", "compile"] {
+        let output = Command::new(daglang_bin())
+            .arg(command)
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|err| panic!("failed to run {command} without target: {err}"));
+        assert!(
+            !output.status.success(),
+            "{command} without required target should fail"
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{command} without required target should use usage exit code 1"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains(&format!("Usage: daglang {command} <file.dag>")),
+            "{command} without required target should print command usage: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn placeholder_commands_with_extra_args_exit_with_usage_message() {
+    for command in ["expand", "manifest", "compile"] {
+        let output = Command::new(daglang_bin())
+            .arg(command)
+            .arg("dsl/tools/makegen.dag")
+            .arg("extra")
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|err| panic!("failed to run {command} with extra args: {err}"));
+        assert!(
+            !output.status.success(),
+            "{command} with extra args should fail"
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{command} with extra args should use usage exit code 1"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains(&format!("Usage: daglang {command} <file.dag>")),
+            "{command} with extra args should print command usage: {stderr}"
+        );
+    }
 }
 
 #[test]
