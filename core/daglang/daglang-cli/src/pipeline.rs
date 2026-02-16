@@ -647,4 +647,61 @@ mod tests {
 
         fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
+
+    #[test]
+    fn parse_pipeline_aggregates_diagnostics_across_multiple_invalid_files() {
+        let root = unique_temp_dir("multi_invalid");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("broken_a.dag"), "module broken.a\nfn")
+            .expect("failed to write invalid source A");
+        fs::write(root.join("broken_b.dag"), "module broken.b\nimport")
+            .expect("failed to write invalid source B");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diag| diag.contains("broken_a.dag")),
+            "expected diagnostics to include broken_a.dag"
+        );
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diag| diag.contains("broken_b.dag")),
+            "expected diagnostics to include broken_b.dag"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn target_file_mode_limits_pipeline_input_to_single_file() {
+        let root = unique_temp_dir("target_file_mode");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("good.dag"), "module sample.good\nfn ok() -> Unit {}")
+            .expect("failed to write valid source");
+        fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+            .expect("failed to write invalid source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: Some(root.join("good.dag")),
+        };
+        let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
+
+        assert_eq!(result.parsed_count, 1, "target file mode should parse one file");
+        assert!(
+            result.diagnostics.is_empty(),
+            "target file mode should ignore sibling invalid files"
+        );
+
+        fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
 }
