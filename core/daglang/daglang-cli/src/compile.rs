@@ -489,6 +489,58 @@ mod tests {
     }
 
     #[test]
+    fn build_context_treats_dag_directory_input_as_single_file_target() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_build_context_dag_dir_target_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        let dag_dir = root.join("bundle.dag");
+        std::fs::create_dir_all(dag_dir.join("nested"))
+            .expect("failed to create .dag directory fixture");
+        std::fs::write(
+            dag_dir.join("nested/main.dag"),
+            "module sample.main\nfn run() -> Unit {}",
+        )
+        .expect("failed to write nested dag fixture");
+
+        let input_str = dag_dir.to_string_lossy().to_string();
+        let cwd = std::env::temp_dir();
+        let context = build_context(&cwd, Some(&input_str));
+
+        assert_eq!(context.roots, vec![root.clone()]);
+        assert_eq!(context.target_file, Some(dag_dir.clone()));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn build_context_normalizes_trailing_slash_for_dag_directory_target() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_build_context_dag_dir_trailing_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        let dag_dir = root.join("bundle.dag");
+        std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory fixture");
+        let input_with_trailing_slash = format!("{}/", dag_dir.display());
+
+        let cwd = std::env::temp_dir();
+        let context = build_context(&cwd, Some(&input_with_trailing_slash));
+
+        assert_eq!(context.roots, vec![root.clone()]);
+        assert_eq!(context.target_file, Some(dag_dir.clone()));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn compile_directory_reports_cyclic_dependency_errors() {
         let root = std::env::temp_dir().join(format!(
             "daglang_compile_cycle_{}_{}",
