@@ -354,6 +354,45 @@ fn check_command_relative_and_absolute_root_are_equivalent() {
 }
 
 #[test]
+fn check_command_parent_segment_root_matches_absolute_output() {
+    let cwd = workspace_root().join("core");
+    let absolute_root = workspace_root().join("dsl");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg("../dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment-root daglang check");
+    assert!(
+        parent_segment.status.success(),
+        "parent-segment-root check should succeed: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute-root daglang check from nested cwd");
+    assert!(
+        absolute.status.success(),
+        "absolute-root check should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        parent_segment.stdout, absolute.stdout,
+        "parent-segment and absolute-root check outputs should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, absolute.stderr,
+        "parent-segment and absolute-root check stderr should match"
+    );
+}
+
+#[test]
 fn check_command_relative_and_absolute_missing_roots_are_equivalent() {
     let missing_relative = unique_name("check_relative_absolute_missing_root");
     let cwd = workspace_root()
@@ -550,6 +589,63 @@ fn check_command_relative_and_absolute_single_file_targets_are_equivalent() {
     assert_eq!(
         relative.stderr, absolute.stderr,
         "relative and absolute single-file check stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_parent_segment_single_file_target_matches_absolute_output() {
+    let root = unique_temp_dir("check_parent_segment_single_file");
+    let cwd = root.join("cwd");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    std::fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg("../main.dag")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment target daglang check");
+    assert!(
+        parent_segment.status.success(),
+        "parent-segment target check should succeed: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    let absolute_target = root.join("main.dag");
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_target)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute-target daglang check from nested cwd");
+    assert!(
+        absolute.status.success(),
+        "absolute-target check should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        parent_segment.stdout, absolute.stdout,
+        "parent-segment and absolute single-file check stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, absolute.stderr,
+        "parent-segment and absolute single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&parent_segment.stdout),
+        expected_check_success_stdout(1),
+        "parent-segment single-file check should parse exactly one file"
+    );
+    assert!(
+        parent_segment.stderr.is_empty(),
+        "parent-segment single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
@@ -817,6 +913,45 @@ fn modules_command_relative_and_absolute_root_are_equivalent() {
     assert_eq!(
         relative.stderr, absolute.stderr,
         "relative and absolute root modules stderr should match"
+    );
+}
+
+#[test]
+fn modules_command_parent_segment_root_matches_absolute_output() {
+    let cwd = workspace_root().join("core");
+    let absolute_root = workspace_root().join("dsl");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("../dsl")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run parent-segment-root daglang modules");
+    assert!(
+        parent_segment.status.success(),
+        "parent-segment-root modules should succeed: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(&absolute_root)
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run absolute-root daglang modules from nested cwd");
+    assert!(
+        absolute.status.success(),
+        "absolute-root modules should succeed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        parent_segment.stdout, absolute.stdout,
+        "parent-segment and absolute-root modules stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, absolute.stderr,
+        "parent-segment and absolute-root modules stderr should match"
     );
 }
 
