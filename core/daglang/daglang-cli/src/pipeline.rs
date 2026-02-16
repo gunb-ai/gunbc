@@ -638,6 +638,36 @@ fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
             }
         }
     }
+
+    let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
+    for edge in &dag.edges {
+        adjacency
+            .entry(edge.from_node.0.clone())
+            .or_default()
+            .push(edge.to_node.0.clone());
+    }
+
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack = vec![NODE_DISCOVER.to_string()];
+    while let Some(current) = stack.pop() {
+        if !visited.insert(current.clone()) {
+            continue;
+        }
+        if let Some(neighbors) = adjacency.get(&current) {
+            for neighbor in neighbors {
+                stack.push(neighbor.clone());
+            }
+        }
+    }
+
+    for node in &dag.nodes {
+        if !visited.contains(&node.id.0) {
+            return Err(format!(
+                "pipeline node {} is unreachable from entrypoint {}",
+                node.id.0, NODE_DISCOVER
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -1436,5 +1466,20 @@ mod tests {
 
         let err = topological_order(&dag).expect_err("cyclic pipeline DAG should fail ordering");
         assert!(err.contains("contains a cycle"));
+    }
+
+    #[test]
+    fn pipeline_rejects_unreachable_node() {
+        let mut dag = build_pipeline_dag();
+        dag.add_node(Node::opaque(
+            "orphan_node",
+            vec![],
+            vec![Port::with_cardinality("out", "Unit", Cardinality::ONE)],
+            CompilerOp::ReportModules,
+        ));
+
+        let err = validate_pipeline_semantics(&dag)
+            .expect_err("unreachable node should fail pipeline semantics");
+        assert!(err.contains("is unreachable from entrypoint"));
     }
 }
