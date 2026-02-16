@@ -170,6 +170,8 @@ pub enum TypeError {
         expected: usize,
         got: usize,
     },
+    /// Service call target could not be resolved to a known service operation contract.
+    UnresolvedServiceCall { caller: String, service_call: String },
     /// Service call expression used an unknown named argument.
     UnknownServiceCallArgument {
         caller: String,
@@ -300,6 +302,13 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "service call arity mismatch in `{caller}` for `{service_call}`: expected {expected}, got {got}"
+            ),
+            Self::UnresolvedServiceCall {
+                caller,
+                service_call,
+            } => write!(
+                f,
+                "unresolved service call `{service_call}` in `{caller}`"
             ),
             Self::UnknownServiceCallArgument {
                 caller,
@@ -476,6 +485,7 @@ fn collect_signatures(
                     &def.body.stmts,
                     context.callable_registry,
                     context.service_call_registry,
+                    context.allow_unresolved_references,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Fn(TypedCallableSignature {
@@ -515,6 +525,7 @@ fn collect_signatures(
                     &def.body.stmts,
                     context.callable_registry,
                     context.service_call_registry,
+                    context.allow_unresolved_references,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Func(TypedCallableSignature {
@@ -553,6 +564,7 @@ fn collect_signatures(
                     &def.body.stmts,
                     context.callable_registry,
                     context.service_call_registry,
+                    context.allow_unresolved_references,
                     errors,
                 );
                 signatures.push(TypedItemSignature::Pattern(TypedCallableSignature {
@@ -980,6 +992,7 @@ fn validate_callable_body(
     stmts: &[Stmt],
     callable_registry: &HashMap<String, Option<CallableContract>>,
     service_call_registry: &ServiceCallRegistry,
+    allow_unresolved_references: bool,
     errors: &mut Vec<TypeError>,
 ) {
     let mut calls = Vec::new();
@@ -1020,6 +1033,12 @@ fn validate_callable_body(
     collect_service_calls_from_stmts(stmts, &mut service_calls);
     for call in service_calls {
         let Some(contract) = resolve_service_call_contract(&call.path, service_call_registry) else {
+            if !allow_unresolved_references {
+                errors.push(TypeError::UnresolvedServiceCall {
+                    caller: caller.to_string(),
+                    service_call: call.path.join("."),
+                });
+            }
             continue;
         };
         if call.arg_count != contract.arity {
@@ -1733,6 +1752,47 @@ func run() -> { ok: Bool } {
                 && *expected == 1
                 && *got == 0
         )));
+    }
+
+    #[test]
+    fn strict_mode_reports_unresolved_service_call() {
+        let graph = module_graph_from_sources(&[(
+            "service_unresolved_call.dag",
+            r#"module sample.services
+func run(path: String) -> { body: String } {
+  let response = MissingStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("strict mode should fail for unresolved service call");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnresolvedServiceCall {
+                caller,
+                service_call
+            } if caller == "run" && service_call == "MissingStorage.read"
+        )));
+    }
+
+    #[test]
+    fn relaxed_mode_allows_unresolved_service_call() {
+        let graph = module_graph_from_sources(&[(
+            "service_unresolved_call_relaxed.dag",
+            r#"module sample.services
+func run(path: String) -> { body: String } {
+  let response = MissingStorage.read(path: path)
+  return { body: response.body }
+}"#,
+        )]);
+        let typed = typecheck_module_graph(graph)
+            .expect("relaxed mode should allow unresolved service call for lower-stage validation");
+        assert_eq!(typed.modules.len(), 1);
     }
 
     #[test]

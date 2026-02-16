@@ -665,6 +665,38 @@ func run(path: String) -> { body: String } {
 }
 
 #[test]
+fn compile_command_directory_mode_fails_on_unresolved_service_call() {
+    let root = unique_temp_dir("unresolved_service_call_typecheck");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+func run(path: String) -> { body: String } {
+  let response = MissingStorage.read(path: path)
+  return { body: response.body }
+}"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        !output.status.success(),
+        "directory compile should fail on unresolved service call"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("unresolved service call `MissingStorage.read`"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_reports_module_path_mismatch() {
     let root = unique_temp_dir("path_mismatch");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
