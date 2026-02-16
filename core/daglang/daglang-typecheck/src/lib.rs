@@ -3097,6 +3097,8 @@ mod tests {
         ModuleGraph { modules }
     }
 
+    // Test infrastructure: filesystem access for test fixtures
+    #[allow(clippy::disallowed_methods)]
     #[test]
     fn typecheck_accepts_makegen_module() {
         let file = Path::new(env!("CARGO_MANIFEST_DIR"))

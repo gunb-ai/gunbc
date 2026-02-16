@@ -1,3 +1,6 @@
+// Test infrastructure: filesystem access for test fixtures
+#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
+
 use daglang_resolve::ModuleGraph;
 use std::collections::BTreeMap;
 use std::path::PathBuf;

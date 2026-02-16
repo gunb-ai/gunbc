@@ -10,6 +10,8 @@ fn expected_module_from_relative_path(relative_path: &str) -> String {
     relative_path.trim_end_matches(".dag").replace('/', ".")
 }
 
+// Test infrastructure: filesystem access for test fixtures
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 #[test]
 fn corpus_module_declarations_match_file_paths() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");

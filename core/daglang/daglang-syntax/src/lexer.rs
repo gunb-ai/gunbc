@@ -335,8 +335,12 @@ impl<'a> Lexer<'a> {
                 }
                 b'\\' => {
                     if !self.interp_depth.is_empty() && self.peek_at(1) == b'"' {
-                        self.pos += 2;
-                        return self.tok(TokenKind::Str(buf), start);
+                        // Inside interpolation expressions, callers may escape
+                        // quotes as `\"` while still expecting normal string
+                        // lexing. Drop the slash and let the quote handling
+                        // path run on the next iteration.
+                        self.pos += 1;
+                        continue;
                     }
                     self.pos += 1;
                     self.scan_escape(&mut buf);

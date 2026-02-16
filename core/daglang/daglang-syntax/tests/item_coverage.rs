@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 
 use daglang_syntax::ast::Item;
 
+// Test infrastructure: filesystem access for test fixtures
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     if !dir.is_dir() {
         return Ok(());
@@ -19,6 +21,8 @@ fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> 
     Ok(())
 }
 
+// Test infrastructure: filesystem access for test fixtures
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 #[test]
 fn corpus_covers_all_top_level_item_variants() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");

@@ -84,13 +84,16 @@ pub fn detect_provider(env: &HashMap<String, String>) -> Box<dyn CiProvider> {
     detect_provider_strict(env).unwrap_or_else(|_| Box::new(super::providers::PlainTextProvider))
 }
 
-/// Detect the current CI provider with strict CI semantics.
+/// Detect the current CI provider from specific provider markers.
 ///
 /// Behavior:
-/// - GitHub Actions env present → GitHub Actions provider
-/// - GitLab CI env present → GitLab provider
-/// - Any CI env present but unknown provider → error
-/// - Non-CI/local env → Plain text provider
+/// - `GITHUB_ACTIONS` present → GitHub Actions provider
+/// - `GITLAB_CI` present → GitLab provider
+/// - Otherwise → Plain text provider (local/unknown CI)
+///
+/// The generic `CI` env var is deliberately ignored: it is set by
+/// too many non-CI tools (Cursor, Claude Code, iTerm, etc.) to be
+/// a reliable signal. Only specific provider markers are trusted.
 pub fn detect_provider_strict(
     env: &HashMap<String, String>,
 ) -> Result<Box<dyn CiProvider>, String> {
@@ -104,20 +107,15 @@ pub fn detect_provider_strict(
         return Ok(Box::new(super::providers::GitLabCiProvider::new()));
     }
 
-    if is_ci(env) {
-        return Err(
-            "CI environment detected, but no supported provider marker found \
-             (expected one of: GITHUB_ACTIONS, GITLAB_CI)"
-                .to_string(),
-        );
-    }
-
     Ok(Box::new(super::providers::PlainTextProvider))
 }
 
-/// Check if running in any CI environment.
+/// Check if running in a recognized CI environment.
+///
+/// Only checks for specific provider markers. The generic `CI` env var
+/// is ignored because it is unreliable (set by editors, tools, etc.).
 pub fn is_ci(env: &HashMap<String, String>) -> bool {
-    env.contains_key("CI") || env.contains_key("GITHUB_ACTIONS") || env.contains_key("GITLAB_CI")
+    env.contains_key("GITHUB_ACTIONS") || env.contains_key("GITLAB_CI")
 }
 
 #[cfg(test)]
@@ -139,15 +137,11 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_provider_strict_unknown_ci_errors() {
+    fn test_detect_provider_strict_unknown_ci_falls_back_to_plain() {
         let mut env = HashMap::new();
         env.insert("CI".to_string(), "true".to_string());
-        let result = detect_provider_strict(&env);
-        let err = match result {
-            Err(e) => e,
-            Ok(_) => panic!("unknown CI provider should error"),
-        };
-        assert!(err.contains("supported provider marker"));
+        let provider = detect_provider_strict(&env).expect("unknown CI should fall back to plain");
+        assert_eq!(provider.id(), "plain");
     }
 
     #[test]

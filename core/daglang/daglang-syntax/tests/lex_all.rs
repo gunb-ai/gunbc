@@ -6,6 +6,8 @@ mod common;
 
 use common::{collect_dag_files, expected_dsl_files_sorted, to_relative_unix_path};
 
+// Test infrastructure: filesystem access for test fixtures
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 #[test]
 fn lex_all_golden_dag_files_without_diagnostics() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");

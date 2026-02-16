@@ -45,6 +45,10 @@ const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowPattern] = &[
         pattern: "core/exec/src/freshness.rs",
         rationale: "freshness steps run external tooling as child processes",
     },
+    DisallowedMethodsAllowPattern {
+        pattern: "core/daglang/",
+        rationale: "compiler pipeline: filesystem discovery for .dag module resolution",
+    },
 ];
 
 const PRAGMA_LINT_POLICY: PragmaLintPolicy = PragmaLintPolicy {

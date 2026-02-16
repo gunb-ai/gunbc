@@ -1,3 +1,8 @@
+// Test infrastructure: filesystem access for test fixtures
+#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
+// Discovery API takes &[PathBuf] slices; cloning for single-root calls is idiomatic
+#![allow(clippy::cloned_ref_to_slice_refs)]
+
 use daglang_resolve::{ModuleGraph, ResolveError};
 use daglang_syntax::diagnostic::DiagnosticKind;
 use std::collections::BTreeMap;
@@ -71,44 +76,44 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
 
 fn expected_real_corpus_module_order() -> Vec<&'static str> {
     vec![
-        "std.types",
-        "std.resources",
-        "services.shell",
-        "tools.codegen",
-        "services.github.gist",
-        "services.git",
-        "services.gcp.sts",
-        "services.gcp.secret_manager",
-        "services.gcp.iam",
-        "std.patterns",
-        "tools.testgen",
-        "tools.docgen",
-        "shared.dag_util",
-        "tools.pragma",
-        "tools.makegen",
-        "tools.deps",
-        "tools.bootstrap",
-        "services.cargo",
-        "tools.clippy",
-        "tools.build",
-        "pipelines.ci",
-        "infra.gcp.services",
-        "infra.core",
-        "infra.spec",
-        "infra.gcp.resources",
-        "infra.gcp.config",
-        "infra.azure.services",
-        "infra.azure.resources",
-        "infra.azure.config",
-        "infra.aws.services",
-        "infra.aws.resources",
-        "infra.aws.config",
-        "examples.rich_types",
-        "examples.integration_tests",
         "examples.abstract_services",
-        "cloud.gcp.credential",
-        "cloud.azure.credential",
+        "examples.rich_types",
+        "infra.aws.services",
+        "infra.azure.services",
+        "infra.core",
+        "infra.gcp.services",
+        "infra.spec",
+        "examples.integration_tests",
+        "infra.aws.config",
+        "infra.aws.resources",
+        "infra.azure.config",
+        "infra.azure.resources",
+        "infra.gcp.config",
+        "infra.gcp.resources",
+        "services.cargo",
+        "services.gcp.iam",
+        "services.gcp.secret_manager",
+        "services.gcp.sts",
+        "services.git",
+        "services.github.gist",
+        "services.shell",
+        "std.resources",
+        "std.patterns",
+        "std.types",
         "cloud.aws.credential",
+        "cloud.azure.credential",
+        "cloud.gcp.credential",
+        "shared.dag_util",
+        "tools.bootstrap",
+        "tools.build",
+        "tools.clippy",
+        "tools.codegen",
+        "tools.deps",
+        "tools.docgen",
+        "tools.makegen",
+        "tools.pragma",
+        "tools.testgen",
+        "pipelines.ci",
         "examples.deployment",
         "shared.gist_modes",
         "tools.dag_viz",
@@ -473,7 +478,7 @@ fn unresolved_imports_are_tolerated_for_phase_zero_discovery() {
 }
 
 #[test]
-fn cyclic_dependencies_are_tolerated_for_phase_zero_discovery() {
+fn cyclic_dependencies_are_reported_as_resolve_errors() {
     let root = unique_temp_dir("cycle");
     write_file(
         &root.join("a/a.dag"),
@@ -484,14 +489,18 @@ fn cyclic_dependencies_are_tolerated_for_phase_zero_discovery() {
         "module cycle.b\nimport cycle.a\nfn b() -> Unit {}",
     );
 
-    let graph = ModuleGraph::discover(&[root.clone()]).expect("expected cycle-tolerant discover");
-    let module_names: Vec<String> = graph
-        .modules
-        .iter()
-        .map(|module| module.module_path.join("."))
-        .collect();
-    assert!(module_names.iter().any(|name| name == "cycle.a"));
-    assert!(module_names.iter().any(|name| name == "cycle.b"));
+    let err = ModuleGraph::discover_strict(&[root.clone()]).expect_err("expected cycle error");
+    match err {
+        ResolveError::CyclicDependency(cycle) => {
+            let module_names = cycle
+                .iter()
+                .map(|module| module.join("."))
+                .collect::<Vec<_>>();
+            assert!(module_names.iter().any(|name| name == "cycle.a"));
+            assert!(module_names.iter().any(|name| name == "cycle.b"));
+        }
+        other => panic!("expected CyclicDependency, got {other:?}"),
+    }
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }

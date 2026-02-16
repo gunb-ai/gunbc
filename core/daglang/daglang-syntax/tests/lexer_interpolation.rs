@@ -47,3 +47,19 @@ fn interpolation_does_not_start_on_numeric_brace_sequences() {
         ]
     );
 }
+
+#[test]
+fn interpolation_lexes_escaped_quotes_in_inner_string_consistently() {
+    assert_eq!(
+        kinds(r#""outer {inner_fn(\"arg\")} end""#),
+        vec![
+            TokenKind::StrBegin("outer ".into()),
+            TokenKind::Ident("inner_fn".into()),
+            TokenKind::LParen,
+            TokenKind::Str("arg".into()),
+            TokenKind::RParen,
+            TokenKind::StrEnd(" end".into()),
+            TokenKind::Eof,
+        ]
+    );
+}

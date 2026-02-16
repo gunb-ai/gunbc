@@ -1,5 +1,6 @@
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 
+use crate::path_utils;
 use crate::pipeline::PipelineContext;
 use daglang_derive::{derive_artifacts, DerivedArtifacts};
 use daglang_emit::{emit_rust_bundle, EmissionBundle};
@@ -18,7 +19,7 @@ pub struct CompileOutput {
 }
 
 pub fn build_context(input: Option<&String>) -> PipelineContext {
-    let parsed = input.map(|value| normalize_cli_path(PathBuf::from(value)));
+    let parsed = input.map(|value| path_utils::normalize_cli_path(PathBuf::from(value)));
     let (roots, target_file) = match parsed {
         Some(path) if path.extension().and_then(|ext| ext.to_str()) == Some("dag") => {
             let root = path
@@ -35,34 +36,7 @@ pub fn build_context(input: Option<&String>) -> PipelineContext {
 }
 
 pub fn resolve_default_root() -> PathBuf {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    cwd.join("dsl")
-}
-
-fn normalize_cli_path(path: PathBuf) -> PathBuf {
-    let absolute = if path.is_absolute() {
-        path
-    } else {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        cwd.join(path)
-    };
-    normalize_path_components(&absolute)
-}
-
-fn normalize_path_components(path: &Path) -> PathBuf {
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
-            Component::RootDir => normalized.push(Path::new(std::path::MAIN_SEPARATOR_STR)),
-            Component::CurDir => {}
-            Component::ParentDir => {
-                normalized.pop();
-            }
-            Component::Normal(segment) => normalized.push(segment),
-        }
-    }
-    normalized
+    path_utils::resolve_default_root()
 }
 
 pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, String> {
@@ -95,6 +69,8 @@ pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, 
     })
 }
 
+// Compiler pipeline: reads .dag source for single-file compilation
+#[allow(clippy::disallowed_methods)]
 fn discover_module_graph_for_context(context: &PipelineContext) -> Result<ModuleGraph, String> {
     if let Some(target_file) = &context.target_file {
         let source = std::fs::read_to_string(target_file)
@@ -130,7 +106,7 @@ fn discover_module_graph_for_context(context: &PipelineContext) -> Result<Module
         });
     }
 
-    ModuleGraph::discover(&context.roots).map_err(format_resolve_error)
+    ModuleGraph::discover_strict(&context.roots).map_err(format_resolve_error)
 }
 
 fn format_resolve_error(error: ResolveError) -> String {
@@ -353,6 +329,8 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
 }
 
 #[cfg(test)]
+// Test infrastructure: filesystem access for test fixtures
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -438,6 +416,40 @@ mod tests {
         let cwd = std::env::current_dir().expect("cwd should resolve");
         assert_eq!(context.roots, vec![cwd.join("dsl")]);
         assert!(context.target_file.is_none());
+    }
+
+    #[test]
+    fn compile_directory_reports_cyclic_dependency_errors() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_cycle_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("a")).expect("failed to create module a dir");
+        std::fs::create_dir_all(root.join("b")).expect("failed to create module b dir");
+        std::fs::write(
+            root.join("a/a.dag"),
+            "module cycle.a\nimport cycle.b\nfn a() -> Unit {}",
+        )
+        .expect("failed to write module a");
+        std::fs::write(
+            root.join("b/b.dag"),
+            "module cycle.b\nimport cycle.a\nfn b() -> Unit {}",
+        )
+        .expect("failed to write module b");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let err = compile_from_context(&context).expect_err("compile should fail on cycles");
+        assert!(err.contains("cyclic dependency"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
     #[test]

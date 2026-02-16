@@ -1914,6 +1914,8 @@ mod tests {
         typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
     }
 
+    // Test infrastructure: filesystem access for test fixtures
+    #[allow(clippy::disallowed_methods)]
     #[test]
     fn lower_makegen_produces_callable_nodes() {
         let file = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1948,6 +1950,8 @@ mod tests {
         }));
     }
 
+    // Test infrastructure: filesystem access for test fixtures
+    #[allow(clippy::disallowed_methods)]
     #[test]
     fn content_upsert_expansion_wires_transport_chain_for_makegen() {
         let file = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -2432,6 +2436,8 @@ func run() -> { ok: Bool } provides out: Storage {
         assert!(matches!(error, LowerError::NoLowerableItems));
     }
 
+    // Test infrastructure: filesystem access for test fixtures
+    #[allow(clippy::disallowed_methods)]
     #[test]
     fn makegen_parity_report_is_deterministic() {
         let file = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -2454,6 +2460,8 @@ func run() -> { ok: Bool } provides out: Storage {
         );
     }
 
+    // Test infrastructure: filesystem access for test fixtures
+    #[allow(clippy::disallowed_methods)]
     #[test]
     fn makegen_normalized_parity_can_reach_exact_match() {
         let file = Path::new(env!("CARGO_MANIFEST_DIR"))

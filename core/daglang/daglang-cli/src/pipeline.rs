@@ -320,6 +320,8 @@ fn execute_op(
     }
 }
 
+// Compiler pipeline: discovers and reads .dag source files
+#[allow(clippy::disallowed_methods)]
 fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> {
     if let Some(target_file) = &context.target_file {
         let canonical_target = fs::canonicalize(target_file).map_err(|error| {
@@ -367,6 +369,8 @@ fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> 
     Ok(out)
 }
 
+// Compiler pipeline: recursively discovers .dag files
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 fn collect_dag_files(
     dir: &Path,
     out: &mut Vec<PathBuf>,
@@ -427,6 +431,8 @@ fn choose_preferred_relative(
     }
 }
 
+// Compiler pipeline: deduplicates equivalent root paths
+#[allow(clippy::disallowed_methods)]
 fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut seen = HashSet::new();
     let mut canonical_roots = Vec::new();
@@ -440,6 +446,8 @@ fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     canonical_roots
 }
 
+// Compiler pipeline: resolves module paths via canonical path comparison
+#[allow(clippy::disallowed_methods)]
 fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
     let canonical_path = fs::canonicalize(path).ok();
     let mut best_relative: Option<PathBuf> = None;
@@ -567,7 +575,8 @@ fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) -> Result<Vec<Vec<String
     }
 
     let mut queue: Vec<usize> = (0..n).filter(|idx| in_degree[*idx] == 0).collect();
-    queue.sort_unstable();
+    // Keep deterministic ordering and consume lowest index first.
+    queue.sort_unstable_by(|a, b| b.cmp(a));
     let mut order = Vec::with_capacity(n);
 
     while let Some(current) = queue.pop() {
@@ -578,7 +587,7 @@ fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) -> Result<Vec<Vec<String
                 queue.push(*next);
             }
         }
-        queue.sort_unstable();
+        queue.sort_unstable_by(|a, b| b.cmp(a));
     }
 
     let mut cycle_modules = Vec::new();
@@ -895,6 +904,8 @@ fn diagnostic_kind_rank(kind: &DiagnosticKind) -> u8 {
 }
 
 #[cfg(test)]
+// Test infrastructure: filesystem access for test fixtures
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
@@ -914,44 +925,44 @@ mod tests {
 
     fn expected_real_corpus_module_order() -> Vec<&'static str> {
         vec![
-            "std.types",
-            "std.resources",
-            "services.shell",
-            "tools.codegen",
-            "services.github.gist",
-            "services.git",
-            "services.gcp.sts",
-            "services.gcp.secret_manager",
-            "services.gcp.iam",
-            "std.patterns",
-            "tools.testgen",
-            "tools.docgen",
-            "shared.dag_util",
-            "tools.pragma",
-            "tools.makegen",
-            "tools.deps",
-            "tools.bootstrap",
-            "services.cargo",
-            "tools.clippy",
-            "tools.build",
-            "pipelines.ci",
-            "infra.gcp.services",
-            "infra.core",
-            "infra.spec",
-            "infra.gcp.resources",
-            "infra.gcp.config",
-            "infra.azure.services",
-            "infra.azure.resources",
-            "infra.azure.config",
-            "infra.aws.services",
-            "infra.aws.resources",
-            "infra.aws.config",
-            "examples.rich_types",
-            "examples.integration_tests",
             "examples.abstract_services",
-            "cloud.gcp.credential",
-            "cloud.azure.credential",
+            "examples.rich_types",
+            "infra.aws.services",
+            "infra.azure.services",
+            "infra.core",
+            "infra.gcp.services",
+            "infra.spec",
+            "examples.integration_tests",
+            "infra.aws.config",
+            "infra.aws.resources",
+            "infra.azure.config",
+            "infra.azure.resources",
+            "infra.gcp.config",
+            "infra.gcp.resources",
+            "services.cargo",
+            "services.gcp.iam",
+            "services.gcp.secret_manager",
+            "services.gcp.sts",
+            "services.git",
+            "services.github.gist",
+            "services.shell",
+            "std.resources",
+            "std.patterns",
+            "std.types",
             "cloud.aws.credential",
+            "cloud.azure.credential",
+            "cloud.gcp.credential",
+            "shared.dag_util",
+            "tools.bootstrap",
+            "tools.build",
+            "tools.clippy",
+            "tools.codegen",
+            "tools.deps",
+            "tools.docgen",
+            "tools.makegen",
+            "tools.pragma",
+            "tools.testgen",
+            "pipelines.ci",
             "examples.deployment",
             "shared.gist_modes",
             "tools.dag_viz",
@@ -1156,12 +1167,12 @@ mod tests {
 
         let cycle_modules = topo_sort_modules(&mut modules).expect("topo sort should succeed");
         assert!(cycle_modules.is_empty(), "expected acyclic ordering");
-        assert_eq!(modules[0].module_path, vec!["c".to_string()]);
-        assert_eq!(modules[1].module_path, vec!["b".to_string()]);
+        assert_eq!(modules[0].module_path, vec!["b".to_string()]);
+        assert_eq!(modules[1].module_path, vec!["c".to_string()]);
         assert_eq!(modules[2].module_path, vec!["a".to_string()]);
         assert_eq!(
             modules[2].dependencies,
-            vec![0],
+            vec![1],
             "dependency index should be remapped to new module positions"
         );
     }
@@ -1194,12 +1205,12 @@ mod tests {
 
         assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
         assert_eq!(graph.modules.len(), 3);
-        assert_eq!(graph.modules[0].module_path, vec!["c".to_string()]);
-        assert_eq!(graph.modules[1].module_path, vec!["b".to_string()]);
+        assert_eq!(graph.modules[0].module_path, vec!["b".to_string()]);
+        assert_eq!(graph.modules[1].module_path, vec!["c".to_string()]);
         assert_eq!(graph.modules[2].module_path, vec!["a".to_string()]);
         assert_eq!(
             graph.modules[2].dependencies,
-            vec![0],
+            vec![1],
             "graph dependency index should point at reordered dependency"
         );
     }

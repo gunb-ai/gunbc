@@ -50,7 +50,26 @@ pub struct ModuleGraph {
 impl ModuleGraph {
     /// Discover `.dag` files from the given root directories and build
     /// the module graph.
+    // Compiler pipeline: reads .dag files for module resolution
+    #[allow(clippy::disallowed_methods)]
     pub fn discover(roots: &[PathBuf]) -> Result<Self, ResolveError> {
+        Self::discover_with_cycle_mode(roots, false)
+    }
+
+    /// Discover `.dag` files and fail when an import cycle exists.
+    ///
+    /// This mode is used by compile/check flows that require explicit
+    /// success/failure behavior rather than best-effort graph ordering.
+    #[allow(clippy::disallowed_methods)]
+    pub fn discover_strict(roots: &[PathBuf]) -> Result<Self, ResolveError> {
+        Self::discover_with_cycle_mode(roots, true)
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    fn discover_with_cycle_mode(
+        roots: &[PathBuf],
+        fail_on_cycles: bool,
+    ) -> Result<Self, ResolveError> {
         let mut dag_files = Vec::new();
         let mut visited_dirs = HashSet::new();
         for root in roots {
@@ -132,7 +151,7 @@ impl ModuleGraph {
             });
         }
 
-        topo_sort(&mut modules)?;
+        topo_sort(&mut modules, fail_on_cycles)?;
 
         Ok(ModuleGraph { modules })
     }
@@ -154,6 +173,8 @@ impl ModuleGraph {
 }
 
 /// Recursively collect all `.dag` files under `dir`.
+// Compiler pipeline: recursively discovers .dag files
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 fn collect_dag_files(
     dir: &Path,
     out: &mut Vec<PathBuf>,
@@ -216,6 +237,8 @@ fn choose_preferred_relative(current: Option<PathBuf>, candidate: &Path) -> Opti
     }
 }
 
+// Compiler pipeline: deduplicates equivalent root paths
+#[allow(clippy::disallowed_methods)]
 fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut seen = HashSet::new();
     let mut canonical_roots = Vec::new();
@@ -229,6 +252,8 @@ fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     canonical_roots
 }
 
+// Compiler pipeline: resolves module paths via canonical path comparison
+#[allow(clippy::disallowed_methods)]
 fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
     let canonical_path = std::fs::canonicalize(path).ok();
     let mut best_relative: Option<PathBuf> = None;
@@ -258,7 +283,7 @@ fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBu
 }
 
 /// Stable topological sort: leaves (no deps) first.
-fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
+fn topo_sort(modules: &mut Vec<ResolvedModule>, fail_on_cycles: bool) -> Result<(), ResolveError> {
     let n = modules.len();
     let mut in_degree = vec![0usize; n];
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
@@ -271,7 +296,8 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
         }
     }
     let mut queue: Vec<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
-    queue.sort_unstable();
+    // Keep deterministic ordering and consume lowest index first.
+    queue.sort_unstable_by(|a, b| b.cmp(a));
     let mut order = Vec::with_capacity(n);
     while let Some(idx) = queue.pop() {
         order.push(idx);
@@ -281,27 +307,45 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
                 queue.push(next);
             }
         }
-        queue.sort_unstable();
+        queue.sort_unstable_by(|a, b| b.cmp(a));
     }
     if order.len() != n {
+        if !fail_on_cycles {
+            let mut seen = vec![false; n];
+            for idx in &order {
+                seen[*idx] = true;
+            }
+            for (idx, visited) in seen.iter().enumerate().take(n) {
+                if !visited {
+                    order.push(idx);
+                }
+            }
+            return reorder_modules_by_order(modules, &order);
+        }
         let mut seen = vec![false; n];
         for idx in &order {
             seen[*idx] = true;
         }
-        for (idx, visited) in seen.iter().enumerate().take(n) {
-            if !visited {
-                order.push(idx);
-            }
-        }
+        let cycle = seen
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, visited)| (!visited).then_some(modules[idx].module_path.clone()))
+            .collect::<Vec<_>>();
+        return Err(ResolveError::CyclicDependency(cycle));
     }
 
+    reorder_modules_by_order(modules, &order)
+}
+
+fn reorder_modules_by_order(modules: &mut Vec<ResolvedModule>, order: &[usize]) -> Result<(), ResolveError> {
+    let n = modules.len();
     let mut old_to_new = vec![0usize; n];
     for (new_idx, old_idx) in order.iter().enumerate() {
         old_to_new[*old_idx] = new_idx;
     }
 
     let mut tmp: Vec<Option<ResolvedModule>> = modules.drain(..).map(Some).collect();
-    for old_idx in &order {
+    for old_idx in order {
         let mut module = tmp[*old_idx].take().ok_or_else(|| {
             ResolveError::InternalInvariant(format!(
                 "topological order referenced missing module index {old_idx}"

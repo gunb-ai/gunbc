@@ -9,6 +9,8 @@ fn dsl_file(path: &str) -> PathBuf {
         .join(path)
 }
 
+// Test infrastructure: filesystem access for test fixtures
+#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 fn parse_dsl(path: &str) -> daglang_syntax::ast::SourceFile {
     let file = dsl_file(path);
     let source = fs::read_to_string(&file).expect("failed to read representative .dag file");

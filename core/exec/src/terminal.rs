@@ -79,11 +79,10 @@ fn detect_tty() -> bool {
 
 /// Detect whether we're running inside a CI environment.
 ///
-/// Most CI systems set `$CI=true`. We also check provider-specific
-/// variables for robustness.
+/// Check for specific CI provider markers. The generic `CI` env var
+/// is ignored because it is unreliable (set by editors, tools, etc.).
 fn detect_ci() -> bool {
-    env::var("CI").is_ok()
-        || env::var("GITHUB_ACTIONS").is_ok()
+    env::var("GITHUB_ACTIONS").is_ok()
         || env::var("GITLAB_CI").is_ok()
         || env::var("JENKINS_URL").is_ok()
         || env::var("BUILDKITE").is_ok()

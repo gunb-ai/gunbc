@@ -1,3 +1,6 @@
+// Test infrastructure: filesystem access for test fixtures
+#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
