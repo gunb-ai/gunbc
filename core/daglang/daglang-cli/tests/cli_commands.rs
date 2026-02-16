@@ -2328,6 +2328,178 @@ fn check_command_absolute_double_separator_missing_target_matches_canonical_outp
 }
 
 #[test]
+fn check_command_absolute_mixed_segment_single_file_target_matches_canonical_output() {
+    let root = unique_temp_dir("check_absolute_mixed_segment_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    let main_file = root.join("main.dag");
+    std::fs::write(&main_file, "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+    let absolute_mixed = root.join(".").join("main.dag");
+
+    let mixed = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_mixed)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run mixed-segment absolute single-file daglang check");
+    assert!(
+        mixed.status.success(),
+        "mixed-segment absolute single-file check should succeed: {}",
+        String::from_utf8_lossy(&mixed.stderr)
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&main_file)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute single-file daglang check");
+    assert!(
+        canonical.status.success(),
+        "canonical absolute single-file check should succeed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    assert_eq!(
+        mixed.stdout, canonical.stdout,
+        "mixed-segment and canonical absolute single-file check stdout should match"
+    );
+    assert_eq!(
+        mixed.stderr, canonical.stderr,
+        "mixed-segment and canonical absolute single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&mixed.stdout),
+        expected_check_success_stdout(1),
+        "mixed-segment absolute single-file check should parse exactly one file"
+    );
+    assert!(
+        mixed.stderr.is_empty(),
+        "mixed-segment absolute single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&mixed.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_absolute_parent_segment_single_file_target_matches_canonical_output() {
+    let root = unique_temp_dir("check_absolute_parent_segment_single_file");
+    let nested = root.join("nested");
+    std::fs::create_dir_all(&nested).expect("failed to create nested dir");
+    let main_file = root.join("main.dag");
+    std::fs::write(&main_file, "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+    let absolute_parent_segment = root.join("nested/../main.dag");
+
+    let parent_segment = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_parent_segment)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run parent-segment absolute single-file daglang check");
+    assert!(
+        parent_segment.status.success(),
+        "parent-segment absolute single-file check should succeed: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&main_file)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute single-file daglang check");
+    assert!(
+        canonical.status.success(),
+        "canonical absolute single-file check should succeed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    assert_eq!(
+        parent_segment.stdout, canonical.stdout,
+        "parent-segment and canonical absolute single-file check stdout should match"
+    );
+    assert_eq!(
+        parent_segment.stderr, canonical.stderr,
+        "parent-segment and canonical absolute single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&parent_segment.stdout),
+        expected_check_success_stdout(1),
+        "parent-segment absolute single-file check should parse exactly one file"
+    );
+    assert!(
+        parent_segment.stderr.is_empty(),
+        "parent-segment absolute single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&parent_segment.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn check_command_absolute_double_separator_single_file_target_matches_canonical_output() {
+    let root = unique_temp_dir("check_absolute_double_separator_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp dir");
+    let main_file = root.join("main.dag");
+    std::fs::write(&main_file, "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid dag source");
+    std::fs::write(root.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write sibling malformed source");
+    let absolute_double_separator = PathBuf::from(format!("{}//main.dag", root.display()));
+
+    let double_separator = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&absolute_double_separator)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run double-separator absolute single-file daglang check");
+    assert!(
+        double_separator.status.success(),
+        "double-separator absolute single-file check should succeed: {}",
+        String::from_utf8_lossy(&double_separator.stderr)
+    );
+
+    let canonical = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&main_file)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run canonical absolute single-file daglang check");
+    assert!(
+        canonical.status.success(),
+        "canonical absolute single-file check should succeed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    assert_eq!(
+        double_separator.stdout, canonical.stdout,
+        "double-separator and canonical absolute single-file check stdout should match"
+    );
+    assert_eq!(
+        double_separator.stderr, canonical.stderr,
+        "double-separator and canonical absolute single-file check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&double_separator.stdout),
+        expected_check_success_stdout(1),
+        "double-separator absolute single-file check should parse exactly one file"
+    );
+    assert!(
+        double_separator.stderr.is_empty(),
+        "double-separator absolute single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&double_separator.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn check_command_absolute_trailing_slash_single_file_target_matches_canonical_output() {
     let root = unique_temp_dir("check_absolute_trailing_slash_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");

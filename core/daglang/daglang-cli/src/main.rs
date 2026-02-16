@@ -220,4 +220,33 @@ mod tests {
         let normalized = normalize_path_components(&path);
         assert_eq!(normalized, path);
     }
+
+    #[test]
+    fn normalize_path_components_collapses_redundant_separators_and_trailing_separator() {
+        let path = PathBuf::from(format!(
+            "{}workspace//dsl///tools/",
+            std::path::MAIN_SEPARATOR
+        ));
+        let normalized = normalize_path_components(&path);
+        let expected = root_path().join("workspace").join("dsl").join("tools");
+        assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn normalize_path_components_handles_mixed_parent_curdir_and_redundant_separators() {
+        let path = PathBuf::from(format!(
+            "{}workspace//core/./../dsl//tools/../makegen.dag",
+            std::path::MAIN_SEPARATOR
+        ));
+        let normalized = normalize_path_components(&path);
+        let expected = root_path().join("workspace").join("dsl").join("makegen.dag");
+        assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn normalize_path_components_preserves_single_absolute_root() {
+        let path = root_path();
+        let normalized = normalize_path_components(&path);
+        assert_eq!(normalized, path);
+    }
 }
