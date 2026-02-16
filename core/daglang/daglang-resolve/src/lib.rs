@@ -263,6 +263,7 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
         }
     }
     let mut queue: Vec<usize> = (0..n).filter(|&i| in_degree[i] == 0).collect();
+    queue.sort_unstable();
     let mut order = Vec::with_capacity(n);
     while let Some(idx) = queue.pop() {
         order.push(idx);
@@ -272,6 +273,7 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>) -> Result<(), ResolveError> {
                 queue.push(next);
             }
         }
+        queue.sort_unstable();
     }
     if order.len() != n {
         let mut seen = vec![false; n];

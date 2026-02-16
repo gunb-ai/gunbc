@@ -1427,6 +1427,58 @@ mod tests {
     }
 
     #[test]
+    fn build_pipeline_real_corpus_module_graph_matches_resolve_discovery() {
+        let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+        let context = PipelineContext {
+            roots: vec![dsl_root.clone()],
+            target_file: None,
+        };
+        let (pipeline_graph, _) = run_parse_and_build_ops(&context);
+        let resolve_graph =
+            daglang_resolve::ModuleGraph::discover(&[dsl_root]).expect("resolve discovery should succeed");
+
+        let pipeline_order: Vec<String> = pipeline_graph
+            .modules
+            .iter()
+            .map(|module| module.module_path.join("."))
+            .collect();
+        let resolve_order: Vec<String> = resolve_graph
+            .modules
+            .iter()
+            .map(|module| module.module_path.join("."))
+            .collect();
+        assert_eq!(pipeline_order, resolve_order);
+
+        let pipeline_deps: BTreeMap<String, Vec<String>> = pipeline_graph
+            .modules
+            .iter()
+            .map(|module| {
+                let mut deps: Vec<String> = module
+                    .dependencies
+                    .iter()
+                    .map(|dep_idx| pipeline_graph.modules[*dep_idx].module_path.join("."))
+                    .collect();
+                deps.sort();
+                (module.module_path.join("."), deps)
+            })
+            .collect();
+        let resolve_deps: BTreeMap<String, Vec<String>> = resolve_graph
+            .modules
+            .iter()
+            .map(|module| {
+                let mut deps: Vec<String> = module
+                    .dependencies
+                    .iter()
+                    .map(|dep_idx| resolve_graph.modules[*dep_idx].module_path.join("."))
+                    .collect();
+                deps.sort();
+                (module.module_path.join("."), deps)
+            })
+            .collect();
+        assert_eq!(pipeline_deps, resolve_deps);
+    }
+
+    #[test]
     fn parse_stop_does_not_emit_module_graph_or_report_values() {
         let root = unique_temp_dir("parse_stop_outputs");
         fs::create_dir_all(&root).expect("failed to create temp root");
