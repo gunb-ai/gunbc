@@ -6,7 +6,7 @@
 //!
 //! # Commands
 //!
-//! - `daglang viz <file.dag>`      -- ASCII DAG visualization from compiled IR
+//! - `daglang viz <file.dag>`      -- Mermaid DAG visualization from compiled IR
 //! - `daglang expand <file.dag>`   -- Show lowered GraphIR (nodes, edges, ports)
 //! - `daglang manifest <file.dag>` -- Show derived ProgressManifest
 //! - `daglang obligations <file.dag> [--format text|json]`
@@ -36,7 +36,7 @@ fn main() {
         eprintln!("Usage: daglang <command> [args...]");
         eprintln!();
         eprintln!("Commands:");
-        eprintln!("  viz <file.dag>       ASCII DAG visualization");
+        eprintln!("  viz <file.dag>       Mermaid DAG visualization");
         eprintln!("  expand <file.dag>    Show lowered GraphIR (nodes/edges/ports)");
         eprintln!("  manifest <file.dag>  Show derived ProgressManifest");
         eprintln!("  obligations <file.dag> [--format text|json]");
