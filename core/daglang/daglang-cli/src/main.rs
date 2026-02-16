@@ -153,6 +153,9 @@ fn normalize_path_components(path: &Path) -> PathBuf {
             Component::Normal(segment) => normalized.push(segment),
         }
     }
+    if normalized.as_os_str().is_empty() && !path.has_root() {
+        return PathBuf::from(".");
+    }
     normalized
 }
 
@@ -282,5 +285,18 @@ mod tests {
         let normalized = normalize_path_components(&path);
         let expected = PathBuf::from("../../workspace/dsl");
         assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn normalize_path_components_collapses_empty_relative_path_to_curdir() {
+        let normalized = normalize_path_components(Path::new(""));
+        assert_eq!(normalized, PathBuf::from("."));
+    }
+
+    #[test]
+    fn normalize_path_components_collapses_relative_path_that_resolves_to_curdir() {
+        let path = PathBuf::from("tools/../.");
+        let normalized = normalize_path_components(&path);
+        assert_eq!(normalized, PathBuf::from("."));
     }
 }
