@@ -258,6 +258,23 @@ fn real_corpus_acyclic_dependencies_precede_dependents() {
 }
 
 #[test]
+fn real_corpus_dependency_indices_are_within_bounds() {
+    let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+    let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
+
+    for module in &graph.modules {
+        for dep_idx in &module.dependencies {
+            assert!(
+                *dep_idx < graph.modules.len(),
+                "dependency index {} is out of bounds for module {}",
+                dep_idx,
+                module.module_path.join(".")
+            );
+        }
+    }
+}
+
+#[test]
 fn discovery_with_empty_roots_returns_empty_graph() {
     let graph = ModuleGraph::discover(&[]).expect("empty roots should be valid");
     assert!(graph.modules.is_empty(), "expected no discovered modules");

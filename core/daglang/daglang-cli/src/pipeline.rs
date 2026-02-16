@@ -1053,6 +1053,44 @@ mod tests {
     }
 
     #[test]
+    fn build_module_graph_remaps_dependency_indices_after_topological_sort() {
+        let parsed_modules = vec![
+            ParsedModule {
+                path: PathBuf::from("a.dag"),
+                module_path: vec!["a".into()],
+                imports: vec![vec!["c".into()]],
+                ast: parser::parse("module a\nimport c\nfn ok() -> Unit {}")
+                    .expect("parse should succeed"),
+            },
+            ParsedModule {
+                path: PathBuf::from("b.dag"),
+                module_path: vec!["b".into()],
+                imports: vec![],
+                ast: parser::parse("module b\nfn ok() -> Unit {}").expect("parse should succeed"),
+            },
+            ParsedModule {
+                path: PathBuf::from("c.dag"),
+                module_path: vec!["c".into()],
+                imports: vec![],
+                ast: parser::parse("module c\nfn ok() -> Unit {}").expect("parse should succeed"),
+            },
+        ];
+        let mut diagnostics = Vec::new();
+        let graph = build_module_graph(parsed_modules, &mut diagnostics);
+
+        assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+        assert_eq!(graph.modules.len(), 3);
+        assert_eq!(graph.modules[0].module_path, vec!["c".to_string()]);
+        assert_eq!(graph.modules[1].module_path, vec!["b".to_string()]);
+        assert_eq!(graph.modules[2].module_path, vec!["a".to_string()]);
+        assert_eq!(
+            graph.modules[2].dependencies,
+            vec![0],
+            "graph dependency index should point at reordered dependency"
+        );
+    }
+
+    #[test]
     fn parse_op_rejects_wrong_pipe_value_variant() {
         let context = PipelineContext {
             roots: vec![],
