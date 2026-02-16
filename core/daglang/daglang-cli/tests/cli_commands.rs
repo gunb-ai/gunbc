@@ -26310,6 +26310,42 @@ fn check_command_accepts_symlink_uppercase_dag_single_file_target() {
 
 #[cfg(unix)]
 #[test]
+fn check_command_accepts_symlink_mixed_case_dag_single_file_target() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_mixed_case_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let real = root.join("real.DaG");
+    let link = root.join("link.DaG");
+    std::fs::write(&real, "module sample.real\nfn ok() -> Unit {}")
+        .expect("failed to write real source");
+    symlink(&real, &link).expect("failed to create symlinked target");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on mixed-case symlinked target");
+
+    assert!(
+        output.status.success(),
+        "check should succeed for mixed-case symlinked single-file target: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected_check_success_stdout(1));
+    assert!(
+        output.stderr.is_empty(),
+        "mixed-case symlinked single-file check should not emit stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn check_command_symlink_and_real_invalid_single_file_targets_are_equivalent() {
     use std::os::unix::fs::symlink;
 
@@ -26414,6 +26450,58 @@ fn check_command_symlink_and_real_invalid_uppercase_single_file_targets_are_equi
 
 #[cfg(unix)]
 #[test]
+fn check_command_symlink_and_real_invalid_mixed_case_single_file_targets_are_equivalent() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_symlink_real_invalid_mixed_case_single_file_equivalent");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let real = root.join("real.DaG");
+    let link = root.join("link.DaG");
+    std::fs::write(&real, "module sample.broken\nfn")
+        .expect("failed to write malformed real source");
+    symlink(&real, &link).expect("failed to create symlinked target");
+
+    let real_output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&real)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on real malformed mixed-case target");
+    assert!(
+        !real_output.status.success(),
+        "real malformed mixed-case single-file target should fail"
+    );
+
+    let link_output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on symlinked malformed mixed-case target");
+    assert!(
+        !link_output.status.success(),
+        "symlinked malformed mixed-case single-file target should fail"
+    );
+
+    assert_eq!(
+        real_output.stdout, link_output.stdout,
+        "real and symlink invalid mixed-case target check stdout should match"
+    );
+    assert_eq!(
+        real_output.stderr, link_output.stderr,
+        "real and symlink invalid mixed-case target check stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&real_output.stderr);
+    assert!(
+        stderr.contains("real.DaG:2:3:"),
+        "expected canonicalized parse diagnostic path in stderr for mixed-case target: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn check_command_dangling_symlink_single_file_target_exits_nonzero() {
     use std::os::unix::fs::symlink;
 
@@ -26487,6 +26575,48 @@ fn check_command_dangling_uppercase_symlink_single_file_target_exits_nonzero() {
     assert!(
         !stderr.contains("input root is not a directory"),
         "uppercase dangling-symlink target should be treated as single-file canonicalization failure: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_dangling_mixed_case_symlink_single_file_target_exits_nonzero() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_dangling_mixed_case_symlink_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.DaG");
+    let dangling_link = root.join("broken.DaG");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink target");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&dangling_link)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check on mixed-case dangling symlink target");
+
+    assert!(
+        !output.status.success(),
+        "check should fail for mixed-case dangling symlink single-file target"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "mixed-case dangling-symlink single-file check should use exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("pipeline error"));
+    assert!(stderr.contains("failed to canonicalize"));
+    assert!(
+        stderr.contains("broken.DaG"),
+        "mixed-case dangling symlink single-file failure should include offending path: {stderr}"
+    );
+    assert!(
+        !stderr.contains("input root is not a directory"),
+        "mixed-case dangling-symlink target should be treated as single-file canonicalization failure: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -26593,6 +26723,59 @@ fn check_command_relative_and_absolute_uppercase_dangling_symlink_targets_are_eq
             dangling_link.display()
         )),
         "uppercase dangling-target diagnostics should include normalized absolute path: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_relative_and_absolute_mixed_case_dangling_symlink_targets_are_equivalent() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_relative_absolute_mixed_case_dangling_symlink_target");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let dangling_target = root.join("missing.DaG");
+    let dangling_link = root.join("broken.DaG");
+    symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink target");
+
+    let relative = Command::new(daglang_bin())
+        .arg("check")
+        .arg("broken.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative mixed-case dangling-target daglang check");
+    assert!(
+        !relative.status.success(),
+        "relative mixed-case dangling-target check should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&dangling_link)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute mixed-case dangling-target daglang check");
+    assert!(
+        !absolute.status.success(),
+        "absolute mixed-case dangling-target check should fail"
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute mixed-case dangling-target check stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute mixed-case dangling-target check stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&relative.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "failed to canonicalize {}",
+            dangling_link.display()
+        )),
+        "mixed-case dangling-target diagnostics should include normalized absolute path: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
