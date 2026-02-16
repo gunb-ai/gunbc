@@ -870,7 +870,7 @@ fn collect_unique_callables(
                     &mut callables,
                     def.name.clone(),
                     CallableContract {
-                        arity: def.params.len(),
+                        arity: required_param_arity(&def.params),
                         params: def.params.iter().map(|param| param.name.clone()).collect(),
                         output: ValueType::Named(type_expr_to_string(&def.return_type)),
                     },
@@ -879,7 +879,7 @@ fn collect_unique_callables(
                     &mut callables,
                     def.name.clone(),
                     CallableContract {
-                        arity: def.params.len(),
+                        arity: required_param_arity(&def.params),
                         params: def.params.iter().map(|param| param.name.clone()).collect(),
                         output: ValueType::Record(field_signature_map(&def.outputs)),
                     },
@@ -888,7 +888,7 @@ fn collect_unique_callables(
                     &mut callables,
                     def.name.clone(),
                     CallableContract {
-                        arity: def.params.len(),
+                        arity: required_param_arity(&def.params),
                         params: def.params.iter().map(|param| param.name.clone()).collect(),
                         output: ValueType::Record(field_signature_map(&def.outputs)),
                     },
@@ -900,7 +900,7 @@ fn collect_unique_callables(
                                 &mut callables,
                                 variant.name.clone(),
                                 CallableContract {
-                                    arity: variant.fields.len(),
+                                    arity: required_field_arity(&variant.fields),
                                     params: variant
                                         .fields
                                         .iter()
@@ -920,6 +920,22 @@ fn collect_unique_callables(
         callables.entry(name).or_insert(Some(contract));
     }
     callables
+}
+
+fn required_param_arity(params: &[Param]) -> usize {
+    params.iter().filter(|param| param.default.is_none()).count()
+}
+
+fn required_field_arity(fields: &[Field]) -> usize {
+    fields.iter().filter(|field| field.default.is_none()).count()
+}
+
+fn callable_contract_max_arity(contract: &CallableContract) -> usize {
+    contract.arity.max(contract.params.len())
+}
+
+fn service_contract_max_arity(contract: &ServiceCallContract) -> usize {
+    contract.arity.max(contract.params.len())
 }
 
 fn register_callable_contract(
@@ -1014,7 +1030,7 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
         (
             "to_bytes".to_string(),
             CallableContract {
-                arity: 1,
+                arity: 0,
                 params: HashSet::from(["value".to_string()]),
                 output: ValueType::Named("Bytes".to_string()),
             },
@@ -1022,7 +1038,7 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
         (
             "to_json".to_string(),
             CallableContract {
-                arity: 1,
+                arity: 0,
                 params: HashSet::from(["value".to_string()]),
                 output: ValueType::Named("Json".to_string()),
             },
@@ -1030,7 +1046,7 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
         (
             "hash".to_string(),
             CallableContract {
-                arity: 1,
+                arity: 0,
                 params: HashSet::from(["value".to_string()]),
                 output: ValueType::Named("String".to_string()),
             },
@@ -1039,7 +1055,7 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             "eq".to_string(),
             CallableContract {
                 arity: 2,
-                params: HashSet::from(["lhs".to_string(), "rhs".to_string()]),
+                params: HashSet::from(["a".to_string(), "b".to_string()]),
                 output: ValueType::Named("Bool".to_string()),
             },
         ),
@@ -1146,7 +1162,7 @@ fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegi
             };
             for operation in &service.operations {
                 let contract = ServiceCallContract {
-                    arity: operation.inputs.len(),
+                    arity: required_field_arity(&operation.inputs),
                     params: operation
                         .inputs
                         .iter()
@@ -1700,11 +1716,17 @@ fn validate_callable_body(
                 }
             },
         };
-        if call.arg_count != contract.arity {
+        let max_arity = callable_contract_max_arity(contract);
+        if call.arg_count < contract.arity || call.arg_count > max_arity {
+            let expected = if call.arg_count < contract.arity {
+                contract.arity
+            } else {
+                max_arity
+            };
             errors.push(TypeError::CallArityMismatch {
                 caller: caller.to_string(),
                 callee: call.callee.clone(),
-                expected: contract.arity,
+                expected,
                 got: call.arg_count,
             });
         }
@@ -1764,11 +1786,17 @@ fn validate_callable_body(
         let Some(contract) = contract else {
             continue;
         };
-        if call.arg_count != contract.arity {
+        let max_arity = service_contract_max_arity(&contract);
+        if call.arg_count < contract.arity || call.arg_count > max_arity {
+            let expected = if call.arg_count < contract.arity {
+                contract.arity
+            } else {
+                max_arity
+            };
             errors.push(TypeError::ServiceCallArityMismatch {
                 caller: caller.to_string(),
                 service_call: service_call_name.clone(),
-                expected: contract.arity,
+                expected,
                 got: call.arg_count,
             });
         }
@@ -3093,6 +3121,46 @@ service FsStorage implements Storage {
     }
 
     #[test]
+    fn call_with_too_many_args_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "arity_overflow.dag",
+            "module sample.calls\nfn fmt(value: String) -> String { value }\nfn run() -> String { fmt(\"a\", \"b\") }",
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("too many call args should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::CallArityMismatch {
+                caller,
+                callee,
+                expected,
+                got
+            } if caller == "run" && callee == "fmt" && *expected == 1 && *got == 2
+        )));
+    }
+
+    #[test]
+    fn strict_mode_allows_call_omitting_defaulted_params() {
+        let graph = module_graph_from_sources(&[(
+            "defaulted_call.dag",
+            r#"module sample.calls
+fn greet(name: String, punctuation: String = "!") -> String {
+  name
+}
+fn run() -> String {
+  greet(name: "hi")
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("defaulted callable params should be optional at call sites");
+        assert_eq!(typed.modules.len(), 1);
+    }
+
+    #[test]
     fn strict_mode_reports_ambiguous_call_target() {
         let graph = module_graph_from_sources(&[
             (
@@ -3439,6 +3507,58 @@ func run() -> { ok: Bool } {
                 && *expected == 1
                 && *got == 0
         )));
+    }
+
+    #[test]
+    fn service_call_with_too_many_args_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "service_arity_overflow.dag",
+            r#"module sample.services
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}
+func run() -> { ok: Bool } {
+  let response = FsStorage.read(path: "/tmp", extra: "value")
+  return { ok: true }
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph)
+            .expect_err("too many service call arguments should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::ServiceCallArityMismatch {
+                caller,
+                service_call,
+                expected,
+                got
+            } if caller == "run"
+                && service_call == "FsStorage.read"
+                && *expected == 1
+                && *got == 2
+        )));
+    }
+
+    #[test]
+    fn strict_mode_allows_service_call_omitting_defaulted_inputs() {
+        let graph = module_graph_from_sources(&[(
+            "service_default_input.dag",
+            r#"module sample.services
+service FsStorage {
+  operation read(path: String, recursive: Bool = false) -> { ok: Bool }
+}
+func run() -> { ok: Bool } {
+  let response = FsStorage.read(path: "/tmp")
+  return { ok: response.ok }
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("service inputs with defaults should be optional at call sites");
+        assert_eq!(typed.modules.len(), 1);
     }
 
     #[test]

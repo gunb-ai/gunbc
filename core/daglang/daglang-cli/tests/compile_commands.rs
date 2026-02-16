@@ -12718,6 +12718,37 @@ fn run() -> String { fmt() }
 }
 
 #[test]
+fn compile_command_directory_mode_accepts_omitting_defaulted_call_args() {
+    let root = unique_temp_dir("call_default_args");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+fn greet(name: String, punctuation: String = "!") -> String { name }
+fn run() -> String { greet(name: "hi") }
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept omitted defaulted call args: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
 fn compile_command_directory_mode_fails_on_unknown_named_call_argument_typecheck_error() {
     let root = unique_temp_dir("call_unknown_arg");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
@@ -12822,6 +12853,51 @@ func run() -> { ok: Bool } {
     assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("service call arity mismatch"));
     assert!(stderr.contains("FsStorage.read"));
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
+}
+
+#[test]
+fn compile_command_directory_mode_accepts_omitting_defaulted_service_call_args() {
+    let root = unique_temp_dir("service_call_default_args");
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        r#"module sample.main
+interface Storage {
+  capability read {
+    input {
+      path: String,
+      recursive: Bool = false
+    }
+    output { ok: Bool }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String, recursive: Bool = false) -> { ok: Bool }
+}
+func run() -> { ok: Bool } {
+  let response = FsStorage.read(path: "/tmp")
+  return { ok: response.ok }
+}
+"#,
+    )
+    .expect("failed to write source");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&root)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile on directory");
+
+    assert!(
+        output.status.success(),
+        "directory compile should accept omitted defaulted service call args: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }

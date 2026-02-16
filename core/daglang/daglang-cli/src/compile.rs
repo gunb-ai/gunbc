@@ -2483,6 +2483,39 @@ fn run() -> String { fmt() }
     }
 
     #[test]
+    fn compile_directory_call_with_defaulted_params_succeeds() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_call_defaults_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn greet(name: String, punctuation: String = "!") -> String { name }
+fn run() -> String { greet(name: "hi") }
+"#,
+        )
+        .expect("failed to write defaulted callable source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn compile_directory_unknown_named_call_argument_fails_in_typecheck_stage() {
         let root = std::env::temp_dir().join(format!(
             "daglang_compile_unknown_named_call_arg_dir_{}_{}",
@@ -2588,6 +2621,53 @@ func run() -> { body: String } {
         assert_typecheck_stage_error(&error);
         assert!(error.contains("service call arity mismatch"));
         assert!(error.contains("FsStorage.read"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_service_call_with_defaulted_inputs_succeeds() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_service_call_defaults_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input {
+      path: String,
+      recursive: Bool = false
+    }
+    output { ok: Bool }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String, recursive: Bool = false) -> { ok: Bool }
+}
+func run() -> { ok: Bool } {
+  let response = FsStorage.read(path: "/tmp")
+  return { ok: response.ok }
+}
+"#,
+        )
+        .expect("failed to write defaulted service-call source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+
+        let output = compile_from_context(&context).expect("compile should succeed");
+        assert!(!output.lowered_dag.nodes.is_empty());
+        assert!(output.derived.manifest.total_nodes > 0);
+        assert!(!output.emitted.files.is_empty());
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
