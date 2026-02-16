@@ -420,6 +420,32 @@ pub fn makegen_dry_run_transport_mocks(output_path: &str) -> BoundaryMocks {
     dry_run_mocks
 }
 
+pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
+    let mut check_mode_mocks = BoundaryMocks::new();
+    check_mode_mocks.set_value(
+        "fs_env",
+        "FilesystemHandle",
+        Value::Str("filesystem://check-mode".to_string()),
+    );
+    let read_response = match std::fs::read_to_string(output_path) {
+        Ok(content) => FileResponse::read_ok(output_path.to_string(), content),
+        Err(error) => FileResponse::error(output_path.to_string(), FileOp::Read, error.to_string()),
+    };
+    check_mode_mocks.set_value(
+        "execute_read_makegen",
+        "response",
+        Value::Response(TransportResponse::File(read_response)),
+    );
+    check_mode_mocks.set_value("execute_makegen_transport", "response", Value::Skipped);
+    check_mode_mocks.set_value(
+        "execute_makegen_transport",
+        "makegen_response",
+        Value::Skipped,
+    );
+    check_mode_mocks.set_value("execute_makegen_transport", "skip", Value::Bool(true));
+    check_mode_mocks
+}
+
 pub fn compare_compiled_makegen_against_builder(
     context: &PipelineContext,
 ) -> Result<ParityReport, String> {
@@ -5081,6 +5107,40 @@ func run(path: String) -> { body: String } {
             !temp_path.exists(),
             "dry-run mode should not create output files"
         );
+    }
+
+    #[test]
+    fn compile_resolve_execute_makegen_check_mode_mocks_avoid_write_failures() {
+        let context = makegen_context();
+        let blocker_path = std::env::temp_dir().join(format!(
+            "daglang_compiled_makegen_check_mode_blocker_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::write(&blocker_path, "block output parent")
+            .expect("failed to create check-mode blocker file");
+        let blocked_output_path = blocker_path.join("Makefile");
+        let input_mocks =
+            makegen_entrypoint_mocks(blocked_output_path.to_string_lossy().as_ref(), true);
+
+        let log = compile_resolve_execute_from_context(
+            &context,
+            ExecutionMode::DryRun(makegen_check_mode_transport_mocks(
+                blocked_output_path.to_string_lossy().as_ref(),
+            )),
+            Some(&input_mocks),
+        )
+        .expect("check-mode dry-run transport should bypass real write failures");
+        assert!(log.has_intercepted(), "check-mode mocks should intercept transport");
+        assert!(
+            !blocked_output_path.exists(),
+            "check-mode transport mocks should not create blocked output path"
+        );
+
+        std::fs::remove_file(&blocker_path).expect("failed to remove check-mode blocker file");
     }
 
     #[test]

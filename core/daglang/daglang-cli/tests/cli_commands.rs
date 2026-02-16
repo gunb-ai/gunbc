@@ -30700,6 +30700,52 @@ fn run_with_unwritable_output_path_exits_nonzero_with_write_error() {
 }
 
 #[test]
+fn run_check_mode_with_unwritable_output_path_reports_not_written() {
+    let blocker_path = std::env::temp_dir().join(format!(
+        "daglang_run_check_mode_blocker_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    std::fs::write(&blocker_path, "block output parent")
+        .expect("failed to create check-mode blocker file");
+    let blocked_output_path = blocker_path.join("Makefile");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output")
+        .arg(blocked_output_path.to_string_lossy().as_ref())
+        .arg("--check-mode")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run in check-mode with blocked output path");
+
+    assert!(
+        output.status.success(),
+        "check-mode run should succeed even when output path is unwritable: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=real"),
+        "check-mode run should still report real mode summary: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode run should report no writes on blocked output path: {stdout}"
+    );
+    assert!(
+        !blocked_output_path.exists(),
+        "check-mode run should not create output under blocked path"
+    );
+
+    std::fs::remove_file(&blocker_path).expect("failed to remove check-mode blocker file");
+}
+
+#[test]
 fn run_command_writes_makefile_in_real_mode() {
     let output_path = unique_temp_output_file("run_real_mode");
     if output_path.exists() {

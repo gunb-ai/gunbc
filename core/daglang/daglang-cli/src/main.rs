@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use daglang_cli::compile::{
     build_context, compile_from_context, compile_resolve_execute_from_context,
-    makegen_dry_run_transport_mocks, makegen_entrypoint_mocks, render_expand,
+    makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks, makegen_entrypoint_mocks, render_expand,
     render_manifest_with_format, render_obligations_with_format, render_triplets_with_format,
     render_viz_ascii, ManifestFormat,
 };
@@ -280,20 +280,24 @@ fn main() {
             };
             let mode = if run_args.dry_run {
                 ExecutionMode::DryRun(makegen_dry_run_transport_mocks(&run_args.output_path))
+            } else if run_args.check_mode {
+                ExecutionMode::DryRun(makegen_check_mode_transport_mocks(&run_args.output_path))
             } else {
                 ExecutionMode::Real
             };
-            match compile_resolve_execute_from_context(&context, mode, Some(&input_mocks)) {
+            let execution_result = compile_resolve_execute_from_context(&context, mode, Some(&input_mocks));
+            if let Err(error) = restore_check_mode_output(&run_args, check_mode_snapshot) {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+            match execution_result {
                 Ok(log) => {
-                    let mut written = run_written_from_log(&log);
+                    let mut written = if run_args.dry_run {
+                        false
+                    } else {
+                        run_written_from_log(&log)
+                    };
                     if run_args.check_mode && !run_args.dry_run {
-                        if let Err(error) = restore_output_file_from_snapshot(
-                            &run_args.output_path,
-                            check_mode_snapshot,
-                        ) {
-                            eprintln!("{error}");
-                            std::process::exit(1);
-                        }
                         written = false;
                     }
                     println!(
@@ -314,6 +318,13 @@ fn main() {
             exit_usage("<command> [args...]");
         }
     }
+}
+
+fn restore_check_mode_output(run_args: &RunArgs, snapshot: Option<Vec<u8>>) -> Result<(), String> {
+    if run_args.check_mode && !run_args.dry_run {
+        return restore_output_file_from_snapshot(&run_args.output_path, snapshot);
+    }
+    Ok(())
 }
 
 fn run_written_from_log(log: &gunbc_exec::ExecutionLog) -> bool {
@@ -577,7 +588,7 @@ fn exit_usage(command: &str) -> ! {
 mod tests {
     use super::{
         parse_manifest_args, parse_obligations_args, parse_run_args, parse_show_triplets_args,
-        parse_viz_args, restore_output_file_from_snapshot, run_written_from_log,
+        parse_viz_args, restore_check_mode_output, restore_output_file_from_snapshot, run_written_from_log,
         snapshot_output_file, RunArgs, VizArgs, VizFormat, VizTarget,
     };
     use crate::path_utils::{default_root_from_cwd, has_dag_extension, normalize_path_components};
@@ -1056,6 +1067,65 @@ mod tests {
         let restored = std::fs::read(&temp_path).expect("failed to read restored binary file");
         assert_eq!(restored, initial);
         std::fs::remove_file(&temp_path).expect("failed to clean binary snapshot file");
+    }
+
+    #[test]
+    fn restore_check_mode_output_restores_snapshot_when_enabled() {
+        let temp_path = std::env::temp_dir().join(format!(
+            "daglang_restore_check_mode_enabled_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::write(&temp_path, "before\n").expect("failed to seed check-mode file");
+        let snapshot =
+            snapshot_output_file(temp_path.to_string_lossy().as_ref()).expect("snapshot succeeds");
+        std::fs::write(&temp_path, "mutated\n").expect("failed to mutate check-mode file");
+        let run_args = RunArgs {
+            file: "dsl/tools/makegen.dag".to_string(),
+            output_path: temp_path.to_string_lossy().to_string(),
+            dry_run: false,
+            check_mode: true,
+        };
+
+        restore_check_mode_output(&run_args, snapshot).expect("check-mode restore should succeed");
+
+        let restored =
+            std::fs::read_to_string(&temp_path).expect("failed to read restored check-mode file");
+        assert_eq!(restored, "before\n");
+        std::fs::remove_file(&temp_path).expect("failed to clean check-mode file");
+    }
+
+    #[test]
+    fn restore_check_mode_output_is_noop_outside_check_mode() {
+        let temp_path = std::env::temp_dir().join(format!(
+            "daglang_restore_check_mode_noop_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::write(&temp_path, "before\n").expect("failed to seed non-check-mode file");
+        let snapshot =
+            snapshot_output_file(temp_path.to_string_lossy().as_ref()).expect("snapshot succeeds");
+        std::fs::write(&temp_path, "mutated\n").expect("failed to mutate non-check-mode file");
+        let run_args = RunArgs {
+            file: "dsl/tools/makegen.dag".to_string(),
+            output_path: temp_path.to_string_lossy().to_string(),
+            dry_run: false,
+            check_mode: false,
+        };
+
+        restore_check_mode_output(&run_args, snapshot)
+            .expect("non-check-mode restore helper should not fail");
+
+        let current =
+            std::fs::read_to_string(&temp_path).expect("failed to read non-check-mode file");
+        assert_eq!(current, "mutated\n");
+        std::fs::remove_file(&temp_path).expect("failed to clean non-check-mode file");
     }
 
     #[test]
