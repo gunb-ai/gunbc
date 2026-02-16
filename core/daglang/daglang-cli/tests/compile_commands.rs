@@ -2254,6 +2254,55 @@ fn compile_command_parent_segment_invalid_single_file_target_is_normalized_and_e
 }
 
 #[test]
+fn compile_command_parent_segment_trailing_slash_invalid_single_file_target_is_normalized_and_equivalent(
+) {
+    let root = unique_temp_dir("compile_parent_segment_trailing_invalid_single_file");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let parent_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("../invalid.dag/")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-trailing invalid single-file compile");
+    assert!(
+        !parent_trailing.status.success(),
+        "parent-trailing invalid single-file compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&invalid_target)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute invalid single-file compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        parent_trailing.stdout, absolute.stdout,
+        "parent-trailing and absolute invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        parent_trailing.stderr, absolute.stderr,
+        "parent-trailing and absolute invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_trailing.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "parent-trailing invalid single-file diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn compile_command_parent_double_separator_invalid_single_file_target_is_normalized_and_equivalent() {
     let root = unique_temp_dir("compile_parent_double_invalid_single_file_target");
     std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
@@ -2295,6 +2344,55 @@ fn compile_command_parent_double_separator_invalid_single_file_target_is_normali
     assert!(
         stderr.contains(&format!("failed to read {}", invalid_target.display())),
         "parent-double invalid single-file diagnostic should normalize to absolute path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn compile_command_parent_double_separator_trailing_slash_invalid_single_file_target_is_normalized_and_equivalent(
+) {
+    let root = unique_temp_dir("compile_parent_double_trailing_invalid_single_file");
+    std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
+    let invalid_target = root.join("invalid.dag");
+    std::fs::create_dir_all(&invalid_target)
+        .expect("failed to create invalid single-file target directory");
+
+    let parent_double_trailing = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("..//invalid.dag/")
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run parent-double-trailing invalid single-file compile");
+    assert!(
+        !parent_double_trailing.status.success(),
+        "parent-double-trailing invalid single-file compile should fail"
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&invalid_target)
+        .current_dir(root.join("child"))
+        .output()
+        .expect("failed to run absolute invalid single-file compile");
+    assert!(
+        !absolute.status.success(),
+        "absolute invalid single-file compile should fail"
+    );
+
+    assert_eq!(
+        parent_double_trailing.stdout, absolute.stdout,
+        "parent-double-trailing and absolute invalid single-file compile stdout should match"
+    );
+    assert_eq!(
+        parent_double_trailing.stderr, absolute.stderr,
+        "parent-double-trailing and absolute invalid single-file compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&parent_double_trailing.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", invalid_target.display())),
+        "parent-double-trailing invalid single-file diagnostic should normalize to absolute path: {stderr}"
     );
     assert_no_stage_failures(&stderr);
 
