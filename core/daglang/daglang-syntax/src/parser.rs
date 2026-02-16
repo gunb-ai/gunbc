@@ -556,11 +556,23 @@ impl Parser {
             params.push(self.expect_ident()?);
             // optional bounds `: Bound + Bound`
             if self.eat(&TokenKind::Colon) {
+                if self.eat(&TokenKind::Arrow) {
+                    let output_type = self.expect_ident()?;
+                    if !params.contains(&output_type) {
+                        params.push(output_type);
+                    }
+                }
                 self.skip_type_bound();
             }
             while self.eat(&TokenKind::Comma) {
                 params.push(self.expect_ident()?);
                 if self.eat(&TokenKind::Colon) {
+                    if self.eat(&TokenKind::Arrow) {
+                        let output_type = self.expect_ident()?;
+                        if !params.contains(&output_type) {
+                            params.push(output_type);
+                        }
+                    }
                     self.skip_type_bound();
                 }
             }
@@ -702,20 +714,23 @@ impl Parser {
     fn parse_fn_def(&mut self) -> Result<FnDef, ParseError> {
         self.expect(&TokenKind::Fn)?;
         let name = self.expect_ident()?;
-        let _tp = self.parse_optional_type_params()?;
+        let type_params = self.parse_optional_type_params()?;
         self.expect(&TokenKind::LParen)?;
         let params = self.parse_param_list()?;
         self.expect(&TokenKind::RParen)?;
         self.expect(&TokenKind::Arrow)?;
         let return_type = self.parse_return_type_expr()?;
         let body = if self.eat(&TokenKind::LBrace) {
-            self.consume_brace_block_contents()?;
-            FnBody { stmts: Vec::new() }
+            self.parse_fn_body_lossy()?
         } else {
-            FnBody { stmts: Vec::new() }
+            FnBody {
+                stmts: Vec::new(),
+                lossy: false,
+            }
         };
         Ok(FnDef {
             name,
+            type_params,
             params,
             return_type,
             body,
@@ -725,7 +740,7 @@ impl Parser {
     fn parse_func_def(&mut self, leading: Vec<Annotation>) -> Result<FuncDef, ParseError> {
         self.expect(&TokenKind::Func)?;
         let name = self.expect_ident()?;
-        let _tp = self.parse_optional_type_params()?;
+        let type_params = self.parse_optional_type_params()?;
         self.expect(&TokenKind::LParen)?;
         let params = self.parse_param_list()?;
         self.expect(&TokenKind::RParen)?;
@@ -737,10 +752,10 @@ impl Parser {
             annotations.push(self.parse_annotation()?);
         }
         self.expect(&TokenKind::LBrace)?;
-        self.consume_brace_block_contents()?;
-        let body = FuncBody { stmts: Vec::new() };
+        let body = self.parse_func_body_lossy()?;
         Ok(FuncDef {
             name,
+            type_params,
             params,
             outputs,
             uses,
@@ -753,7 +768,7 @@ impl Parser {
     fn parse_pattern_def(&mut self) -> Result<PatternDef, ParseError> {
         self.expect(&TokenKind::Pattern)?;
         let name = self.expect_ident()?;
-        let _tp = self.parse_optional_type_params()?;
+        let type_params = self.parse_optional_type_params()?;
         self.expect(&TokenKind::LParen)?;
         let params = self.parse_param_list()?;
         self.expect(&TokenKind::RParen)?;
@@ -761,10 +776,10 @@ impl Parser {
         let outputs = self.parse_output_fields()?;
         let (uses, _provides) = self.parse_uses_provides()?;
         self.expect(&TokenKind::LBrace)?;
-        self.consume_brace_block_contents()?;
-        let body = FuncBody { stmts: Vec::new() };
+        let body = self.parse_func_body_lossy()?;
         Ok(PatternDef {
             name,
+            type_params,
             params,
             outputs,
             uses,
@@ -896,11 +911,9 @@ impl Parser {
             inputs = self.parse_field_list_until_rparen()?;
             self.expect(&TokenKind::RParen)?;
         }
-        if self.eat(&TokenKind::Arrow) {
-            if self.eat(&TokenKind::LBrace) {
-                outputs = self.parse_field_list_until_rbrace()?;
-                self.expect(&TokenKind::RBrace)?;
-            }
+        if self.eat(&TokenKind::Arrow) && self.eat(&TokenKind::LBrace) {
+            outputs = self.parse_field_list_until_rbrace()?;
+            self.expect(&TokenKind::RBrace)?;
         }
         while self.check(&TokenKind::At) {
             annotations.push(self.parse_annotation()?);
@@ -953,15 +966,13 @@ impl Parser {
                 TokenKind::Acquire => {
                     self.advance();
                     self.expect(&TokenKind::LBrace)?;
-                    self.consume_brace_block_contents()?;
-                    let body = FuncBody { stmts: Vec::new() };
+                    let body = self.parse_func_body_lossy()?;
                     acquire = Some(body);
                 }
                 TokenKind::Release => {
                     self.advance();
                     self.expect(&TokenKind::LBrace)?;
-                    self.consume_brace_block_contents()?;
-                    let body = FuncBody { stmts: Vec::new() };
+                    let body = self.parse_func_body_lossy()?;
                     release = Some(body);
                 }
                 TokenKind::Capability => {
@@ -1206,8 +1217,7 @@ impl Parser {
             self.expect(&TokenKind::RBracket)?;
         }
         self.expect(&TokenKind::LBrace)?;
-        self.consume_brace_block_contents()?;
-        let body = FuncBody { stmts: Vec::new() };
+        let body = self.parse_func_body_lossy()?;
         Ok(StageDef { name, body, after })
     }
 
@@ -1226,6 +1236,46 @@ impl Parser {
         } else {
             Err(self.err("unterminated block".into()))
         }
+    }
+
+    fn parse_fn_body_lossy(&mut self) -> Result<FnBody, ParseError> {
+        let start_pos = self.pos;
+        let start_errors = self.errors.len();
+        let parsed = self.parse_fn_body();
+
+        let should_fallback = parsed.is_err() || self.errors.len() > start_errors;
+        if !should_fallback {
+            self.expect(&TokenKind::RBrace)?;
+            return parsed;
+        }
+
+        self.pos = start_pos;
+        self.errors.truncate(start_errors);
+        self.consume_brace_block_contents()?;
+        Ok(FnBody {
+            stmts: Vec::new(),
+            lossy: true,
+        })
+    }
+
+    fn parse_func_body_lossy(&mut self) -> Result<FuncBody, ParseError> {
+        let start_pos = self.pos;
+        let start_errors = self.errors.len();
+        let parsed = self.parse_func_body();
+
+        let should_fallback = parsed.is_err() || self.errors.len() > start_errors;
+        if !should_fallback {
+            self.expect(&TokenKind::RBrace)?;
+            return parsed;
+        }
+
+        self.pos = start_pos;
+        self.errors.truncate(start_errors);
+        self.consume_brace_block_contents()?;
+        Ok(FuncBody {
+            stmts: Vec::new(),
+            lossy: true,
+        })
     }
 
     // ── fields / params ────────────────────────────────────────────
@@ -1363,9 +1413,8 @@ impl Parser {
         }
 
         if self.eat(&TokenKind::Colon) {
-            match self.parse_expr(0) {
-                Ok(e) => args.push(e),
-                Err(_) => {}
+            if let Ok(e) = self.parse_expr(0) {
+                args.push(e);
             }
             self.skip_annotation_value();
         }
@@ -1427,12 +1476,14 @@ impl Parser {
     fn parse_fn_body(&mut self) -> Result<FnBody, ParseError> {
         Ok(FnBody {
             stmts: self.parse_stmts()?,
+            lossy: false,
         })
     }
 
     fn parse_func_body(&mut self) -> Result<FuncBody, ParseError> {
         Ok(FuncBody {
             stmts: self.parse_stmts()?,
+            lossy: false,
         })
     }
 
@@ -2085,7 +2136,7 @@ impl Parser {
                     )));
                 };
                 self.advance();
-                if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                if name.chars().next().is_some_and(|c| c.is_uppercase()) {
                     if self.eat(&TokenKind::LParen) {
                         let mut fields = Vec::new();
                         let mut positional_index = 0usize;
@@ -2235,7 +2286,62 @@ mod tests {
         let sf = parse_or_panic("module test\nfn greet(name: String) -> String { name }");
         assert_eq!(sf.items.len(), 1);
         match &sf.items[0].node {
-            Item::FnDef(f) => assert_eq!(f.name, "greet"),
+            Item::FnDef(f) => {
+                assert_eq!(f.name, "greet");
+                assert!(f.type_params.is_empty());
+            }
+            other => panic!("expected FnDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_type_params_are_preserved() {
+        let sf = parse_or_panic("module test\nfn identity<T>(value: T) -> T { value }");
+        match &sf.items[0].node {
+            Item::FnDef(f) => assert_eq!(f.type_params, vec!["T".to_string()]),
+            other => panic!("expected FnDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_pattern_type_params_capture_arrow_output_variable() {
+        let sf = parse_or_panic(
+            "module test\npattern upsert<Check, Create, Resolve: -> R>(value: Check) -> { value: R } { return { value: value } }",
+        );
+        match &sf.items[0].node {
+            Item::PatternDef(p) => {
+                assert_eq!(
+                    p.type_params,
+                    vec![
+                        "Check".to_string(),
+                        "Create".to_string(),
+                        "Resolve".to_string(),
+                        "R".to_string()
+                    ]
+                );
+            }
+            other => panic!("expected PatternDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_fn_body_marks_lossy_for_unsupported_match_arms() {
+        let sf = parse_or_panic(
+            r#"module test
+type CloudConfig = GcpConfig { project: String } | AwsConfig { account: String }
+type CloudProvider = Gcp | Aws
+fn provider_of(config: CloudConfig) -> CloudProvider {
+  match config {
+    GcpConfig { ... } => Gcp
+    AwsConfig { ... } => Aws
+  }
+}"#,
+        );
+        match &sf.items[2].node {
+            Item::FnDef(f) => {
+                assert!(f.body.lossy);
+                assert!(f.body.stmts.is_empty());
+            }
             other => panic!("expected FnDef, got {other:?}"),
         }
     }

@@ -28,6 +28,17 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("daglang_cli_{name}_{}_{}", std::process::id(), nanos))
 }
 
+fn assert_no_compile_stage_banners(stderr: &str) {
+    assert!(
+        !stderr.contains("typecheck errors"),
+        "unexpected typecheck-stage banner in non-compile command path: {stderr}"
+    );
+    assert!(
+        !stderr.contains("lower error"),
+        "unexpected lower-stage banner in non-compile command path: {stderr}"
+    );
+}
+
 fn unique_name(name: &str) -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -290,6 +301,8 @@ fn check_command_parses_full_dsl_corpus() {
         "check command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("OK: parsed 42 file(s)"),
@@ -16149,6 +16162,8 @@ fn modules_command_prints_module_graph_summary() {
         "modules command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Discovered modules:"));
     let reported_modules = reported_modules_sorted(&stdout);
@@ -26635,6 +26650,8 @@ fn viz_self_renders_pipeline_mermaid() {
         "viz --self command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("flowchart TB"));
     assert!(stdout.contains("discover_files"));
@@ -26719,6 +26736,7 @@ fn check_command_reports_file_line_col_for_broken_file() {
 
     assert!(!output.status.success(), "broken file should fail check");
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     assert!(
         stderr.contains(":2:12:"),
         "expected file:line:col in stderr, got: {stderr}"
@@ -28534,6 +28552,8 @@ fn modules_command_reports_graph_diagnostics_without_failing() {
         output.status.success(),
         "modules command should still succeed while reporting diagnostics"
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Diagnostics:"));
     assert!(stdout.contains("unresolved import"));
@@ -28706,6 +28726,8 @@ fn modules_command_reports_cycle_diagnostics_without_failing() {
         output.status.success(),
         "modules command should still succeed while reporting cycle diagnostics"
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Diagnostics:"));
     assert!(stdout.contains("cyclic dependencies detected"));
@@ -28803,6 +28825,8 @@ fn check_command_single_file_mode_ignores_sibling_broken_files() {
         "single-file check should succeed even with sibling broken file: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, expected_check_success_stdout(1));
     assert!(
@@ -28835,6 +28859,7 @@ fn check_command_directory_mode_aggregates_multiple_file_diagnostics() {
         "directory check should fail when multiple files are invalid"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     assert!(stderr.contains("broken_a.dag"));
     assert!(stderr.contains("broken_b.dag"));
 
@@ -29071,6 +29096,8 @@ fn check_command_defaults_to_workspace_dsl_root() {
         "default check command should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     assert!(
         String::from_utf8_lossy(&output.stdout).contains("OK: parsed 42 file(s)"),
         "default check should parse full DSL corpus"
@@ -29156,6 +29183,8 @@ fn modules_command_defaults_to_workspace_dsl_root() {
         "default modules command should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Discovered modules:"));
     let reported_modules = reported_modules_sorted(&stdout);
@@ -30227,8 +30256,8 @@ fn viz_without_args_exits_nonzero_with_usage_message() {
 }
 
 #[test]
-fn placeholder_commands_without_required_target_exit_with_usage_message() {
-    for command in ["expand", "manifest", "compile"] {
+fn expand_and_manifest_without_required_target_exit_with_usage_message() {
+    for command in ["expand", "manifest"] {
         let output = Command::new(daglang_bin())
             .arg(command)
             .current_dir(workspace_root())
@@ -30252,8 +30281,8 @@ fn placeholder_commands_without_required_target_exit_with_usage_message() {
 }
 
 #[test]
-fn placeholder_commands_with_extra_args_exit_with_usage_message() {
-    for command in ["expand", "manifest", "compile"] {
+fn expand_and_manifest_with_extra_args_exit_with_usage_message() {
+    for command in ["expand", "manifest"] {
         let output = Command::new(daglang_bin())
             .arg(command)
             .arg("dsl/tools/makegen.dag")
@@ -30279,7 +30308,7 @@ fn placeholder_commands_with_extra_args_exit_with_usage_message() {
 }
 
 #[test]
-fn placeholder_commands_exit_nonzero_with_unimplemented_message() {
+fn compile_family_commands_execute_real_pipeline_paths() {
     for command in ["expand", "manifest", "compile"] {
         let output = Command::new(daglang_bin())
             .arg(command)
@@ -30288,47 +30317,42 @@ fn placeholder_commands_exit_nonzero_with_unimplemented_message() {
             .output()
             .unwrap_or_else(|err| panic!("failed to run {command}: {err}"));
         assert!(
-            !output.status.success(),
-            "{command} placeholder command should fail until implemented"
-        );
-        assert_eq!(
-            output.status.code(),
-            Some(2),
-            "{command} placeholder command should use unimplemented exit code"
+            output.status.success(),
+            "{command} should execute successfully for makegen fixture"
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            stderr.contains("not implemented"),
-            "{command} placeholder should explicitly report unimplemented status"
+            !stderr.contains("TODO"),
+            "{command} should no longer emit TODO placeholder output: {stderr}"
+        );
+        assert!(
+            !output.stdout.is_empty(),
+            "{command} should emit meaningful stdout output"
         );
     }
 }
 
 #[test]
-fn viz_without_self_exits_nonzero_with_unimplemented_message() {
+fn viz_without_self_emits_compiled_mermaid_graph() {
     let output = Command::new(daglang_bin())
         .arg("viz")
         .arg("dsl/tools/makegen.dag")
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang viz placeholder mode");
+        .expect("failed to run daglang viz");
 
     assert!(
-        !output.status.success(),
-        "viz placeholder mode should fail until file visualization ships"
+        output.status.success(),
+        "viz should compile and render mermaid output"
     );
-    assert_eq!(
-        output.status.code(),
-        Some(2),
-        "viz placeholder mode should use unimplemented exit code"
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("flowchart TB"),
+        "viz mermaid output should include flowchart header: {stdout}"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("not implemented"),
-        "viz placeholder mode should surface unimplemented guidance"
-    );
-    assert!(
-        stderr.contains("viz --self"),
-        "viz placeholder mode should include available Phase 0 guidance"
+        !stderr.contains("TODO"),
+        "viz should not emit TODO placeholder output: {stderr}"
     );
 }

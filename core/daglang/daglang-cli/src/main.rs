@@ -15,6 +15,9 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use daglang_cli::compile::{
+    build_context, compile_from_context, render_expand, render_manifest,
+};
 use daglang_cli::pipeline::{build_pipeline_dag, run_pipeline, PipelineContext, PipelineStop};
 
 fn main() {
@@ -42,10 +45,16 @@ fn main() {
                     println!("{}", dag.to_mermaid("daglang-compiler-pipeline"));
                 }
                 3 => {
-                    exit_unimplemented(
-                        "viz <file.dag>",
-                        "file visualization is not implemented in Phase 0. Use `daglang viz --self` to inspect the compiler pipeline DAG.",
-                    );
+                    let context = build_context(args.get(2));
+                    match compile_from_context(&context) {
+                        Ok(output) => {
+                            println!("{}", output.lowered_dag.to_mermaid("daglang-compiled"));
+                        }
+                        Err(error) => {
+                            eprintln!("{error}");
+                            std::process::exit(1);
+                        }
+                    }
                 }
                 _ => exit_usage("viz <file.dag>|viz --self"),
             }
@@ -54,19 +63,31 @@ fn main() {
             if args.len() != 3 {
                 exit_usage("expand <file.dag>");
             }
-            exit_unimplemented(
-                "expand <file.dag>",
-                "GraphIR expansion is not implemented in Phase 0.",
-            );
+            let context = build_context(args.get(2));
+            match compile_from_context(&context) {
+                Ok(output) => {
+                    println!("{}", render_expand(&output.lowered_dag));
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
         }
         "manifest" => {
             if args.len() != 3 {
                 exit_usage("manifest <file.dag>");
             }
-            exit_unimplemented(
-                "manifest <file.dag>",
-                "manifest derivation is not implemented in Phase 0.",
-            );
+            let context = build_context(args.get(2));
+            match compile_from_context(&context) {
+                Ok(output) => {
+                    println!("{}", render_manifest(&output.derived));
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
         }
         "modules" => {
             if args.len() > 3 {
@@ -126,13 +147,27 @@ fn main() {
             }
         }
         "compile" => {
-            if args.len() != 3 {
-                exit_usage("compile <file.dag>");
+            if args.len() > 3 {
+                exit_usage("compile <file.dag|dir>");
             }
-            exit_unimplemented(
-                "compile <file.dag>",
-                "full compilation pipeline is not implemented in Phase 0.",
-            );
+            let context = build_context(args.get(2));
+            match compile_from_context(&context) {
+                Ok(output) => {
+                    println!(
+                        "Compiled {} module(s) to {} node(s), {} file(s) emitted.",
+                        output.emitted.summary.module_count,
+                        output.derived.manifest.total_nodes,
+                        output.emitted.files.len()
+                    );
+                    for file in &output.emitted.files {
+                        println!("  - {}", file.path);
+                    }
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
         }
         cmd => {
             eprintln!("Unknown command: {cmd}");
@@ -147,12 +182,6 @@ fn resolve_root(arg: Option<&String>) -> PathBuf {
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     default_root_from_cwd(&cwd)
-}
-
-fn exit_unimplemented(command: &str, detail: &str) -> ! {
-    eprintln!("command `{command}` is not implemented.");
-    eprintln!("{detail}");
-    std::process::exit(2);
 }
 
 fn exit_usage(command: &str) -> ! {

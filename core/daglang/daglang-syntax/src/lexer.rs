@@ -447,8 +447,8 @@ mod tests {
 
     #[test]
     fn numbers() {
-        assert_eq!(kinds("42 3.14"), vec![
-            TokenKind::Int(42), TokenKind::Float(3.14), TokenKind::Eof,
+        assert_eq!(kinds("42 2.5"), vec![
+            TokenKind::Int(42), TokenKind::Float(2.5), TokenKind::Eof,
         ]);
     }
 

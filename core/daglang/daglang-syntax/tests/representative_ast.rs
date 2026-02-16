@@ -49,6 +49,32 @@ fn makegen_contains_fn_and_func_items() {
         .items
         .iter()
         .any(|item| matches!(item.node, Item::FuncDef(_))));
+
+    let render_fn = source
+        .items
+        .iter()
+        .find_map(|item| match &item.node {
+            Item::FnDef(def) if def.name == "render_makefile" => Some(def),
+            _ => None,
+        })
+        .expect("render_makefile fn should exist");
+    assert!(
+        !render_fn.body.stmts.is_empty(),
+        "render_makefile body should retain parsed statements"
+    );
+
+    let makegen_func = source
+        .items
+        .iter()
+        .find_map(|item| match &item.node {
+            Item::FuncDef(def) if def.name == "makegen" => Some(def),
+            _ => None,
+        })
+        .expect("makegen func should exist");
+    assert!(
+        !makegen_func.body.stmts.is_empty(),
+        "makegen func body should retain parsed statements"
+    );
     assert_eq!(
         item_signatures(&source),
         vec!["fn render_makefile", "func makegen"]
