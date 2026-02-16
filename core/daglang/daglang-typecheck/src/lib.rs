@@ -2447,6 +2447,42 @@ func run() -> { ok: Bool } {
     }
 
     #[test]
+    fn duplicate_interface_definition_is_reported_and_causes_ambiguous_implements() {
+        let graph = module_graph_from_sources(&[(
+            "duplicate_interface_definition.dag",
+            r#"module sample.dup
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+"#,
+        )]);
+        let errors = typecheck_module_graph(graph)
+            .expect_err("duplicate interface definitions should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicateDefinition { module, name }
+                if module == "sample.dup" && name == "Storage"
+        )));
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::AmbiguousInterface { implementor, interface }
+                if implementor == "FsStorage" && interface == "Storage"
+        )));
+    }
+
+    #[test]
     fn strict_mode_reports_unresolved_imports() {
         let graph = module_graph_from_sources(&[(
             "missing_import.dag",

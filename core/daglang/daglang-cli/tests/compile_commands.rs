@@ -627,6 +627,50 @@ resource Disk implements MissingStorage {
 }
 
 #[test]
+fn compile_command_single_file_duplicate_interface_reports_ambiguous_implements() {
+    let fixture = unique_temp_file("compile_single_file_duplicate_interface_ambiguous_impl");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for duplicate-interface fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail for duplicate interface definitions"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("typecheck errors"));
+    assert!(stderr.contains("duplicate definition `Storage` in module `sample.single`"));
+    assert!(stderr.contains("`FsStorage` references ambiguous interface `Storage`"));
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn expand_command_shows_lowered_nodes_and_edges() {
     let output = Command::new(daglang_bin())
         .arg("expand")
