@@ -173,6 +173,16 @@ impl<'a> Lexer<'a> {
     pub fn next_token(&mut self) -> Token {
         self.skip_ws();
         if self.pos >= self.source.len() {
+            if !self.interp_depth.is_empty() {
+                self.push_error(
+                    "unterminated interpolated string literal".to_string(),
+                    Span {
+                        start: self.pos,
+                        end: self.pos,
+                    },
+                );
+                self.interp_depth.clear();
+            }
             return self.tok(TokenKind::Eof, self.pos);
         }
 
@@ -469,5 +479,29 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].kind, DiagnosticKind::Lex);
         assert!(diagnostics[0].message.contains("unexpected character '$'"));
+    }
+
+    #[test]
+    fn unterminated_string_reports_lex_error() {
+        let (_tokens, errors) = Lexer::tokenize_with_errors("module test\n\"unterminated");
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].message.contains("unterminated string literal"));
+    }
+
+    #[test]
+    fn unterminated_interpolated_string_reports_lex_error() {
+        let (_tokens, errors) = Lexer::tokenize_with_errors("module test\n\"hello {name");
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0]
+            .message
+            .contains("unterminated interpolated string literal"));
+    }
+
+    #[test]
+    fn single_ampersand_reports_lex_error() {
+        let (tokens, errors) = Lexer::tokenize_with_errors("module test\n&");
+        assert!(matches!(tokens[2].kind, TokenKind::Unknown('&')));
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].message.contains("unexpected character '&'"));
     }
 }
