@@ -467,6 +467,14 @@ pub fn lower_typed_project_for_modules(
     lower_typed_project_with_callable_scope(project, Some(callable_modules), false)
 }
 
+/// Lowers only scoped modules while emitting explicit collection pipeline nodes.
+pub fn lower_typed_project_for_modules_with_collection_nodes(
+    project: &TypedProject,
+    callable_modules: &HashSet<String>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), true)
+}
+
 fn lower_typed_project_with_callable_scope(
     project: &TypedProject,
     callable_modules: Option<&HashSet<String>>,

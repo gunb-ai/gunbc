@@ -4,7 +4,11 @@ use std::path::PathBuf;
 
 use daglang_derive::{derive_artifacts, DerivedArtifacts};
 use daglang_emit::{emit_rust_bundle, EmissionBundle};
-use daglang_lower::{lower_typed_project, lower_typed_project_for_modules, LoweredOp};
+use daglang_lower::{
+    lower_typed_project, lower_typed_project_for_modules,
+    lower_typed_project_for_modules_with_collection_nodes,
+    lower_typed_project_with_collection_nodes, LoweredOp,
+};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::ast::Item;
 use daglang_syntax::diagnostic;
@@ -69,7 +73,27 @@ pub struct CheckOutput {
     pub parsed_files: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CompileOptions {
+    pub emit_collection_nodes: bool,
+}
+
+impl Default for CompileOptions {
+    fn default() -> Self {
+        Self {
+            emit_collection_nodes: false,
+        }
+    }
+}
+
 pub fn compile_from_context(context: &DriverContext) -> Result<CompileOutput, CompileError> {
+    compile_from_context_with_options(context, CompileOptions::default())
+}
+
+pub fn compile_from_context_with_options(
+    context: &DriverContext,
+    options: CompileOptions,
+) -> Result<CompileOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
     let callable_scope = callable_scope_for_context(context, &module_graph);
     if context.target_file.is_none() {
@@ -101,9 +125,17 @@ pub fn compile_from_context(context: &DriverContext) -> Result<CompileOutput, Co
         }
     };
     let lowered = if let Some(scope) = callable_scope.as_ref() {
-        lower_typed_project_for_modules(&typed, scope)
+        if options.emit_collection_nodes {
+            lower_typed_project_for_modules_with_collection_nodes(&typed, scope)
+        } else {
+            lower_typed_project_for_modules(&typed, scope)
+        }
     } else {
-        lower_typed_project(&typed)
+        if options.emit_collection_nodes {
+            lower_typed_project_with_collection_nodes(&typed)
+        } else {
+            lower_typed_project(&typed)
+        }
     }
     .map_err(|error| format!("lower error: {error}"))?;
     let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
@@ -178,7 +210,12 @@ fn discover_single_file_module_graph(target_file: &PathBuf) -> Result<ModuleGrap
     let ast = parser::parse(&source).map_err(|errors| {
         let mut message = String::from("compile diagnostics:\n");
         for error in &errors {
-            writeln!(message, "  {}", error.format_with_source(target_file, &source)).ok();
+            writeln!(
+                message,
+                "  {}",
+                error.format_with_source(target_file, &source)
+            )
+            .ok();
         }
         message
     })?;
@@ -306,13 +343,9 @@ fn validate_module_path_consistency(
         .iter()
         .filter_map(|module| {
             let declared = module.module_path.join(".");
-            let relative = roots.iter().find_map(|root| {
-                module
-                    .path
-                    .strip_prefix(root)
-                    .ok()
-                    .map(PathBuf::from)
-            })?;
+            let relative = roots
+                .iter()
+                .find_map(|root| module.path.strip_prefix(root).ok().map(PathBuf::from))?;
             let mut inferred_segments = Vec::new();
             for component in relative.components() {
                 use std::path::Component;
@@ -353,6 +386,7 @@ fn validate_module_path_consistency(
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir(label: &str) -> PathBuf {
@@ -409,8 +443,11 @@ mod tests {
     fn check_single_file_includes_discovered_dependency_closure() {
         let root = unique_temp_dir("check_single_file_with_deps");
         std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-        std::fs::write(root.join("sample/dep.dag"), "module sample.dep\ntype Thing = String\n")
-            .expect("failed to write dependency source");
+        std::fs::write(
+            root.join("sample/dep.dag"),
+            "module sample.dep\ntype Thing = String\n",
+        )
+        .expect("failed to write dependency source");
         let file = root.join("sample/main.dag");
         std::fs::write(
             &file,
@@ -451,6 +488,45 @@ mod tests {
             output.parsed_files, 1,
             "fallback path should keep single-file parsing when import discovery fails"
         );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_with_collection_option_emits_collection_nodes() {
+        let root = unique_temp_dir("compile_collection_nodes");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = root.join("sample.dag");
+        std::fs::write(
+            &file,
+            r#"module sample
+fn run(values: List<String>) -> String {
+  rendered = values |> map(v => v) |> join(",")
+  return rendered
+}
+"#,
+        )
+        .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let output = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                emit_collection_nodes: true,
+            },
+        )
+        .expect("compile should succeed with collection nodes enabled");
+        let node_ids = output
+            .lowered_dag
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        assert!(node_ids.contains("sample::run::MapNode_0"));
+        assert!(node_ids.contains("sample::run::JoinNode_1"));
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
