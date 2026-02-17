@@ -39,12 +39,11 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## S4 — Gist Snapshot (`tools.gist`)
 
-- **Current status**: ⚠ typecheck blocked by remaining strict type mismatches (`String?` vs `Any`, `CommitSha` vs `Any`, `Url` vs `Url @json`).
+- **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - gist signature contracts still diverge from strict typed service/path metadata surfaces.
+  - parity against legacy gist builder shape is still pending.
 - **Next increments**:
-  - align gist typed metadata contracts for optional refs and URL annotation handling.
-  - then validate loop/SubDag modeling parity against builder shape.
+  - add gist mode parity harnesses (snapshot/diff/recent) against legacy graph contracts.
 
 ## S5 — CI Pipeline (`pipelines.ci`)
 

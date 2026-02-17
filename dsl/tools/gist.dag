@@ -22,7 +22,7 @@ module tools.gist
 import services.git
 import std.patterns { read_text_files }
 import std.resources { Filesystem }
-import std.types { TextFilePath }
+import std.types { CommitSha, GitRef, TextFilePath, Url }
 import shared.gist_modes { branch_context, resolve_recent_base, share_content }
 
 // --- Pure functions ---------------------------------------------------

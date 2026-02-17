@@ -10,12 +10,29 @@
     "shared.gist_modes"
   ],
   "expand_contract": {
-    "status": "typecheck_error",
-    "error_contains": "type mismatch: expected `String?`, got `Any`"
+    "status": "success",
+    "error_contains": null
   },
   "obligations_contract": {
-    "status": "typecheck_error",
-    "error_contains": "type mismatch: expected `String?`, got `Any`",
-    "expected_json": null
+    "status": "success",
+    "error_contains": null,
+    "expected_json": {
+      "dry_run_completion_required": true,
+      "interface_contract_verification_targets": 0,
+      "pure_node_determinism_targets": 14,
+      "resource_acquire_targets": 0,
+      "resource_provide_targets": 0,
+      "resource_release_targets": 0,
+      "service_param_source_targets": 2,
+      "service_transport_execute_targets": 3,
+      "service_transport_external_targets": 0,
+      "service_transport_hermetic_targets": 3,
+      "service_transport_idempotent_targets": 0,
+      "service_transport_parse_targets": 3,
+      "service_transport_permission_scoped_targets": 0,
+      "service_transport_prepare_targets": 3,
+      "service_transport_readonly_targets": 3,
+      "transport_execution_targets": 3
+    }
   }
 }
