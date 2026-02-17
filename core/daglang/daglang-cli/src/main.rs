@@ -1190,6 +1190,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_treats_flag_like_token_after_double_dash_as_input() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--".to_string(),
+            "--dry-run".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run requires a .dag input file"),
+            "expected non-dag input validation for flag-like token after --, got: {error}"
+        );
+    }
+
+    #[test]
     fn parse_run_args_rejects_multiple_inputs_after_double_dash() {
         let args = vec![
             "daglang".to_string(),
