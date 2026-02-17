@@ -2475,6 +2475,72 @@ fn derive_collection_node_specs(
         .collect()
 }
 
+#[cfg(test)]
+#[derive(Debug)]
+struct CollectionLoweringPlan {
+    nodes: Vec<Node<LoweredOp>>,
+    edges: Vec<(String, String, String, String)>,
+}
+
+#[cfg(test)]
+fn collection_kind_label(kind: CollectionOpKind) -> &'static str {
+    match kind {
+        CollectionOpKind::Map => "map",
+        CollectionOpKind::Filter => "filter",
+        CollectionOpKind::Fold => "fold",
+        CollectionOpKind::Join => "join",
+        CollectionOpKind::FlatMap => "flat_map",
+    }
+}
+
+#[cfg(test)]
+fn build_collection_lowering_plan(
+    module_name: &str,
+    callable_name: &str,
+    specs: &[CollectionNodeSpec],
+) -> CollectionLoweringPlan {
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    let mut previous_node_id: Option<String> = None;
+    for spec in specs {
+        let label = collection_kind_label(spec.kind);
+        let node = Node::opaque(
+            spec.node_id.clone(),
+            vec![
+                Port::with_cardinality("items", "Any", Cardinality::ONE),
+                Port::with_cardinality("__deps", "Any", Cardinality::ZERO_OR_MORE),
+            ],
+            vec![Port::with_cardinality("items", "Any", Cardinality::ONE)],
+            LoweredOp::Callable {
+                module: module_name.to_string(),
+                kind: CallableKind::Pattern,
+                name: format!("collection::{label}::{callable_name}"),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+            },
+        );
+        if let Some(prev) = &previous_node_id {
+            edges.push((
+                prev.clone(),
+                "items".to_string(),
+                spec.node_id.clone(),
+                "items".to_string(),
+            ));
+        }
+        previous_node_id = Some(spec.node_id.clone());
+        nodes.push(node);
+    }
+    if let Some(last) = previous_node_id {
+        edges.push((
+            last,
+            "items".to_string(),
+            callable_name.to_string(),
+            "__deps".to_string(),
+        ));
+    }
+    CollectionLoweringPlan { nodes, edges }
+}
+
 fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallSite>) {
     walk_stmts(stmts, &mut |expr| {
         if let Expr::ServiceCall(path, args) = expr {
@@ -2707,6 +2773,54 @@ fn run(values: List<String>) -> { out: String } {
                     node_id: "sample.collections::run::collection_2".to_string(),
                     kind: CollectionOpKind::Join,
                 },
+            ]
+        );
+    }
+
+    #[test]
+    fn build_collection_lowering_plan_chains_nodes_and_wires_target_dependency() {
+        let specs = vec![
+            CollectionNodeSpec {
+                node_id: "sample.collections::run::collection_0".to_string(),
+                kind: CollectionOpKind::Map,
+            },
+            CollectionNodeSpec {
+                node_id: "sample.collections::run::collection_1".to_string(),
+                kind: CollectionOpKind::Filter,
+            },
+            CollectionNodeSpec {
+                node_id: "sample.collections::run::collection_2".to_string(),
+                kind: CollectionOpKind::Join,
+            },
+        ];
+        let plan = build_collection_lowering_plan(
+            "sample.collections",
+            "sample.collections::run",
+            &specs,
+        );
+        assert_eq!(plan.nodes.len(), 3);
+        assert_eq!(plan.edges.len(), 3);
+        assert_eq!(
+            plan.edges,
+            vec![
+                (
+                    "sample.collections::run::collection_0".to_string(),
+                    "items".to_string(),
+                    "sample.collections::run::collection_1".to_string(),
+                    "items".to_string(),
+                ),
+                (
+                    "sample.collections::run::collection_1".to_string(),
+                    "items".to_string(),
+                    "sample.collections::run::collection_2".to_string(),
+                    "items".to_string(),
+                ),
+                (
+                    "sample.collections::run::collection_2".to_string(),
+                    "items".to_string(),
+                    "sample.collections::run".to_string(),
+                    "__deps".to_string(),
+                ),
             ]
         );
     }
