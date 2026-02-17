@@ -273,6 +273,77 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
             manifest.boundary_nodes.join(", ")
         }
     ).ok();
+    out.push_str("  topology:\n");
+    for node in &manifest.topology {
+        writeln!(out, "    - {} (depth={})", node.node_id, node.depth).ok();
+    }
+    out.push_str("  labels:\n");
+    for (node_id, label) in &manifest.labels {
+        writeln!(out, "    - {node_id}: {label}").ok();
+    }
+    out.push_str("  subdag_boundaries:\n");
+    if manifest.subdag_boundaries.is_empty() {
+        out.push_str("    (none)\n");
+    } else {
+        for boundary in &manifest.subdag_boundaries {
+            writeln!(out, "    - {}", boundary.node_id).ok();
+        }
+    }
+    out.push_str("  parallel_groups:\n");
+    for group in &manifest.parallel_groups {
+        writeln!(
+            out,
+            "    - {}: {}",
+            group.group_id,
+            group.node_ids.join(", ")
+        )
+        .ok();
+    }
+    writeln!(
+        out,
+        "  scatter_points: {}",
+        if manifest.scatter_points.is_empty() {
+            "(none)".to_string()
+        } else {
+            manifest.scatter_points.join(", ")
+        }
+    )
+    .ok();
+    writeln!(
+        out,
+        "  interactive_nodes: {}",
+        if manifest.interactive_nodes.is_empty() {
+            "(none)".to_string()
+        } else {
+            manifest.interactive_nodes.join(", ")
+        }
+    )
+    .ok();
+    out.push_str("  capture_modes:\n");
+    for (node_id, mode) in &manifest.capture_modes {
+        writeln!(out, "    - {node_id}: {mode:?}").ok();
+    }
+    out.push_str("  stage_groups:\n");
+    if manifest.stage_groups.is_empty() {
+        out.push_str("    (none)\n");
+    } else {
+        for group in &manifest.stage_groups {
+            writeln!(out, "    - {}: {}", group.stage, group.node_ids.join(", ")).ok();
+        }
+    }
+    out.push_str("  resources:\n");
+    if manifest.resources.is_empty() {
+        out.push_str("    (none)\n");
+    } else {
+        for (node_id, usages) in &manifest.resources {
+            let usage_text = usages
+                .iter()
+                .map(|usage| format!("{}:{}", usage.resource, usage.usage))
+                .collect::<Vec<_>>()
+                .join(", ");
+            writeln!(out, "    - {node_id}: {usage_text}").ok();
+        }
+    }
     out.push_str(&render_obligations_text(&derived.obligations));
     out
 }
@@ -284,25 +355,8 @@ pub fn render_manifest_with_format(derived: &DerivedArtifacts, format: OutputFor
             let manifest = &derived.manifest;
             let obligations = &derived.obligations;
             json!({
-                "progress_manifest": {
-                    "total_nodes": manifest.total_nodes,
-                    "total_edges": manifest.total_edges,
-                    "waves": manifest.waves,
-                    "entrypoint_nodes": manifest.entrypoint_nodes,
-                    "boundary_nodes": manifest.boundary_nodes
-                },
-                "test_obligations": {
-                    "dry_run_completion_required": obligations.dry_run_completion_required,
-                    "transport_execution_targets": obligations.transport_execution_targets,
-                    "pure_node_determinism_targets": obligations.pure_node_determinism_targets,
-                    "service_transport_prepare_targets": obligations.service_transport_prepare_targets,
-                    "service_transport_execute_targets": obligations.service_transport_execute_targets,
-                    "service_transport_parse_targets": obligations.service_transport_parse_targets,
-                    "service_param_source_targets": obligations.service_param_source_targets,
-                    "resource_provide_targets": obligations.resource_provide_targets,
-                    "resource_acquire_targets": obligations.resource_acquire_targets,
-                    "resource_release_targets": obligations.resource_release_targets
-                }
+                "progress_manifest": manifest,
+                "test_obligations": obligations
             })
             .to_string()
         }

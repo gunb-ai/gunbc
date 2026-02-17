@@ -21,6 +21,7 @@ use std::collections::{BTreeMap, VecDeque};
 
 use daglang_lower::{classify_obligation, LoweredOp, ObligationCategory};
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node};
+use serde::Serialize;
 
 /// Derived artifacts produced from lowered GraphIR.
 #[derive(Debug, Clone)]
@@ -30,18 +31,63 @@ pub struct DerivedArtifacts {
     pub tool_metadata: ToolMetadata,
 }
 
-/// Minimal progress manifest for Phase-1 compiler scaffolding.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Progress-manifest contract derived from lowered DAG topology.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProgressManifest {
     pub total_nodes: usize,
     pub total_edges: usize,
     pub waves: Vec<Vec<String>>,
     pub entrypoint_nodes: Vec<String>,
     pub boundary_nodes: Vec<String>,
+    pub topology: Vec<TopologyNode>,
+    pub labels: BTreeMap<String, String>,
+    pub subdag_boundaries: Vec<SubDagBoundary>,
+    pub parallel_groups: Vec<ParallelGroup>,
+    pub scatter_points: Vec<String>,
+    pub interactive_nodes: Vec<String>,
+    pub capture_modes: BTreeMap<String, CaptureMode>,
+    pub stage_groups: Vec<StageGroup>,
+    pub resources: BTreeMap<String, Vec<ResourceUsage>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TopologyNode {
+    pub node_id: String,
+    pub depth: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SubDagBoundary {
+    pub node_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ParallelGroup {
+    pub group_id: String,
+    pub node_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CaptureMode {
+    #[default]
+    Default,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StageGroup {
+    pub stage: String,
+    pub node_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ResourceUsage {
+    pub resource: String,
+    pub usage: String,
 }
 
 /// Minimal obligation summary derived from graph structure.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TestObligations {
     pub dry_run_completion_required: bool,
     pub transport_execution_targets: usize,
@@ -92,28 +138,44 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         ));
     }
 
+    let waves = compute_waves(dag)?;
+    let entrypoint_nodes = {
+        let mut nodes = detect_entrypoints(dag)
+            .entrypoint_nodes
+            .into_iter()
+            .map(|node_id| node_id.0)
+            .collect::<Vec<_>>();
+        nodes.sort();
+        nodes
+    };
+    let boundary_nodes = {
+        let mut nodes = detect_boundaries(dag)
+            .boundary_nodes
+            .into_iter()
+            .map(|node_id| node_id.0)
+            .collect::<Vec<_>>();
+        nodes.sort();
+        nodes
+    };
     let manifest = ProgressManifest {
         total_nodes: dag.nodes.len(),
         total_edges: dag.edges.len(),
-        waves: compute_waves(dag)?,
-        entrypoint_nodes: {
-            let mut nodes = detect_entrypoints(dag)
-                .entrypoint_nodes
-                .into_iter()
-                .map(|node_id| node_id.0)
-                .collect::<Vec<_>>();
-            nodes.sort();
-            nodes
-        },
-        boundary_nodes: {
-            let mut nodes = detect_boundaries(dag)
-                .boundary_nodes
-                .into_iter()
-                .map(|node_id| node_id.0)
-                .collect::<Vec<_>>();
-            nodes.sort();
-            nodes
-        },
+        topology: derive_topology_from_waves(&waves),
+        labels: derive_node_labels(&dag.nodes),
+        subdag_boundaries: boundary_nodes
+            .iter()
+            .cloned()
+            .map(|node_id| SubDagBoundary { node_id })
+            .collect(),
+        parallel_groups: derive_parallel_groups(&waves),
+        scatter_points: Vec::new(),
+        interactive_nodes: Vec::new(),
+        capture_modes: derive_capture_modes(&dag.nodes),
+        stage_groups: Vec::new(),
+        resources: BTreeMap::new(),
+        waves,
+        entrypoint_nodes,
+        boundary_nodes,
     };
 
     let obligation_counts = derive_obligation_counts(&dag.nodes);
@@ -213,6 +275,56 @@ fn compute_waves(dag: &Dag<LoweredOp>) -> Result<Vec<Vec<String>>, DeriveError> 
     }
 
     Ok(waves)
+}
+
+fn derive_topology_from_waves(waves: &[Vec<String>]) -> Vec<TopologyNode> {
+    let mut topology = Vec::new();
+    for (depth, wave) in waves.iter().enumerate() {
+        for node_id in wave {
+            topology.push(TopologyNode {
+                node_id: node_id.clone(),
+                depth,
+            });
+        }
+    }
+    topology
+}
+
+fn derive_parallel_groups(waves: &[Vec<String>]) -> Vec<ParallelGroup> {
+    waves
+        .iter()
+        .enumerate()
+        .filter(|(_depth, wave)| !wave.is_empty())
+        .map(|(depth, wave)| ParallelGroup {
+            group_id: format!("wave_{depth}"),
+            node_ids: wave.clone(),
+        })
+        .collect()
+}
+
+fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
+    nodes
+        .iter()
+        .map(|node| {
+            let label = match &node.body {
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { module, name, .. }) => {
+                    format!("{module}.{name}")
+                }
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { module, name, .. }) => {
+                    format!("{module}.{name}")
+                }
+                gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+            };
+            (node.id.0.clone(), label)
+        })
+        .collect()
+}
+
+fn derive_capture_modes(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, CaptureMode> {
+    nodes
+        .iter()
+        .map(|node| (node.id.0.clone(), CaptureMode::Default))
+        .collect()
 }
 
 fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
@@ -355,6 +467,57 @@ mod tests {
         );
         assert_eq!(artifacts.manifest.total_nodes, 3);
         assert_eq!(artifacts.manifest.total_edges, 2);
+        assert_eq!(
+            artifacts.manifest.topology,
+            vec![
+                TopologyNode {
+                    node_id: "a".to_string(),
+                    depth: 0,
+                },
+                TopologyNode {
+                    node_id: "b".to_string(),
+                    depth: 0,
+                },
+                TopologyNode {
+                    node_id: "c".to_string(),
+                    depth: 1,
+                },
+            ]
+        );
+        assert_eq!(
+            artifacts
+                .manifest
+                .labels
+                .get("a")
+                .expect("label should exist for node a"),
+            "tools.makegen.a"
+        );
+        assert_eq!(
+            artifacts.manifest.parallel_groups,
+            vec![
+                ParallelGroup {
+                    group_id: "wave_0".to_string(),
+                    node_ids: vec!["a".to_string(), "b".to_string()],
+                },
+                ParallelGroup {
+                    group_id: "wave_1".to_string(),
+                    node_ids: vec!["c".to_string()],
+                },
+            ]
+        );
+        assert_eq!(
+            artifacts.manifest.capture_modes.len(),
+            3,
+            "capture modes should be derived for all nodes"
+        );
+        let expected_boundaries = artifacts
+            .manifest
+            .boundary_nodes
+            .iter()
+            .cloned()
+            .map(|node_id| SubDagBoundary { node_id })
+            .collect::<Vec<_>>();
+        assert_eq!(artifacts.manifest.subdag_boundaries, expected_boundaries);
     }
 
     #[test]

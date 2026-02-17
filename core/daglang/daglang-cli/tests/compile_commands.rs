@@ -11146,6 +11146,12 @@ fn manifest_command_json_format_emits_valid_json_object() {
         .expect("manifest json should include test_obligations object");
     assert!(manifest.get("total_nodes").is_some());
     assert!(manifest.get("waves").is_some());
+    assert!(manifest.get("topology").is_some());
+    assert!(manifest.get("labels").is_some());
+    assert!(manifest.get("subdag_boundaries").is_some());
+    assert!(manifest.get("parallel_groups").is_some());
+    assert!(manifest.get("capture_modes").is_some());
+    assert!(manifest.get("resources").is_some());
     assert!(manifest.get("entrypoint_nodes").is_some());
     assert!(obligations.get("transport_execution_targets").is_some());
     assert!(obligations.get("resource_release_targets").is_some());
