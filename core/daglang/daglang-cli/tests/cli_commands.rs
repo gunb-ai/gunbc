@@ -30703,6 +30703,37 @@ fn run_with_double_dash_non_dag_input_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_double_dash_multiple_inputs_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--")
+        .arg("dsl/tools/makegen.dag")
+        .arg("dsl/tools/other.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with multiple inputs after --");
+
+    assert!(
+        !output.status.success(),
+        "run with multiple inputs after -- should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with multiple inputs after -- should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run takes exactly one <file.dag> input"),
+        "run should report single-input constraint after --: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for multiple inputs after --: {stderr}"
+    );
+}
+
+#[test]
 fn run_with_conflicting_dry_run_and_check_mode_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
