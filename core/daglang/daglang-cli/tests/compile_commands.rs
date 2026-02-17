@@ -12592,6 +12592,35 @@ fn obligations_command_relative_and_absolute_directory_alias_fail_outputs_are_eq
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[cfg(unix)]
+#[test]
+fn obligations_command_relative_and_absolute_symlink_alias_fail_outputs_are_equivalent() {
+    let root =
+        unique_temp_dir("obligations_relative_absolute_symlink_alias_failure_output_parity");
+    let real_dir = root.join("real");
+    std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
+    std::fs::write(
+        real_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in real directory");
+    let symlink_path = root.join("bundle_link.DAG");
+    std::os::unix::fs::symlink(&real_dir, &symlink_path)
+        .expect("failed to create uppercase .dag symlink");
+
+    let absolute_input = symlink_path.to_string_lossy().into_owned();
+    assert_single_target_command_failure_outputs_match_for_targets(
+        "obligations",
+        &root,
+        "bundle_link.DAG",
+        &absolute_input,
+        &[],
+        "absolute symlink alias",
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[test]
 fn obligations_command_absolute_curdir_segment_directory_named_mixed_case_dag_extension_is_invalid_single_file_target(
 ) {
@@ -13452,6 +13481,31 @@ fn obligations_command_json_relative_and_absolute_symlink_alias_fail_outputs_are
         &absolute_input,
         &["--format", "json"],
         "absolute symlink alias",
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn obligations_command_json_relative_and_absolute_directory_alias_fail_outputs_are_equivalent() {
+    let root =
+        unique_temp_dir("obligations_json_relative_absolute_directory_alias_failure_output_parity");
+    let dag_dir = root.join("bundle.DaG");
+    std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .DaG directory root");
+    std::fs::write(
+        dag_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in .DaG directory");
+
+    let absolute_input = dag_dir.to_string_lossy().into_owned();
+    assert_single_target_command_failure_outputs_match_for_targets(
+        "obligations",
+        &root,
+        "bundle.DaG",
+        &absolute_input,
+        &["--format", "json"],
+        "absolute directory alias",
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -15185,6 +15239,35 @@ fn show_triplets_command_relative_and_absolute_directory_alias_fail_outputs_are_
 
 #[cfg(unix)]
 #[test]
+fn show_triplets_command_relative_and_absolute_symlink_alias_fail_outputs_are_equivalent() {
+    let root =
+        unique_temp_dir("show_triplets_relative_absolute_symlink_alias_failure_output_parity");
+    let real_dir = root.join("real");
+    std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
+    std::fs::write(
+        real_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in real directory");
+    let symlink_path = root.join("bundle_link.dag");
+    std::os::unix::fs::symlink(&real_dir, &symlink_path)
+        .expect("failed to create lowercase .dag symlink");
+
+    let absolute_input = symlink_path.to_string_lossy().into_owned();
+    assert_single_target_command_failure_outputs_match_for_targets(
+        "show-triplets",
+        &root,
+        "bundle_link.dag",
+        &absolute_input,
+        &[],
+        "absolute symlink alias",
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn show_triplets_command_absolute_symlink_named_mixed_case_dag_extension_is_invalid_single_file_target(
 ) {
     let root = unique_temp_dir("show_triplets_absolute_symlink_named_mixed_case_dag_extension");
@@ -16167,6 +16250,32 @@ fn show_triplets_command_json_relative_and_absolute_symlink_alias_fail_outputs_a
         &absolute_input,
         &["--format", "json"],
         "absolute symlink alias",
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn show_triplets_command_json_relative_and_absolute_directory_alias_fail_outputs_are_equivalent() {
+    let root = unique_temp_dir(
+        "show_triplets_json_relative_absolute_directory_alias_failure_output_parity",
+    );
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .DAG directory root");
+    std::fs::write(
+        dag_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in .DAG directory");
+
+    let absolute_input = dag_dir.to_string_lossy().into_owned();
+    assert_single_target_command_failure_outputs_match_for_targets(
+        "show-triplets",
+        &root,
+        "bundle.DAG",
+        &absolute_input,
+        &["--format", "json"],
+        "absolute directory alias",
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
