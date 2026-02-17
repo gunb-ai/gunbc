@@ -31869,6 +31869,45 @@ fn compile_family_commands_execute_real_pipeline_paths_with_absolute_curdir_segm
 }
 
 #[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_double_separator_target() {
+    let commands: [(&str, &[&str]); 5] = [
+        ("expand", &[]),
+        ("manifest", &[]),
+        ("compile", &[]),
+        ("obligations", &["--format", "json"]),
+        ("show-triplets", &["--format", "json"]),
+    ];
+    let absolute_target_with_double_separators =
+        format!("{}/dsl//tools///makegen.dag", workspace_root().display());
+    for (command, trailing_args) in commands {
+        let output = Command::new(daglang_bin())
+            .arg(command)
+            .arg(&absolute_target_with_double_separators)
+            .args(trailing_args)
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|err| {
+                panic!(
+                    "failed to run {command} with absolute double-separator target: {err}"
+                )
+            });
+        assert!(
+            output.status.success(),
+            "{command} should execute successfully for absolute double-separator makegen fixture target"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.contains("TODO"),
+            "{command} should not emit TODO placeholder output: {stderr}"
+        );
+        assert!(
+            !output.stdout.is_empty(),
+            "{command} should emit meaningful stdout output for absolute double-separator target"
+        );
+    }
+}
+
+#[test]
 fn viz_without_self_emits_compiled_mermaid_graph() {
     let output = Command::new(daglang_bin())
         .arg("viz")
