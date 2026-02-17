@@ -237,6 +237,47 @@ fn render_manifest(manifest: &ProgressManifest) -> String {
         "boundary_nodes={}\n",
         manifest.boundary_nodes.join(", ")
     ));
+    out.push_str("topology=\n");
+    for node in &manifest.topology {
+        out.push_str(&format!("  {}@{}\n", node.node_id, node.depth));
+    }
+    out.push_str("labels=\n");
+    for (node_id, label) in &manifest.labels {
+        out.push_str(&format!("  {}={}\n", node_id, label));
+    }
+    out.push_str("subdag_boundaries=\n");
+    for boundary in &manifest.subdag_boundaries {
+        out.push_str(&format!("  {}\n", boundary.node_id));
+    }
+    out.push_str("parallel_groups=\n");
+    for group in &manifest.parallel_groups {
+        out.push_str(&format!("  {}={}\n", group.group_id, group.node_ids.join(",")));
+    }
+    out.push_str(&format!(
+        "scatter_points={}\n",
+        manifest.scatter_points.join(", ")
+    ));
+    out.push_str(&format!(
+        "interactive_nodes={}\n",
+        manifest.interactive_nodes.join(", ")
+    ));
+    out.push_str("capture_modes=\n");
+    for (node_id, mode) in &manifest.capture_modes {
+        out.push_str(&format!("  {}={:?}\n", node_id, mode));
+    }
+    out.push_str("stage_groups=\n");
+    for group in &manifest.stage_groups {
+        out.push_str(&format!("  {}={}\n", group.stage, group.node_ids.join(",")));
+    }
+    out.push_str("resources=\n");
+    for (node_id, usages) in &manifest.resources {
+        let usages_rendered = usages
+            .iter()
+            .map(|usage| format!("{}:{}", usage.resource, usage.usage))
+            .collect::<Vec<_>>()
+            .join(",");
+        out.push_str(&format!("  {}={}\n", node_id, usages_rendered));
+    }
     out
 }
 
@@ -323,10 +364,16 @@ mod tests {
             .files
             .iter()
             .any(|file| file.path.ends_with("main.rs") && file.content.contains("tools_makegen_makegen")));
-        assert!(bundle
+        let manifest_file = bundle
             .files
             .iter()
-            .any(|file| file.path.ends_with("progress_manifest.txt") && file.content.contains("total_nodes=")));
+            .find(|file| file.path.ends_with("progress_manifest.txt"))
+            .expect("progress manifest artifact should be emitted");
+        assert!(manifest_file.content.contains("total_nodes="));
+        assert!(manifest_file.content.contains("topology="));
+        assert!(manifest_file.content.contains("labels="));
+        assert!(manifest_file.content.contains("parallel_groups="));
+        assert!(manifest_file.content.contains("capture_modes="));
         assert_eq!(bundle.summary.callable_count, 2);
     }
 }
