@@ -342,7 +342,15 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
                     module,
                     callable,
                     kind,
-                }) => format!("{module}.{callable}::{}", collection_kind_label(*kind)),
+                }) => {
+                    let callable_label = callable
+                        .strip_prefix(&format!("{module}::"))
+                        .unwrap_or(callable);
+                    format!(
+                        "{module}.{callable_label}::{}",
+                        collection_kind_label(*kind)
+                    )
+                }
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { module, name, .. }) => {
                     format!("{module}.{name}")
                 }

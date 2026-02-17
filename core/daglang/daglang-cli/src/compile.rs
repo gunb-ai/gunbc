@@ -107,7 +107,12 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
                 module,
                 callable,
                 kind,
-            }) => format!("collection::{kind:?} {module}.{callable}"),
+            }) => {
+                let callable_label = callable
+                    .strip_prefix(&format!("{module}::"))
+                    .unwrap_or(callable);
+                format!("collection::{kind:?} {module}.{callable_label}")
+            }
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline {
                 module,
                 name,
