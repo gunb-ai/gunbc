@@ -18,6 +18,13 @@ fn makegen_file() -> PathBuf {
     workspace_root().join("dsl/tools/makegen.dag")
 }
 
+fn expected_makegen_manifest_json_snapshot() -> String {
+    format!(
+        "{}\n",
+        include_str!("snapshots/makegen_manifest.json").trim_end_matches('\n')
+    )
+}
+
 fn unique_temp_file(name: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -11194,6 +11201,30 @@ fn manifest_command_json_output_is_deterministic_for_same_input() {
     assert_eq!(
         first.stderr, second.stderr,
         "manifest json stderr should be stable across repeated runs"
+    );
+}
+
+#[test]
+fn manifest_command_json_output_matches_makegen_snapshot() {
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest --format json");
+
+    assert!(
+        output.status.success(),
+        "manifest --format json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        expected_makegen_manifest_json_snapshot(),
+        "manifest json output should match checked-in makegen snapshot"
     );
 }
 
