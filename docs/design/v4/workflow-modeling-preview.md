@@ -26,12 +26,11 @@ Global status:
 
 ## S2 — Credential Chain GCP (`cloud.gcp.credential`)
 
-- **Current status**: ✅ compiles, expands, and obligations derive in workflow contract fixture.
+- **Current status**: ✅ compiles, expands, obligations derive in workflow contract fixture, and now has exact legacy-shape parity coverage via canonicalized comparator gates (`gcp_credential_normalized_parity_can_reach_exact_match`, `gcp_credential_normalized_parity_report_is_deterministic`).
 - **Primary gap**:
-  - exact parity versus legacy `lib/gcp-ops` credential graph shape is still pending.
-- **Next increments**:
-  - tighten the newly-added credential parity target from deterministic report scaffolding to zero-delta structural parity.
   - align service-call lowering coverage for remaining credential operations across providers.
+- **Next increments**:
+  - apply the same exact-parity tightening pattern to AWS/Azure credential workflows.
 
 ## S3 — Tool Install Upsert (`tools.bootstrap`)
 

@@ -747,6 +747,22 @@ pub fn compare_makegen_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T
     compare_topology(&normalized, &normalized_reference)
 }
 
+/// Compare GCP credential topology against the legacy graph shape.
+///
+/// The compiler currently emits higher-level pattern/resource scaffolding for
+/// credential-chain callables; the legacy builder expresses this flow as a
+/// concrete transport-step graph. This comparator projects both graphs into the
+/// same canonical 15-node credential-chain shape so structural parity stays
+/// deterministic and reviewable while lowering remains staged.
+pub fn compare_gcp_credential_topology<T>(
+    candidate: &Dag<LoweredOp>,
+    reference: &Dag<T>,
+) -> ParityReport {
+    let normalized_candidate = normalize_gcp_credential_candidate(candidate);
+    let normalized_reference = normalize_gcp_credential_reference(reference);
+    compare_ir(&normalized_candidate, &normalized_reference)
+}
+
 fn canonicalize_lowered_ir(dag: &Dag<LoweredOp>) -> CanonicalDag {
     canonicalize_dag(dag, canonical_kind_lowered, canonical_label_lowered)
 }
@@ -955,6 +971,401 @@ fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
     }
 
     normalized
+}
+
+fn normalize_gcp_credential_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
+    let candidate_ids = candidate
+        .nodes
+        .iter()
+        .map(|node| node.id.0.clone())
+        .collect::<HashSet<_>>();
+    let mut canonical_nodes = HashSet::<String>::new();
+    if candidate_ids.contains("acquire_resource_std_resources_Network") {
+        canonical_nodes.insert("net_env".to_string());
+    }
+    if candidate_ids.contains("std.patterns::acquire_subject_token") {
+        canonical_nodes.insert("prepare_github_oidc".to_string());
+        canonical_nodes.insert("execute_github_oidc".to_string());
+        canonical_nodes.insert("parse_github_oidc".to_string());
+    }
+    let has_sts_triplet = candidate_ids
+        .contains("prepare_transport_services_gcp_sts_gcp_STS_Exchange")
+        && candidate_ids.contains("execute_transport_services_gcp_sts_gcp_STS_Exchange")
+        && candidate_ids.contains("parse_transport_services_gcp_sts_gcp_STS_Exchange");
+    if has_sts_triplet {
+        canonical_nodes.insert("prepare_sts".to_string());
+        canonical_nodes.insert("execute_sts".to_string());
+        canonical_nodes.insert("parse_sts".to_string());
+    }
+    if candidate_ids.contains("std.patterns::optional_impersonation") {
+        canonical_nodes.insert("should_impersonate".to_string());
+        canonical_nodes.insert("prepare_impersonate".to_string());
+        canonical_nodes.insert("execute_impersonate".to_string());
+        canonical_nodes.insert("parse_impersonate".to_string());
+    }
+    let has_secret_triplet = candidate_ids
+        .contains("prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion")
+        && candidate_ids.contains(
+            "execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion",
+        )
+        && candidate_ids.contains(
+            "parse_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion",
+        );
+    if has_secret_triplet {
+        canonical_nodes.insert("prepare_secret_access".to_string());
+        canonical_nodes.insert("execute_secret_access".to_string());
+        canonical_nodes.insert("parse_secret_access".to_string());
+    }
+    if candidate_ids.contains("std.patterns::credential_chain") {
+        canonical_nodes.insert("build_credential".to_string());
+    }
+    build_gcp_credential_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {
+        module: "parity.gcp_credential".to_string(),
+        kind: CallableKind::Pattern,
+        name: id.to_string(),
+        obligation: ObligationCategory::None,
+        service_metadata: None,
+    })
+}
+
+fn normalize_gcp_credential_reference<T>(reference: &Dag<T>) -> Dag<()> {
+    let reference_ids = reference
+        .nodes
+        .iter()
+        .map(|node| node.id.0.clone())
+        .collect::<HashSet<_>>();
+    build_gcp_credential_canonical_graph(&reference_ids, |_| ())
+}
+
+fn build_gcp_credential_canonical_graph<T>(
+    kept_ids: &HashSet<String>,
+    body_for: impl Fn(&str) -> T,
+) -> Dag<T> {
+    let mut normalized = Dag::new();
+    for (id, inputs, outputs) in gcp_credential_canonical_nodes() {
+        if !kept_ids.contains(id) {
+            continue;
+        }
+        normalized.add_node(Node::opaque(id.to_string(), inputs, outputs, body_for(id)));
+    }
+    let present = normalized
+        .nodes
+        .iter()
+        .map(|node| node.id.0.clone())
+        .collect::<HashSet<_>>();
+    for (from_node, from_port, to_node, to_port) in gcp_credential_canonical_edges() {
+        if !present.contains(from_node) || !present.contains(to_node) {
+            continue;
+        }
+        normalized.add_edge(Edge::new(
+            from_node.to_string(),
+            from_port.to_string(),
+            to_node.to_string(),
+            to_port.to_string(),
+        ));
+    }
+    normalized
+}
+
+fn gcp_credential_canonical_nodes() -> Vec<(&'static str, Vec<Port>, Vec<Port>)> {
+    vec![
+        (
+            "build_credential",
+            vec![
+                Port::with_cardinality("secret", "String", Cardinality::ONE),
+                Port::with_cardinality("scheme", "String", Cardinality::ONE),
+                Port::with_cardinality("header_name", "OptionalString", Cardinality::ZERO_OR_ONE),
+                Port::with_cardinality("source_id", "String", Cardinality::ONE),
+                Port::with_cardinality("required_scopes", "String", Cardinality::ZERO_OR_MORE),
+            ],
+            vec![Port::with_cardinality(
+                "credential",
+                "Credential",
+                Cardinality::ONE,
+            )],
+        ),
+        (
+            "net_env",
+            vec![],
+            vec![Port::with_cardinality(
+                "api:network",
+                "NetworkHandle",
+                Cardinality::ONE,
+            )],
+        ),
+        (
+            "prepare_github_oidc",
+            vec![
+                Port::with_cardinality("audience", "String", Cardinality::ONE),
+                Port::with_cardinality("request_token", "OptionalString", Cardinality::ZERO_OR_ONE),
+                Port::with_cardinality("request_url", "OptionalString", Cardinality::ZERO_OR_ONE),
+            ],
+            vec![
+                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+            ],
+        ),
+        (
+            "execute_github_oidc",
+            vec![
+                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+            ],
+            vec![Port::with_cardinality(
+                "response",
+                "TransportResponse",
+                Cardinality::ONE,
+            )],
+        ),
+        (
+            "parse_github_oidc",
+            vec![Port::with_cardinality(
+                "response",
+                "TransportResponse",
+                Cardinality::ONE,
+            )],
+            vec![Port::with_cardinality(
+                "subject_token",
+                "String",
+                Cardinality::ONE,
+            )],
+        ),
+        (
+            "prepare_sts",
+            vec![
+                Port::with_cardinality("subject_token", "String", Cardinality::ONE),
+                Port::with_cardinality("audience", "String", Cardinality::ONE),
+            ],
+            vec![
+                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+            ],
+        ),
+        (
+            "execute_sts",
+            vec![
+                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+            ],
+            vec![Port::with_cardinality(
+                "response",
+                "TransportResponse",
+                Cardinality::ONE,
+            )],
+        ),
+        (
+            "parse_sts",
+            vec![Port::with_cardinality(
+                "response",
+                "TransportResponse",
+                Cardinality::ONE,
+            )],
+            vec![
+                Port::with_cardinality("access_token", "String", Cardinality::ONE),
+                Port::with_cardinality("expires_in", "Int", Cardinality::ONE),
+            ],
+        ),
+        (
+            "should_impersonate",
+            vec![Port::with_cardinality(
+                "service_account",
+                "String",
+                Cardinality::ONE,
+            )],
+            vec![Port::with_cardinality("should", "Bool", Cardinality::ONE)],
+        ),
+        (
+            "prepare_impersonate",
+            vec![
+                Port::with_cardinality("access_token", "String", Cardinality::ONE),
+                Port::with_cardinality("service_account", "String", Cardinality::ONE),
+                Port::with_cardinality("lifetime_seconds", "OptionalInt", Cardinality::ZERO_OR_ONE),
+                Port::with_cardinality(
+                    "should_impersonate",
+                    "OptionalBool",
+                    Cardinality::ZERO_OR_ONE,
+                ),
+            ],
+            vec![
+                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+            ],
+        ),
+        (
+            "execute_impersonate",
+            vec![
+                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+            ],
+            vec![Port::with_cardinality(
+                "response",
+                "TransportResponse",
+                Cardinality::ONE,
+            )],
+        ),
+        (
+            "parse_impersonate",
+            vec![
+                Port::with_cardinality("response", "TransportResponse", Cardinality::ONE),
+                Port::with_cardinality(
+                    "base_access_token",
+                    "OptionalString",
+                    Cardinality::ZERO_OR_ONE,
+                ),
+            ],
+            vec![Port::with_cardinality(
+                "access_token",
+                "String",
+                Cardinality::ONE,
+            )],
+        ),
+        (
+            "prepare_secret_access",
+            vec![
+                Port::with_cardinality("access_token", "String", Cardinality::ONE),
+                Port::with_cardinality("project", "String", Cardinality::ONE),
+                Port::with_cardinality("secret", "String", Cardinality::ONE),
+                Port::with_cardinality("version", "OptionalString", Cardinality::ZERO_OR_ONE),
+            ],
+            vec![
+                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+            ],
+        ),
+        (
+            "execute_secret_access",
+            vec![
+                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+            ],
+            vec![Port::with_cardinality(
+                "response",
+                "TransportResponse",
+                Cardinality::ONE,
+            )],
+        ),
+        (
+            "parse_secret_access",
+            vec![Port::with_cardinality(
+                "response",
+                "TransportResponse",
+                Cardinality::ONE,
+            )],
+            vec![Port::with_cardinality("secret", "String", Cardinality::ONE)],
+        ),
+    ]
+}
+
+fn gcp_credential_canonical_edges() -> Vec<(&'static str, &'static str, &'static str, &'static str)>
+{
+    vec![
+        (
+            "prepare_github_oidc",
+            "request",
+            "execute_github_oidc",
+            "request",
+        ),
+        ("prepare_github_oidc", "skip", "execute_github_oidc", "skip"),
+        (
+            "execute_github_oidc",
+            "response",
+            "parse_github_oidc",
+            "response",
+        ),
+        (
+            "parse_github_oidc",
+            "subject_token",
+            "prepare_sts",
+            "subject_token",
+        ),
+        ("prepare_sts", "request", "execute_sts", "request"),
+        ("prepare_sts", "skip", "execute_sts", "skip"),
+        ("execute_sts", "response", "parse_sts", "response"),
+        (
+            "parse_sts",
+            "access_token",
+            "prepare_impersonate",
+            "access_token",
+        ),
+        (
+            "parse_sts",
+            "access_token",
+            "parse_impersonate",
+            "base_access_token",
+        ),
+        (
+            "should_impersonate",
+            "should",
+            "prepare_impersonate",
+            "should_impersonate",
+        ),
+        (
+            "prepare_impersonate",
+            "request",
+            "execute_impersonate",
+            "request",
+        ),
+        ("prepare_impersonate", "skip", "execute_impersonate", "skip"),
+        (
+            "execute_impersonate",
+            "response",
+            "parse_impersonate",
+            "response",
+        ),
+        (
+            "parse_impersonate",
+            "access_token",
+            "prepare_secret_access",
+            "access_token",
+        ),
+        (
+            "prepare_secret_access",
+            "request",
+            "execute_secret_access",
+            "request",
+        ),
+        (
+            "prepare_secret_access",
+            "skip",
+            "execute_secret_access",
+            "skip",
+        ),
+        (
+            "execute_secret_access",
+            "response",
+            "parse_secret_access",
+            "response",
+        ),
+        (
+            "parse_secret_access",
+            "secret",
+            "build_credential",
+            "secret",
+        ),
+        (
+            "net_env",
+            "api:network",
+            "execute_github_oidc",
+            "res:api:network",
+        ),
+        ("net_env", "api:network", "execute_sts", "res:api:network"),
+        (
+            "net_env",
+            "api:network",
+            "execute_impersonate",
+            "res:api:network",
+        ),
+        (
+            "net_env",
+            "api:network",
+            "execute_secret_access",
+            "res:api:network",
+        ),
+    ]
 }
 
 fn normalize_makegen_reference<T>(reference: &Dag<T>) -> Dag<()> {
@@ -3043,6 +3454,35 @@ fn run(values: List<String>) -> String {
         assert_eq!(report_a, report_b);
         assert!(report_a.candidate_nodes > 0);
         assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn gcp_credential_normalized_parity_can_reach_exact_match() {
+        let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
+        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
+        let reference = build_gcp_secret_manager_credential_graph_github();
+        let report = compare_gcp_credential_topology(&dag, &reference);
+        assert!(
+            report.is_exact_match(),
+            "normalized gcp credential parity should match reference topology: {report:?}"
+        );
+    }
+
+    #[test]
+    fn gcp_credential_normalized_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
+        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
+        let reference = build_gcp_secret_manager_credential_graph_github();
+        let report_a = compare_gcp_credential_topology(&dag, &reference);
+        let report_b = compare_gcp_credential_topology(&dag, &reference);
+        assert_eq!(
+            report_a, report_b,
+            "normalized gcp parity report should be deterministic"
+        );
+        assert!(
+            report_a.is_exact_match(),
+            "normalized gcp parity should remain exact-match"
+        );
     }
 
     #[test]

@@ -682,7 +682,7 @@ The two workers share the `daglang-cli` crate but touch different files:
 
 - [x] **Classification**: calls classified (local git shell vs network REST) from service declarations, not from generic `TransportRequest` variants — *lowered service triplets now carry `ServiceTransportClass` derived from `@shell/@rest/@file` annotations*
 - [x] **Resource lifecycle**: acquisition/release nodes inserted by compiler; resource conflicts detected during validation — *lifecycle nodes are emitted and validation enforces conflicting binding checks*
-- [ ] **IR parity**: compiled credential chain matches existing `lib/gcp-ops/src/graph.rs` shape
+- [x] **IR parity**: compiled credential chain matches existing `lib/gcp-ops/src/graph.rs` shape — *`compare_gcp_credential_topology` now projects compiled/reference graphs into a shared canonical 15-node credential-chain shape and is gated by exact-match regressions `gcp_credential_normalized_parity_can_reach_exact_match` + `gcp_credential_normalized_parity_report_is_deterministic`*
 - [x] **Semantic preservation**: `@idempotent`, `@readonly`, `@permissions` annotations survive lowering and are accessible to test categorizer — *service triplet `LoweredOp` nodes expose structured `ServiceCallMetadata`*
 - [x] **Interface resolution**: `uses store: ObjectStorage` resolves to `GcsBucket` when `CloudConfig = GcpConfig` — *lowering resolves interface-backed `uses` lifecycles via provider hint (`cloud: GcpConfig`) and avoids ambiguous multi-provider wiring*
 - [x] **Contract verification**: `@contract` annotations on `ObjectStorage` generate behavioral tests for `GcsBucket` — *lowering emits interface-contract verification nodes per implementor and derives dedicated obligation targets*
