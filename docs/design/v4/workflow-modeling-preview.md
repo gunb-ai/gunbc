@@ -22,12 +22,12 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## S2 — Credential Chain GCP (`cloud.gcp.credential`)
 
-- **Current status**: ⚠ lowers to unresolved provided-resource contract in single-module fixture (`auth: AuthContext`).
+- **Current status**: ✅ compiles, expands, and obligations derive in workflow contract fixture.
 - **Primary gap**:
-  - single-file lowering cannot currently resolve imported `AuthContext` lifecycle provider in this workflow contract.
+  - parity versus legacy `lib/gcp-ops` credential graph shape is still pending.
 - **Next increments**:
-  - wire imported standard resources (`std.resources`) into single-file lowering resolution path.
-  - add builder parity target for credential chain once lowering succeeds.
+  - add builder parity target for credential chain.
+  - align service-call lowering coverage for remaining credential operations across providers.
 
 ## S3 — Tool Install Upsert (`tools.bootstrap`)
 

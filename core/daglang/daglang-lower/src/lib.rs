@@ -2026,6 +2026,7 @@ fn resolve_interface_resource_endpoint(
 
 fn collect_known_uses_types(project: &TypedProject) -> HashSet<String> {
     let mut known = HashSet::new();
+    insert_default_known_resource_types(&mut known);
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
@@ -2053,6 +2054,13 @@ fn collect_known_uses_types(project: &TypedProject) -> HashSet<String> {
         }
     }
     known
+}
+
+fn insert_default_known_resource_types(known: &mut HashSet<String>) {
+    for resource_type in ["Filesystem", "Network", "Clock", "AuthContext"] {
+        insert_canonical_names(known, resource_type);
+        insert_canonical_names(known, &format!("std.resources.{resource_type}"));
+    }
 }
 
 fn add_resource_lifecycle_nodes(
@@ -3081,6 +3089,29 @@ func run() -> { ok: Bool } provides out: Storage {
                     && edge.to_port.0 == "resource_handle"
             }),
             "interface-only provides should not fabricate lifecycle release edges"
+        );
+    }
+
+    #[test]
+    fn known_std_resource_provides_without_lifecycle_are_tolerated() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/std_resource_provides.dag",
+            r#"module sample.resources
+func run() -> { ok: Bool } provides auth: AuthContext {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "provide_resource_sample_resources_run_auth"));
+        assert!(
+            !dag.edges.iter().any(|edge| {
+                edge.from_node.0 == "provide_resource_sample_resources_run_auth"
+                    && edge.to_port.0 == "resource_handle"
+            }),
+            "std resource provides should not fabricate lifecycle release edges when lifecycle module is absent"
         );
     }
 
