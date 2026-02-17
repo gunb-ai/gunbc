@@ -2434,7 +2434,9 @@ mod tests {
     use daglang_resolve::{ModuleGraph, ResolvedModule};
     use daglang_syntax::parser;
     use daglang_typecheck::typecheck_module_graph;
+    use gunbc_clippy::build_clippy_graph_lint_all;
     use gunbc_dag::build_makegen_graph;
+    use gunbc_deps::build_deps_graph;
     use gunbc_lib_gcp_ops::build_gcp_secret_manager_credential_graph_github;
     use gunbc_ir::{Edge, Port};
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -2550,6 +2552,32 @@ mod tests {
         let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
         let reference = build_gcp_secret_manager_credential_graph_github();
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn clippy_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.clippy");
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let reference = build_clippy_graph_lint_all();
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn deps_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.deps");
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let reference = build_deps_graph().expect("deps builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);

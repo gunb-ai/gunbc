@@ -81,17 +81,19 @@ The source of truth for current status is the workflow fixture contract suite in
 
 - **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - parity against legacy clippy workflow shape is still pending.
+  - exact parity against legacy clippy workflow shape is still pending.
 - **Next increments**:
-  - add clippy workflow parity harness and execution assertions.
+  - tighten newly-added deterministic clippy parity scaffold to zero-delta shape parity.
+  - add execution assertions on the resolved clippy path.
 
 ## Deps (`tools.deps`)
 
 - **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - parity against legacy deps workflow shape is still pending.
+  - exact parity against legacy deps workflow shape is still pending.
 - **Next increments**:
-  - add deps workflow parity harness and execution bridge assertions.
+  - tighten newly-added deterministic deps parity scaffold to zero-delta shape parity.
+  - add execution bridge assertions for deps workflow.
 
 ## Auth (`services.shell`)
 

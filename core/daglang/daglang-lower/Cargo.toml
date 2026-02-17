@@ -15,4 +15,6 @@ serde_json = { workspace = true }
 [dev-dependencies]
 daglang-resolve = { path = "../daglang-resolve" }
 gunbc-dag = { path = "../../../gunbc-dag" }
+gunbc-clippy = { path = "../../../lib/tools/clippy" }
+gunbc-deps = { path = "../../../lib/tools/deps" }
 gunbc-lib-gcp-ops = { path = "../../../lib/gcp-ops" }
