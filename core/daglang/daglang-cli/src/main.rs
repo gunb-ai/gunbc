@@ -1162,6 +1162,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_rejects_unknown_flags_after_input_path() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--mystery".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(error.contains("unknown run flag"));
+    }
+
+    #[test]
     fn parse_run_args_supports_double_dash_for_dash_prefixed_file_paths() {
         let args = vec![
             "daglang".to_string(),

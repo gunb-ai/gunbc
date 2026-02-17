@@ -30590,6 +30590,36 @@ fn run_with_unknown_flag_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_unknown_flag_after_input_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--mystery")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with unknown flag after input");
+
+    assert!(
+        !output.status.success(),
+        "run with unknown flag after input should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with unknown flag after input should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown run flag `--mystery`"),
+        "run should report unknown flag after input explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for unknown flags after input: {stderr}"
+    );
+}
+
+#[test]
 fn run_supports_double_dash_for_dash_prefixed_input_paths() {
     let input_path = std::env::temp_dir().join(format!(
         "--daglang_run_dash_prefixed_input_{}_{}.dag",
