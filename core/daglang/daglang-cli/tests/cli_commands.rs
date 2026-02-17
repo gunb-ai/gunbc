@@ -30746,6 +30746,34 @@ fn run_check_mode_with_unwritable_output_path_reports_not_written() {
 }
 
 #[test]
+fn run_check_mode_with_directory_output_path_reports_not_written() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output")
+        .arg(std::env::temp_dir().to_string_lossy().as_ref())
+        .arg("--check-mode")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run in check-mode with directory output path");
+
+    assert!(
+        output.status.success(),
+        "check-mode run should tolerate directory output paths without snapshot errors: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=real"),
+        "check-mode directory run should still report real mode summary: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode directory run should report no writes: {stdout}"
+    );
+}
+
+#[test]
 fn run_command_writes_makefile_in_real_mode() {
     let output_path = unique_temp_output_file("run_real_mode");
     if output_path.exists() {
