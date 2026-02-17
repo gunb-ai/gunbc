@@ -6,6 +6,7 @@ use daglang_derive::{derive_artifacts, DerivedArtifacts};
 use daglang_emit::{emit_rust_bundle, EmissionBundle};
 use daglang_lower::{lower_typed_project, lower_typed_project_for_modules, LoweredOp};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
+use daglang_syntax::ast::Item;
 use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
 use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions};
@@ -212,6 +213,15 @@ fn callable_scope_for_context(
         .iter()
         .find(|module| module.path == *target_file)
         .or_else(|| module_graph.modules.first())?;
+    let has_callable_items = target_module.ast.items.iter().any(|item| {
+        matches!(
+            item.node,
+            Item::FnDef(_) | Item::FuncDef(_) | Item::PatternDef(_) | Item::PipelineDef(_)
+        )
+    });
+    if !has_callable_items {
+        return None;
+    }
     let mut scope = HashSet::new();
     scope.insert(target_module.module_path.join("."));
     Some(scope)

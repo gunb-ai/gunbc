@@ -95,11 +95,11 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## Auth (`services.shell`)
 
-- **Current status**: ⚠ lower-stage no-callable/no-pipeline terminal state (service-only module).
+- **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - no callable entrypoint by design in this file; cannot lower to executable DAG directly.
+  - parity versus consumer workflows that invoke shell services is still pending.
 - **Next increments**:
-  - consume this service module from executable workflows and validate through caller parity tests.
+  - validate service-only module parity through downstream caller parity/execution tests.
 
 ## S8 — Infra Bootstrap (`infra.core`)
 
