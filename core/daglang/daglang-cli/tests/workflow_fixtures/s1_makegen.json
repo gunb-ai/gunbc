@@ -1,0 +1,10 @@
+{
+  "module": "tools.makegen",
+  "path": "tools/makegen.dag",
+  "items": 2,
+  "dependencies": [
+    "std.patterns",
+    "std.types",
+    "shared.dag_util"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "module": "examples.abstract_services",
+  "path": "examples/abstract_services.dag",
+  "items": 12,
+  "dependencies": []
+}

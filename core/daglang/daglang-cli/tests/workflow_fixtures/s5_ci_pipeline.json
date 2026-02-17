@@ -1,0 +1,17 @@
+{
+  "module": "pipelines.ci",
+  "path": "pipelines/ci.dag",
+  "items": 1,
+  "dependencies": [
+    "tools.makegen",
+    "tools.bootstrap",
+    "tools.codegen",
+    "tools.testgen",
+    "tools.pragma",
+    "tools.build",
+    "tools.clippy",
+    "tools.deps",
+    "std.types",
+    "shared.dag_util"
+  ]
+}

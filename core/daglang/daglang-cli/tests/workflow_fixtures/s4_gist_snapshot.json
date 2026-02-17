@@ -1,0 +1,12 @@
+{
+  "module": "tools.gist",
+  "path": "tools/gist.dag",
+  "items": 6,
+  "dependencies": [
+    "services.git",
+    "std.patterns",
+    "std.resources",
+    "std.types",
+    "shared.gist_modes"
+  ]
+}

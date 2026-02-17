@@ -1,0 +1,11 @@
+{
+  "module": "tools.bootstrap",
+  "path": "tools/bootstrap.dag",
+  "items": 3,
+  "dependencies": [
+    "std.patterns",
+    "std.resources",
+    "services.shell",
+    "shared.dag_util"
+  ]
+}

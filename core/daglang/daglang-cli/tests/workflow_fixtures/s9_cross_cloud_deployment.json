@@ -1,0 +1,16 @@
+{
+  "module": "examples.deployment",
+  "path": "examples/deployment.dag",
+  "items": 14,
+  "dependencies": [
+    "infra.core",
+    "infra.spec",
+    "infra.gcp.resources",
+    "infra.gcp.config",
+    "infra.aws.resources",
+    "infra.aws.config",
+    "infra.azure.resources",
+    "infra.azure.config",
+    "tools.gist"
+  ]
+}

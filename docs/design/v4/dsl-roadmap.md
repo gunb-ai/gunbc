@@ -1691,9 +1691,22 @@ The effort lands cleanly when all six criteria are met:
 
 > The foundation everything else builds on. Can proceed in parallel with bridge work.
 
-- [ ] Fill out the workflow matrix for all 7-8 discrete workflows
-- [ ] Create at least one golden fixture per workflow
-- [ ] Wire golden fixture checks into CI
+- [x] Fill out the workflow matrix for all 7-8 discrete workflows
+- [x] Create at least one golden fixture per workflow
+- [x] Wire golden fixture checks into CI (via `daglang-cli` integration tests)
+
+Current golden fixture baseline (`core/daglang/daglang-cli/tests/workflow_contracts.rs`):
+
+| Scenario | Module fixture | Snapshot file |
+|---|---|---|
+| **S1** | `tools.makegen` | `s1_makegen.json` |
+| **S2** | `cloud.gcp.credential` | `s2_credential_chain_gcp.json` |
+| **S3** | `tools.bootstrap` | `s3_tool_install_upsert.json` |
+| **S4** | `tools.gist` | `s4_gist_snapshot.json` |
+| **S5** | `pipelines.ci` | `s5_ci_pipeline.json` |
+| **S6** | `examples.abstract_services` | `s6_llm_review.json` |
+| **S8** | `infra.core` | `s8_infra_bootstrap.json` |
+| **S9** | `examples.deployment` | `s9_cross_cloud_deployment.json` |
 
 ### Standing gates (must not regress)
 
