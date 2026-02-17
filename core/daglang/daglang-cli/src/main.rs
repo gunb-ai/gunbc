@@ -1027,6 +1027,27 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_supports_check_mode_equals_dash_prefixed_output_before_input_path() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--check-mode".to_string(),
+            "--output=--check-mode-before-input.mk".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = parse_run_args(&args).expect("parse should succeed");
+        assert_eq!(
+            parsed,
+            RunArgs {
+                file: "dsl/tools/makegen.dag".to_string(),
+                output_path: "--check-mode-before-input.mk".to_string(),
+                dry_run: false,
+                check_mode: true,
+            }
+        );
+    }
+
+    #[test]
     fn parse_run_args_accepts_equals_output_path_with_dash_prefix() {
         let args = vec![
             "daglang".to_string(),

@@ -31862,6 +31862,52 @@ fn run_command_supports_equals_output_flag_with_dash_prefixed_path_in_dry_run() 
 }
 
 #[test]
+fn run_command_supports_dash_prefixed_equals_output_before_input_in_dry_run() {
+    let output_path = std::env::temp_dir().join(format!(
+        "--daglang_run_dash_output_before_input_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale dash-prefixed output");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--dry-run")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect(
+            "failed to run daglang run with dash-prefixed --output=<path> before input in dry-run",
+        );
+
+    assert!(
+        output.status.success(),
+        "run with dash-prefixed --output=<path> before input in dry-run should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "run with dash-prefixed --output=<path> before input should report dry-run mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "run with dash-prefixed --output=<path> before input should report written=false in dry-run: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "run with dash-prefixed --output=<path> before input should not write output file at {}",
+        output_path.display()
+    );
+}
+
+#[test]
 fn run_command_supports_equals_output_flag_with_dash_prefixed_path_in_real_mode() {
     let output_path = std::env::temp_dir().join(format!(
         "--daglang_run_dash_output_real_{}_{}.mk",
@@ -32178,6 +32224,57 @@ fn run_command_check_mode_supports_dash_prefixed_equals_output_path() {
     assert_eq!(
         after, stale,
         "check-mode run should preserve dash-prefixed output content"
+    );
+    std::fs::remove_file(&output_path)
+        .expect("failed to clean up dash-prefixed check-mode output file");
+}
+
+#[test]
+fn run_command_check_mode_supports_dash_prefixed_equals_output_before_input_path() {
+    let output_path = std::env::temp_dir().join(format!(
+        "--daglang_run_check_mode_dash_output_before_input_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
+    }
+    let stale = "check-mode dash-prefixed before-input stale content";
+    std::fs::write(&output_path, stale).expect("failed to seed stale check-mode output file");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--check-mode")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect(
+            "failed to run daglang run with check-mode dash-prefixed --output=<path> before input",
+        );
+
+    assert!(
+        output.status.success(),
+        "check-mode run with dash-prefixed --output=<path> before input should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode run with dash-prefixed --output=<path> before input should report mode=check-mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode run with dash-prefixed --output=<path> before input should report written=false: {stdout}"
+    );
+    let after = std::fs::read_to_string(&output_path)
+        .expect("failed to read dash-prefixed check-mode output");
+    assert_eq!(
+        after, stale,
+        "check-mode run should preserve dash-prefixed output content when flags precede input"
     );
     std::fs::remove_file(&output_path)
         .expect("failed to clean up dash-prefixed check-mode output file");
