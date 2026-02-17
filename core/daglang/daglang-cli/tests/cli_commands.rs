@@ -31360,6 +31360,36 @@ fn run_with_double_dash_flag_like_token_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_double_dash_output_equals_like_token_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--")
+        .arg("--output=generated.mk")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with -- and output-like positional token");
+
+    assert!(
+        !output.status.success(),
+        "run with -- and output-like positional token should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with -- and output-like positional token should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run requires a .dag input file"),
+        "run should treat output-like token after -- as positional non-dag input: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for -- output-like positional token: {stderr}"
+    );
+}
+
+#[test]
 fn run_with_double_dash_multiple_inputs_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
