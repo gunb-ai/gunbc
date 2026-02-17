@@ -11516,6 +11516,55 @@ fn run() -> Unit { }
 }
 
 #[test]
+fn obligations_command_relative_and_absolute_mixed_case_extension_targets_are_equivalent() {
+    let root = unique_temp_dir("obligations_relative_absolute_mixed_case_extension");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let target = root.join("single.DaG");
+    std::fs::write(
+        &target,
+        r#"module sample.obligations
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write mixed-case obligations fixture");
+
+    let relative = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("single.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative mixed-case obligations command");
+    assert!(
+        relative.status.success(),
+        "relative mixed-case obligations command failed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(&target)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute mixed-case obligations command");
+    assert!(
+        absolute.status.success(),
+        "absolute mixed-case obligations command failed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute mixed-case obligations stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute mixed-case obligations stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn obligations_command_json_curdir_suffix_target_matches_plain_relative_output() {
     let plain = Command::new(daglang_bin())
         .arg("obligations")
@@ -11643,6 +11692,59 @@ fn run() -> Unit { }
     assert_eq!(
         relative.stderr, absolute.stderr,
         "relative and absolute mixed-case obligations json stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn obligations_command_json_relative_and_absolute_uppercase_extension_targets_are_equivalent() {
+    let root = unique_temp_dir("obligations_json_relative_absolute_uppercase_extension");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let target = root.join("single.DAG");
+    std::fs::write(
+        &target,
+        r#"module sample.obligations
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write uppercase obligations fixture");
+
+    let relative = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("single.DAG")
+        .arg("--format")
+        .arg("json")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative uppercase obligations json command");
+    assert!(
+        relative.status.success(),
+        "relative uppercase obligations json command failed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(&target)
+        .arg("--format")
+        .arg("json")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute uppercase obligations json command");
+    assert!(
+        absolute.status.success(),
+        "absolute uppercase obligations json command failed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute uppercase obligations json stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute uppercase obligations json stderr should match"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -12563,6 +12665,55 @@ fn run() -> Unit { }
 }
 
 #[test]
+fn show_triplets_command_relative_and_absolute_mixed_case_extension_targets_are_equivalent() {
+    let root = unique_temp_dir("show_triplets_relative_absolute_mixed_case_extension");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let target = root.join("single.DaG");
+    std::fs::write(
+        &target,
+        r#"module sample.triplets
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write mixed-case show-triplets fixture");
+
+    let relative = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("single.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative mixed-case show-triplets command");
+    assert!(
+        relative.status.success(),
+        "relative mixed-case show-triplets command failed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(&target)
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute mixed-case show-triplets command");
+    assert!(
+        absolute.status.success(),
+        "absolute mixed-case show-triplets command failed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute mixed-case show-triplets stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute mixed-case show-triplets stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn show_triplets_command_json_curdir_suffix_target_matches_plain_relative_output() {
     let plain = Command::new(daglang_bin())
         .arg("show-triplets")
@@ -12690,6 +12841,59 @@ fn run() -> Unit { }
     assert_eq!(
         relative.stderr, absolute.stderr,
         "relative and absolute mixed-case show-triplets json stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn show_triplets_command_json_relative_and_absolute_uppercase_extension_targets_are_equivalent() {
+    let root = unique_temp_dir("show_triplets_json_relative_absolute_uppercase_extension");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let target = root.join("single.DAG");
+    std::fs::write(
+        &target,
+        r#"module sample.triplets
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write uppercase show-triplets fixture");
+
+    let relative = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("single.DAG")
+        .arg("--format")
+        .arg("json")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run relative uppercase show-triplets json command");
+    assert!(
+        relative.status.success(),
+        "relative uppercase show-triplets json command failed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(&target)
+        .arg("--format")
+        .arg("json")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run absolute uppercase show-triplets json command");
+    assert!(
+        absolute.status.success(),
+        "absolute uppercase show-triplets json command failed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute uppercase show-triplets json stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute uppercase show-triplets json stderr should match"
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
