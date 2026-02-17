@@ -35,6 +35,37 @@ pub struct PipelineContext {
     pub target_file: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipelineError {
+    message: String,
+}
+
+impl PipelineError {
+    pub fn contains(&self, needle: &str) -> bool {
+        self.message.contains(needle)
+    }
+}
+
+impl std::fmt::Display for PipelineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl From<String> for PipelineError {
+    fn from(message: String) -> Self {
+        Self { message }
+    }
+}
+
+impl From<&str> for PipelineError {
+    fn from(message: &str) -> Self {
+        Self {
+            message: message.to_string(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum PipelineStop {
     Parse,
@@ -245,7 +276,10 @@ pub fn build_pipeline_dag() -> Dag<CompilerOp> {
     dag
 }
 
-pub fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<PipelineResult, String> {
+pub fn run_pipeline(
+    context: &PipelineContext,
+    stop: PipelineStop,
+) -> Result<PipelineResult, PipelineError> {
     let dag = build_pipeline_dag();
     validate_pipeline_semantics(&dag)?;
     topological_order(&dag)?;
