@@ -2408,6 +2408,49 @@ struct ServiceCallSite {
     args: Vec<ServiceCallArgSite>,
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CollectionOpKind {
+    Map,
+    Filter,
+    Fold,
+    Join,
+    FlatMap,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CollectionOpSite {
+    kind: CollectionOpKind,
+}
+
+#[cfg(test)]
+fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
+    match name {
+        "map" => Some(CollectionOpKind::Map),
+        "filter" => Some(CollectionOpKind::Filter),
+        "fold" => Some(CollectionOpKind::Fold),
+        "join" => Some(CollectionOpKind::Join),
+        "flat_map" => Some(CollectionOpKind::FlatMap),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::Pipe(_, rhs) = expr {
+            let Expr::Call(name, _) = rhs.as_ref() else {
+                return;
+            };
+            let Some(kind) = collection_op_kind(name) else {
+                return;
+            };
+            sites.push(CollectionOpSite { kind });
+        }
+    });
+}
+
 fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallSite>) {
     walk_stmts(stmts, &mut |expr| {
         if let Expr::ServiceCall(path, args) = expr {
@@ -2465,6 +2508,17 @@ mod tests {
             })
             .collect();
         typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
+    }
+
+    fn callable_stmts_from_source(source: &str) -> Vec<Stmt> {
+        let ast = parser::parse(source).expect("source should parse");
+        let item = ast.items.first().expect("source should contain one item");
+        match &item.node {
+            Item::FnDef(def) => def.body.stmts.clone(),
+            Item::FuncDef(def) => def.body.stmts.clone(),
+            Item::PatternDef(def) => def.body.stmts.clone(),
+            other => panic!("expected callable item, got {other:?}"),
+        }
     }
 
     // Test infrastructure: filesystem access for real DSL corpus fixtures.
@@ -2554,6 +2608,49 @@ mod tests {
                 && edge.to_node.0 == "compare_makegen_content"
                 && edge.to_port.0 == "expected_content"
         }));
+    }
+
+    #[test]
+    fn collect_collection_ops_detects_pipe_map_filter_join_chain() {
+        let stmts = callable_stmts_from_source(
+            r#"
+module sample.collections
+fn run(values: List<String>) -> { out: String } {
+  rendered = values
+    |> map(v => v)
+    |> filter(v => v != "")
+    |> join(",")
+  return { out: rendered }
+}
+"#,
+        );
+        let mut sites = Vec::new();
+        collect_collection_ops_from_stmts(&stmts, &mut sites);
+        let kinds = sites.iter().map(|site| site.kind).collect::<Vec<_>>();
+        assert_eq!(
+            kinds,
+            vec![
+                CollectionOpKind::Join,
+                CollectionOpKind::Filter,
+                CollectionOpKind::Map,
+            ]
+        );
+    }
+
+    #[test]
+    fn collect_collection_ops_ignores_non_pipe_collection_calls() {
+        let stmts = callable_stmts_from_source(
+            r#"
+module sample.collections
+fn run(values: List<String>) -> { out: String } {
+  rendered = map(values, v => v)
+  return { out: rendered }
+}
+"#,
+        );
+        let mut sites = Vec::new();
+        collect_collection_ops_from_stmts(&stmts, &mut sites);
+        assert!(sites.is_empty());
     }
 
     #[test]
