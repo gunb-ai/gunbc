@@ -30791,6 +30791,62 @@ fn run_check_mode_supports_double_dash_for_dash_prefixed_uppercase_input_paths()
 }
 
 #[test]
+fn run_check_mode_double_dash_dash_prefixed_uppercase_input_does_not_create_missing_output() {
+    let input_path = std::env::temp_dir().join(format!(
+        "--daglang_run_check_mode_dash_prefixed_uppercase_missing_output_input_{}_{}.DAG",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    std::fs::copy(
+        workspace_root().join("dsl/tools/makegen.dag"),
+        &input_path,
+    )
+    .expect("failed to copy makegen fixture for check-mode uppercase dash-prefixed missing-output input");
+    let output_path =
+        unique_temp_output_file("run_check_mode_double_dash_dash_prefixed_uppercase_missing_out");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path)
+            .expect("failed to remove stale output for check-mode missing-output case");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--check-mode")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .arg("--")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run check-mode with double-dash uppercase dash-prefixed input");
+
+    assert!(
+        output.status.success(),
+        "check-mode run with double-dash uppercase dash-prefixed input should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode double-dash run should report mode=check-mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode double-dash run should report written=false: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "check-mode double-dash run should not create missing output file at {}",
+        output_path.display()
+    );
+
+    std::fs::remove_file(&input_path)
+        .expect("failed to clean check-mode uppercase dash-prefixed missing-output input fixture");
+}
+
+#[test]
 fn run_real_mode_supports_double_dash_for_dash_prefixed_uppercase_input_paths() {
     let input_path = std::env::temp_dir().join(format!(
         "--daglang_run_real_mode_dash_prefixed_uppercase_input_{}_{}.DAG",
