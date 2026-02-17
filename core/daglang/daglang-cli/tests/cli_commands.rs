@@ -31276,6 +31276,43 @@ fn run_command_dry_run_accepts_flags_after_input_path() {
 }
 
 #[test]
+fn run_command_dry_run_supports_equals_output_flag_after_input_path() {
+    let output_path = unique_temp_output_file("run_dry_mode_equals_after_input");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale dry-run output");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--dry-run")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run in dry-run mode with --output=<path> after input");
+
+    assert!(
+        output.status.success(),
+        "run in dry-run mode with --output=<path> after input should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "run should report dry-run mode with --output=<path> after input: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "dry-run with --output=<path> after input should report written=false: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "dry-run with --output=<path> after input should not write output file at {}",
+        output_path.display()
+    );
+}
+
+#[test]
 fn run_command_supports_equals_output_flag_in_real_mode() {
     let output_path = unique_temp_output_file("run_real_mode_equals_output");
     if output_path.exists() {
