@@ -1105,6 +1105,30 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_rejects_directory_input_even_with_dag_extension_after_double_dash() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "daglang_parse_run_directory_input_after_double_dash_{}.dag",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).expect("failed to create directory fixture");
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--".to_string(),
+            temp_dir.to_string_lossy().to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run requires a .dag input file, not a directory"),
+            "expected directory input validation after --, got: {error}"
+        );
+        std::fs::remove_dir_all(&temp_dir).expect("failed to remove directory fixture");
+    }
+
+    #[test]
     fn run_mode_label_distinguishes_real_dry_run_and_check_mode() {
         let real = RunArgs {
             file: "dsl/tools/makegen.dag".to_string(),
