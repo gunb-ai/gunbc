@@ -1,10 +1,10 @@
 // Test infrastructure: filesystem access for test fixtures
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde_json::Value;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
@@ -16,6 +16,10 @@ fn daglang_bin() -> &'static str {
 
 fn makegen_file() -> PathBuf {
     workspace_root().join("dsl/tools/makegen.dag")
+}
+
+fn ci_pipeline_file() -> PathBuf {
+    workspace_root().join("dsl/pipelines/ci.dag")
 }
 
 fn expected_makegen_manifest_json_snapshot() -> String {
@@ -315,13 +319,12 @@ fn assert_single_target_command_treats_dag_directory_as_invalid_single_file_targ
     nested_diagnostic_snippet: Option<&str>,
     extra_args: &[&str],
 ) {
-    let (plain, trailing) =
-        run_single_target_command_with_optional_trailing_slash_and_args(
-            command_name,
-            root,
-            input,
-            extra_args,
-        );
+    let (plain, trailing) = run_single_target_command_with_optional_trailing_slash_and_args(
+        command_name,
+        root,
+        input,
+        extra_args,
+    );
     assert!(
         !plain.status.success(),
         "{command_name} {input} should fail for .dag-suffixed directory target"
@@ -533,8 +536,7 @@ fn compile_command_directory_named_uppercase_dag_extension_is_treated_as_invalid
 ) {
     let root = unique_temp_dir("compile_directory_named_uppercase_dag_extension");
     let dag_dir = root.join("bundle.DAG");
-    std::fs::create_dir_all(dag_dir.join("sample"))
-        .expect("failed to create .DAG directory root");
+    std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .DAG directory root");
     std::fs::write(
         dag_dir.join("sample/main.dag"),
         "module sample.main\nfn run() -> Unit {}",
@@ -571,12 +573,11 @@ fn compile_command_directory_named_mixed_case_dag_extension_is_treated_as_invali
 }
 
 #[test]
-fn compile_command_curdir_suffix_uppercase_dag_directory_is_treated_as_invalid_single_file_target(
-) {
+fn compile_command_curdir_suffix_uppercase_dag_directory_is_treated_as_invalid_single_file_target()
+{
     let root = unique_temp_dir("compile_curdir_suffix_uppercase_dag_directory");
     let dag_dir = root.join("bundle.DAG");
-    std::fs::create_dir_all(dag_dir.join("sample"))
-        .expect("failed to create .DAG directory root");
+    std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .DAG directory root");
     std::fs::write(
         dag_dir.join("sample/main.dag"),
         "module sample.main\nfn run() -> Unit {}",
@@ -594,8 +595,8 @@ fn compile_command_curdir_suffix_uppercase_dag_directory_is_treated_as_invalid_s
 }
 
 #[test]
-fn compile_command_curdir_suffix_mixed_case_dag_directory_is_treated_as_invalid_single_file_target(
-) {
+fn compile_command_curdir_suffix_mixed_case_dag_directory_is_treated_as_invalid_single_file_target()
+{
     let root = unique_temp_dir("compile_curdir_suffix_mixed_case_dag_directory");
     let dag_dir = root.join("bundle.DaG");
     std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory root");
@@ -614,8 +615,8 @@ fn compile_command_curdir_suffix_mixed_case_dag_directory_is_treated_as_invalid_
 
 #[cfg(unix)]
 #[test]
-fn compile_command_symlink_directory_named_dag_extension_is_treated_as_invalid_single_file_target(
-) {
+fn compile_command_symlink_directory_named_dag_extension_is_treated_as_invalid_single_file_target()
+{
     use std::os::unix::fs::symlink;
 
     let root = unique_temp_dir("compile_symlink_directory_named_dag_extension");
@@ -629,12 +630,7 @@ fn compile_command_symlink_directory_named_dag_extension_is_treated_as_invalid_s
     .expect("failed to write valid source in real directory");
     symlink(&real_dir, &link_dir).expect("failed to create .dag directory symlink");
 
-    assert_dag_suffixed_directory_is_invalid_single_file_target(
-        &root,
-        "link.dag",
-        &link_dir,
-        None,
-    );
+    assert_dag_suffixed_directory_is_invalid_single_file_target(&root, "link.dag", &link_dir, None);
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
@@ -680,12 +676,7 @@ fn compile_command_symlink_directory_named_uppercase_dag_extension_is_treated_as
     .expect("failed to write valid source in real directory");
     symlink(&real_dir, &link_dir).expect("failed to create uppercase .DAG directory symlink");
 
-    assert_dag_suffixed_directory_is_invalid_single_file_target(
-        &root,
-        "link.DAG",
-        &link_dir,
-        None,
-    );
+    assert_dag_suffixed_directory_is_invalid_single_file_target(&root, "link.DAG", &link_dir, None);
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
@@ -842,10 +833,7 @@ fn compile_command_relative_and_absolute_dangling_symlink_targets_are_equivalent
     );
     let stderr = String::from_utf8_lossy(&relative.stderr);
     assert!(
-        stderr.contains(&format!(
-            "failed to read {}",
-            dangling_link.display()
-        )),
+        stderr.contains(&format!("failed to read {}", dangling_link.display())),
         "dangling-target compile diagnostics should include normalized absolute path: {stderr}"
     );
     assert_no_stage_failures(&stderr);
@@ -1270,8 +1258,8 @@ fn compile_command_parent_double_separator_non_directory_root_matches_absolute_o
 }
 
 #[test]
-fn compile_command_parent_double_separator_trailing_slash_non_directory_root_matches_absolute_output()
-{
+fn compile_command_parent_double_separator_trailing_slash_non_directory_root_matches_absolute_output(
+) {
     let root = unique_temp_dir("compile_parent_double_trailing_non_directory_root");
     std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
     let root_file = root.join("input.txt");
@@ -1329,7 +1317,10 @@ fn compile_command_curdir_segment_missing_root_matches_plain_relative_output() {
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let curdir = Command::new(daglang_bin())
         .arg("compile")
@@ -1372,7 +1363,10 @@ fn compile_command_curdir_segment_trailing_slash_missing_root_matches_plain_rela
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let curdir_segment_trailing = Command::new(daglang_bin())
         .arg("compile")
@@ -1406,9 +1400,8 @@ fn compile_command_curdir_segment_trailing_slash_missing_root_matches_plain_rela
 #[test]
 fn compile_command_dot_double_separator_curdir_segment_trailing_slash_missing_root_matches_plain_relative_output(
 ) {
-    let root = unique_temp_dir(
-        "compile_dot_double_separator_curdir_segment_trailing_slash_missing_root",
-    );
+    let root =
+        unique_temp_dir("compile_dot_double_separator_curdir_segment_trailing_slash_missing_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let missing = root.join("missing_root");
 
@@ -1418,7 +1411,10 @@ fn compile_command_dot_double_separator_curdir_segment_trailing_slash_missing_ro
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let dot_double_separator_curdir_segment_trailing_slash = Command::new(daglang_bin())
         .arg("compile")
@@ -1429,7 +1425,9 @@ fn compile_command_dot_double_separator_curdir_segment_trailing_slash_missing_ro
             "failed to run dot-double-separator-curdir-segment-trailing-slash missing-root compile",
         );
     assert!(
-        !dot_double_separator_curdir_segment_trailing_slash.status.success(),
+        !dot_double_separator_curdir_segment_trailing_slash
+            .status
+            .success(),
         "dot-double-separator-curdir-segment-trailing-slash missing-root compile should fail"
     );
 
@@ -1456,8 +1454,7 @@ fn compile_command_dot_double_separator_curdir_segment_trailing_slash_missing_ro
 #[test]
 fn compile_command_dot_double_separator_curdir_segment_suffix_missing_root_matches_plain_relative_output(
 ) {
-    let root =
-        unique_temp_dir("compile_dot_double_separator_curdir_segment_suffix_missing_root");
+    let root = unique_temp_dir("compile_dot_double_separator_curdir_segment_suffix_missing_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let missing = root.join("missing_root");
 
@@ -1467,16 +1464,17 @@ fn compile_command_dot_double_separator_curdir_segment_suffix_missing_root_match
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let dot_double_separator_curdir_segment_suffix = Command::new(daglang_bin())
         .arg("compile")
         .arg(".//missing_root/./.")
         .current_dir(&root)
         .output()
-        .expect(
-            "failed to run dot-double-separator-curdir-segment-suffix missing-root compile",
-        );
+        .expect("failed to run dot-double-separator-curdir-segment-suffix missing-root compile");
     assert!(
         !dot_double_separator_curdir_segment_suffix.status.success(),
         "dot-double-separator-curdir-segment-suffix missing-root compile should fail"
@@ -1512,7 +1510,10 @@ fn compile_command_dot_double_separator_curdir_suffix_missing_root_matches_plain
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let dot_double_separator_curdir_suffix = Command::new(daglang_bin())
         .arg("compile")
@@ -1555,7 +1556,10 @@ fn compile_command_curdir_suffix_missing_root_matches_plain_relative_output() {
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let curdir_suffix = Command::new(daglang_bin())
         .arg("compile")
@@ -1598,7 +1602,10 @@ fn compile_command_curdir_segment_suffix_missing_root_matches_plain_relative_out
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let curdir_segment_suffix = Command::new(daglang_bin())
         .arg("compile")
@@ -1641,7 +1648,10 @@ fn compile_command_curdir_suffix_double_separator_missing_root_matches_plain_rel
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let curdir_suffix_double_separator = Command::new(daglang_bin())
         .arg("compile")
@@ -1673,7 +1683,8 @@ fn compile_command_curdir_suffix_double_separator_missing_root_matches_plain_rel
 }
 
 #[test]
-fn compile_command_curdir_segment_double_separator_suffix_missing_root_matches_plain_relative_output() {
+fn compile_command_curdir_segment_double_separator_suffix_missing_root_matches_plain_relative_output(
+) {
     let root = unique_temp_dir("compile_curdir_segment_double_separator_suffix_missing_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let missing = root.join("missing_root");
@@ -1684,7 +1695,10 @@ fn compile_command_curdir_segment_double_separator_suffix_missing_root_matches_p
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let curdir_segment_double_separator_suffix = Command::new(daglang_bin())
         .arg("compile")
@@ -1730,7 +1744,10 @@ fn compile_command_dot_double_separator_curdir_segment_double_separator_suffix_m
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let dot_double_separator_curdir_segment_double_separator_suffix = Command::new(daglang_bin())
         .arg("compile")
@@ -1777,7 +1794,10 @@ fn compile_command_curdir_segment_double_separator_missing_root_matches_plain_re
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let curdir_segment_double_separator = Command::new(daglang_bin())
         .arg("compile")
@@ -1811,8 +1831,9 @@ fn compile_command_curdir_segment_double_separator_missing_root_matches_plain_re
 #[test]
 fn compile_command_dot_double_separator_curdir_segment_double_separator_missing_root_matches_plain_relative_output(
 ) {
-    let root =
-        unique_temp_dir("compile_dot_double_separator_curdir_segment_double_separator_missing_root");
+    let root = unique_temp_dir(
+        "compile_dot_double_separator_curdir_segment_double_separator_missing_root",
+    );
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let missing = root.join("missing_root");
 
@@ -1822,7 +1843,10 @@ fn compile_command_dot_double_separator_curdir_segment_double_separator_missing_
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let dot_double_separator_curdir_segment_double_separator = Command::new(daglang_bin())
         .arg("compile")
@@ -1831,7 +1855,9 @@ fn compile_command_dot_double_separator_curdir_segment_double_separator_missing_
         .output()
         .expect("failed to run dot-double-separator-curdir-segment-double-separator missing-root compile");
     assert!(
-        !dot_double_separator_curdir_segment_double_separator.status.success(),
+        !dot_double_separator_curdir_segment_double_separator
+            .status
+            .success(),
         "dot-double-separator-curdir-segment-double-separator missing-root compile should fail"
     );
 
@@ -1867,7 +1893,10 @@ fn compile_command_curdir_double_separator_missing_root_matches_plain_relative_o
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let curdir_double = Command::new(daglang_bin())
         .arg("compile")
@@ -1910,7 +1939,10 @@ fn compile_command_double_separator_missing_root_matches_plain_relative_output()
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let double_sep = Command::new(daglang_bin())
         .arg("compile")
@@ -1953,7 +1985,10 @@ fn compile_command_trailing_slash_missing_root_matches_plain_relative_output() {
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let trailing_slash = Command::new(daglang_bin())
         .arg("compile")
@@ -2245,7 +2280,9 @@ fn compile_command_dot_double_separator_curdir_segment_suffix_missing_single_fil
         .arg(".//missing.dag/./.")
         .current_dir(&root)
         .output()
-        .expect("failed to run dot-double-separator-curdir-segment-suffix missing single-file compile");
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-suffix missing single-file compile",
+        );
     assert!(
         !dot_double_separator_curdir_segment_suffix.status.success(),
         "dot-double-separator-curdir-segment-suffix missing single-file compile should fail"
@@ -2364,7 +2401,8 @@ fn compile_command_curdir_suffix_missing_single_file_target_matches_plain_relati
 }
 
 #[test]
-fn compile_command_curdir_segment_suffix_missing_single_file_target_matches_plain_relative_output() {
+fn compile_command_curdir_segment_suffix_missing_single_file_target_matches_plain_relative_output()
+{
     let root = unique_temp_dir("compile_curdir_segment_suffix_missing_single_file_target");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let missing = root.join("missing.dag");
@@ -2481,9 +2519,7 @@ fn compile_command_curdir_segment_double_separator_suffix_missing_single_file_ta
         .arg("./missing.dag//./.")
         .current_dir(&root)
         .output()
-        .expect(
-            "failed to run curdir-segment-double-separator-suffix missing single-file compile",
-        );
+        .expect("failed to run curdir-segment-double-separator-suffix missing single-file compile");
     assert!(
         !curdir_segment_double_separator_suffix.status.success(),
         "curdir-segment-double-separator-suffix missing single-file compile should fail"
@@ -2563,7 +2599,8 @@ fn compile_command_dot_double_separator_curdir_segment_double_separator_suffix_m
 #[test]
 fn compile_command_curdir_segment_double_separator_missing_single_file_target_matches_plain_relative_output(
 ) {
-    let root = unique_temp_dir("compile_curdir_segment_double_separator_missing_single_file_target");
+    let root =
+        unique_temp_dir("compile_curdir_segment_double_separator_missing_single_file_target");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let missing = root.join("missing.dag");
 
@@ -2931,7 +2968,9 @@ fn compile_command_dot_double_separator_curdir_segment_suffix_invalid_single_fil
         .arg(".//invalid.dag/./.")
         .current_dir(&root)
         .output()
-        .expect("failed to run dot-double-separator-curdir-segment-suffix invalid single-file compile");
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-suffix invalid single-file compile",
+        );
     assert!(
         !dot_double_separator_curdir_segment_suffix.status.success(),
         "dot-double-separator-curdir-segment-suffix invalid single-file compile should fail"
@@ -3054,7 +3093,8 @@ fn compile_command_curdir_suffix_invalid_single_file_target_matches_plain_relati
 }
 
 #[test]
-fn compile_command_curdir_segment_suffix_invalid_single_file_target_matches_plain_relative_output() {
+fn compile_command_curdir_segment_suffix_invalid_single_file_target_matches_plain_relative_output()
+{
     let root = unique_temp_dir("compile_curdir_segment_suffix_invalid_single_file_target");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let invalid_target = root.join("invalid.dag");
@@ -3177,9 +3217,7 @@ fn compile_command_curdir_segment_double_separator_suffix_invalid_single_file_ta
         .arg("./invalid.dag//./.")
         .current_dir(&root)
         .output()
-        .expect(
-            "failed to run curdir-segment-double-separator-suffix invalid single-file compile",
-        );
+        .expect("failed to run curdir-segment-double-separator-suffix invalid single-file compile");
     assert!(
         !curdir_segment_double_separator_suffix.status.success(),
         "curdir-segment-double-separator-suffix invalid single-file compile should fail"
@@ -3261,7 +3299,8 @@ fn compile_command_dot_double_separator_curdir_segment_double_separator_suffix_i
 #[test]
 fn compile_command_curdir_segment_double_separator_invalid_single_file_target_matches_plain_relative_output(
 ) {
-    let root = unique_temp_dir("compile_curdir_segment_double_separator_invalid_single_file_target");
+    let root =
+        unique_temp_dir("compile_curdir_segment_double_separator_invalid_single_file_target");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let invalid_target = root.join("invalid.dag");
     std::fs::create_dir_all(&invalid_target)
@@ -3548,7 +3587,8 @@ fn compile_command_parent_segment_trailing_slash_missing_single_file_target_is_n
 }
 
 #[test]
-fn compile_command_parent_double_separator_missing_single_file_target_is_normalized_and_equivalent() {
+fn compile_command_parent_double_separator_missing_single_file_target_is_normalized_and_equivalent()
+{
     let root = unique_temp_dir("compile_parent_double_missing_single_file_target");
     std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
     let missing = root.join("missing.dag");
@@ -3955,8 +3995,8 @@ fn compile_command_parent_double_separator_single_file_target_matches_absolute_o
 }
 
 #[test]
-fn compile_command_parent_double_separator_trailing_slash_single_file_target_matches_absolute_output()
-{
+fn compile_command_parent_double_separator_trailing_slash_single_file_target_matches_absolute_output(
+) {
     let root = unique_temp_dir("compile_parent_double_trailing_single_file_target");
     std::fs::create_dir_all(root.join("child")).expect("failed to create temp root child");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root sample");
@@ -4650,7 +4690,8 @@ fn compile_command_parent_segment_trailing_slash_invalid_single_file_target_is_n
 }
 
 #[test]
-fn compile_command_parent_double_separator_invalid_single_file_target_is_normalized_and_equivalent() {
+fn compile_command_parent_double_separator_invalid_single_file_target_is_normalized_and_equivalent()
+{
     let root = unique_temp_dir("compile_parent_double_invalid_single_file_target");
     std::fs::create_dir_all(root.join("child")).expect("failed to create temp root");
     let invalid_target = root.join("invalid.dag");
@@ -5121,7 +5162,8 @@ fn compile_command_curdir_segment_single_file_target_matches_plain_relative_outp
 }
 
 #[test]
-fn compile_command_curdir_segment_trailing_slash_single_file_target_matches_plain_relative_output() {
+fn compile_command_curdir_segment_trailing_slash_single_file_target_matches_plain_relative_output()
+{
     let root = unique_temp_dir("compile_curdir_segment_trailing_single_file_target");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
     let source = root.join("sample/main.dag");
@@ -5168,9 +5210,8 @@ fn compile_command_curdir_segment_trailing_slash_single_file_target_matches_plai
 #[test]
 fn compile_command_dot_double_separator_curdir_segment_trailing_slash_single_file_target_matches_plain_relative_output(
 ) {
-    let root = unique_temp_dir(
-        "compile_dot_double_separator_curdir_segment_trailing_single_file_target",
-    );
+    let root =
+        unique_temp_dir("compile_dot_double_separator_curdir_segment_trailing_single_file_target");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
     let source = root.join("sample/main.dag");
     std::fs::write(&source, "module sample.main\nfn run() -> Unit { }")
@@ -5193,9 +5234,13 @@ fn compile_command_dot_double_separator_curdir_segment_trailing_slash_single_fil
         .arg(".//sample/main.dag/")
         .current_dir(&root)
         .output()
-        .expect("failed to run dot-double-separator-curdir-segment-trailing-slash single-file compile");
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-trailing-slash single-file compile",
+        );
     assert!(
-        dot_double_separator_curdir_segment_trailing_slash.status.success(),
+        dot_double_separator_curdir_segment_trailing_slash
+            .status
+            .success(),
         "dot-double-separator-curdir-segment-trailing-slash single-file compile should succeed: {}",
         String::from_utf8_lossy(&dot_double_separator_curdir_segment_trailing_slash.stderr)
     );
@@ -5265,8 +5310,7 @@ fn compile_command_dot_double_separator_curdir_segment_suffix_single_file_target
 #[test]
 fn compile_command_dot_double_separator_curdir_suffix_single_file_target_matches_plain_relative_output(
 ) {
-    let root =
-        unique_temp_dir("compile_dot_double_separator_curdir_suffix_single_file_target");
+    let root = unique_temp_dir("compile_dot_double_separator_curdir_suffix_single_file_target");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
     let source = root.join("sample/main.dag");
     std::fs::write(&source, "module sample.main\nfn run() -> Unit { }")
@@ -5400,8 +5444,8 @@ fn compile_command_curdir_segment_suffix_single_file_target_matches_plain_relati
 }
 
 #[test]
-fn compile_command_curdir_suffix_double_separator_single_file_target_matches_plain_relative_output(
-) {
+fn compile_command_curdir_suffix_double_separator_single_file_target_matches_plain_relative_output()
+{
     let root = unique_temp_dir("compile_curdir_suffix_double_separator_single_file_target");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
     let source = root.join("sample/main.dag");
@@ -5448,8 +5492,7 @@ fn compile_command_curdir_suffix_double_separator_single_file_target_matches_pla
 #[test]
 fn compile_command_curdir_segment_double_separator_suffix_single_file_target_matches_plain_relative_output(
 ) {
-    let root =
-        unique_temp_dir("compile_curdir_segment_double_separator_suffix_single_file_target");
+    let root = unique_temp_dir("compile_curdir_segment_double_separator_suffix_single_file_target");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
     let source = root.join("sample/main.dag");
     std::fs::write(&source, "module sample.main\nfn run() -> Unit { }")
@@ -5545,8 +5588,8 @@ fn compile_command_dot_double_separator_curdir_segment_double_separator_suffix_s
 }
 
 #[test]
-fn compile_command_curdir_segment_double_separator_single_file_target_matches_plain_relative_output()
-{
+fn compile_command_curdir_segment_double_separator_single_file_target_matches_plain_relative_output(
+) {
     let root = unique_temp_dir("compile_curdir_segment_double_separator_single_file_target");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
     let source = root.join("sample/main.dag");
@@ -5641,8 +5684,8 @@ fn compile_command_dot_double_separator_curdir_segment_double_separator_single_f
 }
 
 #[test]
-fn compile_command_curdir_segment_double_separator_non_directory_root_matches_plain_relative_output()
-{
+fn compile_command_curdir_segment_double_separator_non_directory_root_matches_plain_relative_output(
+) {
     let root = unique_temp_dir("compile_curdir_segment_double_separator_non_directory_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let root_file = root.join("input.txt");
@@ -5795,7 +5838,8 @@ fn compile_command_dot_double_separator_curdir_segment_double_separator_suffix_n
 }
 
 #[test]
-fn compile_command_curdir_segment_trailing_slash_non_directory_root_matches_plain_relative_output() {
+fn compile_command_curdir_segment_trailing_slash_non_directory_root_matches_plain_relative_output()
+{
     let root = unique_temp_dir("compile_curdir_segment_trailing_non_directory_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let root_file = root.join("input.txt");
@@ -5844,9 +5888,8 @@ fn compile_command_curdir_segment_trailing_slash_non_directory_root_matches_plai
 #[test]
 fn compile_command_dot_double_separator_curdir_segment_trailing_slash_non_directory_root_matches_plain_relative_output(
 ) {
-    let root = unique_temp_dir(
-        "compile_dot_double_separator_curdir_segment_trailing_non_directory_root",
-    );
+    let root =
+        unique_temp_dir("compile_dot_double_separator_curdir_segment_trailing_non_directory_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let root_file = root.join("input.txt");
     std::fs::write(&root_file, "not a directory").expect("failed to write non-directory root");
@@ -5869,7 +5912,9 @@ fn compile_command_dot_double_separator_curdir_segment_trailing_slash_non_direct
         .output()
         .expect("failed to run dot-double-separator-curdir-segment-trailing-slash non-directory-root compile");
     assert!(
-        !dot_double_separator_curdir_segment_trailing_slash.status.success(),
+        !dot_double_separator_curdir_segment_trailing_slash
+            .status
+            .success(),
         "dot-double-separator-curdir-segment-trailing-slash non-directory-root compile should fail"
     );
 
@@ -5896,9 +5941,8 @@ fn compile_command_dot_double_separator_curdir_segment_trailing_slash_non_direct
 #[test]
 fn compile_command_dot_double_separator_curdir_segment_suffix_non_directory_root_matches_plain_relative_output(
 ) {
-    let root = unique_temp_dir(
-        "compile_dot_double_separator_curdir_segment_suffix_non_directory_root",
-    );
+    let root =
+        unique_temp_dir("compile_dot_double_separator_curdir_segment_suffix_non_directory_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let root_file = root.join("input.txt");
     std::fs::write(&root_file, "not a directory").expect("failed to write non-directory root");
@@ -5919,7 +5963,9 @@ fn compile_command_dot_double_separator_curdir_segment_suffix_non_directory_root
         .arg(".//input.txt/./.")
         .current_dir(&root)
         .output()
-        .expect("failed to run dot-double-separator-curdir-segment-suffix non-directory-root compile");
+        .expect(
+            "failed to run dot-double-separator-curdir-segment-suffix non-directory-root compile",
+        );
     assert!(
         !dot_double_separator_curdir_segment_suffix.status.success(),
         "dot-double-separator-curdir-segment-suffix non-directory-root compile should fail"
@@ -5946,8 +5992,7 @@ fn compile_command_dot_double_separator_curdir_segment_suffix_non_directory_root
 #[test]
 fn compile_command_dot_double_separator_curdir_suffix_non_directory_root_matches_plain_relative_output(
 ) {
-    let root =
-        unique_temp_dir("compile_dot_double_separator_curdir_suffix_non_directory_root");
+    let root = unique_temp_dir("compile_dot_double_separator_curdir_suffix_non_directory_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let root_file = root.join("input.txt");
     std::fs::write(&root_file, "not a directory").expect("failed to write non-directory root");
@@ -6375,7 +6420,8 @@ fn compile_command_absolute_curdir_segment_trailing_slash_root_matches_canonical
 }
 
 #[test]
-fn compile_command_absolute_curdir_segment_double_separator_root_matches_canonical_absolute_output() {
+fn compile_command_absolute_curdir_segment_double_separator_root_matches_canonical_absolute_output()
+{
     let root = unique_temp_dir("compile_absolute_curdir_segment_double_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     write_minimal_directory_compile_fixture(&root);
@@ -6416,7 +6462,7 @@ fn compile_command_absolute_curdir_segment_double_separator_root_matches_canonic
         "curdir-segment-double-separator and canonical absolute-root compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &curdir_segment_double_separator.stderr
+        &curdir_segment_double_separator.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -6468,7 +6514,8 @@ fn compile_command_absolute_curdir_suffix_root_matches_canonical_absolute_output
 }
 
 #[test]
-fn compile_command_absolute_curdir_suffix_double_separator_root_matches_canonical_absolute_output() {
+fn compile_command_absolute_curdir_suffix_double_separator_root_matches_canonical_absolute_output()
+{
     let root = unique_temp_dir("compile_absolute_curdir_suffix_double_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     write_minimal_directory_compile_fixture(&root);
@@ -6509,7 +6556,7 @@ fn compile_command_absolute_curdir_suffix_double_separator_root_matches_canonica
         "curdir-suffix-double-separator and canonical absolute-root compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &curdir_suffix_double_separator.stderr
+        &curdir_suffix_double_separator.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -6558,7 +6605,7 @@ fn compile_command_absolute_curdir_segment_double_separator_suffix_root_matches_
         "curdir-segment-double-separator-suffix and canonical absolute-root compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &curdir_segment_double_separator_suffix.stderr
+        &curdir_segment_double_separator_suffix.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -6697,7 +6744,7 @@ fn compile_command_absolute_parent_curdir_segment_trailing_slash_root_matches_ca
         "parent-curdir-segment-trailing and canonical absolute-root compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &parent_curdir_segment_trailing.stderr
+        &parent_curdir_segment_trailing.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -6746,7 +6793,7 @@ fn compile_command_absolute_parent_curdir_segment_double_separator_root_matches_
         "parent-curdir-segment-double and canonical absolute-root compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &parent_curdir_segment_double.stderr
+        &parent_curdir_segment_double.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -6755,8 +6802,7 @@ fn compile_command_absolute_parent_curdir_segment_double_separator_root_matches_
 #[test]
 fn compile_command_absolute_parent_curdir_segment_double_separator_trailing_slash_root_matches_canonical_absolute_output(
 ) {
-    let root =
-        unique_temp_dir("compile_absolute_parent_curdir_segment_double_trailing_slash_root");
+    let root = unique_temp_dir("compile_absolute_parent_curdir_segment_double_trailing_slash_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     write_minimal_directory_compile_fixture(&root);
     let absolute_parent_curdir_segment_double_separator_trailing_root =
@@ -6768,9 +6814,13 @@ fn compile_command_absolute_parent_curdir_segment_double_separator_trailing_slas
         .arg(&absolute_parent_curdir_segment_double_separator_trailing_root)
         .current_dir(&root)
         .output()
-        .expect("failed to run parent-curdir-segment-double-separator-trailing absolute root compile");
+        .expect(
+            "failed to run parent-curdir-segment-double-separator-trailing absolute root compile",
+        );
     assert!(
-        parent_curdir_segment_double_separator_trailing.status.success(),
+        parent_curdir_segment_double_separator_trailing
+            .status
+            .success(),
         "parent-curdir-segment-double-separator-trailing absolute root compile should succeed: {}",
         String::from_utf8_lossy(&parent_curdir_segment_double_separator_trailing.stderr)
     );
@@ -6796,7 +6846,7 @@ fn compile_command_absolute_parent_curdir_segment_double_separator_trailing_slas
         "parent-curdir-segment-double-separator-trailing and canonical absolute-root compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &parent_curdir_segment_double_separator_trailing.stderr
+        &parent_curdir_segment_double_separator_trailing.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -6848,7 +6898,8 @@ fn compile_command_absolute_parent_segment_root_matches_canonical_absolute_outpu
 }
 
 #[test]
-fn compile_command_absolute_parent_segment_double_separator_root_matches_canonical_absolute_output() {
+fn compile_command_absolute_parent_segment_double_separator_root_matches_canonical_absolute_output()
+{
     let root = unique_temp_dir("compile_absolute_parent_segment_double_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     write_minimal_directory_compile_fixture(&root);
@@ -6936,7 +6987,7 @@ fn compile_command_absolute_parent_segment_double_separator_trailing_slash_root_
         "parent-segment-double-trailing and canonical absolute-root compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &parent_segment_double_trailing.stderr
+        &parent_segment_double_trailing.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -7260,7 +7311,7 @@ fn compile_command_absolute_curdir_segment_double_separator_single_file_target_m
         "curdir-segment-double-separator and canonical absolute single-file compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &curdir_segment_double_separator.stderr
+        &curdir_segment_double_separator.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -7354,7 +7405,7 @@ fn compile_command_absolute_curdir_suffix_double_separator_single_file_target_ma
         "curdir-suffix-double-separator and canonical absolute single-file compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &curdir_suffix_double_separator.stderr
+        &curdir_suffix_double_separator.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -7405,7 +7456,7 @@ fn compile_command_absolute_curdir_segment_double_separator_suffix_single_file_t
         "curdir-segment-double-separator-suffix and canonical absolute single-file compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &curdir_segment_double_separator_suffix.stderr
+        &curdir_segment_double_separator_suffix.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -7508,8 +7559,10 @@ fn compile_command_absolute_parent_curdir_segment_trailing_slash_single_file_tar
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     write_minimal_directory_compile_fixture(&root);
     let canonical_target = root.join("dsl/sample/main.dag");
-    let absolute_parent_curdir_segment_trailing_target =
-        PathBuf::from(format!("{}/anchor/.././dsl/sample/main.dag/", root.display()));
+    let absolute_parent_curdir_segment_trailing_target = PathBuf::from(format!(
+        "{}/anchor/.././dsl/sample/main.dag/",
+        root.display()
+    ));
 
     let parent_curdir_segment_trailing = Command::new(daglang_bin())
         .arg("compile")
@@ -7544,7 +7597,7 @@ fn compile_command_absolute_parent_curdir_segment_trailing_slash_single_file_tar
         "parent-curdir-segment-trailing and canonical absolute single-file compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &parent_curdir_segment_trailing.stderr
+        &parent_curdir_segment_trailing.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -7556,8 +7609,10 @@ fn compile_command_absolute_parent_curdir_segment_double_separator_single_file_t
     let root = unique_temp_dir("compile_absolute_parent_curdir_segment_double_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     write_minimal_directory_compile_fixture(&root);
-    let absolute_parent_curdir_segment_double_target =
-        PathBuf::from(format!("{}/anchor/.././dsl/sample//main.dag", root.display()));
+    let absolute_parent_curdir_segment_double_target = PathBuf::from(format!(
+        "{}/anchor/.././dsl/sample//main.dag",
+        root.display()
+    ));
     let canonical_target = root.join("dsl/sample/main.dag");
 
     let parent_curdir_segment_double = Command::new(daglang_bin())
@@ -7593,7 +7648,7 @@ fn compile_command_absolute_parent_curdir_segment_double_separator_single_file_t
         "parent-curdir-segment-double and canonical absolute single-file compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &parent_curdir_segment_double.stderr
+        &parent_curdir_segment_double.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -7607,8 +7662,10 @@ fn compile_command_absolute_parent_curdir_segment_double_separator_trailing_slas
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     write_minimal_directory_compile_fixture(&root);
     let canonical_target = root.join("dsl/sample/main.dag");
-    let absolute_parent_curdir_segment_double_separator_trailing_target =
-        PathBuf::from(format!("{}/anchor//.././dsl/sample/main.dag/", root.display()));
+    let absolute_parent_curdir_segment_double_separator_trailing_target = PathBuf::from(format!(
+        "{}/anchor//.././dsl/sample/main.dag/",
+        root.display()
+    ));
 
     let parent_curdir_segment_double_separator_trailing = Command::new(daglang_bin())
         .arg("compile")
@@ -7643,7 +7700,7 @@ fn compile_command_absolute_parent_curdir_segment_double_separator_trailing_slas
         "parent-curdir-segment-double-separator-trailing and canonical absolute single-file compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &parent_curdir_segment_double_separator_trailing.stderr
+        &parent_curdir_segment_double_separator_trailing.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -7747,8 +7804,10 @@ fn compile_command_absolute_parent_segment_double_separator_trailing_slash_singl
     let root = unique_temp_dir("compile_absolute_parent_segment_double_trailing_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     write_minimal_directory_compile_fixture(&root);
-    let absolute_parent_segment_double_trailing_target =
-        PathBuf::from(format!("{}/dsl/sample/..//sample/main.dag/", root.display()));
+    let absolute_parent_segment_double_trailing_target = PathBuf::from(format!(
+        "{}/dsl/sample/..//sample/main.dag/",
+        root.display()
+    ));
     let canonical_target = root.join("dsl/sample/main.dag");
 
     let parent_segment_double_trailing = Command::new(daglang_bin())
@@ -7784,20 +7843,22 @@ fn compile_command_absolute_parent_segment_double_separator_trailing_slash_singl
         "parent-segment-double-trailing and canonical absolute single-file compile stderr should match"
     );
     assert_no_stage_failures(&String::from_utf8_lossy(
-        &parent_segment_double_trailing.stderr
+        &parent_segment_double_trailing.stderr,
     ));
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
 #[test]
-fn compile_command_absolute_parent_segment_trailing_slash_single_file_target_matches_canonical_output()
-{
+fn compile_command_absolute_parent_segment_trailing_slash_single_file_target_matches_canonical_output(
+) {
     let root = unique_temp_dir("compile_absolute_parent_segment_trailing_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     write_minimal_directory_compile_fixture(&root);
-    let absolute_parent_segment_trailing_target =
-        PathBuf::from(format!("{}/", root.join("dsl/sample/../sample/main.dag").display()));
+    let absolute_parent_segment_trailing_target = PathBuf::from(format!(
+        "{}/",
+        root.join("dsl/sample/../sample/main.dag").display()
+    ));
     let canonical_target = root.join("dsl/sample/main.dag");
 
     let parent_segment_trailing = Command::new(daglang_bin())
@@ -8046,7 +8107,10 @@ fn compile_command_absolute_missing_root_variants_match_canonical_output() {
         ),
         (
             "parent_trailing",
-            PathBuf::from(format!("{}/", root.join("anchor/../missing_root").display())),
+            PathBuf::from(format!(
+                "{}/",
+                root.join("anchor/../missing_root").display()
+            )),
         ),
         (
             "parent_double_separator_trailing",
@@ -8142,10 +8206,7 @@ fn compile_command_absolute_non_directory_root_variants_match_canonical_output()
             PathBuf::from(format!("{}/./.", canonical_non_directory_root.display())),
         ),
         ("parent", root.join("anchor/../input.txt")),
-        (
-            "parent_curdir_segment",
-            root.join("anchor/.././input.txt"),
-        ),
+        ("parent_curdir_segment", root.join("anchor/.././input.txt")),
         (
             "parent_curdir_segment_trailing",
             PathBuf::from(format!("{}/anchor/.././input.txt/", root.display())),
@@ -8285,15 +8346,24 @@ fn compile_command_absolute_missing_single_file_variants_match_canonical_output(
         ),
         (
             "parent_double_separator",
-            PathBuf::from(format!("{}/dsl/sample/..//sample/missing.dag", root.display())),
+            PathBuf::from(format!(
+                "{}/dsl/sample/..//sample/missing.dag",
+                root.display()
+            )),
         ),
         (
             "parent_trailing",
-            PathBuf::from(format!("{}/", root.join("dsl/sample/../sample/missing.dag").display())),
+            PathBuf::from(format!(
+                "{}/",
+                root.join("dsl/sample/../sample/missing.dag").display()
+            )),
         ),
         (
             "parent_double_separator_trailing",
-            PathBuf::from(format!("{}/dsl/sample/..//sample/missing.dag/", root.display())),
+            PathBuf::from(format!(
+                "{}/dsl/sample/..//sample/missing.dag/",
+                root.display()
+            )),
         ),
         (
             "double_separator",
@@ -8582,7 +8652,9 @@ fn compile_command_dot_double_separator_curdir_segment_trailing_slash_root_match
         .output()
         .expect("failed to run dot-double-separator-curdir-segment-trailing-slash root compile");
     assert!(
-        dot_double_separator_curdir_segment_trailing_slash.status.success(),
+        dot_double_separator_curdir_segment_trailing_slash
+            .status
+            .success(),
         "dot-double-separator-curdir-segment-trailing-slash root compile should succeed: {}",
         String::from_utf8_lossy(&dot_double_separator_curdir_segment_trailing_slash.stderr)
     );
@@ -8958,7 +9030,8 @@ fn compile_command_dot_double_separator_curdir_suffix_double_separator_root_matc
 #[test]
 fn compile_command_dot_double_separator_curdir_suffix_double_separator_missing_root_matches_plain_relative_output(
 ) {
-    let root = unique_temp_dir("compile_dot_double_separator_curdir_suffix_double_separator_missing_root");
+    let root =
+        unique_temp_dir("compile_dot_double_separator_curdir_suffix_double_separator_missing_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let missing = root.join("missing_root");
 
@@ -8968,7 +9041,10 @@ fn compile_command_dot_double_separator_curdir_suffix_double_separator_missing_r
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let dot_double_separator_curdir_suffix_double_separator = Command::new(daglang_bin())
         .arg("compile")
@@ -9080,7 +9156,9 @@ fn compile_command_dot_double_separator_curdir_suffix_double_separator_single_fi
         .arg(".//sample/main.dag//.")
         .current_dir(&root)
         .output()
-        .expect("failed to run dot-double-separator-curdir-suffix-double-separator single-file compile");
+        .expect(
+            "failed to run dot-double-separator-curdir-suffix-double-separator single-file compile",
+        );
     assert!(
         dot_double_separator_curdir_suffix_double_separator
             .status
@@ -9261,7 +9339,10 @@ fn compile_command_dot_double_separator_missing_root_matches_plain_relative_outp
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let dot_double_separator = Command::new(daglang_bin())
         .arg("compile")
@@ -9522,7 +9603,8 @@ fn compile_command_dot_double_separator_double_separator_root_matches_plain_rela
 }
 
 #[test]
-fn compile_command_dot_double_separator_double_separator_missing_root_matches_plain_relative_output() {
+fn compile_command_dot_double_separator_double_separator_missing_root_matches_plain_relative_output(
+) {
     let root = unique_temp_dir("compile_dot_double_separator_double_separator_missing_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let missing = root.join("missing_root");
@@ -9533,7 +9615,10 @@ fn compile_command_dot_double_separator_double_separator_missing_root_matches_pl
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let dot_double_separator_double_separator = Command::new(daglang_bin())
         .arg("compile")
@@ -9661,7 +9746,8 @@ fn compile_command_dot_double_separator_double_separator_single_file_target_matc
 #[test]
 fn compile_command_dot_double_separator_double_separator_missing_single_file_target_matches_plain_relative_output(
 ) {
-    let root = unique_temp_dir("compile_dot_double_separator_double_separator_missing_single_file_target");
+    let root =
+        unique_temp_dir("compile_dot_double_separator_double_separator_missing_single_file_target");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let missing = root.join("missing.dag");
 
@@ -9708,7 +9794,8 @@ fn compile_command_dot_double_separator_double_separator_missing_single_file_tar
 #[test]
 fn compile_command_dot_double_separator_double_separator_invalid_single_file_target_matches_plain_relative_output(
 ) {
-    let root = unique_temp_dir("compile_dot_double_separator_double_separator_invalid_single_file_target");
+    let root =
+        unique_temp_dir("compile_dot_double_separator_double_separator_invalid_single_file_target");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let invalid_target = root.join("invalid.dag");
     std::fs::create_dir_all(&invalid_target)
@@ -9798,7 +9885,8 @@ fn compile_command_dot_double_separator_trailing_slash_root_matches_plain_relati
 }
 
 #[test]
-fn compile_command_dot_double_separator_trailing_slash_missing_root_matches_plain_relative_output() {
+fn compile_command_dot_double_separator_trailing_slash_missing_root_matches_plain_relative_output()
+{
     let root = unique_temp_dir("compile_dot_double_separator_trailing_slash_missing_root");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let missing = root.join("missing_root");
@@ -9809,7 +9897,10 @@ fn compile_command_dot_double_separator_trailing_slash_missing_root_matches_plai
         .current_dir(&root)
         .output()
         .expect("failed to run plain missing-root compile");
-    assert!(!plain.status.success(), "plain missing-root compile should fail");
+    assert!(
+        !plain.status.success(),
+        "plain missing-root compile should fail"
+    );
 
     let dot_double_separator_trailing_slash = Command::new(daglang_bin())
         .arg("compile")
@@ -10003,7 +10094,9 @@ fn compile_command_dot_double_separator_curdir_segment_double_separator_root_mat
         .output()
         .expect("failed to run dot-double-separator-curdir-segment-double-separator root compile");
     assert!(
-        dot_double_separator_curdir_segment_double_separator.status.success(),
+        dot_double_separator_curdir_segment_double_separator
+            .status
+            .success(),
         "dot-double-separator-curdir-segment-double-separator root compile should succeed: {}",
         String::from_utf8_lossy(&dot_double_separator_curdir_segment_double_separator.stderr)
     );
@@ -10344,9 +10437,7 @@ func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_typecheck_stage_failure(&stderr);
-    assert!(stderr.contains(
-        "duplicate definition `SharedResource` in module `sample.single`"
-    ));
+    assert!(stderr.contains("duplicate definition `SharedResource` in module `sample.single`"));
     assert!(
         !stderr.contains("ambiguous used resource type `SharedResource`"),
         "single-file relaxed mode should suppress ambiguous used resource diagnostics: {stderr}"
@@ -10390,7 +10481,8 @@ func run() -> { ok: Bool } provides out: Storage provides out: Storage { return 
 }
 
 #[test]
-fn compile_command_single_file_duplicate_resource_provides_does_not_report_ambiguous_provided_type() {
+fn compile_command_single_file_duplicate_resource_provides_does_not_report_ambiguous_provided_type()
+{
     let fixture = unique_temp_file("compile_single_file_duplicate_resource_provides_relaxed");
     std::fs::write(
         &fixture,
@@ -10415,9 +10507,7 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_typecheck_stage_failure(&stderr);
-    assert!(stderr.contains(
-        "duplicate definition `SharedResource` in module `sample.single`"
-    ));
+    assert!(stderr.contains("duplicate definition `SharedResource` in module `sample.single`"));
     assert!(
         !stderr.contains("ambiguous provided resource type `SharedResource`"),
         "single-file relaxed mode should suppress ambiguous provided resource diagnostics: {stderr}"
@@ -10499,7 +10589,9 @@ resource Disk implements Storage {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_typecheck_stage_failure(&stderr);
-    assert!(stderr.contains("resource `Disk` is missing capability `write` for interface `Storage`"));
+    assert!(
+        stderr.contains("resource `Disk` is missing capability `write` for interface `Storage`")
+    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -10540,7 +10632,9 @@ service FsStorage implements Storage {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_typecheck_stage_failure(&stderr);
-    assert!(stderr.contains("service `FsStorage` is missing operation `write` for interface `Storage`"));
+    assert!(
+        stderr.contains("service `FsStorage` is missing operation `write` for interface `Storage`")
+    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -11518,6 +11612,44 @@ fn manifest_command_json_output_matches_makegen_snapshot() {
 }
 
 #[test]
+fn manifest_command_ci_json_includes_stage_groups() {
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(ci_pipeline_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest for CI pipeline");
+
+    assert!(
+        output.status.success(),
+        "manifest --format json for ci failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: Value =
+        serde_json::from_slice(&output.stdout).expect("manifest --format json should emit JSON");
+    let stage_groups = parsed
+        .get("progress_manifest")
+        .and_then(|manifest| manifest.get("stage_groups"))
+        .and_then(Value::as_array)
+        .expect("manifest json should include stage_groups array");
+    assert!(
+        !stage_groups.is_empty(),
+        "ci pipeline manifest should emit non-empty stage_groups"
+    );
+    assert!(
+        stage_groups.iter().any(|group| {
+            group
+                .get("stage")
+                .and_then(Value::as_str)
+                .is_some_and(|stage| stage.ends_with(":stage_1"))
+        }),
+        "ci manifest should include stage_1 group"
+    );
+}
+
+#[test]
 fn manifest_command_explicit_text_format_matches_default_output() {
     let default_output = Command::new(daglang_bin())
         .arg("manifest")
@@ -12087,8 +12219,10 @@ fn obligations_command_absolute_parent_curdir_segment_target_matches_canonical_a
 
 #[test]
 fn obligations_command_absolute_parent_double_separator_target_matches_canonical_absolute_output() {
-    let parent_double_separator_target =
-        format!("{}/dsl/..//dsl/tools/makegen.dag", workspace_root().display());
+    let parent_double_separator_target = format!(
+        "{}/dsl/..//dsl/tools/makegen.dag",
+        workspace_root().display()
+    );
 
     assert_makegen_target_variant_matches_canonical_output(
         "obligations",
@@ -12101,8 +12235,10 @@ fn obligations_command_absolute_parent_double_separator_target_matches_canonical
 #[test]
 fn obligations_command_absolute_parent_curdir_double_separator_target_matches_canonical_absolute_output(
 ) {
-    let parent_curdir_double_separator_target =
-        format!("{}/dsl/./tools/..//tools/makegen.dag", workspace_root().display());
+    let parent_curdir_double_separator_target = format!(
+        "{}/dsl/./tools/..//tools/makegen.dag",
+        workspace_root().display()
+    );
 
     assert_makegen_target_variant_matches_canonical_output(
         "obligations",
@@ -12352,8 +12488,10 @@ fn obligations_command_json_absolute_parent_curdir_segment_target_matches_canoni
 #[test]
 fn obligations_command_json_absolute_parent_double_separator_target_matches_canonical_absolute_output(
 ) {
-    let parent_double_separator_target =
-        format!("{}/dsl/..//dsl/tools/makegen.dag", workspace_root().display());
+    let parent_double_separator_target = format!(
+        "{}/dsl/..//dsl/tools/makegen.dag",
+        workspace_root().display()
+    );
 
     assert_makegen_target_variant_matches_canonical_output(
         "obligations",
@@ -12366,8 +12504,10 @@ fn obligations_command_json_absolute_parent_double_separator_target_matches_cano
 #[test]
 fn obligations_command_json_absolute_parent_curdir_double_separator_target_matches_canonical_absolute_output(
 ) {
-    let parent_curdir_double_separator_target =
-        format!("{}/dsl/./tools/..//tools/makegen.dag", workspace_root().display());
+    let parent_curdir_double_separator_target = format!(
+        "{}/dsl/./tools/..//tools/makegen.dag",
+        workspace_root().display()
+    );
 
     assert_makegen_target_variant_matches_canonical_output(
         "obligations",
@@ -12538,8 +12678,7 @@ fn run() -> Unit { }
 }
 
 #[test]
-fn obligations_command_json_mixed_case_extension_single_file_target_matches_curdir_suffix_output()
-{
+fn obligations_command_json_mixed_case_extension_single_file_target_matches_curdir_suffix_output() {
     let root = unique_temp_dir("obligations_json_mixed_case_extension_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let target = root.join("single.DaG");
@@ -12784,9 +12923,8 @@ fn obligations_command_absolute_parent_curdir_segment_directory_named_uppercase_
 #[test]
 fn obligations_command_absolute_parent_curdir_segment_symlink_named_dag_extension_is_invalid_single_file_target(
 ) {
-    let root = unique_temp_dir(
-        "obligations_absolute_parent_curdir_segment_symlink_named_dag_extension",
-    );
+    let root =
+        unique_temp_dir("obligations_absolute_parent_curdir_segment_symlink_named_dag_extension");
     let real_dir = root.join("real");
     std::fs::create_dir_all(root.join("nested")).expect("failed to create nested directory");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
@@ -12830,8 +12968,7 @@ fn obligations_command_absolute_parent_curdir_double_separator_directory_named_d
     .expect("failed to write valid source in .dag directory");
 
     let root_input = root.to_string_lossy();
-    let parent_curdir_double_separator_input =
-        format!("{root_input}/nested/./..//bundle.dag");
+    let parent_curdir_double_separator_input = format!("{root_input}/nested/./..//bundle.dag");
     assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
         "obligations",
         &root,
@@ -12863,8 +13000,7 @@ fn obligations_command_absolute_parent_curdir_double_separator_symlink_named_mix
         .expect("failed to create mixed-case .dag symlink");
 
     let root_input = root.to_string_lossy();
-    let parent_curdir_double_separator_input =
-        format!("{root_input}/nested/./..//bundle_link.DaG");
+    let parent_curdir_double_separator_input = format!("{root_input}/nested/./..//bundle_link.DaG");
     assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
         "obligations",
         &root,
@@ -12965,8 +13101,7 @@ fn obligations_command_absolute_parent_double_separator_directory_alias_matches_
 #[test]
 fn obligations_command_absolute_parent_segment_directory_alias_matches_canonical_absolute_alias_output(
 ) {
-    let root =
-        unique_temp_dir("obligations_absolute_parent_segment_directory_alias_output_parity");
+    let root = unique_temp_dir("obligations_absolute_parent_segment_directory_alias_output_parity");
     let dag_dir = root.join("bundle.dag");
     std::fs::create_dir_all(root.join("nested")).expect("failed to create nested directory");
     std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .dag directory root");
@@ -12993,8 +13128,7 @@ fn obligations_command_absolute_parent_segment_directory_alias_matches_canonical
 #[test]
 fn obligations_command_absolute_curdir_segment_directory_alias_matches_canonical_absolute_alias_output(
 ) {
-    let root =
-        unique_temp_dir("obligations_absolute_curdir_segment_directory_alias_output_parity");
+    let root = unique_temp_dir("obligations_absolute_curdir_segment_directory_alias_output_parity");
     let dag_dir = root.join("bundle.DaG");
     std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .DaG directory root");
     std::fs::write(
@@ -13102,8 +13236,7 @@ fn obligations_command_relative_directory_alias_normalized_spelling_fail_outputs
 #[cfg(unix)]
 #[test]
 fn obligations_command_relative_and_absolute_symlink_alias_fail_outputs_are_equivalent() {
-    let root =
-        unique_temp_dir("obligations_relative_absolute_symlink_alias_failure_output_parity");
+    let root = unique_temp_dir("obligations_relative_absolute_symlink_alias_failure_output_parity");
     let real_dir = root.join("real");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
     std::fs::write(
@@ -13155,7 +13288,10 @@ fn obligations_command_json_relative_symlink_alias_normalized_spelling_fail_outp
             ("./bundle_link.DAG", "curdir-suffix alias"),
             ("nested/../bundle_link.DAG", "parent-segment alias"),
             ("nested/./../bundle_link.DAG", "parent-curdir alias"),
-            ("nested/..//bundle_link.DAG", "parent-double-separator alias"),
+            (
+                "nested/..//bundle_link.DAG",
+                "parent-double-separator alias",
+            ),
         ],
         &["--format", "json"],
     );
@@ -13166,8 +13302,9 @@ fn obligations_command_json_relative_symlink_alias_normalized_spelling_fail_outp
 #[test]
 fn obligations_command_absolute_curdir_segment_directory_named_mixed_case_dag_extension_is_invalid_single_file_target(
 ) {
-    let root =
-        unique_temp_dir("obligations_absolute_curdir_segment_directory_named_mixed_case_dag_extension");
+    let root = unique_temp_dir(
+        "obligations_absolute_curdir_segment_directory_named_mixed_case_dag_extension",
+    );
     let dag_dir = root.join("bundle.DaG");
     std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .DaG directory root");
     std::fs::write(
@@ -13252,8 +13389,7 @@ fn obligations_command_absolute_double_separator_directory_named_uppercase_dag_e
 #[test]
 fn obligations_command_absolute_double_separator_symlink_named_dag_extension_is_invalid_single_file_target(
 ) {
-    let root =
-        unique_temp_dir("obligations_absolute_double_separator_symlink_named_dag_extension");
+    let root = unique_temp_dir("obligations_absolute_double_separator_symlink_named_dag_extension");
     let real_dir = root.join("real");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
     std::fs::write(
@@ -13282,8 +13418,7 @@ fn obligations_command_absolute_double_separator_symlink_named_dag_extension_is_
 #[test]
 fn obligations_command_absolute_symlink_named_uppercase_dag_extension_is_invalid_single_file_target(
 ) {
-    let root =
-        unique_temp_dir("obligations_absolute_symlink_named_uppercase_dag_extension");
+    let root = unique_temp_dir("obligations_absolute_symlink_named_uppercase_dag_extension");
     let real_dir = root.join("real");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
     std::fs::write(
@@ -13417,8 +13552,7 @@ fn obligations_command_symlink_directory_named_mixed_case_dag_extension_is_inval
 ) {
     use std::os::unix::fs::symlink;
 
-    let root =
-        unique_temp_dir("obligations_symlink_directory_named_mixed_case_dag_extension");
+    let root = unique_temp_dir("obligations_symlink_directory_named_mixed_case_dag_extension");
     let real_dir = root.join("real");
     let link_dir = root.join("link.DaG");
     std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
@@ -13470,8 +13604,7 @@ fn obligations_command_curdir_suffix_symlink_named_uppercase_dag_extension_is_in
 ) {
     use std::os::unix::fs::symlink;
 
-    let root =
-        unique_temp_dir("obligations_curdir_suffix_symlink_named_uppercase_dag_extension");
+    let root = unique_temp_dir("obligations_curdir_suffix_symlink_named_uppercase_dag_extension");
     let real_dir = root.join("real");
     let link_dir = root.join("link.DAG");
     std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
@@ -13514,8 +13647,8 @@ fn obligations_command_json_directory_named_dag_extension_is_invalid_single_file
 }
 
 #[test]
-fn obligations_command_json_directory_named_uppercase_dag_extension_is_invalid_single_file_target(
-) {
+fn obligations_command_json_directory_named_uppercase_dag_extension_is_invalid_single_file_target()
+{
     let root = unique_temp_dir("obligations_json_directory_named_uppercase_dag_extension");
     let dag_dir = root.join("bundle.DAG");
     std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
@@ -13535,8 +13668,8 @@ fn obligations_command_json_directory_named_uppercase_dag_extension_is_invalid_s
 }
 
 #[test]
-fn obligations_command_json_directory_named_mixed_case_dag_extension_is_invalid_single_file_target(
-) {
+fn obligations_command_json_directory_named_mixed_case_dag_extension_is_invalid_single_file_target()
+{
     let root = unique_temp_dir("obligations_json_directory_named_mixed_case_dag_extension");
     let dag_dir = root.join("bundle.DaG");
     std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory root");
@@ -13759,8 +13892,7 @@ fn obligations_command_json_absolute_parent_curdir_double_separator_symlink_name
         .expect("failed to create uppercase .dag symlink");
 
     let root_input = root.to_string_lossy();
-    let parent_curdir_double_separator_input =
-        format!("{root_input}/nested/./..//bundle_link.DAG");
+    let parent_curdir_double_separator_input = format!("{root_input}/nested/./..//bundle_link.DAG");
     assert_single_target_command_treats_dag_directory_as_invalid_single_file_target_with_args(
         "obligations",
         &root,
@@ -13789,8 +13921,7 @@ fn obligations_command_json_absolute_parent_curdir_double_separator_directory_na
     .expect("failed to write valid source in .DAG directory");
 
     let root_input = root.to_string_lossy();
-    let parent_curdir_double_separator_input =
-        format!("{root_input}/nested/./..//bundle.DAG");
+    let parent_curdir_double_separator_input = format!("{root_input}/nested/./..//bundle.DAG");
     assert_single_target_command_treats_dag_directory_as_invalid_single_file_target_with_args(
         "obligations",
         &root,
@@ -14057,9 +14188,8 @@ fn obligations_command_json_relative_and_absolute_directory_alias_fail_outputs_a
 #[test]
 fn obligations_command_json_absolute_parent_segment_symlink_named_dag_extension_is_invalid_single_file_target(
 ) {
-    let root = unique_temp_dir(
-        "obligations_json_absolute_parent_segment_symlink_named_dag_extension",
-    );
+    let root =
+        unique_temp_dir("obligations_json_absolute_parent_segment_symlink_named_dag_extension");
     let real_dir = root.join("real");
     std::fs::create_dir_all(root.join("nested")).expect("failed to create nested directory");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
@@ -14092,9 +14222,7 @@ fn obligations_command_json_absolute_parent_segment_symlink_named_dag_extension_
 #[test]
 fn obligations_command_json_absolute_symlink_named_mixed_case_dag_extension_is_invalid_single_file_target(
 ) {
-    let root = unique_temp_dir(
-        "obligations_json_absolute_symlink_named_mixed_case_dag_extension",
-    );
+    let root = unique_temp_dir("obligations_json_absolute_symlink_named_mixed_case_dag_extension");
     let real_dir = root.join("real");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
     std::fs::write(
@@ -14155,9 +14283,8 @@ fn obligations_command_json_absolute_double_separator_symlink_named_uppercase_da
 #[test]
 fn obligations_command_json_absolute_curdir_segment_symlink_named_dag_extension_is_invalid_single_file_target(
 ) {
-    let root = unique_temp_dir(
-        "obligations_json_absolute_curdir_segment_symlink_named_dag_extension",
-    );
+    let root =
+        unique_temp_dir("obligations_json_absolute_curdir_segment_symlink_named_dag_extension");
     let real_dir = root.join("real");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
     std::fs::write(
@@ -14349,8 +14476,7 @@ fn obligations_command_json_symlink_directory_named_mixed_case_dag_extension_is_
 ) {
     use std::os::unix::fs::symlink;
 
-    let root =
-        unique_temp_dir("obligations_json_symlink_directory_named_mixed_case_dag_extension");
+    let root = unique_temp_dir("obligations_json_symlink_directory_named_mixed_case_dag_extension");
     let real_dir = root.join("real");
     let link_dir = root.join("link.DaG");
     std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
@@ -14376,9 +14502,8 @@ fn obligations_command_json_curdir_suffix_symlink_named_uppercase_dag_extension_
 ) {
     use std::os::unix::fs::symlink;
 
-    let root = unique_temp_dir(
-        "obligations_json_curdir_suffix_symlink_named_uppercase_dag_extension",
-    );
+    let root =
+        unique_temp_dir("obligations_json_curdir_suffix_symlink_named_uppercase_dag_extension");
     let real_dir = root.join("real");
     let link_dir = root.join("link.DAG");
     std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
@@ -14452,9 +14577,8 @@ fn obligations_command_json_curdir_suffix_symlink_named_mixed_case_dag_extension
 ) {
     use std::os::unix::fs::symlink;
 
-    let root = unique_temp_dir(
-        "obligations_json_curdir_suffix_symlink_named_mixed_case_dag_extension",
-    );
+    let root =
+        unique_temp_dir("obligations_json_curdir_suffix_symlink_named_mixed_case_dag_extension");
     let real_dir = root.join("real");
     let link_dir = root.join("link.DaG");
     std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
@@ -14583,7 +14707,10 @@ fn run() -> Unit { }
         .get("triplets")
         .and_then(Value::as_array)
         .expect("triplets should be a JSON array");
-    assert!(triplets.is_empty(), "transport-free graph should have no triplets");
+    assert!(
+        triplets.is_empty(),
+        "transport-free graph should have no triplets"
+    );
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -14793,9 +14920,12 @@ fn show_triplets_command_absolute_parent_curdir_segment_target_matches_canonical
 }
 
 #[test]
-fn show_triplets_command_absolute_parent_double_separator_target_matches_canonical_absolute_output() {
-    let parent_double_separator_target =
-        format!("{}/dsl/..//dsl/tools/makegen.dag", workspace_root().display());
+fn show_triplets_command_absolute_parent_double_separator_target_matches_canonical_absolute_output()
+{
+    let parent_double_separator_target = format!(
+        "{}/dsl/..//dsl/tools/makegen.dag",
+        workspace_root().display()
+    );
 
     assert_makegen_target_variant_matches_canonical_output(
         "show-triplets",
@@ -14808,8 +14938,10 @@ fn show_triplets_command_absolute_parent_double_separator_target_matches_canonic
 #[test]
 fn show_triplets_command_absolute_parent_curdir_double_separator_target_matches_canonical_absolute_output(
 ) {
-    let parent_curdir_double_separator_target =
-        format!("{}/dsl/./tools/..//tools/makegen.dag", workspace_root().display());
+    let parent_curdir_double_separator_target = format!(
+        "{}/dsl/./tools/..//tools/makegen.dag",
+        workspace_root().display()
+    );
 
     assert_makegen_target_variant_matches_canonical_output(
         "show-triplets",
@@ -15059,8 +15191,10 @@ fn show_triplets_command_json_absolute_parent_curdir_segment_target_matches_cano
 #[test]
 fn show_triplets_command_json_absolute_parent_double_separator_target_matches_canonical_absolute_output(
 ) {
-    let parent_double_separator_target =
-        format!("{}/dsl/..//dsl/tools/makegen.dag", workspace_root().display());
+    let parent_double_separator_target = format!(
+        "{}/dsl/..//dsl/tools/makegen.dag",
+        workspace_root().display()
+    );
 
     assert_makegen_target_variant_matches_canonical_output(
         "show-triplets",
@@ -15073,8 +15207,10 @@ fn show_triplets_command_json_absolute_parent_double_separator_target_matches_ca
 #[test]
 fn show_triplets_command_json_absolute_parent_curdir_double_separator_target_matches_canonical_absolute_output(
 ) {
-    let parent_curdir_double_separator_target =
-        format!("{}/dsl/./tools/..//tools/makegen.dag", workspace_root().display());
+    let parent_curdir_double_separator_target = format!(
+        "{}/dsl/./tools/..//tools/makegen.dag",
+        workspace_root().display()
+    );
 
     assert_makegen_target_variant_matches_canonical_output(
         "show-triplets",
@@ -15245,8 +15381,8 @@ fn run() -> Unit { }
 }
 
 #[test]
-fn show_triplets_command_json_mixed_case_extension_single_file_target_matches_curdir_suffix_output(
-) {
+fn show_triplets_command_json_mixed_case_extension_single_file_target_matches_curdir_suffix_output()
+{
     let root = unique_temp_dir("show_triplets_json_mixed_case_extension_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
     let target = root.join("single.DaG");
@@ -15300,7 +15436,10 @@ fn run() -> Unit { }
         .get("triplets")
         .and_then(Value::as_array)
         .expect("triplets should be a JSON array");
-    assert!(triplets.is_empty(), "transport-free fixture should have no triplets");
+    assert!(
+        triplets.is_empty(),
+        "transport-free fixture should have no triplets"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
@@ -15373,8 +15512,9 @@ fn show_triplets_command_absolute_directory_named_uppercase_dag_extension_is_inv
 #[test]
 fn show_triplets_command_absolute_parent_segment_directory_named_mixed_case_dag_extension_is_invalid_single_file_target(
 ) {
-    let root =
-        unique_temp_dir("show_triplets_absolute_parent_segment_directory_named_mixed_case_dag_extension");
+    let root = unique_temp_dir(
+        "show_triplets_absolute_parent_segment_directory_named_mixed_case_dag_extension",
+    );
     let dag_dir = root.join("bundle.DaG");
     std::fs::create_dir_all(root.join("nested")).expect("failed to create nested directory");
     std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .DaG directory root");
@@ -15539,8 +15679,7 @@ fn show_triplets_command_absolute_parent_curdir_double_separator_directory_named
     .expect("failed to write valid source in .DaG directory");
 
     let root_input = root.to_string_lossy();
-    let parent_curdir_double_separator_input =
-        format!("{root_input}/nested/./..//bundle.DaG");
+    let parent_curdir_double_separator_input = format!("{root_input}/nested/./..//bundle.DaG");
     assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
         "show-triplets",
         &root,
@@ -15572,8 +15711,7 @@ fn show_triplets_command_absolute_parent_curdir_double_separator_symlink_named_m
         .expect("failed to create mixed-case .dag symlink");
 
     let root_input = root.to_string_lossy();
-    let parent_curdir_double_separator_input =
-        format!("{root_input}/nested/./..//bundle_link.DaG");
+    let parent_curdir_double_separator_input = format!("{root_input}/nested/./..//bundle_link.DaG");
     assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
         "show-triplets",
         &root,
@@ -15780,7 +15918,8 @@ fn show_triplets_command_relative_and_absolute_directory_alias_fail_outputs_are_
 }
 
 #[test]
-fn show_triplets_command_relative_directory_alias_normalized_spelling_fail_outputs_match_canonical() {
+fn show_triplets_command_relative_directory_alias_normalized_spelling_fail_outputs_match_canonical()
+{
     let root = unique_temp_dir(
         "show_triplets_relative_directory_alias_normalized_spelling_failure_output_parity",
     );
@@ -15865,7 +16004,10 @@ fn show_triplets_command_json_relative_symlink_alias_normalized_spelling_fail_ou
             ("./bundle_link.dag", "curdir-suffix alias"),
             ("nested/../bundle_link.dag", "parent-segment alias"),
             ("nested/./../bundle_link.dag", "parent-curdir alias"),
-            ("nested/..//bundle_link.dag", "parent-double-separator alias"),
+            (
+                "nested/..//bundle_link.dag",
+                "parent-double-separator alias",
+            ),
         ],
         &["--format", "json"],
     );
@@ -16022,8 +16164,7 @@ fn show_triplets_command_absolute_double_separator_directory_named_mixed_case_da
 #[test]
 fn show_triplets_command_absolute_parent_segment_symlink_named_dag_extension_is_invalid_single_file_target(
 ) {
-    let root =
-        unique_temp_dir("show_triplets_absolute_parent_segment_symlink_named_dag_extension");
+    let root = unique_temp_dir("show_triplets_absolute_parent_segment_symlink_named_dag_extension");
     let real_dir = root.join("real");
     std::fs::create_dir_all(root.join("nested")).expect("failed to create nested directory");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
@@ -16052,8 +16193,8 @@ fn show_triplets_command_absolute_parent_segment_symlink_named_dag_extension_is_
 }
 
 #[test]
-fn show_triplets_command_curdir_suffix_directory_named_dag_extension_is_invalid_single_file_target(
-) {
+fn show_triplets_command_curdir_suffix_directory_named_dag_extension_is_invalid_single_file_target()
+{
     let root = unique_temp_dir("show_triplets_curdir_suffix_directory_named_dag_extension");
     let dag_dir = root.join("bundle.dag");
     std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .dag directory root");
@@ -16128,8 +16269,7 @@ fn show_triplets_command_symlink_directory_named_uppercase_dag_extension_is_inva
 ) {
     use std::os::unix::fs::symlink;
 
-    let root =
-        unique_temp_dir("show_triplets_symlink_directory_named_uppercase_dag_extension");
+    let root = unique_temp_dir("show_triplets_symlink_directory_named_uppercase_dag_extension");
     let real_dir = root.join("real");
     let link_dir = root.join("link.DAG");
     std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
@@ -16150,8 +16290,7 @@ fn show_triplets_command_symlink_directory_named_uppercase_dag_extension_is_inva
 
 #[cfg(unix)]
 #[test]
-fn show_triplets_command_curdir_suffix_symlink_named_dag_extension_is_invalid_single_file_target()
-{
+fn show_triplets_command_curdir_suffix_symlink_named_dag_extension_is_invalid_single_file_target() {
     use std::os::unix::fs::symlink;
 
     let root = unique_temp_dir("show_triplets_curdir_suffix_symlink_named_dag_extension");
@@ -16268,8 +16407,8 @@ fn show_triplets_command_json_directory_named_mixed_case_dag_extension_is_invali
 }
 
 #[test]
-fn show_triplets_command_json_absolute_directory_named_dag_extension_is_invalid_single_file_target(
-) {
+fn show_triplets_command_json_absolute_directory_named_dag_extension_is_invalid_single_file_target()
+{
     let root = unique_temp_dir("show_triplets_json_absolute_directory_named_dag_extension");
     let dag_dir = root.join("bundle.dag");
     std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .dag directory root");
@@ -16382,9 +16521,8 @@ fn show_triplets_command_json_absolute_double_separator_directory_named_mixed_ca
 #[test]
 fn show_triplets_command_json_absolute_curdir_segment_symlink_named_dag_extension_is_invalid_single_file_target(
 ) {
-    let root = unique_temp_dir(
-        "show_triplets_json_absolute_curdir_segment_symlink_named_dag_extension",
-    );
+    let root =
+        unique_temp_dir("show_triplets_json_absolute_curdir_segment_symlink_named_dag_extension");
     let real_dir = root.join("real");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
     std::fs::write(
@@ -16588,8 +16726,7 @@ fn show_triplets_command_json_absolute_parent_curdir_double_separator_directory_
     .expect("failed to write valid source in .DAG directory");
 
     let root_input = root.to_string_lossy();
-    let parent_curdir_double_separator_input =
-        format!("{root_input}/nested/./..//bundle.DAG");
+    let parent_curdir_double_separator_input = format!("{root_input}/nested/./..//bundle.DAG");
     assert_single_target_command_treats_dag_directory_as_invalid_single_file_target_with_args(
         "show-triplets",
         &root,
@@ -16622,8 +16759,7 @@ fn show_triplets_command_json_absolute_parent_curdir_double_separator_symlink_na
         .expect("failed to create lowercase .dag symlink");
 
     let root_input = root.to_string_lossy();
-    let parent_curdir_double_separator_input =
-        format!("{root_input}/nested/./..//bundle_link.dag");
+    let parent_curdir_double_separator_input = format!("{root_input}/nested/./..//bundle_link.dag");
     assert_single_target_command_treats_dag_directory_as_invalid_single_file_target_with_args(
         "show-triplets",
         &root,
@@ -16835,9 +16971,8 @@ fn show_triplets_command_json_absolute_double_separator_symlink_alias_matches_ca
 #[cfg(unix)]
 #[test]
 fn show_triplets_command_json_relative_and_absolute_symlink_alias_fail_outputs_are_equivalent() {
-    let root = unique_temp_dir(
-        "show_triplets_json_relative_absolute_symlink_alias_failure_output_parity",
-    );
+    let root =
+        unique_temp_dir("show_triplets_json_relative_absolute_symlink_alias_failure_output_parity");
     let real_dir = root.join("real");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
     std::fs::write(
@@ -16926,8 +17061,7 @@ fn show_triplets_command_json_absolute_parent_segment_symlink_named_uppercase_da
 #[cfg(unix)]
 #[test]
 fn show_triplets_command_json_absolute_symlink_named_dag_extension_is_invalid_single_file_target() {
-    let root =
-        unique_temp_dir("show_triplets_json_absolute_symlink_named_dag_extension");
+    let root = unique_temp_dir("show_triplets_json_absolute_symlink_named_dag_extension");
     let real_dir = root.join("real");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
     std::fs::write(
@@ -17000,8 +17134,8 @@ fn show_triplets_command_json_curdir_suffix_directory_named_uppercase_dag_extens
 
 #[cfg(unix)]
 #[test]
-fn show_triplets_command_json_symlink_directory_named_dag_extension_is_invalid_single_file_target(
-) {
+fn show_triplets_command_json_symlink_directory_named_dag_extension_is_invalid_single_file_target()
+{
     use std::os::unix::fs::symlink;
 
     let root = unique_temp_dir("show_triplets_json_symlink_directory_named_dag_extension");
@@ -17033,8 +17167,7 @@ fn show_triplets_command_json_curdir_suffix_symlink_named_dag_extension_is_inval
 ) {
     use std::os::unix::fs::symlink;
 
-    let root =
-        unique_temp_dir("show_triplets_json_curdir_suffix_symlink_named_dag_extension");
+    let root = unique_temp_dir("show_triplets_json_curdir_suffix_symlink_named_dag_extension");
     let real_dir = root.join("real");
     let link_dir = root.join("link.dag");
     std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory root");
@@ -17140,9 +17273,8 @@ fn show_triplets_command_json_curdir_suffix_symlink_named_mixed_case_dag_extensi
 ) {
     use std::os::unix::fs::symlink;
 
-    let root = unique_temp_dir(
-        "show_triplets_json_curdir_suffix_symlink_named_mixed_case_dag_extension",
-    );
+    let root =
+        unique_temp_dir("show_triplets_json_curdir_suffix_symlink_named_mixed_case_dag_extension");
     let real_dir = root.join("real");
     let link_dir = root.join("link.DaG");
     std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
@@ -17168,9 +17300,8 @@ fn show_triplets_command_json_curdir_suffix_symlink_named_uppercase_dag_extensio
 ) {
     use std::os::unix::fs::symlink;
 
-    let root = unique_temp_dir(
-        "show_triplets_json_curdir_suffix_symlink_named_uppercase_dag_extension",
-    );
+    let root =
+        unique_temp_dir("show_triplets_json_curdir_suffix_symlink_named_uppercase_dag_extension");
     let real_dir = root.join("real");
     let link_dir = root.join("link.DAG");
     std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
@@ -17247,7 +17378,10 @@ fn compile_command_reports_diagnostics_for_invalid_file() {
         .output()
         .expect("failed to run daglang compile for broken file");
 
-    assert!(!output.status.success(), "broken source should fail compile");
+    assert!(
+        !output.status.success(),
+        "broken source should fail compile"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_stage_failures(&stderr);
     assert!(stderr.contains("compile diagnostics"));
@@ -17296,7 +17430,10 @@ fn compile_command_reports_lex_diagnostic_for_unknown_character() {
         .output()
         .expect("failed to run daglang compile for lex-invalid file");
 
-    assert!(!output.status.success(), "lex-invalid file should fail compile");
+    assert!(
+        !output.status.success(),
+        "lex-invalid file should fail compile"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_stage_failures(&stderr);
     assert!(stderr.contains("compile diagnostics"));
@@ -17532,8 +17669,11 @@ fn compile_command_non_dag_only_directory_reports_lower_stage_error() {
 fn compile_command_ignores_non_dag_files_when_dag_files_exist() {
     let root = unique_temp_dir("compile_ignore_non_dag_mixed");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
-    std::fs::write(root.join("sample/main.dag"), "module sample.main\nfn run() -> Unit { }")
-        .expect("failed to write dag file");
+    std::fs::write(
+        root.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit { }",
+    )
+    .expect("failed to write dag file");
     std::fs::write(root.join("notes.txt"), "module fake\n$").expect("failed to write txt file");
 
     let output = Command::new(daglang_bin())
@@ -17549,7 +17689,10 @@ fn compile_command_ignores_non_dag_files_when_dag_files_exist() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.trim().is_empty(), "compile success should not emit stderr");
+    assert!(
+        stderr.trim().is_empty(),
+        "compile success should not emit stderr"
+    );
     assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -17595,7 +17738,10 @@ fn manifest_command_reports_diagnostics_for_invalid_file() {
         .output()
         .expect("failed to run daglang manifest for broken file");
 
-    assert!(!output.status.success(), "broken source should fail manifest");
+    assert!(
+        !output.status.success(),
+        "broken source should fail manifest"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_stage_failures(&stderr);
     assert!(stderr.contains("compile diagnostics"));
@@ -18162,7 +18308,9 @@ resource Disk implements Storage {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_typecheck_stage_failure(&stderr);
-    assert!(stderr.contains("resource `Disk` is missing capability `write` for interface `Storage`"));
+    assert!(
+        stderr.contains("resource `Disk` is missing capability `write` for interface `Storage`")
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -18204,7 +18352,9 @@ service FsStorage implements Storage {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_typecheck_stage_failure(&stderr);
-    assert!(stderr.contains("service `FsStorage` is missing operation `write` for interface `Storage`"));
+    assert!(
+        stderr.contains("service `FsStorage` is missing operation `write` for interface `Storage`")
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp dir");
 }
@@ -18658,7 +18808,8 @@ fn compile_command_directory_mode_fails_on_ambiguous_provides_resource_type() {
 }
 
 #[test]
-fn compile_command_directory_mode_duplicate_resource_provides_also_reports_ambiguous_provided_type() {
+fn compile_command_directory_mode_duplicate_resource_provides_also_reports_ambiguous_provided_type()
+{
     let root = unique_temp_dir("duplicate_resource_provides_ambiguous");
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp dir");
     std::fs::write(
