@@ -176,8 +176,8 @@ fn compute_for_env(env: InfraEnvironment) -> Compute {
 }
 
 // Usage: build-time resolution
-//   gunbc build --env=gcp-dev    -> storage_for_env(gcp_config.dev_config())
-//   gunbc build --env=aws-prod   -> storage_for_env(aws_config.prod_config())
+//   gunbc build --env=gcp-dev    -> storage_for_env(gcp_config.gcp_dev_config())
+//   gunbc build --env=aws-prod   -> storage_for_env(aws_config.aws_prod_config())
 
 
 // =========================================================================

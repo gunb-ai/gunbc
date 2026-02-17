@@ -88,7 +88,7 @@ interface LLM {
 // --- Queue interface -----------------------------------------------------
 // Any pub/sub backend: Pub/Sub, SQS, Kafka, in-memory channel, etc.
 
-interface Queue<T> {
+interface AbstractQueue<T> {
   operation Publish(message: T) -> { message_id: String }
   operation Pull(max_messages: Int = 1) -> { messages: List<{ id: String, body: T }> }
   operation Ack(message_id: String) -> { ok: Bool }

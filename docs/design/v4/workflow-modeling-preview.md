@@ -10,6 +10,9 @@ It answers three questions for each workflow:
 The source of truth for current status is the workflow fixture contract suite in
 `daglang-cli/tests/workflow_contracts.rs`.
 
+Global status:
+- ✅ `daglang obligations dsl --format json` now succeeds end-to-end (full DSL root typechecks), which unblocks root-level obligation auditing and regression testing.
+
 ---
 
 ## S1 — Makegen (`tools.makegen`)

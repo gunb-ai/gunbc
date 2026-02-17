@@ -13,7 +13,7 @@ import std.resources { Filesystem }
 import services.shell { shell.Find }
 import shared.dag_util { generated_header }
 
-fn render_makefile(crate_names: List<String>) -> String {
+fn render_bootstrap_makefile(crate_names: List<String>) -> String {
   let header = generated_header(tool: "bootstrap") + ".PHONY: all\n\n"
   let targets = crate_names
     |> map(name => "{name}:\n\tcargo build -p {name}")
@@ -21,7 +21,7 @@ fn render_makefile(crate_names: List<String>) -> String {
   "{header}all: {crate_names |> join(\" \")}\n\n{targets}\n"
 }
 
-fn render_gitignore(crate_names: List<String>) -> String {
+fn render_bootstrap_gitignore(crate_names: List<String>) -> String {
   let header = generated_header(tool: "bootstrap") + "/target/\n"
   let entries = crate_names
     |> map(name => "/{name}/target/")
@@ -34,10 +34,10 @@ func bootstrap(check_mode: Bool?) -> { crate_count: Int, makefile_written: Bool,
 {
   scan = shell.Find.ListDirs(path: "crates")
 
-  makefile_content = render_makefile(crate_names: scan.dirs)
+  makefile_content = render_bootstrap_makefile(crate_names: scan.dirs)
   makefile = content_upsert(content: makefile_content, path: "Makefile")
 
-  gitignore_content = render_gitignore(crate_names: scan.dirs)
+  gitignore_content = render_bootstrap_gitignore(crate_names: scan.dirs)
   gitignore = content_upsert(content: gitignore_content, path: ".gitignore")
 
   return {

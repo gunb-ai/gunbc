@@ -27,7 +27,7 @@ func upload_artifact(key: NonEmptyStr, content: Bytes) -> { url: Url, stored: Bo
   uses bucket: GcsBucket(name: "gunbc-artifacts", project: "gunbai-auto")
 {
   write = bucket.write(key: key, content: content)
-  url = "gs://gunbc-artifacts/{key}"
+  url = "gs://gunbc-artifacts/{key}" as Url
   return { url: url, stored: write.ok }
 }
 

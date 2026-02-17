@@ -22,6 +22,10 @@ fn ci_pipeline_file() -> PathBuf {
     workspace_root().join("dsl/pipelines/ci.dag")
 }
 
+fn dsl_root_dir() -> PathBuf {
+    workspace_root().join("dsl")
+}
+
 fn expected_makegen_manifest_json_snapshot() -> String {
     format!(
         "{}\n",
@@ -11898,6 +11902,54 @@ fn obligations_command_json_format_emits_valid_json_object() {
         .expect("obligations --format json should emit valid JSON");
     assert!(parsed.get("dry_run_completion_required").is_some());
     assert!(parsed.get("service_transport_prepare_targets").is_some());
+}
+
+#[test]
+fn obligations_command_json_supports_full_dsl_root() {
+    let output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(dsl_root_dir())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations on full dsl root");
+
+    assert!(
+        output.status.success(),
+        "obligations dsl --format json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    let parsed: Value =
+        serde_json::from_slice(&output.stdout).expect("obligations dsl should emit valid JSON");
+    let pure = parsed
+        .get("pure_node_determinism_targets")
+        .and_then(Value::as_u64)
+        .expect("expected pure_node_determinism_targets count");
+    let transport = parsed
+        .get("transport_execution_targets")
+        .and_then(Value::as_u64)
+        .expect("expected transport_execution_targets count");
+    let acquire = parsed
+        .get("resource_acquire_targets")
+        .and_then(Value::as_u64)
+        .expect("expected resource_acquire_targets count");
+
+    assert!(
+        pure > 0,
+        "full dsl obligations should include pure-node targets"
+    );
+    assert!(
+        transport > 0,
+        "full dsl obligations should include transport execution targets"
+    );
+    assert!(
+        acquire > 0,
+        "full dsl obligations should include resource acquire targets"
+    );
 }
 
 #[test]

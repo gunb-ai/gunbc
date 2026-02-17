@@ -5,7 +5,7 @@ module infra.aws.config
 import infra.core { CloudConfig, InfraEnvironment }
 import infra.spec { Environment }
 
-fn dev_config() -> InfraEnvironment {
+fn aws_dev_config() -> InfraEnvironment {
   {
     name: Dev,
     cloud: AwsConfig(
@@ -18,8 +18,8 @@ fn dev_config() -> InfraEnvironment {
   }
 }
 
-fn ci_config() -> InfraEnvironment {
-  dev_config() with {
+fn aws_ci_config() -> InfraEnvironment {
+  aws_dev_config() with {
     name: Ci,
     cloud: AwsConfig(
       account_id: "123456789012",
@@ -31,7 +31,7 @@ fn ci_config() -> InfraEnvironment {
   }
 }
 
-fn prod_config() -> InfraEnvironment {
+fn aws_prod_config() -> InfraEnvironment {
   {
     name: Prod,
     cloud: AwsConfig(
