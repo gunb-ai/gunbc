@@ -686,7 +686,7 @@ The two workers share the `daglang-cli` crate but touch different files:
 - [x] **Semantic preservation**: `@idempotent`, `@readonly`, `@permissions` annotations survive lowering and are accessible to test categorizer — *service triplet `LoweredOp` nodes expose structured `ServiceCallMetadata`*
 - [x] **Interface resolution**: `uses store: ObjectStorage` resolves to `GcsBucket` when `CloudConfig = GcpConfig` — *lowering resolves interface-backed `uses` lifecycles via provider hint (`cloud: GcpConfig`) and avoids ambiguous multi-provider wiring*
 - [x] **Contract verification**: `@contract` annotations on `ObjectStorage` generate behavioral tests for `GcsBucket` — *lowering emits interface-contract verification nodes per implementor and derives dedicated obligation targets*
-- [ ] **Collection parallelism**: `list |> map(f)` inside `fn` compiles to `MapNode` in IR; executor can parallelize
+- [x] **Collection parallelism**: `list |> map(f)` inside `fn` compiles to `MapNode` in IR; executor can parallelize — *lowering now emits first-class `LoweredOp::Collection` nodes (`MapNode`/`FilterNode`/`FoldNode`/`JoinNode`/`FlatMapNode`) and CLI `expand --emit-collection-nodes` renders them with explicit chain edges for parallel-ready execution*
 
 **Corresponds to**: [dsl-design.md Phase 2](./dsl-design.md#phase-2-services--resources--cloud-modeling), [Appendix B](./dsl-design.md#appendix-b-cloud-credential-acquisition-gcp), [§7.6](./dsl-design.md#76-infrastructure-as-resources-multi-cloud)
 
