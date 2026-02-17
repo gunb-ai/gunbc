@@ -38,6 +38,7 @@ coverage/
 .DS_Store
 Thumbs.db
 *:Zone.Identifier
+debug.log
 
 # --- Secrets and local config (from secrets) ---
 # Environment-specific, may contain secrets
