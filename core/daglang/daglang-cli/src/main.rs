@@ -17,17 +17,23 @@
 //! - `daglang modules [dir]`       -- Show the discovered module graph
 //! - `daglang check <file.dag|dir>` -- Parse modules; single-file targets also typecheck
 //! - `daglang compile <file.dag>`  -- Full compilation pipeline
+//! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`
+//!                                  -- Compile + resolve + execute makegen DAG
 
 use std::path::PathBuf;
 
 use daglang_cli::compile::{
     build_context, check_from_context, compile_from_context, render_expand,
-    render_manifest_with_format, render_obligations, render_triplets, CompileOutput, OutputFormat,
+    compile_resolve_execute_from_context, makegen_dry_run_transport_mocks,
+    makegen_entrypoint_mocks, render_manifest_with_format, render_obligations, render_triplets,
+    CompileOutput, OutputFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{
     build_pipeline_dag, run_pipeline, PipelineContext, PipelineResult, PipelineStop,
 };
+use gunbc_exec::ExecutionMode;
+use gunbc_ir::Value;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -48,6 +54,8 @@ fn main() {
         eprintln!("  modules [dir]        Show discovered module graph");
         eprintln!("  check <file.dag|dir> Parse (single-file targets also typecheck)");
         eprintln!("  compile <file.dag>   Full compilation pipeline");
+        eprintln!("  run [--output <path>|--output=<path>] [--dry-run] <file.dag>");
+        eprintln!("                      Compile + resolve + execute makegen DAG");
         std::process::exit(1);
     }
 
@@ -163,11 +171,62 @@ fn main() {
                 println!("  - {}", file.path);
             }
         }
+        "run" => {
+            let parsed = parse_run_args(&args).unwrap_or_else(|error| {
+                eprintln!("{error}");
+                exit_usage("run [--output <path>|--output=<path>] [--dry-run] <file.dag>");
+            });
+            let normalized_output_path =
+                path_utils::normalize_cli_path(&cwd, &PathBuf::from(&parsed.output_path));
+            let output_path_str = normalized_output_path.to_string_lossy().to_string();
+            let input_mocks = makegen_entrypoint_mocks(&output_path_str);
+            let mode = match parsed.mode {
+                RunMode::Real => ExecutionMode::Real,
+                RunMode::DryRun => {
+                    ExecutionMode::DryRun(makegen_dry_run_transport_mocks(&output_path_str))
+                }
+            };
+            let context = build_context(&cwd, Some(&parsed.input_path));
+            let log = match compile_resolve_execute_from_context(&context, mode, Some(&input_mocks))
+            {
+                Ok(log) => log,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            };
+            let written = log
+                .get("tools.makegen::makegen")
+                .and_then(|entry| entry.outputs.get("written"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let mode_label = match parsed.mode {
+                RunMode::Real => "real",
+                RunMode::DryRun => "dry-run",
+            };
+            println!(
+                "OK: run mode={mode_label} output={} written={written}",
+                normalized_output_path.display()
+            );
+        }
         cmd => {
             eprintln!("Unknown command: {cmd}");
             exit_usage("<command> [args...]");
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunMode {
+    Real,
+    DryRun,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RunArgs {
+    input_path: String,
+    output_path: String,
+    mode: RunMode,
 }
 
 fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
@@ -234,6 +293,80 @@ fn parse_output_format(command: &str, args: &[String]) -> Result<OutputFormat, S
         "json" => Ok(OutputFormat::Json),
         _ => Err(format!("{command} <file.dag> [--format text|json]")),
     }
+}
+
+fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
+    if args.is_empty() || args.get(1).map(String::as_str) != Some("run") {
+        return Err(
+            "internal error: parse_run_args expects full `daglang run ...` argv".to_string(),
+        );
+    }
+
+    let mut mode = RunMode::Real;
+    let mut output_path = "Makefile".to_string();
+    let mut has_output = false;
+    let mut input_path: Option<String> = None;
+    let mut i = 2usize;
+
+    while i < args.len() {
+        let token = &args[i];
+        if token == "--dry-run" {
+            if mode == RunMode::DryRun {
+                return Err("duplicate --dry-run flag".to_string());
+            }
+            mode = RunMode::DryRun;
+            i += 1;
+            continue;
+        }
+        if token == "--output" {
+            if has_output {
+                return Err("duplicate --output flag".to_string());
+            }
+            let value = args
+                .get(i + 1)
+                .ok_or_else(|| "--output requires a path".to_string())?;
+            if value.starts_with("--") {
+                return Err("--output requires a non-flag path value".to_string());
+            }
+            output_path = value.clone();
+            has_output = true;
+            i += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--output=") {
+            if has_output {
+                return Err("duplicate --output flag".to_string());
+            }
+            if value.is_empty() {
+                return Err("--output requires a non-empty path value".to_string());
+            }
+            output_path = value.to_string();
+            has_output = true;
+            i += 1;
+            continue;
+        }
+        if token.starts_with("--") {
+            return Err(format!("unknown flag `{token}`"));
+        }
+        if input_path.is_some() {
+            return Err("run accepts exactly one <file.dag> input".to_string());
+        }
+        input_path = Some(token.clone());
+        i += 1;
+    }
+
+    let input_path = input_path.ok_or_else(|| "run requires <file.dag> input".to_string())?;
+    if !path_utils::has_dag_extension(&PathBuf::from(&input_path)) {
+        return Err(format!(
+            "run input must be a .dag file path, got `{input_path}`"
+        ));
+    }
+
+    Ok(RunArgs {
+        input_path,
+        output_path,
+        mode,
+    })
 }
 
 fn exit_usage(command: &str) -> ! {
@@ -506,6 +639,71 @@ mod tests {
             super::parse_output_format("show-triplets", &bad_title_case_value),
             Err("show-triplets <file.dag> [--format text|json]".to_string())
         );
+    }
+
+    #[test]
+    fn parse_run_args_supports_defaults() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = super::parse_run_args(&args).expect("run args should parse");
+        assert_eq!(parsed.input_path, "dsl/tools/makegen.dag");
+        assert_eq!(parsed.output_path, "Makefile");
+        assert_eq!(parsed.mode, super::RunMode::Real);
+    }
+
+    #[test]
+    fn parse_run_args_supports_output_and_dry_run_flags() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--dry-run".to_string(),
+            "--output=tmp/generated.mk".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = super::parse_run_args(&args).expect("run args should parse");
+        assert_eq!(parsed.input_path, "dsl/tools/makegen.dag");
+        assert_eq!(parsed.output_path, "tmp/generated.mk");
+        assert_eq!(parsed.mode, super::RunMode::DryRun);
+    }
+
+    #[test]
+    fn parse_run_args_rejects_duplicate_output_flags() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output".to_string(),
+            "a.mk".to_string(),
+            "--output=b.mk".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = super::parse_run_args(&args).expect_err("duplicate output should fail");
+        assert!(error.contains("duplicate --output"));
+    }
+
+    #[test]
+    fn parse_run_args_rejects_unknown_flag() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--mystery".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = super::parse_run_args(&args).expect_err("unknown flag should fail");
+        assert!(error.contains("unknown flag"));
+    }
+
+    #[test]
+    fn parse_run_args_rejects_non_dag_input() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "dsl/tools".to_string(),
+        ];
+        let error = super::parse_run_args(&args).expect_err("non-dag input should fail");
+        assert!(error.contains("must be a .dag file"));
     }
 
     #[test]

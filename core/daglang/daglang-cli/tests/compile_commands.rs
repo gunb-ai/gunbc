@@ -49,6 +49,19 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     ))
 }
 
+fn unique_temp_output_file(name: &str, extension: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "daglang_cli_compile_cmd_output_{name}_{}_{}.{}",
+        std::process::id(),
+        nanos,
+        extension
+    ))
+}
+
 fn write_minimal_directory_compile_fixture(root: &Path) {
     std::fs::create_dir_all(root.join("dsl/sample")).expect("failed to create dsl fixture tree");
     std::fs::write(
@@ -11125,6 +11138,63 @@ fn manifest_command_shows_derived_progress_manifest() {
     assert!(stdout.contains("service_transport_prepare_targets:"));
     assert!(stdout.contains("service_param_source_targets:"));
     assert!(stdout.contains("resource_provide_targets:"));
+}
+
+#[test]
+fn run_command_real_mode_writes_output_file() {
+    let output_path = unique_temp_output_file("run_real_mode", "mk");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg(&output_path)
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run in real mode");
+
+    assert!(
+        output.status.success(),
+        "run real mode should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("mode=real"));
+    assert!(stdout.contains("written=true"));
+    assert!(
+        output_path.exists(),
+        "real mode should write the configured output file"
+    );
+
+    std::fs::remove_file(output_path).expect("failed to cleanup run real-mode output");
+}
+
+#[test]
+fn run_command_dry_run_does_not_write_output_file() {
+    let output_path = unique_temp_output_file("run_dry_mode", "mk");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--dry-run")
+        .arg("--output")
+        .arg(&output_path)
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run in dry-run mode");
+
+    assert!(
+        output.status.success(),
+        "run dry-run mode should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("mode=dry-run"));
+    assert!(stdout.contains("written=false"));
+    assert!(
+        !output_path.exists(),
+        "dry-run mode should not write the configured output file"
+    );
 }
 
 #[test]
