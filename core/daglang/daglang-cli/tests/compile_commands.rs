@@ -11530,6 +11530,59 @@ fn obligations_command_symlink_directory_named_mixed_case_dag_extension_is_inval
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[cfg(unix)]
+#[test]
+fn obligations_command_curdir_suffix_symlink_named_dag_extension_is_invalid_single_file_target() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("obligations_curdir_suffix_symlink_named_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.dag");
+    std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory root");
+    std::fs::write(
+        real_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .dag directory symlink");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "obligations",
+        &root,
+        "./link.dag",
+        &link_dir,
+        None,
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn obligations_command_curdir_suffix_symlink_named_uppercase_dag_extension_is_invalid_single_file_target(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root =
+        unique_temp_dir("obligations_curdir_suffix_symlink_named_uppercase_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DAG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    std::fs::write(real_dir.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write malformed source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DAG directory symlink");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "obligations",
+        &root,
+        "./link.DAG",
+        &link_dir,
+        Some("broken.dag:2:3"),
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[test]
 fn show_triplets_command_shows_transport_expansion_for_makegen() {
     let output = Command::new(daglang_bin())
@@ -11877,6 +11930,60 @@ fn show_triplets_command_symlink_directory_named_uppercase_dag_extension_is_inva
         "show-triplets",
         &root,
         "link.DAG",
+        &link_dir,
+        Some("broken.dag:2:3"),
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn show_triplets_command_curdir_suffix_symlink_named_dag_extension_is_invalid_single_file_target()
+{
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("show_triplets_curdir_suffix_symlink_named_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.dag");
+    std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory root");
+    std::fs::write(
+        real_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .dag directory symlink");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "show-triplets",
+        &root,
+        "./link.dag",
+        &link_dir,
+        None,
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn show_triplets_command_curdir_suffix_symlink_named_mixed_case_dag_extension_is_invalid_single_file_target(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root =
+        unique_temp_dir("show_triplets_curdir_suffix_symlink_named_mixed_case_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DaG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    std::fs::write(real_dir.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write malformed source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DaG directory symlink");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "show-triplets",
+        &root,
+        "./link.DaG",
         &link_dir,
         Some("broken.dag:2:3"),
     );
