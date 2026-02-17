@@ -1713,6 +1713,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_supports_split_output_separator_with_mode_flag_after_escaped_path() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output".to_string(),
+            "--".to_string(),
+            "--dash-prefixed-output.mk".to_string(),
+            "--check-mode".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = parse_run_args(&args).expect("parse should succeed");
+        assert_eq!(
+            parsed,
+            RunArgs {
+                file: "dsl/tools/makegen.dag".to_string(),
+                output_path: "--dash-prefixed-output.mk".to_string(),
+                dry_run: false,
+                check_mode: true,
+            }
+        );
+    }
+
+    #[test]
     fn parse_run_args_rejects_split_output_separator_without_path() {
         let args = vec![
             "daglang".to_string(),

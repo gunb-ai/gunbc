@@ -32222,6 +32222,72 @@ fn run_check_mode_supports_split_output_dash_prefixed_path_via_separator() {
 }
 
 #[test]
+fn run_check_mode_supports_split_output_separator_with_mode_flag_after_escaped_output_path() {
+    let execution_dir = unique_temp_dir("run_check_mode_split_output_separator_mode_after_path");
+    std::fs::create_dir_all(&execution_dir).expect(
+        "failed to create execution directory for check-mode split output separator mode-order test",
+    );
+    let output_basename = format!(
+        "--daglang_run_check_mode_split_output_separator_mode_after_path_output_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    );
+    let output_path = execution_dir.join(&output_basename);
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect(
+            "failed to remove stale check-mode split output separator mode-order output file",
+        );
+    }
+    let stale = "check-mode split output separator mode-order stale content";
+    std::fs::write(&output_path, stale).expect(
+        "failed to seed check-mode split output separator mode-order stale output file",
+    );
+    let input_path = workspace_root().join("dsl/tools/makegen.dag");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("--")
+        .arg(&output_basename)
+        .arg("--check-mode")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(&execution_dir)
+        .output()
+        .expect(
+            "failed to run daglang run check-mode with split output separator and mode flag after escaped output path",
+        );
+
+    assert!(
+        output.status.success(),
+        "check-mode split output separator run with mode flag after escaped output path should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode split output separator run with mode flag after escaped output path should report mode=check-mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode split output separator run with mode flag after escaped output path should report written=false: {stdout}"
+    );
+    let after = std::fs::read_to_string(&output_path).expect(
+        "failed to read check-mode split output separator mode-order output file after run",
+    );
+    assert_eq!(
+        after, stale,
+        "check-mode split output separator run with mode flag after escaped output path should preserve existing output content"
+    );
+
+    std::fs::remove_dir_all(&execution_dir).expect(
+        "failed to clean check-mode split output separator mode-order execution directory",
+    );
+}
+
+#[test]
 fn run_real_mode_supports_split_output_dash_prefixed_path_via_separator_and_reports_idempotence() {
     let execution_dir = unique_temp_dir("run_real_mode_split_output_dash_prefixed_separator");
     std::fs::create_dir_all(&execution_dir)
