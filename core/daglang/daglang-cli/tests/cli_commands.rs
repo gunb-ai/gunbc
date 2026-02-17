@@ -30197,7 +30197,7 @@ fn no_command_exits_nonzero_with_usage_message() {
         "usage guidance should include show-triplets command help text: {stderr}"
     );
     assert!(
-        stderr.contains("run <file.dag> [--output <path>] [--dry-run] [--check-mode]"),
+        stderr.contains("run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
         "usage guidance should include run command help text: {stderr}"
     );
     assert!(
@@ -30554,7 +30554,7 @@ fn run_without_args_exits_nonzero_with_usage_message() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run] [--check-mode]"),
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
         "run without args should print command usage: {stderr}"
     );
 }
@@ -30584,7 +30584,7 @@ fn run_with_unknown_flag_exits_nonzero_with_usage_message() {
         "run should report unknown flag explicitly: {stderr}"
     );
     assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run] [--check-mode]"),
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
         "run should include usage for unknown flags: {stderr}"
     );
 }
@@ -30615,7 +30615,7 @@ fn run_with_conflicting_dry_run_and_check_mode_exits_nonzero_with_usage_message(
         "run should report conflicting mode flags explicitly: {stderr}"
     );
     assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run] [--check-mode]"),
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
         "run should include usage for conflicting mode flags: {stderr}"
     );
 }
@@ -30646,7 +30646,7 @@ fn run_with_missing_output_value_exits_nonzero_with_usage_message() {
         "run should report missing output value explicitly: {stderr}"
     );
     assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run] [--check-mode]"),
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
         "run should include usage for missing output value: {stderr}"
     );
 }
@@ -30676,7 +30676,7 @@ fn run_with_empty_equals_output_value_exits_nonzero_with_usage_message() {
         "run should report empty output value explicitly: {stderr}"
     );
     assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run] [--check-mode]"),
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
         "run should include usage for empty output value: {stderr}"
     );
 }

@@ -44,7 +44,7 @@ fn main() {
         eprintln!("  modules [dir]        Show discovered module graph");
         eprintln!("  check <file.dag>     Parse + typecheck (no lowering)");
         eprintln!("  compile <file.dag>   Full compilation pipeline");
-        eprintln!("  run <file.dag> [--output <path>] [--dry-run] [--check-mode]");
+        eprintln!("  run <file.dag> [--output <path>] [--dry-run|--check-mode]");
         std::process::exit(1);
     }
 
@@ -262,7 +262,7 @@ fn main() {
                 Ok(values) => values,
                 Err(error) => {
                     eprintln!("{error}");
-                    exit_usage("run <file.dag> [--output <path>] [--dry-run] [--check-mode]");
+                    exit_usage("run <file.dag> [--output <path>] [--dry-run|--check-mode]");
                 }
             };
             let context = build_context(Some(&run_args.file));
