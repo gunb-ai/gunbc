@@ -64,19 +64,19 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## Credential (AWS) (`cloud.aws.credential`)
 
-- **Current status**: ⚠ typecheck blocked (credential-domain type coverage gap).
+- **Current status**: ⚠ lower-stage unresolved service call (`aws.SecretsManager.GetSecretValue`).
 - **Primary gap**:
-  - unresolved/undefined credential type layer for module closure.
+  - AWS SecretsManager operation mapping is missing from service resolution/lowering.
 - **Next increments**:
-  - complete AWS credential type modeling and contract checks.
+  - add AWS secret-manager service operation resolution and runtime bridge mapping.
 
 ## Credential (Azure) (`cloud.azure.credential`)
 
-- **Current status**: ⚠ typecheck blocked (credential-domain type coverage gap).
+- **Current status**: ⚠ typecheck blocked by record-shape mismatch in credential exchange path.
 - **Primary gap**:
-  - unresolved/undefined credential type layer for module closure.
+  - Azure credential exchange/local branch record contracts are not yet aligned for strict typecheck.
 - **Next increments**:
-  - complete Azure credential type modeling and contract checks.
+  - align Azure token exchange record shape and strict type signatures.
 
 ## Clippy (`tools.clippy`)
 
