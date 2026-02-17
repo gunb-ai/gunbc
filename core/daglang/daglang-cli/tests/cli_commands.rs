@@ -16944,6 +16944,302 @@ fn modules_command_mixed_case_dag_extension_directory_with_errors_matches_traili
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[test]
+fn modules_command_curdir_suffix_dag_extension_directory_matches_plain_output() {
+    let root = unique_temp_dir("modules_curdir_suffix_dag_extension_directory");
+    let dag_dir = root.join("bundle.dag");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory root");
+    std::fs::write(dag_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in .dag directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on plain .dag directory");
+    assert!(
+        plain.status.success(),
+        "plain .dag directory modules should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on curdir-suffix .dag directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .dag directory modules should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .dag directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .dag directory modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_curdir_suffix_dag_extension_directory_with_errors_matches_plain_output() {
+    let root = unique_temp_dir("modules_curdir_suffix_dag_extension_directory_errors");
+    let dag_dir = root.join("bundle.dag");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory root");
+    let broken_file = dag_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in .dag directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed plain .dag directory");
+    assert!(
+        plain.status.success(),
+        "malformed plain .dag directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed curdir-suffix .dag directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "malformed curdir-suffix .dag directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .dag directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .dag directory modules stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stdout)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .dag directory diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_curdir_suffix_uppercase_dag_extension_directory_matches_plain_output() {
+    let root = unique_temp_dir("modules_curdir_suffix_uppercase_dag_extension_directory");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    std::fs::write(dag_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in .DAG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on plain .DAG directory");
+    assert!(
+        plain.status.success(),
+        "plain .DAG directory modules should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on curdir-suffix .DAG directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .DAG directory modules should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .DAG directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .DAG directory modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_curdir_suffix_uppercase_dag_extension_directory_with_errors_matches_plain_output(
+) {
+    let root = unique_temp_dir("modules_curdir_suffix_uppercase_dag_extension_directory_errors");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    let broken_file = dag_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DAG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed plain .DAG directory");
+    assert!(
+        plain.status.success(),
+        "malformed plain .DAG directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed curdir-suffix .DAG directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "malformed curdir-suffix .DAG directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .DAG directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .DAG directory modules stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stdout)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DAG directory diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_curdir_suffix_mixed_case_dag_extension_directory_matches_plain_output() {
+    let root = unique_temp_dir("modules_curdir_suffix_mixed_case_dag_extension_directory");
+    let dag_dir = root.join("bundle.DaG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory root");
+    std::fs::write(dag_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in .DaG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on plain .DaG directory");
+    assert!(
+        plain.status.success(),
+        "plain .DaG directory modules should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on curdir-suffix .DaG directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .DaG directory modules should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .DaG directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .DaG directory modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_curdir_suffix_mixed_case_dag_extension_directory_with_errors_matches_plain_output(
+) {
+    let root = unique_temp_dir("modules_curdir_suffix_mixed_case_dag_extension_directory_errors");
+    let dag_dir = root.join("bundle.DaG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory root");
+    let broken_file = dag_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DaG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed plain .DaG directory");
+    assert!(
+        plain.status.success(),
+        "malformed plain .DaG directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed curdir-suffix .DaG directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "malformed curdir-suffix .DaG directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .DaG directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .DaG directory modules stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stdout)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DaG directory diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[cfg(unix)]
 #[test]
 fn modules_command_symlink_directory_named_dag_extension_matches_real_directory_output() {
