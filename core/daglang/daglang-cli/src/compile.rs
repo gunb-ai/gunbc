@@ -323,6 +323,7 @@ pub fn render_obligations(derived: &DerivedArtifacts, format: OutputFormat) -> S
         OutputFormat::Text => render_obligations_text(obligations),
         OutputFormat::Json => json!({
             "dry_run_completion_required": obligations.dry_run_completion_required,
+            "total_obligations": obligations.total_obligations,
             "transport_execution_targets": obligations.transport_execution_targets,
             "pure_node_determinism_targets": obligations.pure_node_determinism_targets,
             "service_transport_prepare_targets": obligations.service_transport_prepare_targets,
@@ -350,6 +351,12 @@ fn render_obligations_text(obligations: &TestObligations) -> String {
         out,
         "  dry_run_completion_required: {}",
         obligations.dry_run_completion_required
+    )
+    .ok();
+    writeln!(
+        out,
+        "  total_obligations: {}",
+        obligations.total_obligations
     )
     .ok();
     writeln!(
@@ -1182,6 +1189,7 @@ fn run() -> String { return 42 }
                 .and_then(Value::as_bool),
             Some(true)
         );
+        assert!(parsed.get("total_obligations").is_some());
         assert!(parsed.get("transport_execution_targets").is_some());
         assert!(parsed.get("pure_node_determinism_targets").is_some());
         assert!(parsed.get("service_transport_hermetic_targets").is_some());

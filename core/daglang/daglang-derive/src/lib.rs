@@ -93,6 +93,7 @@ pub struct ResourceUsage {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TestObligations {
     pub dry_run_completion_required: bool,
+    pub total_obligations: usize,
     pub transport_execution_targets: usize,
     pub pure_node_determinism_targets: usize,
     pub service_transport_prepare_targets: usize,
@@ -190,6 +191,7 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
     let obligation_counts = derive_obligation_counts(&dag.nodes);
     let obligations = TestObligations {
         dry_run_completion_required: true,
+        total_obligations: manifest.total_edges,
         transport_execution_targets: obligation_counts.transport_execution_targets,
         pure_node_determinism_targets: obligation_counts.pure_node_determinism_targets,
         service_transport_prepare_targets: obligation_counts.service_transport_prepare_targets,
