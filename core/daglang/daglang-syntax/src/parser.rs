@@ -1440,23 +1440,6 @@ impl Parser {
                 && matches!(next2, Some(TokenKind::Colon)))
     }
 
-    fn parse_annotation_named_args(&mut self) -> Result<Expr, ParseError> {
-        let mut fields = Vec::new();
-        loop {
-            let k = self.expect_ident()?;
-            self.expect(&TokenKind::Colon)?;
-            let v = self.parse_expr(0)?;
-            fields.push((k, v));
-            if !self.eat(&TokenKind::Comma) {
-                break;
-            }
-            if self.check(&TokenKind::RParen) {
-                break;
-            }
-        }
-        Ok(Expr::Record(None, fields))
-    }
-
     fn parse_record_like_block(&mut self) -> Result<Expr, ParseError> {
         let mut fields = Vec::new();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
@@ -2127,94 +2110,6 @@ impl Parser {
             return Err(self.err("unterminated match expression".into()));
         }
         Ok(Expr::Match(Box::new(scrutinee), Vec::new()))
-    }
-
-    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
-        match self.peek().kind.clone() {
-            kind if Self::token_kind_as_ident(&kind).is_some() => {
-                let Some(name) = Self::token_kind_as_ident(&kind) else {
-                    return Err(self.err(format!(
-                        "expected identifier, found {}",
-                        self.peek().kind.desc()
-                    )));
-                };
-                self.advance();
-                if name.chars().next().is_some_and(|c| c.is_uppercase()) {
-                    if self.eat(&TokenKind::LParen) {
-                        let mut fields = Vec::new();
-                        let mut positional_index = 0usize;
-                        while !self.check(&TokenKind::RParen) && !self.at_eof() {
-                            let (fname, pat) = if Self::token_kind_as_ident(&self.peek().kind)
-                                .is_some()
-                                && self.peek2().kind == TokenKind::Colon
-                            {
-                                let fname = self.expect_ident()?;
-                                self.expect(&TokenKind::Colon)?;
-                                let pat = self.parse_pattern()?;
-                                (fname, pat)
-                            } else {
-                                let pat = self.parse_pattern()?;
-                                let fname = format!("_{positional_index}");
-                                positional_index += 1;
-                                (fname, pat)
-                            };
-                            fields.push((fname, pat));
-                            self.eat(&TokenKind::Comma);
-                        }
-                        self.expect(&TokenKind::RParen)?;
-                        return Ok(Pattern::Variant(name, fields));
-                    }
-                    if self.eat(&TokenKind::LBrace) {
-                        let mut fields = Vec::new();
-                        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
-                            if self.eat(&TokenKind::Dot) {
-                                self.eat(&TokenKind::Dot);
-                                self.eat(&TokenKind::Dot);
-                                if Self::token_kind_as_ident(&self.peek().kind).is_some() {
-                                    let _ = self.expect_ident()?;
-                                }
-                                self.eat(&TokenKind::Comma);
-                                continue;
-                            }
-                            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
-                                let fname = self.expect_ident()?;
-                                let pat = if self.eat(&TokenKind::Colon) {
-                                    self.parse_pattern()?
-                                } else {
-                                    Pattern::Ident(fname.clone())
-                                };
-                                fields.push((fname, pat));
-                            } else {
-                                self.advance();
-                            }
-                            self.eat(&TokenKind::Comma);
-                        }
-                        self.expect(&TokenKind::RBrace)?;
-                        return Ok(Pattern::Variant(name, fields));
-                    }
-                    Ok(Pattern::Variant(name, Vec::new()))
-                } else {
-                    Ok(Pattern::Ident(name))
-                }
-            }
-            TokenKind::True => {
-                self.advance();
-                Ok(Pattern::Literal(Literal::Bool(true)))
-            }
-            TokenKind::False => {
-                self.advance();
-                Ok(Pattern::Literal(Literal::Bool(false)))
-            }
-            TokenKind::Int(n) => {
-                self.advance();
-                Ok(Pattern::Literal(Literal::Int(n)))
-            }
-            TokenKind::Str(s) => {
-                self.advance();
-                Ok(Pattern::Literal(Literal::String(s)))
-            }
-            _ => Ok(Pattern::Wildcard),
-        }
     }
 
     fn parse_if_expr(&mut self) -> Result<Expr, ParseError> {

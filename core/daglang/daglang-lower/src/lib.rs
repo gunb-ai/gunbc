@@ -3616,7 +3616,7 @@ fn add_interface_contract_verification_nodes(
                 continue;
             };
             let contract_count =
-                resolve_interface_contract_count(project, module_name.as_str(), interface_name);
+                resolve_interface_contract_count(project, interface_name);
             if contract_count == 0 {
                 continue;
             }
@@ -3670,7 +3670,6 @@ fn add_interface_contract_verification_nodes(
 
 fn resolve_interface_contract_count(
     project: &TypedProject,
-    _resource_module_name: &str,
     interface_name: &str,
 ) -> usize {
     let target = canonical_type_name(interface_name);

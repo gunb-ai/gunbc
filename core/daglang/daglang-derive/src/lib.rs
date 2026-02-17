@@ -57,22 +57,18 @@ pub struct ProgressManifest {
 pub struct TopologyNode {
     pub id: String,
     pub depth: usize,
-    pub parent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SubDagBoundary {
     pub node_id: String,
     pub label: String,
-    pub inner_nodes: Vec<String>,
-    pub parent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ParallelGroup {
     pub nodes: Vec<String>,
     pub depth: usize,
-    pub parent_subdag: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
@@ -308,7 +304,6 @@ fn derive_topology_from_waves(waves: &[Vec<String>]) -> Vec<TopologyNode> {
             topology.push(TopologyNode {
                 id: id.clone(),
                 depth,
-                parent: None,
             });
         }
     }
@@ -323,7 +318,6 @@ fn derive_parallel_groups(waves: &[Vec<String>]) -> Vec<ParallelGroup> {
         .map(|(depth, wave)| ParallelGroup {
             nodes: wave.clone(),
             depth,
-            parent_subdag: None,
         })
         .collect()
 }
@@ -335,8 +329,6 @@ fn derive_subdag_boundaries(nodes: &[Node<LoweredOp>]) -> Vec<SubDagBoundary> {
             gunbc_ir::node::NodeBody::SubDag(_subdag) => Some(SubDagBoundary {
                 node_id: node.id.0.clone(),
                 label: node.id.0.clone(),
-                inner_nodes: Vec::new(),
-                parent: None,
             }),
             gunbc_ir::node::NodeBody::Opaque(_) => None,
         })
@@ -721,17 +713,14 @@ mod tests {
                 TopologyNode {
                     id: "a".to_string(),
                     depth: 0,
-                    parent: None,
                 },
                 TopologyNode {
                     id: "b".to_string(),
                     depth: 0,
-                    parent: None,
                 },
                 TopologyNode {
                     id: "c".to_string(),
                     depth: 1,
-                    parent: None,
                 },
             ]
         );
@@ -749,12 +738,10 @@ mod tests {
                 ParallelGroup {
                     nodes: vec!["a".to_string(), "b".to_string()],
                     depth: 0,
-                    parent_subdag: None,
                 },
                 ParallelGroup {
                     nodes: vec!["c".to_string()],
                     depth: 1,
-                    parent_subdag: None,
                 },
             ]
         );

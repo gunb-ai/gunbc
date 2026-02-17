@@ -195,13 +195,7 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
     .ok();
     out.push_str("  topology:\n");
     for node in &manifest.topology {
-        let parent = node.parent.as_deref().unwrap_or("none");
-        writeln!(
-            out,
-            "    - {} (depth={}, parent={parent})",
-            node.id, node.depth
-        )
-        .ok();
+        writeln!(out, "    - {} (depth={})", node.id, node.depth).ok();
     }
     out.push_str("  labels:\n");
     for (node_id, label) in &manifest.labels {
@@ -212,28 +206,20 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
         out.push_str("    (none)\n");
     } else {
         for boundary in &manifest.subdag_boundaries {
-            let parent = boundary.parent.as_deref().unwrap_or("none");
-            let inner = if boundary.inner_nodes.is_empty() {
-                "(none)".to_string()
-            } else {
-                boundary.inner_nodes.join(", ")
-            };
             writeln!(
                 out,
-                "    - {} label={} parent={} inner_nodes={}",
-                boundary.node_id, boundary.label, parent, inner
+                "    - {} label={}",
+                boundary.node_id, boundary.label
             )
             .ok();
         }
     }
     out.push_str("  parallel_groups:\n");
     for group in &manifest.parallel_groups {
-        let parent = group.parent_subdag.as_deref().unwrap_or("none");
         writeln!(
             out,
-            "    - depth={} parent_subdag={} nodes={}",
+            "    - depth={} nodes={}",
             group.depth,
-            parent,
             group.nodes.join(", ")
         )
         .ok();

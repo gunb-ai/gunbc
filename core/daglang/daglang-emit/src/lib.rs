@@ -242,8 +242,7 @@ fn render_manifest(manifest: &ProgressManifest) -> String {
     ));
     out.push_str("topology=\n");
     for node in &manifest.topology {
-        let parent = node.parent.as_deref().unwrap_or("none");
-        out.push_str(&format!("  {}@{} parent={parent}\n", node.id, node.depth));
+        out.push_str(&format!("  {}@{}\n", node.id, node.depth));
     }
     out.push_str("labels=\n");
     for (node_id, label) in &manifest.labels {
@@ -251,24 +250,16 @@ fn render_manifest(manifest: &ProgressManifest) -> String {
     }
     out.push_str("subdag_boundaries=\n");
     for boundary in &manifest.subdag_boundaries {
-        let parent = boundary.parent.as_deref().unwrap_or("none");
-        let inner_nodes = if boundary.inner_nodes.is_empty() {
-            "(none)".to_string()
-        } else {
-            boundary.inner_nodes.join(",")
-        };
         out.push_str(&format!(
-            "  {} label={} parent={} inner_nodes={}\n",
-            boundary.node_id, boundary.label, parent, inner_nodes
+            "  {} label={}\n",
+            boundary.node_id, boundary.label
         ));
     }
     out.push_str("parallel_groups=\n");
     for group in &manifest.parallel_groups {
-        let parent = group.parent_subdag.as_deref().unwrap_or("none");
         out.push_str(&format!(
-            "  depth:{} parent_subdag:{} nodes={}\n",
+            "  depth:{} nodes={}\n",
             group.depth,
-            parent,
             group.nodes.join(",")
         ));
     }
