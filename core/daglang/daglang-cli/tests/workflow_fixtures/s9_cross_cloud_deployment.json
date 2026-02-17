@@ -16,5 +16,10 @@
   "expand_contract": {
     "status": "typecheck_error",
     "error_contains": "undefined type `NonEmptyStr (in store_artifact.key)`"
+  },
+  "obligations_contract": {
+    "status": "typecheck_error",
+    "error_contains": "undefined type `NonEmptyStr (in store_artifact.key)`",
+    "expected_json": null
   }
 }

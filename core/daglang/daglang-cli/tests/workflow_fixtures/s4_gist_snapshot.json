@@ -12,5 +12,10 @@
   "expand_contract": {
     "status": "typecheck_error",
     "error_contains": "undefined type `CommitSha"
+  },
+  "obligations_contract": {
+    "status": "typecheck_error",
+    "error_contains": "undefined type `CommitSha",
+    "expected_json": null
   }
 }

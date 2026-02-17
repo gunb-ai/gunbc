@@ -11,5 +11,10 @@
   "expand_contract": {
     "status": "lower_error",
     "error_contains": "unresolved service call `cargo.Build.Clippy` in `tools.clippy::clippy_lint`"
+  },
+  "obligations_contract": {
+    "status": "lower_error",
+    "error_contains": "unresolved service call `cargo.Build.Clippy` in `tools.clippy::clippy_lint`",
+    "expected_json": null
   }
 }

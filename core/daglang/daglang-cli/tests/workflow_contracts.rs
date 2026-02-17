@@ -163,7 +163,7 @@ fn expected_module_snapshot(fixture: &Value) -> Value {
     })
 }
 
-fn classify_expand_status(output: &Output) -> &'static str {
+fn classify_command_status(output: &Output) -> &'static str {
     if output.status.success() {
         return "success";
     }
@@ -265,7 +265,7 @@ fn workflow_expand_contracts_match_golden_snapshots() {
                     fixture.scenario, relative_path
                 )
             });
-        let actual_status = classify_expand_status(&output);
+        let actual_status = classify_command_status(&output);
         assert_eq!(
             actual_status, expected_status,
             "unexpected expand status for scenario {} module {}",
@@ -279,6 +279,73 @@ fn workflow_expand_contracts_match_golden_snapshots() {
             assert!(
                 output_text.contains(expected_substring),
                 "expected expand output for scenario {} to contain `{expected_substring}`, got: {}",
+                fixture.scenario,
+                output_text
+            );
+        }
+    }
+}
+
+#[test]
+fn workflow_obligations_contracts_match_golden_snapshots() {
+    let root = workspace_root();
+    for fixture in WORKFLOW_FIXTURES {
+        let expected = load_fixture(&fixture_dir().join(fixture.fixture_file));
+        let relative_path = expected
+            .get("path")
+            .and_then(Value::as_str)
+            .expect("fixture path should be present");
+        let expected_obligations = expected
+            .get("obligations_contract")
+            .expect("fixture should include obligations_contract object");
+        let expected_status = expected_obligations
+            .get("status")
+            .and_then(Value::as_str)
+            .expect("obligations_contract.status should be a string");
+        let output = Command::new(daglang_bin())
+            .arg("obligations")
+            .arg(format!("dsl/{relative_path}"))
+            .arg("--format")
+            .arg("json")
+            .current_dir(&root)
+            .output()
+            .unwrap_or_else(|err| {
+                panic!(
+                    "failed to run daglang obligations for scenario {} ({}): {err}",
+                    fixture.scenario, relative_path
+                )
+            });
+        let actual_status = classify_command_status(&output);
+        assert_eq!(
+            actual_status, expected_status,
+            "unexpected obligations status for scenario {} module {}",
+            fixture.scenario, fixture.module
+        );
+        if actual_status == "success" {
+            let expected_json = expected_obligations
+                .get("expected_json")
+                .expect("successful obligations contract should include expected_json");
+            let actual_json: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|err| {
+                panic!(
+                    "obligations json for scenario {} should parse: {err}",
+                    fixture.scenario
+                )
+            });
+            assert_eq!(
+                actual_json,
+                expected_json.clone(),
+                "obligations json mismatch for scenario {} module {}",
+                fixture.scenario, fixture.module
+            );
+        }
+        if let Some(expected_substring) = expected_obligations
+            .get("error_contains")
+            .and_then(Value::as_str)
+        {
+            let output_text = combined_output(&output);
+            assert!(
+                output_text.contains(expected_substring),
+                "expected obligations output for scenario {} to contain `{expected_substring}`, got: {}",
                 fixture.scenario,
                 output_text
             );

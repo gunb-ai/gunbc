@@ -6,5 +6,10 @@
   "expand_contract": {
     "status": "typecheck_error",
     "error_contains": "`gcs.Storage` does not match `Storage.Put` contract"
+  },
+  "obligations_contract": {
+    "status": "typecheck_error",
+    "error_contains": "`gcs.Storage` does not match `Storage.Put` contract",
+    "expected_json": null
   }
 }

@@ -11,5 +11,10 @@
   "expand_contract": {
     "status": "lower_error",
     "error_contains": "unresolved service call `shell.Find.ListDirs`"
+  },
+  "obligations_contract": {
+    "status": "lower_error",
+    "error_contains": "unresolved service call `shell.Find.ListDirs`",
+    "expected_json": null
   }
 }

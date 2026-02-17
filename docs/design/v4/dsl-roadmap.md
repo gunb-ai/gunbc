@@ -1717,12 +1717,13 @@ Each fixture now carries:
 - normalized module snapshot (`module`, `path`, `items`, `dependencies`)
 - `expand_contract` status (`success`, `typecheck_error`, or `lower_error`)
 - stable `error_contains` sentinel for expected non-success workflows
+- `obligations_contract` status and expected JSON counters where lowering succeeds
 
 ### Standing gates (must not regress)
 
 - [x] I/O only at boundaries (clippy guardrails enforce transport-only I/O)
 - [x] DryRun interception works for compiled `.dag` output
-- [ ] Generated tests derived from DAG structure (4-bucket model)
+- [x] Generated tests derived from DAG structure (4-bucket model)
 - [x] No hidden env access (resource declarations required; CI detection hardened against spurious env vars)
 
 ---

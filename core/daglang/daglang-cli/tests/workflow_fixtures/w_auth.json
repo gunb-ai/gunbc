@@ -6,5 +6,10 @@
   "expand_contract": {
     "status": "lower_error",
     "error_contains": "no callable or pipeline declarations to lower"
+  },
+  "obligations_contract": {
+    "status": "lower_error",
+    "error_contains": "no callable or pipeline declarations to lower",
+    "expected_json": null
   }
 }
