@@ -2515,6 +2515,12 @@ mod tests {
         typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
     }
 
+    fn lower_target_module(typed: &TypedProject, module_name: &str) -> Dag<LoweredOp> {
+        let mut scope = HashSet::new();
+        scope.insert(module_name.to_string());
+        lower_typed_project_for_modules(typed, &scope).expect("lowering should succeed")
+    }
+
     // Test infrastructure: filesystem access for test fixtures
     #[allow(clippy::disallowed_methods)]
     #[test]
@@ -2553,7 +2559,7 @@ mod tests {
     #[test]
     fn gcp_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
-        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let dag = lower_target_module(&typed, "cloud.gcp.credential");
         let reference = build_gcp_secret_manager_credential_graph_github();
 
         let report_a = compare_ir(&dag, &reference);
@@ -2566,7 +2572,7 @@ mod tests {
     #[test]
     fn clippy_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.clippy");
-        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let dag = lower_target_module(&typed, "tools.clippy");
         let reference = build_clippy_graph_lint_all();
 
         let report_a = compare_ir(&dag, &reference);
@@ -2579,7 +2585,7 @@ mod tests {
     #[test]
     fn deps_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.deps");
-        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let dag = lower_target_module(&typed, "tools.deps");
         let reference = build_deps_graph().expect("deps builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);
@@ -2592,7 +2598,7 @@ mod tests {
     #[test]
     fn gist_snapshot_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let dag = lower_target_module(&typed, "tools.gist");
         let reference = build_gist_graph(GistMode::Snapshot, Vec::new(), false)
             .expect("gist builder graph should be available");
 
@@ -2606,7 +2612,7 @@ mod tests {
     #[test]
     fn gist_diff_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let dag = lower_target_module(&typed, "tools.gist");
         let reference = build_gist_graph(
             GistMode::Diff {
                 base_ref: "main".to_string(),
@@ -2626,7 +2632,7 @@ mod tests {
     #[test]
     fn gist_recent_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let dag = lower_target_module(&typed, "tools.gist");
         let reference = build_gist_graph(GistMode::Recent, Vec::new(), false)
             .expect("gist builder graph should be available");
 
@@ -2640,7 +2646,7 @@ mod tests {
     #[test]
     fn aws_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.aws.credential");
-        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let dag = lower_target_module(&typed, "cloud.aws.credential");
         let reference = build_aws_secrets_manager_credential_graph();
 
         let report_a = compare_ir(&dag, &reference);
@@ -2653,7 +2659,7 @@ mod tests {
     #[test]
     fn azure_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.azure.credential");
-        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let dag = lower_target_module(&typed, "cloud.azure.credential");
         let reference = build_azure_key_vault_credential_graph();
 
         let report_a = compare_ir(&dag, &reference);
