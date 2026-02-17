@@ -111,8 +111,8 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## S9 — Cross-Cloud Deployment (`examples.deployment`)
 
-- **Current status**: ⚠ typecheck blocked by record-shape mismatches in provider configuration helpers.
+- **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - provider config helper return shapes still diverge from strict expected records.
+  - parity against legacy cross-cloud deployment graph shape is still pending.
 - **Next increments**:
-  - align provider config helper return contracts and rerun full cross-provider lowering.
+  - add deployment parity harness coverage and runtime execution bridge checks.

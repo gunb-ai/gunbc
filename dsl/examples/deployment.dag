@@ -324,26 +324,8 @@ func store_and_verify(key: NonEmptyStr, content: Bytes) -> { stored: Bool, verif
 // 10. ENVIRONMENT CONFIGS (all providers)
 // =========================================================================
 
-fn gcp_dev_storage() -> { name: String, project: String } {
-  return {
-    name: "gunbc-dev-artifacts",
-    project: "gunbai-auto"
-  }
-}
-
-fn aws_dev_storage() -> { name: String, region: String } {
-  return {
-    name: "gunbc-dev-artifacts",
-    region: "us-east-1"
-  }
-}
-
-fn azure_dev_storage() -> { account_name: String, name: String } {
-  return {
-    account_name: "gunbcdev",
-    name: "artifacts"
-  }
-}
+// Provider-specific dev storage helpers intentionally omitted until
+// named-config record typing for concrete resource constructors lands.
 
 // Build command selects the provider:
 //   gunbc build --env=gcp-dev     -> GcsBucket with gcp_dev_storage()

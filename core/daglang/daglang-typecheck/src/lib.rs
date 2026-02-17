@@ -1389,7 +1389,10 @@ fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
                     },
                 );
             }
-            let contract = InterfaceContract { capabilities };
+            let contract = InterfaceContract {
+                type_params: interface.type_params.clone(),
+                capabilities,
+            };
             let full_name = format!("{module_name}.{}", interface.name);
             registry.full.insert(full_name, contract.clone());
 
@@ -1464,6 +1467,7 @@ fn collect_resource_capabilities(modules: &[ResolvedModule]) -> ResourceCapabili
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct InterfaceContract {
+    type_params: Vec<String>,
     capabilities: HashMap<String, CapabilityContract>,
 }
 
@@ -2433,21 +2437,22 @@ fn validate_resource_interface_conformance(
         })
         .collect::<HashMap<_, _>>();
     let interface_name = canonical_interface_name(implemented);
-    for (capability_name, required_contract) in interface_contract.capabilities {
-        let Some(provided_contract) = provided_capabilities.get(&capability_name) else {
+    for (capability_name, required_contract) in &interface_contract.capabilities {
+        let Some(provided_contract) = provided_capabilities.get(capability_name) else {
             errors.push(TypeError::MissingCapability {
                 resource: resource.name.clone(),
                 interface: interface_name.clone(),
-                capability: capability_name,
+                capability: capability_name.clone(),
             });
             continue;
         };
         errors.extend(validate_capability_contract(
             &resource.name,
             &interface_name,
-            &capability_name,
+            capability_name,
             provided_contract,
-            &required_contract,
+            required_contract,
+            &interface_contract.type_params,
         ));
     }
     errors
@@ -2459,6 +2464,7 @@ fn validate_capability_contract(
     capability: &str,
     provided: &CapabilityContract,
     required: &CapabilityContract,
+    generic_params: &[String],
 ) -> Vec<TypeError> {
     let mut errors = Vec::new();
     errors.extend(validate_signature_map(
@@ -2468,6 +2474,7 @@ fn validate_capability_contract(
         "input",
         &provided.inputs,
         &required.inputs,
+        generic_params,
     ));
     errors.extend(validate_signature_map(
         implementor,
@@ -2476,6 +2483,7 @@ fn validate_capability_contract(
         "output",
         &provided.outputs,
         &required.outputs,
+        generic_params,
     ));
     errors
 }
@@ -2487,6 +2495,7 @@ fn validate_signature_map(
     direction: &str,
     provided: &HashMap<String, String>,
     required: &HashMap<String, String>,
+    generic_params: &[String],
 ) -> Vec<TypeError> {
     let mut errors = Vec::new();
     for (field, expected_ty) in required {
@@ -2499,6 +2508,12 @@ fn validate_signature_map(
             });
             continue;
         };
+        if generic_params
+            .iter()
+            .any(|generic| expected_ty == generic || expected_ty.contains(generic))
+        {
+            continue;
+        }
         if provided_ty != expected_ty {
             errors.push(TypeError::InterfaceSignatureMismatch {
                 implementor: implementor.to_string(),
@@ -2552,21 +2567,22 @@ fn validate_service_interface_conformance(
         })
         .collect::<HashMap<_, _>>();
     let interface_name = canonical_interface_name(implemented);
-    for (capability_name, required_contract) in interface_contract.capabilities {
-        let Some(provided_contract) = provided_operations.get(&capability_name) else {
+    for (capability_name, required_contract) in &interface_contract.capabilities {
+        let Some(provided_contract) = provided_operations.get(capability_name) else {
             errors.push(TypeError::MissingOperation {
                 service: service.name.clone(),
                 interface: interface_name.clone(),
-                operation: capability_name,
+                operation: capability_name.clone(),
             });
             continue;
         };
         errors.extend(validate_capability_contract(
             &service.name,
             &interface_name,
-            &capability_name,
+            capability_name,
             provided_contract,
-            &required_contract,
+            required_contract,
+            &interface_contract.type_params,
         ));
     }
     errors
