@@ -520,6 +520,9 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     }
 
     let file = file.ok_or_else(|| "run requires <file.dag>".to_string())?;
+    if dry_run && check_mode {
+        return Err("--dry-run and --check-mode cannot be used together".to_string());
+    }
     Ok(RunArgs {
         file,
         output_path,
@@ -841,14 +844,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_run_args_supports_output_dry_run_and_check_mode_flags() {
+    fn parse_run_args_supports_output_and_dry_run_flags() {
         let args = vec![
             "daglang".to_string(),
             "run".to_string(),
             "--output".to_string(),
             "out/Generated.mk".to_string(),
             "--dry-run".to_string(),
-            "--check-mode".to_string(),
             "dsl/tools/makegen.dag".to_string(),
         ];
         let parsed = parse_run_args(&args).expect("parse should succeed");
@@ -858,8 +860,24 @@ mod tests {
                 file: "dsl/tools/makegen.dag".to_string(),
                 output_path: "out/Generated.mk".to_string(),
                 dry_run: true,
-                check_mode: true,
+                check_mode: false,
             }
+        );
+    }
+
+    #[test]
+    fn parse_run_args_rejects_conflicting_dry_run_and_check_mode_flags() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--dry-run".to_string(),
+            "--check-mode".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("--dry-run and --check-mode cannot be used together"),
+            "expected clear mode conflict error, got: {error}"
         );
     }
 
