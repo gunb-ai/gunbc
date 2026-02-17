@@ -11304,6 +11304,78 @@ fn obligations_command_json_output_is_deterministic_for_same_input() {
 }
 
 #[test]
+fn obligations_command_curdir_suffix_target_matches_plain_relative_output() {
+    let plain = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run plain-target daglang obligations");
+    assert!(
+        plain.status.success(),
+        "plain-target obligations command failed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("./dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run curdir-suffix-target daglang obligations");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix-target obligations command failed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix obligations stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix obligations stderr should match"
+    );
+}
+
+#[test]
+fn obligations_command_relative_and_absolute_targets_are_equivalent() {
+    let relative = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run relative-target daglang obligations");
+    assert!(
+        relative.status.success(),
+        "relative-target obligations command failed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run absolute-target daglang obligations");
+    assert!(
+        absolute.status.success(),
+        "absolute-target obligations command failed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute obligations stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute obligations stderr should match"
+    );
+}
+
+#[test]
 fn show_triplets_command_shows_transport_expansion_for_makegen() {
     let output = Command::new(daglang_bin())
         .arg("show-triplets")
@@ -11488,6 +11560,78 @@ fn show_triplets_command_json_output_is_deterministic_for_same_input() {
     assert_eq!(
         first.stderr, second.stderr,
         "show-triplets json stderr should be deterministic"
+    );
+}
+
+#[test]
+fn show_triplets_command_curdir_suffix_target_matches_plain_relative_output() {
+    let plain = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run plain-target daglang show-triplets");
+    assert!(
+        plain.status.success(),
+        "plain-target show-triplets command failed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("./dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run curdir-suffix-target daglang show-triplets");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix-target show-triplets command failed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix show-triplets stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix show-triplets stderr should match"
+    );
+}
+
+#[test]
+fn show_triplets_command_relative_and_absolute_targets_are_equivalent() {
+    let relative = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run relative-target daglang show-triplets");
+    assert!(
+        relative.status.success(),
+        "relative-target show-triplets command failed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run absolute-target daglang show-triplets");
+    assert!(
+        absolute.status.success(),
+        "absolute-target show-triplets command failed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute show-triplets stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute show-triplets stderr should match"
     );
 }
 
