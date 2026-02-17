@@ -15,7 +15,8 @@
 //!                                  -- Show derived test obligations summary
 //! - `daglang show-triplets <file.dag> [--format text|json]`
 //!                                  -- Show transport triplet expansions
-//! - `daglang modules [dir]`       -- Show the discovered module graph
+//! - `daglang modules [dir] [--format text|json]`
+//!                                  -- Show the discovered module graph
 //! - `daglang check <file.dag|dir>` -- Parse modules; single-file targets also typecheck
 //! - `daglang compile <file.dag>`  -- Full compilation pipeline
 //! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`
@@ -37,6 +38,7 @@ use daglang_exec_bridge::{
 };
 use gunbc_exec::ExecutionMode;
 use gunbc_ir::Value;
+use serde_json::json;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -55,7 +57,8 @@ fn main() {
         eprintln!("                      Show derived test obligations summary");
         eprintln!("  show-triplets <file.dag> [--format text|json]");
         eprintln!("                      Show transport triplet expansions");
-        eprintln!("  modules [dir]        Show discovered module graph");
+        eprintln!("  modules [dir] [--format text|json]");
+        eprintln!("                      Show discovered module graph");
         eprintln!("  check <file.dag|dir> Parse (single-file targets also typecheck)");
         eprintln!("  compile <file.dag>   Full compilation pipeline");
         eprintln!("  run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>");
@@ -121,17 +124,23 @@ fn main() {
             println!("{}", render_triplets(&output.lowered_dag, format));
         }
         "modules" => {
-            if args.len() > 3 {
-                exit_usage("modules [dir]");
-            }
-            let roots = vec![resolve_root(&cwd, args.get(2))];
+            let (root_arg, format) = parse_modules_args(&args)
+                .unwrap_or_else(|usage| exit_usage(&usage));
+            let roots = vec![resolve_root(&cwd, root_arg.as_ref())];
             let context = PipelineContext {
                 roots,
                 target_file: None,
             };
             let result = run_pipeline_or_exit(&context, PipelineStop::Report);
-            if let Some(report) = result.report() {
-                println!("{report}");
+            match format {
+                OutputFormat::Text => {
+                    if let Some(report) = result.report() {
+                        println!("{report}");
+                    }
+                }
+                OutputFormat::Json => {
+                    println!("{}", render_modules_result_json(&result));
+                }
             }
         }
         "check" => {
@@ -382,6 +391,91 @@ fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), String> {
     };
 
     Ok((target, format))
+}
+
+fn parse_modules_args(args: &[String]) -> Result<(Option<String>, OutputFormat), String> {
+    if args.is_empty() || args.get(1).map(String::as_str) != Some("modules") {
+        return Err(
+            "internal error: parse_modules_args expects full `daglang modules ...` argv"
+                .to_string(),
+        );
+    }
+    let mut root_arg: Option<String> = None;
+    let mut format = OutputFormat::Text;
+    let mut saw_format = false;
+    let mut i = 2usize;
+    while i < args.len() {
+        let token = &args[i];
+        if token == "--format" {
+            if saw_format {
+                return Err("modules [dir] [--format text|json]".to_string());
+            }
+            let value = args
+                .get(i + 1)
+                .ok_or_else(|| "modules [dir] [--format text|json]".to_string())?;
+            format = match value.as_str() {
+                "text" => OutputFormat::Text,
+                "json" => OutputFormat::Json,
+                _ => return Err("modules [dir] [--format text|json]".to_string()),
+            };
+            saw_format = true;
+            i += 2;
+            continue;
+        }
+        if token.starts_with("--") {
+            return Err("modules [dir] [--format text|json]".to_string());
+        }
+        if root_arg.is_some() {
+            return Err("modules [dir] [--format text|json]".to_string());
+        }
+        root_arg = Some(token.clone());
+        i += 1;
+    }
+    Ok((root_arg, format))
+}
+
+fn render_modules_result_json(result: &PipelineResult) -> String {
+    let Some(graph) = result.module_graph() else {
+        return json!({
+            "parsed_files": result.parsed_count(),
+            "modules": [],
+            "diagnostics": result
+                .diagnostics()
+                .iter()
+                .map(|diagnostic| diagnostic.render())
+                .collect::<Vec<_>>(),
+        })
+        .to_string();
+    };
+    let modules = graph
+        .modules
+        .iter()
+        .enumerate()
+        .map(|(_index, module)| {
+            let dependencies = module
+                .dependencies
+                .iter()
+                .filter_map(|dep| graph.modules.get(*dep))
+                .map(|dependency| dependency.module_path.join("."))
+                .collect::<Vec<_>>();
+            json!({
+                "module": module.module_path.join("."),
+                "path": module.path.display().to_string(),
+                "items": module.ast.items.len(),
+                "dependencies": dependencies,
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "parsed_files": result.parsed_count(),
+        "modules": modules,
+        "diagnostics": result
+            .diagnostics()
+            .iter()
+            .map(|diagnostic| diagnostic.render())
+            .collect::<Vec<_>>(),
+    })
+    .to_string()
 }
 
 fn parse_output_format(command: &str, args: &[String]) -> Result<OutputFormat, String> {
@@ -803,6 +897,39 @@ mod tests {
         assert_eq!(super::parse_viz_args(&missing_target), Err(usage.clone()));
         assert_eq!(super::parse_viz_args(&bad_format), Err(usage.clone()));
         assert_eq!(super::parse_viz_args(&multiple_targets), Err(usage));
+    }
+
+    #[test]
+    fn parse_modules_args_supports_optional_root_and_json_format() {
+        let args = vec![
+            "daglang".to_string(),
+            "modules".to_string(),
+            "dsl".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ];
+        let (root, format) = super::parse_modules_args(&args).expect("modules args should parse");
+        assert_eq!(root.as_deref(), Some("dsl"));
+        assert!(matches!(format, super::OutputFormat::Json));
+    }
+
+    #[test]
+    fn parse_modules_args_rejects_invalid_shapes() {
+        let duplicate_roots = vec![
+            "daglang".to_string(),
+            "modules".to_string(),
+            "dsl".to_string(),
+            "other".to_string(),
+        ];
+        let bad_format = vec![
+            "daglang".to_string(),
+            "modules".to_string(),
+            "--format".to_string(),
+            "yaml".to_string(),
+        ];
+        let usage = "modules [dir] [--format text|json]".to_string();
+        assert_eq!(super::parse_modules_args(&duplicate_roots), Err(usage.clone()));
+        assert_eq!(super::parse_modules_args(&bad_format), Err(usage));
     }
 
     #[test]

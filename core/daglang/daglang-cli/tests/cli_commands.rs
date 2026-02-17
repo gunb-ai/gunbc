@@ -2,6 +2,7 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use daglang_resolve::ModuleGraph;
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::{Command, Output};
@@ -16864,6 +16865,83 @@ fn modules_command_prints_module_graph_summary() {
 }
 
 #[test]
+fn modules_command_json_format_emits_machine_readable_summary() {
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang modules --format json");
+
+    assert!(
+        output.status.success(),
+        "modules --format json command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: Value =
+        serde_json::from_slice(&output.stdout).expect("modules json output should parse");
+    let parsed_files = parsed
+        .get("parsed_files")
+        .and_then(Value::as_u64)
+        .expect("parsed_files should be present");
+    assert!(parsed_files > 0, "parsed_files should be positive");
+    let modules = parsed
+        .get("modules")
+        .and_then(Value::as_array)
+        .expect("modules array should be present");
+    assert!(!modules.is_empty(), "modules array should not be empty");
+    let first = modules.first().expect("modules should contain entries");
+    assert!(first.get("module").and_then(Value::as_str).is_some());
+    assert!(first.get("path").and_then(Value::as_str).is_some());
+    assert!(first.get("items").and_then(Value::as_u64).is_some());
+    assert!(first.get("dependencies").and_then(Value::as_array).is_some());
+    let diagnostics = parsed
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .expect("diagnostics should be an array");
+    assert!(
+        diagnostics.is_empty(),
+        "clean dsl corpus should not emit module diagnostics"
+    );
+}
+
+#[test]
+fn modules_command_json_output_is_deterministic_for_same_input() {
+    let first = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first modules --format json");
+    assert!(
+        first.status.success(),
+        "first modules --format json should succeed"
+    );
+
+    let second = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("dsl")
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second modules --format json");
+    assert!(
+        second.status.success(),
+        "second modules --format json should succeed"
+    );
+
+    assert_eq!(
+        first.stdout, second.stdout,
+        "modules --format json output should be deterministic"
+    );
+}
+
+#[test]
 fn modules_command_reports_expected_real_corpus_diagnostics() {
     let output = Command::new(daglang_bin())
         .arg("modules")
@@ -31519,7 +31597,7 @@ fn modules_command_with_extra_args_exits_nonzero_with_usage_message() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Usage: daglang modules [dir]"),
+        stderr.contains("Usage: daglang modules [dir] [--format text|json]"),
         "modules with extra args should print command usage: {stderr}"
     );
 }
