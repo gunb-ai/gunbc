@@ -30992,6 +30992,53 @@ fn run_with_uppercase_dag_input_succeeds() {
 }
 
 #[test]
+fn run_with_double_dash_uppercase_dag_input_succeeds() {
+    let input_path = unique_temp_file("run_double_dash_uppercase_input").with_extension("DAG");
+    std::fs::copy(
+        workspace_root().join("dsl/tools/makegen.dag"),
+        &input_path,
+    )
+    .expect("failed to copy makegen fixture to uppercase extension path");
+    let output_path = unique_temp_output_file("run_double_dash_uppercase_input_output");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path)
+            .expect("failed to remove stale uppercase output file for -- test");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--dry-run")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("--")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with -- and uppercase .DAG input");
+
+    assert!(
+        output.status.success(),
+        "run should accept uppercase .DAG input paths after --: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "uppercase .DAG run after -- should execute in dry-run mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "uppercase .DAG dry-run after -- should report no writes: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "dry-run uppercase input after -- should not create output file"
+    );
+
+    std::fs::remove_file(&input_path).expect("failed to clean uppercase input fixture");
+}
+
+#[test]
 fn run_with_directory_named_dag_extension_exits_nonzero_with_usage_message() {
     let input_dir = unique_temp_dir("run_directory_named_dag").with_extension("dag");
     std::fs::create_dir_all(&input_dir).expect("failed to create directory .dag fixture");

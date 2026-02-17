@@ -1188,6 +1188,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_supports_double_dash_for_uppercase_dag_input() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--".to_string(),
+            "dsl/tools/makegen.DAG".to_string(),
+        ];
+        let parsed = parse_run_args(&args).expect("parse should succeed");
+        assert_eq!(parsed.file, "dsl/tools/makegen.DAG");
+    }
+
+    #[test]
     fn parse_run_args_rejects_double_dash_without_input() {
         let args = vec![
             "daglang".to_string(),
