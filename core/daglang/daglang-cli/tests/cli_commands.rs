@@ -32013,6 +32013,47 @@ fn run_command_check_mode_preserves_existing_file_and_reports_not_written() {
 }
 
 #[test]
+fn run_command_check_mode_with_split_output_before_input_preserves_existing_file() {
+    let output_path = unique_temp_output_file("run_check_mode_split_before_input");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
+    }
+    let stale = "check-mode split-before-input stale content";
+    std::fs::write(&output_path, stale).expect("failed to seed stale check-mode file");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--check-mode")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with split output check-mode flags before input");
+
+    assert!(
+        output.status.success(),
+        "run with split output check-mode flags before input should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode run with split output flags before input should report mode=check-mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode run with split output flags before input should report written=false: {stdout}"
+    );
+    let after = std::fs::read_to_string(&output_path).expect("failed to read check-mode file");
+    assert_eq!(
+        after, stale,
+        "check-mode run with split output flags before input should preserve output content"
+    );
+    std::fs::remove_file(&output_path).expect("failed to clean up check-mode output file");
+}
+
+#[test]
 fn run_command_check_mode_accepts_flags_after_input_path() {
     let output_path = unique_temp_output_file("run_check_mode_flags_after_input");
     if output_path.exists() {
