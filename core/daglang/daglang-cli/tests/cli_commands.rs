@@ -30765,6 +30765,37 @@ fn run_with_conflicting_dry_run_and_check_mode_exits_nonzero_with_usage_message(
 }
 
 #[test]
+fn run_with_conflicting_dry_run_and_check_mode_after_input_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--dry-run")
+        .arg("--check-mode")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with conflicting mode flags after input");
+
+    assert!(
+        !output.status.success(),
+        "run with conflicting dry-run/check-mode flags after input should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with conflicting mode flags after input should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--dry-run and --check-mode cannot be used together"),
+        "run should report conflicting mode flags after input explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for conflicting mode flags after input: {stderr}"
+    );
+}
+
+#[test]
 fn run_with_non_dag_input_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
