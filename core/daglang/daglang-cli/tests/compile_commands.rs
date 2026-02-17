@@ -17164,7 +17164,7 @@ fn show_triplets_command_json_curdir_suffix_symlink_named_uppercase_dag_extensio
 }
 
 #[test]
-fn viz_command_renders_mermaid_for_compiled_file() {
+fn viz_command_defaults_to_ascii_for_compiled_file() {
     let output = Command::new(daglang_bin())
         .arg("viz")
         .arg(makegen_file())
@@ -17175,6 +17175,29 @@ fn viz_command_renders_mermaid_for_compiled_file() {
     assert!(
         output.status.success(),
         "viz command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("DAG daglang-compiled"));
+    assert!(stdout.contains("tools.makegen::render_makefile"));
+}
+
+#[test]
+fn viz_command_mermaid_format_renders_mermaid_for_compiled_file() {
+    let output = Command::new(daglang_bin())
+        .arg("viz")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("mermaid")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang viz file with mermaid format");
+
+    assert!(
+        output.status.success(),
+        "viz --format mermaid command failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
