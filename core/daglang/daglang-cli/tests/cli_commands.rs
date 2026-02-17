@@ -32099,6 +32099,149 @@ fn run_dry_run_supports_split_output_dash_prefixed_path_via_separator() {
 }
 
 #[test]
+fn run_check_mode_supports_split_output_dash_prefixed_path_via_separator() {
+    let execution_dir = unique_temp_dir("run_check_mode_split_output_dash_prefixed_separator");
+    std::fs::create_dir_all(&execution_dir)
+        .expect("failed to create execution directory for check-mode split output separator test");
+    let output_basename = format!(
+        "--daglang_run_check_mode_split_output_separator_output_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    );
+    let output_path = execution_dir.join(&output_basename);
+    if output_path.exists() {
+        std::fs::remove_file(&output_path)
+            .expect("failed to remove stale check-mode split output separator output file");
+    }
+    let stale = "check-mode split output separator stale content";
+    std::fs::write(&output_path, stale)
+        .expect("failed to seed check-mode split output separator stale output file");
+    let input_path = workspace_root().join("dsl/tools/makegen.dag");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--check-mode")
+        .arg("--output")
+        .arg("--")
+        .arg(&output_basename)
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(&execution_dir)
+        .output()
+        .expect(
+            "failed to run daglang run check-mode with split output separator and dash-prefixed output path",
+        );
+
+    assert!(
+        output.status.success(),
+        "check-mode with split output separator and dash-prefixed output path should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode split output separator run should report mode=check-mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode split output separator run should report written=false: {stdout}"
+    );
+    let after = std::fs::read_to_string(&output_path)
+        .expect("failed to read check-mode split output separator output file");
+    assert_eq!(
+        after, stale,
+        "check-mode split output separator run should preserve existing output content"
+    );
+
+    std::fs::remove_dir_all(&execution_dir)
+        .expect("failed to clean check-mode split output separator execution directory");
+}
+
+#[test]
+fn run_real_mode_supports_split_output_dash_prefixed_path_via_separator_and_reports_idempotence() {
+    let execution_dir = unique_temp_dir("run_real_mode_split_output_dash_prefixed_separator");
+    std::fs::create_dir_all(&execution_dir)
+        .expect("failed to create execution directory for real-mode split output separator test");
+    let output_basename = format!(
+        "--daglang_run_real_mode_split_output_separator_output_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    );
+    let output_path = execution_dir.join(&output_basename);
+    if output_path.exists() {
+        std::fs::remove_file(&output_path)
+            .expect("failed to remove stale real-mode split output separator output file");
+    }
+    let input_path = workspace_root().join("dsl/tools/makegen.dag");
+
+    let first_output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("--")
+        .arg(&output_basename)
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(&execution_dir)
+        .output()
+        .expect(
+            "failed to run first daglang run real-mode with split output separator and dash-prefixed output path",
+        );
+    assert!(
+        first_output.status.success(),
+        "first real-mode split output separator run should succeed: {}",
+        String::from_utf8_lossy(&first_output.stderr)
+    );
+    let first_stdout = String::from_utf8_lossy(&first_output.stdout);
+    assert!(
+        first_stdout.contains("mode=real"),
+        "first real-mode split output separator run should report mode=real: {first_stdout}"
+    );
+    assert!(
+        first_stdout.contains("written=true"),
+        "first real-mode split output separator run should report written=true: {first_stdout}"
+    );
+    let written = std::fs::read_to_string(&output_path)
+        .expect("failed to read first real-mode split output separator output file");
+    assert!(
+        written.contains(".PHONY"),
+        "real-mode split output separator run should write generated makefile content: {written}"
+    );
+
+    let second_output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("--")
+        .arg(&output_basename)
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(&execution_dir)
+        .output()
+        .expect(
+            "failed to run second daglang run real-mode with split output separator and dash-prefixed output path",
+        );
+    assert!(
+        second_output.status.success(),
+        "second real-mode split output separator run should succeed: {}",
+        String::from_utf8_lossy(&second_output.stderr)
+    );
+    let second_stdout = String::from_utf8_lossy(&second_output.stdout);
+    assert!(
+        second_stdout.contains("mode=real"),
+        "second real-mode split output separator run should report mode=real: {second_stdout}"
+    );
+    assert!(
+        second_stdout.contains("written=false"),
+        "second real-mode split output separator run should report written=false when output is unchanged: {second_stdout}"
+    );
+
+    std::fs::remove_dir_all(&execution_dir)
+        .expect("failed to clean real-mode split output separator execution directory");
+}
+
+#[test]
 fn run_with_duplicate_split_output_flags_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
