@@ -11647,6 +11647,15 @@ fn manifest_command_ci_json_includes_stage_groups() {
         }),
         "ci manifest should include cloud_env stage group"
     );
+    assert!(
+        stage_groups.iter().any(|group| {
+            group
+                .get("stage")
+                .and_then(Value::as_str)
+                .is_some_and(|stage| stage.ends_with(":bootstrap_stage"))
+        }),
+        "ci manifest should include explicit bootstrap_stage group"
+    );
 }
 
 #[test]

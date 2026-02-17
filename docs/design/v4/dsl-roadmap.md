@@ -753,7 +753,7 @@ The two workers share the `daglang-cli` crate but touch different files:
 **Acceptance Gates**
 
 - [ ] **Obligation parity**: CI obligation stats match expectations (133 obligations)
-- [ ] **Bootstrap constraint**: CI entrypoint handles the "runs codegen, can't depend on generated code" constraint explicitly
+- [x] **Bootstrap constraint**: CI entrypoint handles the "runs codegen, can't depend on generated code" constraint explicitly — *`pipelines/ci.dag` now models an explicit `bootstrap_stage` gated after `codegen_stage`, making the ordering and isolation requirement first-class in the DSL pipeline*
 - [ ] **Stage groups**: progress renderers display pipeline stages as collapsible sections
 - [ ] **IR parity**: compiled CI graph matches existing 920-line builder shape
 
