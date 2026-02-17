@@ -308,7 +308,7 @@ fn check_command_parses_full_dsl_corpus() {
     );
     assert!(
         !stdout.contains("Diagnostics:"),
-        "parse-only check over golden corpus should not emit diagnostics: {stdout}"
+        "check over golden corpus should not emit diagnostics: {stdout}"
     );
 }
 
@@ -333,6 +333,50 @@ fn check_command_real_corpus_stdout_matches_expected_snapshot() {
         "check over golden corpus should not emit stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn check_command_single_file_type_mismatch_exits_nonzero_with_typecheck_error() {
+    let fixture = unique_temp_file("check_single_file_type_mismatch");
+    std::fs::write(
+        &fixture,
+        r#"module sample.check_type_mismatch
+fn run() -> String { return 42 }
+"#,
+    )
+    .expect("failed to write check single-file type mismatch fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("check")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang check for single-file type mismatch");
+
+    assert!(
+        !output.status.success(),
+        "check should fail for single-file type mismatch fixture"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "check type mismatch failure should use exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("typecheck errors"),
+        "check type mismatch failure should report typecheck stage: {stderr}"
+    );
+    assert!(
+        stderr.contains("type mismatch: expected `String`, got `Int`"),
+        "check type mismatch failure should include mismatch detail: {stderr}"
+    );
+    assert!(
+        !stderr.contains("lower error"),
+        "check should fail in typecheck stage before lowering: {stderr}"
+    );
+
+    std::fs::remove_file(fixture).expect("failed to cleanup check single-file type mismatch fixture");
 }
 
 #[test]

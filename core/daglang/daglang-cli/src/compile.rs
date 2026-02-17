@@ -22,6 +22,11 @@ pub struct CompileOutput {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CheckOutput {
+    pub parsed_files: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
     Text,
     Json,
@@ -78,6 +83,28 @@ pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, 
         derived,
         emitted,
     })
+}
+
+pub fn check_from_context(context: &PipelineContext) -> Result<CheckOutput, String> {
+    let module_graph = discover_module_graph_for_context(context)?;
+    if context.target_file.is_none() {
+        validate_module_path_consistency(&module_graph, &context.roots)?;
+    }
+    let parsed_files = module_graph.modules.len();
+    typecheck_module_graph_with_options(
+        module_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: context.target_file.is_some(),
+        },
+    )
+    .map_err(|errors| {
+        let mut message = String::from("typecheck errors:\n");
+        for error in errors {
+            writeln!(message, "  {error}").ok();
+        }
+        message
+    })?;
+    Ok(CheckOutput { parsed_files })
 }
 
 // Compiler pipeline: reads .dag source for single-file compilation
@@ -492,6 +519,53 @@ mod tests {
         let context = build_context(&cwd, None);
         assert_eq!(context.roots, vec![cwd.join("dsl")]);
         assert!(context.target_file.is_none());
+    }
+
+    #[test]
+    fn check_from_context_succeeds_for_valid_single_file() {
+        let fixture = unique_temp_file("check_valid_single_file");
+        std::fs::write(
+            &fixture,
+            r#"module sample.check_valid
+fn run() -> Unit { }
+"#,
+        )
+        .expect("failed to write check valid fixture");
+        let cwd = std::env::temp_dir();
+        let input = fixture.to_string_lossy().to_string();
+        let context = build_context(&cwd, Some(&input));
+
+        let output = check_from_context(&context).expect("check should succeed");
+        assert_eq!(
+            output.parsed_files, 1,
+            "single-file check should report exactly one parsed file"
+        );
+
+        std::fs::remove_file(fixture).expect("failed to cleanup check valid fixture");
+    }
+
+    #[test]
+    fn check_from_context_reports_typecheck_error_for_invalid_single_file() {
+        let fixture = unique_temp_file("check_type_mismatch");
+        std::fs::write(
+            &fixture,
+            r#"module sample.check_invalid
+fn run() -> String { return 42 }
+"#,
+        )
+        .expect("failed to write check invalid fixture");
+        let cwd = std::env::temp_dir();
+        let input = fixture.to_string_lossy().to_string();
+        let context = build_context(&cwd, Some(&input));
+
+        let error = check_from_context(&context).expect_err("check should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(
+            error.contains("type mismatch: expected `String`, got `Int`"),
+            "check should surface type mismatch details: {error}"
+        );
+
+        std::fs::remove_file(fixture).expect("failed to cleanup check invalid fixture");
     }
 
     #[test]
