@@ -623,7 +623,71 @@ use super::*;
 /// - scaffold mode: report still gives deterministic deltas while lowering
 ///   coverage grows.
 pub fn compare_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
-    compare_ir(candidate, reference)
+    let candidate_node_ids = candidate
+        .nodes
+        .iter()
+        .map(|node| node.id.0.clone())
+        .collect::<BTreeSet<_>>();
+    let reference_node_ids = reference
+        .nodes
+        .iter()
+        .map(|node| node.id.0.clone())
+        .collect::<BTreeSet<_>>();
+
+    let added_node_ids = candidate_node_ids
+        .difference(&reference_node_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+    let removed_node_ids = reference_node_ids
+        .difference(&candidate_node_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let candidate_edge_ids = candidate
+        .edges
+        .iter()
+        .map(|edge| {
+            format!(
+                "{}.{}->{}.{}",
+                edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    let reference_edge_ids = reference
+        .edges
+        .iter()
+        .map(|edge| {
+            format!(
+                "{}.{}->{}.{}",
+                edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    let added_edge_ids = candidate_edge_ids
+        .difference(&reference_edge_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+    let removed_edge_ids = reference_edge_ids
+        .difference(&candidate_edge_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    ParityReport {
+        candidate_nodes: candidate.nodes.len(),
+        reference_nodes: reference.nodes.len(),
+        candidate_edges: candidate.edges.len(),
+        reference_edges: reference.edges.len(),
+        added_nodes: added_node_ids.len(),
+        removed_nodes: removed_node_ids.len(),
+        changed_nodes: 0,
+        added_edges: added_edge_ids.len(),
+        removed_edges: removed_edge_ids.len(),
+        added_node_ids,
+        removed_node_ids,
+        changed_node_details: Vec::new(),
+        added_edge_ids,
+        removed_edge_ids,
+    }
 }
 
 /// Compare a lowered daglang graph against a reference graph using canonical

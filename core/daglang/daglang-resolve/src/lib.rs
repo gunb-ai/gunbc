@@ -35,6 +35,16 @@ pub fn has_dag_extension(path: &Path) -> bool {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("dag"))
 }
 
+/// Discover `.dag` files recursively under a root directory.
+pub fn discover_dag_files(root: &Path) -> Result<Vec<PathBuf>, ResolveError> {
+    let mut files = Vec::new();
+    let mut visited_dirs = HashSet::new();
+    collect_dag_files(root, &mut files, &mut visited_dirs)?;
+    files.sort();
+    files.dedup();
+    Ok(files)
+}
+
 /// A resolved module in the dependency graph.
 #[derive(Debug)]
 pub struct ResolvedModule {

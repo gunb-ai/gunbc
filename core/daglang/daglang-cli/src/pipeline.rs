@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use daglang_resolve::{self, ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::SourceFile;
@@ -377,7 +377,6 @@ fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> 
     }
 
     let mut dag_files = Vec::new();
-    let mut visited_dirs = HashSet::new();
     for root in &context.roots {
         if !root.exists() {
             return Err(format!("input root does not exist: {}", root.display()));
@@ -385,8 +384,9 @@ fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> 
         if !root.is_dir() {
             return Err(format!("input root is not a directory: {}", root.display()));
         }
-        collect_dag_files(root, &mut dag_files, &mut visited_dirs)
-            .map_err(|error| format!("failed to collect .dag files in {}: {error}", root.display()))?;
+        let mut discovered =
+            daglang_resolve::discover_dag_files(root).map_err(|error| error.to_string())?;
+        dag_files.append(&mut discovered);
     }
     let mut canonical_dag_files = Vec::with_capacity(dag_files.len());
     for path in dag_files {
@@ -405,32 +405,6 @@ fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> 
         out.push(FileSource { path, source });
     }
     Ok(out)
-}
-
-// Compiler pipeline: recursively discovers .dag files
-#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
-fn collect_dag_files(
-    dir: &Path,
-    out: &mut Vec<PathBuf>,
-    visited_dirs: &mut HashSet<PathBuf>,
-) -> std::io::Result<()> {
-    if !dir.is_dir() {
-        return Ok(());
-    }
-    let canonical_dir = fs::canonicalize(dir)?;
-    if !visited_dirs.insert(canonical_dir) {
-        return Ok(());
-    }
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            collect_dag_files(&path, out, visited_dirs)?;
-        } else if daglang_resolve::has_dag_extension(&path) {
-            out.push(path);
-        }
-    }
-    Ok(())
 }
 
 fn build_module_graph(
