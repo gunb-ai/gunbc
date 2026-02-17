@@ -30791,6 +30791,74 @@ fn run_check_mode_supports_double_dash_for_dash_prefixed_uppercase_input_paths()
 }
 
 #[test]
+fn run_check_mode_supports_equals_output_with_double_dash_for_dash_prefixed_uppercase_input_paths()
+{
+    let input_path = std::env::temp_dir().join(format!(
+        "--daglang_run_check_mode_equals_double_dash_dash_prefixed_uppercase_input_{}_{}.DAG",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    std::fs::copy(
+        workspace_root().join("dsl/tools/makegen.dag"),
+        &input_path,
+    )
+    .expect("failed to copy makegen fixture for check-mode equals uppercase dash-prefixed input");
+    let output_path = unique_temp_output_file(
+        "run_check_mode_equals_double_dash_dash_prefixed_uppercase_output",
+    );
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect(
+            "failed to remove stale output for check-mode equals uppercase dash-prefixed input",
+        );
+    }
+    let stale = "check-mode equals -- uppercase dash-prefixed stale content";
+    std::fs::write(&output_path, stale).expect(
+        "failed to seed stale output for check-mode equals uppercase dash-prefixed input",
+    );
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--check-mode")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .arg("--")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect(
+            "failed to run daglang run check-mode with equals output and uppercase dash-prefixed input",
+        );
+
+    assert!(
+        output.status.success(),
+        "check-mode run with equals output and uppercase dash-prefixed .DAG input after -- should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode run with equals output and uppercase dash-prefixed input should report mode=check-mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode run with equals output and uppercase dash-prefixed input should report written=false: {stdout}"
+    );
+    let after = std::fs::read_to_string(&output_path)
+        .expect("failed to read check-mode equals uppercase dash-prefixed output");
+    assert_eq!(
+        after, stale,
+        "check-mode run with equals output and uppercase dash-prefixed input should preserve output content"
+    );
+
+    std::fs::remove_file(&output_path)
+        .expect("failed to clean check-mode equals uppercase dash-prefixed output");
+    std::fs::remove_file(&input_path)
+        .expect("failed to clean check-mode equals uppercase dash-prefixed input fixture");
+}
+
+#[test]
 fn run_check_mode_double_dash_dash_prefixed_uppercase_input_does_not_create_missing_output() {
     let input_path = std::env::temp_dir().join(format!(
         "--daglang_run_check_mode_dash_prefixed_uppercase_missing_output_input_{}_{}.DAG",
@@ -30908,6 +30976,66 @@ fn run_real_mode_supports_double_dash_for_dash_prefixed_uppercase_input_paths() 
         .expect("failed to clean real-mode uppercase dash-prefixed output");
     std::fs::remove_file(&input_path)
         .expect("failed to clean real-mode uppercase dash-prefixed input fixture");
+}
+
+#[test]
+fn run_dry_run_supports_equals_output_with_double_dash_for_dash_prefixed_uppercase_input_paths() {
+    let input_path = std::env::temp_dir().join(format!(
+        "--daglang_run_dry_mode_equals_double_dash_dash_prefixed_uppercase_input_{}_{}.DAG",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    std::fs::copy(
+        workspace_root().join("dsl/tools/makegen.dag"),
+        &input_path,
+    )
+    .expect("failed to copy makegen fixture for dry-run equals uppercase dash-prefixed input");
+    let output_path = unique_temp_output_file(
+        "run_dry_mode_equals_double_dash_dash_prefixed_uppercase_output",
+    );
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect(
+            "failed to remove stale output for dry-run equals uppercase dash-prefixed input",
+        );
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--dry-run")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .arg("--")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect(
+            "failed to run daglang run dry-run with equals output and uppercase dash-prefixed input",
+        );
+
+    assert!(
+        output.status.success(),
+        "dry-run with equals output and uppercase dash-prefixed .DAG input after -- should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "dry-run with equals output and uppercase dash-prefixed input should report mode=dry-run: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "dry-run with equals output and uppercase dash-prefixed input should report written=false: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "dry-run with equals output and uppercase dash-prefixed input should not create output at {}",
+        output_path.display()
+    );
+
+    std::fs::remove_file(&input_path)
+        .expect("failed to clean dry-run equals uppercase dash-prefixed input fixture");
 }
 
 #[test]
