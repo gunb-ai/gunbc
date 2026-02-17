@@ -6,10 +6,10 @@
 //! - no conflicting resource access pairs in the same DAG
 //! - all `res:*` resource ports are wired
 
+use gunbc_ir::resource::ResourceIo;
 use gunbc_ir::{
     derive_resource_accesses, detect_resource_conflicts, validate_resource_wiring_recursive,
 };
-use gunbc_ir::resource::ResourceIo;
 use gunbc_lib_transport::TransportIo;
 use gunbc_testgen_registry::iter_resource_tests;
 use std::path::Path;

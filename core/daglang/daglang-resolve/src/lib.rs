@@ -107,8 +107,8 @@ impl ModuleGraph {
         }
         let mut canonical_dag_files = Vec::with_capacity(dag_files.len());
         for path in dag_files {
-            let canonical = std::fs::canonicalize(&path)
-                .map_err(|e| ResolveError::IoError(path.clone(), e))?;
+            let canonical =
+                std::fs::canonicalize(&path).map_err(|e| ResolveError::IoError(path.clone(), e))?;
             canonical_dag_files.push(canonical);
         }
         dag_files = canonical_dag_files;
@@ -181,7 +181,12 @@ impl ModuleGraph {
             let path_str = m.module_path.join(".");
             let dep_count = m.dependencies.len();
             let n_items = m.ast.items.len();
-            writeln!(out, "  {path_str}  ({n_items} items, {dep_count} deps)  [{}]", m.path.display()).ok();
+            writeln!(
+                out,
+                "  {path_str}  ({n_items} items, {dep_count} deps)  [{}]",
+                m.path.display()
+            )
+            .ok();
         }
         out
     }
@@ -270,7 +275,11 @@ pub fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
 
 /// Resolve a filesystem path to a module path using canonical path comparison.
 #[allow(clippy::disallowed_methods)]
-pub fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
+pub fn path_to_module_path(
+    path: &Path,
+    roots: &[PathBuf],
+    canonical_roots: &[PathBuf],
+) -> Vec<String> {
     let canonical_path = std::fs::canonicalize(path).ok();
     let mut best_relative: Option<PathBuf> = None;
     for root in roots {
@@ -353,7 +362,10 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>, fail_on_cycles: bool) -> Result<
     reorder_modules_by_order(modules, &order)
 }
 
-fn reorder_modules_by_order(modules: &mut Vec<ResolvedModule>, order: &[usize]) -> Result<(), ResolveError> {
+fn reorder_modules_by_order(
+    modules: &mut Vec<ResolvedModule>,
+    order: &[usize],
+) -> Result<(), ResolveError> {
     let n = modules.len();
     let mut old_to_new = vec![0usize; n];
     for (new_idx, old_idx) in order.iter().enumerate() {

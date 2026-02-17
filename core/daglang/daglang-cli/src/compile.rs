@@ -196,7 +196,12 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
     out.push_str("  topology:\n");
     for node in &manifest.topology {
         let parent = node.parent.as_deref().unwrap_or("none");
-        writeln!(out, "    - {} (depth={}, parent={parent})", node.id, node.depth).ok();
+        writeln!(
+            out,
+            "    - {} (depth={}, parent={parent})",
+            node.id, node.depth
+        )
+        .ok();
     }
     out.push_str("  labels:\n");
     for (node_id, label) in &manifest.labels {
@@ -2050,7 +2055,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
     }
 
     #[test]
-    fn compile_single_file_allows_unresolved_imports_in_relaxed_mode() {
+    fn compile_single_file_unresolved_import_fails_in_typecheck_stage() {
         let fixture = unique_temp_file("single_file_unresolved_import");
         std::fs::write(
             &fixture,
@@ -2069,10 +2074,10 @@ fn run() -> Unit {}
             target_file: Some(fixture.clone()),
         };
 
-        let output = compile_from_context(&context).expect("compile should succeed");
-        assert!(!output.lowered_dag.nodes.is_empty());
-        assert!(output.derived.manifest.total_nodes > 0);
-        assert!(!output.emitted.files.is_empty());
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("unresolved import"));
+        assert!(error.contains("missing.dep"));
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
     }
@@ -2111,7 +2116,7 @@ fn run() -> Unit {}
     }
 
     #[test]
-    fn compile_single_file_allows_unresolved_call_targets_in_relaxed_mode() {
+    fn compile_single_file_unresolved_call_target_fails_in_typecheck_stage() {
         let fixture = unique_temp_file("single_file_unresolved_call_target");
         std::fs::write(
             &fixture,
@@ -2131,10 +2136,10 @@ fn run() -> Unit {
             target_file: Some(fixture.clone()),
         };
 
-        let output = compile_from_context(&context).expect("compile should succeed");
-        assert!(!output.lowered_dag.nodes.is_empty());
-        assert!(output.derived.manifest.total_nodes > 0);
-        assert!(!output.emitted.files.is_empty());
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("unresolved call target"));
+        assert!(error.contains("missing"));
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
     }

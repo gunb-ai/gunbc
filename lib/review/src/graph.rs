@@ -432,7 +432,10 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
         .add_edge(prepare_blob.out("skip"), execute_blob.in_port("skip"))
         .expect("prepare_blob.skip -> execute_blob.skip");
     builder
-        .add_edge(fs_env.out(FsEnv::WRITE_PORT), execute_blob.in_port("res:file"))
+        .add_edge(
+            fs_env.out(FsEnv::WRITE_PORT),
+            execute_blob.in_port("res:file"),
+        )
         .expect("fs_env -> execute_blob.res:file");
     builder
         .add_edge(execute_blob.out("response"), parse_blob.in_port("response"))
@@ -469,10 +472,7 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
 
     // Response parsing
     builder
-        .add_edge(
-            llm_triplet.out("answer"),
-            parse_response.in_port("answer"),
-        )
+        .add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))
         .expect("llm.answer -> parse_response.answer");
     // criteria is an entrypoint, flows to both prepare_prompt and parse_response
 
@@ -609,10 +609,7 @@ pub fn build_inline_review_graph_with_config(
         )
         .expect("cloud_credential -> llm.res:credential");
     builder
-        .add_edge(
-            llm_triplet.out("answer"),
-            parse_response.in_port("answer"),
-        )
+        .add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))
         .expect("llm.answer -> parse_response.answer");
 
     builder.build()
@@ -927,10 +924,7 @@ pub fn build_diff_review_graph_with_cloud_config(
 
     // Response parsing
     builder
-        .add_edge(
-            llm_triplet.out("answer"),
-            parse_response.in_port("answer"),
-        )
+        .add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))
         .expect("llm.answer -> parse_response.answer");
 
     builder.build()
@@ -1160,10 +1154,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         )
         .expect("cloud_credential -> llm.res:credential");
     builder
-        .add_edge(
-            llm_triplet.out("answer"),
-            parse_response.in_port("answer"),
-        )
+        .add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))
         .expect("llm.answer -> parse_response.answer");
 
     // Review output → merge (list port collects fan-in automatically)
@@ -1332,11 +1323,7 @@ mod tests {
             let node = dag
                 .get_node(&node_id.into())
                 .unwrap_or_else(|| panic!("missing subdag node: {}", node_id));
-            assert!(
-                node.is_subdag(),
-                "{} should be a subdag node",
-                node_id
-            );
+            assert!(node.is_subdag(), "{} should be a subdag node", node_id);
         }
     }
 

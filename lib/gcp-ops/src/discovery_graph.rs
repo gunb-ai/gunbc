@@ -229,7 +229,12 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         "execute_list_sa",
         "skip",
     ));
-    dag.add_edge(Edge::new("net_env", NetEnv::PORT, "execute_list_sa", RESOURCE_API_NETWORK));
+    dag.add_edge(Edge::new(
+        "net_env",
+        NetEnv::PORT,
+        "execute_list_sa",
+        RESOURCE_API_NETWORK,
+    ));
     dag.add_edge(Edge::new(
         "execute_list_sa",
         "response",

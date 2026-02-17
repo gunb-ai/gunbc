@@ -553,10 +553,7 @@ impl MockRequirements {
 ///     .build()
 ///     .expect("all mocks provided");
 /// ```
-pub fn extract_mock_requirements<T: Clone>(
-    dag: &gunbc_ir::Dag<T>,
-    name: &str,
-) -> MockRequirements {
+pub fn extract_mock_requirements<T: Clone>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockRequirements {
     use gunbc_ir::detect_boundaries;
     use std::collections::HashSet;
 

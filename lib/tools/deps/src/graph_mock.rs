@@ -130,9 +130,17 @@ pub fn deps_mock_spec() -> MockSpec {
         .expect("parse_execute_result executed should match type")
         .boundary_bool("execute_installs/parse_execute_result", "success", true)
         .expect("parse_execute_result success should match type")
-        .boundary_str("execute_installs/parse_execute_result", "script", "echo install")
+        .boundary_str(
+            "execute_installs/parse_execute_result",
+            "script",
+            "echo install",
+        )
         .expect("parse_execute_result script should match type")
-        .boundary_str("execute_installs/parse_execute_result", "stdout", "installed\n")
+        .boundary_str(
+            "execute_installs/parse_execute_result",
+            "stdout",
+            "installed\n",
+        )
         .expect("parse_execute_result stdout should match type")
         .boundary_str("execute_installs/parse_execute_result", "stderr", "")
         .expect("parse_execute_result stderr should match type")
@@ -240,7 +248,11 @@ pub fn deps_mock_spec() -> MockSpec {
                 .description("Parses install execution result"),
         )
         // Probe-observer: terminal needs chain-safe observer
-        .live_expected_output("execute_installs/parse_execute_result", "success", OutputMatcher::IsBool)
+        .live_expected_output(
+            "execute_installs/parse_execute_result",
+            "success",
+            OutputMatcher::IsBool,
+        )
 }
 
 /// Mock spec for testing sudo elevation scenarios.
@@ -298,5 +310,8 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
             "manifest_path",
             Value::Str("deps.toml".into()),
         )
-        .resource_lock_fails("target:manager", "Package manager locked by another process")
+        .resource_lock_fails(
+            "target:manager",
+            "Package manager locked by another process",
+        )
 }

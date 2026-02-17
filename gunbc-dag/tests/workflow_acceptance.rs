@@ -74,8 +74,11 @@ fn ci_test_stage_runs_tests_after_build() {
 
 #[test]
 fn ci_test_stage_skips_when_build_fails() {
-    let outputs = prepare_outputs("test/prepare_test", bool_inputs(&[("build_success", false)]))
-        .expect("prepare_test should execute");
+    let outputs = prepare_outputs(
+        "test/prepare_test",
+        bool_inputs(&[("build_success", false)]),
+    )
+    .expect("prepare_test should execute");
 
     assert_eq!(outputs.get("skip").and_then(|v| v.as_bool()), Some(true));
     assert!(!outputs.contains_key("request"));

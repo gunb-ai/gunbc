@@ -109,9 +109,17 @@ pub fn openai_mock_spec() -> MockSpec {
 
     with_cloud_env(MockSpec::new("llm-openai"))
         // Input mocks for DAG entry points (dangling inputs on prepare node and resolve_auth)
-        .input_mock("chat_completion/prepare", "provider", Value::Str("openai".into()))
+        .input_mock(
+            "chat_completion/prepare",
+            "provider",
+            Value::Str("openai".into()),
+        )
         .input_mock("resolve_auth", "provider", Value::Str("openai".into()))
-        .input_mock("chat_completion/prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock(
+            "chat_completion/prepare",
+            "model",
+            Value::Str("gpt-4o".into()),
+        )
         .input_mock(
             "chat_completion/prepare",
             "messages",
@@ -139,8 +147,16 @@ pub fn openai_mock_spec() -> MockSpec {
             "content",
             Value::Str("The code looks good. No issues found.".into()),
         )
-        .boundary("chat_completion/parse", "model", Value::Str("gpt-4o".into()))
-        .boundary("chat_completion/parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary(
+            "chat_completion/parse",
+            "model",
+            Value::Str("gpt-4o".into()),
+        )
+        .boundary(
+            "chat_completion/parse",
+            "finish_reason",
+            Value::Str("Stop".into()),
+        )
         .boundary("chat_completion/parse", "input_tokens", Value::Int(10))
         .boundary("chat_completion/parse", "output_tokens", Value::Int(20))
         // Input expectations
@@ -234,7 +250,11 @@ pub fn anthropic_mock_spec() -> MockSpec {
 
     with_cloud_env(MockSpec::new("llm-anthropic"))
         // Input mocks for DAG entry points (dangling inputs on prepare node and resolve_auth)
-        .input_mock("chat_completion/prepare", "provider", Value::Str("anthropic".into()))
+        .input_mock(
+            "chat_completion/prepare",
+            "provider",
+            Value::Str("anthropic".into()),
+        )
         .input_mock("resolve_auth", "provider", Value::Str("anthropic".into()))
         .input_mock(
             "chat_completion/prepare",
@@ -275,7 +295,11 @@ pub fn anthropic_mock_spec() -> MockSpec {
             "model",
             Value::Str("claude-sonnet-4-20250514".into()),
         )
-        .boundary("chat_completion/parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary(
+            "chat_completion/parse",
+            "finish_reason",
+            Value::Str("Stop".into()),
+        )
         .boundary("chat_completion/parse", "input_tokens", Value::Int(10))
         .boundary("chat_completion/parse", "output_tokens", Value::Int(20))
         // Input expectations
@@ -482,9 +506,17 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
 
     with_cloud_env(MockSpec::new("llm-secrets"))
         // Input mocks for DAG entry points
-        .input_mock("chat_completion/prepare", "provider", Value::Str("openai".into()))
+        .input_mock(
+            "chat_completion/prepare",
+            "provider",
+            Value::Str("openai".into()),
+        )
         .input_mock("resolve_auth", "provider", Value::Str("openai".into()))
-        .input_mock("chat_completion/prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock(
+            "chat_completion/prepare",
+            "model",
+            Value::Str("gpt-4o".into()),
+        )
         .input_mock(
             "chat_completion/prepare",
             "messages",
@@ -510,8 +542,16 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
             "content",
             Value::Str("Response with secret auth.".into()),
         )
-        .boundary("chat_completion/parse", "model", Value::Str("gpt-4o".into()))
-        .boundary("chat_completion/parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary(
+            "chat_completion/parse",
+            "model",
+            Value::Str("gpt-4o".into()),
+        )
+        .boundary(
+            "chat_completion/parse",
+            "finish_reason",
+            Value::Str("Stop".into()),
+        )
         .boundary("chat_completion/parse", "input_tokens", Value::Int(10))
         .boundary("chat_completion/parse", "output_tokens", Value::Int(10))
         .expects_input("provider", InputConstraint::NonEmpty)
@@ -581,9 +621,17 @@ pub fn rate_limited_mock_spec() -> MockSpec {
 
     with_cloud_env(MockSpec::new("llm-rate-limited"))
         // Input mocks for DAG entry points
-        .input_mock("chat_completion/prepare", "provider", Value::Str("openai".into()))
+        .input_mock(
+            "chat_completion/prepare",
+            "provider",
+            Value::Str("openai".into()),
+        )
         .input_mock("resolve_auth", "provider", Value::Str("openai".into()))
-        .input_mock("chat_completion/prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock(
+            "chat_completion/prepare",
+            "model",
+            Value::Str("gpt-4o".into()),
+        )
         .input_mock(
             "chat_completion/prepare",
             "messages",
@@ -656,9 +704,17 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
 
     with_cloud_env(MockSpec::new("llm-credential-lifecycle"))
         // Input mocks for DAG entry points
-        .input_mock("chat_completion/prepare", "provider", Value::Str("openai".into()))
+        .input_mock(
+            "chat_completion/prepare",
+            "provider",
+            Value::Str("openai".into()),
+        )
         .input_mock("resolve_auth", "provider", Value::Str("openai".into()))
-        .input_mock("chat_completion/prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock(
+            "chat_completion/prepare",
+            "model",
+            Value::Str("gpt-4o".into()),
+        )
         .input_mock(
             "chat_completion/prepare",
             "messages",
@@ -684,16 +740,40 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
             "content",
             Value::Str("Credential lifecycle test response.".into()),
         )
-        .boundary("chat_completion/parse", "model", Value::Str("gpt-4o".into()))
-        .boundary("chat_completion/parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary(
+            "chat_completion/parse",
+            "model",
+            Value::Str("gpt-4o".into()),
+        )
+        .boundary(
+            "chat_completion/parse",
+            "finish_reason",
+            Value::Str("Stop".into()),
+        )
         .boundary("chat_completion/parse", "input_tokens", Value::Int(10))
         .boundary("chat_completion/parse", "output_tokens", Value::Int(20))
         // Live expectations: LLM returns non-empty content
-        .live_expected_output("chat_completion/parse", "content", OutputMatcher::non_empty())
+        .live_expected_output(
+            "chat_completion/parse",
+            "content",
+            OutputMatcher::non_empty(),
+        )
         .live_expected_output("chat_completion/parse", "model", OutputMatcher::IsString)
-        .live_expected_output("chat_completion/parse", "finish_reason", OutputMatcher::IsString)
-        .live_expected_output("chat_completion/parse", "input_tokens", OutputMatcher::IntGe(0))
-        .live_expected_output("chat_completion/parse", "output_tokens", OutputMatcher::IntGe(0))
+        .live_expected_output(
+            "chat_completion/parse",
+            "finish_reason",
+            OutputMatcher::IsString,
+        )
+        .live_expected_output(
+            "chat_completion/parse",
+            "input_tokens",
+            OutputMatcher::IntGe(0),
+        )
+        .live_expected_output(
+            "chat_completion/parse",
+            "output_tokens",
+            OutputMatcher::IntGe(0),
+        )
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         // Credential resource: basic (acquire + timeout)
@@ -784,7 +864,11 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
 
     with_cloud_env(MockSpec::new("llm-credential-lifecycle-anthropic"))
         // Input mocks for DAG entry points
-        .input_mock("chat_completion/prepare", "provider", Value::Str("anthropic".into()))
+        .input_mock(
+            "chat_completion/prepare",
+            "provider",
+            Value::Str("anthropic".into()),
+        )
         .input_mock("resolve_auth", "provider", Value::Str("anthropic".into()))
         .input_mock(
             "chat_completion/prepare",
@@ -822,15 +906,35 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
             "model",
             Value::Str("claude-sonnet-4-20250514".into()),
         )
-        .boundary("chat_completion/parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary(
+            "chat_completion/parse",
+            "finish_reason",
+            Value::Str("Stop".into()),
+        )
         .boundary("chat_completion/parse", "input_tokens", Value::Int(10))
         .boundary("chat_completion/parse", "output_tokens", Value::Int(20))
         // Live expectations: LLM returns non-empty content
-        .live_expected_output("chat_completion/parse", "content", OutputMatcher::non_empty())
+        .live_expected_output(
+            "chat_completion/parse",
+            "content",
+            OutputMatcher::non_empty(),
+        )
         .live_expected_output("chat_completion/parse", "model", OutputMatcher::IsString)
-        .live_expected_output("chat_completion/parse", "finish_reason", OutputMatcher::IsString)
-        .live_expected_output("chat_completion/parse", "input_tokens", OutputMatcher::IntGe(0))
-        .live_expected_output("chat_completion/parse", "output_tokens", OutputMatcher::IntGe(0))
+        .live_expected_output(
+            "chat_completion/parse",
+            "finish_reason",
+            OutputMatcher::IsString,
+        )
+        .live_expected_output(
+            "chat_completion/parse",
+            "input_tokens",
+            OutputMatcher::IntGe(0),
+        )
+        .live_expected_output(
+            "chat_completion/parse",
+            "output_tokens",
+            OutputMatcher::IntGe(0),
+        )
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         // Credential resource: basic (acquire + timeout)

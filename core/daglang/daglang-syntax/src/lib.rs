@@ -22,10 +22,10 @@
 //! The `.dag` files in `dsl/` are the spec examples that this parser must
 //! handle. Start with `dsl/tools/makegen.dag` (simplest) and work outward.
 
+pub mod ast_utils;
+pub mod diagnostic;
 pub mod lexer;
 pub mod parser;
-pub mod diagnostic;
-pub mod ast_utils;
 
 /// Source location tracking for error messages.
 pub mod span {
@@ -299,14 +299,25 @@ pub mod ast {
 
     #[derive(Debug, Clone)]
     pub enum BinOp {
-        Add, Sub, Mul, Div, Mod,
-        Eq, Ne, Lt, Gt, Le, Ge,
-        And, Or,
+        Add,
+        Sub,
+        Mul,
+        Div,
+        Mod,
+        Eq,
+        Ne,
+        Lt,
+        Gt,
+        Le,
+        Ge,
+        And,
+        Or,
     }
 
     #[derive(Debug, Clone)]
     pub enum UnaryOp {
-        Not, Neg,
+        Not,
+        Neg,
     }
 
     #[derive(Debug, Clone)]

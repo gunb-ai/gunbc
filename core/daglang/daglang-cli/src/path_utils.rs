@@ -94,11 +94,8 @@ mod tests {
         assert!(is_single_file_target(&file, true));
         assert!(is_single_file_target(&file, false));
 
-        std::fs::remove_dir_all(
-            file.parent()
-                .expect("fixture file should have parent"),
-        )
-        .expect("failed to cleanup fixture directory");
+        std::fs::remove_dir_all(file.parent().expect("fixture file should have parent"))
+            .expect("failed to cleanup fixture directory");
     }
 
     #[test]
@@ -144,13 +141,19 @@ mod tests {
     fn resolve_single_file_root_prefers_dsl_ancestor() {
         let cwd = PathBuf::from("/workspace");
         let file = PathBuf::from("/workspace/dsl/cloud/gcp/credential.dag");
-        assert_eq!(resolve_single_file_root(&cwd, &file), PathBuf::from("/workspace/dsl"));
+        assert_eq!(
+            resolve_single_file_root(&cwd, &file),
+            PathBuf::from("/workspace/dsl")
+        );
     }
 
     #[test]
     fn resolve_single_file_root_falls_back_to_parent_without_dsl_ancestor() {
         let cwd = PathBuf::from("/workspace");
         let file = PathBuf::from("/tmp/custom/module.dag");
-        assert_eq!(resolve_single_file_root(&cwd, &file), PathBuf::from("/tmp/custom"));
+        assert_eq!(
+            resolve_single_file_root(&cwd, &file),
+            PathBuf::from("/tmp/custom")
+        );
     }
 }

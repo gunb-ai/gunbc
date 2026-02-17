@@ -51,8 +51,14 @@ fn parse_error_converts_to_parse_diagnostic() {
 
     let diagnostic = err.to_diagnostic(Path::new("sample.dag"), src);
     assert_eq!(diagnostic.kind, DiagnosticKind::Parse);
-    assert_eq!(diagnostic.file.as_ref().and_then(|f| f.to_str()), Some("sample.dag"));
-    assert!(diagnostic.span.is_some(), "parse diagnostic should carry span");
+    assert_eq!(
+        diagnostic.file.as_ref().and_then(|f| f.to_str()),
+        Some("sample.dag")
+    );
+    assert!(
+        diagnostic.span.is_some(),
+        "parse diagnostic should carry span"
+    );
     assert_eq!(diagnostic.line, Some(2));
 }
 
@@ -92,7 +98,9 @@ fn parse_with_file_diagnostics_aggregates_multiple_lex_diagnostics() {
     let diagnostics = parse_with_file_diagnostics(Path::new("sample.dag"), src)
         .expect_err("source should fail with lexical diagnostics");
     assert_eq!(diagnostics.len(), 2, "expected both lexical diagnostics");
-    assert!(diagnostics.iter().all(|diag| diag.kind == DiagnosticKind::Lex));
+    assert!(diagnostics
+        .iter()
+        .all(|diag| diag.kind == DiagnosticKind::Lex));
     assert_eq!(diagnostics[0].line, Some(2));
     assert_eq!(diagnostics[0].column, Some(1));
     assert_eq!(diagnostics[1].line, Some(3));
@@ -105,7 +113,9 @@ fn parse_with_file_diagnostics_reports_utf8_adjacent_lex_column() {
     let diagnostics = parse_with_file_diagnostics(Path::new("sample.dag"), src)
         .expect_err("source should fail with lexical diagnostic");
     assert!(!diagnostics.is_empty());
-    assert!(diagnostics.iter().all(|diag| diag.kind == DiagnosticKind::Lex));
+    assert!(diagnostics
+        .iter()
+        .all(|diag| diag.kind == DiagnosticKind::Lex));
     let dollar = diagnostics
         .iter()
         .find(|diag| diag.message.contains("unexpected character '$'"))

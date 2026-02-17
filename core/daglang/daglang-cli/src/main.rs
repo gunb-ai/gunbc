@@ -179,7 +179,22 @@ fn main() {
             if args.len() > 3 {
                 exit_usage("check <file.dag|dir>");
             }
-            let context = build_check_pipeline_context(&cwd, args.get(2));
+            let configured_default_roots = if args.get(2).is_none() {
+                match resolve_configured_roots(&cwd) {
+                    Ok(roots) => roots,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                None
+            };
+            let context = build_check_pipeline_context_with_default_roots(
+                &cwd,
+                args.get(2),
+                configured_default_roots.as_deref(),
+            );
             let result = run_pipeline_or_exit(&context, PipelineStop::Build);
             if !result.diagnostics().is_empty() {
                 for diagnostic in result.diagnostics() {
@@ -371,6 +386,14 @@ fn resolve_configured_roots(cwd: &std::path::Path) -> Result<Option<Vec<PathBuf>
 /// Unlike compile context construction, `.dag`-suffixed paths that resolve to
 /// directories stay in directory mode for `daglang check`.
 fn build_check_pipeline_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
+    build_check_pipeline_context_with_default_roots(cwd, input, None)
+}
+
+fn build_check_pipeline_context_with_default_roots(
+    cwd: &std::path::Path,
+    input: Option<&String>,
+    default_roots: Option<&[PathBuf]>,
+) -> PipelineContext {
     let normalized_input =
         input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
     let (roots, target_file) = match normalized_input {
@@ -379,7 +402,12 @@ fn build_check_pipeline_context(cwd: &std::path::Path, input: Option<&String>) -
             (vec![root], Some(path))
         }
         Some(path) => (vec![path], None),
-        None => (vec![resolve_root(cwd, None)], None),
+        None => (
+            default_roots
+                .map(|roots| roots.to_vec())
+                .unwrap_or_else(|| vec![resolve_root(cwd, None)]),
+            None,
+        ),
     };
     PipelineContext { roots, target_file }
 }
@@ -393,7 +421,20 @@ fn compile_target_or_exit_with_options(
     input: Option<&String>,
     emit_collection_nodes: bool,
 ) -> CompileOutput {
-    let context = build_context(cwd, input);
+    let context = if input.is_none() {
+        match resolve_default_roots(cwd) {
+            Ok(roots) => PipelineContext {
+                roots,
+                target_file: None,
+            },
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        build_context(cwd, input)
+    };
     match compile_from_context_with_options(
         &context,
         CompileOptions {
@@ -415,6 +456,13 @@ fn run_pipeline_or_exit(context: &PipelineContext, stop: PipelineStop) -> Pipeli
             eprintln!("pipeline error: {error}");
             std::process::exit(1);
         }
+    }
+}
+
+fn resolve_default_roots(cwd: &std::path::Path) -> Result<Vec<PathBuf>, String> {
+    match resolve_configured_roots(cwd)? {
+        Some(config_roots) => Ok(config_roots),
+        None => Ok(vec![resolve_root(cwd, None)]),
     }
 }
 
@@ -1042,6 +1090,23 @@ mod tests {
     }
 
     #[test]
+    fn resolve_default_roots_prefers_configured_roots() {
+        let cwd = unique_temp_dir("config_default_roots");
+        std::fs::create_dir_all(cwd.join("custom")).expect("failed to create custom dir");
+        std::fs::write(
+            cwd.join("daglang.toml"),
+            "[discovery]\nroots = [\"custom\"]\n",
+        )
+        .expect("failed to write daglang.toml");
+
+        let roots =
+            super::resolve_default_roots(&cwd).expect("configured default roots should resolve");
+        assert_eq!(roots, vec![cwd.join("custom")]);
+
+        std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+    }
+
+    #[test]
     fn parse_output_format_defaults_to_text_for_three_args() {
         let args = vec![
             "daglang".to_string(),
@@ -1496,6 +1561,16 @@ mod tests {
             context.roots,
             vec![root_path().join("workspace").join("project").join("dsl")]
         );
+    }
+
+    #[test]
+    fn build_check_pipeline_context_uses_provided_default_roots_without_input() {
+        let cwd = root_path().join("workspace").join("project");
+        let defaults = vec![cwd.join("custom"), cwd.join("shared")];
+        let context =
+            super::build_check_pipeline_context_with_default_roots(&cwd, None, Some(&defaults));
+        assert_eq!(context.target_file, None);
+        assert_eq!(context.roots, defaults);
     }
 
     #[test]

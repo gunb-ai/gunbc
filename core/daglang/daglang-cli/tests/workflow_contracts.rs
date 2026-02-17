@@ -365,7 +365,8 @@ fn workflow_obligations_contracts_match_golden_snapshots() {
                 actual_json,
                 expected_json.clone(),
                 "obligations json mismatch for scenario {} module {}",
-                fixture.scenario, fixture.module
+                fixture.scenario,
+                fixture.module
             );
         }
         if let Some(expected_substring) = expected_obligations

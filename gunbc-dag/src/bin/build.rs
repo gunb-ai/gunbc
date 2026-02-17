@@ -62,13 +62,7 @@ fn main() {
     let animated = std::io::stdout().is_terminal();
     let steps = gunbc_lib_transport::check_and_plan_freshness();
     let dag = compose_with_freshness(dag, steps);
-    execute_and_display(
-        &dag,
-        mode,
-        animated,
-        Some("overall_success"),
-        None,
-    );
+    execute_and_display(&dag, mode, animated, Some("overall_success"), None);
 }
 
 fn print_help() {

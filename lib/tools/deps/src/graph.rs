@@ -433,8 +433,7 @@ mod tests {
         let entrypoints = detect_entrypoints(&dag);
 
         // manifest_path is an entrypoint on the load_manifest SubDag
-        assert!(entrypoints
-            .is_entrypoint_port(&"load_manifest".into(), &"manifest_path".into()));
+        assert!(entrypoints.is_entrypoint_port(&"load_manifest".into(), &"manifest_path".into()));
     }
 
     #[test]

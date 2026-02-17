@@ -491,16 +491,22 @@ pub fn build_branch_resolution_subdag() -> Dag<BranchResolutionOp> {
         BranchResolutionOp::Git(GitOps::ParseCurrentBranch),
     ));
     dag.add_edge(Edge::new(
-        "prepare_current_branch", "request",
-        "execute_current_branch", "request",
+        "prepare_current_branch",
+        "request",
+        "execute_current_branch",
+        "request",
     ));
     dag.add_edge(Edge::new(
-        "prepare_current_branch", "skip",
-        "execute_current_branch", "skip",
+        "prepare_current_branch",
+        "skip",
+        "execute_current_branch",
+        "skip",
     ));
     dag.add_edge(Edge::new(
-        "execute_current_branch", "response",
-        "parse_current_branch", "response",
+        "execute_current_branch",
+        "response",
+        "parse_current_branch",
+        "response",
     ));
 
     // ========================================================================
@@ -529,16 +535,22 @@ pub fn build_branch_resolution_subdag() -> Dag<BranchResolutionOp> {
         BranchResolutionOp::Git(GitOps::ParseRemoteBranchesAtHead),
     ));
     dag.add_edge(Edge::new(
-        "prepare_remote_branches", "request",
-        "execute_remote_branches", "request",
+        "prepare_remote_branches",
+        "request",
+        "execute_remote_branches",
+        "request",
     ));
     dag.add_edge(Edge::new(
-        "prepare_remote_branches", "skip",
-        "execute_remote_branches", "skip",
+        "prepare_remote_branches",
+        "skip",
+        "execute_remote_branches",
+        "skip",
     ));
     dag.add_edge(Edge::new(
-        "execute_remote_branches", "response",
-        "parse_remote_branches", "response",
+        "execute_remote_branches",
+        "response",
+        "parse_remote_branches",
+        "response",
     ));
 
     dag
@@ -879,7 +891,9 @@ diff --git a/src/main.rs b/src/main.rs
             Value::Request(TransportRequest::Shell(req)) => {
                 assert_eq!(req.command, "git");
                 assert!(req.args.contains(&"show".to_string()));
-                assert!(req.args.contains(&"main:.dag-snapshots/workspace.json".to_string()));
+                assert!(req
+                    .args
+                    .contains(&"main:.dag-snapshots/workspace.json".to_string()));
             }
             _ => panic!("expected shell request"),
         }
@@ -943,7 +957,11 @@ diff --git a/src/main.rs b/src/main.rs
         let dag = build_branch_resolution_subdag();
 
         // Should have 6 nodes: 3 per triplet
-        assert_eq!(dag.nodes.len(), 6, "branch resolution SubDag should have 6 nodes");
+        assert_eq!(
+            dag.nodes.len(),
+            6,
+            "branch resolution SubDag should have 6 nodes"
+        );
 
         // Check all expected nodes exist
         assert!(dag.get_node(&"prepare_current_branch".into()).is_some());
@@ -954,7 +972,11 @@ diff --git a/src/main.rs b/src/main.rs
         assert!(dag.get_node(&"parse_remote_branches".into()).is_some());
 
         // Check edges: 3 per triplet = 6 total
-        assert_eq!(dag.edges.len(), 6, "branch resolution SubDag should have 6 edges");
+        assert_eq!(
+            dag.edges.len(),
+            6,
+            "branch resolution SubDag should have 6 edges"
+        );
     }
 
     #[test]
@@ -965,12 +987,28 @@ diff --git a/src/main.rs b/src/main.rs
 
         // Inputs: repo_path (x2 deduplicated to 1), res:file (x2 deduplicated to 1)
         let input_names: Vec<&str> = node.inputs.iter().map(|p| p.name.0.as_str()).collect();
-        assert!(input_names.contains(&"repo_path"), "should expose repo_path input, got {:?}", input_names);
-        assert!(input_names.contains(&"res:file"), "should expose res:file input, got {:?}", input_names);
+        assert!(
+            input_names.contains(&"repo_path"),
+            "should expose repo_path input, got {:?}",
+            input_names
+        );
+        assert!(
+            input_names.contains(&"res:file"),
+            "should expose res:file input, got {:?}",
+            input_names
+        );
 
         // Outputs: branch, remote_branch
         let output_names: Vec<&str> = node.outputs.iter().map(|p| p.name.0.as_str()).collect();
-        assert!(output_names.contains(&"branch"), "should expose branch output, got {:?}", output_names);
-        assert!(output_names.contains(&"remote_branch"), "should expose remote_branch output, got {:?}", output_names);
+        assert!(
+            output_names.contains(&"branch"),
+            "should expose branch output, got {:?}",
+            output_names
+        );
+        assert!(
+            output_names.contains(&"remote_branch"),
+            "should expose remote_branch output, got {:?}",
+            output_names
+        );
     }
 }

@@ -140,7 +140,10 @@ fn add_upsert_chain(
         TestgenGraphOp::Transport(TransportOps::Execute),
     )?;
 
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), chain.execute_read.in_port("res:file"))?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        chain.execute_read.in_port("res:file"),
+    )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
         chain.execute_write.in_port("res:file"),

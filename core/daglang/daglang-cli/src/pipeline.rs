@@ -6,8 +6,8 @@ use daglang_resolve::{self, ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::SourceFile;
 use daglang_syntax::diagnostic::{self, Diagnostic, DiagnosticKind};
 use daglang_syntax::parser;
-use gunbc_ir::{Dag, Edge, Node, Port};
 use gunbc_ir::types::Cardinality;
+use gunbc_ir::{Dag, Edge, Node, Port};
 
 const NODE_DISCOVER: &str = "discover_files";
 const NODE_PARSE: &str = "parse_all";
@@ -107,11 +107,7 @@ impl PipelineResult {
         }
     }
 
-    fn built(
-        diagnostics: Vec<Diagnostic>,
-        parsed_count: usize,
-        module_graph: ModuleGraph,
-    ) -> Self {
+    fn built(diagnostics: Vec<Diagnostic>, parsed_count: usize, module_graph: ModuleGraph) -> Self {
         Self::Build {
             diagnostics,
             parsed_count,
@@ -363,10 +359,7 @@ fn format_module_report(graph: &ModuleGraph, diagnostics: &[Diagnostic]) -> Stri
 fn discover_files(context: &PipelineContext) -> Result<Vec<FileSource>, String> {
     if let Some(target_file) = &context.target_file {
         let canonical_target = fs::canonicalize(target_file).map_err(|error| {
-            format!(
-                "failed to canonicalize {}: {error}",
-                target_file.display()
-            )
+            format!("failed to canonicalize {}: {error}", target_file.display())
         })?;
         let source = fs::read_to_string(&canonical_target)
             .map_err(|error| format!("failed to read {}: {error}", canonical_target.display()))?;
@@ -566,8 +559,10 @@ fn topological_order(dag: &Dag<CompilerOp>) -> Result<Vec<String>, String> {
     node_ids.sort();
     let mut in_degree: HashMap<String, usize> =
         node_ids.iter().map(|node| (node.clone(), 0usize)).collect();
-    let mut adjacency: HashMap<String, Vec<String>> =
-        node_ids.iter().map(|node| (node.clone(), Vec::new())).collect();
+    let mut adjacency: HashMap<String, Vec<String>> = node_ids
+        .iter()
+        .map(|node| (node.clone(), Vec::new()))
+        .collect();
 
     for edge in &dag.edges {
         *in_degree
@@ -637,8 +632,11 @@ fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
         }
     }
 
-    let node_by_id: HashMap<String, &Node<CompilerOp>> =
-        dag.nodes.iter().map(|node| (node.id.0.clone(), node)).collect();
+    let node_by_id: HashMap<String, &Node<CompilerOp>> = dag
+        .nodes
+        .iter()
+        .map(|node| (node.id.0.clone(), node))
+        .collect();
     if !node_by_id.contains_key(NODE_DISCOVER) {
         return Err(format!(
             "missing required entrypoint node {}",
@@ -665,7 +663,11 @@ fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
         let to_node = node_by_id
             .get(&edge.to_node.0)
             .ok_or_else(|| format!("edge target node does not exist: {}", edge.to_node.0))?;
-        if !to_node.inputs.iter().any(|port| port.name.0 == edge.to_port.0) {
+        if !to_node
+            .inputs
+            .iter()
+            .any(|port| port.name.0 == edge.to_port.0)
+        {
             return Err(format!(
                 "edge target port does not exist: {}.{}",
                 edge.to_node.0, edge.to_port.0
@@ -882,7 +884,12 @@ mod tests {
 
         let expected_edges = HashSet::from([
             (NODE_DISCOVER, PORT_FILES, NODE_PARSE, PORT_FILES),
-            (NODE_DISCOVER, PORT_DIAGNOSTICS, NODE_PARSE, PORT_DIAGNOSTICS),
+            (
+                NODE_DISCOVER,
+                PORT_DIAGNOSTICS,
+                NODE_PARSE,
+                PORT_DIAGNOSTICS,
+            ),
             (
                 NODE_PARSE,
                 PORT_PARSED_MODULES,
@@ -995,7 +1002,10 @@ mod tests {
         let mut diagnostics = Vec::new();
         let graph = build_module_graph(parsed_modules, &mut diagnostics);
 
-        assert!(diagnostics.is_empty(), "unexpected diagnostics: {diagnostics:?}");
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
         assert_eq!(graph.modules.len(), 3);
         assert_eq!(graph.modules[0].module_path, vec!["b".to_string()]);
         assert_eq!(graph.modules[1].module_path, vec!["c".to_string()]);
@@ -1090,7 +1100,8 @@ mod tests {
         )
         .expect("pipeline should execute");
         assert_eq!(
-            result.parsed_count(), 42,
+            result.parsed_count(),
+            42,
             "report stop should retain parse-stage file count for real corpus"
         );
     }
@@ -1178,8 +1189,8 @@ mod tests {
             target_file: None,
         };
         let (pipeline_graph, _) = run_parse_and_build_ops(&context);
-        let resolve_graph =
-            daglang_resolve::ModuleGraph::discover(&[dsl_root]).expect("resolve discovery should succeed");
+        let resolve_graph = daglang_resolve::ModuleGraph::discover(&[dsl_root])
+            .expect("resolve discovery should succeed");
 
         let pipeline_counts: BTreeMap<String, usize> = pipeline_graph
             .modules
@@ -1203,8 +1214,8 @@ mod tests {
             target_file: None,
         };
         let (pipeline_graph, _) = run_parse_and_build_ops(&context);
-        let resolve_graph =
-            daglang_resolve::ModuleGraph::discover(&[dsl_root]).expect("resolve discovery should succeed");
+        let resolve_graph = daglang_resolve::ModuleGraph::discover(&[dsl_root])
+            .expect("resolve discovery should succeed");
 
         let pipeline_order: Vec<String> = pipeline_graph
             .modules
@@ -1251,8 +1262,11 @@ mod tests {
     fn parse_stop_does_not_emit_module_graph_or_report_values() {
         let root = unique_temp_dir("parse_stop_outputs");
         fs::create_dir_all(&root).expect("failed to create temp root");
-        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
-            .expect("failed to write source");
+        fs::write(
+            root.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
 
         let context = PipelineContext {
             roots: vec![root.clone()],
@@ -1276,8 +1290,11 @@ mod tests {
     fn build_stop_emits_module_graph_without_report() {
         let root = unique_temp_dir("build_stop_outputs");
         fs::create_dir_all(&root).expect("failed to create temp root");
-        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
-            .expect("failed to write source");
+        fs::write(
+            root.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
 
         let context = PipelineContext {
             roots: vec![root.clone()],
@@ -1301,8 +1318,11 @@ mod tests {
     fn report_stop_emits_module_graph_and_report_values() {
         let root = unique_temp_dir("report_stop_outputs");
         fs::create_dir_all(&root).expect("failed to create temp root");
-        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
-            .expect("failed to write source");
+        fs::write(
+            root.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
 
         let context = PipelineContext {
             roots: vec![root.clone()],
@@ -1314,7 +1334,8 @@ mod tests {
             "report stop should return report variant"
         );
         assert_eq!(
-            result.parsed_count(), 1,
+            result.parsed_count(),
+            1,
             "report stop should retain parsed count from parse stage"
         );
         assert_eq!(result.stage(), PipelineStage::Report);
@@ -1472,8 +1493,11 @@ mod tests {
     fn target_file_mode_limits_pipeline_input_to_single_file() {
         let root = unique_temp_dir("target_file_mode");
         fs::create_dir_all(&root).expect("failed to create temp root");
-        fs::write(root.join("good.dag"), "module sample.good\nfn ok() -> Unit {}")
-            .expect("failed to write valid source");
+        fs::write(
+            root.join("good.dag"),
+            "module sample.good\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write valid source");
         fs::write(root.join("broken.dag"), "module sample.broken\nfn")
             .expect("failed to write invalid source");
 
@@ -1483,7 +1507,11 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count(), 1, "target file mode should parse one file");
+        assert_eq!(
+            result.parsed_count(),
+            1,
+            "target file mode should parse one file"
+        );
         assert!(
             result.diagnostics().is_empty(),
             "target file mode should ignore sibling invalid files"
@@ -1620,8 +1648,7 @@ mod tests {
             roots: vec![real_root],
             target_file: Some(link_root.join("nested/no_module.dag")),
         };
-        let result =
-            run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
+        let result = run_pipeline(&context, PipelineStop::Report).expect("pipeline should execute");
         let report = result.report().expect("report output should be present");
         assert!(
             report.contains("nested.no_module"),
@@ -1756,7 +1783,8 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         assert_eq!(
-            result.parsed_count(), 1,
+            result.parsed_count(),
+            1,
             "overlapping roots should not duplicate parsed files"
         );
         assert!(result.diagnostics().is_empty());
@@ -1768,8 +1796,11 @@ mod tests {
     fn parse_pipeline_deduplicates_files_from_duplicate_roots() {
         let root = unique_temp_dir("duplicate_roots");
         fs::create_dir_all(&root).expect("failed to create temp root");
-        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
-            .expect("failed to write source");
+        fs::write(
+            root.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
 
         let context = PipelineContext {
             roots: vec![root.clone(), root.clone()],
@@ -1777,7 +1808,8 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         assert_eq!(
-            result.parsed_count(), 1,
+            result.parsed_count(),
+            1,
             "duplicate roots should not duplicate parsed files"
         );
         assert!(result.diagnostics().is_empty());
@@ -1789,8 +1821,11 @@ mod tests {
     fn parse_pipeline_deduplicates_files_from_equivalent_curdir_suffix_roots() {
         let root = unique_temp_dir("equivalent_curdir_suffix_roots");
         fs::create_dir_all(&root).expect("failed to create temp root");
-        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
-            .expect("failed to write source");
+        fs::write(
+            root.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
 
         let context = PipelineContext {
             roots: vec![root.clone(), root.join(".")],
@@ -1798,7 +1833,8 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         assert_eq!(
-            result.parsed_count(), 1,
+            result.parsed_count(),
+            1,
             "equivalent roots should not duplicate parsed files"
         );
         assert!(result.diagnostics().is_empty());
@@ -1860,8 +1896,11 @@ mod tests {
     fn parse_pipeline_is_independent_of_equivalent_curdir_suffix_root_order() {
         let root = unique_temp_dir("parse_equivalent_curdir_suffix_root_order");
         fs::create_dir_all(&root).expect("failed to create temp root");
-        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
-            .expect("failed to write source");
+        fs::write(
+            root.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
 
         let first = run_pipeline(
             &PipelineContext {
@@ -1931,8 +1970,11 @@ mod tests {
         let real = root.join("real");
         let link = root.join("link");
         fs::create_dir_all(&real).expect("failed to create real root");
-        fs::write(real.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
-            .expect("failed to write source");
+        fs::write(
+            real.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
         symlink(&real, &link).expect("failed to create root symlink");
 
         let context = PipelineContext {
@@ -1941,7 +1983,8 @@ mod tests {
         };
         let result = run_pipeline(&context, PipelineStop::Parse).expect("pipeline should execute");
         assert_eq!(
-            result.parsed_count(), 1,
+            result.parsed_count(),
+            1,
             "real+symlink roots should not duplicate parsed files"
         );
         assert!(result.diagnostics().is_empty());
@@ -1957,8 +2000,11 @@ mod tests {
         let root = unique_temp_dir("dir_symlink_cycle");
         let nested = root.join("nested");
         fs::create_dir_all(&nested).expect("failed to create nested root");
-        fs::write(nested.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
-            .expect("failed to write source");
+        fs::write(
+            nested.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
         symlink(&root, nested.join("loop")).expect("failed to create directory cycle symlink");
 
         let context = PipelineContext {
@@ -1982,8 +2028,11 @@ mod tests {
         let real = root.join("real");
         let link = root.join("link");
         fs::create_dir_all(&real).expect("failed to create real root");
-        fs::write(real.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
-            .expect("failed to write source");
+        fs::write(
+            real.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
         symlink(&real, &link).expect("failed to create root symlink");
 
         let first = run_pipeline(
@@ -2532,7 +2581,8 @@ mod tests {
             "lex diagnostics should be sorted before resolve diagnostics"
         );
         assert!(
-            result.diagnostics()
+            result
+                .diagnostics()
                 .iter()
                 .any(|diag| diag.kind == DiagnosticKind::Resolve),
             "expected at least one resolve diagnostic"
@@ -2606,8 +2656,11 @@ mod tests {
     fn report_pipeline_is_independent_of_equivalent_curdir_suffix_root_order() {
         let root = unique_temp_dir("report_equivalent_curdir_suffix_root_order");
         fs::create_dir_all(&root).expect("failed to create temp root");
-        fs::write(root.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
-            .expect("failed to write source");
+        fs::write(
+            root.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
 
         let first = run_pipeline(
             &PipelineContext {
@@ -2675,8 +2728,11 @@ mod tests {
         let real = root.join("real");
         let link = root.join("link");
         fs::create_dir_all(&real).expect("failed to create real root");
-        fs::write(real.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
-            .expect("failed to write source");
+        fs::write(
+            real.join("main.dag"),
+            "module sample.main\nfn ok() -> Unit {}",
+        )
+        .expect("failed to write source");
         symlink(&real, &link).expect("failed to create root symlink");
 
         let first = run_pipeline(
@@ -2745,12 +2801,7 @@ mod tests {
     #[test]
     fn pipeline_rejects_implicit_fanin_on_single_input_port() {
         let mut dag = build_pipeline_dag();
-        dag.add_edge(Edge::new(
-            NODE_DISCOVER,
-            PORT_FILES,
-            NODE_PARSE,
-            PORT_FILES,
-        ));
+        dag.add_edge(Edge::new(NODE_DISCOVER, PORT_FILES, NODE_PARSE, PORT_FILES));
 
         let err = validate_pipeline_semantics(&dag)
             .expect_err("duplicate edge to same input port should fail");
@@ -2799,8 +2850,8 @@ mod tests {
             "missing_input",
         ));
 
-        let err = validate_pipeline_semantics(&dag)
-            .expect_err("edge to unknown target port should fail");
+        let err =
+            validate_pipeline_semantics(&dag).expect_err("edge to unknown target port should fail");
         assert!(err.contains("edge target port does not exist"));
     }
 
@@ -2829,8 +2880,8 @@ mod tests {
             PORT_FILES,
         ));
 
-        let err = validate_pipeline_semantics(&dag)
-            .expect_err("edge to unknown target node should fail");
+        let err =
+            validate_pipeline_semantics(&dag).expect_err("edge to unknown target node should fail");
         assert!(err.contains("edge target node does not exist"));
     }
 
@@ -2874,9 +2925,11 @@ mod tests {
             .iter_mut()
             .find(|node| node.id.0 == NODE_PARSE)
             .expect("parse node should exist");
-        parse_node
-            .inputs
-            .push(Port::with_cardinality(PORT_FILES, "Vec<FileSource>", Cardinality::ONE));
+        parse_node.inputs.push(Port::with_cardinality(
+            PORT_FILES,
+            "Vec<FileSource>",
+            Cardinality::ONE,
+        ));
 
         let err = validate_pipeline_semantics(&dag)
             .expect_err("duplicate input ports should fail validation");

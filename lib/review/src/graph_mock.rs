@@ -181,11 +181,23 @@ pub fn inline_review_mock_spec() -> MockSpec {
             Value::Str("mock-oidc-token".into()),
         )
         .expect("cloud_env request_token should match type")
-        .boundary("cloud_credential/gcp_wif_secret/build_credential", "credential", mock_credential())
+        .boundary(
+            "cloud_credential/gcp_wif_secret/build_credential",
+            "credential",
+            mock_credential(),
+        )
         .expect("cloud_credential credential should match type")
-        .boundary("cloud_credential/gcp_wif_secret/local_auth_upsert/merge_auth_result", "expires_in", Value::Int(3_600))
+        .boundary(
+            "cloud_credential/gcp_wif_secret/local_auth_upsert/merge_auth_result",
+            "expires_in",
+            Value::Int(3_600),
+        )
         .expect("cloud_credential expires_in should match type")
-        .boundary("cloud_credential/gcp_wif_secret/parse_set_iam", "ok", Value::Bool(true))
+        .boundary(
+            "cloud_credential/gcp_wif_secret/parse_set_iam",
+            "ok",
+            Value::Bool(true),
+        )
         .expect("cloud_credential ok should match type")
         .boundary("bind_secret", "config", mock_cloud_config())
         .expect("bind_secret config should match type")
@@ -357,11 +369,23 @@ diff --git a/src/main.rs b/src/main.rs
             Value::Str("mock-oidc-token".into()),
         )
         .expect("cloud_env request_token should match type")
-        .boundary("cloud_credential/gcp_wif_secret/build_credential", "credential", mock_credential())
+        .boundary(
+            "cloud_credential/gcp_wif_secret/build_credential",
+            "credential",
+            mock_credential(),
+        )
         .expect("cloud_credential credential should match type")
-        .boundary("cloud_credential/gcp_wif_secret/local_auth_upsert/merge_auth_result", "expires_in", Value::Int(3_600))
+        .boundary(
+            "cloud_credential/gcp_wif_secret/local_auth_upsert/merge_auth_result",
+            "expires_in",
+            Value::Int(3_600),
+        )
         .expect("cloud_credential expires_in should match type")
-        .boundary("cloud_credential/gcp_wif_secret/parse_set_iam", "ok", Value::Bool(true))
+        .boundary(
+            "cloud_credential/gcp_wif_secret/parse_set_iam",
+            "ok",
+            Value::Bool(true),
+        )
         .expect("cloud_credential ok should match type")
         .boundary("bind_secret", "config", mock_cloud_config())
         .expect("bind_secret config should match type")

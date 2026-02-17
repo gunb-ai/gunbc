@@ -433,9 +433,6 @@ mod tests {
     #[test]
     fn test_step_mode_unknown_subcommand_errors() {
         let err = parse_step_mode(&argv(&["prog", "deploy"])).unwrap_err();
-        assert!(matches!(
-            err,
-            StepModeParseError::UnknownSubcommand { .. }
-        ));
+        assert!(matches!(err, StepModeParseError::UnknownSubcommand { .. }));
     }
 }

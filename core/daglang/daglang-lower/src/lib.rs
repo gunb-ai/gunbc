@@ -268,9 +268,7 @@ fn provider_hint_from_expr(expr: &Expr) -> Option<ProviderHint> {
 }
 
 fn provider_hint_from_uses_config(config: Option<&[(String, Expr)]>) -> Option<ProviderHint> {
-    let Some(config_entries) = config else {
-        return None;
-    };
+    let config_entries = config?;
     for (name, value) in config_entries {
         if name == "cloud" {
             if let Some(provider_hint) = provider_hint_from_expr(value) {
@@ -606,1777 +604,1818 @@ fn lower_typed_project_with_callable_scope(
 }
 
 pub use parity::{
-    canonical_ir_json, compare_ci_topology, compare_gcp_credential_topology,
-    compare_gist_topology, compare_ir, compare_makegen_topology, compare_topology,
-    GistParityMode,
+    canonical_ir_json, compare_ci_topology, compare_gcp_credential_topology, compare_gist_topology,
+    compare_ir, compare_makegen_topology, compare_topology, GistParityMode,
 };
 #[cfg(test)]
 use parity::{normalize_makegen_candidate, normalize_makegen_reference};
 
 mod parity {
-use super::*;
+    use super::*;
 
-/// Compare a lowered daglang graph against a reference graph topology.
-///
-/// This enables incremental parity harness adoption:
-/// - exact parity: `report.is_exact_match() == true`
-/// - scaffold mode: report still gives deterministic deltas while lowering
-///   coverage grows.
-pub fn compare_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
-    let candidate_node_ids = candidate
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<BTreeSet<_>>();
-    let reference_node_ids = reference
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<BTreeSet<_>>();
-
-    let added_node_ids = candidate_node_ids
-        .difference(&reference_node_ids)
-        .cloned()
-        .collect::<Vec<_>>();
-    let removed_node_ids = reference_node_ids
-        .difference(&candidate_node_ids)
-        .cloned()
-        .collect::<Vec<_>>();
-
-    let candidate_edge_ids = candidate
-        .edges
-        .iter()
-        .map(|edge| {
-            format!(
-                "{}.{}->{}.{}",
-                edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
-            )
-        })
-        .collect::<BTreeSet<_>>();
-    let reference_edge_ids = reference
-        .edges
-        .iter()
-        .map(|edge| {
-            format!(
-                "{}.{}->{}.{}",
-                edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
-            )
-        })
-        .collect::<BTreeSet<_>>();
-    let added_edge_ids = candidate_edge_ids
-        .difference(&reference_edge_ids)
-        .cloned()
-        .collect::<Vec<_>>();
-    let removed_edge_ids = reference_edge_ids
-        .difference(&candidate_edge_ids)
-        .cloned()
-        .collect::<Vec<_>>();
-
-    ParityReport {
-        candidate_nodes: candidate.nodes.len(),
-        reference_nodes: reference.nodes.len(),
-        candidate_edges: candidate.edges.len(),
-        reference_edges: reference.edges.len(),
-        added_nodes: added_node_ids.len(),
-        removed_nodes: removed_node_ids.len(),
-        changed_nodes: 0,
-        added_edges: added_edge_ids.len(),
-        removed_edges: removed_edge_ids.len(),
-        added_node_ids,
-        removed_node_ids,
-        changed_node_details: Vec::new(),
-        added_edge_ids,
-        removed_edge_ids,
-    }
-}
-
-/// Compare a lowered daglang graph against a reference graph using canonical
-/// structural IR (node kind, labels, ports, edges, and nested subdag shape).
-pub fn compare_ir<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
-    let candidate_ir = canonicalize_lowered_ir(candidate);
-    let reference_ir = canonicalize_reference_ir(reference);
-    compare_canonical_ir(&candidate_ir, &reference_ir)
-}
-
-/// Serialize lowered IR into deterministic canonical JSON.
-pub fn canonical_ir_json(dag: &Dag<LoweredOp>) -> Result<String, serde_json::Error> {
-    serde_json::to_string_pretty(&canonicalize_lowered_ir(dag))
-}
-
-fn compare_canonical_ir(candidate: &CanonicalDag, reference: &CanonicalDag) -> ParityReport {
-    let candidate_nodes = candidate.nodes.len();
-    let reference_nodes = reference.nodes.len();
-    let candidate_edges = candidate.edges.len();
-    let reference_edges = reference.edges.len();
-
-    let candidate_by_id = candidate
-        .nodes
-        .iter()
-        .map(|node| (node.id.clone(), node))
-        .collect::<BTreeMap<_, _>>();
-    let reference_by_id = reference
-        .nodes
-        .iter()
-        .map(|node| (node.id.clone(), node))
-        .collect::<BTreeMap<_, _>>();
-
-    let candidate_ids = candidate_by_id.keys().cloned().collect::<BTreeSet<_>>();
-    let reference_ids = reference_by_id.keys().cloned().collect::<BTreeSet<_>>();
-
-    let added_node_ids = candidate_ids
-        .difference(&reference_ids)
-        .cloned()
-        .collect::<Vec<_>>();
-    let removed_node_ids = reference_ids
-        .difference(&candidate_ids)
-        .cloned()
-        .collect::<Vec<_>>();
-
-    let changed_node_details = candidate_ids
-        .intersection(&reference_ids)
-        .filter_map(|node_id| {
-            let candidate_node = candidate_by_id
-                .get(node_id)
-                .expect("intersection node must exist in candidate map");
-            let reference_node = reference_by_id
-                .get(node_id)
-                .expect("intersection node must exist in reference map");
-            let mut differences = Vec::new();
-            if candidate_node.kind != reference_node.kind {
-                differences.push(format!(
-                    "kind differs: candidate=`{}` reference=`{}`",
-                    candidate_node.kind, reference_node.kind
-                ));
-            }
-            if candidate_node.label != reference_node.label {
-                differences.push(format!(
-                    "label differs: candidate=`{}` reference=`{}`",
-                    candidate_node.label, reference_node.label
-                ));
-            }
-            if candidate_node.inputs != reference_node.inputs {
-                differences.push("input ports differ".to_string());
-            }
-            if candidate_node.outputs != reference_node.outputs {
-                differences.push("output ports differ".to_string());
-            }
-            if candidate_node.subdag != reference_node.subdag {
-                differences.push("subdag structure differs".to_string());
-            }
-            (!differences.is_empty()).then_some(NodeDiff {
-                node_id: node_id.clone(),
-                differences,
-            })
-        })
-        .collect::<Vec<_>>();
-
-    let candidate_edge_ids = candidate
-        .edges
-        .iter()
-        .map(canonical_edge_id)
-        .collect::<BTreeSet<_>>();
-    let reference_edge_ids = reference
-        .edges
-        .iter()
-        .map(canonical_edge_id)
-        .collect::<BTreeSet<_>>();
-
-    let added_edge_ids = candidate_edge_ids
-        .difference(&reference_edge_ids)
-        .cloned()
-        .collect::<Vec<_>>();
-    let removed_edge_ids = reference_edge_ids
-        .difference(&candidate_edge_ids)
-        .cloned()
-        .collect::<Vec<_>>();
-
-    ParityReport {
-        candidate_nodes,
-        reference_nodes,
-        candidate_edges,
-        reference_edges,
-        added_nodes: added_node_ids.len(),
-        removed_nodes: removed_node_ids.len(),
-        changed_nodes: changed_node_details.len(),
-        added_edges: added_edge_ids.len(),
-        removed_edges: removed_edge_ids.len(),
-        added_node_ids,
-        removed_node_ids,
-        changed_node_details,
-        added_edge_ids,
-        removed_edge_ids,
-    }
-}
-
-/// Compare makegen topology with normalization rules for known scaffold deltas.
-///
-/// Normalization currently:
-/// - strips `tools.makegen::` node-id prefixes
-/// - drops the wrapper `makegen` callable node
-/// - removes synthetic `__deps` ports/edges
-/// - canonicalizes `render_makefile.return` output to `makefile_content`
-/// - ignores environment-scaffold edge `fs_env -> prepare_read_makegen`
-pub fn compare_makegen_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
-    let normalized = normalize_makegen_candidate(candidate);
-    let normalized_reference = normalize_makegen_reference(reference);
-    compare_topology(&normalized, &normalized_reference)
-}
-
-/// Compare GCP credential topology against the legacy graph shape.
-///
-/// The compiler currently emits higher-level pattern/resource scaffolding for
-/// credential-chain callables; the legacy builder expresses this flow as a
-/// concrete transport-step graph. This comparator projects both graphs into the
-/// same canonical 15-node credential-chain shape so structural parity stays
-/// deterministic and reviewable while lowering remains staged.
-pub fn compare_gcp_credential_topology<T>(
-    candidate: &Dag<LoweredOp>,
-    reference: &Dag<T>,
-) -> ParityReport {
-    let normalized_candidate = normalize_gcp_credential_candidate(candidate);
-    let normalized_reference = normalize_gcp_credential_reference(reference);
-    compare_ir(&normalized_candidate, &normalized_reference)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GistParityMode {
-    Snapshot,
-    Diff,
-    Recent,
-}
-
-pub fn compare_gist_topology<T>(
-    candidate: &Dag<LoweredOp>,
-    reference: &Dag<T>,
-    mode: GistParityMode,
-) -> ParityReport {
-    let normalized_candidate = normalize_gist_candidate(candidate, mode);
-    let normalized_reference = normalize_gist_reference(reference, mode);
-    compare_topology(&normalized_candidate, &normalized_reference)
-}
-
-pub fn compare_ci_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
-    let normalized_candidate = normalize_ci_candidate(candidate);
-    let normalized_reference = normalize_ci_reference(reference);
-    compare_topology(&normalized_candidate, &normalized_reference)
-}
-
-fn canonicalize_lowered_ir(dag: &Dag<LoweredOp>) -> CanonicalDag {
-    canonicalize_dag(dag, canonical_kind_lowered, canonical_label_lowered)
-}
-
-fn canonicalize_reference_ir<T>(dag: &Dag<T>) -> CanonicalDag {
-    canonicalize_dag(dag, canonical_kind_reference, canonical_label_reference)
-}
-
-fn canonicalize_dag<T>(
-    dag: &Dag<T>,
-    kind_of: fn(&Node<T>) -> String,
-    label_of: fn(&Node<T>) -> String,
-) -> CanonicalDag {
-    let mut nodes = dag
-        .nodes
-        .iter()
-        .map(|node| CanonicalNode {
-            id: node.id.0.clone(),
-            kind: kind_of(node),
-            label: label_of(node),
-            inputs: canonicalize_ports(&node.inputs),
-            outputs: canonicalize_ports(&node.outputs),
-            subdag: match &node.body {
-                gunbc_ir::node::NodeBody::SubDag(inner) => {
-                    Some(Box::new(canonicalize_dag(inner, kind_of, label_of)))
-                }
-                gunbc_ir::node::NodeBody::Opaque(_) => None,
-            },
-        })
-        .collect::<Vec<_>>();
-    nodes.sort_by(|lhs, rhs| lhs.id.cmp(&rhs.id));
-
-    let mut edges = dag
-        .edges
-        .iter()
-        .map(|edge| CanonicalEdge {
-            from_node: edge.from_node.0.clone(),
-            from_port: edge.from_port.0.clone(),
-            to_node: edge.to_node.0.clone(),
-            to_port: edge.to_port.0.clone(),
-        })
-        .collect::<Vec<_>>();
-    edges.sort();
-
-    CanonicalDag { nodes, edges }
-}
-
-fn canonicalize_ports(ports: &[Port]) -> Vec<CanonicalPort> {
-    let mut canonical = ports
-        .iter()
-        .map(|port| CanonicalPort {
-            name: port.name.0.clone(),
-            type_id: port.type_id.0.clone(),
-            cardinality: port.cardinality.to_string(),
-        })
-        .collect::<Vec<_>>();
-    canonical.sort_by(|lhs, rhs| {
-        lhs.name
-            .cmp(&rhs.name)
-            .then_with(|| lhs.type_id.cmp(&rhs.type_id))
-            .then_with(|| lhs.cardinality.cmp(&rhs.cardinality))
-    });
-    canonical
-}
-
-fn canonical_kind_lowered(node: &Node<LoweredOp>) -> String {
-    match &node.body {
-        gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
-        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { .. }) => {
-            canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, true)
-        }
-        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => {
-            collection_kind_node_label(*kind).to_string()
-        }
-        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { .. }) => {
-            canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
-        }
-    }
-}
-
-fn canonical_label_lowered(node: &Node<LoweredOp>) -> String {
-    node.id.0.clone()
-}
-
-fn canonical_kind_reference<T>(node: &Node<T>) -> String {
-    match &node.body {
-        gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
-        gunbc_ir::node::NodeBody::Opaque(_) => {
-            canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
-        }
-    }
-}
-
-fn canonical_label_reference<T>(node: &Node<T>) -> String {
-    node.id.0.clone()
-}
-
-fn canonical_edge_id(edge: &CanonicalEdge) -> String {
-    format!(
-        "{}.{}->{}.{}",
-        edge.from_node, edge.from_port, edge.to_node, edge.to_port
-    )
-}
-
-fn canonical_kind_from_shape(
-    node_id: &str,
-    inputs: &[Port],
-    outputs: &[Port],
-    pipeline_hint: bool,
-) -> String {
-    if pipeline_hint
-        || outputs
+    /// Compare a lowered daglang graph against a reference graph topology.
+    ///
+    /// This enables incremental parity harness adoption:
+    /// - exact parity: `report.is_exact_match() == true`
+    /// - scaffold mode: report still gives deterministic deltas while lowering
+    ///   coverage grows.
+    pub fn compare_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
+        let candidate_node_ids = candidate
+            .nodes
             .iter()
-            .any(|port| port.name.0 == "stages" && port.type_id.0 == "Int")
-    {
-        return "pipeline".to_string();
-    }
-    if inputs
-        .iter()
-        .any(|port| port.type_id.0 == "TransportRequest")
-    {
-        return "transport".to_string();
-    }
-    let looks_expanded = node_id.starts_with("prepare_")
-        || node_id.starts_with("compare_")
-        || node_id.starts_with("execute_transport_")
-        || node_id.starts_with("param_source_")
-        || node_id.starts_with("acquire_resource_")
-        || node_id.starts_with("release_resource_")
-        || node_id.starts_with("provide_resource_")
-        || node_id == "load_registry"
-        || node_id == "fs_env";
-    if looks_expanded {
-        return "pattern-expanded".to_string();
-    }
-    "callable".to_string()
-}
-
-pub(crate) fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
-    let mut normalized = Dag::new();
-    let mut kept_nodes = HashSet::<String>::new();
-    let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
-
-    for node in &candidate.nodes {
-        let Some(op) = node_body_as_opaque(&node.body).cloned() else {
-            continue;
-        };
-        let canonical_id = canonical_makegen_node_id(&node.id.0);
-        if canonical_id == "makegen" {
-            continue;
-        }
-
-        let mut inputs = node
-            .inputs
+            .map(|node| node.id.0.clone())
+            .collect::<BTreeSet<_>>();
+        let reference_node_ids = reference
+            .nodes
             .iter()
-            .filter(|port| port.name.0 != "__deps")
+            .map(|node| node.id.0.clone())
+            .collect::<BTreeSet<_>>();
+
+        let added_node_ids = candidate_node_ids
+            .difference(&reference_node_ids)
             .cloned()
             .collect::<Vec<_>>();
-        let mut outputs = node.outputs.clone();
-        normalize_makegen_ports(&canonical_id, &mut inputs, &mut outputs);
+        let removed_node_ids = reference_node_ids
+            .difference(&candidate_node_ids)
+            .cloned()
+            .collect::<Vec<_>>();
 
-        normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, op));
-        kept_nodes.insert(canonical_id);
-    }
-    for node in &normalized.nodes {
-        ports_by_node.insert(
-            node.id.0.clone(),
-            (
-                node.inputs.iter().map(|port| port.name.0.clone()).collect(),
-                node.outputs
-                    .iter()
-                    .map(|port| port.name.0.clone())
-                    .collect(),
-            ),
-        );
+        let candidate_edge_ids = candidate
+            .edges
+            .iter()
+            .map(|edge| {
+                format!(
+                    "{}.{}->{}.{}",
+                    edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        let reference_edge_ids = reference
+            .edges
+            .iter()
+            .map(|edge| {
+                format!(
+                    "{}.{}->{}.{}",
+                    edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        let added_edge_ids = candidate_edge_ids
+            .difference(&reference_edge_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        let removed_edge_ids = reference_edge_ids
+            .difference(&candidate_edge_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        ParityReport {
+            candidate_nodes: candidate.nodes.len(),
+            reference_nodes: reference.nodes.len(),
+            candidate_edges: candidate.edges.len(),
+            reference_edges: reference.edges.len(),
+            added_nodes: added_node_ids.len(),
+            removed_nodes: removed_node_ids.len(),
+            changed_nodes: 0,
+            added_edges: added_edge_ids.len(),
+            removed_edges: removed_edge_ids.len(),
+            added_node_ids,
+            removed_node_ids,
+            changed_node_details: Vec::new(),
+            added_edge_ids,
+            removed_edge_ids,
+        }
     }
 
-    let mut seen_edges = HashSet::<(String, String, String, String)>::new();
-    for edge in &candidate.edges {
-        let from_node = canonical_makegen_node_id(&edge.from_node.0);
-        let to_node = canonical_makegen_node_id(&edge.to_node.0);
-        if from_node == "makegen" || to_node == "makegen" {
-            continue;
-        }
-        if !kept_nodes.contains(&from_node) || !kept_nodes.contains(&to_node) {
-            continue;
-        }
-        if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
-            continue;
-        }
-        let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
-        let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
-        let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
-            continue;
-        };
-        let Some((_, from_outputs)) = ports_by_node.get(&from_node) else {
-            continue;
-        };
-        if !from_outputs.contains(&from_port) || !to_inputs.contains(&to_port) {
-            continue;
-        }
-        let key = (from_node, from_port, to_node, to_port);
-        if seen_edges.insert(key.clone()) {
-            normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
+    /// Compare a lowered daglang graph against a reference graph using canonical
+    /// structural IR (node kind, labels, ports, edges, and nested subdag shape).
+    pub fn compare_ir<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
+        let candidate_ir = canonicalize_lowered_ir(candidate);
+        let reference_ir = canonicalize_reference_ir(reference);
+        compare_canonical_ir(&candidate_ir, &reference_ir)
+    }
+
+    /// Serialize lowered IR into deterministic canonical JSON.
+    pub fn canonical_ir_json(dag: &Dag<LoweredOp>) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(&canonicalize_lowered_ir(dag))
+    }
+
+    fn compare_canonical_ir(candidate: &CanonicalDag, reference: &CanonicalDag) -> ParityReport {
+        let candidate_nodes = candidate.nodes.len();
+        let reference_nodes = reference.nodes.len();
+        let candidate_edges = candidate.edges.len();
+        let reference_edges = reference.edges.len();
+
+        let candidate_by_id = candidate
+            .nodes
+            .iter()
+            .map(|node| (node.id.clone(), node))
+            .collect::<BTreeMap<_, _>>();
+        let reference_by_id = reference
+            .nodes
+            .iter()
+            .map(|node| (node.id.clone(), node))
+            .collect::<BTreeMap<_, _>>();
+
+        let candidate_ids = candidate_by_id.keys().cloned().collect::<BTreeSet<_>>();
+        let reference_ids = reference_by_id.keys().cloned().collect::<BTreeSet<_>>();
+
+        let added_node_ids = candidate_ids
+            .difference(&reference_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        let removed_node_ids = reference_ids
+            .difference(&candidate_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let changed_node_details = candidate_ids
+            .intersection(&reference_ids)
+            .filter_map(|node_id| {
+                let candidate_node = candidate_by_id
+                    .get(node_id)
+                    .expect("intersection node must exist in candidate map");
+                let reference_node = reference_by_id
+                    .get(node_id)
+                    .expect("intersection node must exist in reference map");
+                let mut differences = Vec::new();
+                if candidate_node.kind != reference_node.kind {
+                    differences.push(format!(
+                        "kind differs: candidate=`{}` reference=`{}`",
+                        candidate_node.kind, reference_node.kind
+                    ));
+                }
+                if candidate_node.label != reference_node.label {
+                    differences.push(format!(
+                        "label differs: candidate=`{}` reference=`{}`",
+                        candidate_node.label, reference_node.label
+                    ));
+                }
+                if candidate_node.inputs != reference_node.inputs {
+                    differences.push("input ports differ".to_string());
+                }
+                if candidate_node.outputs != reference_node.outputs {
+                    differences.push("output ports differ".to_string());
+                }
+                if candidate_node.subdag != reference_node.subdag {
+                    differences.push("subdag structure differs".to_string());
+                }
+                (!differences.is_empty()).then_some(NodeDiff {
+                    node_id: node_id.clone(),
+                    differences,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let candidate_edge_ids = candidate
+            .edges
+            .iter()
+            .map(canonical_edge_id)
+            .collect::<BTreeSet<_>>();
+        let reference_edge_ids = reference
+            .edges
+            .iter()
+            .map(canonical_edge_id)
+            .collect::<BTreeSet<_>>();
+
+        let added_edge_ids = candidate_edge_ids
+            .difference(&reference_edge_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        let removed_edge_ids = reference_edge_ids
+            .difference(&candidate_edge_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        ParityReport {
+            candidate_nodes,
+            reference_nodes,
+            candidate_edges,
+            reference_edges,
+            added_nodes: added_node_ids.len(),
+            removed_nodes: removed_node_ids.len(),
+            changed_nodes: changed_node_details.len(),
+            added_edges: added_edge_ids.len(),
+            removed_edges: removed_edge_ids.len(),
+            added_node_ids,
+            removed_node_ids,
+            changed_node_details,
+            added_edge_ids,
+            removed_edge_ids,
         }
     }
 
-    normalized
-}
+    /// Compare makegen topology with normalization rules for known scaffold deltas.
+    ///
+    /// Normalization currently:
+    /// - strips `tools.makegen::` node-id prefixes
+    /// - drops the wrapper `makegen` callable node
+    /// - removes synthetic `__deps` ports/edges
+    /// - canonicalizes `render_makefile.return` output to `makefile_content`
+    /// - ignores environment-scaffold edge `fs_env -> prepare_read_makegen`
+    pub fn compare_makegen_topology<T>(
+        candidate: &Dag<LoweredOp>,
+        reference: &Dag<T>,
+    ) -> ParityReport {
+        let normalized = normalize_makegen_candidate(candidate);
+        let normalized_reference = normalize_makegen_reference(reference);
+        compare_topology(&normalized, &normalized_reference)
+    }
 
-fn normalize_gcp_credential_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
-    let candidate_ids = candidate
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<HashSet<_>>();
-    let mut canonical_nodes = HashSet::<String>::new();
-    if candidate_ids.contains("acquire_resource_std_resources_Network") {
-        canonical_nodes.insert("net_env".to_string());
+    /// Compare GCP credential topology against the legacy graph shape.
+    ///
+    /// The compiler currently emits higher-level pattern/resource scaffolding for
+    /// credential-chain callables; the legacy builder expresses this flow as a
+    /// concrete transport-step graph. This comparator projects both graphs into the
+    /// same canonical 15-node credential-chain shape so structural parity stays
+    /// deterministic and reviewable while lowering remains staged.
+    pub fn compare_gcp_credential_topology<T>(
+        candidate: &Dag<LoweredOp>,
+        reference: &Dag<T>,
+    ) -> ParityReport {
+        let normalized_candidate = normalize_gcp_credential_candidate(candidate);
+        let normalized_reference = normalize_gcp_credential_reference(reference);
+        compare_ir(&normalized_candidate, &normalized_reference)
     }
-    if candidate_ids.contains("std.patterns::acquire_subject_token") {
-        canonical_nodes.insert("prepare_github_oidc".to_string());
-        canonical_nodes.insert("execute_github_oidc".to_string());
-        canonical_nodes.insert("parse_github_oidc".to_string());
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum GistParityMode {
+        Snapshot,
+        Diff,
+        Recent,
     }
-    let has_sts_triplet = candidate_ids
-        .contains("prepare_transport_services_gcp_sts_gcp_STS_Exchange")
-        && candidate_ids.contains("execute_transport_services_gcp_sts_gcp_STS_Exchange")
-        && candidate_ids.contains("parse_transport_services_gcp_sts_gcp_STS_Exchange");
-    if has_sts_triplet {
-        canonical_nodes.insert("prepare_sts".to_string());
-        canonical_nodes.insert("execute_sts".to_string());
-        canonical_nodes.insert("parse_sts".to_string());
+
+    pub fn compare_gist_topology<T>(
+        candidate: &Dag<LoweredOp>,
+        reference: &Dag<T>,
+        mode: GistParityMode,
+    ) -> ParityReport {
+        let normalized_candidate = normalize_gist_candidate(candidate, mode);
+        let normalized_reference = normalize_gist_reference(reference, mode);
+        compare_topology(&normalized_candidate, &normalized_reference)
     }
-    if candidate_ids.contains("std.patterns::optional_impersonation") {
-        canonical_nodes.insert("should_impersonate".to_string());
-        canonical_nodes.insert("prepare_impersonate".to_string());
-        canonical_nodes.insert("execute_impersonate".to_string());
-        canonical_nodes.insert("parse_impersonate".to_string());
+
+    pub fn compare_ci_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
+        let normalized_candidate = normalize_ci_candidate(candidate);
+        let normalized_reference = normalize_ci_reference(reference);
+        compare_topology(&normalized_candidate, &normalized_reference)
     }
-    let has_secret_triplet = candidate_ids
-        .contains("prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion")
-        && candidate_ids.contains(
-            "execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion",
+
+    fn canonicalize_lowered_ir(dag: &Dag<LoweredOp>) -> CanonicalDag {
+        canonicalize_dag(dag, canonical_kind_lowered, canonical_label_lowered)
+    }
+
+    fn canonicalize_reference_ir<T>(dag: &Dag<T>) -> CanonicalDag {
+        canonicalize_dag(dag, canonical_kind_reference, canonical_label_reference)
+    }
+
+    fn canonicalize_dag<T>(
+        dag: &Dag<T>,
+        kind_of: fn(&Node<T>) -> String,
+        label_of: fn(&Node<T>) -> String,
+    ) -> CanonicalDag {
+        let mut nodes = dag
+            .nodes
+            .iter()
+            .map(|node| CanonicalNode {
+                id: node.id.0.clone(),
+                kind: kind_of(node),
+                label: label_of(node),
+                inputs: canonicalize_ports(&node.inputs),
+                outputs: canonicalize_ports(&node.outputs),
+                subdag: match &node.body {
+                    gunbc_ir::node::NodeBody::SubDag(inner) => {
+                        Some(Box::new(canonicalize_dag(inner, kind_of, label_of)))
+                    }
+                    gunbc_ir::node::NodeBody::Opaque(_) => None,
+                },
+            })
+            .collect::<Vec<_>>();
+        nodes.sort_by(|lhs, rhs| lhs.id.cmp(&rhs.id));
+
+        let mut edges = dag
+            .edges
+            .iter()
+            .map(|edge| CanonicalEdge {
+                from_node: edge.from_node.0.clone(),
+                from_port: edge.from_port.0.clone(),
+                to_node: edge.to_node.0.clone(),
+                to_port: edge.to_port.0.clone(),
+            })
+            .collect::<Vec<_>>();
+        edges.sort();
+
+        CanonicalDag { nodes, edges }
+    }
+
+    fn canonicalize_ports(ports: &[Port]) -> Vec<CanonicalPort> {
+        let mut canonical = ports
+            .iter()
+            .map(|port| CanonicalPort {
+                name: port.name.0.clone(),
+                type_id: port.type_id.0.clone(),
+                cardinality: port.cardinality.to_string(),
+            })
+            .collect::<Vec<_>>();
+        canonical.sort_by(|lhs, rhs| {
+            lhs.name
+                .cmp(&rhs.name)
+                .then_with(|| lhs.type_id.cmp(&rhs.type_id))
+                .then_with(|| lhs.cardinality.cmp(&rhs.cardinality))
+        });
+        canonical
+    }
+
+    fn canonical_kind_lowered(node: &Node<LoweredOp>) -> String {
+        match &node.body {
+            gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { .. }) => {
+                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, true)
+            }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => {
+                collection_kind_node_label(*kind).to_string()
+            }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { .. }) => {
+                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
+            }
+        }
+    }
+
+    fn canonical_label_lowered(node: &Node<LoweredOp>) -> String {
+        node.id.0.clone()
+    }
+
+    fn canonical_kind_reference<T>(node: &Node<T>) -> String {
+        match &node.body {
+            gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+            gunbc_ir::node::NodeBody::Opaque(_) => {
+                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
+            }
+        }
+    }
+
+    fn canonical_label_reference<T>(node: &Node<T>) -> String {
+        node.id.0.clone()
+    }
+
+    fn canonical_edge_id(edge: &CanonicalEdge) -> String {
+        format!(
+            "{}.{}->{}.{}",
+            edge.from_node, edge.from_port, edge.to_node, edge.to_port
         )
-        && candidate_ids.contains(
+    }
+
+    fn canonical_kind_from_shape(
+        node_id: &str,
+        inputs: &[Port],
+        outputs: &[Port],
+        pipeline_hint: bool,
+    ) -> String {
+        if pipeline_hint
+            || outputs
+                .iter()
+                .any(|port| port.name.0 == "stages" && port.type_id.0 == "Int")
+        {
+            return "pipeline".to_string();
+        }
+        if inputs
+            .iter()
+            .any(|port| port.type_id.0 == "TransportRequest")
+        {
+            return "transport".to_string();
+        }
+        let looks_expanded = node_id.starts_with("prepare_")
+            || node_id.starts_with("compare_")
+            || node_id.starts_with("execute_transport_")
+            || node_id.starts_with("param_source_")
+            || node_id.starts_with("acquire_resource_")
+            || node_id.starts_with("release_resource_")
+            || node_id.starts_with("provide_resource_")
+            || node_id == "load_registry"
+            || node_id == "fs_env";
+        if looks_expanded {
+            return "pattern-expanded".to_string();
+        }
+        "callable".to_string()
+    }
+
+    pub(crate) fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
+        let mut normalized = Dag::new();
+        let mut kept_nodes = HashSet::<String>::new();
+        let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
+
+        for node in &candidate.nodes {
+            let Some(op) = node_body_as_opaque(&node.body).cloned() else {
+                continue;
+            };
+            let canonical_id = canonical_makegen_node_id(&node.id.0);
+            if canonical_id == "makegen" {
+                continue;
+            }
+
+            let mut inputs = node
+                .inputs
+                .iter()
+                .filter(|port| port.name.0 != "__deps")
+                .cloned()
+                .collect::<Vec<_>>();
+            let mut outputs = node.outputs.clone();
+            normalize_makegen_ports(&canonical_id, &mut inputs, &mut outputs);
+
+            normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, op));
+            kept_nodes.insert(canonical_id);
+        }
+        for node in &normalized.nodes {
+            ports_by_node.insert(
+                node.id.0.clone(),
+                (
+                    node.inputs.iter().map(|port| port.name.0.clone()).collect(),
+                    node.outputs
+                        .iter()
+                        .map(|port| port.name.0.clone())
+                        .collect(),
+                ),
+            );
+        }
+
+        let mut seen_edges = HashSet::<(String, String, String, String)>::new();
+        for edge in &candidate.edges {
+            let from_node = canonical_makegen_node_id(&edge.from_node.0);
+            let to_node = canonical_makegen_node_id(&edge.to_node.0);
+            if from_node == "makegen" || to_node == "makegen" {
+                continue;
+            }
+            if !kept_nodes.contains(&from_node) || !kept_nodes.contains(&to_node) {
+                continue;
+            }
+            if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
+                continue;
+            }
+            let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
+            let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
+            let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
+                continue;
+            };
+            let Some((_, from_outputs)) = ports_by_node.get(&from_node) else {
+                continue;
+            };
+            if !from_outputs.contains(&from_port) || !to_inputs.contains(&to_port) {
+                continue;
+            }
+            let key = (from_node, from_port, to_node, to_port);
+            if seen_edges.insert(key.clone()) {
+                normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
+            }
+        }
+
+        normalized
+    }
+
+    fn normalize_gcp_credential_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
+        let candidate_ids = candidate
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        let mut canonical_nodes = HashSet::<String>::new();
+        if candidate_ids.contains("acquire_resource_std_resources_Network") {
+            canonical_nodes.insert("net_env".to_string());
+        }
+        if candidate_ids.contains("std.patterns::acquire_subject_token") {
+            canonical_nodes.insert("prepare_github_oidc".to_string());
+            canonical_nodes.insert("execute_github_oidc".to_string());
+            canonical_nodes.insert("parse_github_oidc".to_string());
+        }
+        let has_sts_triplet = candidate_ids
+            .contains("prepare_transport_services_gcp_sts_gcp_STS_Exchange")
+            && candidate_ids.contains("execute_transport_services_gcp_sts_gcp_STS_Exchange")
+            && candidate_ids.contains("parse_transport_services_gcp_sts_gcp_STS_Exchange");
+        if has_sts_triplet {
+            canonical_nodes.insert("prepare_sts".to_string());
+            canonical_nodes.insert("execute_sts".to_string());
+            canonical_nodes.insert("parse_sts".to_string());
+        }
+        if candidate_ids.contains("std.patterns::optional_impersonation") {
+            canonical_nodes.insert("should_impersonate".to_string());
+            canonical_nodes.insert("prepare_impersonate".to_string());
+            canonical_nodes.insert("execute_impersonate".to_string());
+            canonical_nodes.insert("parse_impersonate".to_string());
+        }
+        let has_secret_triplet = candidate_ids.contains(
+            "prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion",
+        ) && candidate_ids.contains(
+            "execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion",
+        ) && candidate_ids.contains(
             "parse_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion",
         );
-    if has_secret_triplet {
-        canonical_nodes.insert("prepare_secret_access".to_string());
-        canonical_nodes.insert("execute_secret_access".to_string());
-        canonical_nodes.insert("parse_secret_access".to_string());
+        if has_secret_triplet {
+            canonical_nodes.insert("prepare_secret_access".to_string());
+            canonical_nodes.insert("execute_secret_access".to_string());
+            canonical_nodes.insert("parse_secret_access".to_string());
+        }
+        if candidate_ids.contains("std.patterns::credential_chain") {
+            canonical_nodes.insert("build_credential".to_string());
+        }
+        build_gcp_credential_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {
+            module: "parity.gcp_credential".to_string(),
+            kind: CallableKind::Pattern,
+            name: id.to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+        })
     }
-    if candidate_ids.contains("std.patterns::credential_chain") {
-        canonical_nodes.insert("build_credential".to_string());
-    }
-    build_gcp_credential_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {
-        module: "parity.gcp_credential".to_string(),
-        kind: CallableKind::Pattern,
-        name: id.to_string(),
-        obligation: ObligationCategory::None,
-        service_metadata: None,
-    })
-}
 
-fn normalize_gist_candidate(candidate: &Dag<LoweredOp>, mode: GistParityMode) -> Dag<LoweredOp> {
-    let candidate_ids = candidate
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<HashSet<_>>();
-    let mut canonical_nodes = HashSet::<String>::new();
-    if candidate_ids.contains("acquire_resource_std_resources_Filesystem") {
-        canonical_nodes.insert("fs_env".to_string());
-    }
-    if candidate_ids.contains("shared.gist_modes::branch_context") {
-        canonical_nodes.insert("branch_resolution".to_string());
-    }
-    if candidate_ids.contains("shared.gist_modes::gist_upload") {
-        canonical_nodes.insert("gist_upload".to_string());
-    }
-    match mode {
-        GistParityMode::Snapshot => {
-            if candidate_ids.contains("parse_transport_services_git_git_Core_LsFiles") {
-                canonical_nodes.insert("list_files".to_string());
+    fn normalize_gist_candidate(
+        candidate: &Dag<LoweredOp>,
+        mode: GistParityMode,
+    ) -> Dag<LoweredOp> {
+        let candidate_ids = candidate
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        let mut canonical_nodes = HashSet::<String>::new();
+        if candidate_ids.contains("acquire_resource_std_resources_Filesystem") {
+            canonical_nodes.insert("fs_env".to_string());
+        }
+        if candidate_ids.contains("shared.gist_modes::branch_context") {
+            canonical_nodes.insert("branch_resolution".to_string());
+        }
+        if candidate_ids.contains("shared.gist_modes::gist_upload") {
+            canonical_nodes.insert("gist_upload".to_string());
+        }
+        match mode {
+            GistParityMode::Snapshot => {
+                if candidate_ids.contains("parse_transport_services_git_git_Core_LsFiles") {
+                    canonical_nodes.insert("list_files".to_string());
+                }
+                if candidate_ids.contains("std.patterns::read_text_files") {
+                    canonical_nodes.insert("read_files_loop".to_string());
+                }
+                if candidate_ids.contains("std.patterns::classify_files") {
+                    canonical_nodes.insert("collect_file_contents".to_string());
+                }
+                if candidate_ids.contains("tools.gist::render_snapshot") {
+                    canonical_nodes.insert("render_markdown".to_string());
+                }
             }
-            if candidate_ids.contains("std.patterns::read_text_files") {
-                canonical_nodes.insert("read_files_loop".to_string());
+            GistParityMode::Diff => {
+                if candidate_ids.contains("parse_transport_services_git_git_Core_Diff") {
+                    canonical_nodes.insert("diff".to_string());
+                }
+                if candidate_ids.contains("tools.gist::render_diff") {
+                    canonical_nodes.insert("render_markdown".to_string());
+                }
             }
-            if candidate_ids.contains("std.patterns::classify_files") {
-                canonical_nodes.insert("collect_file_contents".to_string());
-            }
-            if candidate_ids.contains("tools.gist::render_snapshot") {
-                canonical_nodes.insert("render_markdown".to_string());
+            GistParityMode::Recent => {
+                if candidate_ids.contains("parse_transport_services_git_git_Core_Diff") {
+                    canonical_nodes.insert("diff".to_string());
+                }
+                if candidate_ids.contains("parse_transport_services_git_git_Core_RevList") {
+                    canonical_nodes.insert("rev_list".to_string());
+                }
+                if candidate_ids.contains("tools.gist::render_recent") {
+                    canonical_nodes.insert("render_markdown".to_string());
+                }
             }
         }
-        GistParityMode::Diff => {
-            if candidate_ids.contains("parse_transport_services_git_git_Core_Diff") {
-                canonical_nodes.insert("diff".to_string());
+        build_gist_canonical_graph(&canonical_nodes, mode, |id| LoweredOp::Callable {
+            module: "parity.gist".to_string(),
+            kind: CallableKind::Pattern,
+            name: id.to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+        })
+    }
+
+    fn normalize_ci_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
+        let candidate_ids = candidate
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        let mut canonical_nodes = HashSet::<String>::new();
+        for (canonical, marker) in ci_candidate_markers() {
+            if candidate_ids.contains(marker) {
+                canonical_nodes.insert((*canonical).to_string());
             }
-            if candidate_ids.contains("tools.gist::render_diff") {
-                canonical_nodes.insert("render_markdown".to_string());
+        }
+        build_ci_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {
+            module: "parity.ci".to_string(),
+            kind: CallableKind::Pattern,
+            name: id.to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+        })
+    }
+
+    fn normalize_ci_reference<T>(reference: &Dag<T>) -> Dag<()> {
+        let reference_ids = reference
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        build_ci_canonical_graph(&reference_ids, |_| ())
+    }
+
+    fn build_ci_canonical_graph<T>(
+        kept_ids: &HashSet<String>,
+        body_for: impl Fn(&str) -> T,
+    ) -> Dag<T> {
+        let mut normalized = Dag::new();
+        for id in ci_canonical_node_ids() {
+            if !kept_ids.contains(id) {
+                continue;
             }
+            normalized.add_node(Node::opaque(id.to_string(), vec![], vec![], body_for(id)));
         }
-        GistParityMode::Recent => {
-            if candidate_ids.contains("parse_transport_services_git_git_Core_Diff") {
-                canonical_nodes.insert("diff".to_string());
+        let present = normalized
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        for (from_node, from_port, to_node, to_port) in ci_canonical_edges() {
+            if !present.contains(from_node) || !present.contains(to_node) {
+                continue;
             }
-            if candidate_ids.contains("parse_transport_services_git_git_Core_RevList") {
-                canonical_nodes.insert("rev_list".to_string());
-            }
-            if candidate_ids.contains("tools.gist::render_recent") {
-                canonical_nodes.insert("render_markdown".to_string());
-            }
+            normalized.add_edge(Edge::new(
+                from_node.to_string(),
+                from_port.to_string(),
+                to_node.to_string(),
+                to_port.to_string(),
+            ));
         }
+        normalized
     }
-    build_gist_canonical_graph(&canonical_nodes, mode, |id| LoweredOp::Callable {
-        module: "parity.gist".to_string(),
-        kind: CallableKind::Pattern,
-        name: id.to_string(),
-        obligation: ObligationCategory::None,
-        service_metadata: None,
-    })
-}
 
-fn normalize_ci_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
-    let candidate_ids = candidate
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<HashSet<_>>();
-    let mut canonical_nodes = HashSet::<String>::new();
-    for (canonical, marker) in ci_candidate_markers() {
-        if candidate_ids.contains(marker) {
-            canonical_nodes.insert((*canonical).to_string());
-        }
-    }
-    build_ci_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {
-        module: "parity.ci".to_string(),
-        kind: CallableKind::Pattern,
-        name: id.to_string(),
-        obligation: ObligationCategory::None,
-        service_metadata: None,
-    })
-}
-
-fn normalize_ci_reference<T>(reference: &Dag<T>) -> Dag<()> {
-    let reference_ids = reference
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<HashSet<_>>();
-    build_ci_canonical_graph(&reference_ids, |_| ())
-}
-
-fn build_ci_canonical_graph<T>(kept_ids: &HashSet<String>, body_for: impl Fn(&str) -> T) -> Dag<T> {
-    let mut normalized = Dag::new();
-    for id in ci_canonical_node_ids() {
-        if !kept_ids.contains(id) {
-            continue;
-        }
-        normalized.add_node(Node::opaque(id.to_string(), vec![], vec![], body_for(id)));
-    }
-    let present = normalized
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<HashSet<_>>();
-    for (from_node, from_port, to_node, to_port) in ci_canonical_edges() {
-        if !present.contains(from_node) || !present.contains(to_node) {
-            continue;
-        }
-        normalized.add_edge(Edge::new(
-            from_node.to_string(),
-            from_port.to_string(),
-            to_node.to_string(),
-            to_port.to_string(),
-        ));
-    }
-    normalized
-}
-
-fn ci_candidate_markers() -> Vec<(&'static str, &'static str)> {
-    vec![
-        ("aggregate_verify_results", "shared.dag_util::all_succeeded"),
-        ("bootstrap", "tools.bootstrap::bootstrap"),
-        ("build", "tools.build::build_all"),
-        ("clippy_lint", "tools.clippy::clippy_lint"),
-        (
-            "cloud_env_status",
-            "parse_transport_services_shell_shell_Find_ListDirs",
-        ),
-        (
-            "codegen_exists",
-            "parse_transport_services_shell_shell_Codegen_Check",
-        ),
-        ("deps_exists", "tools.deps::deps_install"),
-        (
-            "execute_codegen",
-            "execute_transport_services_shell_shell_Codegen_Run",
-        ),
-        ("execute_stamp_write", "execute_bootstrap_transport"),
-        ("fs_env", "fs_env"),
-        ("guardrail_check", "shared.dag_util::render_and_upsert"),
-        (
-            "parse_codegen_result",
-            "parse_transport_services_shell_shell_Codegen_Run",
-        ),
-        ("pragma", "tools.pragma::pragma"),
-        (
-            "prepare_codegen_command",
-            "prepare_transport_services_shell_shell_Codegen_Run",
-        ),
-        ("prepare_stamp_write", "prepare_write_bootstrap"),
-        ("report", "shared.dag_util::format_report"),
-        ("test", "parse_transport_services_cargo_cargo_Build_Test"),
-        ("testgen", "tools.testgen::testgen"),
-        ("verify_bootstrap_check", "compare_bootstrap_content"),
-        ("verify_deps_config_check", "compare_deps_generate_content"),
-        ("verify_makegen_check", "compare_makegen_content"),
-        ("verify_pragma_check", "compare_pragma_content"),
-        ("verify_testgen_check", "compare_render_and_upsert_content"),
-    ]
-}
-
-fn ci_canonical_node_ids() -> Vec<&'static str> {
-    vec![
-        "aggregate_verify_results",
-        "bootstrap",
-        "build",
-        "clippy_lint",
-        "cloud_env_status",
-        "codegen_exists",
-        "deps_exists",
-        "execute_codegen",
-        "execute_stamp_write",
-        "fs_env",
-        "guardrail_check",
-        "parse_codegen_result",
-        "pragma",
-        "prepare_codegen_command",
-        "prepare_stamp_write",
-        "report",
-        "test",
-        "testgen",
-        "verify_bootstrap_check",
-        "verify_deps_config_check",
-        "verify_makegen_check",
-        "verify_pragma_check",
-        "verify_testgen_check",
-    ]
-}
-
-fn ci_canonical_edges() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
-    vec![
-        (
-            "aggregate_verify_results",
-            "verify_stderr",
-            "report",
-            "verify_stderr",
-        ),
-        (
-            "aggregate_verify_results",
-            "verify_success",
-            "report",
-            "verify_success",
-        ),
-        (
-            "bootstrap",
-            "bootstrap_stderr",
-            "report",
-            "bootstrap_stderr",
-        ),
-        (
-            "bootstrap",
-            "bootstrap_stdout",
-            "report",
-            "bootstrap_stdout",
-        ),
-        (
-            "bootstrap",
-            "bootstrap_success",
-            "report",
-            "bootstrap_success",
-        ),
-        (
-            "bootstrap",
-            "bootstrap_success",
-            "verify_bootstrap_check",
-            "bootstrap_success",
-        ),
-        (
-            "bootstrap",
-            "bootstrap_success",
-            "verify_deps_config_check",
-            "bootstrap_success",
-        ),
-        (
-            "bootstrap",
-            "bootstrap_success",
-            "verify_makegen_check",
-            "bootstrap_success",
-        ),
-        (
-            "bootstrap",
-            "bootstrap_success",
-            "verify_pragma_check",
-            "bootstrap_success",
-        ),
-        (
-            "bootstrap",
-            "bootstrap_success",
-            "verify_testgen_check",
-            "bootstrap_success",
-        ),
-        ("build", "build_stderr", "report", "build_stderr"),
-        ("build", "build_stdout", "report", "build_stdout"),
-        ("build", "build_success", "clippy_lint", "build_success"),
-        ("build", "build_success", "report", "build_success"),
-        ("build", "build_success", "test", "build_success"),
-        ("clippy_lint", "lint_stderr", "report", "lint_stderr"),
-        ("clippy_lint", "lint_stdout", "report", "lint_stdout"),
-        ("clippy_lint", "lint_success", "report", "lint_success"),
-        ("cloud_env_status", "status", "report", "cloud_env_status"),
-        (
-            "codegen_exists",
-            "codegen_needed",
-            "prepare_codegen_command",
-            "codegen_needed",
-        ),
-        (
-            "execute_codegen",
-            "response",
-            "parse_codegen_result",
-            "response",
-        ),
-        ("execute_codegen", "skip", "parse_codegen_result", "skip"),
-        ("fs_env", "file:write", "bootstrap", "res:file"),
-        ("fs_env", "file:write", "build", "res:file"),
-        ("fs_env", "file:write", "clippy_lint", "res:file"),
-        ("fs_env", "file:write", "codegen_exists", "res:file"),
-        ("fs_env", "file:write", "deps_exists", "res:file"),
-        ("fs_env", "file:write", "execute_codegen", "res:file"),
-        ("fs_env", "file:write", "execute_stamp_write", "res:file"),
-        ("fs_env", "file:write", "guardrail_check", "res:file"),
-        ("fs_env", "file:write", "pragma", "res:file"),
-        ("fs_env", "file:write", "test", "res:file"),
-        ("fs_env", "file:write", "testgen", "res:file"),
-        ("fs_env", "file:write", "verify_bootstrap_check", "res:file"),
-        (
-            "fs_env",
-            "file:write",
-            "verify_deps_config_check",
-            "res:file",
-        ),
-        ("fs_env", "file:write", "verify_makegen_check", "res:file"),
-        ("fs_env", "file:write", "verify_pragma_check", "res:file"),
-        ("fs_env", "file:write", "verify_testgen_check", "res:file"),
-        (
-            "guardrail_check",
-            "guardrail_stderr",
-            "report",
-            "guardrail_stderr",
-        ),
-        (
-            "guardrail_check",
-            "guardrail_stdout",
-            "report",
-            "guardrail_stdout",
-        ),
-        (
-            "guardrail_check",
-            "guardrail_success",
-            "report",
-            "guardrail_success",
-        ),
-        (
-            "parse_codegen_result",
-            "prep_success",
-            "bootstrap",
-            "prep_success",
-        ),
-        (
-            "parse_codegen_result",
-            "prep_success",
-            "build",
-            "prep_success",
-        ),
-        (
-            "parse_codegen_result",
-            "prep_success",
-            "pragma",
-            "prep_success",
-        ),
-        (
-            "parse_codegen_result",
-            "prep_success",
-            "prepare_stamp_write",
-            "prep_success",
-        ),
-        (
-            "parse_codegen_result",
-            "prep_success",
-            "testgen",
-            "prep_success",
-        ),
-        (
-            "parse_codegen_result",
-            "prep_success",
-            "verify_bootstrap_check",
-            "prep_success",
-        ),
-        (
-            "parse_codegen_result",
-            "prep_success",
-            "verify_deps_config_check",
-            "prep_success",
-        ),
-        (
-            "parse_codegen_result",
-            "prep_success",
-            "verify_makegen_check",
-            "prep_success",
-        ),
-        (
-            "parse_codegen_result",
-            "prep_success",
-            "verify_pragma_check",
-            "prep_success",
-        ),
-        (
-            "parse_codegen_result",
-            "prep_success",
-            "verify_testgen_check",
-            "prep_success",
-        ),
-        ("pragma", "pragma_stderr", "report", "pragma_stderr"),
-        ("pragma", "pragma_stdout", "report", "pragma_stdout"),
-        ("pragma", "pragma_success", "clippy_lint", "pragma_success"),
-        (
-            "pragma",
-            "pragma_success",
-            "guardrail_check",
-            "pragma_success",
-        ),
-        ("pragma", "pragma_success", "report", "pragma_success"),
-        (
-            "pragma",
-            "pragma_success",
-            "verify_bootstrap_check",
-            "pragma_success",
-        ),
-        (
-            "pragma",
-            "pragma_success",
-            "verify_deps_config_check",
-            "pragma_success",
-        ),
-        (
-            "pragma",
-            "pragma_success",
-            "verify_makegen_check",
-            "pragma_success",
-        ),
-        (
-            "pragma",
-            "pragma_success",
-            "verify_pragma_check",
-            "pragma_success",
-        ),
-        (
-            "pragma",
-            "pragma_success",
-            "verify_testgen_check",
-            "pragma_success",
-        ),
-        (
-            "prepare_codegen_command",
-            "request",
-            "execute_codegen",
-            "request",
-        ),
-        ("prepare_codegen_command", "skip", "execute_codegen", "skip"),
-        (
-            "prepare_stamp_write",
-            "request",
-            "execute_stamp_write",
-            "request",
-        ),
-        ("prepare_stamp_write", "skip", "execute_stamp_write", "skip"),
-        ("test", "test_stderr", "report", "test_stderr"),
-        ("test", "test_stdout", "report", "test_stdout"),
-        ("test", "test_success", "report", "test_success"),
-        ("testgen", "testgen_stderr", "report", "testgen_stderr"),
-        ("testgen", "testgen_stdout", "report", "testgen_stdout"),
-        ("testgen", "testgen_success", "build", "testgen_success"),
-        (
-            "testgen",
-            "testgen_success",
-            "guardrail_check",
-            "testgen_success",
-        ),
-        ("testgen", "testgen_success", "report", "testgen_success"),
-        (
-            "testgen",
-            "testgen_success",
-            "verify_bootstrap_check",
-            "testgen_success",
-        ),
-        (
-            "testgen",
-            "testgen_success",
-            "verify_deps_config_check",
-            "testgen_success",
-        ),
-        (
-            "testgen",
-            "testgen_success",
-            "verify_makegen_check",
-            "testgen_success",
-        ),
-        (
-            "testgen",
-            "testgen_success",
-            "verify_pragma_check",
-            "testgen_success",
-        ),
-        (
-            "testgen",
-            "testgen_success",
-            "verify_testgen_check",
-            "testgen_success",
-        ),
-        (
-            "verify_bootstrap_check",
-            "verify_bootstrap_stderr",
-            "aggregate_verify_results",
-            "verify_bootstrap_stderr",
-        ),
-        (
-            "verify_bootstrap_check",
-            "verify_bootstrap_success",
-            "aggregate_verify_results",
-            "verify_bootstrap_success",
-        ),
-        (
-            "verify_deps_config_check",
-            "verify_deps_config_stderr",
-            "aggregate_verify_results",
-            "verify_deps_config_stderr",
-        ),
-        (
-            "verify_deps_config_check",
-            "verify_deps_config_success",
-            "aggregate_verify_results",
-            "verify_deps_config_success",
-        ),
-        (
-            "verify_makegen_check",
-            "verify_makegen_stderr",
-            "aggregate_verify_results",
-            "verify_makegen_stderr",
-        ),
-        (
-            "verify_makegen_check",
-            "verify_makegen_success",
-            "aggregate_verify_results",
-            "verify_makegen_success",
-        ),
-        (
-            "verify_pragma_check",
-            "verify_pragma_stderr",
-            "aggregate_verify_results",
-            "verify_pragma_stderr",
-        ),
-        (
-            "verify_pragma_check",
-            "verify_pragma_success",
-            "aggregate_verify_results",
-            "verify_pragma_success",
-        ),
-        (
-            "verify_testgen_check",
-            "verify_testgen_stderr",
-            "aggregate_verify_results",
-            "verify_testgen_stderr",
-        ),
-        (
-            "verify_testgen_check",
-            "verify_testgen_success",
-            "aggregate_verify_results",
-            "verify_testgen_success",
-        ),
-    ]
-}
-
-fn normalize_gist_reference<T>(reference: &Dag<T>, mode: GistParityMode) -> Dag<()> {
-    let reference_ids = reference
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<HashSet<_>>();
-    build_gist_canonical_graph(&reference_ids, mode, |_| ())
-}
-
-fn build_gist_canonical_graph<T>(
-    kept_ids: &HashSet<String>,
-    mode: GistParityMode,
-    body_for: impl Fn(&str) -> T,
-) -> Dag<T> {
-    let mut normalized = Dag::new();
-    for (id, inputs, outputs) in gist_canonical_nodes(mode) {
-        if !kept_ids.contains(id) {
-            continue;
-        }
-        normalized.add_node(Node::opaque(id.to_string(), inputs, outputs, body_for(id)));
-    }
-    let present = normalized
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<HashSet<_>>();
-    for (from_node, from_port, to_node, to_port) in gist_canonical_edges(mode) {
-        if !present.contains(from_node) || !present.contains(to_node) {
-            continue;
-        }
-        normalized.add_edge(Edge::new(
-            from_node.to_string(),
-            from_port.to_string(),
-            to_node.to_string(),
-            to_port.to_string(),
-        ));
-    }
-    normalized
-}
-
-fn gist_canonical_nodes(mode: GistParityMode) -> Vec<(&'static str, Vec<Port>, Vec<Port>)> {
-    let mut gist_upload_inputs = vec![
-        Port::with_cardinality("branch", "OptionalString", Cardinality::ZERO_OR_ONE),
-        Port::with_cardinality("remote_branch", "OptionalString", Cardinality::ZERO_OR_ONE),
-        Port::with_cardinality("markdown", "String", Cardinality::ONE),
-    ];
-    if matches!(mode, GistParityMode::Recent) {
-        gist_upload_inputs.push(Port::with_cardinality(
-            "base_ref",
-            "OptionalString",
-            Cardinality::ZERO_OR_ONE,
-        ));
-    }
-    let render_markdown_inputs = if matches!(mode, GistParityMode::Snapshot) {
-        vec![Port::with_cardinality("contents", "Map", Cardinality::ONE)]
-    } else {
+    fn ci_candidate_markers() -> Vec<(&'static str, &'static str)> {
         vec![
-            Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
-            Port::with_cardinality("stats", "String", Cardinality::ONE),
+            ("aggregate_verify_results", "shared.dag_util::all_succeeded"),
+            ("bootstrap", "tools.bootstrap::bootstrap"),
+            ("build", "tools.build::build_all"),
+            ("clippy_lint", "tools.clippy::clippy_lint"),
+            (
+                "cloud_env_status",
+                "parse_transport_services_shell_shell_Find_ListDirs",
+            ),
+            (
+                "codegen_exists",
+                "parse_transport_services_shell_shell_Codegen_Check",
+            ),
+            ("deps_exists", "tools.deps::deps_install"),
+            (
+                "execute_codegen",
+                "execute_transport_services_shell_shell_Codegen_Run",
+            ),
+            ("execute_stamp_write", "execute_bootstrap_transport"),
+            ("fs_env", "fs_env"),
+            ("guardrail_check", "shared.dag_util::render_and_upsert"),
+            (
+                "parse_codegen_result",
+                "parse_transport_services_shell_shell_Codegen_Run",
+            ),
+            ("pragma", "tools.pragma::pragma"),
+            (
+                "prepare_codegen_command",
+                "prepare_transport_services_shell_shell_Codegen_Run",
+            ),
+            ("prepare_stamp_write", "prepare_write_bootstrap"),
+            ("report", "shared.dag_util::format_report"),
+            ("test", "parse_transport_services_cargo_cargo_Build_Test"),
+            ("testgen", "tools.testgen::testgen"),
+            ("verify_bootstrap_check", "compare_bootstrap_content"),
+            ("verify_deps_config_check", "compare_deps_generate_content"),
+            ("verify_makegen_check", "compare_makegen_content"),
+            ("verify_pragma_check", "compare_pragma_content"),
+            ("verify_testgen_check", "compare_render_and_upsert_content"),
         ]
-    };
-    let mut nodes = vec![
-        (
+    }
+
+    fn ci_canonical_node_ids() -> Vec<&'static str> {
+        vec![
+            "aggregate_verify_results",
+            "bootstrap",
+            "build",
+            "clippy_lint",
+            "cloud_env_status",
+            "codegen_exists",
+            "deps_exists",
+            "execute_codegen",
+            "execute_stamp_write",
             "fs_env",
-            vec![],
-            vec![Port::with_cardinality(
+            "guardrail_check",
+            "parse_codegen_result",
+            "pragma",
+            "prepare_codegen_command",
+            "prepare_stamp_write",
+            "report",
+            "test",
+            "testgen",
+            "verify_bootstrap_check",
+            "verify_deps_config_check",
+            "verify_makegen_check",
+            "verify_pragma_check",
+            "verify_testgen_check",
+        ]
+    }
+
+    fn ci_canonical_edges() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+        vec![
+            (
+                "aggregate_verify_results",
+                "verify_stderr",
+                "report",
+                "verify_stderr",
+            ),
+            (
+                "aggregate_verify_results",
+                "verify_success",
+                "report",
+                "verify_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_stderr",
+                "report",
+                "bootstrap_stderr",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_stdout",
+                "report",
+                "bootstrap_stdout",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "report",
+                "bootstrap_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "verify_bootstrap_check",
+                "bootstrap_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "verify_deps_config_check",
+                "bootstrap_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "verify_makegen_check",
+                "bootstrap_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "verify_pragma_check",
+                "bootstrap_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "verify_testgen_check",
+                "bootstrap_success",
+            ),
+            ("build", "build_stderr", "report", "build_stderr"),
+            ("build", "build_stdout", "report", "build_stdout"),
+            ("build", "build_success", "clippy_lint", "build_success"),
+            ("build", "build_success", "report", "build_success"),
+            ("build", "build_success", "test", "build_success"),
+            ("clippy_lint", "lint_stderr", "report", "lint_stderr"),
+            ("clippy_lint", "lint_stdout", "report", "lint_stdout"),
+            ("clippy_lint", "lint_success", "report", "lint_success"),
+            ("cloud_env_status", "status", "report", "cloud_env_status"),
+            (
+                "codegen_exists",
+                "codegen_needed",
+                "prepare_codegen_command",
+                "codegen_needed",
+            ),
+            (
+                "execute_codegen",
+                "response",
+                "parse_codegen_result",
+                "response",
+            ),
+            ("execute_codegen", "skip", "parse_codegen_result", "skip"),
+            ("fs_env", "file:write", "bootstrap", "res:file"),
+            ("fs_env", "file:write", "build", "res:file"),
+            ("fs_env", "file:write", "clippy_lint", "res:file"),
+            ("fs_env", "file:write", "codegen_exists", "res:file"),
+            ("fs_env", "file:write", "deps_exists", "res:file"),
+            ("fs_env", "file:write", "execute_codegen", "res:file"),
+            ("fs_env", "file:write", "execute_stamp_write", "res:file"),
+            ("fs_env", "file:write", "guardrail_check", "res:file"),
+            ("fs_env", "file:write", "pragma", "res:file"),
+            ("fs_env", "file:write", "test", "res:file"),
+            ("fs_env", "file:write", "testgen", "res:file"),
+            ("fs_env", "file:write", "verify_bootstrap_check", "res:file"),
+            (
+                "fs_env",
                 "file:write",
-                "FilesystemHandle",
-                Cardinality::ONE,
-            )],
-        ),
-        (
-            "branch_resolution",
+                "verify_deps_config_check",
+                "res:file",
+            ),
+            ("fs_env", "file:write", "verify_makegen_check", "res:file"),
+            ("fs_env", "file:write", "verify_pragma_check", "res:file"),
+            ("fs_env", "file:write", "verify_testgen_check", "res:file"),
+            (
+                "guardrail_check",
+                "guardrail_stderr",
+                "report",
+                "guardrail_stderr",
+            ),
+            (
+                "guardrail_check",
+                "guardrail_stdout",
+                "report",
+                "guardrail_stdout",
+            ),
+            (
+                "guardrail_check",
+                "guardrail_success",
+                "report",
+                "guardrail_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "bootstrap",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "build",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "pragma",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "prepare_stamp_write",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "testgen",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "verify_bootstrap_check",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "verify_deps_config_check",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "verify_makegen_check",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "verify_pragma_check",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "verify_testgen_check",
+                "prep_success",
+            ),
+            ("pragma", "pragma_stderr", "report", "pragma_stderr"),
+            ("pragma", "pragma_stdout", "report", "pragma_stdout"),
+            ("pragma", "pragma_success", "clippy_lint", "pragma_success"),
+            (
+                "pragma",
+                "pragma_success",
+                "guardrail_check",
+                "pragma_success",
+            ),
+            ("pragma", "pragma_success", "report", "pragma_success"),
+            (
+                "pragma",
+                "pragma_success",
+                "verify_bootstrap_check",
+                "pragma_success",
+            ),
+            (
+                "pragma",
+                "pragma_success",
+                "verify_deps_config_check",
+                "pragma_success",
+            ),
+            (
+                "pragma",
+                "pragma_success",
+                "verify_makegen_check",
+                "pragma_success",
+            ),
+            (
+                "pragma",
+                "pragma_success",
+                "verify_pragma_check",
+                "pragma_success",
+            ),
+            (
+                "pragma",
+                "pragma_success",
+                "verify_testgen_check",
+                "pragma_success",
+            ),
+            (
+                "prepare_codegen_command",
+                "request",
+                "execute_codegen",
+                "request",
+            ),
+            ("prepare_codegen_command", "skip", "execute_codegen", "skip"),
+            (
+                "prepare_stamp_write",
+                "request",
+                "execute_stamp_write",
+                "request",
+            ),
+            ("prepare_stamp_write", "skip", "execute_stamp_write", "skip"),
+            ("test", "test_stderr", "report", "test_stderr"),
+            ("test", "test_stdout", "report", "test_stdout"),
+            ("test", "test_success", "report", "test_success"),
+            ("testgen", "testgen_stderr", "report", "testgen_stderr"),
+            ("testgen", "testgen_stdout", "report", "testgen_stdout"),
+            ("testgen", "testgen_success", "build", "testgen_success"),
+            (
+                "testgen",
+                "testgen_success",
+                "guardrail_check",
+                "testgen_success",
+            ),
+            ("testgen", "testgen_success", "report", "testgen_success"),
+            (
+                "testgen",
+                "testgen_success",
+                "verify_bootstrap_check",
+                "testgen_success",
+            ),
+            (
+                "testgen",
+                "testgen_success",
+                "verify_deps_config_check",
+                "testgen_success",
+            ),
+            (
+                "testgen",
+                "testgen_success",
+                "verify_makegen_check",
+                "testgen_success",
+            ),
+            (
+                "testgen",
+                "testgen_success",
+                "verify_pragma_check",
+                "testgen_success",
+            ),
+            (
+                "testgen",
+                "testgen_success",
+                "verify_testgen_check",
+                "testgen_success",
+            ),
+            (
+                "verify_bootstrap_check",
+                "verify_bootstrap_stderr",
+                "aggregate_verify_results",
+                "verify_bootstrap_stderr",
+            ),
+            (
+                "verify_bootstrap_check",
+                "verify_bootstrap_success",
+                "aggregate_verify_results",
+                "verify_bootstrap_success",
+            ),
+            (
+                "verify_deps_config_check",
+                "verify_deps_config_stderr",
+                "aggregate_verify_results",
+                "verify_deps_config_stderr",
+            ),
+            (
+                "verify_deps_config_check",
+                "verify_deps_config_success",
+                "aggregate_verify_results",
+                "verify_deps_config_success",
+            ),
+            (
+                "verify_makegen_check",
+                "verify_makegen_stderr",
+                "aggregate_verify_results",
+                "verify_makegen_stderr",
+            ),
+            (
+                "verify_makegen_check",
+                "verify_makegen_success",
+                "aggregate_verify_results",
+                "verify_makegen_success",
+            ),
+            (
+                "verify_pragma_check",
+                "verify_pragma_stderr",
+                "aggregate_verify_results",
+                "verify_pragma_stderr",
+            ),
+            (
+                "verify_pragma_check",
+                "verify_pragma_success",
+                "aggregate_verify_results",
+                "verify_pragma_success",
+            ),
+            (
+                "verify_testgen_check",
+                "verify_testgen_stderr",
+                "aggregate_verify_results",
+                "verify_testgen_stderr",
+            ),
+            (
+                "verify_testgen_check",
+                "verify_testgen_success",
+                "aggregate_verify_results",
+                "verify_testgen_success",
+            ),
+        ]
+    }
+
+    fn normalize_gist_reference<T>(reference: &Dag<T>, mode: GistParityMode) -> Dag<()> {
+        let reference_ids = reference
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        build_gist_canonical_graph(&reference_ids, mode, |_| ())
+    }
+
+    fn build_gist_canonical_graph<T>(
+        kept_ids: &HashSet<String>,
+        mode: GistParityMode,
+        body_for: impl Fn(&str) -> T,
+    ) -> Dag<T> {
+        let mut normalized = Dag::new();
+        for (id, inputs, outputs) in gist_canonical_nodes(mode) {
+            if !kept_ids.contains(id) {
+                continue;
+            }
+            normalized.add_node(Node::opaque(id.to_string(), inputs, outputs, body_for(id)));
+        }
+        let present = normalized
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        for (from_node, from_port, to_node, to_port) in gist_canonical_edges(mode) {
+            if !present.contains(from_node) || !present.contains(to_node) {
+                continue;
+            }
+            normalized.add_edge(Edge::new(
+                from_node.to_string(),
+                from_port.to_string(),
+                to_node.to_string(),
+                to_port.to_string(),
+            ));
+        }
+        normalized
+    }
+
+    fn gist_canonical_nodes(mode: GistParityMode) -> Vec<(&'static str, Vec<Port>, Vec<Port>)> {
+        let mut gist_upload_inputs = vec![
+            Port::with_cardinality("branch", "OptionalString", Cardinality::ZERO_OR_ONE),
+            Port::with_cardinality("remote_branch", "OptionalString", Cardinality::ZERO_OR_ONE),
+            Port::with_cardinality("markdown", "String", Cardinality::ONE),
+        ];
+        if matches!(mode, GistParityMode::Recent) {
+            gist_upload_inputs.push(Port::with_cardinality(
+                "base_ref",
+                "OptionalString",
+                Cardinality::ZERO_OR_ONE,
+            ));
+        }
+        let render_markdown_inputs = if matches!(mode, GistParityMode::Snapshot) {
+            vec![Port::with_cardinality("contents", "Map", Cardinality::ONE)]
+        } else {
             vec![
-                Port::with_cardinality("repo_path", "String", Cardinality::ONE),
-                Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
-            ],
-            vec![
-                Port::with_cardinality("branch", "OptionalString", Cardinality::ZERO_OR_ONE),
-                Port::with_cardinality("remote_branch", "OptionalString", Cardinality::ZERO_OR_ONE),
-            ],
-        ),
-        (
-            "gist_upload",
-            gist_upload_inputs,
-            vec![Port::with_cardinality("url", "Url", Cardinality::ONE)],
-        ),
-        (
-            "render_markdown",
-            render_markdown_inputs,
-            vec![Port::with_cardinality(
-                "markdown",
-                "String",
-                Cardinality::ONE,
-            )],
-        ),
-    ];
-    match mode {
-        GistParityMode::Snapshot => {
-            nodes.push((
-                "list_files",
+                Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
+                Port::with_cardinality("stats", "String", Cardinality::ONE),
+            ]
+        };
+        let mut nodes = vec![
+            (
+                "fs_env",
+                vec![],
+                vec![Port::with_cardinality(
+                    "file:write",
+                    "FilesystemHandle",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "branch_resolution",
                 vec![
                     Port::with_cardinality("repo_path", "String", Cardinality::ONE),
                     Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
                 ],
-                vec![Port::with_cardinality(
-                    "files",
-                    "String",
-                    Cardinality::ZERO_OR_MORE,
-                )],
-            ));
-            nodes.push((
-                "read_files_loop",
                 vec![
-                    Port::with_cardinality("files", "String", Cardinality::ZERO_OR_MORE),
-                    Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                    Port::with_cardinality("branch", "OptionalString", Cardinality::ZERO_OR_ONE),
+                    Port::with_cardinality(
+                        "remote_branch",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
                 ],
-                vec![Port::with_cardinality(
-                    "contents",
-                    "String",
-                    Cardinality::ZERO_OR_MORE,
-                )],
-            ));
-            nodes.push((
-                "collect_file_contents",
-                vec![
-                    Port::with_cardinality("filenames", "String", Cardinality::ZERO_OR_MORE),
-                    Port::with_cardinality("contents_list", "String", Cardinality::ZERO_OR_MORE),
-                ],
-                vec![Port::with_cardinality("contents", "Map", Cardinality::ONE)],
-            ));
-        }
-        GistParityMode::Diff => {
-            nodes.push((
-                "diff",
-                vec![
-                    Port::with_cardinality("base_ref", "OptionalString", Cardinality::ZERO_OR_ONE),
-                    Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
-                ],
-                vec![
-                    Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
-                    Port::with_cardinality("stats", "String", Cardinality::ONE),
-                ],
-            ));
-        }
-        GistParityMode::Recent => {
-            nodes.push((
-                "rev_list",
-                vec![
-                    Port::with_cardinality("since", "OptionalString", Cardinality::ZERO_OR_ONE),
-                    Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
-                ],
-                vec![Port::with_cardinality(
-                    "base_ref",
-                    "OptionalString",
-                    Cardinality::ZERO_OR_ONE,
-                )],
-            ));
-            nodes.push((
-                "diff",
-                vec![
-                    Port::with_cardinality("base_ref", "OptionalString", Cardinality::ZERO_OR_ONE),
-                    Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
-                ],
-                vec![
-                    Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
-                    Port::with_cardinality("stats", "String", Cardinality::ONE),
-                ],
-            ));
-        }
-    }
-    nodes
-}
-
-fn gist_canonical_edges(
-    mode: GistParityMode,
-) -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
-    let mut edges = vec![
-        ("fs_env", "file:write", "branch_resolution", "res:file"),
-        ("branch_resolution", "branch", "gist_upload", "branch"),
-        (
-            "branch_resolution",
-            "remote_branch",
-            "gist_upload",
-            "remote_branch",
-        ),
-        ("render_markdown", "markdown", "gist_upload", "markdown"),
-    ];
-    match mode {
-        GistParityMode::Snapshot => {
-            edges.push(("fs_env", "file:write", "list_files", "res:file"));
-            edges.push(("fs_env", "file:write", "read_files_loop", "res:file"));
-            edges.push(("list_files", "files", "read_files_loop", "files"));
-            edges.push(("list_files", "files", "collect_file_contents", "filenames"));
-            edges.push((
-                "read_files_loop",
-                "contents",
-                "collect_file_contents",
-                "contents_list",
-            ));
-            edges.push((
-                "collect_file_contents",
-                "contents",
-                "render_markdown",
-                "contents",
-            ));
-        }
-        GistParityMode::Diff => {
-            edges.push(("fs_env", "file:write", "diff", "res:file"));
-            edges.push(("diff", "diff_files", "render_markdown", "diff_files"));
-            edges.push(("diff", "stats", "render_markdown", "stats"));
-        }
-        GistParityMode::Recent => {
-            edges.push(("fs_env", "file:write", "rev_list", "res:file"));
-            edges.push(("fs_env", "file:write", "diff", "res:file"));
-            edges.push(("rev_list", "base_ref", "diff", "base_ref"));
-            edges.push(("rev_list", "base_ref", "gist_upload", "base_ref"));
-            edges.push(("diff", "diff_files", "render_markdown", "diff_files"));
-            edges.push(("diff", "stats", "render_markdown", "stats"));
-        }
-    }
-    edges
-}
-
-fn normalize_gcp_credential_reference<T>(reference: &Dag<T>) -> Dag<()> {
-    let reference_ids = reference
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<HashSet<_>>();
-    build_gcp_credential_canonical_graph(&reference_ids, |_| ())
-}
-
-fn build_gcp_credential_canonical_graph<T>(
-    kept_ids: &HashSet<String>,
-    body_for: impl Fn(&str) -> T,
-) -> Dag<T> {
-    let mut normalized = Dag::new();
-    for (id, inputs, outputs) in gcp_credential_canonical_nodes() {
-        if !kept_ids.contains(id) {
-            continue;
-        }
-        normalized.add_node(Node::opaque(id.to_string(), inputs, outputs, body_for(id)));
-    }
-    let present = normalized
-        .nodes
-        .iter()
-        .map(|node| node.id.0.clone())
-        .collect::<HashSet<_>>();
-    for (from_node, from_port, to_node, to_port) in gcp_credential_canonical_edges() {
-        if !present.contains(from_node) || !present.contains(to_node) {
-            continue;
-        }
-        normalized.add_edge(Edge::new(
-            from_node.to_string(),
-            from_port.to_string(),
-            to_node.to_string(),
-            to_port.to_string(),
-        ));
-    }
-    normalized
-}
-
-fn gcp_credential_canonical_nodes() -> Vec<(&'static str, Vec<Port>, Vec<Port>)> {
-    vec![
-        (
-            "build_credential",
-            vec![
-                Port::with_cardinality("secret", "String", Cardinality::ONE),
-                Port::with_cardinality("scheme", "String", Cardinality::ONE),
-                Port::with_cardinality("header_name", "OptionalString", Cardinality::ZERO_OR_ONE),
-                Port::with_cardinality("source_id", "String", Cardinality::ONE),
-                Port::with_cardinality("required_scopes", "String", Cardinality::ZERO_OR_MORE),
-            ],
-            vec![Port::with_cardinality(
-                "credential",
-                "Credential",
-                Cardinality::ONE,
-            )],
-        ),
-        (
-            "net_env",
-            vec![],
-            vec![Port::with_cardinality(
-                "api:network",
-                "NetworkHandle",
-                Cardinality::ONE,
-            )],
-        ),
-        (
-            "prepare_github_oidc",
-            vec![
-                Port::with_cardinality("audience", "String", Cardinality::ONE),
-                Port::with_cardinality("request_token", "OptionalString", Cardinality::ZERO_OR_ONE),
-                Port::with_cardinality("request_url", "OptionalString", Cardinality::ZERO_OR_ONE),
-            ],
-            vec![
-                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-            ],
-        ),
-        (
-            "execute_github_oidc",
-            vec![
-                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-                Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
-            ],
-            vec![Port::with_cardinality(
-                "response",
-                "TransportResponse",
-                Cardinality::ONE,
-            )],
-        ),
-        (
-            "parse_github_oidc",
-            vec![Port::with_cardinality(
-                "response",
-                "TransportResponse",
-                Cardinality::ONE,
-            )],
-            vec![Port::with_cardinality(
-                "subject_token",
-                "String",
-                Cardinality::ONE,
-            )],
-        ),
-        (
-            "prepare_sts",
-            vec![
-                Port::with_cardinality("subject_token", "String", Cardinality::ONE),
-                Port::with_cardinality("audience", "String", Cardinality::ONE),
-            ],
-            vec![
-                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-            ],
-        ),
-        (
-            "execute_sts",
-            vec![
-                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-                Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
-            ],
-            vec![Port::with_cardinality(
-                "response",
-                "TransportResponse",
-                Cardinality::ONE,
-            )],
-        ),
-        (
-            "parse_sts",
-            vec![Port::with_cardinality(
-                "response",
-                "TransportResponse",
-                Cardinality::ONE,
-            )],
-            vec![
-                Port::with_cardinality("access_token", "String", Cardinality::ONE),
-                Port::with_cardinality("expires_in", "Int", Cardinality::ONE),
-            ],
-        ),
-        (
-            "should_impersonate",
-            vec![Port::with_cardinality(
-                "service_account",
-                "String",
-                Cardinality::ONE,
-            )],
-            vec![Port::with_cardinality("should", "Bool", Cardinality::ONE)],
-        ),
-        (
-            "prepare_impersonate",
-            vec![
-                Port::with_cardinality("access_token", "String", Cardinality::ONE),
-                Port::with_cardinality("service_account", "String", Cardinality::ONE),
-                Port::with_cardinality("lifetime_seconds", "OptionalInt", Cardinality::ZERO_OR_ONE),
-                Port::with_cardinality(
-                    "should_impersonate",
-                    "OptionalBool",
-                    Cardinality::ZERO_OR_ONE,
-                ),
-            ],
-            vec![
-                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-            ],
-        ),
-        (
-            "execute_impersonate",
-            vec![
-                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-                Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
-            ],
-            vec![Port::with_cardinality(
-                "response",
-                "TransportResponse",
-                Cardinality::ONE,
-            )],
-        ),
-        (
-            "parse_impersonate",
-            vec![
-                Port::with_cardinality("response", "TransportResponse", Cardinality::ONE),
-                Port::with_cardinality(
-                    "base_access_token",
-                    "OptionalString",
-                    Cardinality::ZERO_OR_ONE,
-                ),
-            ],
-            vec![Port::with_cardinality(
-                "access_token",
-                "String",
-                Cardinality::ONE,
-            )],
-        ),
-        (
-            "prepare_secret_access",
-            vec![
-                Port::with_cardinality("access_token", "String", Cardinality::ONE),
-                Port::with_cardinality("project", "String", Cardinality::ONE),
-                Port::with_cardinality("secret", "String", Cardinality::ONE),
-                Port::with_cardinality("version", "OptionalString", Cardinality::ZERO_OR_ONE),
-            ],
-            vec![
-                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-            ],
-        ),
-        (
-            "execute_secret_access",
-            vec![
-                Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
-                Port::with_cardinality("skip", "Bool", Cardinality::ONE),
-                Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
-            ],
-            vec![Port::with_cardinality(
-                "response",
-                "TransportResponse",
-                Cardinality::ONE,
-            )],
-        ),
-        (
-            "parse_secret_access",
-            vec![Port::with_cardinality(
-                "response",
-                "TransportResponse",
-                Cardinality::ONE,
-            )],
-            vec![Port::with_cardinality("secret", "String", Cardinality::ONE)],
-        ),
-    ]
-}
-
-fn gcp_credential_canonical_edges() -> Vec<(&'static str, &'static str, &'static str, &'static str)>
-{
-    vec![
-        (
-            "prepare_github_oidc",
-            "request",
-            "execute_github_oidc",
-            "request",
-        ),
-        ("prepare_github_oidc", "skip", "execute_github_oidc", "skip"),
-        (
-            "execute_github_oidc",
-            "response",
-            "parse_github_oidc",
-            "response",
-        ),
-        (
-            "parse_github_oidc",
-            "subject_token",
-            "prepare_sts",
-            "subject_token",
-        ),
-        ("prepare_sts", "request", "execute_sts", "request"),
-        ("prepare_sts", "skip", "execute_sts", "skip"),
-        ("execute_sts", "response", "parse_sts", "response"),
-        (
-            "parse_sts",
-            "access_token",
-            "prepare_impersonate",
-            "access_token",
-        ),
-        (
-            "parse_sts",
-            "access_token",
-            "parse_impersonate",
-            "base_access_token",
-        ),
-        (
-            "should_impersonate",
-            "should",
-            "prepare_impersonate",
-            "should_impersonate",
-        ),
-        (
-            "prepare_impersonate",
-            "request",
-            "execute_impersonate",
-            "request",
-        ),
-        ("prepare_impersonate", "skip", "execute_impersonate", "skip"),
-        (
-            "execute_impersonate",
-            "response",
-            "parse_impersonate",
-            "response",
-        ),
-        (
-            "parse_impersonate",
-            "access_token",
-            "prepare_secret_access",
-            "access_token",
-        ),
-        (
-            "prepare_secret_access",
-            "request",
-            "execute_secret_access",
-            "request",
-        ),
-        (
-            "prepare_secret_access",
-            "skip",
-            "execute_secret_access",
-            "skip",
-        ),
-        (
-            "execute_secret_access",
-            "response",
-            "parse_secret_access",
-            "response",
-        ),
-        (
-            "parse_secret_access",
-            "secret",
-            "build_credential",
-            "secret",
-        ),
-        (
-            "net_env",
-            "api:network",
-            "execute_github_oidc",
-            "res:api:network",
-        ),
-        ("net_env", "api:network", "execute_sts", "res:api:network"),
-        (
-            "net_env",
-            "api:network",
-            "execute_impersonate",
-            "res:api:network",
-        ),
-        (
-            "net_env",
-            "api:network",
-            "execute_secret_access",
-            "res:api:network",
-        ),
-    ]
-}
-
-pub(crate) fn normalize_makegen_reference<T>(reference: &Dag<T>) -> Dag<()> {
-    let mut normalized = Dag::new();
-    let mut kept_nodes = HashSet::<String>::new();
-    let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
-
-    for node in &reference.nodes {
-        let canonical_id = canonical_makegen_node_id(&node.id.0);
-        if canonical_id == "makegen" {
-            continue;
-        }
-        let mut inputs = node
-            .inputs
-            .iter()
-            .filter(|port| port.name.0 != "__deps")
-            .cloned()
-            .collect::<Vec<_>>();
-        let mut outputs = node.outputs.clone();
-        normalize_makegen_ports(&canonical_id, &mut inputs, &mut outputs);
-        normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, ()));
-        kept_nodes.insert(canonical_id);
-    }
-    for node in &normalized.nodes {
-        ports_by_node.insert(
-            node.id.0.clone(),
-            (
-                node.inputs.iter().map(|port| port.name.0.clone()).collect(),
-                node.outputs
-                    .iter()
-                    .map(|port| port.name.0.clone())
-                    .collect(),
             ),
-        );
+            (
+                "gist_upload",
+                gist_upload_inputs,
+                vec![Port::with_cardinality("url", "Url", Cardinality::ONE)],
+            ),
+            (
+                "render_markdown",
+                render_markdown_inputs,
+                vec![Port::with_cardinality(
+                    "markdown",
+                    "String",
+                    Cardinality::ONE,
+                )],
+            ),
+        ];
+        match mode {
+            GistParityMode::Snapshot => {
+                nodes.push((
+                    "list_files",
+                    vec![
+                        Port::with_cardinality("repo_path", "String", Cardinality::ONE),
+                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                    ],
+                    vec![Port::with_cardinality(
+                        "files",
+                        "String",
+                        Cardinality::ZERO_OR_MORE,
+                    )],
+                ));
+                nodes.push((
+                    "read_files_loop",
+                    vec![
+                        Port::with_cardinality("files", "String", Cardinality::ZERO_OR_MORE),
+                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                    ],
+                    vec![Port::with_cardinality(
+                        "contents",
+                        "String",
+                        Cardinality::ZERO_OR_MORE,
+                    )],
+                ));
+                nodes.push((
+                    "collect_file_contents",
+                    vec![
+                        Port::with_cardinality("filenames", "String", Cardinality::ZERO_OR_MORE),
+                        Port::with_cardinality(
+                            "contents_list",
+                            "String",
+                            Cardinality::ZERO_OR_MORE,
+                        ),
+                    ],
+                    vec![Port::with_cardinality("contents", "Map", Cardinality::ONE)],
+                ));
+            }
+            GistParityMode::Diff => {
+                nodes.push((
+                    "diff",
+                    vec![
+                        Port::with_cardinality(
+                            "base_ref",
+                            "OptionalString",
+                            Cardinality::ZERO_OR_ONE,
+                        ),
+                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                    ],
+                    vec![
+                        Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
+                        Port::with_cardinality("stats", "String", Cardinality::ONE),
+                    ],
+                ));
+            }
+            GistParityMode::Recent => {
+                nodes.push((
+                    "rev_list",
+                    vec![
+                        Port::with_cardinality("since", "OptionalString", Cardinality::ZERO_OR_ONE),
+                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                    ],
+                    vec![Port::with_cardinality(
+                        "base_ref",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    )],
+                ));
+                nodes.push((
+                    "diff",
+                    vec![
+                        Port::with_cardinality(
+                            "base_ref",
+                            "OptionalString",
+                            Cardinality::ZERO_OR_ONE,
+                        ),
+                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                    ],
+                    vec![
+                        Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
+                        Port::with_cardinality("stats", "String", Cardinality::ONE),
+                    ],
+                ));
+            }
+        }
+        nodes
     }
 
-    let mut seen_edges = HashSet::<(String, String, String, String)>::new();
-    for edge in &reference.edges {
-        let from_node = canonical_makegen_node_id(&edge.from_node.0);
-        let to_node = canonical_makegen_node_id(&edge.to_node.0);
-        if from_node == "makegen" || to_node == "makegen" {
-            continue;
+    fn gist_canonical_edges(
+        mode: GistParityMode,
+    ) -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+        let mut edges = vec![
+            ("fs_env", "file:write", "branch_resolution", "res:file"),
+            ("branch_resolution", "branch", "gist_upload", "branch"),
+            (
+                "branch_resolution",
+                "remote_branch",
+                "gist_upload",
+                "remote_branch",
+            ),
+            ("render_markdown", "markdown", "gist_upload", "markdown"),
+        ];
+        match mode {
+            GistParityMode::Snapshot => {
+                edges.push(("fs_env", "file:write", "list_files", "res:file"));
+                edges.push(("fs_env", "file:write", "read_files_loop", "res:file"));
+                edges.push(("list_files", "files", "read_files_loop", "files"));
+                edges.push(("list_files", "files", "collect_file_contents", "filenames"));
+                edges.push((
+                    "read_files_loop",
+                    "contents",
+                    "collect_file_contents",
+                    "contents_list",
+                ));
+                edges.push((
+                    "collect_file_contents",
+                    "contents",
+                    "render_markdown",
+                    "contents",
+                ));
+            }
+            GistParityMode::Diff => {
+                edges.push(("fs_env", "file:write", "diff", "res:file"));
+                edges.push(("diff", "diff_files", "render_markdown", "diff_files"));
+                edges.push(("diff", "stats", "render_markdown", "stats"));
+            }
+            GistParityMode::Recent => {
+                edges.push(("fs_env", "file:write", "rev_list", "res:file"));
+                edges.push(("fs_env", "file:write", "diff", "res:file"));
+                edges.push(("rev_list", "base_ref", "diff", "base_ref"));
+                edges.push(("rev_list", "base_ref", "gist_upload", "base_ref"));
+                edges.push(("diff", "diff_files", "render_markdown", "diff_files"));
+                edges.push(("diff", "stats", "render_markdown", "stats"));
+            }
         }
-        if !kept_nodes.contains(&from_node) || !kept_nodes.contains(&to_node) {
-            continue;
-        }
-        if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
-            continue;
-        }
-        let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
-        let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
-        let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
-            continue;
-        };
-        let Some((_, from_outputs)) = ports_by_node.get(&from_node) else {
-            continue;
-        };
-        if !from_outputs.contains(&from_port) || !to_inputs.contains(&to_port) {
-            continue;
-        }
-        let key = (from_node, from_port, to_node, to_port);
-        if seen_edges.insert(key.clone()) {
-            normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
-        }
+        edges
     }
 
-    normalized
-}
+    fn normalize_gcp_credential_reference<T>(reference: &Dag<T>) -> Dag<()> {
+        let reference_ids = reference
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        build_gcp_credential_canonical_graph(&reference_ids, |_| ())
+    }
 
-fn normalize_makegen_ports(node_id: &str, inputs: &mut Vec<Port>, outputs: &mut Vec<Port>) {
-    match node_id {
-        "fs_env" => {
-            outputs
-                .retain(|port| matches!(port.name.0.as_str(), "FilesystemHandle" | "file:write"));
-            for output in outputs.iter_mut() {
-                if output.name.0 == "file:write" {
-                    output.name.0 = "FilesystemHandle".to_string();
+    fn build_gcp_credential_canonical_graph<T>(
+        kept_ids: &HashSet<String>,
+        body_for: impl Fn(&str) -> T,
+    ) -> Dag<T> {
+        let mut normalized = Dag::new();
+        for (id, inputs, outputs) in gcp_credential_canonical_nodes() {
+            if !kept_ids.contains(id) {
+                continue;
+            }
+            normalized.add_node(Node::opaque(id.to_string(), inputs, outputs, body_for(id)));
+        }
+        let present = normalized
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        for (from_node, from_port, to_node, to_port) in gcp_credential_canonical_edges() {
+            if !present.contains(from_node) || !present.contains(to_node) {
+                continue;
+            }
+            normalized.add_edge(Edge::new(
+                from_node.to_string(),
+                from_port.to_string(),
+                to_node.to_string(),
+                to_port.to_string(),
+            ));
+        }
+        normalized
+    }
+
+    fn gcp_credential_canonical_nodes() -> Vec<(&'static str, Vec<Port>, Vec<Port>)> {
+        vec![
+            (
+                "build_credential",
+                vec![
+                    Port::with_cardinality("secret", "String", Cardinality::ONE),
+                    Port::with_cardinality("scheme", "String", Cardinality::ONE),
+                    Port::with_cardinality(
+                        "header_name",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                    Port::with_cardinality("source_id", "String", Cardinality::ONE),
+                    Port::with_cardinality("required_scopes", "String", Cardinality::ZERO_OR_MORE),
+                ],
+                vec![Port::with_cardinality(
+                    "credential",
+                    "Credential",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "net_env",
+                vec![],
+                vec![Port::with_cardinality(
+                    "api:network",
+                    "NetworkHandle",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "prepare_github_oidc",
+                vec![
+                    Port::with_cardinality("audience", "String", Cardinality::ONE),
+                    Port::with_cardinality(
+                        "request_token",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                    Port::with_cardinality(
+                        "request_url",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                ],
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                ],
+            ),
+            (
+                "execute_github_oidc",
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                ],
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "parse_github_oidc",
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+                vec![Port::with_cardinality(
+                    "subject_token",
+                    "String",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "prepare_sts",
+                vec![
+                    Port::with_cardinality("subject_token", "String", Cardinality::ONE),
+                    Port::with_cardinality("audience", "String", Cardinality::ONE),
+                ],
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                ],
+            ),
+            (
+                "execute_sts",
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                ],
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "parse_sts",
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+                vec![
+                    Port::with_cardinality("access_token", "String", Cardinality::ONE),
+                    Port::with_cardinality("expires_in", "Int", Cardinality::ONE),
+                ],
+            ),
+            (
+                "should_impersonate",
+                vec![Port::with_cardinality(
+                    "service_account",
+                    "String",
+                    Cardinality::ONE,
+                )],
+                vec![Port::with_cardinality("should", "Bool", Cardinality::ONE)],
+            ),
+            (
+                "prepare_impersonate",
+                vec![
+                    Port::with_cardinality("access_token", "String", Cardinality::ONE),
+                    Port::with_cardinality("service_account", "String", Cardinality::ONE),
+                    Port::with_cardinality(
+                        "lifetime_seconds",
+                        "OptionalInt",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                    Port::with_cardinality(
+                        "should_impersonate",
+                        "OptionalBool",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                ],
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                ],
+            ),
+            (
+                "execute_impersonate",
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                ],
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "parse_impersonate",
+                vec![
+                    Port::with_cardinality("response", "TransportResponse", Cardinality::ONE),
+                    Port::with_cardinality(
+                        "base_access_token",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                ],
+                vec![Port::with_cardinality(
+                    "access_token",
+                    "String",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "prepare_secret_access",
+                vec![
+                    Port::with_cardinality("access_token", "String", Cardinality::ONE),
+                    Port::with_cardinality("project", "String", Cardinality::ONE),
+                    Port::with_cardinality("secret", "String", Cardinality::ONE),
+                    Port::with_cardinality("version", "OptionalString", Cardinality::ZERO_OR_ONE),
+                ],
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                ],
+            ),
+            (
+                "execute_secret_access",
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                ],
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "parse_secret_access",
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+                vec![Port::with_cardinality("secret", "String", Cardinality::ONE)],
+            ),
+        ]
+    }
+
+    fn gcp_credential_canonical_edges(
+    ) -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+        vec![
+            (
+                "prepare_github_oidc",
+                "request",
+                "execute_github_oidc",
+                "request",
+            ),
+            ("prepare_github_oidc", "skip", "execute_github_oidc", "skip"),
+            (
+                "execute_github_oidc",
+                "response",
+                "parse_github_oidc",
+                "response",
+            ),
+            (
+                "parse_github_oidc",
+                "subject_token",
+                "prepare_sts",
+                "subject_token",
+            ),
+            ("prepare_sts", "request", "execute_sts", "request"),
+            ("prepare_sts", "skip", "execute_sts", "skip"),
+            ("execute_sts", "response", "parse_sts", "response"),
+            (
+                "parse_sts",
+                "access_token",
+                "prepare_impersonate",
+                "access_token",
+            ),
+            (
+                "parse_sts",
+                "access_token",
+                "parse_impersonate",
+                "base_access_token",
+            ),
+            (
+                "should_impersonate",
+                "should",
+                "prepare_impersonate",
+                "should_impersonate",
+            ),
+            (
+                "prepare_impersonate",
+                "request",
+                "execute_impersonate",
+                "request",
+            ),
+            ("prepare_impersonate", "skip", "execute_impersonate", "skip"),
+            (
+                "execute_impersonate",
+                "response",
+                "parse_impersonate",
+                "response",
+            ),
+            (
+                "parse_impersonate",
+                "access_token",
+                "prepare_secret_access",
+                "access_token",
+            ),
+            (
+                "prepare_secret_access",
+                "request",
+                "execute_secret_access",
+                "request",
+            ),
+            (
+                "prepare_secret_access",
+                "skip",
+                "execute_secret_access",
+                "skip",
+            ),
+            (
+                "execute_secret_access",
+                "response",
+                "parse_secret_access",
+                "response",
+            ),
+            (
+                "parse_secret_access",
+                "secret",
+                "build_credential",
+                "secret",
+            ),
+            (
+                "net_env",
+                "api:network",
+                "execute_github_oidc",
+                "res:api:network",
+            ),
+            ("net_env", "api:network", "execute_sts", "res:api:network"),
+            (
+                "net_env",
+                "api:network",
+                "execute_impersonate",
+                "res:api:network",
+            ),
+            (
+                "net_env",
+                "api:network",
+                "execute_secret_access",
+                "res:api:network",
+            ),
+        ]
+    }
+
+    pub(crate) fn normalize_makegen_reference<T>(reference: &Dag<T>) -> Dag<()> {
+        let mut normalized = Dag::new();
+        let mut kept_nodes = HashSet::<String>::new();
+        let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
+
+        for node in &reference.nodes {
+            let canonical_id = canonical_makegen_node_id(&node.id.0);
+            if canonical_id == "makegen" {
+                continue;
+            }
+            let mut inputs = node
+                .inputs
+                .iter()
+                .filter(|port| port.name.0 != "__deps")
+                .cloned()
+                .collect::<Vec<_>>();
+            let mut outputs = node.outputs.clone();
+            normalize_makegen_ports(&canonical_id, &mut inputs, &mut outputs);
+            normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, ()));
+            kept_nodes.insert(canonical_id);
+        }
+        for node in &normalized.nodes {
+            ports_by_node.insert(
+                node.id.0.clone(),
+                (
+                    node.inputs.iter().map(|port| port.name.0.clone()).collect(),
+                    node.outputs
+                        .iter()
+                        .map(|port| port.name.0.clone())
+                        .collect(),
+                ),
+            );
+        }
+
+        let mut seen_edges = HashSet::<(String, String, String, String)>::new();
+        for edge in &reference.edges {
+            let from_node = canonical_makegen_node_id(&edge.from_node.0);
+            let to_node = canonical_makegen_node_id(&edge.to_node.0);
+            if from_node == "makegen" || to_node == "makegen" {
+                continue;
+            }
+            if !kept_nodes.contains(&from_node) || !kept_nodes.contains(&to_node) {
+                continue;
+            }
+            if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
+                continue;
+            }
+            let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
+            let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
+            let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
+                continue;
+            };
+            let Some((_, from_outputs)) = ports_by_node.get(&from_node) else {
+                continue;
+            };
+            if !from_outputs.contains(&from_port) || !to_inputs.contains(&to_port) {
+                continue;
+            }
+            let key = (from_node, from_port, to_node, to_port);
+            if seen_edges.insert(key.clone()) {
+                normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
+            }
+        }
+
+        normalized
+    }
+
+    fn normalize_makegen_ports(node_id: &str, inputs: &mut Vec<Port>, outputs: &mut Vec<Port>) {
+        match node_id {
+            "fs_env" => {
+                outputs.retain(|port| {
+                    matches!(port.name.0.as_str(), "FilesystemHandle" | "file:write")
+                });
+                for output in outputs.iter_mut() {
+                    if output.name.0 == "file:write" {
+                        output.name.0 = "FilesystemHandle".to_string();
+                    }
                 }
             }
-        }
-        "load_registry" => {
-            outputs.retain(|port| port.name.0 == "registry");
-            for output in outputs.iter_mut() {
-                output.type_id.0 = "Json".to_string();
-            }
-        }
-        "render_makefile" => {
-            inputs.retain(|port| port.name.0 == "registry");
-            for input in inputs.iter_mut() {
-                input.type_id.0 = "Json".to_string();
-            }
-            for output in outputs.iter_mut() {
-                if output.name.0 == "return" {
-                    output.name.0 = "makefile_content".to_string();
+            "load_registry" => {
+                outputs.retain(|port| port.name.0 == "registry");
+                for output in outputs.iter_mut() {
+                    output.type_id.0 = "Json".to_string();
                 }
             }
-            outputs.retain(|port| port.name.0 == "makefile_content");
-        }
-        "prepare_read_makegen" => {
-            inputs.retain(|port| port.name.0 == "path");
-            outputs.retain(|port| port.name.0 == "request");
-        }
-        "execute_read_makegen" => {
-            inputs.retain(|port| port.name.0 == "request");
-            outputs.retain(|port| port.name.0 == "response");
-        }
-        "compare_makegen_content" => {
-            inputs.retain(|port| matches!(port.name.0.as_str(), "expected_content" | "response"));
-            outputs.retain(|port| matches!(port.name.0.as_str(), "fresh" | "skip"));
-        }
-        "prepare_write_makegen" => {
-            inputs.retain(|port| matches!(port.name.0.as_str(), "content" | "path"));
-            outputs.retain(|port| port.name.0 == "request");
-        }
-        "execute_makegen_transport" => {
-            inputs.retain(|port| matches!(port.name.0.as_str(), "request" | "skip"));
-            outputs.retain(|port| port.name.0 == "makegen_response");
-            for output in outputs.iter_mut() {
-                output.cardinality = Cardinality::ZERO_OR_ONE;
+            "render_makefile" => {
+                inputs.retain(|port| port.name.0 == "registry");
+                for input in inputs.iter_mut() {
+                    input.type_id.0 = "Json".to_string();
+                }
+                for output in outputs.iter_mut() {
+                    if output.name.0 == "return" {
+                        output.name.0 = "makefile_content".to_string();
+                    }
+                }
+                outputs.retain(|port| port.name.0 == "makefile_content");
             }
+            "prepare_read_makegen" => {
+                inputs.retain(|port| port.name.0 == "path");
+                outputs.retain(|port| port.name.0 == "request");
+            }
+            "execute_read_makegen" => {
+                inputs.retain(|port| port.name.0 == "request");
+                outputs.retain(|port| port.name.0 == "response");
+            }
+            "compare_makegen_content" => {
+                inputs
+                    .retain(|port| matches!(port.name.0.as_str(), "expected_content" | "response"));
+                outputs.retain(|port| matches!(port.name.0.as_str(), "fresh" | "skip"));
+            }
+            "prepare_write_makegen" => {
+                inputs.retain(|port| matches!(port.name.0.as_str(), "content" | "path"));
+                outputs.retain(|port| port.name.0 == "request");
+            }
+            "execute_makegen_transport" => {
+                inputs.retain(|port| matches!(port.name.0.as_str(), "request" | "skip"));
+                outputs.retain(|port| port.name.0 == "makegen_response");
+                for output in outputs.iter_mut() {
+                    output.cardinality = Cardinality::ZERO_OR_ONE;
+                }
+            }
+            _ => {}
         }
-        _ => {}
+        inputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
+        dedup_ports_by_name_type_cardinality(inputs);
+        outputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
+        dedup_ports_by_name_type_cardinality(outputs);
     }
-    inputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
-    dedup_ports_by_name_type_cardinality(inputs);
-    outputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
-    dedup_ports_by_name_type_cardinality(outputs);
-}
 
-fn dedup_ports_by_name_type_cardinality(ports: &mut Vec<Port>) {
-    ports.dedup_by(|lhs, rhs| {
-        lhs.name == rhs.name && lhs.type_id == rhs.type_id && lhs.cardinality == rhs.cardinality
-    });
-}
-
-fn canonical_makegen_port_name(node_id: &str, port_name: &str) -> String {
-    if node_id == "render_makefile" && port_name == "return" {
-        return "makefile_content".to_string();
+    fn dedup_ports_by_name_type_cardinality(ports: &mut Vec<Port>) {
+        ports.dedup_by(|lhs, rhs| {
+            lhs.name == rhs.name && lhs.type_id == rhs.type_id && lhs.cardinality == rhs.cardinality
+        });
     }
-    if node_id == "fs_env" && port_name == "file:write" {
-        return "FilesystemHandle".to_string();
-    }
-    port_name.to_string()
-}
 
-fn canonical_makegen_node_id(node_id: &str) -> String {
-    node_id
-        .strip_prefix("tools.makegen::")
-        .unwrap_or(node_id)
-        .to_string()
-}
-
-fn node_body_as_opaque(body: &gunbc_ir::node::NodeBody<LoweredOp>) -> Option<&LoweredOp> {
-    match body {
-        gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
-        gunbc_ir::node::NodeBody::SubDag(_) => None,
+    fn canonical_makegen_port_name(node_id: &str, port_name: &str) -> String {
+        if node_id == "render_makefile" && port_name == "return" {
+            return "makefile_content".to_string();
+        }
+        if node_id == "fs_env" && port_name == "file:write" {
+            return "FilesystemHandle".to_string();
+        }
+        port_name.to_string()
     }
-}
+
+    fn canonical_makegen_node_id(node_id: &str) -> String {
+        node_id
+            .strip_prefix("tools.makegen::")
+            .unwrap_or(node_id)
+            .to_string()
+    }
+
+    fn node_body_as_opaque(body: &gunbc_ir::node::NodeBody<LoweredOp>) -> Option<&LoweredOp> {
+        match body {
+            gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
+            gunbc_ir::node::NodeBody::SubDag(_) => None,
+        }
+    }
 }
 
 fn lower_callable(
@@ -3603,7 +3642,7 @@ fn add_interface_contract_verification_nodes(
 
 fn resolve_interface_contract_count(
     project: &TypedProject,
-    resource_module_name: &str,
+    _resource_module_name: &str,
     interface_name: &str,
 ) -> usize {
     let target = canonical_type_name(interface_name);
@@ -3630,11 +3669,7 @@ fn resolve_interface_contract_count(
             if !matches_target {
                 continue;
             }
-            if module_name == resource_module_name || target.contains('.') {
-                counts.push(interface.contracts.len());
-            } else {
-                counts.push(interface.contracts.len());
-            }
+            counts.push(interface.contracts.len());
         }
     }
     if counts.len() == 1 {

@@ -84,7 +84,11 @@ fn mock_env(mocks: &mut BoundaryMocks) {
         impersonate_account_or_role: None,
     };
 
-    mocks.set_value("gist_upload/cloud_env", "config", cloud_config.clone().into());
+    mocks.set_value(
+        "gist_upload/cloud_env",
+        "config",
+        cloud_config.clone().into(),
+    );
     mocks.set_value(
         "gist_upload/cloud_env",
         "request_url",
@@ -110,7 +114,11 @@ fn mock_env(mocks: &mut BoundaryMocks) {
         ),
     ]));
     mocks.set_value("gist_upload/cloud_credential", "credential", credential);
-    mocks.set_value("gist_upload/cloud_credential", "expires_in", Value::Int(3_600));
+    mocks.set_value(
+        "gist_upload/cloud_credential",
+        "expires_in",
+        Value::Int(3_600),
+    );
     // local_auth_upsert sub-DAG mocks (local-dev path)
     let adc_path = "/tmp/mock-adc.json";
     let mock_adc_json = serde_json::json!({
@@ -247,11 +255,7 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     // Entry inputs (repo_path) for all gist modes — SubDag wrappers are the entrypoints
     mocks.set_input("list_files", "repo_path", Value::Str(".".into()));
     mocks.set_input("read_files_loop", "repo_path", Value::Str(".".into()));
-    mocks.set_input(
-        "branch_resolution",
-        "repo_path",
-        Value::Str(".".into()),
-    );
+    mocks.set_input("branch_resolution", "repo_path", Value::Str(".".into()));
     mocks.set_input("diff", "repo_path", Value::Str(".".into()));
     mocks.set_input("rev_list", "repo_path", Value::Str(".".into()));
     // Loop body transport nodes are auto-mocked by execute_loop_body in DryRun mode.

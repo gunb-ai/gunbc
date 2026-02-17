@@ -91,39 +91,15 @@ pub fn compile_from_context_with_options(
     options: CompileOptions,
 ) -> Result<CompileOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
-    let allow_unresolved_imports = allow_unresolved_imports_for_context(context, &module_graph);
-    let callable_scope = callable_scope_for_context(context, &module_graph);
-    if context.target_file.is_none() {
-        validate_module_path_consistency(&module_graph, &context.roots)?;
-    }
-    let typed = match typecheck_module_graph_with_options(
+    let callable_scope = callable_scope_for_context(context, &module_graph)?;
+    validate_module_path_consistency(&module_graph, &context.roots)?;
+    let typed = typecheck_module_graph_with_options(
         module_graph,
         TypecheckOptions {
-            allow_unresolved_imports,
+            allow_unresolved_imports: false,
         },
-    ) {
-        Ok(typed) => typed,
-        Err(errors) => {
-            if allow_unresolved_imports {
-                let target_file = context
-                    .target_file
-                    .as_ref()
-                    .expect("allow_unresolved_imports implies target_file is set");
-                let fallback_graph = discover_single_file_module_graph(target_file)?;
-                match typecheck_module_graph_with_options(
-                    fallback_graph,
-                    TypecheckOptions {
-                        allow_unresolved_imports: true,
-                    },
-                ) {
-                    Ok(typed) => typed,
-                    Err(_) => return Err(format_typecheck_errors(errors)),
-                }
-            } else {
-                return Err(format_typecheck_errors(errors));
-            }
-        }
-    };
+    )
+    .map_err(format_typecheck_errors)?;
     let lowered = if let Some(scope) = callable_scope.as_ref() {
         if options.emit_collection_nodes {
             lower_typed_project_for_modules_with_collection_nodes(&typed, scope)
@@ -151,31 +127,15 @@ pub fn compile_from_context_with_options(
 
 pub fn check_from_context(context: &DriverContext) -> Result<CheckOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
-    let allow_unresolved_imports = allow_unresolved_imports_for_context(context, &module_graph);
-    let mut parsed_files = module_graph.modules.len();
+    validate_module_path_consistency(&module_graph, &context.roots)?;
+    let parsed_files = module_graph.modules.len();
     if let Err(errors) = typecheck_module_graph_with_options(
         module_graph,
         TypecheckOptions {
-            allow_unresolved_imports,
+            allow_unresolved_imports: false,
         },
     ) {
-        if allow_unresolved_imports {
-            let target_file = context
-                .target_file
-                .as_ref()
-                .expect("allow_unresolved_imports implies target_file is set");
-            let fallback_graph = discover_single_file_module_graph(target_file)?;
-            parsed_files = fallback_graph.modules.len();
-            typecheck_module_graph_with_options(
-                fallback_graph,
-                TypecheckOptions {
-                    allow_unresolved_imports: true,
-                },
-            )
-            .map_err(|_| format_typecheck_errors(errors))?;
-        } else {
-            return Err(format_typecheck_errors(errors));
-        }
+        return Err(format_typecheck_errors(errors));
     }
     Ok(CheckOutput { parsed_files })
 }
@@ -188,23 +148,19 @@ fn format_typecheck_errors<E: std::fmt::Display>(errors: Vec<E>) -> CompileError
     message.into()
 }
 
-fn allow_unresolved_imports_for_context(
-    context: &DriverContext,
-    module_graph: &ModuleGraph,
-) -> bool {
-    context.target_file.is_some() && module_graph.modules.len() == 1
-}
-
 fn discover_module_graph_for_context(context: &DriverContext) -> Result<ModuleGraph, CompileError> {
     if let Some(target_file) = &context.target_file {
         let single_file_graph = discover_single_file_module_graph(target_file)?;
         let module_path = single_file_graph.modules[0].module_path.clone();
-        if let Ok(discovered) = ModuleGraph::discover_strict(&context.roots) {
-            if let Some(pruned) = prune_module_graph_to_target(discovered, &module_path) {
-                return Ok(pruned);
-            }
-        }
-        return Ok(single_file_graph);
+        let discovered =
+            ModuleGraph::discover_strict(&context.roots).map_err(format_resolve_error)?;
+        return prune_module_graph_to_target(discovered, &module_path).ok_or_else(|| {
+            format!(
+                "target module `{}` was not discovered under configured roots",
+                module_path.join(".")
+            )
+            .into()
+        });
     }
 
     ModuleGraph::discover_strict(&context.roots).map_err(format_resolve_error)
@@ -252,17 +208,36 @@ fn discover_single_file_module_graph(target_file: &Path) -> Result<ModuleGraph, 
 fn callable_scope_for_context(
     context: &DriverContext,
     module_graph: &ModuleGraph,
-) -> Option<HashSet<String>> {
-    let target_file = context.target_file.as_ref()?;
+) -> Result<Option<HashSet<String>>, CompileError> {
+    let Some(target_file) = context.target_file.as_ref() else {
+        return Ok(None);
+    };
+    let canonical_target = {
+        #[allow(clippy::disallowed_methods)]
+        std::fs::canonicalize(target_file).ok()
+    };
     let target_index = module_graph
         .modules
         .iter()
-        .position(|module| module.path == *target_file)
-        .unwrap_or(0);
-    let target_module = module_graph.modules.get(target_index)?;
+        .position(|module| {
+            module.path == *target_file
+                || canonical_target
+                    .as_ref()
+                    .is_some_and(|canonical| module.path == *canonical)
+        })
+        .ok_or_else(|| {
+            format!(
+                "target file `{}` was not found in discovered module graph",
+                target_file.display()
+            )
+            .into()
+        })?;
+    let Some(target_module) = module_graph.modules.get(target_index) else {
+        return Err("internal error: target module index out of bounds".into());
+    };
     let has_callable_items = module_has_callable_items(target_module);
     if !has_callable_items {
-        return None;
+        return Ok(None);
     }
     let has_pipeline_items = target_module
         .ast
@@ -272,7 +247,7 @@ fn callable_scope_for_context(
     let mut scope = HashSet::new();
     if !has_pipeline_items {
         scope.insert(target_module.module_path.join("."));
-        return Some(scope);
+        return Ok(Some(scope));
     }
     let mut visited = HashSet::new();
     let mut queue = VecDeque::from([target_index]);
@@ -291,7 +266,7 @@ fn callable_scope_for_context(
     if scope.is_empty() {
         scope.insert(target_module.module_path.join("."));
     }
-    Some(scope)
+    Ok(Some(scope))
 }
 
 fn module_has_callable_items(module: &ResolvedModule) -> bool {
@@ -377,12 +352,18 @@ fn validate_module_path_consistency(
     graph: &ModuleGraph,
     roots: &[PathBuf],
 ) -> Result<(), CompileError> {
+    let mut root_prefixes = roots.to_vec();
+    for canonical_root in daglang_resolve::canonicalize_roots(roots) {
+        if !root_prefixes.contains(&canonical_root) {
+            root_prefixes.push(canonical_root);
+        }
+    }
     let mismatches = graph
         .modules
         .iter()
         .filter_map(|module| {
             let declared = module.module_path.join(".");
-            let relative = roots
+            let relative = root_prefixes
                 .iter()
                 .find_map(|root| module.path.strip_prefix(root).ok().map(PathBuf::from))?;
             let mut inferred_segments = Vec::new();
@@ -509,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn check_single_file_falls_back_when_dependency_discovery_fails() {
+    fn check_single_file_dependency_discovery_failure_reports_error() {
         let root = unique_temp_dir("check_single_file_fallback");
         std::fs::create_dir_all(&root).expect("failed to create temp root");
         let file = root.join("sample.dag");
@@ -523,10 +504,11 @@ mod tests {
             roots: vec![root.clone()],
             target_file: Some(file),
         };
-        let output = check_from_context(&context).expect("check should succeed in relaxed mode");
-        assert_eq!(
-            output.parsed_files, 1,
-            "fallback path should keep single-file parsing when import discovery fails"
+        let error =
+            check_from_context(&context).expect_err("strict mode should fail unresolved import");
+        assert!(
+            error.as_str().contains("unresolved import"),
+            "expected unresolved import error, got: {error}"
         );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");

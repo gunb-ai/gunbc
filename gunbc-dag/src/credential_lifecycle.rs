@@ -109,7 +109,11 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
             "ok",
             OutputMatcher::exact(Value::Bool(true)),
         )
-        .live_expected_output("credential_check/parse_status", "status", OutputMatcher::IntGe(200))
+        .live_expected_output(
+            "credential_check/parse_status",
+            "status",
+            OutputMatcher::IntGe(200),
+        )
         // Credential resource: basic (acquire + timeout)
         .resource_credential("credential:github", Some(3_600_000))
         // Credential resource: refreshable (acquire + timeout + refresh)

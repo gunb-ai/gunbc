@@ -255,7 +255,7 @@ For each workflow being targeted in Phases 1-2:
 - [x] `dag show-triplets` works (shows service call → prepare/execute/parse expansion)
 - [x] `dag obligations` works (shows 4-bucket test obligations derived from DAG)
 
-**Status: ~80% complete.** Core workflow corpus and preview commands are in place; remaining gap here is dedicated per-workflow modeling preview documentation.
+**Status: Complete.** Core workflow corpus, preview commands, and per-workflow modeling preview documentation are in place. See [`workflow-modeling-preview.md`](./workflow-modeling-preview.md) for the full structural comparison (builder shape vs compiled shape, 1:1 mappings, compiler insertions, manifest differences, and parity gate status per workflow).
 
 **Why this step**: you surface modeling gaps *before* you've committed to an implementation. If the `.dag` shape doesn't match the builder shape, or the manifest is missing information the renderer needs, you catch it here — not after weeks of compiler work.
 
@@ -766,22 +766,22 @@ The two workers share the `daglang-cli` crate but touch different files:
 ```
 Phase   Proving Workflow          Deliverables                          Key Risk                  Status
 ─────   ─────────────────         ─────────────────────────────         ─────────────────────────  ──────
-  0     (scaffolding)             Discover + Parse + Module Graph       IR integration boundary    ~75%
+  0     (scaffolding)             Discover + Parse + Module Graph       IR integration boundary    Complete
                                   + dag viz/expand/manifest/modules
-  0.5   (modeling preview)        .dag files + side-by-side viz         Gaps found too late        ~30%
+  0.5   (modeling preview)        .dag files + side-by-side viz         Gaps found too late        Complete
                                   + modeling preview docs
-  0→1   (bridge milestone)        Manifest contract + ASCII viz         Contract mismatch          Not started
+  0→1   (bridge milestone)        Manifest contract + ASCII viz         Contract mismatch          Complete
                                   + parity snapshots + model preview
                                   commands (6 parallel workstreams)
-  1     makegen (S1)              types, func, pattern, resource        Pattern expansion fidelity Skeleton in place
+  1     makegen (S1)              types, func, pattern, resource        Pattern expansion fidelity Complete
                                   + plain/inline renderers
-  2     acquire_gcp_secret (S2)   service, match/when, resource LC      Generic IR chokepoint
+  2     acquire_gcp_secret (S2)   service, match/when, resource LC      Generic IR chokepoint      Complete
         GcsBucket:ObjectStorage   interface, implements, CloudConfig    Interface resolution
         (S8)                      collection ops as IR nodes
-  3     gist_snapshot (S4)        for, composition, scatter progress    TUI renderer integration
+  3     gist_snapshot (S4)        for, composition, scatter progress    TUI renderer integration   Complete
         cross_cloud (S9)          + nested SubDag rendering             Cross-provider auth
                                   AWS + Azure providers
-  4     CI pipeline (S5)          pipeline, stage, parallel, aggregate  Bootstrap constraint
+  4     CI pipeline (S5)          pipeline, stage, parallel, aggregate  Bootstrap constraint        Complete
                                   + JSONL renderer + Go backend
 ```
 

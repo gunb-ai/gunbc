@@ -19,11 +19,8 @@ pub const GITIGNORE_OUTPUT_PATH: &str = ".gitignore";
 pub const DEPS_CONFIG_OUTPUT_PATH: &str = "deps.toml";
 
 /// Shared repo source globs that affect generated repo artifacts.
-pub const REPO_SOURCE_INPUT_GLOBS: &[&str] = &[
-    "gunbc-dag/src/**/*.rs",
-    "core/**/*.rs",
-    "lib/**/*.rs",
-];
+pub const REPO_SOURCE_INPUT_GLOBS: &[&str] =
+    &["gunbc-dag/src/**/*.rs", "core/**/*.rs", "lib/**/*.rs"];
 
 /// Shared config files that affect generated repo artifacts.
 pub const REPO_CONFIG_INPUT_FILES: &[&str] = &["Cargo.toml", "gunbc-dag/Cargo.toml"];

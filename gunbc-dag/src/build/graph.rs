@@ -162,38 +162,20 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
     // ========================================================================
 
     // Test stage — build feeds prepare
-    builder.add_edge(
-        build.out("build_success"),
-        test.in_port("build_success"),
-    )?;
+    builder.add_edge(build.out("build_success"), test.in_port("build_success"))?;
 
     // Clippy stage — build feeds prepare
-    builder.add_edge(
-        build.out("build_success"),
-        clippy.in_port("build_success"),
-    )?;
+    builder.add_edge(build.out("build_success"), clippy.in_port("build_success"))?;
 
     // Summary stage
-    builder.add_edge(
-        build.out("build_success"),
-        summary.in_port("build_success"),
-    )?;
-    builder.add_edge(
-        test.out("test_success"),
-        summary.in_port("test_success"),
-    )?;
+    builder.add_edge(build.out("build_success"), summary.in_port("build_success"))?;
+    builder.add_edge(test.out("test_success"), summary.in_port("test_success"))?;
     builder.add_edge(
         clippy.out("clippy_success"),
         summary.in_port("clippy_success"),
     )?;
-    builder.add_edge(
-        build.out("build_stderr"),
-        summary.in_port("build_stderr"),
-    )?;
-    builder.add_edge(
-        test.out("test_stderr"),
-        summary.in_port("test_stderr"),
-    )?;
+    builder.add_edge(build.out("build_stderr"), summary.in_port("build_stderr"))?;
+    builder.add_edge(test.out("test_stderr"), summary.in_port("test_stderr"))?;
     builder.add_edge(
         clippy.out("clippy_stderr"),
         summary.in_port("clippy_stderr"),
@@ -241,11 +223,17 @@ mod tests {
                 .get_node(&subdag_name.into())
                 .unwrap_or_else(|| panic!("missing SubDag: {}", subdag_name));
             if let NodeBody::SubDag(ref inner) = subdag_node.body {
-                let execute_node = inner
-                    .get_node(&execute_name.into())
-                    .unwrap_or_else(|| panic!("missing transport node {} inside {}", execute_name, subdag_name));
+                let execute_node = inner.get_node(&execute_name.into()).unwrap_or_else(|| {
+                    panic!(
+                        "missing transport node {} inside {}",
+                        execute_name, subdag_name
+                    )
+                });
                 assert!(
-                    matches!(execute_node.body, NodeBody::Opaque(BuildGraphOp::Transport(_))),
+                    matches!(
+                        execute_node.body,
+                        NodeBody::Opaque(BuildGraphOp::Transport(_))
+                    ),
                     "{} should be a transport node",
                     execute_name
                 );

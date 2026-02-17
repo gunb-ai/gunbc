@@ -176,7 +176,8 @@ pub fn render_dag_diff_snapshot(
     write!(md, "# {}\n\n", title).unwrap();
 
     // Stats summary
-    let changed_tool_count = diff.added_nodes.len() + diff.removed_nodes.len() + diff.changed_nodes.len();
+    let changed_tool_count =
+        diff.added_nodes.len() + diff.removed_nodes.len() + diff.changed_nodes.len();
     let total_tools = new_topo.node_count()
         + diff
             .removed_nodes
@@ -273,7 +274,11 @@ pub fn render_dag_diff_snapshot(
     // Unchanged tools
     if !diff.unchanged_nodes.is_empty() {
         md.push_str("## Unchanged workflows\n\n");
-        let names: Vec<&str> = diff.unchanged_nodes.iter().map(|id| id.0.as_str()).collect();
+        let names: Vec<&str> = diff
+            .unchanged_nodes
+            .iter()
+            .map(|id| id.0.as_str())
+            .collect();
         md.push_str(&names.join(", "));
         md.push('\n');
     }

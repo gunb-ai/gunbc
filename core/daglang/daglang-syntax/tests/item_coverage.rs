@@ -61,9 +61,24 @@ fn corpus_covers_all_top_level_item_variants() {
     assert!(saw_type, "expected at least one type definition in corpus");
     assert!(saw_fn, "expected at least one fn definition in corpus");
     assert!(saw_func, "expected at least one func definition in corpus");
-    assert!(saw_pattern, "expected at least one pattern definition in corpus");
-    assert!(saw_service, "expected at least one service definition in corpus");
-    assert!(saw_resource, "expected at least one resource definition in corpus");
-    assert!(saw_interface, "expected at least one interface definition in corpus");
-    assert!(saw_pipeline, "expected at least one pipeline definition in corpus");
+    assert!(
+        saw_pattern,
+        "expected at least one pattern definition in corpus"
+    );
+    assert!(
+        saw_service,
+        "expected at least one service definition in corpus"
+    );
+    assert!(
+        saw_resource,
+        "expected at least one resource definition in corpus"
+    );
+    assert!(
+        saw_interface,
+        "expected at least one interface definition in corpus"
+    );
+    assert!(
+        saw_pipeline,
+        "expected at least one pipeline definition in corpus"
+    );
 }

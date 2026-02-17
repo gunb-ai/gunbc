@@ -424,10 +424,12 @@ fn derive_stage_groups(nodes: &[Node<LoweredOp>]) -> Vec<StageGroup> {
     });
     staged
         .into_iter()
-        .map(|(module, name, _stage_order, stage_name, node_id)| StageGroup {
-            stage_id: format!("{module}.{name}:{stage_name}"),
-            nodes: vec![node_id],
-        })
+        .map(
+            |(module, name, _stage_order, stage_name, node_id)| StageGroup {
+                stage_id: format!("{module}.{name}:{stage_name}"),
+                nodes: vec![node_id],
+            },
+        )
         .collect()
 }
 

@@ -57,12 +57,7 @@ mod tests {
 
         match &node.body {
             NodeBody::SubDag(dag) => {
-                for node_id in [
-                    "build",
-                    "test",
-                    "verify_makegen_check",
-                    "clippy_lint",
-                ] {
+                for node_id in ["build", "test", "verify_makegen_check", "clippy_lint"] {
                     assert!(
                         dag.get_node(&node_id.into()).is_some(),
                         "missing node: {}",

@@ -215,8 +215,12 @@ fn render_dag_diff_contents(
         if let Some(ref children) = node.children {
             if depth < MAX_SUBGRAPH_DEPTH {
                 let subgraph_label = diff_subgraph_label(label, status, diff, &node.id);
-                writeln!(out, "{}subgraph {}[\"{}\"]", indent, full_id, subgraph_label)
-                    .unwrap();
+                writeln!(
+                    out,
+                    "{}subgraph {}[\"{}\"]",
+                    indent, full_id, subgraph_label
+                )
+                .unwrap();
 
                 let child_diff = find_child_diff(diff, &node.id);
                 let child_removed = find_child_removed_nodes(diff, &node.id);
@@ -236,14 +240,7 @@ fn render_dag_diff_contents(
                         unchanged_edges: children.edges.clone(),
                         ..Default::default()
                     };
-                    render_dag_diff_contents(
-                        out,
-                        &full_id,
-                        children,
-                        &empty_diff,
-                        &[],
-                        depth + 1,
-                    );
+                    render_dag_diff_contents(out, &full_id, children, &empty_diff, &[], depth + 1);
                 }
 
                 writeln!(out, "{}end", indent).unwrap();
@@ -336,10 +333,7 @@ fn render_snapshot_contents(
             }
         } else {
             let class = snapshot_node_class(label, false);
-            let has_res = node
-                .inputs
-                .iter()
-                .any(|p| p.name.0.starts_with("res:"));
+            let has_res = node.inputs.iter().any(|p| p.name.0.starts_with("res:"));
 
             if has_res {
                 // Nodes that consume resources get a distinct shape
@@ -450,8 +444,8 @@ fn aggregate_edges(edges: &[EdgeTopology], prefix: &str) -> Vec<AggregatedEdge> 
     for edge in edges {
         let from_id = format!("{}_{}", prefix, sanitize_id(&edge.from_node.0));
         let to_id = format!("{}_{}", prefix, sanitize_id(&edge.to_node.0));
-        let is_resource = edge.from_port.0.starts_with("res:")
-            || edge.to_port.0.starts_with("res:");
+        let is_resource =
+            edge.from_port.0.starts_with("res:") || edge.to_port.0.starts_with("res:");
 
         let entry = map.entry((from_id, to_id)).or_default();
         if is_resource {
@@ -471,15 +465,15 @@ fn aggregate_edges(edges: &[EdgeTopology], prefix: &str) -> Vec<AggregatedEdge> 
     }
 
     map.into_iter()
-        .map(|((from_id, to_id), (data_count, resource_count, resource_sample))| {
-            AggregatedEdge {
+        .map(
+            |((from_id, to_id), (data_count, resource_count, resource_sample))| AggregatedEdge {
                 from_id,
                 to_id,
                 data_count,
                 resource_count,
                 resource_sample,
-            }
-        })
+            },
+        )
         .collect()
 }
 
@@ -608,8 +602,7 @@ fn edge_diff_class(edge: &EdgeTopology, diff: &DagDiffResult) -> &'static str {
 // ---------------------------------------------------------------------------
 
 fn base64_url_encode(input: &[u8]) -> String {
-    const CHARS: &[u8] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
 
     for chunk in input.chunks(3) {
@@ -720,7 +713,10 @@ mod tests {
         ));
         dag.add_node(Node::opaque(
             "execute_transport",
-            vec![Port::scalar("req", "Request"), Port::resource("file", "FsHandle", crate::resource::AccessMode::Read)],
+            vec![
+                Port::scalar("req", "Request"),
+                Port::resource("file", "FsHandle", crate::resource::AccessMode::Read),
+            ],
             vec![Port::scalar("resp", "Response")],
             TestOp::B,
         ));
@@ -775,12 +771,18 @@ mod tests {
         dag.add_node(Node::opaque(
             "env",
             vec![],
-            vec![Port::scalar("data", "String"), Port::resource("file", "FsHandle", crate::resource::AccessMode::Read)],
+            vec![
+                Port::scalar("data", "String"),
+                Port::resource("file", "FsHandle", crate::resource::AccessMode::Read),
+            ],
             TestOp::A,
         ));
         dag.add_node(Node::opaque(
             "exec",
-            vec![Port::scalar("data", "String"), Port::resource("file", "FsHandle", crate::resource::AccessMode::Read)],
+            vec![
+                Port::scalar("data", "String"),
+                Port::resource("file", "FsHandle", crate::resource::AccessMode::Read),
+            ],
             vec![],
             TestOp::B,
         ));
@@ -863,6 +865,8 @@ mod tests {
     fn test_base64_url_encode_roundtrip() {
         // Just verify it produces valid base64url characters
         let encoded = base64_url_encode(b"Hello, World!");
-        assert!(encoded.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+        assert!(encoded
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
     }
 }
