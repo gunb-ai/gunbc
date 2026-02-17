@@ -55,10 +55,9 @@ Global status:
 - **Primary gap**:
   - obligation parity target (133) is not yet reached.
   - exact parity against legacy CI builder shape is still pending.
-  - renderer UX still needs collapsible stage-group presentation.
 - **Next increments**:
   - tighten newly-added deterministic CI parity scaffold to zero-delta shape parity.
-  - wire stage-group manifest output into collapsible progress-renderer sections.
+  - continue tightening CI obligations/parity deltas toward the 133-target and full builder-shape match.
 
 ## S6 — LLM Review (`examples.abstract_services`)
 
