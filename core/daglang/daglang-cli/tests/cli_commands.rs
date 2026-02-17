@@ -31455,7 +31455,7 @@ fn no_command_exits_nonzero_with_usage_message() {
         "missing-command invocation should print usage guidance: {stderr}"
     );
     assert!(
-        stderr.contains("check <file.dag>"),
+        stderr.contains("check <file.dag|dir>"),
         "usage guidance should include check command help text: {stderr}"
     );
     assert!(

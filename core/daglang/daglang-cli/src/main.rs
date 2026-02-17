@@ -14,7 +14,7 @@
 //! - `daglang show-triplets <file.dag> [--format text|json]`
 //!                                  -- Show transport triplet expansions
 //! - `daglang modules [dir]`       -- Show the discovered module graph
-//! - `daglang check <file.dag|dir>` -- Parse modules; file targets also typecheck
+//! - `daglang check <file.dag|dir>` -- Parse modules; single-file targets also typecheck
 //! - `daglang compile <file.dag>`  -- Full compilation pipeline
 
 use std::path::PathBuf;
@@ -44,7 +44,7 @@ fn main() {
         eprintln!("  show-triplets <file.dag> [--format text|json]");
         eprintln!("                      Show transport triplet expansions");
         eprintln!("  modules [dir]        Show discovered module graph");
-        eprintln!("  check <file.dag>     Parse + typecheck (no lowering)");
+        eprintln!("  check <file.dag|dir> Parse (single-file targets also typecheck)");
         eprintln!("  compile <file.dag>   Full compilation pipeline");
         std::process::exit(1);
     }
