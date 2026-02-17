@@ -39,11 +39,11 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## S4 — Gist Snapshot (`tools.gist`)
 
-- **Current status**: ⚠ typecheck blocked (domain types unresolved in fixture contract).
+- **Current status**: ⚠ typecheck blocked by pattern output-shape mismatches (`upsert.outputs` / `transaction.outputs` field contracts).
 - **Primary gap**:
-  - unresolved type model wiring for gist-facing domain types.
+  - gist pattern composition currently diverges from expected pattern output contracts in strict single-file checks.
 - **Next increments**:
-  - complete type environment coverage for gist module closure.
+  - align gist pattern output field contracts with current `std.patterns` shape.
   - then validate loop/SubDag modeling parity against builder shape.
 
 ## S5 — CI Pipeline (`pipelines.ci`)
@@ -88,11 +88,11 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## Deps (`tools.deps`)
 
-- **Current status**: ⚠ typecheck blocked in fixture contract (`FilePath` surface mismatch).
+- **Current status**: ⚠ typecheck blocked by shared pattern output-shape mismatches (`upsert.outputs`/`transaction.outputs` field contracts).
 - **Primary gap**:
-  - std-type surface integration for this module closure.
+  - deps workflow still depends on stale pattern field assumptions in strict checks.
 - **Next increments**:
-  - unify type environment behavior across tool modules.
+  - migrate deps workflow call-sites to current `std.patterns` output contracts.
 
 ## Auth (`services.shell`)
 

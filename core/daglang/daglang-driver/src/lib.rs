@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write;
 use std::path::PathBuf;
 
@@ -72,19 +73,31 @@ pub fn compile_from_context(context: &DriverContext) -> Result<CompileOutput, Co
     if context.target_file.is_none() {
         validate_module_path_consistency(&module_graph, &context.roots)?;
     }
-    let typed = typecheck_module_graph_with_options(
+    let allow_unresolved_imports = context.target_file.is_some();
+    let typed = match typecheck_module_graph_with_options(
         module_graph,
         TypecheckOptions {
-            allow_unresolved_imports: context.target_file.is_some(),
+            allow_unresolved_imports,
         },
-    )
-    .map_err(|errors| {
-        let mut message = String::from("typecheck errors:\n");
-        for error in errors {
-            writeln!(message, "  {error}").ok();
+    ) {
+        Ok(typed) => typed,
+        Err(errors) => {
+            if let Some(target_file) = &context.target_file {
+                let fallback_graph = discover_single_file_module_graph(target_file)?;
+                match typecheck_module_graph_with_options(
+                    fallback_graph,
+                    TypecheckOptions {
+                        allow_unresolved_imports,
+                    },
+                ) {
+                    Ok(typed) => typed,
+                    Err(_) => return Err(format_typecheck_errors(errors)),
+                }
+            } else {
+                return Err(format_typecheck_errors(errors));
+            }
         }
-        message
-    })?;
+    };
     let lowered = lower_typed_project(&typed).map_err(|error| format!("lower error: {error}"))?;
     let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
     let emitted =
@@ -102,57 +115,136 @@ pub fn check_from_context(context: &DriverContext) -> Result<CheckOutput, Compil
     if context.target_file.is_none() {
         validate_module_path_consistency(&module_graph, &context.roots)?;
     }
-    let parsed_files = module_graph.modules.len();
-    typecheck_module_graph_with_options(
+    let allow_unresolved_imports = context.target_file.is_some();
+    let mut parsed_files = module_graph.modules.len();
+    if let Err(errors) = typecheck_module_graph_with_options(
         module_graph,
         TypecheckOptions {
-            allow_unresolved_imports: context.target_file.is_some(),
+            allow_unresolved_imports,
         },
-    )
-    .map_err(|errors| {
-        let mut message = String::from("typecheck errors:\n");
-        for error in errors {
-            writeln!(message, "  {error}").ok();
+    ) {
+        if let Some(target_file) = &context.target_file {
+            let fallback_graph = discover_single_file_module_graph(target_file)?;
+            parsed_files = fallback_graph.modules.len();
+            typecheck_module_graph_with_options(
+                fallback_graph,
+                TypecheckOptions {
+                    allow_unresolved_imports,
+                },
+            )
+            .map_err(|_| format_typecheck_errors(errors))?;
+        } else {
+            return Err(format_typecheck_errors(errors));
         }
-        message
-    })?;
+    }
     Ok(CheckOutput { parsed_files })
+}
+
+fn format_typecheck_errors<E: std::fmt::Display>(errors: Vec<E>) -> CompileError {
+    let mut message = String::from("typecheck errors:\n");
+    for error in errors {
+        writeln!(message, "  {error}").ok();
+    }
+    message.into()
 }
 
 #[allow(clippy::disallowed_methods)]
 fn discover_module_graph_for_context(context: &DriverContext) -> Result<ModuleGraph, CompileError> {
     if let Some(target_file) = &context.target_file {
-        let source = std::fs::read_to_string(target_file)
-            .map_err(|error| format!("failed to read {}: {error}", target_file.display()))?;
-        let ast = parser::parse(&source).map_err(|errors| {
-            let mut message = String::from("compile diagnostics:\n");
-            for error in &errors {
-                writeln!(message, "  {}", error.format_with_source(target_file, &source)).ok();
+        let single_file_graph = discover_single_file_module_graph(target_file)?;
+        let module_path = single_file_graph.modules[0].module_path.clone();
+        if let Ok(discovered) = ModuleGraph::discover_strict(&context.roots) {
+            if let Some(pruned) = prune_module_graph_to_target(discovered, &module_path) {
+                return Ok(pruned);
             }
-            message
-        })?;
-        let module_path = ast
-            .module_path
-            .as_ref()
-            .map(|module| module.node.segments.clone())
-            .unwrap_or_else(|| {
-                target_file
-                    .file_stem()
-                    .and_then(|stem| stem.to_str())
-                    .map(|stem| vec![stem.to_string()])
-                    .unwrap_or_else(|| vec!["unknown".to_string()])
-            });
-        return Ok(ModuleGraph {
-            modules: vec![ResolvedModule {
-                path: target_file.clone(),
-                ast,
-                module_path,
-                dependencies: Vec::new(),
-            }],
-        });
+        }
+        return Ok(single_file_graph);
     }
 
     ModuleGraph::discover_strict(&context.roots).map_err(format_resolve_error)
+}
+
+#[allow(clippy::disallowed_methods)]
+fn discover_single_file_module_graph(target_file: &PathBuf) -> Result<ModuleGraph, CompileError> {
+    let source = std::fs::read_to_string(target_file)
+        .map_err(|error| format!("failed to read {}: {error}", target_file.display()))?;
+    let ast = parser::parse(&source).map_err(|errors| {
+        let mut message = String::from("compile diagnostics:\n");
+        for error in &errors {
+            writeln!(message, "  {}", error.format_with_source(target_file, &source)).ok();
+        }
+        message
+    })?;
+    let module_path = ast
+        .module_path
+        .as_ref()
+        .map(|module| module.node.segments.clone())
+        .unwrap_or_else(|| {
+            target_file
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(|stem| vec![stem.to_string()])
+                .unwrap_or_else(|| vec!["unknown".to_string()])
+        });
+    Ok(ModuleGraph {
+        modules: vec![ResolvedModule {
+            path: target_file.clone(),
+            ast,
+            module_path,
+            dependencies: Vec::new(),
+        }],
+    })
+}
+
+fn prune_module_graph_to_target(
+    graph: ModuleGraph,
+    target_module_path: &[String],
+) -> Option<ModuleGraph> {
+    let target_module = target_module_path.join(".");
+    let target_index = graph
+        .modules
+        .iter()
+        .position(|module| module.module_path.join(".") == target_module)?;
+    if target_index >= graph.modules.len() {
+        return None;
+    }
+    let mut required = HashSet::new();
+    let mut queue = VecDeque::from([target_index]);
+    while let Some(module_index) = queue.pop_front() {
+        if !required.insert(module_index) {
+            continue;
+        }
+        let Some(module) = graph.modules.get(module_index) else {
+            continue;
+        };
+        for dependency in &module.dependencies {
+            queue.push_back(*dependency);
+        }
+    }
+    let mut index_map = HashMap::new();
+    for (old_index, _) in graph.modules.iter().enumerate() {
+        if required.contains(&old_index) {
+            let new_index = index_map.len();
+            index_map.insert(old_index, new_index);
+        }
+    }
+    let modules = graph
+        .modules
+        .into_iter()
+        .enumerate()
+        .filter_map(|(old_index, mut module)| {
+            if !required.contains(&old_index) {
+                return None;
+            }
+            module.dependencies = module
+                .dependencies
+                .iter()
+                .filter_map(|dependency| index_map.get(dependency).copied())
+                .collect::<Vec<_>>();
+            Some(module)
+        })
+        .collect::<Vec<_>>();
+    Some(ModuleGraph { modules })
 }
 
 fn format_resolve_error(error: ResolveError) -> CompileError {
@@ -278,6 +370,56 @@ mod tests {
         };
         let output = check_from_context(&context).expect("check should succeed");
         assert_eq!(output.parsed_files, 1);
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn check_single_file_includes_discovered_dependency_closure() {
+        let root = unique_temp_dir("check_single_file_with_deps");
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(root.join("sample/dep.dag"), "module sample.dep\ntype Thing = String\n")
+            .expect("failed to write dependency source");
+        let file = root.join("sample/main.dag");
+        std::fs::write(
+            &file,
+            "module sample.main\nimport sample.dep { Thing }\nfn run(v: Thing) -> Thing { v }\n",
+        )
+        .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let output = check_from_context(&context).expect("check should succeed");
+        assert_eq!(
+            output.parsed_files, 2,
+            "single-file check should include dependency closure when discovery succeeds"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn check_single_file_falls_back_when_dependency_discovery_fails() {
+        let root = unique_temp_dir("check_single_file_fallback");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = root.join("sample.dag");
+        std::fs::write(
+            &file,
+            "module sample\nimport missing.dep\nfn run() -> Unit {}\n",
+        )
+        .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let output = check_from_context(&context).expect("check should succeed in relaxed mode");
+        assert_eq!(
+            output.parsed_files, 1,
+            "fallback path should keep single-file parsing when import discovery fails"
+        );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }

@@ -10,11 +10,11 @@
   ],
   "expand_contract": {
     "status": "typecheck_error",
-    "error_contains": "undefined type `FilePath (in deps_install.manifest_path)`"
+    "error_contains": "type `upsert.outputs` has no field `value`"
   },
   "obligations_contract": {
     "status": "typecheck_error",
-    "error_contains": "undefined type `FilePath (in deps_install.manifest_path)`",
+    "error_contains": "type `upsert.outputs` has no field `value`",
     "expected_json": null
   }
 }
