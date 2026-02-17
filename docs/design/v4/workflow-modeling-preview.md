@@ -22,11 +22,11 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## S2 — Credential Chain GCP (`cloud.gcp.credential`)
 
-- **Current status**: ⚠ typecheck blocked in single-module fixture contract.
+- **Current status**: ⚠ lowers to unresolved provided-resource contract in single-module fixture (`auth: AuthContext`).
 - **Primary gap**:
-  - missing type/import/model integration in the selected compile path for all referenced credential types.
+  - single-file lowering cannot currently resolve imported `AuthContext` lifecycle provider in this workflow contract.
 - **Next increments**:
-  - close type/import coverage for credential module closure.
+  - wire imported standard resources (`std.resources`) into single-file lowering resolution path.
   - add builder parity target for credential chain once lowering succeeds.
 
 ## S3 — Tool Install Upsert (`tools.bootstrap`)
