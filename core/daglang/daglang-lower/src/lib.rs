@@ -2606,7 +2606,7 @@ mod tests {
     use daglang_syntax::parser;
     use daglang_typecheck::typecheck_module_graph;
     use gunbc_clippy::build_clippy_graph_lint_all;
-    use gunbc_dag::{build_ci_graph, build_makegen_graph};
+    use gunbc_dag::{build_bootstrap_graph, build_ci_graph, build_makegen_graph};
     use gunbc_deps::build_deps_graph;
     use gunbc_gist::{build_gist_graph, GistMode};
     use gunbc_ir::{Edge, Port};
@@ -3065,6 +3065,20 @@ fn run(values: List<String>) -> String {
         let typed = typed_project_for_module_with_dependency_closure("pipelines.ci");
         let dag = lower_target_module(&typed, "pipelines.ci");
         let reference = build_ci_graph().expect("ci builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn bootstrap_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.bootstrap");
+        let dag = lower_target_module(&typed, "tools.bootstrap");
+        let reference =
+            build_bootstrap_graph().expect("bootstrap builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);

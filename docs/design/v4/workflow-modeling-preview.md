@@ -35,7 +35,7 @@ The source of truth for current status is the workflow fixture contract suite in
 - **Primary gap**:
   - parity against legacy bootstrap builder shape is still pending.
 - **Next increments**:
-  - add parity harness coverage for bootstrap workflow shape.
+  - tighten newly-added deterministic bootstrap parity scaffold to zero-delta shape parity.
 
 ## S4 — Gist Snapshot (`tools.gist`)
 
