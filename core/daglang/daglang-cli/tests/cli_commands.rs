@@ -31625,6 +31625,44 @@ fn run_command_dry_run_does_not_write_makefile() {
 }
 
 #[test]
+fn run_command_dry_run_with_split_output_before_input_does_not_write_makefile() {
+    let output_path = unique_temp_output_file("run_dry_mode_split_before_input");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale dry-run output");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--dry-run")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run in dry-run mode with split --output before input");
+
+    assert!(
+        output.status.success(),
+        "run in dry-run mode with split --output before input should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "run should report dry-run mode for split --output before input: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "run dry-run summary should report no writes for split --output before input: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "dry-run with split --output before input should not write output file at {}",
+        output_path.display()
+    );
+}
+
+#[test]
 fn run_command_dry_run_equals_output_before_input_does_not_write_makefile() {
     let output_path = unique_temp_output_file("run_dry_mode_equals_before_input");
     if output_path.exists() {
@@ -31771,6 +31809,51 @@ fn run_command_supports_equals_output_flag_in_real_mode() {
         output_path.display()
     );
     std::fs::remove_file(&output_path).expect("failed to clean up equals-output file");
+}
+
+#[test]
+fn run_command_real_mode_with_split_output_before_input_writes_makefile() {
+    let output_path = unique_temp_output_file("run_real_mode_split_before_input");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale split-output file");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with split --output before input");
+
+    assert!(
+        output.status.success(),
+        "run with split --output before input should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=real"),
+        "run with split --output before input should report real mode summary: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=true"),
+        "run with split --output before input should report written=true summary: {stdout}"
+    );
+    assert!(
+        output_path.exists(),
+        "real run with split --output before input should write output file at {}",
+        output_path.display()
+    );
+    let written =
+        std::fs::read_to_string(&output_path).expect("failed to read split-before-input output");
+    assert!(
+        written.contains(".PHONY"),
+        "split-before-input real-mode output should contain makefile content: {written}"
+    );
+    std::fs::remove_file(&output_path)
+        .expect("failed to clean up real-mode split-before-input output");
 }
 
 #[test]
