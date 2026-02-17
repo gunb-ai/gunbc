@@ -121,6 +121,40 @@ fn run_single_target_command(
         .output()
 }
 
+fn assert_single_target_command_outputs_match_for_targets(
+    command_name: &str,
+    root: &Path,
+    canonical_target: &str,
+    variant_target: &str,
+    extra_args: &[&str],
+    variant_label: &str,
+) {
+    let canonical = run_single_target_command(command_name, root, canonical_target, extra_args)
+        .expect("failed to run canonical single-target command invocation");
+    assert!(
+        canonical.status.success(),
+        "canonical {command_name} invocation failed: {}",
+        String::from_utf8_lossy(&canonical.stderr)
+    );
+
+    let variant = run_single_target_command(command_name, root, variant_target, extra_args)
+        .expect("failed to run variant single-target command invocation");
+    assert!(
+        variant.status.success(),
+        "{variant_label} {command_name} invocation failed: {}",
+        String::from_utf8_lossy(&variant.stderr)
+    );
+
+    assert_eq!(
+        canonical.stdout, variant.stdout,
+        "canonical and {variant_label} {command_name} stdout should match"
+    );
+    assert_eq!(
+        canonical.stderr, variant.stderr,
+        "canonical and {variant_label} {command_name} stderr should match"
+    );
+}
+
 fn assert_dag_suffixed_directory_is_invalid_single_file_target(
     root: &Path,
     input: &str,
@@ -11475,30 +11509,13 @@ fn obligations_command_absolute_curdir_segment_target_matches_canonical_absolute
         .to_string_lossy()
         .into_owned();
 
-    let canonical = run_single_target_command("obligations", &root, &canonical_target, &[])
-        .expect("failed to run canonical absolute-target daglang obligations");
-    assert!(
-        canonical.status.success(),
-        "canonical absolute-target obligations command failed: {}",
-        String::from_utf8_lossy(&canonical.stderr)
-    );
-
-    let curdir_segment =
-        run_single_target_command("obligations", &root, &curdir_segment_target, &[])
-            .expect("failed to run absolute curdir-segment daglang obligations");
-    assert!(
-        curdir_segment.status.success(),
-        "absolute curdir-segment obligations command failed: {}",
-        String::from_utf8_lossy(&curdir_segment.stderr)
-    );
-
-    assert_eq!(
-        canonical.stdout, curdir_segment.stdout,
-        "canonical absolute and absolute curdir-segment obligations stdout should match"
-    );
-    assert_eq!(
-        canonical.stderr, curdir_segment.stderr,
-        "canonical absolute and absolute curdir-segment obligations stderr should match"
+    assert_single_target_command_outputs_match_for_targets(
+        "obligations",
+        &root,
+        &canonical_target,
+        &curdir_segment_target,
+        &[],
+        "absolute curdir-segment",
     );
 }
 
@@ -11509,30 +11526,13 @@ fn obligations_command_absolute_double_separator_target_matches_canonical_absolu
     let double_separator_target =
         format!("{}/dsl//tools///makegen.dag", root.display());
 
-    let canonical = run_single_target_command("obligations", &root, &canonical_target, &[])
-        .expect("failed to run canonical absolute-target daglang obligations");
-    assert!(
-        canonical.status.success(),
-        "canonical absolute-target obligations command failed: {}",
-        String::from_utf8_lossy(&canonical.stderr)
-    );
-
-    let double_separator =
-        run_single_target_command("obligations", &root, &double_separator_target, &[])
-            .expect("failed to run absolute double-separator daglang obligations");
-    assert!(
-        double_separator.status.success(),
-        "absolute double-separator obligations command failed: {}",
-        String::from_utf8_lossy(&double_separator.stderr)
-    );
-
-    assert_eq!(
-        canonical.stdout, double_separator.stdout,
-        "canonical absolute and absolute double-separator obligations stdout should match"
-    );
-    assert_eq!(
-        canonical.stderr, double_separator.stderr,
-        "canonical absolute and absolute double-separator obligations stderr should match"
+    assert_single_target_command_outputs_match_for_targets(
+        "obligations",
+        &root,
+        &canonical_target,
+        &double_separator_target,
+        &[],
+        "absolute double-separator",
     );
 }
 
@@ -11721,40 +11721,13 @@ fn obligations_command_json_absolute_double_separator_target_matches_canonical_a
     let double_separator_target =
         format!("{}/dsl//tools///makegen.dag", root.display());
 
-    let canonical =
-        run_single_target_command(
-            "obligations",
-            &root,
-            &canonical_target,
-            &["--format", "json"],
-        )
-        .expect("failed to run canonical absolute-target daglang obligations --format json");
-    assert!(
-        canonical.status.success(),
-        "canonical absolute-target obligations --format json failed: {}",
-        String::from_utf8_lossy(&canonical.stderr)
-    );
-
-    let double_separator = run_single_target_command(
+    assert_single_target_command_outputs_match_for_targets(
         "obligations",
         &root,
+        &canonical_target,
         &double_separator_target,
         &["--format", "json"],
-    )
-    .expect("failed to run absolute double-separator daglang obligations --format json");
-    assert!(
-        double_separator.status.success(),
-        "absolute double-separator obligations --format json failed: {}",
-        String::from_utf8_lossy(&double_separator.stderr)
-    );
-
-    assert_eq!(
-        canonical.stdout, double_separator.stdout,
-        "canonical absolute and absolute double-separator obligations json stdout should match"
-    );
-    assert_eq!(
-        canonical.stderr, double_separator.stderr,
-        "canonical absolute and absolute double-separator obligations json stderr should match"
+        "absolute double-separator",
     );
 }
 
@@ -11767,39 +11740,13 @@ fn obligations_command_json_absolute_curdir_segment_target_matches_canonical_abs
         .to_string_lossy()
         .into_owned();
 
-    let canonical = run_single_target_command(
+    assert_single_target_command_outputs_match_for_targets(
         "obligations",
         &root,
         &canonical_target,
-        &["--format", "json"],
-    )
-    .expect("failed to run canonical absolute-target daglang obligations --format json");
-    assert!(
-        canonical.status.success(),
-        "canonical absolute-target obligations --format json failed: {}",
-        String::from_utf8_lossy(&canonical.stderr)
-    );
-
-    let curdir_segment = run_single_target_command(
-        "obligations",
-        &root,
         &curdir_segment_target,
         &["--format", "json"],
-    )
-    .expect("failed to run absolute curdir-segment daglang obligations --format json");
-    assert!(
-        curdir_segment.status.success(),
-        "absolute curdir-segment obligations --format json failed: {}",
-        String::from_utf8_lossy(&curdir_segment.stderr)
-    );
-
-    assert_eq!(
-        canonical.stdout, curdir_segment.stdout,
-        "canonical absolute and absolute curdir-segment obligations json stdout should match"
-    );
-    assert_eq!(
-        canonical.stderr, curdir_segment.stderr,
-        "canonical absolute and absolute curdir-segment obligations json stderr should match"
+        "absolute curdir-segment",
     );
 }
 
@@ -12891,30 +12838,13 @@ fn show_triplets_command_absolute_curdir_segment_target_matches_canonical_absolu
         .to_string_lossy()
         .into_owned();
 
-    let canonical = run_single_target_command("show-triplets", &root, &canonical_target, &[])
-        .expect("failed to run canonical absolute-target daglang show-triplets");
-    assert!(
-        canonical.status.success(),
-        "canonical absolute-target show-triplets command failed: {}",
-        String::from_utf8_lossy(&canonical.stderr)
-    );
-
-    let curdir_segment =
-        run_single_target_command("show-triplets", &root, &curdir_segment_target, &[])
-            .expect("failed to run absolute curdir-segment daglang show-triplets");
-    assert!(
-        curdir_segment.status.success(),
-        "absolute curdir-segment show-triplets command failed: {}",
-        String::from_utf8_lossy(&curdir_segment.stderr)
-    );
-
-    assert_eq!(
-        canonical.stdout, curdir_segment.stdout,
-        "canonical absolute and absolute curdir-segment show-triplets stdout should match"
-    );
-    assert_eq!(
-        canonical.stderr, curdir_segment.stderr,
-        "canonical absolute and absolute curdir-segment show-triplets stderr should match"
+    assert_single_target_command_outputs_match_for_targets(
+        "show-triplets",
+        &root,
+        &canonical_target,
+        &curdir_segment_target,
+        &[],
+        "absolute curdir-segment",
     );
 }
 
@@ -12925,30 +12855,13 @@ fn show_triplets_command_absolute_double_separator_target_matches_canonical_abso
     let double_separator_target =
         format!("{}/dsl//tools///makegen.dag", root.display());
 
-    let canonical = run_single_target_command("show-triplets", &root, &canonical_target, &[])
-        .expect("failed to run canonical absolute-target daglang show-triplets");
-    assert!(
-        canonical.status.success(),
-        "canonical absolute-target show-triplets command failed: {}",
-        String::from_utf8_lossy(&canonical.stderr)
-    );
-
-    let double_separator =
-        run_single_target_command("show-triplets", &root, &double_separator_target, &[])
-            .expect("failed to run absolute double-separator daglang show-triplets");
-    assert!(
-        double_separator.status.success(),
-        "absolute double-separator show-triplets command failed: {}",
-        String::from_utf8_lossy(&double_separator.stderr)
-    );
-
-    assert_eq!(
-        canonical.stdout, double_separator.stdout,
-        "canonical absolute and absolute double-separator show-triplets stdout should match"
-    );
-    assert_eq!(
-        canonical.stderr, double_separator.stderr,
-        "canonical absolute and absolute double-separator show-triplets stderr should match"
+    assert_single_target_command_outputs_match_for_targets(
+        "show-triplets",
+        &root,
+        &canonical_target,
+        &double_separator_target,
+        &[],
+        "absolute double-separator",
     );
 }
 
@@ -13137,39 +13050,13 @@ fn show_triplets_command_json_absolute_double_separator_target_matches_canonical
     let double_separator_target =
         format!("{}/dsl//tools///makegen.dag", root.display());
 
-    let canonical = run_single_target_command(
+    assert_single_target_command_outputs_match_for_targets(
         "show-triplets",
         &root,
         &canonical_target,
-        &["--format", "json"],
-    )
-    .expect("failed to run canonical absolute-target daglang show-triplets --format json");
-    assert!(
-        canonical.status.success(),
-        "canonical absolute-target show-triplets --format json failed: {}",
-        String::from_utf8_lossy(&canonical.stderr)
-    );
-
-    let double_separator = run_single_target_command(
-        "show-triplets",
-        &root,
         &double_separator_target,
         &["--format", "json"],
-    )
-    .expect("failed to run absolute double-separator daglang show-triplets --format json");
-    assert!(
-        double_separator.status.success(),
-        "absolute double-separator show-triplets --format json failed: {}",
-        String::from_utf8_lossy(&double_separator.stderr)
-    );
-
-    assert_eq!(
-        canonical.stdout, double_separator.stdout,
-        "canonical absolute and absolute double-separator show-triplets json stdout should match"
-    );
-    assert_eq!(
-        canonical.stderr, double_separator.stderr,
-        "canonical absolute and absolute double-separator show-triplets json stderr should match"
+        "absolute double-separator",
     );
 }
 
@@ -13182,39 +13069,13 @@ fn show_triplets_command_json_absolute_curdir_segment_target_matches_canonical_a
         .to_string_lossy()
         .into_owned();
 
-    let canonical = run_single_target_command(
+    assert_single_target_command_outputs_match_for_targets(
         "show-triplets",
         &root,
         &canonical_target,
-        &["--format", "json"],
-    )
-    .expect("failed to run canonical absolute-target daglang show-triplets --format json");
-    assert!(
-        canonical.status.success(),
-        "canonical absolute-target show-triplets --format json failed: {}",
-        String::from_utf8_lossy(&canonical.stderr)
-    );
-
-    let curdir_segment = run_single_target_command(
-        "show-triplets",
-        &root,
         &curdir_segment_target,
         &["--format", "json"],
-    )
-    .expect("failed to run absolute curdir-segment daglang show-triplets --format json");
-    assert!(
-        curdir_segment.status.success(),
-        "absolute curdir-segment show-triplets --format json failed: {}",
-        String::from_utf8_lossy(&curdir_segment.stderr)
-    );
-
-    assert_eq!(
-        canonical.stdout, curdir_segment.stdout,
-        "canonical absolute and absolute curdir-segment show-triplets json stdout should match"
-    );
-    assert_eq!(
-        canonical.stderr, curdir_segment.stderr,
-        "canonical absolute and absolute curdir-segment show-triplets json stderr should match"
+        "absolute curdir-segment",
     );
 }
 
