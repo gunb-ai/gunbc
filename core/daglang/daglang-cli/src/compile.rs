@@ -27,6 +27,12 @@ pub enum OutputFormat {
     Json,
 }
 
+/// Builds compile pipeline context from CLI input.
+///
+/// Compatibility note: paths ending in `.dag` are always treated as
+/// single-file targets, even when they point to a directory.
+/// Integration tests lock this behavior for lowercase/uppercase/mixed-case
+/// extensions and trailing-slash variants.
 pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
     let parsed = input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
     let (roots, target_file) = match parsed {
@@ -529,6 +535,52 @@ mod tests {
         ));
         let dag_dir = root.join("bundle.dag");
         std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory fixture");
+        let input_with_trailing_slash = format!("{}/", dag_dir.display());
+
+        let cwd = std::env::temp_dir();
+        let context = build_context(&cwd, Some(&input_with_trailing_slash));
+
+        assert_eq!(context.roots, vec![root.clone()]);
+        assert_eq!(context.target_file, Some(dag_dir.clone()));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn build_context_normalizes_trailing_slash_for_uppercase_dag_directory_target() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_build_context_uppercase_dag_dir_trailing_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        let dag_dir = root.join("bundle.DAG");
+        std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory fixture");
+        let input_with_trailing_slash = format!("{}/", dag_dir.display());
+
+        let cwd = std::env::temp_dir();
+        let context = build_context(&cwd, Some(&input_with_trailing_slash));
+
+        assert_eq!(context.roots, vec![root.clone()]);
+        assert_eq!(context.target_file, Some(dag_dir.clone()));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn build_context_normalizes_trailing_slash_for_mixed_case_dag_directory_target() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_build_context_mixed_case_dag_dir_trailing_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        let dag_dir = root.join("bundle.DaG");
+        std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory fixture");
         let input_with_trailing_slash = format!("{}/", dag_dir.display());
 
         let cwd = std::env::temp_dir();
