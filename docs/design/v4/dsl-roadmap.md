@@ -478,7 +478,7 @@ Then execute: pass the resolved DAG to the existing `execute_dag()` in `core/exe
 - [x] `resolve_dag()` converts `Dag<LoweredOp>` → `Dag<ResolvedOp>` for makegen
 - [x] End-to-end test: `compile → resolve → execute_dag()` produces valid Makefile output
 - [x] DryRun mode works: compiled makegen executes in DryRun with transport interception
-- [ ] Existing `make test-all` still passes (no regressions)
+- [x] Existing `make test-all` still passes (no regressions)
 
 ##### Worker 1 Definition of Done
 
