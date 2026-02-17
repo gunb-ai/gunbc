@@ -31624,28 +31624,32 @@ fn obligations_and_show_triplets_with_invalid_format_exit_with_usage_message() {
             "Usage: daglang show-triplets <file.dag> [--format text|json]",
         ),
     ] {
-        let output = Command::new(daglang_bin())
-            .arg(command)
-            .arg("dsl/tools/makegen.dag")
-            .arg("--format")
-            .arg("yaml")
-            .current_dir(workspace_root())
-            .output()
-            .unwrap_or_else(|err| panic!("failed to run {command} with invalid format: {err}"));
-        assert!(
-            !output.status.success(),
-            "{command} with invalid format should fail"
-        );
-        assert_eq!(
-            output.status.code(),
-            Some(1),
-            "{command} with invalid format should use usage exit code 1"
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains(usage),
-            "{command} with invalid format should print command usage: {stderr}"
-        );
+        for bad_value in ["yaml", "JSON"] {
+            let output = Command::new(daglang_bin())
+                .arg(command)
+                .arg("dsl/tools/makegen.dag")
+                .arg("--format")
+                .arg(bad_value)
+                .current_dir(workspace_root())
+                .output()
+                .unwrap_or_else(|err| {
+                    panic!("failed to run {command} with invalid format {bad_value}: {err}")
+                });
+            assert!(
+                !output.status.success(),
+                "{command} with invalid format {bad_value} should fail"
+            );
+            assert_eq!(
+                output.status.code(),
+                Some(1),
+                "{command} with invalid format {bad_value} should use usage exit code 1"
+            );
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                stderr.contains(usage),
+                "{command} with invalid format {bad_value} should print command usage: {stderr}"
+            );
+        }
     }
 }
 

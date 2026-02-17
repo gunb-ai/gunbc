@@ -447,6 +447,13 @@ mod tests {
             "--format".to_string(),
             "yaml".to_string(),
         ];
+        let bad_case_variant_value = vec![
+            "daglang".to_string(),
+            "obligations".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--format".to_string(),
+            "JSON".to_string(),
+        ];
 
         let expected_usage = "obligations <file.dag> [--format text|json]";
         assert_eq!(
@@ -460,6 +467,10 @@ mod tests {
         assert_eq!(
             super::parse_output_format("show-triplets", &bad_value),
             Err("show-triplets <file.dag> [--format text|json]".to_string())
+        );
+        assert_eq!(
+            super::parse_output_format("obligations", &bad_case_variant_value),
+            Err(expected_usage.to_string())
         );
     }
 
