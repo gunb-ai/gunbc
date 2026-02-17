@@ -11121,6 +11121,71 @@ fn manifest_command_shows_derived_progress_manifest() {
 }
 
 #[test]
+fn manifest_command_json_format_emits_valid_json_object() {
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest --format json");
+
+    assert!(
+        output.status.success(),
+        "manifest --format json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: Value =
+        serde_json::from_slice(&output.stdout).expect("manifest --format json should emit JSON");
+    let manifest = parsed
+        .get("progress_manifest")
+        .expect("manifest json should include progress_manifest object");
+    let obligations = parsed
+        .get("test_obligations")
+        .expect("manifest json should include test_obligations object");
+    assert!(manifest.get("total_nodes").is_some());
+    assert!(manifest.get("waves").is_some());
+    assert!(manifest.get("entrypoint_nodes").is_some());
+    assert!(obligations.get("transport_execution_targets").is_some());
+    assert!(obligations.get("resource_release_targets").is_some());
+}
+
+#[test]
+fn manifest_command_explicit_text_format_matches_default_output() {
+    let default_output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest default format");
+    assert!(
+        default_output.status.success(),
+        "default manifest command failed: {}",
+        String::from_utf8_lossy(&default_output.stderr)
+    );
+
+    let explicit_text_output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("text")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest --format text");
+    assert!(
+        explicit_text_output.status.success(),
+        "manifest --format text failed: {}",
+        String::from_utf8_lossy(&explicit_text_output.stderr)
+    );
+
+    assert_eq!(
+        default_output.stdout, explicit_text_output.stdout,
+        "explicit text format should match default manifest output"
+    );
+}
+
+#[test]
 fn manifest_command_reports_non_zero_transport_and_lifecycle_obligations() {
     let fixture = unique_temp_file("manifest_obligations");
     std::fs::write(

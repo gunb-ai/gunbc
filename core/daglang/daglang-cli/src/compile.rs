@@ -277,6 +277,38 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
     out
 }
 
+pub fn render_manifest_with_format(derived: &DerivedArtifacts, format: OutputFormat) -> String {
+    match format {
+        OutputFormat::Text => render_manifest(derived),
+        OutputFormat::Json => {
+            let manifest = &derived.manifest;
+            let obligations = &derived.obligations;
+            json!({
+                "progress_manifest": {
+                    "total_nodes": manifest.total_nodes,
+                    "total_edges": manifest.total_edges,
+                    "waves": manifest.waves,
+                    "entrypoint_nodes": manifest.entrypoint_nodes,
+                    "boundary_nodes": manifest.boundary_nodes
+                },
+                "test_obligations": {
+                    "dry_run_completion_required": obligations.dry_run_completion_required,
+                    "transport_execution_targets": obligations.transport_execution_targets,
+                    "pure_node_determinism_targets": obligations.pure_node_determinism_targets,
+                    "service_transport_prepare_targets": obligations.service_transport_prepare_targets,
+                    "service_transport_execute_targets": obligations.service_transport_execute_targets,
+                    "service_transport_parse_targets": obligations.service_transport_parse_targets,
+                    "service_param_source_targets": obligations.service_param_source_targets,
+                    "resource_provide_targets": obligations.resource_provide_targets,
+                    "resource_acquire_targets": obligations.resource_acquire_targets,
+                    "resource_release_targets": obligations.resource_release_targets
+                }
+            })
+            .to_string()
+        }
+    }
+}
+
 pub fn render_obligations(derived: &DerivedArtifacts, format: OutputFormat) -> String {
     let obligations = &derived.obligations;
     match format {

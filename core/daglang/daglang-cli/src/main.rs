@@ -8,7 +8,8 @@
 //!
 //! - `daglang viz <file.dag>`      -- Mermaid DAG visualization from compiled IR
 //! - `daglang expand <file.dag>`   -- Show lowered GraphIR (nodes, edges, ports)
-//! - `daglang manifest <file.dag>` -- Show derived ProgressManifest
+//! - `daglang manifest <file.dag> [--format text|json]`
+//!                                  -- Show derived ProgressManifest
 //! - `daglang obligations <file.dag> [--format text|json]`
 //!                                  -- Show derived test obligations summary
 //! - `daglang show-triplets <file.dag> [--format text|json]`
@@ -20,8 +21,8 @@
 use std::path::PathBuf;
 
 use daglang_cli::compile::{
-    build_context, check_from_context, compile_from_context, render_expand, render_manifest,
-    render_obligations, render_triplets, CompileOutput, OutputFormat,
+    build_context, check_from_context, compile_from_context, render_expand,
+    render_manifest_with_format, render_obligations, render_triplets, CompileOutput, OutputFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{
@@ -38,7 +39,8 @@ fn main() {
         eprintln!("Commands:");
         eprintln!("  viz <file.dag>       Mermaid DAG visualization");
         eprintln!("  expand <file.dag>    Show lowered GraphIR (nodes/edges/ports)");
-        eprintln!("  manifest <file.dag>  Show derived ProgressManifest");
+        eprintln!("  manifest <file.dag> [--format text|json]");
+        eprintln!("                      Show derived ProgressManifest");
         eprintln!("  obligations <file.dag> [--format text|json]");
         eprintln!("                      Show derived test obligations summary");
         eprintln!("  show-triplets <file.dag> [--format text|json]");
@@ -72,11 +74,13 @@ fn main() {
             println!("{}", render_expand(&output.lowered_dag));
         }
         "manifest" => {
-            if args.len() != 3 {
-                exit_usage("manifest <file.dag>");
+            if args.len() != 3 && args.len() != 5 {
+                exit_usage("manifest <file.dag> [--format text|json]");
             }
+            let format = parse_output_format("manifest", &args)
+                .unwrap_or_else(|usage| exit_usage(&usage));
             let output = compile_target_or_exit(&cwd, args.get(2));
-            println!("{}", render_manifest(&output.derived));
+            println!("{}", render_manifest_with_format(&output.derived, format));
         }
         "obligations" => {
             if args.len() != 3 && args.len() != 5 {
