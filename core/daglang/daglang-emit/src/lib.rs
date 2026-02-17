@@ -163,7 +163,12 @@ pub fn emit_rust_bundle(
         };
 
         match op {
-            LoweredOp::Callable { module, kind, name } => {
+            LoweredOp::Callable {
+                module,
+                kind,
+                name,
+                ..
+            } => {
                 callable_count += 1;
                 let fn_name = sanitize_identifier(&format!("{module}_{name}"));
                 let rendered = match kind {
@@ -270,6 +275,7 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
 mod tests {
     use super::*;
     use daglang_derive::derive_artifacts;
+    use daglang_lower::ObligationCategory;
     use gunbc_ir::{Edge, Node, Port};
 
     fn sample_dag() -> Dag<LoweredOp> {
@@ -282,6 +288,7 @@ mod tests {
                 module: "tools.makegen".to_string(),
                 kind: CallableKind::Fn,
                 name: "render_makefile".to_string(),
+                obligation: ObligationCategory::None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -292,6 +299,7 @@ mod tests {
                 module: "tools.makegen".to_string(),
                 kind: CallableKind::Func,
                 name: "makegen".to_string(),
+                obligation: ObligationCategory::None,
             },
         ));
         dag.add_edge(Edge::new(

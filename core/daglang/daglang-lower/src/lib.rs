@@ -34,6 +34,7 @@ pub enum LoweredOp {
         module: String,
         kind: CallableKind,
         name: String,
+        obligation: ObligationCategory,
     },
     Pipeline {
         module: String,
@@ -114,6 +115,31 @@ pub enum CallableKind {
     Fn,
     Func,
     Pattern,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObligationCategory {
+    None,
+    ServiceTransportPrepare,
+    ServiceTransportExecute,
+    ServiceTransportParse,
+    ServiceParamSource,
+    ResourceProvide,
+    ResourceAcquire,
+    ResourceRelease,
+}
+
+impl LoweredOp {
+    pub fn obligation_category(&self) -> ObligationCategory {
+        match self {
+            Self::Callable { obligation, .. } => *obligation,
+            Self::Pipeline { .. } => ObligationCategory::None,
+        }
+    }
+}
+
+pub fn classify_obligation(op: &LoweredOp) -> ObligationCategory {
+    op.obligation_category()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -821,6 +847,7 @@ fn lower_callable(
                 module: module_name.to_string(),
                 kind,
                 name: callable.name.clone(),
+                obligation: ObligationCategory::None,
             },
         ),
         LoweredEndpoint {
@@ -1000,6 +1027,7 @@ fn expand_single_content_upsert(
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{prepare_read_id}"),
+            obligation: ObligationCategory::None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -1010,6 +1038,7 @@ fn expand_single_content_upsert(
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{execute_read_id}"),
+            obligation: ObligationCategory::None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -1026,6 +1055,7 @@ fn expand_single_content_upsert(
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{compare_id}"),
+            obligation: ObligationCategory::None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -1039,6 +1069,7 @@ fn expand_single_content_upsert(
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{prepare_write_id}"),
+            obligation: ObligationCategory::None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -1052,6 +1083,7 @@ fn expand_single_content_upsert(
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{execute_transport_id}"),
+            obligation: ObligationCategory::None,
         },
     ));
 
@@ -1164,6 +1196,7 @@ fn add_makegen_scaffolding(
                 module: "tools.makegen".to_string(),
                 kind: CallableKind::Pattern,
                 name: "load_registry".to_string(),
+                obligation: ObligationCategory::None,
             },
         ));
     }
@@ -1192,6 +1225,7 @@ fn add_makegen_scaffolding(
                     module: "tools.makegen".to_string(),
                     kind: CallableKind::Pattern,
                     name: "fs_env".to_string(),
+                    obligation: ObligationCategory::None,
                 },
             ));
         }
@@ -1250,6 +1284,7 @@ fn add_service_transport_triplets(
                             "service_transport::prepare::{}::{}",
                             service.name, operation.name
                         ),
+                        obligation: ObligationCategory::ServiceTransportPrepare,
                     },
                 ));
                 builder.add_node(Node::opaque(
@@ -1263,6 +1298,7 @@ fn add_service_transport_triplets(
                             "service_transport::execute::{}::{}",
                             service.name, operation.name
                         ),
+                        obligation: ObligationCategory::ServiceTransportExecute,
                     },
                 ));
                 let parse_outputs = if operation.outputs.is_empty() {
@@ -1292,6 +1328,7 @@ fn add_service_transport_triplets(
                             "service_transport::parse::{}::{}",
                             service.name, operation.name
                         ),
+                        obligation: ObligationCategory::ServiceTransportParse,
                     },
                 ));
 
@@ -1561,6 +1598,7 @@ fn add_provided_resource_nodes(
                             "resource_provide::{}::{}",
                             item_name, provided.binding
                         ),
+                        obligation: ObligationCategory::ResourceProvide,
                     },
                 ));
                 builder.add_edge(
@@ -1659,6 +1697,7 @@ fn add_resource_lifecycle_nodes(
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
                         name: format!("resource_lifecycle::acquire::{}", resource.name),
+                        obligation: ObligationCategory::ResourceAcquire,
                     },
                 ));
                 has_acquire = true;
@@ -1672,6 +1711,7 @@ fn add_resource_lifecycle_nodes(
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
                         name: format!("resource_lifecycle::release::{}", resource.name),
+                        obligation: ObligationCategory::ResourceRelease,
                     },
                 ));
                 has_release = true;
@@ -1730,6 +1770,7 @@ fn ensure_param_source_node(
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("call_param_source::{callable}::{param}"),
+            obligation: ObligationCategory::ServiceParamSource,
         },
     ));
     node_id
@@ -2356,6 +2397,27 @@ func run() -> { ok: Bool } provides out: Storage {
         assert!(matches!(error, LowerError::NoLowerableItems));
     }
 
+    #[test]
+    fn classify_obligation_uses_structural_lowered_metadata() {
+        let op = LoweredOp::Callable {
+            module: "sample.services".to_string(),
+            kind: CallableKind::Pattern,
+            name: "prepare_transport_sample".to_string(),
+            obligation: ObligationCategory::ServiceTransportPrepare,
+        };
+        assert_eq!(
+            classify_obligation(&op),
+            ObligationCategory::ServiceTransportPrepare
+        );
+
+        let pipeline = LoweredOp::Pipeline {
+            module: "pipelines.ci".to_string(),
+            name: "ci".to_string(),
+            stages: 4,
+        };
+        assert_eq!(classify_obligation(&pipeline), ObligationCategory::None);
+    }
+
     // Test infrastructure: filesystem access for test fixtures
     #[allow(clippy::disallowed_methods)]
     #[test]
@@ -2420,6 +2482,7 @@ func run() -> { ok: Bool } provides out: Storage {
                 module: "tools.makegen".to_string(),
                 kind: CallableKind::Fn,
                 name: "render".to_string(),
+                obligation: ObligationCategory::None,
             },
         ));
         let mut reference = Dag::new();
@@ -2453,6 +2516,7 @@ func run() -> { ok: Bool } provides out: Storage {
                 module: "sample".to_string(),
                 kind: CallableKind::Fn,
                 name: "b".to_string(),
+                obligation: ObligationCategory::None,
             },
         ));
         candidate.add_node(Node::opaque(
@@ -2463,6 +2527,7 @@ func run() -> { ok: Bool } provides out: Storage {
                 module: "sample".to_string(),
                 kind: CallableKind::Fn,
                 name: "a".to_string(),
+                obligation: ObligationCategory::None,
             },
         ));
         candidate.add_edge(Edge::new("a", "out", "b", "in"));

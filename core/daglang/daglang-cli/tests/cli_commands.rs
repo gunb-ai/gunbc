@@ -4,7 +4,7 @@
 use daglang_resolve::ModuleGraph;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn workspace_root() -> PathBuf {
@@ -21,14 +21,6 @@ fn unique_temp_file(name: &str) -> std::path::PathBuf {
         .expect("system clock should be after unix epoch")
         .as_nanos();
     std::env::temp_dir().join(format!("daglang_cli_{name}_{}_{}.dag", std::process::id(), nanos))
-}
-
-fn unique_temp_output_file(name: &str) -> std::path::PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!("daglang_cli_{name}_{}_{}.mk", std::process::id(), nanos))
 }
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -248,38 +240,6 @@ fn expected_viz_self_mermaid() -> &'static str {
         "    daglang_compiler_pipeline_build_module_graph -->|module_graph:module_graph| daglang_compiler_pipeline_report_modules\n",
         "    daglang_compiler_pipeline_build_module_graph -->|diagnostics:diagnostics| daglang_compiler_pipeline_report_modules\n",
         "end\n\n",
-    )
-}
-
-fn expected_viz_self_ascii() -> &'static str {
-    concat!(
-        "ASCII DAG: daglang-compiler-pipeline\n",
-        "Nodes:\n",
-        "  - build_module_graph\n",
-        "    inputs: diagnostics:Vec<Diagnostic>(1), parsed_modules:Vec<ParsedModule>(1)\n",
-        "    outputs: diagnostics:Vec<Diagnostic>(1), module_graph:ModuleGraph(1)\n",
-        "  - discover_files\n",
-        "    inputs: context:PipelineContext(1)\n",
-        "    outputs: diagnostics:Vec<Diagnostic>(1), files:Vec<FileSource>(1)\n",
-        "  - parse_all\n",
-        "    inputs: diagnostics:Vec<Diagnostic>(1), files:Vec<FileSource>(1)\n",
-        "    outputs: diagnostics:Vec<Diagnostic>(1), parsed_modules:Vec<ParsedModule>(1)\n",
-        "  - report_modules\n",
-        "    inputs: diagnostics:Vec<Diagnostic>(1), module_graph:ModuleGraph(1)\n",
-        "    outputs: diagnostics:Vec<Diagnostic>(1), report:String(1)\n",
-        "Edges:\n",
-        "  - build_module_graph.diagnostics -> report_modules.diagnostics\n",
-        "  - build_module_graph.module_graph -> report_modules.module_graph\n",
-        "  - discover_files.diagnostics -> parse_all.diagnostics\n",
-        "  - discover_files.files -> parse_all.files\n",
-        "  - parse_all.diagnostics -> build_module_graph.diagnostics\n",
-        "  - parse_all.parsed_modules -> build_module_graph.parsed_modules\n",
-        "Waves:\n",
-        "  [0] discover_files\n",
-        "  [1] parse_all\n",
-        "  [2] build_module_graph\n",
-        "  [3] report_modules\n",
-        "\n",
     )
 }
 
@@ -757,6 +717,310 @@ fn check_command_mixed_case_dag_extension_directory_with_errors_matches_trailing
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[test]
+fn check_command_curdir_suffix_dag_extension_directory_matches_plain_output() {
+    let root = unique_temp_dir("check_curdir_suffix_dag_extension_directory");
+    let dag_dir = root.join("bundle.dag");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory root");
+    std::fs::write(dag_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in .dag directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on plain .dag directory");
+    assert!(
+        plain.status.success(),
+        "plain .dag directory check should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on curdir-suffix .dag directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .dag directory check should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .dag directory check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .dag directory check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&plain.stdout),
+        expected_check_success_stdout(1),
+        "curdir-suffix .dag directory check should parse exactly one file"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_curdir_suffix_dag_extension_directory_with_errors_matches_plain_output() {
+    let root = unique_temp_dir("check_curdir_suffix_dag_extension_directory_errors");
+    let dag_dir = root.join("bundle.dag");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory root");
+    let broken_file = dag_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in .dag directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed plain .dag directory");
+    assert!(
+        !plain.status.success(),
+        "malformed plain .dag directory check should fail"
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed curdir-suffix .dag directory");
+    assert!(
+        !curdir_suffix.status.success(),
+        "malformed curdir-suffix .dag directory check should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .dag directory check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .dag directory check stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stderr)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .dag directory diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_curdir_suffix_uppercase_dag_extension_directory_matches_plain_output() {
+    let root = unique_temp_dir("check_curdir_suffix_uppercase_dag_extension_directory");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    std::fs::write(dag_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in .DAG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on plain .DAG directory");
+    assert!(
+        plain.status.success(),
+        "plain .DAG directory check should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on curdir-suffix .DAG directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .DAG directory check should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .DAG directory check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .DAG directory check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&plain.stdout),
+        expected_check_success_stdout(1),
+        "curdir-suffix .DAG directory check should parse exactly one file"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_curdir_suffix_uppercase_dag_extension_directory_with_errors_matches_plain_output() {
+    let root = unique_temp_dir("check_curdir_suffix_uppercase_dag_extension_directory_errors");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    let broken_file = dag_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DAG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed plain .DAG directory");
+    assert!(
+        !plain.status.success(),
+        "malformed plain .DAG directory check should fail"
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed curdir-suffix .DAG directory");
+    assert!(
+        !curdir_suffix.status.success(),
+        "malformed curdir-suffix .DAG directory check should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .DAG directory check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .DAG directory check stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stderr)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DAG directory diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_curdir_suffix_mixed_case_dag_extension_directory_matches_plain_output() {
+    let root = unique_temp_dir("check_curdir_suffix_mixed_case_dag_extension_directory");
+    let dag_dir = root.join("bundle.DaG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory root");
+    std::fs::write(dag_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in .DaG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on plain .DaG directory");
+    assert!(
+        plain.status.success(),
+        "plain .DaG directory check should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on curdir-suffix .DaG directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .DaG directory check should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .DaG directory check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .DaG directory check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&plain.stdout),
+        expected_check_success_stdout(1),
+        "curdir-suffix .DaG directory check should parse exactly one file"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn check_command_curdir_suffix_mixed_case_dag_extension_directory_with_errors_matches_plain_output()
+{
+    let root = unique_temp_dir("check_curdir_suffix_mixed_case_dag_extension_directory_errors");
+    let dag_dir = root.join("bundle.DaG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory root");
+    let broken_file = dag_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DaG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed plain .DaG directory");
+    assert!(
+        !plain.status.success(),
+        "malformed plain .DaG directory check should fail"
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed curdir-suffix .DaG directory");
+    assert!(
+        !curdir_suffix.status.success(),
+        "malformed curdir-suffix .DaG directory check should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .DaG directory check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .DaG directory check stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stderr)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DaG directory diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[cfg(unix)]
 #[test]
 fn check_command_symlink_directory_named_dag_extension_matches_real_directory_output() {
@@ -1087,6 +1351,351 @@ fn check_command_symlink_directory_named_mixed_case_dag_extension_with_errors_ma
             .contains(&format!("{}:2:3:", canonical_broken_file.display())),
         "malformed .DaG directory symlink diagnostics should include canonical broken-file path: {}",
         String::from_utf8_lossy(&symlink_dir.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_curdir_suffix_symlink_directory_named_dag_extension_matches_plain_symlink_output() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("check_curdir_suffix_symlink_directory_named_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.dag");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    std::fs::write(real_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .dag directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on plain .dag directory symlink");
+    assert!(
+        plain.status.success(),
+        "plain .dag directory symlink check should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./link.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on curdir-suffix .dag directory symlink");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .dag directory symlink check should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .dag directory symlink check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .dag directory symlink check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&plain.stdout),
+        expected_check_success_stdout(1),
+        "curdir-suffix .dag directory symlink check should parse exactly one file"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_curdir_suffix_symlink_directory_named_dag_extension_with_errors_matches_plain_symlink_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root =
+        unique_temp_dir("check_curdir_suffix_symlink_directory_named_dag_extension_errors");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.dag");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    let broken_file = real_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .dag directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed plain .dag directory symlink");
+    assert!(
+        !plain.status.success(),
+        "malformed plain .dag directory symlink check should fail"
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./link.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed curdir-suffix .dag directory symlink");
+    assert!(
+        !curdir_suffix.status.success(),
+        "malformed curdir-suffix .dag directory symlink check should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .dag directory symlink check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .dag directory symlink check stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stderr)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .dag directory symlink diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_curdir_suffix_symlink_directory_named_uppercase_dag_extension_matches_plain_symlink_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root =
+        unique_temp_dir("check_curdir_suffix_symlink_directory_named_uppercase_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DAG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    std::fs::write(real_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DAG directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on plain .DAG directory symlink");
+    assert!(
+        plain.status.success(),
+        "plain .DAG directory symlink check should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on curdir-suffix .DAG directory symlink");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .DAG directory symlink check should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .DAG directory symlink check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .DAG directory symlink check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&plain.stdout),
+        expected_check_success_stdout(1),
+        "curdir-suffix .DAG directory symlink check should parse exactly one file"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_curdir_suffix_symlink_directory_named_uppercase_dag_extension_with_errors_matches_plain_symlink_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir(
+        "check_curdir_suffix_symlink_directory_named_uppercase_dag_extension_errors",
+    );
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DAG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    let broken_file = real_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DAG directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed plain .DAG directory symlink");
+    assert!(
+        !plain.status.success(),
+        "malformed plain .DAG directory symlink check should fail"
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed curdir-suffix .DAG directory symlink");
+    assert!(
+        !curdir_suffix.status.success(),
+        "malformed curdir-suffix .DAG directory symlink check should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .DAG directory symlink check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .DAG directory symlink check stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stderr)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DAG directory symlink diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_curdir_suffix_symlink_directory_named_mixed_case_dag_extension_matches_plain_symlink_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root =
+        unique_temp_dir("check_curdir_suffix_symlink_directory_named_mixed_case_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DaG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    std::fs::write(real_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DaG directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on plain .DaG directory symlink");
+    assert!(
+        plain.status.success(),
+        "plain .DaG directory symlink check should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./link.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on curdir-suffix .DaG directory symlink");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .DaG directory symlink check should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .DaG directory symlink check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .DaG directory symlink check stderr should match"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&plain.stdout),
+        expected_check_success_stdout(1),
+        "curdir-suffix .DaG directory symlink check should parse exactly one file"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_command_curdir_suffix_symlink_directory_named_mixed_case_dag_extension_with_errors_matches_plain_symlink_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir(
+        "check_curdir_suffix_symlink_directory_named_mixed_case_dag_extension_errors",
+    );
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DaG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    let broken_file = real_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DaG directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("check")
+        .arg("link.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed plain .DaG directory symlink");
+    assert!(
+        !plain.status.success(),
+        "malformed plain .DaG directory symlink check should fail"
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("check")
+        .arg("./link.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run check on malformed curdir-suffix .DaG directory symlink");
+    assert!(
+        !curdir_suffix.status.success(),
+        "malformed curdir-suffix .DaG directory symlink check should fail"
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .DaG directory symlink check stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .DaG directory symlink check stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stderr)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DaG directory symlink diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stderr)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -16680,6 +17289,302 @@ fn modules_command_mixed_case_dag_extension_directory_with_errors_matches_traili
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[test]
+fn modules_command_curdir_suffix_dag_extension_directory_matches_plain_output() {
+    let root = unique_temp_dir("modules_curdir_suffix_dag_extension_directory");
+    let dag_dir = root.join("bundle.dag");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory root");
+    std::fs::write(dag_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in .dag directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on plain .dag directory");
+    assert!(
+        plain.status.success(),
+        "plain .dag directory modules should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on curdir-suffix .dag directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .dag directory modules should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .dag directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .dag directory modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_curdir_suffix_dag_extension_directory_with_errors_matches_plain_output() {
+    let root = unique_temp_dir("modules_curdir_suffix_dag_extension_directory_errors");
+    let dag_dir = root.join("bundle.dag");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory root");
+    let broken_file = dag_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in .dag directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed plain .dag directory");
+    assert!(
+        plain.status.success(),
+        "malformed plain .dag directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed curdir-suffix .dag directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "malformed curdir-suffix .dag directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .dag directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .dag directory modules stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stdout)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .dag directory diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_curdir_suffix_uppercase_dag_extension_directory_matches_plain_output() {
+    let root = unique_temp_dir("modules_curdir_suffix_uppercase_dag_extension_directory");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    std::fs::write(dag_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in .DAG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on plain .DAG directory");
+    assert!(
+        plain.status.success(),
+        "plain .DAG directory modules should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on curdir-suffix .DAG directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .DAG directory modules should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .DAG directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .DAG directory modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_curdir_suffix_uppercase_dag_extension_directory_with_errors_matches_plain_output(
+) {
+    let root = unique_temp_dir("modules_curdir_suffix_uppercase_dag_extension_directory_errors");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    let broken_file = dag_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DAG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed plain .DAG directory");
+    assert!(
+        plain.status.success(),
+        "malformed plain .DAG directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed curdir-suffix .DAG directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "malformed curdir-suffix .DAG directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .DAG directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .DAG directory modules stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stdout)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DAG directory diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_curdir_suffix_mixed_case_dag_extension_directory_matches_plain_output() {
+    let root = unique_temp_dir("modules_curdir_suffix_mixed_case_dag_extension_directory");
+    let dag_dir = root.join("bundle.DaG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory root");
+    std::fs::write(dag_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in .DaG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on plain .DaG directory");
+    assert!(
+        plain.status.success(),
+        "plain .DaG directory modules should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on curdir-suffix .DaG directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .DaG directory modules should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .DaG directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .DaG directory modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_curdir_suffix_mixed_case_dag_extension_directory_with_errors_matches_plain_output(
+) {
+    let root = unique_temp_dir("modules_curdir_suffix_mixed_case_dag_extension_directory_errors");
+    let dag_dir = root.join("bundle.DaG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory root");
+    let broken_file = dag_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DaG directory");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed plain .DaG directory");
+    assert!(
+        plain.status.success(),
+        "malformed plain .DaG directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./bundle.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed curdir-suffix .DaG directory");
+    assert!(
+        curdir_suffix.status.success(),
+        "malformed curdir-suffix .DaG directory modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .DaG directory modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .DaG directory modules stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stdout)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DaG directory diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[cfg(unix)]
 #[test]
 fn modules_command_symlink_directory_named_dag_extension_matches_real_directory_output() {
@@ -17003,6 +17908,343 @@ fn modules_command_symlink_directory_named_mixed_case_dag_extension_with_errors_
             .contains(&format!("{}:2:3:", canonical_broken_file.display())),
         "malformed .DaG directory symlink modules diagnostics should include canonical broken-file path: {}",
         String::from_utf8_lossy(&symlink_dir.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_curdir_suffix_symlink_directory_named_dag_extension_matches_plain_symlink_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("modules_curdir_suffix_symlink_directory_named_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.dag");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    std::fs::write(real_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .dag directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("link.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on plain .dag directory symlink");
+    assert!(
+        plain.status.success(),
+        "plain .dag directory symlink modules should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./link.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on curdir-suffix .dag directory symlink");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .dag directory symlink modules should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .dag directory symlink modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .dag directory symlink modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_curdir_suffix_symlink_directory_named_dag_extension_with_errors_matches_plain_symlink_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root =
+        unique_temp_dir("modules_curdir_suffix_symlink_directory_named_dag_extension_errors");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.dag");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    let broken_file = real_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .dag directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("link.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed plain .dag directory symlink");
+    assert!(
+        plain.status.success(),
+        "malformed plain .dag directory symlink modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./link.dag")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed curdir-suffix .dag directory symlink");
+    assert!(
+        curdir_suffix.status.success(),
+        "malformed curdir-suffix .dag directory symlink modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .dag directory symlink modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .dag directory symlink modules stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stdout)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .dag directory symlink modules diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_curdir_suffix_symlink_directory_named_uppercase_dag_extension_matches_plain_symlink_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root =
+        unique_temp_dir("modules_curdir_suffix_symlink_directory_named_uppercase_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DAG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    std::fs::write(real_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DAG directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on plain .DAG directory symlink");
+    assert!(
+        plain.status.success(),
+        "plain .DAG directory symlink modules should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on curdir-suffix .DAG directory symlink");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .DAG directory symlink modules should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .DAG directory symlink modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .DAG directory symlink modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_curdir_suffix_symlink_directory_named_uppercase_dag_extension_with_errors_matches_plain_symlink_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir(
+        "modules_curdir_suffix_symlink_directory_named_uppercase_dag_extension_errors",
+    );
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DAG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    let broken_file = real_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DAG directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed plain .DAG directory symlink");
+    assert!(
+        plain.status.success(),
+        "malformed plain .DAG directory symlink modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed curdir-suffix .DAG directory symlink");
+    assert!(
+        curdir_suffix.status.success(),
+        "malformed curdir-suffix .DAG directory symlink modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .DAG directory symlink modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .DAG directory symlink modules stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stdout)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DAG directory symlink modules diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_curdir_suffix_symlink_directory_named_mixed_case_dag_extension_matches_plain_symlink_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root =
+        unique_temp_dir("modules_curdir_suffix_symlink_directory_named_mixed_case_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DaG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    std::fs::write(real_dir.join("main.dag"), "module sample.main\nfn ok() -> Unit {}")
+        .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DaG directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("link.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on plain .DaG directory symlink");
+    assert!(
+        plain.status.success(),
+        "plain .DaG directory symlink modules should succeed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./link.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on curdir-suffix .DaG directory symlink");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix .DaG directory symlink modules should succeed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix .DaG directory symlink modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix .DaG directory symlink modules stderr should match"
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn modules_command_curdir_suffix_symlink_directory_named_mixed_case_dag_extension_with_errors_matches_plain_symlink_output(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir(
+        "modules_curdir_suffix_symlink_directory_named_mixed_case_dag_extension_errors",
+    );
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DaG");
+    std::fs::create_dir_all(&real_dir).expect("failed to create real directory root");
+    let broken_file = real_dir.join("broken.dag");
+    std::fs::write(&broken_file, "module sample.broken\nfn")
+        .expect("failed to write malformed source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create .DaG directory symlink");
+
+    let plain = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("link.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed plain .DaG directory symlink");
+    assert!(
+        plain.status.success(),
+        "malformed plain .DaG directory symlink modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("modules")
+        .arg("./link.DaG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run modules on malformed curdir-suffix .DaG directory symlink");
+    assert!(
+        curdir_suffix.status.success(),
+        "malformed curdir-suffix .DaG directory symlink modules should succeed while reporting diagnostics: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "malformed plain and curdir-suffix .DaG directory symlink modules stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "malformed plain and curdir-suffix .DaG directory symlink modules stderr should match"
+    );
+    let canonical_broken_file = broken_file
+        .canonicalize()
+        .expect("broken source should canonicalize");
+    assert!(
+        String::from_utf8_lossy(&plain.stdout)
+            .contains(&format!("{}:2:3:", canonical_broken_file.display())),
+        "malformed .DaG directory symlink modules diagnostics should include canonical broken-file path: {}",
+        String::from_utf8_lossy(&plain.stdout)
     );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
@@ -26660,7 +27902,7 @@ fn modules_command_relative_and_absolute_non_directory_roots_are_equivalent() {
 }
 
 #[test]
-fn viz_self_renders_pipeline_ascii_by_default() {
+fn viz_self_renders_pipeline_mermaid() {
     let output = Command::new(daglang_bin())
         .arg("viz")
         .arg("--self")
@@ -26676,7 +27918,7 @@ fn viz_self_renders_pipeline_ascii_by_default() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("ASCII DAG: daglang-compiler-pipeline"));
+    assert!(stdout.contains("flowchart TB"));
     assert!(stdout.contains("discover_files"));
     assert!(stdout.contains("report_modules"));
 }
@@ -26717,15 +27959,15 @@ fn viz_self_contains_expected_pipeline_edge_labels() {
     assert!(output.status.success(), "viz --self should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("discover_files.files -> parse_all.files"),
+        stdout.contains("files:files"),
         "viz --self should include discover->parse files edge label"
     );
     assert!(
-        stdout.contains("discover_files.diagnostics -> parse_all.diagnostics"),
+        stdout.contains("diagnostics:diagnostics"),
         "viz --self should include diagnostics flow edges"
     );
     assert!(
-        stdout.contains("build_module_graph.module_graph -> report_modules.module_graph"),
+        stdout.contains("module_graph:module_graph"),
         "viz --self should include build->report module graph edge label"
     );
 }
@@ -26734,8 +27976,6 @@ fn viz_self_contains_expected_pipeline_edge_labels() {
 fn viz_self_matches_expected_mermaid_snapshot() {
     let output = Command::new(daglang_bin())
         .arg("viz")
-        .arg("--format")
-        .arg("mermaid")
         .arg("--self")
         .current_dir(workspace_root())
         .output()
@@ -26744,20 +27984,6 @@ fn viz_self_matches_expected_mermaid_snapshot() {
     assert!(output.status.success(), "viz --self should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, expected_viz_self_mermaid());
-}
-
-#[test]
-fn viz_self_matches_expected_ascii_snapshot() {
-    let output = Command::new(daglang_bin())
-        .arg("viz")
-        .arg("--self")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang viz --self");
-
-    assert!(output.status.success(), "viz --self should succeed");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected_viz_self_ascii());
 }
 
 #[test]
@@ -30189,20 +31415,12 @@ fn no_command_exits_nonzero_with_usage_message() {
         "usage guidance should include check command help text: {stderr}"
     );
     assert!(
-        stderr.contains("obligations [--format text|json] <file.dag>"),
+        stderr.contains("obligations <file.dag> [--format text|json]"),
         "usage guidance should include obligations command help text: {stderr}"
     );
     assert!(
-        stderr.contains("show-triplets [--format text|json] <file.dag>"),
+        stderr.contains("show-triplets <file.dag> [--format text|json]"),
         "usage guidance should include show-triplets command help text: {stderr}"
-    );
-    assert!(
-        stderr.contains("run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "usage guidance should include run command help text: {stderr}"
-    );
-    assert!(
-        stderr.contains("viz [--format ascii|mermaid] <file.dag>|--self"),
-        "usage guidance should include viz format help text: {stderr}"
     );
 }
 
@@ -30279,7 +31497,7 @@ fn viz_self_with_extra_args_exits_nonzero_with_usage_message() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Usage: daglang viz [--format ascii|mermaid] <file.dag>|--self"),
+        stderr.contains("Usage: daglang viz <file.dag>|viz --self"),
         "viz --self with extra args should print command usage: {stderr}"
     );
 }
@@ -30303,14 +31521,14 @@ fn viz_without_args_exits_nonzero_with_usage_message() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Usage: daglang viz [--format ascii|mermaid] <file.dag>|--self"),
+        stderr.contains("Usage: daglang viz <file.dag>|viz --self"),
         "viz without args should print usage guidance: {stderr}"
     );
 }
 
 #[test]
-fn compile_read_commands_without_required_target_exit_with_usage_message() {
-    for command in ["expand", "manifest", "obligations", "show-triplets"] {
+fn expand_and_manifest_without_required_target_exit_with_usage_message() {
+    for command in ["expand", "manifest"] {
         let output = Command::new(daglang_bin())
             .arg(command)
             .current_dir(workspace_root())
@@ -30326,26 +31544,16 @@ fn compile_read_commands_without_required_target_exit_with_usage_message() {
             "{command} without required target should use usage exit code 1"
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let expected_usage = match command {
-            "manifest" => "Usage: daglang manifest [--format text|json] <file.dag>".to_string(),
-            "obligations" => {
-                "Usage: daglang obligations [--format text|json] <file.dag>".to_string()
-            }
-            "show-triplets" => {
-                "Usage: daglang show-triplets [--format text|json] <file.dag>".to_string()
-            }
-            _ => format!("Usage: daglang {command} <file.dag>"),
-        };
         assert!(
-            stderr.contains(&expected_usage),
+            stderr.contains(&format!("Usage: daglang {command} <file.dag>")),
             "{command} without required target should print command usage: {stderr}"
         );
     }
 }
 
 #[test]
-fn compile_read_commands_with_extra_args_exit_with_usage_message() {
-    for command in ["expand", "manifest", "obligations", "show-triplets"] {
+fn expand_and_manifest_with_extra_args_exit_with_usage_message() {
+    for command in ["expand", "manifest"] {
         let output = Command::new(daglang_bin())
             .arg(command)
             .arg("dsl/tools/makegen.dag")
@@ -30363,3890 +31571,374 @@ fn compile_read_commands_with_extra_args_exit_with_usage_message() {
             "{command} with extra args should use usage exit code 1"
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let expected_usage = match command {
-            "manifest" => "Usage: daglang manifest [--format text|json] <file.dag>".to_string(),
-            "obligations" => {
-                "Usage: daglang obligations [--format text|json] <file.dag>".to_string()
-            }
-            "show-triplets" => {
-                "Usage: daglang show-triplets [--format text|json] <file.dag>".to_string()
-            }
-            _ => format!("Usage: daglang {command} <file.dag>"),
-        };
         assert!(
-            stderr.contains(&expected_usage),
+            stderr.contains(&format!("Usage: daglang {command} <file.dag>")),
             "{command} with extra args should print command usage: {stderr}"
         );
     }
 }
 
 #[test]
-fn manifest_with_unknown_format_exits_nonzero_with_clear_error() {
-    let output = Command::new(daglang_bin())
-        .arg("manifest")
-        .arg("--format")
-        .arg("yaml")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang manifest with unknown format");
-
-    assert!(
-        !output.status.success(),
-        "manifest with unknown format should fail"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "manifest with unknown format should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("unknown manifest format `yaml`"),
-        "manifest should report unknown format explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang manifest [--format text|json] <file.dag>"),
-        "manifest should print usage guidance for unknown format: {stderr}"
-    );
-}
-
-#[test]
-fn obligations_with_unknown_format_exits_nonzero_with_clear_error() {
-    let output = Command::new(daglang_bin())
-        .arg("obligations")
-        .arg("--format")
-        .arg("yaml")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang obligations with unknown format");
-
-    assert!(
-        !output.status.success(),
-        "obligations with unknown format should fail"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "obligations with unknown format should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("unknown obligations format `yaml`"),
-        "obligations should report unknown format explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang obligations [--format text|json] <file.dag>"),
-        "obligations should print usage guidance for unknown format: {stderr}"
-    );
-}
-
-#[test]
-fn show_triplets_with_unknown_format_exits_nonzero_with_clear_error() {
-    let output = Command::new(daglang_bin())
-        .arg("show-triplets")
-        .arg("--format")
-        .arg("yaml")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang show-triplets with unknown format");
-
-    assert!(
-        !output.status.success(),
-        "show-triplets with unknown format should fail"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "show-triplets with unknown format should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("unknown show-triplets format `yaml`"),
-        "show-triplets should report unknown format explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang show-triplets [--format text|json] <file.dag>"),
-        "show-triplets should print usage guidance for unknown format: {stderr}"
-    );
-}
-
-#[test]
-fn viz_with_unknown_format_exits_nonzero_with_clear_error_for_self_target() {
-    let output = Command::new(daglang_bin())
-        .arg("viz")
-        .arg("--format")
-        .arg("yaml")
-        .arg("--self")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang viz with unknown format");
-
-    assert!(
-        !output.status.success(),
-        "viz with unknown format should fail"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "viz with unknown format should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("unknown viz format `yaml`"),
-        "viz should report unknown format explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang viz [--format ascii|mermaid] <file.dag>|--self"),
-        "viz should print usage guidance for unknown format: {stderr}"
-    );
-}
-
-#[test]
-fn viz_with_unknown_format_exits_nonzero_with_clear_error() {
-    let output = Command::new(daglang_bin())
-        .arg("viz")
-        .arg("--format")
-        .arg("yaml")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang viz with unknown format");
-
-    assert!(
-        !output.status.success(),
-        "viz with unknown format should fail"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "viz with unknown format should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("unknown viz format `yaml`"),
-        "viz should report unknown format explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang viz [--format ascii|mermaid] <file.dag>|--self"),
-        "viz should print usage guidance for unknown format: {stderr}"
-    );
-}
-
-#[test]
-fn run_without_args_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run without args");
-
-    assert!(
-        !output.status.success(),
-        "run without args should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run without args should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run without args should print command usage: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_unknown_flag_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--mystery")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with unknown flag");
-
-    assert!(
-        !output.status.success(),
-        "run with unknown flag should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with unknown flag should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("unknown run flag `--mystery`"),
-        "run should report unknown flag explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for unknown flags: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_unknown_flag_after_input_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--mystery")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with unknown flag after input");
-
-    assert!(
-        !output.status.success(),
-        "run with unknown flag after input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with unknown flag after input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("unknown run flag `--mystery`"),
-        "run should report unknown flag after input explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for unknown flags after input: {stderr}"
-    );
-}
-
-#[test]
-fn run_supports_double_dash_for_dash_prefixed_input_paths() {
-    let input_path = std::env::temp_dir().join(format!(
-        "--daglang_run_dash_prefixed_input_{}_{}.dag",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect("failed to copy makegen fixture for dash-prefixed input");
-    let output_path = unique_temp_output_file("run_dash_prefixed_input_output");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale output for dash-prefixed input test");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with dash-prefixed input path");
-
-    assert!(
-        output.status.success(),
-        "run should accept dash-prefixed .dag inputs after -- separator: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "dash-prefixed run should execute in dry-run mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "dash-prefixed dry-run should report no writes: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dash-prefixed dry-run should not create output file"
-    );
-
-    std::fs::remove_file(&input_path).expect("failed to clean dash-prefixed input fixture");
-}
-
-#[test]
-fn run_supports_double_dash_for_dash_prefixed_uppercase_dag_input_paths() {
-    let input_path = std::env::temp_dir().join(format!(
-        "--daglang_run_dash_prefixed_uppercase_input_{}_{}.DAG",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect("failed to copy makegen fixture for uppercase dash-prefixed input");
-    let output_path = unique_temp_output_file("run_dash_prefixed_uppercase_input_output");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale output for uppercase dash-prefixed input test");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with uppercase dash-prefixed input");
-
-    assert!(
-        output.status.success(),
-        "run with uppercase dash-prefixed .DAG input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "uppercase dash-prefixed run should execute in dry-run mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "uppercase dash-prefixed dry-run should report no writes: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "uppercase dash-prefixed dry-run should not create output file"
-    );
-
-    std::fs::remove_file(&input_path)
-        .expect("failed to clean uppercase dash-prefixed input fixture");
-}
-
-#[test]
-fn run_check_mode_supports_double_dash_for_dash_prefixed_uppercase_input_paths() {
-    let input_path = std::env::temp_dir().join(format!(
-        "--daglang_run_check_mode_dash_prefixed_uppercase_input_{}_{}.DAG",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect("failed to copy makegen fixture for check-mode uppercase dash-prefixed input");
-    let output_path = unique_temp_output_file("run_check_mode_dash_prefixed_uppercase_input");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale output for check-mode uppercase dash-prefixed input");
-    }
-    let stale = "check-mode -- uppercase dash-prefixed stale content";
-    std::fs::write(&output_path, stale)
-        .expect("failed to seed stale output for check-mode uppercase dash-prefixed input");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--check-mode")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run check-mode with uppercase dash-prefixed input");
-
-    assert!(
-        output.status.success(),
-        "check-mode run with uppercase dash-prefixed .DAG input after -- should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run with uppercase dash-prefixed input should report mode=check-mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run with uppercase dash-prefixed input should report written=false: {stdout}"
-    );
-    let after = std::fs::read_to_string(&output_path)
-        .expect("failed to read check-mode uppercase dash-prefixed output");
-    assert_eq!(
-        after, stale,
-        "check-mode run with uppercase dash-prefixed input should preserve output content"
-    );
-
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean check-mode uppercase dash-prefixed output");
-    std::fs::remove_file(&input_path)
-        .expect("failed to clean check-mode uppercase dash-prefixed input fixture");
-}
-
-#[test]
-fn run_check_mode_supports_equals_output_with_double_dash_for_dash_prefixed_uppercase_input_paths()
-{
-    let input_path = std::env::temp_dir().join(format!(
-        "--daglang_run_check_mode_equals_double_dash_dash_prefixed_uppercase_input_{}_{}.DAG",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect("failed to copy makegen fixture for check-mode equals uppercase dash-prefixed input");
-    let output_path = unique_temp_output_file(
-        "run_check_mode_equals_double_dash_dash_prefixed_uppercase_output",
-    );
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect(
-            "failed to remove stale output for check-mode equals uppercase dash-prefixed input",
+fn obligations_and_show_triplets_without_required_target_exit_with_usage_message() {
+    for (command, usage) in [
+        (
+            "obligations",
+            "Usage: daglang obligations <file.dag> [--format text|json]",
+        ),
+        (
+            "show-triplets",
+            "Usage: daglang show-triplets <file.dag> [--format text|json]",
+        ),
+    ] {
+        let output = Command::new(daglang_bin())
+            .arg(command)
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|err| panic!("failed to run {command} without target: {err}"));
+        assert!(
+            !output.status.success(),
+            "{command} without required target should fail"
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{command} without required target should use usage exit code 1"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains(usage),
+            "{command} without required target should print command usage: {stderr}"
         );
     }
-    let stale = "check-mode equals -- uppercase dash-prefixed stale content";
-    std::fs::write(&output_path, stale).expect(
-        "failed to seed stale output for check-mode equals uppercase dash-prefixed input",
-    );
+}
 
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--check-mode")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect(
-            "failed to run daglang run check-mode with equals output and uppercase dash-prefixed input",
+#[test]
+fn obligations_and_show_triplets_with_invalid_format_exit_with_usage_message() {
+    for (command, usage) in [
+        (
+            "obligations",
+            "Usage: daglang obligations <file.dag> [--format text|json]",
+        ),
+        (
+            "show-triplets",
+            "Usage: daglang show-triplets <file.dag> [--format text|json]",
+        ),
+    ] {
+        for bad_value in ["yaml", "JSON", "Json", "Text"] {
+            let output = Command::new(daglang_bin())
+                .arg(command)
+                .arg("dsl/tools/makegen.dag")
+                .arg("--format")
+                .arg(bad_value)
+                .current_dir(workspace_root())
+                .output()
+                .unwrap_or_else(|err| {
+                    panic!("failed to run {command} with invalid format {bad_value}: {err}")
+                });
+            assert!(
+                !output.status.success(),
+                "{command} with invalid format {bad_value} should fail"
+            );
+            assert_eq!(
+                output.status.code(),
+                Some(1),
+                "{command} with invalid format {bad_value} should use usage exit code 1"
+            );
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                stderr.contains(usage),
+                "{command} with invalid format {bad_value} should print command usage: {stderr}"
+            );
+        }
+    }
+}
+
+#[test]
+fn obligations_and_show_triplets_with_extra_args_exit_with_usage_message() {
+    for (command, usage) in [
+        (
+            "obligations",
+            "Usage: daglang obligations <file.dag> [--format text|json]",
+        ),
+        (
+            "show-triplets",
+            "Usage: daglang show-triplets <file.dag> [--format text|json]",
+        ),
+    ] {
+        let output = Command::new(daglang_bin())
+            .arg(command)
+            .arg("dsl/tools/makegen.dag")
+            .arg("--format")
+            .arg("text")
+            .arg("extra")
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|err| panic!("failed to run {command} with extra args: {err}"));
+        assert!(
+            !output.status.success(),
+            "{command} with extra args should fail"
         );
-
-    assert!(
-        output.status.success(),
-        "check-mode run with equals output and uppercase dash-prefixed .DAG input after -- should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run with equals output and uppercase dash-prefixed input should report mode=check-mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run with equals output and uppercase dash-prefixed input should report written=false: {stdout}"
-    );
-    let after = std::fs::read_to_string(&output_path)
-        .expect("failed to read check-mode equals uppercase dash-prefixed output");
-    assert_eq!(
-        after, stale,
-        "check-mode run with equals output and uppercase dash-prefixed input should preserve output content"
-    );
-
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean check-mode equals uppercase dash-prefixed output");
-    std::fs::remove_file(&input_path)
-        .expect("failed to clean check-mode equals uppercase dash-prefixed input fixture");
-}
-
-#[test]
-fn run_check_mode_double_dash_dash_prefixed_uppercase_input_does_not_create_missing_output() {
-    let input_path = std::env::temp_dir().join(format!(
-        "--daglang_run_check_mode_dash_prefixed_uppercase_missing_output_input_{}_{}.DAG",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect("failed to copy makegen fixture for check-mode uppercase dash-prefixed missing-output input");
-    let output_path =
-        unique_temp_output_file("run_check_mode_double_dash_dash_prefixed_uppercase_missing_out");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale output for check-mode missing-output case");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--check-mode")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run check-mode with double-dash uppercase dash-prefixed input");
-
-    assert!(
-        output.status.success(),
-        "check-mode run with double-dash uppercase dash-prefixed input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode double-dash run should report mode=check-mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode double-dash run should report written=false: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "check-mode double-dash run should not create missing output file at {}",
-        output_path.display()
-    );
-
-    std::fs::remove_file(&input_path)
-        .expect("failed to clean check-mode uppercase dash-prefixed missing-output input fixture");
-}
-
-#[test]
-fn run_check_mode_split_output_double_dash_dash_prefixed_uppercase_input_does_not_create_missing_output(
-) {
-    let input_path = std::env::temp_dir().join(format!(
-        "--daglang_run_check_mode_split_output_dash_prefixed_uppercase_missing_output_input_{}_{}.DAG",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect(
-        "failed to copy makegen fixture for check-mode split-output uppercase dash-prefixed missing-output input",
-    );
-    let output_path = unique_temp_output_file(
-        "run_check_mode_split_output_double_dash_dash_prefixed_uppercase_missing_out",
-    );
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale output for check-mode split-output missing-output case");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--check-mode")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run check-mode split-output with double-dash uppercase dash-prefixed input");
-
-    assert!(
-        output.status.success(),
-        "check-mode split-output run with double-dash uppercase dash-prefixed input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode split-output double-dash run should report mode=check-mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode split-output double-dash run should report written=false: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "check-mode split-output double-dash run should not create missing output file at {}",
-        output_path.display()
-    );
-
-    std::fs::remove_file(&input_path).expect(
-        "failed to clean check-mode split-output uppercase dash-prefixed missing-output input fixture",
-    );
-}
-
-#[test]
-fn run_real_mode_supports_double_dash_for_dash_prefixed_uppercase_input_paths() {
-    let input_path = std::env::temp_dir().join(format!(
-        "--daglang_run_real_mode_dash_prefixed_uppercase_input_{}_{}.DAG",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect("failed to copy makegen fixture for real-mode uppercase dash-prefixed input");
-    let output_path =
-        unique_temp_output_file("run_real_mode_double_dash_dash_prefixed_uppercase_output");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale output for real-mode uppercase dash-prefixed input");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run real-mode with uppercase dash-prefixed input");
-
-    assert!(
-        output.status.success(),
-        "real-mode run with uppercase dash-prefixed .DAG input after -- should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=real"),
-        "real-mode run with uppercase dash-prefixed input should report mode=real: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=true"),
-        "real-mode run with uppercase dash-prefixed input should report written=true: {stdout}"
-    );
-    assert!(
-        output_path.exists(),
-        "real-mode run with uppercase dash-prefixed input should write output file at {}",
-        output_path.display()
-    );
-    let written = std::fs::read_to_string(&output_path)
-        .expect("failed to read real-mode uppercase dash-prefixed output");
-    assert!(
-        written.contains(".PHONY"),
-        "real-mode run with uppercase dash-prefixed input should write makefile content: {written}"
-    );
-
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean real-mode uppercase dash-prefixed output");
-    std::fs::remove_file(&input_path)
-        .expect("failed to clean real-mode uppercase dash-prefixed input fixture");
-}
-
-#[test]
-fn run_dry_run_supports_equals_output_with_double_dash_for_dash_prefixed_uppercase_input_paths() {
-    let input_path = std::env::temp_dir().join(format!(
-        "--daglang_run_dry_mode_equals_double_dash_dash_prefixed_uppercase_input_{}_{}.DAG",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect("failed to copy makegen fixture for dry-run equals uppercase dash-prefixed input");
-    let output_path = unique_temp_output_file(
-        "run_dry_mode_equals_double_dash_dash_prefixed_uppercase_output",
-    );
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect(
-            "failed to remove stale output for dry-run equals uppercase dash-prefixed input",
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{command} with extra args should use usage exit code 1"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains(usage),
+            "{command} with extra args should print command usage: {stderr}"
         );
     }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect(
-            "failed to run daglang run dry-run with equals output and uppercase dash-prefixed input",
-        );
-
-    assert!(
-        output.status.success(),
-        "dry-run with equals output and uppercase dash-prefixed .DAG input after -- should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "dry-run with equals output and uppercase dash-prefixed input should report mode=dry-run: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "dry-run with equals output and uppercase dash-prefixed input should report written=false: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run with equals output and uppercase dash-prefixed input should not create output at {}",
-        output_path.display()
-    );
-
-    std::fs::remove_file(&input_path)
-        .expect("failed to clean dry-run equals uppercase dash-prefixed input fixture");
 }
 
 #[test]
-fn run_real_mode_supports_equals_output_with_double_dash_for_dash_prefixed_uppercase_input_paths()
-{
-    let input_path = std::env::temp_dir().join(format!(
-        "--daglang_run_real_mode_equals_double_dash_dash_prefixed_uppercase_input_{}_{}.DAG",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect("failed to copy makegen fixture for real-mode equals uppercase dash-prefixed input");
-    let output_path = unique_temp_output_file(
-        "run_real_mode_equals_double_dash_dash_prefixed_uppercase_output",
-    );
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect(
-            "failed to remove stale output for real-mode equals uppercase dash-prefixed input",
+fn obligations_and_show_triplets_with_missing_format_value_exit_with_usage_message() {
+    for (command, usage) in [
+        (
+            "obligations",
+            "Usage: daglang obligations <file.dag> [--format text|json]",
+        ),
+        (
+            "show-triplets",
+            "Usage: daglang show-triplets <file.dag> [--format text|json]",
+        ),
+    ] {
+        let output = Command::new(daglang_bin())
+            .arg(command)
+            .arg("dsl/tools/makegen.dag")
+            .arg("--format")
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|err| panic!("failed to run {command} with missing format value: {err}"));
+        assert!(
+            !output.status.success(),
+            "{command} with missing format value should fail"
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "{command} with missing format value should use usage exit code 1"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains(usage),
+            "{command} with missing format value should print command usage: {stderr}"
         );
     }
+}
 
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
+fn run_compile_family_command(command: &str, target: &str, trailing_args: &[&str]) -> Output {
+    Command::new(daglang_bin())
+        .arg(command)
+        .arg(target)
+        .args(trailing_args)
         .current_dir(workspace_root())
         .output()
-        .expect(
-            "failed to run daglang run real-mode with equals output and uppercase dash-prefixed input",
-        );
+        .unwrap_or_else(|err| panic!("failed to run {command} for target {target}: {err}"))
+}
 
+fn assert_compile_family_command_succeeds(
+    command: &str,
+    target: &str,
+    target_label: &str,
+    trailing_args: &[&str],
+) -> Output {
+    let output = run_compile_family_command(command, target, trailing_args);
     assert!(
         output.status.success(),
-        "real-mode run with equals output and uppercase dash-prefixed .DAG input after -- should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=real"),
-        "real-mode run with equals output and uppercase dash-prefixed input should report mode=real: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=true"),
-        "real-mode run with equals output and uppercase dash-prefixed input should report written=true: {stdout}"
-    );
-    assert!(
-        output_path.exists(),
-        "real-mode run with equals output and uppercase dash-prefixed input should write output file at {}",
-        output_path.display()
-    );
-    let written = std::fs::read_to_string(&output_path)
-        .expect("failed to read real-mode equals uppercase dash-prefixed output");
-    assert!(
-        written.contains(".PHONY"),
-        "real-mode run with equals output and uppercase dash-prefixed input should write makefile content: {written}"
-    );
-
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean real-mode equals uppercase dash-prefixed output");
-    std::fs::remove_file(&input_path)
-        .expect("failed to clean real-mode equals uppercase dash-prefixed input fixture");
-}
-
-#[test]
-fn run_real_mode_equals_output_with_double_dash_dash_prefixed_uppercase_input_reports_not_written_when_unchanged(
-) {
-    let input_path = std::env::temp_dir().join(format!(
-        "--daglang_run_real_mode_equals_double_dash_dash_prefixed_uppercase_idempotent_input_{}_{}.DAG",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect(
-        "failed to copy makegen fixture for real-mode equals idempotent uppercase dash-prefixed input",
-    );
-    let output_path = unique_temp_output_file(
-        "run_real_mode_equals_double_dash_dash_prefixed_uppercase_idempotent_output",
-    );
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect(
-            "failed to remove stale output for real-mode equals idempotent uppercase dash-prefixed input",
-        );
-    }
-
-    let first_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect(
-            "failed to run first real-mode equals idempotent run with uppercase dash-prefixed input",
-        );
-    assert!(
-        first_output.status.success(),
-        "first real-mode equals run with uppercase dash-prefixed input should succeed: {}",
-        String::from_utf8_lossy(&first_output.stderr)
-    );
-    let first_stdout = String::from_utf8_lossy(&first_output.stdout);
-    assert!(
-        first_stdout.contains("mode=real"),
-        "first real-mode equals run with uppercase dash-prefixed input should report mode=real: {first_stdout}"
-    );
-    assert!(
-        first_stdout.contains("written=true"),
-        "first real-mode equals run with uppercase dash-prefixed input should report written=true: {first_stdout}"
-    );
-
-    let second_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect(
-            "failed to run second real-mode equals idempotent run with uppercase dash-prefixed input",
-        );
-    assert!(
-        second_output.status.success(),
-        "second real-mode equals run with uppercase dash-prefixed input should succeed: {}",
-        String::from_utf8_lossy(&second_output.stderr)
-    );
-    let second_stdout = String::from_utf8_lossy(&second_output.stdout);
-    assert!(
-        second_stdout.contains("mode=real"),
-        "second real-mode equals run with uppercase dash-prefixed input should report mode=real: {second_stdout}"
-    );
-    assert!(
-        second_stdout.contains("written=false"),
-        "second real-mode equals run with uppercase dash-prefixed input should report written=false when unchanged: {second_stdout}"
-    );
-
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean real-mode equals idempotent uppercase dash-prefixed output");
-    std::fs::remove_file(&input_path)
-        .expect("failed to clean real-mode equals idempotent uppercase dash-prefixed input fixture");
-}
-
-#[test]
-fn run_real_mode_double_dash_dash_prefixed_uppercase_input_reports_not_written_when_unchanged() {
-    let input_path = std::env::temp_dir().join(format!(
-        "--daglang_run_real_mode_dash_prefixed_uppercase_idempotent_input_{}_{}.DAG",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect("failed to copy makegen fixture for real-mode idempotent uppercase dash-prefixed input");
-    let output_path = unique_temp_output_file(
-        "run_real_mode_double_dash_dash_prefixed_uppercase_idempotent_output",
-    );
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect(
-            "failed to remove stale output for real-mode idempotent uppercase dash-prefixed input",
-        );
-    }
-
-    let first_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run first real-mode idempotent run with uppercase dash-prefixed input");
-    assert!(
-        first_output.status.success(),
-        "first real-mode run with uppercase dash-prefixed input should succeed: {}",
-        String::from_utf8_lossy(&first_output.stderr)
-    );
-    let first_stdout = String::from_utf8_lossy(&first_output.stdout);
-    assert!(
-        first_stdout.contains("mode=real"),
-        "first real-mode run with uppercase dash-prefixed input should report mode=real: {first_stdout}"
-    );
-    assert!(
-        first_stdout.contains("written=true"),
-        "first real-mode run with uppercase dash-prefixed input should report written=true: {first_stdout}"
-    );
-
-    let second_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect(
-            "failed to run second real-mode idempotent run with uppercase dash-prefixed input",
-        );
-    assert!(
-        second_output.status.success(),
-        "second real-mode run with uppercase dash-prefixed input should succeed: {}",
-        String::from_utf8_lossy(&second_output.stderr)
-    );
-    let second_stdout = String::from_utf8_lossy(&second_output.stdout);
-    assert!(
-        second_stdout.contains("mode=real"),
-        "second real-mode run with uppercase dash-prefixed input should report mode=real: {second_stdout}"
-    );
-    assert!(
-        second_stdout.contains("written=false"),
-        "second real-mode run with uppercase dash-prefixed input should report written=false when unchanged: {second_stdout}"
-    );
-
-    std::fs::remove_file(&output_path).expect(
-        "failed to clean real-mode idempotent uppercase dash-prefixed output file",
-    );
-    std::fs::remove_file(&input_path)
-        .expect("failed to clean real-mode idempotent uppercase dash-prefixed input fixture");
-}
-
-#[test]
-fn run_with_double_dash_without_input_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with -- and no input");
-
-    assert!(
-        !output.status.success(),
-        "run with -- and no input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with -- and no input should use usage exit code 1"
+        "{command} should execute successfully for {target_label} makegen fixture target"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("run requires <file.dag>"),
-        "run should report missing input after -- explicitly: {stderr}"
+        !stderr.contains("TODO"),
+        "{command} should not emit TODO placeholder output: {stderr}"
     );
     assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for -- without input: {stderr}"
+        !output.stdout.is_empty(),
+        "{command} should emit meaningful stdout output for {target_label} target"
     );
+    output
 }
 
-#[test]
-fn run_with_double_dash_non_dag_input_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--")
-        .arg("dsl/tools")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with -- and non-dag input");
+const COMPILE_FAMILY_COMMANDS: [(&str, &[&str]); 5] = [
+    ("expand", &[]),
+    ("manifest", &[]),
+    ("compile", &[]),
+    ("obligations", &["--format", "json"]),
+    ("show-triplets", &["--format", "json"]),
+];
 
-    assert!(
-        !output.status.success(),
-        "run with -- and non-dag input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with -- and non-dag input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run requires a .dag input file"),
-        "run should report non-dag input after -- explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for -- non-dag input: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_double_dash_flag_like_token_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--")
-        .arg("--dry-run")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with -- and flag-like positional token");
-
-    assert!(
-        !output.status.success(),
-        "run with -- and flag-like positional token should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with -- and flag-like positional token should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run requires a .dag input file"),
-        "run should treat flag-like token after -- as positional non-dag input: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for -- flag-like positional token: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_double_dash_output_equals_like_token_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--")
-        .arg("--output=generated.mk")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with -- and output-like positional token");
-
-    assert!(
-        !output.status.success(),
-        "run with -- and output-like positional token should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with -- and output-like positional token should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run requires a .dag input file"),
-        "run should treat output-like token after -- as positional non-dag input: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for -- output-like positional token: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_double_dash_multiple_inputs_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--")
-        .arg("dsl/tools/makegen.dag")
-        .arg("dsl/tools/other.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with multiple inputs after --");
-
-    assert!(
-        !output.status.success(),
-        "run with multiple inputs after -- should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with multiple inputs after -- should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run takes exactly one <file.dag> input"),
-        "run should report single-input constraint after --: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for multiple inputs after --: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_double_dash_file_then_flag_like_token_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--dry-run")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with flag-like second positional token after --");
-
-    assert!(
-        !output.status.success(),
-        "run with -- and flag-like second positional token should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with -- and flag-like second positional token should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run takes exactly one <file.dag> input"),
-        "run should report single-input constraint for flag-like second positional token: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for flag-like second positional token after --: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_double_dash_file_then_output_equals_token_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output=alt.mk")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with output-like second positional token after --");
-
-    assert!(
-        !output.status.success(),
-        "run with -- and output-like second positional token should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with -- and output-like second positional token should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run takes exactly one <file.dag> input"),
-        "run should report single-input constraint for output-like second positional token: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for output-like second positional token after --: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_double_dash_output_equals_token_then_file_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--")
-        .arg("--output=alt.mk")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with output-like first positional token after --");
-
-    assert!(
-        !output.status.success(),
-        "run with -- and output-like first positional token should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with -- and output-like first positional token should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run takes exactly one <file.dag> input"),
-        "run should report single-input constraint when output-like token appears first after --: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for output-like first positional token after --: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_conflicting_dry_run_and_check_mode_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg("--check-mode")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with conflicting mode flags");
-
-    assert!(
-        !output.status.success(),
-        "run with conflicting dry-run/check-mode flags should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with conflicting mode flags should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("--dry-run and --check-mode cannot be used together"),
-        "run should report conflicting mode flags explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for conflicting mode flags: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_conflicting_dry_run_and_check_mode_after_input_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--dry-run")
-        .arg("--check-mode")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with conflicting mode flags after input");
-
-    assert!(
-        !output.status.success(),
-        "run with conflicting dry-run/check-mode flags after input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with conflicting mode flags after input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("--dry-run and --check-mode cannot be used together"),
-        "run should report conflicting mode flags after input explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for conflicting mode flags after input: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_conflicting_dry_run_and_check_mode_with_double_dash_input_exits_nonzero_with_usage_message(
-) {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg("--check-mode")
-        .arg("--")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with conflicting mode flags and -- input");
-
-    assert!(
-        !output.status.success(),
-        "run with conflicting dry-run/check-mode flags and -- input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with conflicting mode flags and -- input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("--dry-run and --check-mode cannot be used together"),
-        "run should report conflicting mode flags with -- input explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for conflicting mode flags with -- input: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_dry_run_flags_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg("--dry-run")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate dry-run flags");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate dry-run flags should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate dry-run flags should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts --dry-run at most once"),
-        "run should report duplicate dry-run flag explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate dry-run flags: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_dry_run_flags_after_input_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--dry-run")
-        .arg("--dry-run")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate dry-run flags after input");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate dry-run flags after input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate dry-run flags after input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts --dry-run at most once"),
-        "run should report duplicate dry-run flag after input explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate dry-run flags after input: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_check_mode_flags_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--check-mode")
-        .arg("--check-mode")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate check-mode flags");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate check-mode flags should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate check-mode flags should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts --check-mode at most once"),
-        "run should report duplicate check-mode flag explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate check-mode flags: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_check_mode_flags_after_input_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--check-mode")
-        .arg("--check-mode")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate check-mode flags after input");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate check-mode flags after input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate check-mode flags after input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts --check-mode at most once"),
-        "run should report duplicate check-mode flag after input explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate check-mode flags after input: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_non_dag_input_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with non-dag input");
-
-    assert!(
-        !output.status.success(),
-        "run with non-dag input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with non-dag input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run requires a .dag input file"),
-        "run should report non-dag input explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for non-dag input: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_uppercase_dag_input_succeeds() {
-    let input_path = unique_temp_file("run_uppercase_input").with_extension("DAG");
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect("failed to copy makegen fixture to uppercase extension path");
-    let output_path = unique_temp_output_file("run_uppercase_input_output");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale uppercase output file");
+fn run_compile_family_smoke_for_target(target_label: &str, target: &str) {
+    for (command, trailing_args) in COMPILE_FAMILY_COMMANDS {
+        assert_compile_family_command_succeeds(command, target, target_label, trailing_args);
     }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg(input_path.to_string_lossy().as_ref())
-        .arg("--dry-run")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with uppercase .DAG input");
-
-    assert!(
-        output.status.success(),
-        "run should accept uppercase .DAG input paths: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "uppercase .DAG run should execute in dry-run mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "uppercase .DAG dry-run should report no writes: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run uppercase input should not create output file"
-    );
-
-    std::fs::remove_file(&input_path).expect("failed to clean uppercase input fixture");
 }
 
-#[test]
-fn run_with_double_dash_uppercase_dag_input_succeeds() {
-    let input_path = unique_temp_file("run_double_dash_uppercase_input").with_extension("DAG");
-    std::fs::copy(
-        workspace_root().join("dsl/tools/makegen.dag"),
-        &input_path,
-    )
-    .expect("failed to copy makegen fixture to uppercase extension path");
-    let output_path = unique_temp_output_file("run_double_dash_uppercase_input_output");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale uppercase output file for -- test");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with -- and uppercase .DAG input");
-
-    assert!(
-        output.status.success(),
-        "run should accept uppercase .DAG input paths after --: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "uppercase .DAG run after -- should execute in dry-run mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "uppercase .DAG dry-run after -- should report no writes: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run uppercase input after -- should not create output file"
-    );
-
-    std::fs::remove_file(&input_path).expect("failed to clean uppercase input fixture");
-}
-
-#[test]
-fn run_with_directory_named_dag_extension_exits_nonzero_with_usage_message() {
-    let input_dir = unique_temp_dir("run_directory_named_dag").with_extension("dag");
-    std::fs::create_dir_all(&input_dir).expect("failed to create directory .dag fixture");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg(input_dir.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with .dag directory input");
-
-    assert!(
-        !output.status.success(),
-        "run with .dag directory input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with .dag directory input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run requires a .dag input file, not a directory"),
-        "run should report directory input validation explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for directory .dag input: {stderr}"
-    );
-
-    std::fs::remove_dir_all(&input_dir).expect("failed to clean .dag directory fixture");
-}
-
-#[test]
-fn run_with_double_dash_directory_named_dag_extension_exits_nonzero_with_usage_message() {
-    let input_dir = unique_temp_dir("run_double_dash_directory_named_dag").with_extension("dag");
-    std::fs::create_dir_all(&input_dir).expect("failed to create directory .dag fixture");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--")
-        .arg(input_dir.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with -- and .dag directory input");
-
-    assert!(
-        !output.status.success(),
-        "run with -- and .dag directory input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with -- and .dag directory input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run requires a .dag input file, not a directory"),
-        "run should report directory input validation explicitly after --: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for -- and directory .dag input: {stderr}"
-    );
-
-    std::fs::remove_dir_all(&input_dir).expect("failed to clean .dag directory fixture");
-}
-
-#[test]
-fn run_with_missing_dag_file_exits_nonzero_without_usage_banner() {
-    let missing_input = std::env::temp_dir().join(format!(
-        "daglang_run_missing_input_{}_{}.dag",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    if missing_input.exists() {
-        std::fs::remove_file(&missing_input).expect("failed to remove stale missing-input fixture");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg(missing_input.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with missing input file");
-
-    assert!(
-        !output.status.success(),
-        "run with missing input file should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with missing input file should use error exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("failed to read"),
-        "run should report filesystem read error for missing input: {stderr}"
-    );
-    assert!(
-        stderr.contains(missing_input.to_string_lossy().as_ref()),
-        "run should include missing input path in error output: {stderr}"
-    );
-    assert!(
-        !stderr.contains("Usage: daglang run"),
-        "missing input is a runtime compile error, not a usage parse error: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_double_dash_missing_dag_file_exits_nonzero_without_usage_banner() {
-    let missing_input = std::env::temp_dir().join(format!(
-        "daglang_run_missing_input_after_double_dash_{}_{}.dag",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    if missing_input.exists() {
-        std::fs::remove_file(&missing_input)
-            .expect("failed to remove stale missing-input fixture");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--")
-        .arg(missing_input.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with missing input file after --");
-
-    assert!(
-        !output.status.success(),
-        "run with missing input file after -- should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with missing input file after -- should use error exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("failed to read"),
-        "run should report filesystem read error for missing input after --: {stderr}"
-    );
-    assert!(
-        stderr.contains(missing_input.to_string_lossy().as_ref()),
-        "run should include missing input path after -- in error output: {stderr}"
-    );
-    assert!(
-        !stderr.contains("Usage: daglang run"),
-        "missing input after -- is a runtime compile error, not a usage parse error: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_missing_output_value_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("--dry-run")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with missing output path value");
-
-    assert!(
-        !output.status.success(),
-        "run with missing --output value should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with missing --output value should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("--output requires a non-empty path"),
-        "run should report missing output value explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for missing output value: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_empty_equals_output_value_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output=")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with empty --output=<path> value");
-
-    assert!(
-        !output.status.success(),
-        "run with empty --output=<path> value should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with empty --output=<path> value should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("--output requires a non-empty path"),
-        "run should report empty output value explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for empty output value: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_split_output_separator_missing_path_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("--")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with split output separator and missing path");
-
-    assert!(
-        !output.status.success(),
-        "run with split output separator and missing path should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with split output separator and missing path should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("--output requires a non-empty path"),
-        "run should report missing escaped output path explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for split output separator missing path: {stderr}"
-    );
-}
-
-#[test]
-fn run_dry_run_supports_split_output_dash_prefixed_path_via_separator() {
-    let execution_dir = unique_temp_dir("run_split_output_dash_prefixed_separator");
-    std::fs::create_dir_all(&execution_dir)
-        .expect("failed to create execution directory for split output separator test");
-    let output_basename = format!(
-        "--daglang_run_split_output_separator_output_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    );
-    let output_path = execution_dir.join(&output_basename);
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale split output separator output file");
-    }
-    let input_path = workspace_root().join("dsl/tools/makegen.dag");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg("--output")
-        .arg("--")
-        .arg(&output_basename)
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(&execution_dir)
-        .output()
-        .expect("failed to run daglang run with split output separator and dash-prefixed output path");
-
-    assert!(
-        output.status.success(),
-        "dry-run with split output separator and dash-prefixed output path should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "dry-run split output separator run should report mode=dry-run: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "dry-run split output separator run should report written=false: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run split output separator run should not create output file at {}",
-        output_path.display()
-    );
-
-    std::fs::remove_dir_all(&execution_dir)
-        .expect("failed to clean execution directory for split output separator test");
-}
-
-#[test]
-fn run_check_mode_supports_split_output_dash_prefixed_path_via_separator() {
-    let execution_dir = unique_temp_dir("run_check_mode_split_output_dash_prefixed_separator");
-    std::fs::create_dir_all(&execution_dir)
-        .expect("failed to create execution directory for check-mode split output separator test");
-    let output_basename = format!(
-        "--daglang_run_check_mode_split_output_separator_output_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    );
-    let output_path = execution_dir.join(&output_basename);
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale check-mode split output separator output file");
-    }
-    let stale = "check-mode split output separator stale content";
-    std::fs::write(&output_path, stale)
-        .expect("failed to seed check-mode split output separator stale output file");
-    let input_path = workspace_root().join("dsl/tools/makegen.dag");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--check-mode")
-        .arg("--output")
-        .arg("--")
-        .arg(&output_basename)
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(&execution_dir)
-        .output()
-        .expect(
-            "failed to run daglang run check-mode with split output separator and dash-prefixed output path",
-        );
-
-    assert!(
-        output.status.success(),
-        "check-mode with split output separator and dash-prefixed output path should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode split output separator run should report mode=check-mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode split output separator run should report written=false: {stdout}"
-    );
-    let after = std::fs::read_to_string(&output_path)
-        .expect("failed to read check-mode split output separator output file");
-    assert_eq!(
-        after, stale,
-        "check-mode split output separator run should preserve existing output content"
-    );
-
-    std::fs::remove_dir_all(&execution_dir)
-        .expect("failed to clean check-mode split output separator execution directory");
-}
-
-#[test]
-fn run_check_mode_supports_split_output_separator_with_mode_flag_after_escaped_output_path() {
-    let execution_dir = unique_temp_dir("run_check_mode_split_output_separator_mode_after_path");
-    std::fs::create_dir_all(&execution_dir).expect(
-        "failed to create execution directory for check-mode split output separator mode-order test",
-    );
-    let output_basename = format!(
-        "--daglang_run_check_mode_split_output_separator_mode_after_path_output_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    );
-    let output_path = execution_dir.join(&output_basename);
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect(
-            "failed to remove stale check-mode split output separator mode-order output file",
-        );
-    }
-    let stale = "check-mode split output separator mode-order stale content";
-    std::fs::write(&output_path, stale).expect(
-        "failed to seed check-mode split output separator mode-order stale output file",
-    );
-    let input_path = workspace_root().join("dsl/tools/makegen.dag");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("--")
-        .arg(&output_basename)
-        .arg("--check-mode")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(&execution_dir)
-        .output()
-        .expect(
-            "failed to run daglang run check-mode with split output separator and mode flag after escaped output path",
-        );
-
-    assert!(
-        output.status.success(),
-        "check-mode split output separator run with mode flag after escaped output path should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode split output separator run with mode flag after escaped output path should report mode=check-mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode split output separator run with mode flag after escaped output path should report written=false: {stdout}"
-    );
-    let after = std::fs::read_to_string(&output_path).expect(
-        "failed to read check-mode split output separator mode-order output file after run",
-    );
-    assert_eq!(
-        after, stale,
-        "check-mode split output separator run with mode flag after escaped output path should preserve existing output content"
-    );
-
-    std::fs::remove_dir_all(&execution_dir).expect(
-        "failed to clean check-mode split output separator mode-order execution directory",
-    );
-}
-
-#[test]
-fn run_dry_run_supports_split_output_separator_with_mode_flag_after_escaped_output_path() {
-    let execution_dir = unique_temp_dir("run_dry_run_split_output_separator_mode_after_path");
-    std::fs::create_dir_all(&execution_dir).expect(
-        "failed to create execution directory for dry-run split output separator mode-order test",
-    );
-    let output_basename = format!(
-        "--daglang_run_dry_run_split_output_separator_mode_after_path_output_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    );
-    let output_path = execution_dir.join(&output_basename);
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect(
-            "failed to remove stale dry-run split output separator mode-order output file",
-        );
-    }
-    let input_path = workspace_root().join("dsl/tools/makegen.dag");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("--")
-        .arg(&output_basename)
-        .arg("--dry-run")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(&execution_dir)
-        .output()
-        .expect(
-            "failed to run daglang run dry-run with split output separator and mode flag after escaped output path",
-        );
-
-    assert!(
-        output.status.success(),
-        "dry-run split output separator run with mode flag after escaped output path should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "dry-run split output separator run with mode flag after escaped output path should report mode=dry-run: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "dry-run split output separator run with mode flag after escaped output path should report written=false: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run split output separator run with mode flag after escaped output path should not create output file at {}",
-        output_path.display()
-    );
-
-    std::fs::remove_dir_all(&execution_dir).expect(
-        "failed to clean dry-run split output separator mode-order execution directory",
-    );
-}
-
-#[test]
-fn run_with_split_output_separator_conflicting_modes_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg("--output")
-        .arg("--")
-        .arg("--split-output-conflict.mk")
-        .arg("--check-mode")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with conflicting modes across split-output separator segments");
-
-    assert!(
-        !output.status.success(),
-        "run with conflicting modes across split-output separator segments should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with conflicting modes across split-output separator segments should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("--dry-run and --check-mode cannot be used together"),
-        "run should report conflicting mode flags across split-output separator segments explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for conflicting split-output separator mode flags: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_output_after_split_output_separator_escape_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("--")
-        .arg("--split-output-first.mk")
-        .arg("--output")
-        .arg("out/second.mk")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate output flag after split-output separator escape");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate output flag after split-output separator escape should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate output flag after split-output separator escape should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts at most one --output path"),
-        "run should report duplicate output flag after split-output separator escape explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate output after split-output separator escape: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_equals_output_after_split_output_separator_escape_exits_nonzero_with_usage_message(
-) {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("--")
-        .arg("--split-output-first.mk")
-        .arg("--output=out/second.mk")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate equals output flag after split-output separator escape");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate equals output flag after split-output separator escape should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate equals output flag after split-output separator escape should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts at most one --output path"),
-        "run should report duplicate equals output flag after split-output separator escape explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate equals output after split-output separator escape: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_dry_run_flags_across_split_output_separator_segments_exits_nonzero_with_usage_message(
-) {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("--")
-        .arg("--split-output-first.mk")
-        .arg("--dry-run")
-        .arg("--dry-run")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate dry-run flags across split-output separator segments");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate dry-run flags across split-output separator segments should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate dry-run flags across split-output separator segments should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts --dry-run at most once"),
-        "run should report duplicate dry-run flags across split-output separator segments explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate dry-run flags across split-output separator segments: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_check_mode_flags_across_split_output_separator_segments_exits_nonzero_with_usage_message(
-) {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("--")
-        .arg("--split-output-first.mk")
-        .arg("--check-mode")
-        .arg("--check-mode")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate check-mode flags across split-output separator segments");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate check-mode flags across split-output separator segments should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate check-mode flags across split-output separator segments should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts --check-mode at most once"),
-        "run should report duplicate check-mode flags across split-output separator segments explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate check-mode flags across split-output separator segments: {stderr}"
-    );
-}
-
-#[test]
-fn run_dry_run_supports_split_output_separator_with_flag_like_output_value() {
-    let execution_dir = unique_temp_dir("run_dry_run_split_output_separator_flag_like_output");
-    std::fs::create_dir_all(&execution_dir).expect(
-        "failed to create execution directory for dry-run split output separator flag-like output test",
-    );
-    let output_basename = "--check-mode";
-    let output_path = execution_dir.join(output_basename);
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale dry-run split output separator flag-like output file");
-    }
-    let input_path = workspace_root().join("dsl/tools/makegen.dag");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("--")
-        .arg(output_basename)
-        .arg("--dry-run")
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(&execution_dir)
-        .output()
-        .expect(
-            "failed to run daglang run dry-run with split output separator and flag-like output value",
-        );
-
-    assert!(
-        output.status.success(),
-        "dry-run split output separator run with flag-like output value should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "dry-run split output separator run with flag-like output value should report mode=dry-run: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "dry-run split output separator run with flag-like output value should report written=false: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run split output separator run with flag-like output value should not create output file at {}",
-        output_path.display()
-    );
-
-    std::fs::remove_dir_all(&execution_dir).expect(
-        "failed to clean dry-run split output separator flag-like output execution directory",
-    );
-}
-
-#[test]
-fn run_real_mode_supports_split_output_dash_prefixed_path_via_separator_and_reports_idempotence() {
-    let execution_dir = unique_temp_dir("run_real_mode_split_output_dash_prefixed_separator");
-    std::fs::create_dir_all(&execution_dir)
-        .expect("failed to create execution directory for real-mode split output separator test");
-    let output_basename = format!(
-        "--daglang_run_real_mode_split_output_separator_output_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    );
-    let output_path = execution_dir.join(&output_basename);
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale real-mode split output separator output file");
-    }
-    let input_path = workspace_root().join("dsl/tools/makegen.dag");
-
-    let first_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("--")
-        .arg(&output_basename)
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(&execution_dir)
-        .output()
-        .expect(
-            "failed to run first daglang run real-mode with split output separator and dash-prefixed output path",
-        );
-    assert!(
-        first_output.status.success(),
-        "first real-mode split output separator run should succeed: {}",
-        String::from_utf8_lossy(&first_output.stderr)
-    );
-    let first_stdout = String::from_utf8_lossy(&first_output.stdout);
-    assert!(
-        first_stdout.contains("mode=real"),
-        "first real-mode split output separator run should report mode=real: {first_stdout}"
-    );
-    assert!(
-        first_stdout.contains("written=true"),
-        "first real-mode split output separator run should report written=true: {first_stdout}"
-    );
-    let written = std::fs::read_to_string(&output_path)
-        .expect("failed to read first real-mode split output separator output file");
-    assert!(
-        written.contains(".PHONY"),
-        "real-mode split output separator run should write generated makefile content: {written}"
-    );
-
-    let second_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("--")
-        .arg(&output_basename)
-        .arg(input_path.to_string_lossy().as_ref())
-        .current_dir(&execution_dir)
-        .output()
-        .expect(
-            "failed to run second daglang run real-mode with split output separator and dash-prefixed output path",
-        );
-    assert!(
-        second_output.status.success(),
-        "second real-mode split output separator run should succeed: {}",
-        String::from_utf8_lossy(&second_output.stderr)
-    );
-    let second_stdout = String::from_utf8_lossy(&second_output.stdout);
-    assert!(
-        second_stdout.contains("mode=real"),
-        "second real-mode split output separator run should report mode=real: {second_stdout}"
-    );
-    assert!(
-        second_stdout.contains("written=false"),
-        "second real-mode split output separator run should report written=false when output is unchanged: {second_stdout}"
-    );
-
-    std::fs::remove_dir_all(&execution_dir)
-        .expect("failed to clean real-mode split output separator execution directory");
-}
-
-#[test]
-fn run_with_duplicate_split_output_flags_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg("out/first.mk")
-        .arg("--output")
-        .arg("out/second.mk")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate split output flags");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate split --output flags should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate split --output flags should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts at most one --output path"),
-        "run should report duplicate output flags explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate output flags: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_split_output_flags_after_input_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output")
-        .arg("out/first.mk")
-        .arg("--output")
-        .arg("out/second.mk")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate split output flags after input");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate split --output flags after input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate split --output flags after input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts at most one --output path"),
-        "run should report duplicate output flags after input explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate output flags after input: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_mixed_output_flag_syntax_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output=out/first.mk")
-        .arg("--output")
-        .arg("out/second.mk")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate mixed output flag syntax");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate mixed output flag syntax should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate mixed output flag syntax should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts at most one --output path"),
-        "run should report duplicate mixed output flags explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate mixed output flags: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_equals_output_flags_after_input_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output=out/first.mk")
-        .arg("--output=out/second.mk")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate equals output flags after input");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate equals output flags after input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate equals output flags after input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts at most one --output path"),
-        "run should report duplicate equals output flags after input explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate equals output flags after input: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_mixed_output_flags_after_input_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output=out/first.mk")
-        .arg("--output")
-        .arg("out/second.mk")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate mixed output flags after input");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate mixed output flags after input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate mixed output flags after input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts at most one --output path"),
-        "run should report duplicate mixed output flags after input explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate mixed output flags after input: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_split_output_separator_after_equals_output_exits_nonzero_with_usage_message()
-{
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output=out/first.mk")
-        .arg("--output")
-        .arg("--")
-        .arg("--dash-prefixed-second.mk")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate split output separator after equals output");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate split output separator after equals output should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate split output separator after equals output should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts at most one --output path"),
-        "run should report duplicate split output separator after equals output explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate split output separator after equals output: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_split_output_separator_after_equals_output_after_input_exits_nonzero_with_usage_message(
-) {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output=out/first.mk")
-        .arg("--output")
-        .arg("--")
-        .arg("--dash-prefixed-second.mk")
-        .current_dir(workspace_root())
-        .output()
-        .expect(
-            "failed to run daglang run with duplicate split output separator after equals output after input",
-        );
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate split output separator after equals output after input should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate split output separator after equals output after input should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts at most one --output path"),
-        "run should report duplicate split output separator after equals output after input explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate split output separator after equals output after input: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_duplicate_equals_output_flags_exits_nonzero_with_usage_message() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output=out/first.mk")
-        .arg("--output=out/second.mk")
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with duplicate equals output flags");
-
-    assert!(
-        !output.status.success(),
-        "run with duplicate equals output flags should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with duplicate equals output flags should use usage exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("run accepts at most one --output path"),
-        "run should report duplicate equals output flags explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
-        "run should include usage for duplicate equals output flags: {stderr}"
-    );
-}
-
-#[test]
-fn run_with_unwritable_output_path_exits_nonzero_with_write_error() {
-    let blocker_path = std::env::temp_dir().join(format!(
-        "daglang_run_write_blocker_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::write(&blocker_path, "block output parent")
-        .expect("failed to create write blocker file");
-    let blocked_output_path = blocker_path.join("Makefile");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output")
-        .arg(blocked_output_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with blocked output path");
-
-    assert!(
-        !output.status.success(),
-        "run with blocked output path should fail with non-zero status"
-    );
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "run with blocked output path should use failure exit code 1"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("failed to write"),
-        "run should report write failure explicitly: {stderr}"
-    );
-    assert!(
-        stderr.contains(blocked_output_path.to_string_lossy().as_ref()),
-        "run should include blocked output path in error: {stderr}"
-    );
-    assert!(
-        !blocked_output_path.exists(),
-        "run should not create nested path under write blocker file"
-    );
-
-    std::fs::remove_file(&blocker_path).expect("failed to remove write blocker file");
-}
-
-#[test]
-fn run_check_mode_with_unwritable_output_path_reports_not_written() {
-    let blocker_path = std::env::temp_dir().join(format!(
-        "daglang_run_check_mode_blocker_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::write(&blocker_path, "block output parent")
-        .expect("failed to create check-mode blocker file");
-    let blocked_output_path = blocker_path.join("Makefile");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output")
-        .arg(blocked_output_path.to_string_lossy().as_ref())
-        .arg("--check-mode")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run in check-mode with blocked output path");
-
-    assert!(
-        output.status.success(),
-        "check-mode run should succeed even when output path is unwritable: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run should report check-mode summary: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run should report no writes on blocked output path: {stdout}"
-    );
-    assert!(
-        !blocked_output_path.exists(),
-        "check-mode run should not create output under blocked path"
-    );
-
-    std::fs::remove_file(&blocker_path).expect("failed to remove check-mode blocker file");
-}
-
-#[test]
-fn run_check_mode_with_directory_output_path_reports_not_written() {
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output")
-        .arg(std::env::temp_dir().to_string_lossy().as_ref())
-        .arg("--check-mode")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run in check-mode with directory output path");
-
-    assert!(
-        output.status.success(),
-        "check-mode run should tolerate directory output paths without snapshot errors: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode directory run should report check-mode summary: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode directory run should report no writes: {stdout}"
-    );
-}
-
-#[test]
-fn run_command_writes_makefile_in_real_mode() {
-    let output_path = unique_temp_output_file("run_real_mode");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale output before run");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run in real mode");
-
-    assert!(
-        output.status.success(),
-        "run in real mode should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("Run completed:"),
-        "run should report completion details: {stdout}"
-    );
-    assert!(
-        stdout.contains("mode=real"),
-        "run should report real mode in summary: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=true"),
-        "run should report written=true in real mode summary: {stdout}"
-    );
-    assert!(
-        output_path.exists(),
-        "real run should write output file at {}",
-        output_path.display()
-    );
-    let written = std::fs::read_to_string(&output_path).expect("failed to read written makefile");
-    assert!(
-        written.contains(".PHONY"),
-        "written makefile should contain expected phony target: {written}"
-    );
-    std::fs::remove_file(&output_path).expect("failed to clean up real mode output file");
-}
-
-#[test]
-fn run_command_real_mode_reports_not_written_when_output_is_unchanged() {
-    let output_path = unique_temp_output_file("run_real_mode_unchanged");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale output before run");
-    }
-
-    let first_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run first daglang run in real mode");
-    assert!(
-        first_output.status.success(),
-        "first real run should succeed: {}",
-        String::from_utf8_lossy(&first_output.stderr)
-    );
-    let first_stdout = String::from_utf8_lossy(&first_output.stdout);
-    assert!(
-        first_stdout.contains("written=true"),
-        "first real run should report written=true: {first_stdout}"
-    );
-
-    let second_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run second daglang run in real mode");
-    assert!(
-        second_output.status.success(),
-        "second real run should succeed: {}",
-        String::from_utf8_lossy(&second_output.stderr)
-    );
-    let second_stdout = String::from_utf8_lossy(&second_output.stdout);
-    assert!(
-        second_stdout.contains("mode=real"),
-        "second real run should report real mode: {second_stdout}"
-    );
-    assert!(
-        second_stdout.contains("written=false"),
-        "second real run should report written=false when output is unchanged: {second_stdout}"
-    );
-    std::fs::remove_file(&output_path).expect("failed to clean up unchanged real mode output file");
-}
-
-#[test]
-fn run_command_real_mode_equals_output_reports_not_written_when_output_is_unchanged() {
-    let output_path = unique_temp_output_file("run_real_mode_equals_unchanged");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale output before run");
-    }
-
-    let first_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run first daglang run in real mode with --output=<path>");
-    assert!(
-        first_output.status.success(),
-        "first real run with --output=<path> should succeed: {}",
-        String::from_utf8_lossy(&first_output.stderr)
-    );
-    let first_stdout = String::from_utf8_lossy(&first_output.stdout);
-    assert!(
-        first_stdout.contains("written=true"),
-        "first real run with --output=<path> should report written=true: {first_stdout}"
-    );
-
-    let second_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run second daglang run in real mode with --output=<path>");
-    assert!(
-        second_output.status.success(),
-        "second real run with --output=<path> should succeed: {}",
-        String::from_utf8_lossy(&second_output.stderr)
-    );
-    let second_stdout = String::from_utf8_lossy(&second_output.stdout);
-    assert!(
-        second_stdout.contains("mode=real"),
-        "second real run with --output=<path> should report real mode: {second_stdout}"
-    );
-    assert!(
-        second_stdout.contains("written=false"),
-        "second real run with --output=<path> should report written=false when output is unchanged: {second_stdout}"
-    );
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean up unchanged real mode equals-output file");
-}
-
-#[test]
-fn run_command_dry_run_does_not_write_makefile() {
-    let output_path = unique_temp_output_file("run_dry_mode");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale dry-run output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--dry-run")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run in dry-run mode");
-
-    assert!(
-        output.status.success(),
-        "run in dry-run mode should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "run should report dry-run mode in summary: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "run dry-run summary should report no writes: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run should not write output file at {}",
-        output_path.display()
-    );
-}
-
-#[test]
-fn run_command_dry_run_with_split_output_before_input_does_not_write_makefile() {
-    let output_path = unique_temp_output_file("run_dry_mode_split_before_input");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale dry-run output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run in dry-run mode with split --output before input");
-
-    assert!(
-        output.status.success(),
-        "run in dry-run mode with split --output before input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "run should report dry-run mode for split --output before input: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "run dry-run summary should report no writes for split --output before input: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run with split --output before input should not write output file at {}",
-        output_path.display()
-    );
-}
-
-#[test]
-fn run_command_dry_run_equals_output_before_input_does_not_write_makefile() {
-    let output_path = unique_temp_output_file("run_dry_mode_equals_before_input");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale dry-run output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run in dry-run mode with --output=<path> before input");
-
-    assert!(
-        output.status.success(),
-        "run in dry-run mode with --output=<path> before input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "run should report dry-run mode for --output=<path> before input: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "run dry-run summary should report no writes for --output=<path> before input: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run with --output=<path> before input should not write output file at {}",
-        output_path.display()
-    );
-}
-
-#[test]
-fn run_command_dry_run_accepts_flags_after_input_path() {
-    let output_path = unique_temp_output_file("run_dry_mode_flags_after_input");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale dry-run output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--dry-run")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run in dry-run mode with flags after input");
-
-    assert!(
-        output.status.success(),
-        "run in dry-run mode with flags after input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "run should report dry-run mode with flags after input path: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "run dry-run summary should report no writes with flags after input: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run with flags after input should not write output file at {}",
-        output_path.display()
-    );
-}
-
-#[test]
-fn run_command_dry_run_supports_equals_output_flag_after_input_path() {
-    let output_path = unique_temp_output_file("run_dry_mode_equals_after_input");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale dry-run output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--dry-run")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run in dry-run mode with --output=<path> after input");
-
-    assert!(
-        output.status.success(),
-        "run in dry-run mode with --output=<path> after input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "run should report dry-run mode with --output=<path> after input: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "dry-run with --output=<path> after input should report written=false: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run with --output=<path> after input should not write output file at {}",
-        output_path.display()
-    );
-}
-
-#[test]
-fn run_command_supports_equals_output_flag_in_real_mode() {
-    let output_path = unique_temp_output_file("run_real_mode_equals_output");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale output before run");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with --output=<path> syntax");
-
-    assert!(
-        output.status.success(),
-        "run with --output=<path> should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=real"),
-        "run with --output=<path> should report real mode summary: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=true"),
-        "run with --output=<path> should report written=true summary: {stdout}"
-    );
-    assert!(
-        output_path.exists(),
-        "real run should write output file at {}",
-        output_path.display()
-    );
-    std::fs::remove_file(&output_path).expect("failed to clean up equals-output file");
-}
-
-#[test]
-fn run_command_real_mode_with_split_output_before_input_writes_makefile() {
-    let output_path = unique_temp_output_file("run_real_mode_split_before_input");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale split-output file");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with split --output before input");
-
-    assert!(
-        output.status.success(),
-        "run with split --output before input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=real"),
-        "run with split --output before input should report real mode summary: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=true"),
-        "run with split --output before input should report written=true summary: {stdout}"
-    );
-    assert!(
-        output_path.exists(),
-        "real run with split --output before input should write output file at {}",
-        output_path.display()
-    );
-    let written =
-        std::fs::read_to_string(&output_path).expect("failed to read split-before-input output");
-    assert!(
-        written.contains(".PHONY"),
-        "split-before-input real-mode output should contain makefile content: {written}"
-    );
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean up real-mode split-before-input output");
-}
-
-#[test]
-fn run_command_real_mode_equals_output_before_input_writes_makefile() {
-    let output_path = unique_temp_output_file("run_real_mode_equals_before_input");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale equals-output file");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with --output=<path> before input");
-
-    assert!(
-        output.status.success(),
-        "run with --output=<path> before input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=real"),
-        "run with --output=<path> before input should report real mode summary: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=true"),
-        "run with --output=<path> before input should report written=true summary: {stdout}"
-    );
-    assert!(
-        output_path.exists(),
-        "real run with --output=<path> before input should write output file at {}",
-        output_path.display()
-    );
-    let written =
-        std::fs::read_to_string(&output_path).expect("failed to read equals-before-input output");
-    assert!(
-        written.contains(".PHONY"),
-        "equals-before-input real-mode output should contain makefile content: {written}"
-    );
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean up real-mode equals-before-input output");
-}
-
-#[test]
-fn run_command_supports_equals_output_flag_with_dash_prefixed_path_in_dry_run() {
-    let output_path = std::env::temp_dir().join(format!(
-        "--daglang_run_dash_output_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale dash-prefixed output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("--dry-run")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with dash-prefixed --output=<path>");
-
-    assert!(
-        output.status.success(),
-        "run with dash-prefixed --output=<path> should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "run should report dry-run mode with dash-prefixed output path: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "dry-run with dash-prefixed output path should report written=false: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "dry-run should not write dash-prefixed output file at {}",
-        output_path.display()
-    );
-}
-
-#[test]
-fn run_command_supports_dash_prefixed_equals_output_before_input_in_dry_run() {
-    let output_path = std::env::temp_dir().join(format!(
-        "--daglang_run_dash_output_before_input_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale dash-prefixed output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--dry-run")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect(
-            "failed to run daglang run with dash-prefixed --output=<path> before input in dry-run",
-        );
-
-    assert!(
-        output.status.success(),
-        "run with dash-prefixed --output=<path> before input in dry-run should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=dry-run"),
-        "run with dash-prefixed --output=<path> before input should report dry-run mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "run with dash-prefixed --output=<path> before input should report written=false in dry-run: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "run with dash-prefixed --output=<path> before input should not write output file at {}",
-        output_path.display()
-    );
-}
-
-#[test]
-fn run_command_supports_equals_output_flag_with_dash_prefixed_path_in_real_mode() {
-    let output_path = std::env::temp_dir().join(format!(
-        "--daglang_run_dash_output_real_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale real-mode dash-prefixed output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with real-mode dash-prefixed --output=<path>");
-
-    assert!(
-        output.status.success(),
-        "real-mode run with dash-prefixed --output=<path> should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=real"),
-        "run should report real mode with dash-prefixed output path: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=true"),
-        "real-mode run with dash-prefixed output path should report written=true: {stdout}"
-    );
-    assert!(
-        output_path.exists(),
-        "real-mode run should write dash-prefixed output file at {}",
-        output_path.display()
-    );
-    let written =
-        std::fs::read_to_string(&output_path).expect("failed to read dash-prefixed real output");
-    assert!(
-        written.contains(".PHONY"),
-        "dash-prefixed real-mode output should contain expected makefile content: {written}"
-    );
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean up real-mode dash-prefixed output file");
-}
-
-#[test]
-fn run_command_real_mode_dash_prefixed_equals_output_reports_not_written_when_output_is_unchanged() {
-    let output_path = std::env::temp_dir().join(format!(
-        "--daglang_run_dash_output_real_unchanged_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    if output_path.exists() {
-        std::fs::remove_file(&output_path)
-            .expect("failed to remove stale unchanged real-mode dash-prefixed output");
-    }
-
-    let first_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run first real-mode dash-prefixed --output=<path> run");
-    assert!(
-        first_output.status.success(),
-        "first real-mode dash-prefixed --output=<path> run should succeed: {}",
-        String::from_utf8_lossy(&first_output.stderr)
-    );
-    let first_stdout = String::from_utf8_lossy(&first_output.stdout);
-    assert!(
-        first_stdout.contains("written=true"),
-        "first real-mode dash-prefixed --output=<path> run should report written=true: {first_stdout}"
-    );
-
-    let second_output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run second real-mode dash-prefixed --output=<path> run");
-    assert!(
-        second_output.status.success(),
-        "second real-mode dash-prefixed --output=<path> run should succeed: {}",
-        String::from_utf8_lossy(&second_output.stderr)
-    );
-    let second_stdout = String::from_utf8_lossy(&second_output.stdout);
-    assert!(
-        second_stdout.contains("mode=real"),
-        "second real-mode dash-prefixed --output=<path> run should report mode=real: {second_stdout}"
-    );
-    assert!(
-        second_stdout.contains("written=false"),
-        "second real-mode dash-prefixed --output=<path> run should report written=false when output is unchanged: {second_stdout}"
-    );
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean up unchanged real-mode dash-prefixed output");
-}
-
-#[test]
-fn run_command_check_mode_preserves_existing_file_and_reports_not_written() {
-    let output_path = unique_temp_output_file("run_check_mode");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
-    }
-    let stale = "stale makefile content";
-    std::fs::write(&output_path, stale).expect("failed to seed stale check-mode file");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--check-mode")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with --check-mode");
-
-    assert!(
-        output.status.success(),
-        "run with --check-mode should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run should report check-mode mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run should report written=false when writes are skipped: {stdout}"
-    );
-    let after = std::fs::read_to_string(&output_path).expect("failed to read check-mode file");
-    assert_eq!(
-        after, stale,
-        "check-mode run should not overwrite existing output content"
-    );
-    std::fs::remove_file(&output_path).expect("failed to clean up check-mode output file");
-}
-
-#[test]
-fn run_command_check_mode_with_split_output_before_input_preserves_existing_file() {
-    let output_path = unique_temp_output_file("run_check_mode_split_before_input");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
-    }
-    let stale = "check-mode split-before-input stale content";
-    std::fs::write(&output_path, stale).expect("failed to seed stale check-mode file");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--check-mode")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with split output check-mode flags before input");
-
-    assert!(
-        output.status.success(),
-        "run with split output check-mode flags before input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run with split output flags before input should report mode=check-mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run with split output flags before input should report written=false: {stdout}"
-    );
-    let after = std::fs::read_to_string(&output_path).expect("failed to read check-mode file");
-    assert_eq!(
-        after, stale,
-        "check-mode run with split output flags before input should preserve output content"
-    );
-    std::fs::remove_file(&output_path).expect("failed to clean up check-mode output file");
-}
-
-#[test]
-fn run_command_check_mode_with_split_output_before_input_does_not_create_missing_file() {
-    let output_path = unique_temp_output_file("run_check_mode_split_before_input_missing_output");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--check-mode")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with split output check-mode flags before input for missing output");
-
-    assert!(
-        output.status.success(),
-        "run with split output check-mode flags before input and missing output should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run with split output flags before input and missing output should report mode=check-mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run with split output flags before input and missing output should report written=false: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "check-mode run with split output flags before input should not create missing output file at {}",
-        output_path.display()
-    );
-}
-
-#[test]
-fn run_command_check_mode_accepts_flags_after_input_path() {
-    let output_path = unique_temp_output_file("run_check_mode_flags_after_input");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
-    }
-    let stale = "check-mode ordering stale content";
-    std::fs::write(&output_path, stale).expect("failed to seed stale check-mode file");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--check-mode")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with check-mode flags after input");
-
-    assert!(
-        output.status.success(),
-        "run with check-mode flags after input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run with flags after input should report check-mode mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run with flags after input should report written=false: {stdout}"
-    );
-    let after = std::fs::read_to_string(&output_path).expect("failed to read check-mode file");
-    assert_eq!(
-        after, stale,
-        "check-mode run with flags after input should preserve output content"
-    );
-    std::fs::remove_file(&output_path).expect("failed to clean up check-mode output file");
-}
-
-#[test]
-fn run_command_check_mode_supports_equals_output_flag_after_input_path() {
-    let output_path = unique_temp_output_file("run_check_mode_equals_after_input");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
-    }
-    let stale = "check-mode equals ordering stale content";
-    std::fs::write(&output_path, stale).expect("failed to seed stale check-mode file");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--check-mode")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with check-mode --output=<path> after input");
-
-    assert!(
-        output.status.success(),
-        "run with check-mode --output=<path> after input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run with --output=<path> after input should report check-mode mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run with --output=<path> after input should report written=false: {stdout}"
-    );
-    let after = std::fs::read_to_string(&output_path).expect("failed to read check-mode file");
-    assert_eq!(
-        after, stale,
-        "check-mode run with --output=<path> after input should preserve output content"
-    );
-    std::fs::remove_file(&output_path).expect("failed to clean up check-mode output file");
-}
-
-#[test]
-fn run_command_check_mode_supports_dash_prefixed_equals_output_path() {
-    let output_path = std::env::temp_dir().join(format!(
-        "--daglang_run_check_mode_dash_output_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
-    }
-    let stale = "check-mode dash-prefixed output stale content";
-    std::fs::write(&output_path, stale).expect("failed to seed stale check-mode output file");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--check-mode")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with check-mode dash-prefixed --output=<path>");
-
-    assert!(
-        output.status.success(),
-        "check-mode run with dash-prefixed --output=<path> should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run with dash-prefixed output should report check-mode mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run with dash-prefixed output should report written=false: {stdout}"
-    );
-    let after = std::fs::read_to_string(&output_path)
-        .expect("failed to read dash-prefixed check-mode output");
-    assert_eq!(
-        after, stale,
-        "check-mode run should preserve dash-prefixed output content"
-    );
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean up dash-prefixed check-mode output file");
-}
-
-#[test]
-fn run_command_check_mode_supports_dash_prefixed_equals_output_before_input_path() {
-    let output_path = std::env::temp_dir().join(format!(
-        "--daglang_run_check_mode_dash_output_before_input_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
-    }
-    let stale = "check-mode dash-prefixed before-input stale content";
-    std::fs::write(&output_path, stale).expect("failed to seed stale check-mode output file");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--check-mode")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect(
-            "failed to run daglang run with check-mode dash-prefixed --output=<path> before input",
-        );
-
-    assert!(
-        output.status.success(),
-        "check-mode run with dash-prefixed --output=<path> before input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run with dash-prefixed --output=<path> before input should report mode=check-mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run with dash-prefixed --output=<path> before input should report written=false: {stdout}"
-    );
-    let after = std::fs::read_to_string(&output_path)
-        .expect("failed to read dash-prefixed check-mode output");
-    assert_eq!(
-        after, stale,
-        "check-mode run should preserve dash-prefixed output content when flags precede input"
-    );
-    std::fs::remove_file(&output_path)
-        .expect("failed to clean up dash-prefixed check-mode output file");
-}
-
-#[test]
-fn run_command_check_mode_preserves_existing_binary_file_and_reports_not_written() {
-    let output_path = unique_temp_output_file("run_check_mode_binary");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale binary check-mode output");
-    }
-    let seeded_bytes = vec![0u8, 159, 255, 10, 13, 42];
-    std::fs::write(&output_path, &seeded_bytes)
-        .expect("failed to seed binary check-mode output file");
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--check-mode")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with --check-mode for binary output");
-
-    assert!(
-        output.status.success(),
-        "run with --check-mode should succeed for binary output files: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run should report check-mode mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run should report written=false for binary outputs: {stdout}"
-    );
-    let after = std::fs::read(&output_path).expect("failed to read binary check-mode file");
-    assert_eq!(
-        after, seeded_bytes,
-        "check-mode run should preserve existing binary output content"
-    );
-    std::fs::remove_file(&output_path).expect("failed to clean up binary check-mode output file");
-}
-
-#[test]
-fn run_command_check_mode_does_not_create_missing_output_file() {
-    let output_path = unique_temp_output_file("run_check_mode_missing");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("dsl/tools/makegen.dag")
-        .arg("--output")
-        .arg(output_path.to_string_lossy().as_ref())
-        .arg("--check-mode")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with --check-mode on missing path");
-
-    assert!(
-        output.status.success(),
-        "run with --check-mode should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run should report written=false for missing outputs: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "check-mode run should not leave a newly-created file at {}",
-        output_path.display()
-    );
-}
-
-#[test]
-fn run_command_check_mode_equals_output_before_input_does_not_create_missing_file() {
-    let output_path = unique_temp_output_file("run_check_mode_equals_before_input_missing");
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--check-mode")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with --check-mode --output=<path> before input");
-
-    assert!(
-        output.status.success(),
-        "run with check-mode equals output before input should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode equals-output run before input should report check-mode mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode equals-output run before input should report written=false: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "check-mode equals-output run before input should not create {}",
-        output_path.display()
-    );
-}
-
-#[test]
-fn run_command_check_mode_dash_prefixed_equals_output_missing_file_is_not_created() {
-    let output_path = std::env::temp_dir().join(format!(
-        "--daglang_run_check_mode_dash_missing_output_{}_{}.mk",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    if output_path.exists() {
-        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
-    }
-
-    let output = Command::new(daglang_bin())
-        .arg("run")
-        .arg("--check-mode")
-        .arg(format!("--output={}", output_path.to_string_lossy()))
-        .arg("dsl/tools/makegen.dag")
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang run with dash-prefixed check-mode --output=<path>");
-
-    assert!(
-        output.status.success(),
-        "check-mode run with missing dash-prefixed output path should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("mode=check-mode"),
-        "check-mode run with missing dash-prefixed output path should report mode=check-mode: {stdout}"
-    );
-    assert!(
-        stdout.contains("written=false"),
-        "check-mode run with missing dash-prefixed output path should report written=false: {stdout}"
-    );
-    assert!(
-        !output_path.exists(),
-        "check-mode run with missing dash-prefixed output path should not create {}",
-        output_path.display()
-    );
+fn makegen_target_variants() -> Vec<(&'static str, String)> {
+    vec![
+        ("relative", "dsl/tools/makegen.dag".to_string()),
+        (
+            "absolute",
+            workspace_root()
+                .join("dsl/tools/makegen.dag")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        ("curdir-suffix", "./dsl/tools/makegen.dag".to_string()),
+        (
+            "absolute-curdir-segment",
+            workspace_root()
+                .join("./dsl/./tools/../tools/makegen.dag")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        (
+            "absolute-double-separator",
+            format!("{}/dsl//tools///makegen.dag", workspace_root().display()),
+        ),
+        (
+            "absolute-parent-segment",
+            workspace_root()
+                .join("dsl/../dsl/tools/makegen.dag")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        (
+            "absolute-parent-double-separator",
+            format!("{}/dsl/..//dsl/tools/makegen.dag", workspace_root().display()),
+        ),
+        (
+            "absolute-parent-curdir-segment",
+            format!(
+                "{}/dsl/tools/./../tools/makegen.dag",
+                workspace_root().display()
+            ),
+        ),
+        (
+            "absolute-parent-curdir-double-separator",
+            format!(
+                "{}/dsl/./tools/..//tools/makegen.dag",
+                workspace_root().display()
+            ),
+        ),
+    ]
 }
 
 #[test]
 fn compile_family_commands_execute_real_pipeline_paths() {
-    for command in ["expand", "manifest", "obligations", "show-triplets", "compile"] {
-        let output = Command::new(daglang_bin())
-            .arg(command)
-            .arg("dsl/tools/makegen.dag")
-            .current_dir(workspace_root())
-            .output()
-            .unwrap_or_else(|err| panic!("failed to run {command}: {err}"));
-        assert!(
-            output.status.success(),
-            "{command} should execute successfully for makegen fixture"
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            !stderr.contains("TODO"),
-            "{command} should no longer emit TODO placeholder output: {stderr}"
-        );
-        assert!(
-            !output.stdout.is_empty(),
-            "{command} should emit meaningful stdout output"
-        );
+    run_compile_family_smoke_for_target("relative", "dsl/tools/makegen.dag");
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_target() {
+    let absolute_target = workspace_root().join("dsl/tools/makegen.dag");
+    let absolute_target = absolute_target.to_string_lossy().into_owned();
+    run_compile_family_smoke_for_target("absolute", &absolute_target);
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_curdir_suffix_target() {
+    run_compile_family_smoke_for_target("curdir-suffix", "./dsl/tools/makegen.dag");
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_curdir_segment_target() {
+    let absolute_target_with_curdir_segment =
+        workspace_root().join("./dsl/./tools/../tools/makegen.dag");
+    let absolute_target_with_curdir_segment =
+        absolute_target_with_curdir_segment.to_string_lossy().into_owned();
+    run_compile_family_smoke_for_target(
+        "absolute-curdir-segment",
+        &absolute_target_with_curdir_segment,
+    );
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_double_separator_target() {
+    let absolute_target_with_double_separators =
+        format!("{}/dsl//tools///makegen.dag", workspace_root().display());
+    run_compile_family_smoke_for_target(
+        "absolute-double-separator",
+        &absolute_target_with_double_separators,
+    );
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_parent_segment_target() {
+    let absolute_target_with_parent_segment = workspace_root()
+        .join("dsl/../dsl/tools/makegen.dag")
+        .to_string_lossy()
+        .into_owned();
+    run_compile_family_smoke_for_target(
+        "absolute-parent-segment",
+        &absolute_target_with_parent_segment,
+    );
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_parent_double_separator_target()
+{
+    let absolute_target_with_parent_double_separator =
+        format!("{}/dsl/..//dsl/tools/makegen.dag", workspace_root().display());
+    run_compile_family_smoke_for_target(
+        "absolute-parent-double-separator",
+        &absolute_target_with_parent_double_separator,
+    );
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_parent_curdir_segment_target() {
+    let absolute_target_with_parent_curdir_segment =
+        format!("{}/dsl/tools/./../tools/makegen.dag", workspace_root().display());
+    run_compile_family_smoke_for_target(
+        "absolute-parent-curdir-segment",
+        &absolute_target_with_parent_curdir_segment,
+    );
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_parent_curdir_double_separator_target(
+) {
+    let absolute_target_with_parent_curdir_double_separator =
+        format!("{}/dsl/./tools/..//tools/makegen.dag", workspace_root().display());
+    run_compile_family_smoke_for_target(
+        "absolute-parent-curdir-double-separator",
+        &absolute_target_with_parent_curdir_double_separator,
+    );
+}
+
+#[test]
+fn compile_family_commands_makegen_target_variants_are_output_equivalent() {
+    let targets = makegen_target_variants();
+
+    for (command, trailing_args) in COMPILE_FAMILY_COMMANDS {
+        let mut runs: Vec<(&str, Output)> = Vec::with_capacity(targets.len());
+        for (target_label, target_value) in targets.iter() {
+            let output = assert_compile_family_command_succeeds(
+                command,
+                target_value,
+                target_label,
+                trailing_args,
+            );
+            runs.push((target_label, output));
+        }
+
+        let (_, reference_output) = &runs[0];
+        for (target_label, output) in runs.iter().skip(1) {
+            assert_eq!(
+                reference_output.stdout, output.stdout,
+                "{command} stdout should match between relative and {target_label} makegen targets"
+            );
+            assert_eq!(
+                reference_output.stderr, output.stderr,
+                "{command} stderr should match between relative and {target_label} makegen targets"
+            );
+        }
     }
 }
 
 #[test]
-fn viz_without_self_emits_compiled_ascii_graph_by_default() {
+fn viz_without_self_emits_compiled_mermaid_graph() {
     let output = Command::new(daglang_bin())
         .arg("viz")
         .arg("dsl/tools/makegen.dag")
@@ -34256,16 +31948,12 @@ fn viz_without_self_emits_compiled_ascii_graph_by_default() {
 
     assert!(
         output.status.success(),
-        "viz should compile and render ascii output"
+        "viz should compile and render mermaid output"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("ASCII DAG: daglang-compiled"),
-        "viz ascii output should include ascii header: {stdout}"
-    );
-    assert!(
-        stdout.contains("tools.makegen::render_makefile"),
-        "viz ascii output should include compiled node ids: {stdout}"
+        stdout.contains("flowchart TB"),
+        "viz mermaid output should include flowchart header: {stdout}"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(

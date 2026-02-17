@@ -371,7 +371,7 @@ The bridge is complete when:
 - [ ] `dag manifest` emits the **contract ProgressManifest** (JSON)
 - [ ] IR snapshot tests exist for `tools/makegen.dag`
 - [ ] Parity harness can compare compiled makegen vs builder makegen and report diffs
-- [ ] `dag obligations` and `dag show-triplets` exist (even if obligations are initially "best effort")
+- [x] `dag obligations` and `dag show-triplets` exist (even if obligations are initially "best effort")
 
 This set unblocks Phase 1 without risking a giant "run makegen end-to-end" rewrite before the compiler outputs are stable.
 
@@ -507,12 +507,12 @@ The codebase has several helpers that call `std::env::current_dir()` internally,
 The pattern: every function in the `daglang-cli` crate below `main()` should be a pure function of its arguments. I/O happens exactly at the boundary — `main()` reads the environment, commands write to stdout/stderr.
 
 **Acceptance criteria**:
-- [ ] `path_utils::resolve_default_root(cwd: &Path)` — no `current_dir()` call
-- [ ] `path_utils::normalize_cli_path(cwd: &Path, path: &Path)` — no `current_dir()` call
-- [ ] `main.rs` calls `current_dir()` exactly once, threads `cwd` to all subcommands
-- [ ] `build_context()` takes `cwd: &Path`, not implicitly reading environment
-- [ ] No function in `path_utils.rs`, `compile.rs`, or `pipeline.rs` calls `std::env::current_dir()`
-- [ ] All existing tests pass (behavior is identical, only the call site of `current_dir()` moved)
+- [x] `path_utils::resolve_default_root(cwd: &Path)` — no `current_dir()` call
+- [x] `path_utils::normalize_cli_path(cwd: &Path, path: &Path)` — no `current_dir()` call
+- [x] `main.rs` calls `current_dir()` exactly once, threads `cwd` to all subcommands
+- [x] `build_context()` takes `cwd: &Path`, not implicitly reading environment
+- [x] No function in `path_utils.rs`, `compile.rs`, or `pipeline.rs` calls `std::env::current_dir()`
+- [x] All existing tests pass (behavior is identical, only the call site of `current_dir()` moved)
 
 ##### Step 2: Typed Pipeline Runner
 
@@ -539,12 +539,12 @@ fn run_pipeline(context: &PipelineContext, stop: PipelineStop) -> Result<Pipelin
 No HashMap, no string keys, no `remove()` semantics, no fan-out ambiguity. Each stage is a pure function call. The types enforce that you can't accidentally consume a value twice or forget to produce one.
 
 **Acceptance criteria**:
-- [ ] `run_pipeline()` is an imperative function with typed locals — no `HashMap<String, PipeValue>`
-- [ ] `PipelineResult` is a typed enum (not string-keyed values)
-- [ ] The 5 `take_*` functions are deleted
-- [ ] `build_pipeline_dag()` still exists (for `dag viz --self`)
-- [ ] `dag check`, `dag modules`, and `dag compile` produce identical output
-- [ ] All existing pipeline tests pass
+- [x] `run_pipeline()` is an imperative function with typed locals — no `HashMap<String, PipeValue>`
+- [x] `PipelineResult` is a typed enum (no string-keyed values)
+- [x] The 5 `take_*` functions are deleted
+- [x] `build_pipeline_dag()` still exists (for `dag viz --self`)
+- [x] `dag check`, `dag modules`, and `dag compile` produce identical output
+- [x] All existing pipeline tests pass
 
 ##### Step 3: Obligation Classification + CLI Commands
 
@@ -573,13 +573,14 @@ While touching the CLI, add two standalone commands that are cheap to implement 
 - `dag obligations <file.dag>` — print the 4-bucket test obligation summary (currently embedded in `dag manifest` output, extract to standalone)
 
 **Acceptance criteria**:
-- [ ] `ObligationCategory` enum exists with typed variants
-- [ ] `classify_obligation()` is a pure function on `LoweredOp` — no string prefix matching
-- [ ] `derive_test_obligations()` uses `classify_obligation()` internally
-- [ ] Obligation counts for `tools/makegen.dag` are unchanged (behavioral parity)
-- [ ] `dag show-triplets tools/makegen.dag` shows the content_upsert triplet expansion
-- [ ] `dag obligations tools/makegen.dag` shows the 4-bucket obligation summary
-- [ ] Both new commands support `--format json`
+- [x] `ObligationCategory` enum exists with typed variants
+- [x] `classify_obligation()` is a pure function on `LoweredOp` — no string prefix matching
+- [x] `derive_test_obligations()` uses `classify_obligation()` internally
+- [x] Obligation counts for `tools/makegen.dag` are unchanged (behavioral parity)
+- [x] `dag show-triplets tools/makegen.dag` shows the content_upsert triplet expansion
+- [x] `dag obligations tools/makegen.dag` shows the 4-bucket obligation summary
+- [x] Both new commands support `--format json`
+- [x] New command path handling is hardened with regression coverage (relative/absolute targets, normalized absolute path spellings including parent/curdir/double-separator variants and combined parent+curdir+double-separator forms, case-variant `.dag` files, and `.dag`-suffixed directory/symlink aliases—including absolute alias paths across text/json and directory/symlink permutations, plus canonical-vs-normalized and relative-vs-absolute failing-output parity checks for invalid alias spellings, including normalized relative variants)
 
 ##### Worker 2 Definition of Done
 
@@ -1658,7 +1659,7 @@ The effort lands cleanly when all six criteria are met:
 
 - [x] `core/daglang/` workspace area with crate split: `daglang-syntax`, `daglang-resolve`, `daglang-typecheck`, `daglang-lower`, `daglang-derive`, `daglang-emit`, `daglang-cli`
 - [x] Compiler entrypoint: `compile_from_context()` does discover → typecheck → lower → derive → emit
-- [x] CLI commands: `viz`, `expand`, `manifest`, `modules`, `check`, `compile`
+- [x] CLI commands: `viz`, `expand`, `manifest`, `obligations`, `show-triplets`, `modules`, `check`, `compile`
 - [x] Module graph: filesystem discovery, import resolution, dependency-ordered module listing
 - [x] Parity harness (partial): `compare_topology()` + `compare_makegen_topology()` returning `ParityReport`
 - [x] DSL corpus: `.dag` files for tools, services, pipelines, infra, cloud, examples
@@ -1672,7 +1673,7 @@ The effort lands cleanly when all six criteria are met:
 - [ ] **Workstream A (Manifest contract):** Expand `ProgressManifest` to match the roadmap contract; add `dag manifest --format json`
 - [ ] **Workstream C (Parity + snapshots):** Canonical JSON serialization + IR snapshot tests for at least `tools/makegen.dag`
 - [ ] **Workstream B (Viz + expand):** ASCII default for `dag viz`; golden tests for `dag expand`
-- [ ] **Workstream E (Model preview commands):** `dag show-triplets` and `dag obligations` as standalone commands
+- [x] **Workstream E (Model preview commands):** `dag show-triplets` and `dag obligations` as standalone commands
 - [ ] **Workstream F (Makegen parity):** Compile `tools/makegen.dag` → compare against `build_makegen_graph()` using parity harness
 - [ ] **Workstream D (Discovery):** Config-driven roots; enriched `dag modules` output
 

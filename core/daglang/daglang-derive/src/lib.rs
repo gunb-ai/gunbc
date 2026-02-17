@@ -17,11 +17,10 @@
 //!                                      → ToolMetadata
 //! ```
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 
-use daglang_lower::LoweredOp;
+use daglang_lower::{classify_obligation, LoweredOp, ObligationCategory};
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node};
-use serde::Serialize;
 
 /// Derived artifacts produced from lowered GraphIR.
 #[derive(Debug, Clone)]
@@ -32,69 +31,17 @@ pub struct DerivedArtifacts {
 }
 
 /// Minimal progress manifest for Phase-1 compiler scaffolding.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgressManifest {
     pub total_nodes: usize,
     pub total_edges: usize,
-    pub topology: Vec<TopologyNode>,
-    pub labels: BTreeMap<String, String>,
-    pub subdag_boundaries: Vec<SubDagBoundary>,
-    pub parallel_groups: Vec<ParallelGroup>,
-    pub scatter_points: Vec<String>,
-    pub interactive_nodes: Vec<String>,
-    pub capture_modes: BTreeMap<String, CaptureMode>,
-    pub stage_groups: Vec<StageGroup>,
-    pub resources: BTreeMap<String, Vec<ResourceUsage>>,
-    // Legacy scaffold fields retained for compatibility.
     pub waves: Vec<Vec<String>>,
     pub entrypoint_nodes: Vec<String>,
     pub boundary_nodes: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct TopologyNode {
-    pub id: String,
-    pub depth: usize,
-    pub parent: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SubDagBoundary {
-    pub node_id: String,
-    pub label: String,
-    pub inner_nodes: Vec<String>,
-    pub parent: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ParallelGroup {
-    pub nodes: Vec<String>,
-    pub depth: usize,
-    pub parent_subdag: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub enum CaptureMode {
-    Captured,
-    Passthrough,
-    Streamed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct StageGroup {
-    pub name: String,
-    pub node_ids: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ResourceUsage {
-    pub binding: String,
-    pub resource: String,
-    pub mode: String,
-}
-
 /// Minimal obligation summary derived from graph structure.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestObligations {
     pub dry_run_completion_required: bool,
     pub transport_execution_targets: usize,
@@ -109,13 +56,13 @@ pub struct TestObligations {
 }
 
 /// Metadata summary for lowered modules.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolMetadata {
     pub modules: Vec<ModuleMetadata>,
 }
 
 /// Module-level metadata counts.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleMetadata {
     pub module: String,
     pub callable_count: usize,
@@ -145,23 +92,10 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         ));
     }
 
-    let waves = compute_waves(dag)?;
-    let topology = derive_topology(&waves);
-    let labels = derive_labels(&dag.nodes);
     let manifest = ProgressManifest {
         total_nodes: dag.nodes.len(),
         total_edges: dag.edges.len(),
-        topology,
-        labels,
-        subdag_boundaries: derive_subdag_boundaries(dag),
-        parallel_groups: derive_parallel_groups(&waves),
-        scatter_points: Vec::new(),
-        interactive_nodes: Vec::new(),
-        capture_modes: derive_capture_modes(&dag.nodes),
-        stage_groups: Vec::new(),
-        resources: derive_resources(&dag.nodes),
-        // Legacy scaffold fields retained for compatibility.
-        waves,
+        waves: compute_waves(dag)?,
         entrypoint_nodes: {
             let mut nodes = detect_entrypoints(dag)
                 .entrypoint_nodes
@@ -281,130 +215,10 @@ fn compute_waves(dag: &Dag<LoweredOp>) -> Result<Vec<Vec<String>>, DeriveError> 
     Ok(waves)
 }
 
-fn derive_topology(waves: &[Vec<String>]) -> Vec<TopologyNode> {
-    let mut topology = Vec::new();
-    for (depth, wave) in waves.iter().enumerate() {
-        for node_id in wave {
-            topology.push(TopologyNode {
-                id: node_id.clone(),
-                depth,
-                parent: None,
-            });
-        }
-    }
-    topology
-}
-
-fn derive_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
-    let mut labels = BTreeMap::new();
-    for node in nodes {
-        let label = match node_body_as_opaque(&node.body) {
-            Some(LoweredOp::Callable { module, name, .. }) => format!("{module}.{name}"),
-            Some(LoweredOp::Pipeline { module, name, .. }) => format!("{module}.{name}"),
-            None => node.id.0.clone(),
-        };
-        labels.insert(node.id.0.clone(), label);
-    }
-    labels
-}
-
-fn derive_subdag_boundaries(dag: &Dag<LoweredOp>) -> Vec<SubDagBoundary> {
-    let mut boundaries = Vec::new();
-    for node in &dag.nodes {
-        if let gunbc_ir::node::NodeBody::SubDag(inner) = &node.body {
-            let mut inner_nodes = inner
-                .nodes
-                .iter()
-                .map(|inner_node| inner_node.id.0.clone())
-                .collect::<Vec<_>>();
-            inner_nodes.sort();
-            boundaries.push(SubDagBoundary {
-                node_id: node.id.0.clone(),
-                label: node.id.0.clone(),
-                inner_nodes,
-                parent: None,
-            });
-        }
-    }
-    boundaries.sort_by(|lhs, rhs| lhs.node_id.cmp(&rhs.node_id));
-    boundaries
-}
-
-fn derive_parallel_groups(waves: &[Vec<String>]) -> Vec<ParallelGroup> {
-    let mut groups = Vec::new();
-    for (depth, wave) in waves.iter().enumerate() {
-        if wave.len() < 2 {
-            continue;
-        }
-        groups.push(ParallelGroup {
-            nodes: wave.clone(),
-            depth,
-            parent_subdag: None,
-        });
-    }
-    groups
-}
-
-fn derive_capture_modes(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, CaptureMode> {
-    let mut capture_modes = BTreeMap::new();
-    for node in nodes {
-        if is_transport_execution_node(node) {
-            capture_modes.insert(node.id.0.clone(), CaptureMode::Captured);
-        }
-    }
-    capture_modes
-}
-
-fn derive_resources(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, Vec<ResourceUsage>> {
-    let mut resources = BTreeMap::new();
-    for node in nodes {
-        let mut usage_keys = BTreeSet::new();
-        for input in &node.inputs {
-            if let Some(resource) = input.name.0.strip_prefix("res:") {
-                usage_keys.insert((input.name.0.clone(), resource.to_string(), "ReadWrite".to_string()));
-            }
-        }
-        if !usage_keys.is_empty() {
-            let usages = usage_keys
-                .into_iter()
-                .map(|(binding, resource, mode)| ResourceUsage {
-                    binding,
-                    resource,
-                    mode,
-                })
-                .collect::<Vec<_>>();
-            resources.insert(node.id.0.clone(), usages);
-        }
-    }
-    resources
-}
-
-fn is_transport_execution_node(node: &Node<LoweredOp>) -> bool {
-    if node
-        .inputs
-        .iter()
-        .any(|input| input.type_id.0 == "TransportRequest")
-    {
-        return true;
-    }
-    matches!(
-        node_body_as_opaque(&node.body),
-        Some(LoweredOp::Callable { name, .. }) if name.starts_with("service_transport::execute::")
-            || name.starts_with("content_upsert::execute_")
-    )
-}
-
-fn node_body_as_opaque(body: &gunbc_ir::node::NodeBody<LoweredOp>) -> Option<&LoweredOp> {
-    match body {
-        gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
-        gunbc_ir::node::NodeBody::SubDag(_) => None,
-    }
-}
-
 fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
     let mut by_module: BTreeMap<String, ModuleMetadata> = BTreeMap::new();
     for node in nodes {
-        let Some(op) = node_body_as_opaque(&node.body) else {
+        let Some(op) = node.body.as_opaque() else {
             continue;
         };
         match op {
@@ -446,49 +260,6 @@ struct ObligationCounts {
     resource_release_targets: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ObligationNameCategory {
-    ServiceTransportPrepare,
-    ServiceTransportExecute,
-    ServiceTransportParse,
-    ServiceParamSource,
-    ResourceProvide,
-    ResourceAcquire,
-    ResourceRelease,
-}
-
-fn classify_obligation_name(name: &str) -> Option<ObligationNameCategory> {
-    if name.starts_with("service_transport::prepare::")
-        || name.starts_with("content_upsert::prepare_")
-    {
-        return Some(ObligationNameCategory::ServiceTransportPrepare);
-    }
-    if name.starts_with("service_transport::execute::")
-        || name.starts_with("content_upsert::execute_")
-    {
-        return Some(ObligationNameCategory::ServiceTransportExecute);
-    }
-    if name.starts_with("service_transport::parse::")
-        || name.starts_with("content_upsert::parse_")
-        || name.starts_with("content_upsert::compare_")
-    {
-        return Some(ObligationNameCategory::ServiceTransportParse);
-    }
-    if name.starts_with("call_param_source::") {
-        return Some(ObligationNameCategory::ServiceParamSource);
-    }
-    if name.starts_with("resource_provide::") {
-        return Some(ObligationNameCategory::ResourceProvide);
-    }
-    if name.starts_with("resource_lifecycle::acquire::") {
-        return Some(ObligationNameCategory::ResourceAcquire);
-    }
-    if name.starts_with("resource_lifecycle::release::") {
-        return Some(ObligationNameCategory::ResourceRelease);
-    }
-    None
-}
-
 fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
     let mut counts = ObligationCounts::default();
     for node in nodes {
@@ -501,41 +272,54 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
         } else {
             counts.pure_node_determinism_targets += 1;
         }
-        let Some(LoweredOp::Callable { name, .. }) = node_body_as_opaque(&node.body) else {
+        let Some(op) = node.body.as_opaque() else {
             continue;
         };
-        match classify_obligation_name(name) {
-            Some(ObligationNameCategory::ServiceTransportPrepare) => {
+        match classify_obligation(op) {
+            ObligationCategory::ServiceTransportPrepare => {
                 counts.service_transport_prepare_targets += 1;
             }
-            Some(ObligationNameCategory::ServiceTransportExecute) => {
+            ObligationCategory::ServiceTransportExecute => {
                 counts.service_transport_execute_targets += 1;
             }
-            Some(ObligationNameCategory::ServiceTransportParse) => {
+            ObligationCategory::ServiceTransportParse => {
                 counts.service_transport_parse_targets += 1;
             }
-            Some(ObligationNameCategory::ServiceParamSource) => {
+            ObligationCategory::ServiceParamSource => {
                 counts.service_param_source_targets += 1;
             }
-            Some(ObligationNameCategory::ResourceProvide) => {
+            ObligationCategory::ResourceProvide => {
                 counts.resource_provide_targets += 1;
             }
-            Some(ObligationNameCategory::ResourceAcquire) => {
+            ObligationCategory::ResourceAcquire => {
                 counts.resource_acquire_targets += 1;
             }
-            Some(ObligationNameCategory::ResourceRelease) => {
+            ObligationCategory::ResourceRelease => {
                 counts.resource_release_targets += 1;
             }
-            None => {}
+            ObligationCategory::None => {}
         }
     }
     counts
 }
 
+trait NodeBodyExt {
+    fn as_opaque(&self) -> Option<&LoweredOp>;
+}
+
+impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
+    fn as_opaque(&self) -> Option<&LoweredOp> {
+        match self {
+            gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
+            gunbc_ir::node::NodeBody::SubDag(_) => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, LoweredOp};
+    use daglang_lower::{CallableKind, LoweredOp, ObligationCategory};
     use gunbc_ir::{Edge, Node, Port};
 
     fn callable_node(id: &str, module: &str, name: &str) -> Node<LoweredOp> {
@@ -547,6 +331,7 @@ mod tests {
                 module: module.to_string(),
                 kind: CallableKind::Func,
                 name: name.to_string(),
+                obligation: ObligationCategory::None,
             },
         )
     }
@@ -570,16 +355,6 @@ mod tests {
         );
         assert_eq!(artifacts.manifest.total_nodes, 3);
         assert_eq!(artifacts.manifest.total_edges, 2);
-        assert_eq!(artifacts.manifest.topology.len(), 3);
-        assert_eq!(artifacts.manifest.parallel_groups.len(), 1);
-        assert_eq!(
-            artifacts
-                .manifest
-                .labels
-                .get("a")
-                .expect("label for node a should exist"),
-            "tools.makegen.a"
-        );
     }
 
     #[test]
@@ -621,6 +396,7 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "call_param_source::run::path".to_string(),
+                obligation: ObligationCategory::ServiceParamSource,
             },
         ));
         dag.add_node(Node::opaque(
@@ -631,6 +407,7 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::prepare::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportPrepare,
             },
         ));
         dag.add_node(Node::opaque(
@@ -641,6 +418,7 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::execute::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
             },
         ));
         dag.add_node(Node::opaque(
@@ -651,6 +429,7 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::parse::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportParse,
             },
         ));
         dag.add_node(Node::opaque(
@@ -661,6 +440,7 @@ mod tests {
                 module: "sample.resources".to_string(),
                 kind: CallableKind::Pattern,
                 name: "resource_provide::run::out".to_string(),
+                obligation: ObligationCategory::ResourceProvide,
             },
         ));
         dag.add_node(Node::opaque(
@@ -671,6 +451,7 @@ mod tests {
                 module: "sample.resources".to_string(),
                 kind: CallableKind::Pattern,
                 name: "resource_lifecycle::acquire::TempFile".to_string(),
+                obligation: ObligationCategory::ResourceAcquire,
             },
         ));
         dag.add_node(Node::opaque(
@@ -681,6 +462,7 @@ mod tests {
                 module: "sample.resources".to_string(),
                 kind: CallableKind::Pattern,
                 name: "resource_lifecycle::release::TempFile".to_string(),
+                obligation: ObligationCategory::ResourceRelease,
             },
         ));
         dag.add_edge(Edge::new(
@@ -727,158 +509,36 @@ mod tests {
     }
 
     #[test]
-    fn derive_obligations_counts_content_upsert_triplets_as_transport_targets() {
+    fn derive_obligations_uses_structural_category_not_callable_name_prefix() {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
-            "prepare_read_makegen",
-            vec![Port::scalar("path", "String")],
-            vec![Port::scalar("request", "TransportRequest")],
+            "misleading_name",
+            vec![],
+            vec![Port::scalar("out", "String")],
             LoweredOp::Callable {
-                module: "tools.makegen".to_string(),
+                module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
-                name: "content_upsert::prepare_read_makegen".to_string(),
+                name: "service_transport::prepare::Fake::op".to_string(),
+                obligation: ObligationCategory::None,
             },
         ));
         dag.add_node(Node::opaque(
-            "execute_read_makegen",
-            vec![Port::scalar("request", "TransportRequest")],
-            vec![Port::scalar("response", "TransportResponse")],
+            "structural_category",
+            vec![],
+            vec![Port::scalar("out", "String")],
             LoweredOp::Callable {
-                module: "tools.makegen".to_string(),
+                module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
-                name: "content_upsert::execute_read_makegen".to_string(),
+                name: "not_a_transport_name".to_string(),
+                obligation: ObligationCategory::ServiceTransportPrepare,
             },
-        ));
-        dag.add_node(Node::opaque(
-            "compare_makegen_content",
-            vec![Port::scalar("response", "TransportResponse")],
-            vec![Port::scalar("skip", "Bool")],
-            LoweredOp::Callable {
-                module: "tools.makegen".to_string(),
-                kind: CallableKind::Pattern,
-                name: "content_upsert::compare_makegen_content".to_string(),
-            },
-        ));
-        dag.add_edge(Edge::new(
-            "prepare_read_makegen",
-            "request",
-            "execute_read_makegen",
-            "request",
-        ));
-        dag.add_edge(Edge::new(
-            "execute_read_makegen",
-            "response",
-            "compare_makegen_content",
-            "response",
         ));
 
         let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
-        assert_eq!(artifacts.obligations.transport_execution_targets, 1);
-        assert_eq!(artifacts.obligations.pure_node_determinism_targets, 2);
-        assert_eq!(artifacts.obligations.service_transport_prepare_targets, 1);
-        assert_eq!(artifacts.obligations.service_transport_execute_targets, 1);
-        assert_eq!(artifacts.obligations.service_transport_parse_targets, 1);
-    }
-
-    #[test]
-    fn derive_manifest_contract_fields_include_topology_capture_and_resources() {
-        let mut dag = Dag::new();
-        dag.add_node(Node::opaque(
-            "root_a",
-            vec![],
-            vec![Port::scalar("path", "String")],
-            LoweredOp::Callable {
-                module: "sample.pipeline".to_string(),
-                kind: CallableKind::Fn,
-                name: "root_a".to_string(),
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "root_b",
-            vec![],
-            vec![Port::scalar("content", "String")],
-            LoweredOp::Callable {
-                module: "sample.pipeline".to_string(),
-                kind: CallableKind::Fn,
-                name: "root_b".to_string(),
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "prepare_write",
-            vec![
-                Port::scalar("path", "String"),
-                Port::scalar("content", "String"),
-                Port::scalar("res:file:Makefile", "FilesystemHandle"),
-            ],
-            vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
-                module: "sample.pipeline".to_string(),
-                kind: CallableKind::Pattern,
-                name: "content_upsert::prepare_write".to_string(),
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "execute_write",
-            vec![Port::scalar("request", "TransportRequest")],
-            vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
-                module: "sample.pipeline".to_string(),
-                kind: CallableKind::Pattern,
-                name: "content_upsert::execute_write".to_string(),
-            },
-        ));
-        dag.add_edge(Edge::new("root_a", "path", "prepare_write", "path"));
-        dag.add_edge(Edge::new("root_b", "content", "prepare_write", "content"));
-        dag.add_edge(Edge::new("prepare_write", "request", "execute_write", "request"));
-
-        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
-        assert_eq!(artifacts.manifest.topology.len(), 4);
         assert_eq!(
-            artifacts
-                .manifest
-                .topology
-                .iter()
-                .filter(|node| node.depth == 0)
-                .count(),
-            2,
-            "two roots should occupy depth 0"
+            artifacts.obligations.service_transport_prepare_targets,
+            1,
+            "classification should follow structural obligation category"
         );
-        assert!(
-            artifacts
-                .manifest
-                .parallel_groups
-                .iter()
-                .any(|group| group.depth == 0
-                    && group.nodes
-                        == vec!["root_a".to_string(), "root_b".to_string()]),
-            "root wave should form a parallel group"
-        );
-        assert_eq!(
-            artifacts
-                .manifest
-                .labels
-                .get("execute_write")
-                .expect("execute label should exist"),
-            "sample.pipeline.content_upsert::execute_write"
-        );
-        assert_eq!(
-            artifacts
-                .manifest
-                .capture_modes
-                .get("execute_write")
-                .copied(),
-            Some(CaptureMode::Captured),
-            "transport execute node should be marked captured"
-        );
-        let resources = artifacts
-            .manifest
-            .resources
-            .get("prepare_write")
-            .expect("prepare_write should include resource usage");
-        assert_eq!(resources.len(), 1);
-        assert_eq!(resources[0].resource, "file:Makefile");
-        assert!(artifacts.manifest.subdag_boundaries.is_empty());
-        assert!(artifacts.manifest.interactive_nodes.is_empty());
-        assert!(artifacts.manifest.stage_groups.is_empty());
     }
 }

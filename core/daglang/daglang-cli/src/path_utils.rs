@@ -2,23 +2,17 @@ use std::path::{Component, Path, PathBuf};
 
 pub use daglang_resolve::has_dag_extension;
 
-pub fn resolve_default_root() -> PathBuf {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    default_root_from_cwd(&cwd)
+pub fn resolve_default_root(cwd: &Path) -> PathBuf {
+    normalize_path_components(&cwd.join("dsl"))
 }
 
-pub fn normalize_cli_path(path: PathBuf) -> PathBuf {
+pub fn normalize_cli_path(cwd: &Path, path: &Path) -> PathBuf {
     let absolute = if path.is_absolute() {
-        path
+        path.to_path_buf()
     } else {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         cwd.join(path)
     };
     normalize_path_components(&absolute)
-}
-
-pub fn default_root_from_cwd(cwd: &Path) -> PathBuf {
-    normalize_path_components(&cwd.join("dsl"))
 }
 
 pub fn normalize_path_components(path: &Path) -> PathBuf {
