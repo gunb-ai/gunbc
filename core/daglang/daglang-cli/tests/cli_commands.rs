@@ -30621,6 +30621,35 @@ fn run_with_conflicting_dry_run_and_check_mode_exits_nonzero_with_usage_message(
 }
 
 #[test]
+fn run_with_non_dag_input_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with non-dag input");
+
+    assert!(
+        !output.status.success(),
+        "run with non-dag input should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with non-dag input should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run requires a .dag input file"),
+        "run should report non-dag input explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for non-dag input: {stderr}"
+    );
+}
+
+#[test]
 fn run_with_missing_output_value_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")

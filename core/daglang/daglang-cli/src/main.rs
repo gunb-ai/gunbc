@@ -17,7 +17,7 @@
 //! - `daglang compile <file.dag>`  -- Full compilation pipeline
 //! - `daglang run <file.dag>`      -- Compile + resolve + execute makegen DAG
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use daglang_cli::compile::{
     build_context, compile_from_context, compile_resolve_execute_from_context,
@@ -530,6 +530,9 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     }
 
     let file = file.ok_or_else(|| "run requires <file.dag>".to_string())?;
+    if !path_utils::has_dag_extension(Path::new(&file)) {
+        return Err("run requires a .dag input file".to_string());
+    }
     if dry_run && check_mode {
         return Err("--dry-run and --check-mode cannot be used together".to_string());
     }
@@ -889,6 +892,20 @@ mod tests {
         assert!(
             error.contains("--dry-run and --check-mode cannot be used together"),
             "expected clear mode conflict error, got: {error}"
+        );
+    }
+
+    #[test]
+    fn parse_run_args_rejects_non_dag_input_path() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "dsl/tools".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run requires a .dag input file"),
+            "expected clear non-dag input error, got: {error}"
         );
     }
 
