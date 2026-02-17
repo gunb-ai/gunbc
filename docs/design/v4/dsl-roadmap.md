@@ -724,8 +724,8 @@ The two workers share the `daglang-cli` crate but touch different files:
 - [ ] **Loop progress**: renderers display loop progress as grouped counter without manual configuration
 - [ ] **Composition**: SubDag calls work for credential chain reuse within gist workflow
 - [ ] **IR parity**: compiled gist graph matches existing builder shape for all 3 modes
-- [ ] **Provider portability**: `store_artifact(uses store: ObjectStorage)` compiles against all 3 providers
-- [ ] **Cross-provider auth**: each provider's credential chain resolves independently in a cross-provider func
+- [x] **Provider portability**: `store_artifact(uses store: ObjectStorage)` compiles against all 3 providers — *lowering regression `store_artifact_portability_wires_gcp_aws_and_azure_resources` verifies provider-hinted `ObjectStorage` wiring for `GcpConfig` / `AwsConfig` / `AzureConfig`*
+- [x] **Cross-provider auth**: each provider's credential chain resolves independently in a cross-provider func — *lowering regression `cross_provider_auth_calls_resolve_all_credential_chains` verifies one caller can resolve GCP/AWS/Azure credential-chain call dependencies simultaneously*
 - [ ] **Contract tests**: `@contract` behavioral tests pass for AWS and Azure implementations
 
 **Corresponds to**: [dsl-design.md Phase 3](./dsl-design.md#phase-3-composition--tui-progress), [Appendix C](./dsl-design.md#appendix-c-service-composition-gist-snapshot), [§7.6](./dsl-design.md#76-infrastructure-as-resources-multi-cloud)
