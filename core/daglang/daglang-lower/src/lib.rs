@@ -445,19 +445,27 @@ impl std::fmt::Display for LowerError {
 /// - type/service/resource/interface declarations remain metadata and are not
 ///   lowered into executable graph nodes yet.
 pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None)
+    lower_typed_project_with_callable_scope(project, None, false)
+}
+
+/// Lowers typed modules while emitting explicit collection pipeline nodes.
+pub fn lower_typed_project_with_collection_nodes(
+    project: &TypedProject,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, None, true)
 }
 
 pub fn lower_typed_project_for_modules(
     project: &TypedProject,
     callable_modules: &HashSet<String>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, Some(callable_modules))
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), false)
 }
 
 fn lower_typed_project_with_callable_scope(
     project: &TypedProject,
     callable_modules: Option<&HashSet<String>>,
+    emit_collection_nodes: bool,
 ) -> Result<Dag<LoweredOp>, LowerError> {
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
@@ -543,6 +551,7 @@ fn lower_typed_project_with_callable_scope(
         project,
         &endpoints_by_full,
         &endpoints_by_name,
+        emit_collection_nodes,
     );
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
     let service_registry = if callable_modules.is_some() {
@@ -552,8 +561,7 @@ fn lower_typed_project_with_callable_scope(
         add_service_transport_triplets(&mut builder, project, None)
     };
     add_service_call_edges(&mut builder, project, &endpoints_by_full, &service_registry)?;
-    let resource_registry =
-        add_resource_lifecycle_nodes(&mut builder, project, callable_modules);
+    let resource_registry = add_resource_lifecycle_nodes(&mut builder, project, callable_modules);
     let known_uses_types = collect_known_uses_types(project);
     add_used_resource_edges(
         &mut builder,
@@ -840,6 +848,21 @@ fn canonical_kind_from_shape(
         .any(|port| port.type_id.0 == "TransportRequest")
     {
         return "transport".to_string();
+    }
+    if node_id.contains("::MapNode_") {
+        return "MapNode".to_string();
+    }
+    if node_id.contains("::FilterNode_") {
+        return "FilterNode".to_string();
+    }
+    if node_id.contains("::FoldNode_") {
+        return "FoldNode".to_string();
+    }
+    if node_id.contains("::JoinNode_") {
+        return "JoinNode".to_string();
+    }
+    if node_id.contains("::FlatMapNode_") {
+        return "FlatMapNode".to_string();
     }
     let looks_expanded = node_id.starts_with("prepare_")
         || node_id.starts_with("compare_")
@@ -1170,6 +1193,7 @@ fn add_dependency_edges(
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    emit_collection_nodes: bool,
 ) {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -1207,7 +1231,30 @@ fn add_dependency_edges(
                 target,
                 endpoints_by_name,
             );
+            if emit_collection_nodes {
+                add_collection_pipeline_nodes(builder, &module_name, item_name, stmts, target);
+            }
         }
+    }
+}
+
+fn add_collection_pipeline_nodes(
+    builder: &mut DagBuilder,
+    module_name: &str,
+    callable_name: &str,
+    stmts: &[Stmt],
+    target: &LoweredEndpoint,
+) {
+    let specs = derive_collection_node_specs(&target.node_id, stmts);
+    if specs.is_empty() {
+        return;
+    }
+    let plan = build_collection_lowering_plan(module_name, &target.node_id, callable_name, &specs);
+    for node in plan.nodes {
+        builder.add_node(node);
+    }
+    for (from_node, from_port, to_node, to_port) in plan.edges {
+        builder.add_edge(&from_node, &from_port, &to_node, &to_port);
     }
 }
 
@@ -2268,7 +2315,10 @@ fn add_interface_contract_verification_nodes(
                         service_metadata: None,
                     },
                 ));
-                if let Some(acquire_node) = endpoint.as_ref().and_then(|entry| entry.acquire_node.as_ref()) {
+                if let Some(acquire_node) = endpoint
+                    .as_ref()
+                    .and_then(|entry| entry.acquire_node.as_ref())
+                {
                     builder.add_edge(
                         acquire_node.as_str(),
                         "resource_handle",
@@ -2408,7 +2458,6 @@ struct ServiceCallSite {
     args: Vec<ServiceCallArgSite>,
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CollectionOpKind {
     Map,
@@ -2418,20 +2467,17 @@ enum CollectionOpKind {
     FlatMap,
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CollectionOpSite {
     kind: CollectionOpKind,
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CollectionNodeSpec {
     node_id: String,
     kind: CollectionOpKind,
 }
 
-#[cfg(test)]
 fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
     match name {
         "map" => Some(CollectionOpKind::Map),
@@ -2443,7 +2489,6 @@ fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
     }
 }
 
-#[cfg(test)]
 fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {
     walk_stmts(stmts, &mut |expr| {
         if let Expr::Pipe(_, rhs) = expr {
@@ -2458,32 +2503,40 @@ fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionO
     });
 }
 
-#[cfg(test)]
-fn derive_collection_node_specs(
-    callable_node_id: &str,
-    stmts: &[Stmt],
-) -> Vec<CollectionNodeSpec> {
+fn derive_collection_node_specs(callable_node_id: &str, stmts: &[Stmt]) -> Vec<CollectionNodeSpec> {
     let mut sites = Vec::new();
     collect_collection_ops_from_stmts(stmts, &mut sites);
     sites.reverse();
-    sites.into_iter()
+    sites
+        .into_iter()
         .enumerate()
         .map(|(index, site)| CollectionNodeSpec {
-            node_id: format!("{callable_node_id}::collection_{index}"),
+            node_id: format!(
+                "{callable_node_id}::{}_{index}",
+                collection_kind_node_label(site.kind)
+            ),
             kind: site.kind,
         })
         .collect()
 }
 
-#[cfg(test)]
 #[derive(Debug)]
 struct CollectionLoweringPlan {
     nodes: Vec<Node<LoweredOp>>,
     edges: Vec<(String, String, String, String)>,
 }
 
-#[cfg(test)]
-fn collection_kind_label(kind: CollectionOpKind) -> &'static str {
+fn collection_kind_node_label(kind: CollectionOpKind) -> &'static str {
+    match kind {
+        CollectionOpKind::Map => "MapNode",
+        CollectionOpKind::Filter => "FilterNode",
+        CollectionOpKind::Fold => "FoldNode",
+        CollectionOpKind::Join => "JoinNode",
+        CollectionOpKind::FlatMap => "FlatMapNode",
+    }
+}
+
+fn collection_kind_name(kind: CollectionOpKind) -> &'static str {
     match kind {
         CollectionOpKind::Map => "map",
         CollectionOpKind::Filter => "filter",
@@ -2493,9 +2546,9 @@ fn collection_kind_label(kind: CollectionOpKind) -> &'static str {
     }
 }
 
-#[cfg(test)]
 fn build_collection_lowering_plan(
     module_name: &str,
+    callable_node_id: &str,
     callable_name: &str,
     specs: &[CollectionNodeSpec],
 ) -> CollectionLoweringPlan {
@@ -2503,7 +2556,7 @@ fn build_collection_lowering_plan(
     let mut edges = Vec::new();
     let mut previous_node_id: Option<String> = None;
     for spec in specs {
-        let label = collection_kind_label(spec.kind);
+        let label = collection_kind_name(spec.kind);
         let node = Node::opaque(
             spec.node_id.clone(),
             vec![
@@ -2534,7 +2587,7 @@ fn build_collection_lowering_plan(
         edges.push((
             last,
             "items".to_string(),
-            callable_name.to_string(),
+            callable_node_id.to_string(),
             "__deps".to_string(),
         ));
     }
@@ -2571,10 +2624,10 @@ mod tests {
     use gunbc_dag::build_makegen_graph;
     use gunbc_deps::build_deps_graph;
     use gunbc_gist::{build_gist_graph, GistMode};
+    use gunbc_ir::{Edge, Port};
     use gunbc_lib_aws_ops::build_aws_secrets_manager_credential_graph;
     use gunbc_lib_azure_ops::build_azure_key_vault_credential_graph;
     use gunbc_lib_gcp_ops::build_gcp_secret_manager_credential_graph_github;
-    use gunbc_ir::{Edge, Port};
     use std::collections::{HashMap, HashSet, VecDeque};
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -2615,7 +2668,8 @@ mod tests {
     #[allow(clippy::disallowed_methods)]
     fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedProject {
         let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
-        let graph = ModuleGraph::discover(&[dsl_root]).expect("module graph discovery should succeed");
+        let graph =
+            ModuleGraph::discover(&[dsl_root]).expect("module graph discovery should succeed");
         let target_index = graph
             .modules
             .iter()
@@ -2762,15 +2816,15 @@ fn run(values: List<String>) -> { out: String } {
             specs,
             vec![
                 CollectionNodeSpec {
-                    node_id: "sample.collections::run::collection_0".to_string(),
+                    node_id: "sample.collections::run::MapNode_0".to_string(),
                     kind: CollectionOpKind::Map,
                 },
                 CollectionNodeSpec {
-                    node_id: "sample.collections::run::collection_1".to_string(),
+                    node_id: "sample.collections::run::FilterNode_1".to_string(),
                     kind: CollectionOpKind::Filter,
                 },
                 CollectionNodeSpec {
-                    node_id: "sample.collections::run::collection_2".to_string(),
+                    node_id: "sample.collections::run::JoinNode_2".to_string(),
                     kind: CollectionOpKind::Join,
                 },
             ]
@@ -2781,21 +2835,22 @@ fn run(values: List<String>) -> { out: String } {
     fn build_collection_lowering_plan_chains_nodes_and_wires_target_dependency() {
         let specs = vec![
             CollectionNodeSpec {
-                node_id: "sample.collections::run::collection_0".to_string(),
+                node_id: "sample.collections::run::MapNode_0".to_string(),
                 kind: CollectionOpKind::Map,
             },
             CollectionNodeSpec {
-                node_id: "sample.collections::run::collection_1".to_string(),
+                node_id: "sample.collections::run::FilterNode_1".to_string(),
                 kind: CollectionOpKind::Filter,
             },
             CollectionNodeSpec {
-                node_id: "sample.collections::run::collection_2".to_string(),
+                node_id: "sample.collections::run::JoinNode_2".to_string(),
                 kind: CollectionOpKind::Join,
             },
         ];
         let plan = build_collection_lowering_plan(
             "sample.collections",
             "sample.collections::run",
+            "run",
             &specs,
         );
         assert_eq!(plan.nodes.len(), 3);
@@ -2804,25 +2859,72 @@ fn run(values: List<String>) -> { out: String } {
             plan.edges,
             vec![
                 (
-                    "sample.collections::run::collection_0".to_string(),
+                    "sample.collections::run::MapNode_0".to_string(),
                     "items".to_string(),
-                    "sample.collections::run::collection_1".to_string(),
-                    "items".to_string(),
-                ),
-                (
-                    "sample.collections::run::collection_1".to_string(),
-                    "items".to_string(),
-                    "sample.collections::run::collection_2".to_string(),
+                    "sample.collections::run::FilterNode_1".to_string(),
                     "items".to_string(),
                 ),
                 (
-                    "sample.collections::run::collection_2".to_string(),
+                    "sample.collections::run::FilterNode_1".to_string(),
+                    "items".to_string(),
+                    "sample.collections::run::JoinNode_2".to_string(),
+                    "items".to_string(),
+                ),
+                (
+                    "sample.collections::run::JoinNode_2".to_string(),
                     "items".to_string(),
                     "sample.collections::run".to_string(),
                     "__deps".to_string(),
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn lower_typed_project_emits_collection_nodes_for_pipe_chain() {
+        let typed = typed_project_from_sources(&[(
+            "sample.collections",
+            r#"
+module sample.collections
+
+fn run(values: List<String>) -> String {
+  rendered = values
+    |> map(v => v)
+    |> filter(v => v != "")
+    |> join(",")
+  return rendered
+}
+"#,
+        )]);
+        let dag =
+            lower_typed_project_with_collection_nodes(&typed).expect("lowering should succeed");
+        let node_ids = dag
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        assert!(node_ids.contains("sample.collections::run::MapNode_0"));
+        assert!(node_ids.contains("sample.collections::run::FilterNode_1"));
+        assert!(node_ids.contains("sample.collections::run::JoinNode_2"));
+
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.collections::run::MapNode_0"
+                && edge.from_port.0 == "items"
+                && edge.to_node.0 == "sample.collections::run::FilterNode_1"
+                && edge.to_port.0 == "items"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.collections::run::FilterNode_1"
+                && edge.from_port.0 == "items"
+                && edge.to_node.0 == "sample.collections::run::JoinNode_2"
+                && edge.to_port.0 == "items"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.collections::run::JoinNode_2"
+                && edge.from_port.0 == "items"
+                && edge.to_node.0 == "sample.collections::run"
+                && edge.to_port.0 == "__deps"
+        }));
     }
 
     #[test]
