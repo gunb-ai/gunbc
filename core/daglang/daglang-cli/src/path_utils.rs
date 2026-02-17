@@ -111,4 +111,19 @@ mod tests {
         assert!(!is_single_file_target(&path, true));
         assert!(!is_single_file_target(&path, false));
     }
+
+    #[test]
+    fn normalize_path_components_preserves_leading_parent_segments() {
+        let input = PathBuf::from("../workspace/./dsl/../tools");
+        assert_eq!(
+            normalize_path_components(&input),
+            PathBuf::from("../workspace/tools")
+        );
+    }
+
+    #[test]
+    fn normalize_path_components_never_traverses_above_absolute_root() {
+        let input = PathBuf::from("/tmp/../../etc");
+        assert_eq!(normalize_path_components(&input), PathBuf::from("/etc"));
+    }
 }
