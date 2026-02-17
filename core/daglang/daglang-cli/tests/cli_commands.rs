@@ -31268,6 +31268,58 @@ fn run_command_supports_equals_output_flag_with_dash_prefixed_path_in_dry_run() 
 }
 
 #[test]
+fn run_command_supports_equals_output_flag_with_dash_prefixed_path_in_real_mode() {
+    let output_path = std::env::temp_dir().join(format!(
+        "--daglang_run_dash_output_real_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    if output_path.exists() {
+        std::fs::remove_file(&output_path)
+            .expect("failed to remove stale real-mode dash-prefixed output");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with real-mode dash-prefixed --output=<path>");
+
+    assert!(
+        output.status.success(),
+        "real-mode run with dash-prefixed --output=<path> should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=real"),
+        "run should report real mode with dash-prefixed output path: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=true"),
+        "real-mode run with dash-prefixed output path should report written=true: {stdout}"
+    );
+    assert!(
+        output_path.exists(),
+        "real-mode run should write dash-prefixed output file at {}",
+        output_path.display()
+    );
+    let written =
+        std::fs::read_to_string(&output_path).expect("failed to read dash-prefixed real output");
+    assert!(
+        written.contains(".PHONY"),
+        "dash-prefixed real-mode output should contain expected makefile content: {written}"
+    );
+    std::fs::remove_file(&output_path)
+        .expect("failed to clean up real-mode dash-prefixed output file");
+}
+
+#[test]
 fn run_command_check_mode_preserves_existing_file_and_reports_not_written() {
     let output_path = unique_temp_output_file("run_check_mode");
     if output_path.exists() {
