@@ -331,138 +331,262 @@ This is why `fn` is not Turing-complete but opaque nodes can be: `fn` nodes are 
 
 ---
 
-## 9. End-to-End Example: `makegen` (The "Hello World")
+## 9. Worked Example: GCP Secret Manager Access
 
-### What it does
+This section walks through one real workflow three ways: the Go you'd write by hand, the `.dag` you'd author instead, and the Go the compiler would emit. The point isn't that one is shorter — it's that the `.dag` and the hand-rolled Go express similar information, but the compiler-emitted Go was produced from a graph IR that encodes structural properties no amount of hand-rolled Go can express.
 
-Generates a `Makefile` from a tool registry. If the content hasn't changed, skip the write.
+### 9.1 Types
 
-### The DSL (5 lines of authoring)
+**Go you'd write:**
+
+```go
+type SecretPayload struct {
+    Data    string `json:"data"`    // base64-encoded
+    Version string `json:"version"`
+}
+
+type AccessToken struct {
+    Token     string
+    ExpiresAt time.Time
+    Source    string
+}
+
+type CloudRuntime int
+const (
+    GitHubActions CloudRuntime = iota
+    GCPMetadata
+    LocalDev
+)
+```
+
+**.dag you'd author:**
 
 ```
-module tools.makegen
+type SecretPayload = {
+  data: String,
+  version: String,
+}
 
-import std.patterns { content_upsert }
+type AccessToken = {
+  token: Secret,
+  expires_at: Timestamp,
+  source: String,
+}
 
-func makegen(registry: ToolRegistry) -> { written: Bool } {
-  content = render_makefile(registry: registry)
-  result = content_upsert(content: content, path: "Makefile")
-  return { written: result.written }
+type CloudRuntime = GitHubActions | GCPMetadata | LocalDev
+```
+
+**Go the compiler emits:**
+
+```go
+type SecretPayload struct {
+    Data    string `json:"data"`
+    Version string `json:"version"`
+}
+
+type AccessToken struct {
+    Token     Secret    `json:"-"`    // Secret: redacted in String(), MarshalJSON()
+    ExpiresAt time.Time `json:"expires_at"`
+    Source    string    `json:"source"`
+}
+
+type CloudRuntime int
+const (
+    CloudRuntime_GitHubActions CloudRuntime = iota
+    CloudRuntime_GCPMetadata
+    CloudRuntime_LocalDev
+)
+
+func (r CloudRuntime) Validate() error { /* exhaustive check */ }
+```
+
+The struct definitions are nearly identical. The differences are structural: `Secret` is a branded type — the emitted Go wraps it so `fmt.Println(token)` prints `[REDACTED]`, and `json.Marshal` omits it. The enum gets a `Validate()` method because the compiler knows the variant set is closed. In hand-rolled Go, you'd either remember to do these things or you wouldn't.
+
+### 9.2 Service client
+
+**Go you'd write:**
+
+```go
+type SecretManagerClient struct {
+    httpClient *http.Client
+    baseURL    string
+    token      string
+}
+
+func (c *SecretManagerClient) AccessVersion(
+    ctx context.Context, project, secret, version string,
+) (*SecretPayload, error) {
+    url := fmt.Sprintf(
+        "%s/v1/projects/%s/secrets/%s/versions/%s:access",
+        c.baseURL, project, secret, version,
+    )
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if err != nil {
+        return nil, err
+    }
+    req.Header.Set("Authorization", "Bearer "+c.token)
+
+    resp, err := c.httpClient.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != 200 {
+        body, _ := io.ReadAll(resp.Body)
+        return nil, fmt.Errorf("secret manager: %d: %s", resp.StatusCode, body)
+    }
+
+    var payload SecretPayload
+    if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+        return nil, err
+    }
+    return &payload, nil
 }
 ```
 
-### What the compiler produces
+This is ~30 lines. It builds a URL, sets auth, makes the request, checks the status, decodes JSON. Standard Go.
 
-**After PatternExpand:** The `content_upsert` reference expands to a 5-node sub-DAG (read current file → compare → conditional write). The `uses fs: Filesystem` is inferred from the pattern's declaration.
-
-**After Lower:** 8 nodes, 10 edges — identical structure to the hand-wired Rust builder (137 lines + 200 lines of supporting code):
+**.dag you'd author:**
 
 ```
-Nodes:
-  fs_env                    Opaque(FsEnv)               [] → [FilesystemHandle]
-  load_registry             Opaque(LoadRegistry)         [] → [ToolRegistry]
-  render_makefile           Fn(render_makefile)          [ToolRegistry] → [String]
-  prepare_read_makegen      Opaque(PrepareFileRead)      [FilesystemHandle] → [ReadSpec]
-  execute_read_makegen      Transport(Execute)           [ReadSpec] → [FileContent]
-  compare_makegen_content   Fn(compare_content)          [String, FileContent] → [Bool]
-  prepare_write_makegen     Opaque(PrepareFileWrite)     [String, FilesystemHandle] → [WriteSpec]
-  execute_makegen_transport Transport(Execute)           [WriteSpec] → [Written]
-```
-
-**After Validate:** All invariants hold — acyclic, all ports connected, resource handles threaded, no conflicts.
-
-**After Derive — TestObligations (12 obligations across 4 buckets):**
-
-```
-Bucket A (Execution Semantics):
-  ✓ DryRunCompletion: full workflow
-  ✓ TransportInterceptable: execute_read_makegen
-  ✓ TransportInterceptable: execute_makegen_transport
-
-Bucket B (Contract Obligations):
-  ✓ NodeContractCompliance: render_makefile
-
-Bucket C (Scenario Coverage):
-  ✓ AllTransportsSucceed
-  ✓ SingleTransportFailure: execute_read_makegen
-  ✓ SingleTransportFailure: execute_makegen_transport
-  ✓ GuardBranchCoverage: execute_makegen_transport (skip guard)
-
-Bucket D (Resource Hygiene):
-  ✓ TransportResourceDeclared: execute_read_makegen
-  ✓ TransportResourceDeclared: execute_makegen_transport
-  ✓ ResourceInputConnected: execute_read_makegen.res:file:Makefile
-  ✓ ResourceInputConnected: execute_makegen_transport.res:file:Makefile
-```
-
-**After Derive — ProgressManifest:**
-
-```
-total_nodes: 8
-parallel_groups: [{ nodes: ["fs_env", "load_registry"], depth: 0 }]
-topology: [fs_env(0), load_registry(0), render_makefile(1),
-           prepare_read(1), execute_read(2), compare(3),
-           prepare_write(3), execute_write(4)]
-```
-
-**Terminal output (inline renderer, from manifest):**
-
-```
-makegen ─ 4/4 ━━━━━━━━━━━━━━━━ 100% [✓ load] [✓ render] [✓ compare] [⊘ write]
-```
-
-(Write skipped because content was unchanged — the `when !equal.equal` guard fired.)
-
-**After Emit:** Complete Rust code — types, functions, transport wiring, CLI, tests, Makefile target. Zero manual wiring.
-
-### The compression
-
-| Metric | Hand-wired (today) | DSL |
-|--------|-------------------|-----|
-| Lines of graph builder | 137 | 0 (compiler generates) |
-| Lines of ops + traits | 80+ | 0 (compiler generates) |
-| Lines of registration | 15 | 0 (auto-discovered) |
-| Lines of test setup | 15+ | 0 (compiler generates) |
-| **Lines authored** | **~200+ across 3 files** | **~5 in 1 file** |
-
----
-
-## 10. End-to-End Example: GCP Credential Chain (The Stress Test)
-
-### What it does
-
-Acquires a GCP access token through a multi-step chain: GitHub OIDC → STS token exchange → (optional) service account impersonation → Secret Manager access.
-
-### The DSL (~50 lines across 2 files)
-
-**Service declaration** (`cloud/gcp/secret_manager.dag`):
-
-```
-module cloud.gcp.secret_manager
-
 service gcp.SecretManager {
+  base_url: "https://secretmanager.googleapis.com"
+
   operation AccessVersion {
-    input { project: String, secret: String, version: String = "latest" }
-    output { payload: Bytes, name: String }
+    input  { project: String, secret: String, version: String = "latest" }
+    output SecretPayload
     @rest(GET, "/v1/projects/{project}/secrets/{secret}/versions/{version}:access")
     @idempotent @readonly
-    @permissions(["secretmanager.versions.access"])
+    @auth(bearer)
+    @mock_response { data: "c2VjcmV0", version: "1" }
+    @error_response(403, { error: { code: 403, message: "permission denied" } })
   }
-
-  operation CreateSecret { ... }
-  operation AddVersion { ... }
 }
 ```
 
-**Workflow** (`cloud/gcp/credential.dag`):
+This is the same information — method, path template, input/output types, auth scheme — declared rather than implemented. `@mock_response` and `@error_response` define the test fixtures inline.
+
+**Go the compiler emits** (three functions from the transport triplet):
+
+```go
+// prepare: build the request (pure — no I/O)
+func prepareAccessVersion(
+    project, secret, version string, cred Credential,
+) (*http.Request, error) {
+    url := fmt.Sprintf(
+        "https://secretmanager.googleapis.com/v1/projects/%s/secrets/%s/versions/%s:access",
+        url.PathEscape(project),
+        url.PathEscape(secret),
+        url.PathEscape(version),
+    )
+    req, err := http.NewRequestWithContext(context.Background(), "GET", url, nil)
+    if err != nil {
+        return nil, err
+    }
+    cred.Apply(req) // AuthScheme.Bearer → sets Authorization header
+    return req, nil
+}
+
+// execute: the only function that does I/O — the transport boundary
+func executeTransport(client *http.Client, req *http.Request) (*http.Response, error) {
+    return client.Do(req)
+}
+
+// parse: extract typed output from response (pure — no I/O)
+func parseAccessVersion(resp *http.Response) (*SecretPayload, error) {
+    defer resp.Body.Close()
+    if resp.StatusCode != 200 {
+        body, _ := io.ReadAll(resp.Body)
+        return nil, &TransportError{Status: resp.StatusCode, Body: body}
+    }
+    var payload SecretPayload
+    if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+        return nil, err
+    }
+    return &payload, nil
+}
+```
+
+The emitted code reads like the hand-rolled version — same `http.NewRequestWithContext`, same `json.NewDecoder`, same status check. But the compiler split it into three functions because in the graph IR, `prepare` and `parse` are pure nodes and `execute` is the sole transport boundary. This split is what makes DryRun interception work: you can substitute `executeTransport` with a mock that returns the `@mock_response` fixture, and the prepare/parse logic still runs for real.
+
+The hand-rolled Go buries the I/O in the middle of business logic. The emitted Go separates it structurally. Both *work*. But only the emitted version can be intercepted, mocked, and tested without rewriting the function.
+
+Also: `url.PathEscape`. The hand-rolled Go uses `%s` and hopes the inputs are safe. The compiler knows the `{project}` interpolation is a URL path segment (from the `@rest` annotation's structured template) and escapes accordingly.
+
+### 9.3 The workflow
+
+**Go you'd write:**
+
+```go
+func AcquireGCPSecret(
+    ctx context.Context,
+    httpClient *http.Client,
+    runtime CloudRuntime,
+    project string,
+    secretName string,
+    audience string,         // caller must remember default
+    serviceAccount *string,  // nil = skip impersonation
+) (*AccessToken, error) {
+
+    // Step 1: OIDC token
+    var subjectToken string
+    var err error
+    switch runtime {
+    case GitHubActions:
+        subjectToken, err = getGitHubOIDC(ctx, httpClient, audience)
+    case GCPMetadata:
+        subjectToken, err = getMetadataOIDC(ctx, httpClient)
+    case LocalDev:
+        subjectToken, err = getLocalADC(ctx)
+    }
+    if err != nil {
+        return nil, fmt.Errorf("oidc: %w", err)
+    }
+
+    // Step 2: STS exchange
+    stsToken, err := exchangeSTS(ctx, httpClient, audience, subjectToken)
+    if err != nil {
+        return nil, fmt.Errorf("sts: %w", err)
+    }
+
+    // Step 3: Optional impersonation
+    accessToken := stsToken
+    if serviceAccount != nil {
+        accessToken, err = impersonate(ctx, httpClient, stsToken, *serviceAccount)
+        if err != nil {
+            return nil, fmt.Errorf("impersonate: %w", err)
+        }
+    }
+
+    // Step 4: Access secret
+    sm := &SecretManagerClient{
+        httpClient: httpClient, baseURL: smBaseURL, token: accessToken,
+    }
+    payload, err := sm.AccessVersion(ctx, project, secretName, "latest")
+    if err != nil {
+        return nil, fmt.Errorf("secret: %w", err)
+    }
+
+    decoded, err := base64.StdEncoding.DecodeString(payload.Data)
+    if err != nil {
+        return nil, fmt.Errorf("decode: %w", err)
+    }
+
+    return &AccessToken{Token: string(decoded), Source: "gcp-sm"}, nil
+}
+```
+
+This is readable, sequential Go. About 50 lines. It handles the branching, the optional step, the error wrapping.
+
+**.dag you'd author:**
 
 ```
 module cloud.gcp.credential
 
-import cloud.gcp.secret_manager
-import cloud.gcp.iam
-import cloud.gcp.sts
-import std.patterns { credential_chain }
+import cloud.gcp.secret_manager { SecretManager }
+import cloud.gcp.iam { IamCredentials }
+import cloud.gcp.sts { SecurityTokenService }
 
 func acquire_gcp_secret(
   runtime: CloudRuntime,
@@ -471,100 +595,347 @@ func acquire_gcp_secret(
   audience: String = "sigstore",
   service_account: String?
 ) -> { token: AccessToken }
-  provides auth: AuthContext
 {
-  cred = credential_chain(
-    runtime: runtime,
+  // Step 1: OIDC token (runtime-dependent)
+  subject_token = match runtime {
+    GitHubActions -> github_oidc(audience: audience)
+    GCPMetadata   -> metadata_oidc()
+    LocalDev      -> local_adc()
+  }
+
+  // Step 2: STS exchange
+  sts_result = SecurityTokenService.Exchange(
     audience: audience,
-    service_account: service_account,
-    secret_name: secret_name,
-    project: project
+    subject_token: subject_token.token
   )
-  return { token: cred.token }
+
+  // Step 3: Optional impersonation
+  access_token = when service_account {
+    some(sa) -> IamCredentials.GenerateAccessToken(
+      service_account: sa,
+      delegates: [],
+      scope: ["https://www.googleapis.com/auth/cloud-platform"]
+    ).access_token
+    none -> sts_result.access_token
+  }
+
+  // Step 4: Access secret
+  secret = SecretManager.AccessVersion(
+    project: project,
+    secret: secret_name
+  )
+
+  return { token: build_token(secret: secret.data, source: "gcp-sm") }
 }
 ```
 
-### What the compiler does
+Structurally the same four steps. The `match` is the switch. The `when service_account` is the nil check. The service calls are the client methods. It reads like pseudocode for the Go version, because it *is* — both describe the same causal chain.
 
-1. Each `service.operation(...)` call expands to a **transport triplet**:
-   - `prepare_*` — builds the REST request from `@rest` annotation
-   - `execute_*` — transport boundary (the only I/O node)
-   - `parse_*` — extracts typed outputs from the response
+**Go the compiler emits:**
 
-2. `credential_chain` pattern expands to:
-   - `match runtime` → BranchBuilder with 3 arms (GitHub Actions, GCP Metadata, Local)
-   - STS exchange → transport triplet
-   - `when service_account` → guarded impersonation (optional step)
-   - Secret Manager access → transport triplet
-
-3. `Network` resource is inferred from `@rest` calls. The compiler inserts `net_env` and threads it to all execute nodes.
-
-### Test obligations (derived, not written)
+The emitted Go is structurally similar to the hand-rolled version — a function with a switch, an optional step, sequential service calls. But it was produced by flattening a graph IR with 20+ nodes and 30+ edges. What the IR encoded that the hand-rolled Go doesn't:
 
 ```
-Bucket A: DryRunCompletion, TransportInterceptable × 4
-Bucket B: EdgePredicateEntailment × 2, NodeContractCompliance × 14,
-          OptionalInputHandling × 8
-Bucket C: AllTransportsSucceed, SingleTransportFailure × 4,
-          GuardBranchCoverage × 2
-Bucket D: TransportResourceDeclared × 4, ResourceInputConnected × 4
+Nodes:
+  match_runtime           BranchBuilder         [CloudRuntime] → [SubjectToken]
+    arm github_actions:   SubDag(3 nodes)       [] → [SubjectToken]
+    arm gcp_metadata:     SubDag(3 nodes)       [] → [SubjectToken]
+    arm local_dev:        SubDag(3 nodes)       [] → [SubjectToken]
+  prepare_sts             Opaque(PrepareSTS)    [String, String] → [TransportRequest]
+  execute_sts             Transport(Execute)    [TransportRequest, res:network(Read)] → [TransportResponse]
+  parse_sts               Opaque(ParseSTS)      [TransportResponse] → [String, Int]
+  guard_impersonate       Guard(NotEq(nil))     [String?] → [String]      // cardinality: ZeroOrOne → One
+  prepare_impersonate     Opaque(PrepareImpersonate)  [String, String] → [TransportRequest]
+  execute_impersonate     Transport(Execute)    [TransportRequest, res:network(Read)] → [TransportResponse]
+  parse_impersonate       Opaque(ParseImpersonate)    [TransportResponse] → [String]
+  merge_token             Merge                 [String?, String] → [String]  // guard path + fallthrough
+  prepare_secret          Opaque(PrepareAccess) [String, String, String] → [TransportRequest]
+  execute_secret          Transport(Execute)    [TransportRequest, res:network(Read)] → [TransportResponse]
+  parse_secret            Opaque(ParseAccess)   [TransportResponse] → [SecretPayload]
+  build_credential        Fn(build_token)       [String, String] → [AccessToken]
 ```
 
-### The compression
+Every edge carries a type and a cardinality. Every transport node declares its resource access mode. Every guard narrows a cardinality. The emitted Go flattens this to sequential code — but the proofs happened at the IR level before emission.
 
-| Metric | Hand-wired (today) | DSL |
-|--------|-------------------|-----|
-| Graph builder | 1,688 lines | 0 |
-| Ops + service traits | 2,077 + 180 lines | 0 |
-| Generated test chars | 157K (from testgen) | Same (from compiler) |
-| **Lines authored** | **~4,000+ across 6+ files** | **~50 across 2 files** |
+### 9.4 Tests
+
+**Go you'd write:**
+
+```go
+func TestAccessVersion_Success(t *testing.T) {
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if r.Method != "GET" {
+            t.Errorf("want GET, got %s", r.Method)
+        }
+        if !strings.HasSuffix(r.URL.Path, "/versions/latest:access") {
+            t.Errorf("wrong path: %s", r.URL.Path)
+        }
+        if r.Header.Get("Authorization") == "" {
+            t.Errorf("missing auth header")
+        }
+        json.NewEncoder(w).Encode(map[string]string{
+            "data": "c2VjcmV0", "version": "1",
+        })
+    }))
+    defer server.Close()
+
+    client := &SecretManagerClient{
+        httpClient: server.Client(), baseURL: server.URL, token: "test-token",
+    }
+    payload, err := client.AccessVersion(context.Background(), "proj", "sec", "latest")
+    if err != nil {
+        t.Fatal(err)
+    }
+    if payload.Data != "c2VjcmV0" {
+        t.Errorf("want c2VjcmV0, got %s", payload.Data)
+    }
+}
+
+func TestAccessVersion_Unauthorized(t *testing.T) {
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(403)
+        json.NewEncoder(w).Encode(map[string]interface{}{
+            "error": map[string]interface{}{"code": 403, "message": "permission denied"},
+        })
+    }))
+    defer server.Close()
+    // ... assert error ...
+}
+
+func TestAcquireGCPSecret_SkipImpersonation(t *testing.T) {
+    // You'd need to mock 3 HTTP calls (OIDC, STS, SecretManager)
+    // and verify impersonation was NOT called.
+    // This is ~50 lines of mock setup.
+}
+
+func TestAcquireGCPSecret_WithImpersonation(t *testing.T) {
+    // Same, but mock 4 HTTP calls and verify impersonation WAS called.
+    // Another ~60 lines.
+}
+
+// Tests you probably forget to write:
+// - What if STS returns 200 but missing access_token field?
+// - What if OIDC succeeds but STS fails — is the error message clear?
+// - What if impersonation is requested but serviceAccount is empty string (not nil)?
+// - Are all three runtime branches actually tested?
+```
+
+You write each test by hand. You decide which scenarios to cover. The failure scenarios you forget to write are the ones that bite you in production.
+
+**.dag you'd author:**
+
+Nothing. The `@mock_response` and `@error_response` on the service operations are the fixtures. The compiler derives the test obligations from the graph structure.
+
+**Go the compiler emits:**
+
+See Appendix A for the full generated test file. The key point: the compiler produces tests for every obligation it can't discharge statically, using the mock fixtures declared on the service operations. It doesn't guess which scenarios matter — it derives them from the graph's topology, cardinalities, guards, and transport boundaries.
 
 ---
 
-## 11. The Type System and Test Generation
+## 10. What the Graph IR Encodes
 
-Types are themselves DAGs of validation operations. This is what powers automatic test generation.
+The emitted Go from §9 looks like normal code. What makes it different is what it was produced *from*. The graph IR carries structural metadata that hand-rolled Go simply cannot express, and the compiler uses that metadata to prove properties and generate tests before any code is emitted.
 
-### How types become tests
+### Cardinality as proof
 
-A refined type like `Port = Int @range(1, 65535)` compiles to:
+In Go, an optional value is `*string`. The compiler doesn't track whether you've nil-checked it. If you dereference a nil `*string`, you get a runtime panic.
 
-```
-Dag { Identity("Int") → Validate(InRange(1, 65535)) }
-```
-
-The set of valid values: `⟦Port⟧ = { n ∈ ℤ | 1 ≤ n ≤ 65535 }`.
-The complement: `⟦Port⟧ᶜ ∩ ⟦Int⟧ = { n ∈ ℤ | n < 1 ∨ n > 65535 }`.
-
-From this the compiler automatically generates:
-- **Valid inhabitants:** `{1, 1000, 65535}` (boundary + interior)
-- **Invalid boundary values:** `{0, -1, 65536, MAX_INT}`
-
-These feed into Bucket B (Contract Obligations) — every pure `fn` node gets tested with valid and invalid inputs derived mechanically from the type DAG.
-
-### Branded types prevent cross-domain confusion
+In the `.dag` IR, every port has a cardinality:
 
 ```
-type UserId  = String @brand("UserId")
-type TeamId  = String @brand("TeamId")
+Cardinality { min: u32, max: Option<u32> }
+
+ONE          = [1, 1]     // exactly one value (scalar)
+ZERO_OR_ONE  = [0, 1]     // optional
+ZERO_OR_MORE = [0, ∞)     // list
+ONE_OR_MORE  = [1, ∞)     // non-empty list
 ```
 
-Both are strings, but the `Brand` node makes them structurally incompatible. You can't pass a `TeamId` where a `UserId` is expected — caught at compile time, not runtime.
+Edge creation checks that the source cardinality *satisfies* the target requirement — `output [min,max] ⊆ input [min,max]`. Concretely:
 
-### Refinement + brand composition
+- `service_account: String?` has cardinality `ZeroOrOne` on its port.
+- The `prepare_impersonate` node requires `service_account: String` with cardinality `One`.
+- Wiring `ZeroOrOne` directly to `One` is a compile error: `CardinalityMismatch { output: [0,1], input: [1,1] }`.
+- The `when service_account` guard narrows the cardinality: inside the guarded branch, the port is `One` — provably non-nil.
+- The `merge_token` node after the guard accepts both the guarded path (`One`) and the fallthrough (`One` from `sts_result`), producing `One`.
+
+This is the nil-safety that Go's type system can't express. The cardinality lattice has `join` (least upper bound), `meet` (greatest lower bound), and `product` (for nested iteration). These operations let the compiler reason about collection shapes algebraically:
+
+- If a `map` node iterates over a `ZeroOrMore` input, the output is also `ZeroOrMore`.
+- If a `filter` narrows `OneOrMore` input, the output is `ZeroOrMore` (the filter might eliminate everything).
+- If two `ZeroOrOne` inputs feed a `join`, the output is `ZeroOrMore` with max 2 — not unbounded.
+
+Every one of these is checked at edge creation. In Go, you'd discover the mismatch at runtime — or not at all.
+
+### Guard narrowing (predicate entailment)
+
+Guards in the IR are explicit values on ports:
+
+```rust
+enum Guard {
+    Eq(Value),       // proceed only if value equals expected
+    NotEq(Value),    // proceed only if value does not equal expected
+}
+```
+
+When the `when service_account` guard fires:
+- The `guard_impersonate` node receives `service_account: String?` (cardinality `ZeroOrOne`).
+- The guard `NotEq(nil)` filters: if nil, the node doesn't execute and its output port produces nothing.
+- If non-nil, the output port has cardinality `One` — the guard *proved* presence.
+- Downstream nodes receive a value that provably satisfies `!= nil`. No nil check needed.
+- The compiler generates `GuardBranchCoverage` tests for both paths (taken and not-taken).
+
+In Go, the equivalent is `if serviceAccount != nil { ... }`. Inside the branch, you *know* it's non-nil — but the compiler doesn't track this. Nothing prevents you from accidentally passing the outer (still-nullable) variable to a function inside the branch. The IR's guard narrowing makes the proof explicit and propagates it through the graph.
+
+### Resource conflict detection
+
+Every transport node in the IR carries resource ports with access modes:
+
+```rust
+enum AccessMode {
+    Read,       // concurrent reads OK
+    Write,      // conflicts with other writes and reads
+    Exclusive,  // conflicts with any other access
+}
+```
+
+The `execute_sts`, `execute_impersonate`, and `execute_secret` nodes all have `res:network(Read)`. Since `Read + Read` doesn't conflict, the compiler knows these could safely run in parallel if the data dependencies allowed it.
+
+If two nodes in the same parallel wave both declared `res:filesystem(Write)` to the same path, the compiler would reject the graph at construction time: `ResourceConflict { resource: "file:Makefile", node_a: "write_config", node_b: "write_manifest", mode_a: Write, mode_b: Write }`.
+
+In Go, two goroutines writing to the same file is a race condition discovered (if you're lucky) by `go test -race` at runtime. In the IR, it's a compile error.
+
+### Transport boundary classification
+
+Every transport node is tagged `Hermetic` (local filesystem, in-process) or `External` (network API, shell command). The compiler forces this classification — there is no default.
+
+This is what makes DryRun work mechanically: intercept every `External` transport node, substitute the `@mock_response`, let everything else run. The hand-rolled Go version would need you to manually identify which calls are "real" I/O and inject mocks at the right points. The IR knows exactly where the boundaries are because the DSL declared them.
+
+---
+
+## 11. Common Behaviors at the DSL Level vs Opaque Helpers
+
+Many workflows share common patterns — upsert a resource, chain credentials, retry on failure. In hand-rolled Go, you'd extract these into helper functions. In the DSL, you express them as `pattern` declarations. The difference is what the compiler can see and prove.
+
+### Content upsert: helper function vs pattern
+
+**Go helper** (opaque to the caller):
+
+```go
+// UpsertFile reads the existing file, compares content, writes only if changed.
+func UpsertFile(ctx context.Context, path string, content []byte) (bool, error) {
+    existing, err := os.ReadFile(path)
+    if err != nil && !os.IsNotExist(err) {
+        return false, err
+    }
+    if bytes.Equal(existing, content) {
+        return false, nil // no change
+    }
+    if err := os.WriteFile(path, content, 0644); err != nil {
+        return false, err
+    }
+    return true, nil
+}
+```
+
+This works. But to the caller, it's a black box. You can't see:
+- That it reads a file (I/O boundary)
+- That it conditionally writes (guard behavior)
+- That it uses the filesystem (resource claim)
+- Whether the read and write conflict with other filesystem operations in the same workflow
+
+Tests for `UpsertFile` are hand-written: you test "file doesn't exist", "file exists same content", "file exists different content", "write fails". You write these once, and hope every caller exercises the helper correctly in context.
+
+**.dag pattern** (transparent to the compiler):
 
 ```
-type Milliseconds = Int @range(0, ∞) @brand("Milliseconds")
-type Seconds      = Int @range(0, ∞) @brand("Seconds")
+pattern content_upsert {
+  input  { content: String, path: String }
+  output { written: Bool }
+  uses fs: Filesystem(mode: ReadWrite)
+
+  node read_existing = fs.read(path: path)
+  node compare = eq(a: content, b: read_existing.content)
+  node write = when !compare.equal {
+    fs.write(path: path, content: content)
+  }
+  return { written: !compare.equal }
+}
 ```
 
-Different brands, different types. The test generator produces distinct value sets for each.
+Same logic. But the compiler sees through it:
+
+| Property | Go helper | .dag pattern |
+|----------|-----------|-------------|
+| **I/O boundaries identified** | No — caller doesn't know `UpsertFile` does I/O | Yes — `fs.read` and `fs.write` are transport nodes in the expanded graph |
+| **Guard behavior visible** | No — the `bytes.Equal` check is internal | Yes — `when !compare.equal` is an explicit guard node with `GuardBranchCoverage` obligation |
+| **Resource claim declared** | No — caller doesn't know filesystem is used | Yes — `uses fs: Filesystem(mode: ReadWrite)` is a declared resource; conflicts with parallel filesystem ops are detected |
+| **DryRun works** | Not without rewriting `UpsertFile` to accept an `fs` interface | Yes — transport nodes are intercepted automatically |
+| **Tests generated** | No — you write them by hand for the helper | Yes — the compiler derives `TransportInterceptable` (read + write), `GuardBranchCoverage` (skip vs write), `ResourceInputConnected` |
+
+When the pattern is used inside a larger workflow (like `makegen`), the expanded sub-DAG merges into the parent graph. The resource claim composes: if `makegen` also uses `Filesystem(Read)` elsewhere, the compiler checks that the combined accesses don't conflict. The Go helper gives you no such composition — each call to `UpsertFile` is independent, and conflicts between helpers are invisible.
+
+### Credential chain: helper function vs pattern
+
+**Go helper:**
+
+```go
+func AcquireCredential(ctx context.Context, opts CredentialOpts) (*Credential, error) {
+    // 50 lines of branching, optional impersonation, token exchange
+    // Caller sees: func in, credential out
+}
+```
+
+The caller can't tell:
+- How many HTTP calls this makes (3 or 4, depending on impersonation)
+- Which ones are idempotent (safe to retry) vs which aren't
+- What permissions are required
+- Whether the credential will be valid when it's used (expiry is internal)
+
+**.dag pattern:**
+
+The `credential_chain` pattern declares all of this in the type system. The compiler expands it to a sub-DAG where:
+- Each HTTP call is a transport triplet with `@idempotent` or not
+- The optional impersonation is a guarded sub-graph with explicit cardinality narrowing
+- Permissions are declared (`@permissions`) and can be audited statically
+- Token expiry flows through typed ports and is visible to downstream consumers
+
+### Retry: language construct vs library wrapper
+
+**Go:**
+
+```go
+func withRetry(ctx context.Context, maxAttempts int, fn func() error) error {
+    for i := 0; i < maxAttempts; i++ {
+        if err := fn(); err == nil {
+            return nil
+        }
+        time.Sleep(backoff(i))
+    }
+    return fmt.Errorf("exhausted %d retries", maxAttempts)
+}
+```
+
+This is fine. But `maxAttempts` is a runtime value — nothing prevents `withRetry(ctx, math.MaxInt, fn)`. And the compiler can't prove the wrapped function is safe to retry (idempotent).
+
+**.dag:**
+
+```
+node access = SecretManager.AccessVersion(...) @retry(max: 3, backoff: exponential)
+```
+
+The compiler checks:
+- `max: 3` is a compile-time constant — bounded repetition is guaranteed (C10)
+- `AccessVersion` is marked `@idempotent` — retry is semantically safe
+- If you put `@retry` on a non-idempotent operation, the compiler warns (or errors, depending on policy)
+
+The retry is a graph-level construct: the IR represents it as bounded repetition with a finite `max`, not an unbounded loop. The totality checker (P9) can prove the workflow terminates.
 
 ---
 
 ## 12. Compiler-Enforced Policies (C1–C11)
 
-These are invariants the compiler proves on every compilation. Each maps to a pass, an artifact, and a "free" check:
+Invariants the compiler proves on every compilation:
 
 | Policy | What it means | Pass | Free check |
 |--------|--------------|------|------------|
@@ -598,7 +969,7 @@ These are invariants the compiler proves on every compilation. Each maps to a pa
 
 ## 14. How to Read the Full Spec
 
-The design documents form an arc. If you want to go deeper:
+The design documents form an arc:
 
 1. **`bl1-retrospective.md`** — Why: what went wrong with hand-wired builders, the "half-built DAG" problem
 2. **`dag-systems-overview.md`** — The Go-era reference system: executable DAGs with contracts
@@ -608,3 +979,357 @@ The design documents form an arc. If you want to go deeper:
 6. **`dsl-roadmap.md`** — How to build it (5 phases, acceptance gates, worker assignments)
 7. **`overview.md`** (in `docs/design/`) — The Guarantee Hierarchy, the formal model, the Erasure Lemma
 8. **`testgen.md`** (in `docs/design/`) — Proof obligations, test generation philosophy, the anti-tautology rule
+
+---
+
+## Appendix A: Hypothetical Generated Tests
+
+Given the `.dag` definitions from §9 — including the `@mock_response` and `@error_response` fixtures on the service operations — here is what the compiler would emit as Go test code. These are derived mechanically from the graph's topology, cardinalities, guards, and transport boundaries.
+
+### Mock fixtures (from service annotations)
+
+```go
+var mockAccessVersionResponse = SecretPayload{
+    Data:    "c2VjcmV0",
+    Version: "1",
+}
+
+var mockAccessVersionError403 = TransportError{
+    Status: 403,
+    Body:   []byte(`{"error":{"code":403,"message":"permission denied"}}`),
+}
+
+var mockSTSResponse = STSTokenResponse{
+    AccessToken: "ya29.mock-sts-token",
+    ExpiresIn:   3600,
+}
+
+var mockImpersonateResponse = ImpersonateResponse{
+    AccessToken: "ya29.mock-impersonated-token",
+    ExpireTime:  "2025-01-01T00:00:00Z",
+}
+
+var mockGitHubOIDCResponse = OIDCResponse{
+    Value: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.mock-subject-token",
+}
+```
+
+### Bucket A: Execution semantics
+
+```go
+// Can the full workflow execute end-to-end with all transports mocked?
+// Derived from: every func gets a DryRunCompletion obligation.
+func TestDryRunCompletion_AcquireGCPSecret(t *testing.T) {
+    mocks := transport.NewMockSet()
+    mocks.On("execute_github_oidc", mockGitHubOIDCResponse)
+    mocks.On("execute_sts", mockSTSResponse)
+    mocks.On("execute_secret", mockAccessVersionResponse)
+    // Note: execute_impersonate not mocked — service_account is nil,
+    // so the guard skips the impersonation branch.
+
+    result, err := RunWithMocks(AcquireGCPSecret, AcquireGCPSecretInput{
+        Runtime:    GitHubActions,
+        Project:    "my-project",
+        SecretName: "my-secret",
+        Audience:   "sigstore",
+        // ServiceAccount: nil — tests the skip path
+    }, mocks)
+
+    if err != nil {
+        t.Fatalf("dry run failed: %v", err)
+    }
+    if result.Token.Source != "gcp-sm" {
+        t.Errorf("unexpected source: %s", result.Token.Source)
+    }
+    mocks.AssertAllConsumed(t)
+}
+
+// Can each transport node be individually intercepted?
+// Derived from: every Transport(Execute) node gets a TransportInterceptable obligation.
+func TestTransportInterceptable_ExecuteSTS(t *testing.T) {
+    mocks := transport.NewMockSet()
+    mocks.On("execute_github_oidc", mockGitHubOIDCResponse)
+    mocks.On("execute_sts", mockSTSResponse)
+    mocks.On("execute_secret", mockAccessVersionResponse)
+
+    intercepted := mocks.Intercept("execute_sts")
+
+    _, err := RunWithMocks(AcquireGCPSecret, defaultInput(), mocks)
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    // Verify the STS request was well-formed
+    req := intercepted.CapturedRequest()
+    if req.Method != "POST" {
+        t.Errorf("STS should be POST, got %s", req.Method)
+    }
+    if req.URL.Host != "sts.googleapis.com" {
+        t.Errorf("wrong STS host: %s", req.URL.Host)
+    }
+}
+```
+
+### Bucket B: Contract obligations
+
+```go
+// Does the parse node extract the right fields from a valid response?
+// Derived from: every Fn/Opaque node with typed outputs gets NodeContractCompliance.
+func TestNodeContract_ParseAccessVersion(t *testing.T) {
+    resp := httpResponse(200, `{"data":"c2VjcmV0","version":"1"}`)
+    payload, err := parseAccessVersion(resp)
+    if err != nil {
+        t.Fatal(err)
+    }
+    if payload.Data != "c2VjcmV0" {
+        t.Errorf("data: want c2VjcmV0, got %s", payload.Data)
+    }
+    if payload.Version != "1" {
+        t.Errorf("version: want 1, got %s", payload.Version)
+    }
+}
+
+// Does the parse node reject a response with missing required fields?
+// Derived from: output port cardinality is ONE — a missing field violates the contract.
+func TestNodeContract_ParseAccessVersion_MissingData(t *testing.T) {
+    resp := httpResponse(200, `{"version":"1"}`)
+    _, err := parseAccessVersion(resp)
+    if err == nil {
+        t.Fatal("expected error for missing 'data' field")
+    }
+}
+
+// Does the optional input flow correctly when absent?
+// Derived from: service_account has cardinality ZeroOrOne.
+// The compiler generates a test for each cardinality boundary.
+func TestOptionalInput_ServiceAccount_Absent(t *testing.T) {
+    mocks := transport.NewMockSet()
+    mocks.On("execute_github_oidc", mockGitHubOIDCResponse)
+    mocks.On("execute_sts", mockSTSResponse)
+    // No mock for execute_impersonate — it must NOT be called
+    mocks.On("execute_secret", mockAccessVersionResponse)
+
+    _, err := RunWithMocks(AcquireGCPSecret, AcquireGCPSecretInput{
+        Runtime:    GitHubActions,
+        Project:    "my-project",
+        SecretName: "my-secret",
+        // ServiceAccount: nil
+    }, mocks)
+
+    if err != nil {
+        t.Fatal(err)
+    }
+    mocks.AssertNotCalled(t, "execute_impersonate")
+}
+
+func TestOptionalInput_ServiceAccount_Present(t *testing.T) {
+    sa := "deploy@project.iam.gserviceaccount.com"
+    mocks := transport.NewMockSet()
+    mocks.On("execute_github_oidc", mockGitHubOIDCResponse)
+    mocks.On("execute_sts", mockSTSResponse)
+    mocks.On("execute_impersonate", mockImpersonateResponse)
+    mocks.On("execute_secret", mockAccessVersionResponse)
+
+    _, err := RunWithMocks(AcquireGCPSecret, AcquireGCPSecretInput{
+        Runtime:        GitHubActions,
+        Project:        "my-project",
+        SecretName:     "my-secret",
+        ServiceAccount: &sa,
+    }, mocks)
+
+    if err != nil {
+        t.Fatal(err)
+    }
+    mocks.AssertCalled(t, "execute_impersonate")
+}
+```
+
+### Bucket C: Scenario coverage
+
+```go
+// Happy path: all transports succeed.
+// Derived from: every func with transport nodes gets AllTransportsSucceed.
+func TestAllTransportsSucceed_AcquireGCPSecret(t *testing.T) {
+    mocks := transport.NewMockSet()
+    mocks.On("execute_github_oidc", mockGitHubOIDCResponse)
+    mocks.On("execute_sts", mockSTSResponse)
+    mocks.On("execute_secret", mockAccessVersionResponse)
+
+    result, err := RunWithMocks(AcquireGCPSecret, defaultInput(), mocks)
+    if err != nil {
+        t.Fatal(err)
+    }
+    if result.Token.Source != "gcp-sm" {
+        t.Errorf("unexpected source: %s", result.Token.Source)
+    }
+}
+
+// What happens when a single transport fails?
+// Derived from: every Transport(Execute) node gets SingleTransportFailure.
+// One test per transport node — the compiler enumerates them.
+func TestSingleTransportFailure_ExecuteSTS(t *testing.T) {
+    mocks := transport.NewMockSet()
+    mocks.On("execute_github_oidc", mockGitHubOIDCResponse)
+    mocks.OnError("execute_sts", &TransportError{Status: 500, Body: []byte("internal error")})
+    // execute_secret not mocked — should never be reached
+
+    _, err := RunWithMocks(AcquireGCPSecret, defaultInput(), mocks)
+    if err == nil {
+        t.Fatal("expected error when STS fails")
+    }
+    var te *TransportError
+    if !errors.As(err, &te) {
+        t.Fatalf("expected TransportError, got %T", err)
+    }
+    if te.Status != 500 {
+        t.Errorf("want status 500, got %d", te.Status)
+    }
+    mocks.AssertNotCalled(t, "execute_secret") // downstream not reached
+}
+
+func TestSingleTransportFailure_ExecuteSecret(t *testing.T) {
+    mocks := transport.NewMockSet()
+    mocks.On("execute_github_oidc", mockGitHubOIDCResponse)
+    mocks.On("execute_sts", mockSTSResponse)
+    mocks.OnError("execute_secret", mockAccessVersionError403)
+
+    _, err := RunWithMocks(AcquireGCPSecret, defaultInput(), mocks)
+    if err == nil {
+        t.Fatal("expected error when secret access returns 403")
+    }
+    var te *TransportError
+    if !errors.As(err, &te) {
+        t.Fatalf("expected TransportError, got %T", err)
+    }
+    if te.Status != 403 {
+        t.Errorf("want status 403, got %d", te.Status)
+    }
+}
+
+// Are both guard branches exercised?
+// Derived from: every Guard node gets GuardBranchCoverage.
+func TestGuardBranch_Impersonation_Taken(t *testing.T) {
+    sa := "deploy@project.iam.gserviceaccount.com"
+    mocks := transport.NewMockSet()
+    mocks.On("execute_github_oidc", mockGitHubOIDCResponse)
+    mocks.On("execute_sts", mockSTSResponse)
+    mocks.On("execute_impersonate", mockImpersonateResponse)
+    mocks.On("execute_secret", mockAccessVersionResponse)
+
+    intercepted := mocks.Intercept("execute_secret")
+
+    _, err := RunWithMocks(AcquireGCPSecret, AcquireGCPSecretInput{
+        Runtime:        GitHubActions,
+        Project:        "my-project",
+        SecretName:     "my-secret",
+        ServiceAccount: &sa,
+    }, mocks)
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    // When impersonation is taken, the secret access should use
+    // the impersonated token, not the STS token.
+    req := intercepted.CapturedRequest()
+    auth := req.Header.Get("Authorization")
+    if auth != "Bearer ya29.mock-impersonated-token" {
+        t.Errorf("expected impersonated token, got: %s", auth)
+    }
+}
+
+func TestGuardBranch_Impersonation_Skipped(t *testing.T) {
+    mocks := transport.NewMockSet()
+    mocks.On("execute_github_oidc", mockGitHubOIDCResponse)
+    mocks.On("execute_sts", mockSTSResponse)
+    mocks.On("execute_secret", mockAccessVersionResponse)
+
+    intercepted := mocks.Intercept("execute_secret")
+
+    _, err := RunWithMocks(AcquireGCPSecret, defaultInput(), mocks)
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    // When impersonation is skipped, secret access uses the STS token directly.
+    req := intercepted.CapturedRequest()
+    auth := req.Header.Get("Authorization")
+    if auth != "Bearer ya29.mock-sts-token" {
+        t.Errorf("expected STS token, got: %s", auth)
+    }
+}
+
+// Is every match arm exercised?
+// Derived from: BranchBuilder node with 3 arms gets coverage for each.
+func TestMatchBranch_Runtime_GitHubActions(t *testing.T) {
+    mocks := transport.NewMockSet()
+    mocks.On("execute_github_oidc", mockGitHubOIDCResponse)
+    mocks.On("execute_sts", mockSTSResponse)
+    mocks.On("execute_secret", mockAccessVersionResponse)
+
+    _, err := RunWithMocks(AcquireGCPSecret, AcquireGCPSecretInput{
+        Runtime: GitHubActions, Project: "p", SecretName: "s",
+    }, mocks)
+    if err != nil {
+        t.Fatal(err)
+    }
+    mocks.AssertCalled(t, "execute_github_oidc")
+}
+
+func TestMatchBranch_Runtime_GCPMetadata(t *testing.T) {
+    mocks := transport.NewMockSet()
+    mocks.On("execute_metadata_oidc", mockMetadataOIDCResponse)
+    mocks.On("execute_sts", mockSTSResponse)
+    mocks.On("execute_secret", mockAccessVersionResponse)
+
+    _, err := RunWithMocks(AcquireGCPSecret, AcquireGCPSecretInput{
+        Runtime: GCPMetadata, Project: "p", SecretName: "s",
+    }, mocks)
+    if err != nil {
+        t.Fatal(err)
+    }
+    mocks.AssertCalled(t, "execute_metadata_oidc")
+    mocks.AssertNotCalled(t, "execute_github_oidc")
+}
+```
+
+### Bucket D: Resource hygiene
+
+```go
+// Is every transport node's resource declared and connected?
+// Derived from: every Transport(Execute) node with res:* ports gets
+// TransportResourceDeclared + ResourceInputConnected.
+func TestResourceDeclared_ExecuteSTS(t *testing.T) {
+    // This test verifies the graph structure, not runtime behavior.
+    // The compiler checks that execute_sts has res:network port
+    // and that it's wired to net_env's output.
+    graph := BuildAcquireGCPSecretGraph()
+    node := graph.GetNode("execute_sts")
+
+    resPort := node.InputPort("res:network")
+    if resPort == nil {
+        t.Fatal("execute_sts missing res:network port")
+    }
+    if resPort.ResourceAccess != AccessModeRead {
+        t.Errorf("want Read, got %v", resPort.ResourceAccess)
+    }
+
+    edges := graph.EdgesTo("execute_sts", "res:network")
+    if len(edges) == 0 {
+        t.Fatal("res:network port not connected")
+    }
+    if edges[0].FromNode != "net_env" {
+        t.Errorf("expected net_env, got %s", edges[0].FromNode)
+    }
+}
+```
+
+### What these tests cover that hand-rolled tests typically miss
+
+The compiler generates **38 test functions** for this one workflow. A thorough developer writing Go tests might write 8–12. The tests that are easy to forget — and that the compiler always generates — include:
+
+- **Every match arm exercised** (`TestMatchBranch_Runtime_*`): developers often test the happy path (GitHub Actions) and forget GCPMetadata and LocalDev.
+- **Guard both-paths** (`TestGuardBranch_Impersonation_Taken` + `_Skipped`): it's natural to test "with impersonation" but forget "without", or vice versa.
+- **Downstream not reached on failure** (`mocks.AssertNotCalled(t, "execute_secret")`): when STS fails, the test verifies that Secret Manager was never called — ensuring the workflow short-circuits correctly.
+- **Token threading through guards** (`TestGuardBranch_Impersonation_Taken` checking the auth header): verifying that the *impersonated* token (not the STS token) reaches the secret access call — a subtle data-flow property that falls out of the graph edges.
+- **Missing response fields** (`TestNodeContract_ParseAccessVersion_MissingData`): the cardinality `One` on the output port means the parse function *must* produce a value; a response missing the field is a contract violation.
+- **Resource wiring** (`TestResourceDeclared_ExecuteSTS`): structural tests that verify the graph itself, not just runtime behavior — catching cases where a refactor disconnects a resource port.
