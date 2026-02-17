@@ -31149,6 +31149,57 @@ fn run_command_writes_makefile_in_real_mode() {
 }
 
 #[test]
+fn run_command_real_mode_reports_not_written_when_output_is_unchanged() {
+    let output_path = unique_temp_output_file("run_real_mode_unchanged");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale output before run");
+    }
+
+    let first_output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang run in real mode");
+    assert!(
+        first_output.status.success(),
+        "first real run should succeed: {}",
+        String::from_utf8_lossy(&first_output.stderr)
+    );
+    let first_stdout = String::from_utf8_lossy(&first_output.stdout);
+    assert!(
+        first_stdout.contains("written=true"),
+        "first real run should report written=true: {first_stdout}"
+    );
+
+    let second_output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang run in real mode");
+    assert!(
+        second_output.status.success(),
+        "second real run should succeed: {}",
+        String::from_utf8_lossy(&second_output.stderr)
+    );
+    let second_stdout = String::from_utf8_lossy(&second_output.stdout);
+    assert!(
+        second_stdout.contains("mode=real"),
+        "second real run should report real mode: {second_stdout}"
+    );
+    assert!(
+        second_stdout.contains("written=false"),
+        "second real run should report written=false when output is unchanged: {second_stdout}"
+    );
+    std::fs::remove_file(&output_path).expect("failed to clean up unchanged real mode output file");
+}
+
+#[test]
 fn run_command_dry_run_does_not_write_makefile() {
     let output_path = unique_temp_output_file("run_dry_mode");
     if output_path.exists() {
