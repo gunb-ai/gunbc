@@ -100,21 +100,25 @@ fn run_single_target_command_with_optional_trailing_slash_and_args(
     input: &str,
     extra_args: &[&str],
 ) -> (Output, Output) {
-    let plain = Command::new(daglang_bin())
-        .arg(command_name)
-        .arg(input)
-        .args(extra_args)
-        .current_dir(root)
-        .output()
+    let plain = run_single_target_command(command_name, root, input, extra_args)
         .expect("failed to run plain single-target command invocation");
-    let trailing = Command::new(daglang_bin())
-        .arg(command_name)
-        .arg(format!("{input}/"))
-        .args(extra_args)
-        .current_dir(root)
-        .output()
+    let trailing = run_single_target_command(command_name, root, &format!("{input}/"), extra_args)
         .expect("failed to run trailing-slash single-target command invocation");
     (plain, trailing)
+}
+
+fn run_single_target_command(
+    command_name: &str,
+    root: &Path,
+    target: &str,
+    extra_args: &[&str],
+) -> std::io::Result<Output> {
+    Command::new(daglang_bin())
+        .arg(command_name)
+        .arg(target)
+        .args(extra_args)
+        .current_dir(root)
+        .output()
 }
 
 fn assert_dag_suffixed_directory_is_invalid_single_file_target(
