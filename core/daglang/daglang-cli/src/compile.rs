@@ -263,6 +263,32 @@ pub fn makegen_dry_run_transport_mocks(output_path: &str) -> BoundaryMocks {
     dry_run_mocks
 }
 
+pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
+    let mut check_mode_mocks = BoundaryMocks::new();
+    check_mode_mocks.set_value(
+        "fs_env",
+        "FilesystemHandle",
+        Value::Str("filesystem://check-mode".to_string()),
+    );
+    let existing_content = std::fs::read(output_path)
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default();
+    check_mode_mocks.set_value(
+        "execute_read_makegen",
+        "response",
+        Value::Response(TransportResponse::File(FileResponse::read_ok(
+            output_path.to_string(),
+            existing_content,
+        ))),
+    );
+    check_mode_mocks.set_value(
+        "execute_makegen_transport",
+        "makegen_response",
+        Value::Skipped,
+    );
+    check_mode_mocks
+}
+
 fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     OutputMap::new()
         .json(

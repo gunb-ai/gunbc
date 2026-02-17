@@ -11263,7 +11263,7 @@ fn run_command_rejects_duplicate_output_flags_with_usage() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("duplicate --output"));
     assert!(stderr.contains(
-        "Usage: daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>"
+        "Usage: daglang run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>"
     ));
 }
 
@@ -11286,6 +11286,107 @@ fn run_command_real_mode_propagates_write_failure() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("failed to write"));
     assert!(stderr.contains(output_path));
+}
+
+#[test]
+fn run_command_check_mode_succeeds_when_output_is_fresh() {
+    let output_path = unique_temp_output_file("run_check_fresh", "mk");
+
+    let first = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg(&output_path)
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to seed output with real run");
+    assert!(
+        first.status.success(),
+        "real mode seeding run should succeed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let check = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--check-mode")
+        .arg("--output")
+        .arg(&output_path)
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run check-mode");
+    assert!(
+        check.status.success(),
+        "check-mode should succeed for fresh output: {}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&check.stdout);
+    assert!(stdout.contains("mode=check-mode"));
+    assert!(stdout.contains("written=false"));
+
+    std::fs::remove_file(output_path).expect("failed to cleanup check-mode output");
+}
+
+#[test]
+fn run_command_check_mode_fails_when_output_is_stale_without_overwrite() {
+    let output_path = unique_temp_output_file("run_check_stale", "mk");
+    std::fs::write(&output_path, "stale-content\n").expect("failed to seed stale output");
+
+    let check = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--check-mode")
+        .arg("--output")
+        .arg(&output_path)
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run stale check-mode");
+
+    assert!(
+        !check.status.success(),
+        "check-mode should fail for stale output"
+    );
+    assert_eq!(
+        check.status.code(),
+        Some(2),
+        "stale check-mode should use exit code 2"
+    );
+    let stderr = String::from_utf8_lossy(&check.stderr);
+    assert!(stderr.contains("check-mode failed: output is stale"));
+    let content = std::fs::read_to_string(&output_path).expect("should read stale output");
+    assert_eq!(
+        content, "stale-content\n",
+        "check-mode must not overwrite stale output"
+    );
+
+    std::fs::remove_file(output_path).expect("failed to cleanup stale check-mode output");
+}
+
+#[test]
+fn run_command_rejects_conflicting_dry_run_and_check_mode_flags() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--dry-run")
+        .arg("--check-mode")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run conflicting run modes");
+
+    assert!(
+        !output.status.success(),
+        "run should fail when dry-run and check-mode are combined"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "conflicting run modes should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("cannot be combined"));
+    assert!(stderr.contains(
+        "Usage: daglang run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>"
+    ));
 }
 
 #[test]

@@ -25,8 +25,8 @@ use std::path::PathBuf;
 use daglang_cli::compile::{
     build_context, check_from_context, compile_from_context, render_expand,
     compile_resolve_execute_from_context, makegen_dry_run_transport_mocks,
-    makegen_entrypoint_mocks, render_manifest_with_format, render_obligations, render_triplets,
-    CompileOutput, OutputFormat,
+    makegen_entrypoint_mocks, makegen_check_mode_transport_mocks,
+    render_manifest_with_format, render_obligations, render_triplets, CompileOutput, OutputFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{
@@ -54,7 +54,7 @@ fn main() {
         eprintln!("  modules [dir]        Show discovered module graph");
         eprintln!("  check <file.dag|dir> Parse (single-file targets also typecheck)");
         eprintln!("  compile <file.dag>   Full compilation pipeline");
-        eprintln!("  run [--output <path>|--output=<path>] [--dry-run] <file.dag>");
+        eprintln!("  run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>");
         eprintln!("                      Compile + resolve + execute makegen DAG");
         std::process::exit(1);
     }
@@ -174,7 +174,9 @@ fn main() {
         "run" => {
             let parsed = parse_run_args(&args).unwrap_or_else(|error| {
                 eprintln!("{error}");
-                exit_usage("run [--output <path>|--output=<path>] [--dry-run] <file.dag>");
+                exit_usage(
+                    "run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>",
+                );
             });
             let normalized_output_path =
                 path_utils::normalize_cli_path(&cwd, &PathBuf::from(&parsed.output_path));
@@ -184,6 +186,9 @@ fn main() {
                 RunMode::Real => ExecutionMode::Real,
                 RunMode::DryRun => {
                     ExecutionMode::DryRun(makegen_dry_run_transport_mocks(&output_path_str))
+                }
+                RunMode::CheckMode => {
+                    ExecutionMode::DryRun(makegen_check_mode_transport_mocks(&output_path_str))
                 }
             };
             let context = build_context(&cwd, Some(&parsed.input_path));
@@ -200,10 +205,22 @@ fn main() {
                 .and_then(|entry| entry.outputs.get("written"))
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
+            let fresh = log
+                .get("compare_makegen_content")
+                .and_then(|entry| entry.outputs.get("fresh"))
+                .and_then(Value::as_bool);
             let mode_label = match parsed.mode {
                 RunMode::Real => "real",
                 RunMode::DryRun => "dry-run",
+                RunMode::CheckMode => "check-mode",
             };
+            if parsed.mode == RunMode::CheckMode && fresh == Some(false) {
+                eprintln!(
+                    "check-mode failed: output is stale at {}",
+                    normalized_output_path.display()
+                );
+                std::process::exit(2);
+            }
             println!(
                 "OK: run mode={mode_label} output={} written={written}",
                 normalized_output_path.display()
@@ -220,6 +237,7 @@ fn main() {
 enum RunMode {
     Real,
     DryRun,
+    CheckMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -314,7 +332,21 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
             if mode == RunMode::DryRun {
                 return Err("duplicate --dry-run flag".to_string());
             }
+            if mode == RunMode::CheckMode {
+                return Err("--dry-run and --check-mode cannot be combined".to_string());
+            }
             mode = RunMode::DryRun;
+            i += 1;
+            continue;
+        }
+        if token == "--check-mode" {
+            if mode == RunMode::CheckMode {
+                return Err("duplicate --check-mode flag".to_string());
+            }
+            if mode == RunMode::DryRun {
+                return Err("--dry-run and --check-mode cannot be combined".to_string());
+            }
+            mode = RunMode::CheckMode;
             i += 1;
             continue;
         }
@@ -670,6 +702,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_supports_check_mode_flag() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--check-mode".to_string(),
+            "--output".to_string(),
+            "tmp/generated.mk".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = super::parse_run_args(&args).expect("run args should parse");
+        assert_eq!(parsed.input_path, "dsl/tools/makegen.dag");
+        assert_eq!(parsed.output_path, "tmp/generated.mk");
+        assert_eq!(parsed.mode, super::RunMode::CheckMode);
+    }
+
+    #[test]
     fn parse_run_args_rejects_duplicate_output_flags() {
         let args = vec![
             "daglang".to_string(),
@@ -717,6 +765,32 @@ mod tests {
         ];
         let error = super::parse_run_args(&args).expect_err("duplicate dry-run should fail");
         assert!(error.contains("duplicate --dry-run"));
+    }
+
+    #[test]
+    fn parse_run_args_rejects_duplicate_check_mode_flag() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--check-mode".to_string(),
+            "--check-mode".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = super::parse_run_args(&args).expect_err("duplicate check-mode should fail");
+        assert!(error.contains("duplicate --check-mode"));
+    }
+
+    #[test]
+    fn parse_run_args_rejects_conflicting_dry_run_and_check_mode_flags() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--dry-run".to_string(),
+            "--check-mode".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = super::parse_run_args(&args).expect_err("conflicting modes should fail");
+        assert!(error.contains("cannot be combined"));
     }
 
     #[test]
