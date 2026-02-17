@@ -1251,10 +1251,14 @@ impl Parser {
         }
     }
 
-    fn parse_fn_body_lossy(&mut self) -> Result<FnBody, ParseError> {
+    fn parse_body_lossy<T>(
+        &mut self,
+        parse: impl FnOnce(&mut Self) -> Result<T, ParseError>,
+        make_lossy: impl FnOnce() -> T,
+    ) -> Result<T, ParseError> {
         let start_pos = self.pos;
         let start_errors = self.errors.len();
-        let parsed = self.parse_fn_body();
+        let parsed = parse(self);
 
         let should_fallback = parsed.is_err() || self.errors.len() > start_errors;
         if !should_fallback {
@@ -1265,27 +1269,18 @@ impl Parser {
         self.pos = start_pos;
         self.errors.truncate(start_errors);
         self.consume_brace_block_contents()?;
-        Ok(FnBody {
+        Ok(make_lossy())
+    }
+
+    fn parse_fn_body_lossy(&mut self) -> Result<FnBody, ParseError> {
+        self.parse_body_lossy(Self::parse_fn_body, || FnBody {
             stmts: Vec::new(),
             lossy: true,
         })
     }
 
     fn parse_func_body_lossy(&mut self) -> Result<FuncBody, ParseError> {
-        let start_pos = self.pos;
-        let start_errors = self.errors.len();
-        let parsed = self.parse_func_body();
-
-        let should_fallback = parsed.is_err() || self.errors.len() > start_errors;
-        if !should_fallback {
-            self.expect(&TokenKind::RBrace)?;
-            return parsed;
-        }
-
-        self.pos = start_pos;
-        self.errors.truncate(start_errors);
-        self.consume_brace_block_contents()?;
-        Ok(FuncBody {
+        self.parse_body_lossy(Self::parse_func_body, || FuncBody {
             stmts: Vec::new(),
             lossy: true,
         })

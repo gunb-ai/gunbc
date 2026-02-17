@@ -539,37 +539,23 @@ fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
         let Some(op) = node.body.as_opaque() else {
             continue;
         };
-        match op {
-            LoweredOp::Callable { module, .. } => {
-                let entry = by_module
-                    .entry(module.clone())
-                    .or_insert_with(|| ModuleMetadata {
-                        module: module.clone(),
-                        callable_count: 0,
-                        pipeline_count: 0,
-                    });
-                entry.callable_count += 1;
+        let (module, is_pipeline) = match op {
+            LoweredOp::Callable { module, .. } | LoweredOp::Collection { module, .. } => {
+                (module, false)
             }
-            LoweredOp::Collection { module, .. } => {
-                let entry = by_module
-                    .entry(module.clone())
-                    .or_insert_with(|| ModuleMetadata {
-                        module: module.clone(),
-                        callable_count: 0,
-                        pipeline_count: 0,
-                    });
-                entry.callable_count += 1;
-            }
-            LoweredOp::Pipeline { module, .. } => {
-                let entry = by_module
-                    .entry(module.clone())
-                    .or_insert_with(|| ModuleMetadata {
-                        module: module.clone(),
-                        callable_count: 0,
-                        pipeline_count: 0,
-                    });
-                entry.pipeline_count += 1;
-            }
+            LoweredOp::Pipeline { module, .. } => (module, true),
+        };
+        let entry = by_module
+            .entry(module.clone())
+            .or_insert_with(|| ModuleMetadata {
+                module: module.clone(),
+                callable_count: 0,
+                pipeline_count: 0,
+            });
+        if is_pipeline {
+            entry.pipeline_count += 1;
+        } else {
+            entry.callable_count += 1;
         }
     }
     by_module.into_values().collect()
