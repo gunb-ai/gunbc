@@ -279,7 +279,8 @@ pub fn render_obligations(derived: &DerivedArtifacts, format: OutputFormat) -> S
             "service_param_source_targets": obligations.service_param_source_targets,
             "resource_provide_targets": obligations.resource_provide_targets,
             "resource_acquire_targets": obligations.resource_acquire_targets,
-            "resource_release_targets": obligations.resource_release_targets
+            "resource_release_targets": obligations.resource_release_targets,
+            "interface_contract_verification_targets": obligations.interface_contract_verification_targets
         })
         .to_string(),
     }
@@ -376,6 +377,12 @@ fn render_obligations_text(obligations: &TestObligations) -> String {
         out,
         "  resource_release_targets: {}",
         obligations.resource_release_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  interface_contract_verification_targets: {}",
+        obligations.interface_contract_verification_targets
     )
     .ok();
     out
@@ -1121,6 +1128,9 @@ fn run() -> String { return 42 }
         assert!(parsed.get("service_transport_readonly_targets").is_some());
         assert!(parsed
             .get("service_transport_permission_scoped_targets")
+            .is_some());
+        assert!(parsed
+            .get("interface_contract_verification_targets")
             .is_some());
     }
 

@@ -107,6 +107,7 @@ pub struct TestObligations {
     pub resource_provide_targets: usize,
     pub resource_acquire_targets: usize,
     pub resource_release_targets: usize,
+    pub interface_contract_verification_targets: usize,
 }
 
 /// Metadata summary for lowered modules.
@@ -205,6 +206,8 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         resource_provide_targets: obligation_counts.resource_provide_targets,
         resource_acquire_targets: obligation_counts.resource_acquire_targets,
         resource_release_targets: obligation_counts.resource_release_targets,
+        interface_contract_verification_targets: obligation_counts
+            .interface_contract_verification_targets,
     };
 
     let tool_metadata = ToolMetadata {
@@ -390,6 +393,7 @@ struct ObligationCounts {
     resource_provide_targets: usize,
     resource_acquire_targets: usize,
     resource_release_targets: usize,
+    interface_contract_verification_targets: usize,
 }
 
 fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
@@ -462,6 +466,9 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
             }
             ObligationCategory::ResourceRelease => {
                 counts.resource_release_targets += 1;
+            }
+            ObligationCategory::InterfaceContractVerification => {
+                counts.interface_contract_verification_targets += 1;
             }
             ObligationCategory::None => {}
         }
@@ -746,6 +753,7 @@ mod tests {
         assert_eq!(artifacts.obligations.resource_provide_targets, 1);
         assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
         assert_eq!(artifacts.obligations.resource_release_targets, 1);
+        assert_eq!(artifacts.obligations.interface_contract_verification_targets, 0);
     }
 
     #[test]
@@ -805,6 +813,7 @@ mod tests {
                 .service_transport_permission_scoped_targets,
             1
         );
+        assert_eq!(artifacts.obligations.interface_contract_verification_targets, 0);
     }
 
     #[test]

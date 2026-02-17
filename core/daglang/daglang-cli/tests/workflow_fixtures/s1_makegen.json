@@ -20,6 +20,7 @@
       "resource_acquire_targets": 0,
       "resource_provide_targets": 0,
       "resource_release_targets": 0,
+      "interface_contract_verification_targets": 0,
       "service_param_source_targets": 0,
       "service_transport_execute_targets": 0,
       "service_transport_external_targets": 0,

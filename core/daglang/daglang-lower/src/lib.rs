@@ -129,6 +129,7 @@ pub enum ObligationCategory {
     ResourceProvide,
     ResourceAcquire,
     ResourceRelease,
+    InterfaceContractVerification,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -533,6 +534,7 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
         &resource_registry,
         &known_uses_types,
     )?;
+    add_interface_contract_verification_nodes(&mut builder, project, &resource_registry);
 
     if builder.dag.nodes.is_empty() {
         return Err(LowerError::NoLowerableItems);
@@ -2119,6 +2121,112 @@ fn add_resource_lifecycle_nodes(
     registry
 }
 
+fn add_interface_contract_verification_nodes(
+    builder: &mut DagBuilder,
+    project: &TypedProject,
+    resource_registry: &ResourceLifecycleRegistry,
+) {
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::ResourceDef(resource) = &item.node else {
+                continue;
+            };
+            let Some(interface_name) = &resource.implements else {
+                continue;
+            };
+            let contract_count =
+                resolve_interface_contract_count(project, module_name.as_str(), interface_name);
+            if contract_count == 0 {
+                continue;
+            }
+            let endpoint = resolve_concrete_resource_endpoint(
+                module_name.as_str(),
+                resource.name.as_str(),
+                resource_registry,
+            );
+            for index in 0..contract_count {
+                let node_id = format!(
+                    "verify_contract_{}",
+                    sanitize_identifier(&format!(
+                        "{module_name}_{}_{}_{}",
+                        resource.name,
+                        canonical_type_name(interface_name),
+                        index
+                    ))
+                );
+                builder.add_node(Node::opaque(
+                    node_id.clone(),
+                    vec![Port::scalar("contract", "String")],
+                    vec![Port::scalar("verified", "Bool")],
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "interface_contract::{}::{}::{}",
+                            resource.name,
+                            canonical_type_name(interface_name),
+                            index
+                        ),
+                        obligation: ObligationCategory::InterfaceContractVerification,
+                        service_metadata: None,
+                    },
+                ));
+                if let Some(acquire_node) = endpoint.as_ref().and_then(|entry| entry.acquire_node.as_ref()) {
+                    builder.add_edge(
+                        acquire_node.as_str(),
+                        "resource_handle",
+                        node_id.as_str(),
+                        "__deps",
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn resolve_interface_contract_count(
+    project: &TypedProject,
+    resource_module_name: &str,
+    interface_name: &str,
+) -> usize {
+    let target = canonical_type_name(interface_name);
+    let target_short = target.rsplit('.').next().unwrap_or(target.as_str());
+    let mut counts = Vec::new();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::InterfaceDef(interface) = &item.node else {
+                continue;
+            };
+            let qualified = format!("{module_name}.{}", interface.name);
+            let qualified_canonical = canonical_type_name(&qualified);
+            let interface_short = interface
+                .name
+                .rsplit('.')
+                .next()
+                .unwrap_or(interface.name.as_str());
+            let matches_target = if target.contains('.') {
+                qualified_canonical == target
+            } else {
+                interface_short == target_short
+            };
+            if !matches_target {
+                continue;
+            }
+            if module_name == resource_module_name || target.contains('.') {
+                counts.push(interface.contracts.len());
+            } else {
+                counts.push(interface.contracts.len());
+            }
+        }
+    }
+    if counts.len() == 1 {
+        return counts[0];
+    }
+    0
+}
+
 fn resolve_service_endpoint(
     call_path: &[String],
     registry: &ServiceEndpointRegistry,
@@ -2790,6 +2898,40 @@ func run() -> { ok: Bool } uses store: ObjectStorage {
             }),
             "ambiguous interface uses should not arbitrarily wire lifecycle edges"
         );
+    }
+
+    #[test]
+    fn interface_contract_annotations_lower_to_verification_nodes_for_implementors() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/infra/contracts.dag",
+            r#"module infra.contracts
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  @contract: read("k") after write("k", "v") => { body: "v" }
+  @contract: read("missing") => { body: "" }
+}
+resource GcsBucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let verify_0 = "verify_contract_infra_contracts_GcsBucket_ObjectStorage_0";
+        let verify_1 = "verify_contract_infra_contracts_GcsBucket_ObjectStorage_1";
+        assert!(dag.nodes.iter().any(|node| node.id.0 == verify_0));
+        assert!(dag.nodes.iter().any(|node| node.id.0 == verify_1));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_contracts_GcsBucket"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == verify_0
+                && edge.to_port.0 == "__deps"
+        }));
     }
 
     #[test]
