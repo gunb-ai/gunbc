@@ -1597,6 +1597,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_rejects_duplicate_equals_output_flags() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output=out/first.mk".to_string(),
+            "--output=out/second.mk".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run accepts at most one --output path"),
+            "expected duplicate output-flag error for equals syntax, got: {error}"
+        );
+    }
+
+    #[test]
     fn run_written_from_log_prefers_transport_skip_signal() {
         let log = ExecutionLog {
             entries: vec![
