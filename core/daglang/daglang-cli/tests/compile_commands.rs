@@ -539,6 +539,63 @@ fn compile_command_symlink_directory_named_mixed_case_dag_extension_is_treated_a
 
 #[cfg(unix)]
 #[test]
+fn compile_command_symlink_directory_named_uppercase_dag_extension_is_treated_as_invalid_single_file_target(
+) {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("compile_symlink_directory_named_uppercase_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.DAG");
+    std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory root");
+    std::fs::write(
+        real_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create uppercase .DAG directory symlink");
+
+    let symlink_dir = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("link.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run compile on uppercase .DAG directory symlink");
+    assert!(
+        !symlink_dir.status.success(),
+        "uppercase .DAG directory symlink compile should fail"
+    );
+
+    let trailing_slash = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("link.DAG/")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run compile on uppercase .DAG directory symlink with trailing slash");
+    assert!(
+        !trailing_slash.status.success(),
+        "uppercase .DAG directory symlink trailing-slash compile should fail"
+    );
+
+    assert_eq!(
+        symlink_dir.stdout, trailing_slash.stdout,
+        "uppercase .DAG directory symlink plain and trailing-slash compile stdout should match"
+    );
+    assert_eq!(
+        symlink_dir.stderr, trailing_slash.stderr,
+        "uppercase .DAG directory symlink plain and trailing-slash compile stderr should match"
+    );
+    let stderr = String::from_utf8_lossy(&symlink_dir.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", link_dir.display())),
+        "uppercase .DAG directory symlink compile should fail with normalized single-file target path: {stderr}"
+    );
+    assert_no_stage_failures(&stderr);
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn compile_command_dangling_symlink_single_file_target_exits_nonzero() {
     use std::os::unix::fs::symlink;
 
