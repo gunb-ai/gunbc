@@ -31760,142 +31760,22 @@ fn assert_compile_family_command_succeeds(
     output
 }
 
-#[test]
-fn compile_family_commands_execute_real_pipeline_paths() {
-    let commands: [(&str, &[&str]); 5] = [
-        ("expand", &[]),
-        ("manifest", &[]),
-        ("compile", &[]),
-        ("obligations", &["--format", "json"]),
-        ("show-triplets", &["--format", "json"]),
-    ];
-    for (command, trailing_args) in commands {
-        assert_compile_family_command_succeeds(
-            command,
-            "dsl/tools/makegen.dag",
-            "relative",
-            trailing_args,
-        );
+const COMPILE_FAMILY_COMMANDS: [(&str, &[&str]); 5] = [
+    ("expand", &[]),
+    ("manifest", &[]),
+    ("compile", &[]),
+    ("obligations", &["--format", "json"]),
+    ("show-triplets", &["--format", "json"]),
+];
+
+fn run_compile_family_smoke_for_target(target_label: &str, target: &str) {
+    for (command, trailing_args) in COMPILE_FAMILY_COMMANDS {
+        assert_compile_family_command_succeeds(command, target, target_label, trailing_args);
     }
 }
 
-#[test]
-fn compile_family_commands_execute_real_pipeline_paths_with_absolute_target() {
-    let commands: [(&str, &[&str]); 5] = [
-        ("expand", &[]),
-        ("manifest", &[]),
-        ("compile", &[]),
-        ("obligations", &["--format", "json"]),
-        ("show-triplets", &["--format", "json"]),
-    ];
-    let absolute_target = workspace_root().join("dsl/tools/makegen.dag");
-    let absolute_target = absolute_target.to_string_lossy().into_owned();
-    for (command, trailing_args) in commands {
-        assert_compile_family_command_succeeds(
-            command,
-            &absolute_target,
-            "absolute",
-            trailing_args,
-        );
-    }
-}
-
-#[test]
-fn compile_family_commands_execute_real_pipeline_paths_with_curdir_suffix_target() {
-    let commands: [(&str, &[&str]); 5] = [
-        ("expand", &[]),
-        ("manifest", &[]),
-        ("compile", &[]),
-        ("obligations", &["--format", "json"]),
-        ("show-triplets", &["--format", "json"]),
-    ];
-    for (command, trailing_args) in commands {
-        assert_compile_family_command_succeeds(
-            command,
-            "./dsl/tools/makegen.dag",
-            "curdir-suffix",
-            trailing_args,
-        );
-    }
-}
-
-#[test]
-fn compile_family_commands_execute_real_pipeline_paths_with_absolute_curdir_segment_target() {
-    let commands: [(&str, &[&str]); 5] = [
-        ("expand", &[]),
-        ("manifest", &[]),
-        ("compile", &[]),
-        ("obligations", &["--format", "json"]),
-        ("show-triplets", &["--format", "json"]),
-    ];
-    let absolute_target_with_curdir_segment =
-        workspace_root().join("./dsl/./tools/../tools/makegen.dag");
-    let absolute_target_with_curdir_segment =
-        absolute_target_with_curdir_segment.to_string_lossy().into_owned();
-    for (command, trailing_args) in commands {
-        assert_compile_family_command_succeeds(
-            command,
-            &absolute_target_with_curdir_segment,
-            "absolute-curdir-segment",
-            trailing_args,
-        );
-    }
-}
-
-#[test]
-fn compile_family_commands_execute_real_pipeline_paths_with_absolute_double_separator_target() {
-    let commands: [(&str, &[&str]); 5] = [
-        ("expand", &[]),
-        ("manifest", &[]),
-        ("compile", &[]),
-        ("obligations", &["--format", "json"]),
-        ("show-triplets", &["--format", "json"]),
-    ];
-    let absolute_target_with_double_separators =
-        format!("{}/dsl//tools///makegen.dag", workspace_root().display());
-    for (command, trailing_args) in commands {
-        assert_compile_family_command_succeeds(
-            command,
-            &absolute_target_with_double_separators,
-            "absolute-double-separator",
-            trailing_args,
-        );
-    }
-}
-
-#[test]
-fn compile_family_commands_execute_real_pipeline_paths_with_absolute_parent_segment_target() {
-    let commands: [(&str, &[&str]); 5] = [
-        ("expand", &[]),
-        ("manifest", &[]),
-        ("compile", &[]),
-        ("obligations", &["--format", "json"]),
-        ("show-triplets", &["--format", "json"]),
-    ];
-    let absolute_target_with_parent_segment = workspace_root()
-        .join("dsl/../dsl/tools/makegen.dag")
-        .to_string_lossy()
-        .into_owned();
-    for (command, trailing_args) in commands {
-        assert_compile_family_command_succeeds(
-            command,
-            &absolute_target_with_parent_segment,
-            "absolute-parent-segment",
-            trailing_args,
-        );
-    }
-}
-
-#[test]
-fn compile_family_commands_makegen_target_variants_are_output_equivalent() {
-    let commands: [(&str, &[&str]); 5] = [
-        ("expand", &[]),
-        ("manifest", &[]),
-        ("compile", &[]),
-        ("obligations", &["--format", "json"]),
-        ("show-triplets", &["--format", "json"]),
-    ];
-    let targets = [
+fn makegen_target_variants() -> Vec<(&'static str, String)> {
+    vec![
         ("relative", "dsl/tools/makegen.dag".to_string()),
         (
             "absolute",
@@ -31923,11 +31803,67 @@ fn compile_family_commands_makegen_target_variants_are_output_equivalent() {
                 .to_string_lossy()
                 .into_owned(),
         ),
-    ];
+    ]
+}
 
-    for (command, trailing_args) in commands {
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths() {
+    run_compile_family_smoke_for_target("relative", "dsl/tools/makegen.dag");
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_target() {
+    let absolute_target = workspace_root().join("dsl/tools/makegen.dag");
+    let absolute_target = absolute_target.to_string_lossy().into_owned();
+    run_compile_family_smoke_for_target("absolute", &absolute_target);
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_curdir_suffix_target() {
+    run_compile_family_smoke_for_target("curdir-suffix", "./dsl/tools/makegen.dag");
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_curdir_segment_target() {
+    let absolute_target_with_curdir_segment =
+        workspace_root().join("./dsl/./tools/../tools/makegen.dag");
+    let absolute_target_with_curdir_segment =
+        absolute_target_with_curdir_segment.to_string_lossy().into_owned();
+    run_compile_family_smoke_for_target(
+        "absolute-curdir-segment",
+        &absolute_target_with_curdir_segment,
+    );
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_double_separator_target() {
+    let absolute_target_with_double_separators =
+        format!("{}/dsl//tools///makegen.dag", workspace_root().display());
+    run_compile_family_smoke_for_target(
+        "absolute-double-separator",
+        &absolute_target_with_double_separators,
+    );
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_parent_segment_target() {
+    let absolute_target_with_parent_segment = workspace_root()
+        .join("dsl/../dsl/tools/makegen.dag")
+        .to_string_lossy()
+        .into_owned();
+    run_compile_family_smoke_for_target(
+        "absolute-parent-segment",
+        &absolute_target_with_parent_segment,
+    );
+}
+
+#[test]
+fn compile_family_commands_makegen_target_variants_are_output_equivalent() {
+    let targets = makegen_target_variants();
+
+    for (command, trailing_args) in COMPILE_FAMILY_COMMANDS {
         let mut runs: Vec<(&str, Output)> = Vec::with_capacity(targets.len());
-        for (target_label, target_value) in &targets {
+        for (target_label, target_value) in targets.iter() {
             let output = assert_compile_family_command_succeeds(
                 command,
                 target_value,
