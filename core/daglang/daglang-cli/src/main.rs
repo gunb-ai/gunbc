@@ -1100,6 +1100,23 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_rejects_conflicting_modes_with_double_dash_input() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--dry-run".to_string(),
+            "--check-mode".to_string(),
+            "--".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("--dry-run and --check-mode cannot be used together"),
+            "expected clear mode conflict error with -- separator input, got: {error}"
+        );
+    }
+
+    #[test]
     fn parse_run_args_rejects_non_dag_input_path() {
         let args = vec![
             "daglang".to_string(),
