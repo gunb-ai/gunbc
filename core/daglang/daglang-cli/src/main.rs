@@ -1768,6 +1768,48 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_supports_split_output_separator_with_dry_run_flag_after_escaped_path() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output".to_string(),
+            "--".to_string(),
+            "--dash-prefixed-output.mk".to_string(),
+            "--dry-run".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = parse_run_args(&args).expect("parse should succeed");
+        assert_eq!(
+            parsed,
+            RunArgs {
+                file: "dsl/tools/makegen.dag".to_string(),
+                output_path: "--dash-prefixed-output.mk".to_string(),
+                dry_run: true,
+                check_mode: false,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_run_args_rejects_conflicting_modes_across_split_output_separator_segments() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--dry-run".to_string(),
+            "--output".to_string(),
+            "--".to_string(),
+            "--dash-prefixed-output.mk".to_string(),
+            "--check-mode".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("--dry-run and --check-mode cannot be used together"),
+            "expected mode conflict across split-output separator segments, got: {error}"
+        );
+    }
+
+    #[test]
     fn parse_run_args_rejects_split_output_separator_without_path() {
         let args = vec![
             "daglang".to_string(),

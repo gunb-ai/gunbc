@@ -32350,6 +32350,100 @@ fn run_check_mode_supports_split_output_separator_with_mode_flag_after_escaped_o
 }
 
 #[test]
+fn run_dry_run_supports_split_output_separator_with_mode_flag_after_escaped_output_path() {
+    let execution_dir = unique_temp_dir("run_dry_run_split_output_separator_mode_after_path");
+    std::fs::create_dir_all(&execution_dir).expect(
+        "failed to create execution directory for dry-run split output separator mode-order test",
+    );
+    let output_basename = format!(
+        "--daglang_run_dry_run_split_output_separator_mode_after_path_output_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    );
+    let output_path = execution_dir.join(&output_basename);
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect(
+            "failed to remove stale dry-run split output separator mode-order output file",
+        );
+    }
+    let input_path = workspace_root().join("dsl/tools/makegen.dag");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("--")
+        .arg(&output_basename)
+        .arg("--dry-run")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(&execution_dir)
+        .output()
+        .expect(
+            "failed to run daglang run dry-run with split output separator and mode flag after escaped output path",
+        );
+
+    assert!(
+        output.status.success(),
+        "dry-run split output separator run with mode flag after escaped output path should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "dry-run split output separator run with mode flag after escaped output path should report mode=dry-run: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "dry-run split output separator run with mode flag after escaped output path should report written=false: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "dry-run split output separator run with mode flag after escaped output path should not create output file at {}",
+        output_path.display()
+    );
+
+    std::fs::remove_dir_all(&execution_dir).expect(
+        "failed to clean dry-run split output separator mode-order execution directory",
+    );
+}
+
+#[test]
+fn run_with_split_output_separator_conflicting_modes_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--dry-run")
+        .arg("--output")
+        .arg("--")
+        .arg("--split-output-conflict.mk")
+        .arg("--check-mode")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with conflicting modes across split-output separator segments");
+
+    assert!(
+        !output.status.success(),
+        "run with conflicting modes across split-output separator segments should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with conflicting modes across split-output separator segments should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--dry-run and --check-mode cannot be used together"),
+        "run should report conflicting mode flags across split-output separator segments explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for conflicting split-output separator mode flags: {stderr}"
+    );
+}
+
+#[test]
 fn run_real_mode_supports_split_output_dash_prefixed_path_via_separator_and_reports_idempotence() {
     let execution_dir = unique_temp_dir("run_real_mode_split_output_dash_prefixed_separator");
     std::fs::create_dir_all(&execution_dir)
