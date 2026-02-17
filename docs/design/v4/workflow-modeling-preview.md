@@ -99,6 +99,42 @@ The source of truth for current status is the workflow fixture contract suite in
   - tighten newly-added deterministic deps parity scaffold to zero-delta shape parity.
   - add execution bridge assertions for deps workflow.
 
+## Build (`tools.build`)
+
+- **Current status**: ✅ compiles and deterministic parity scaffold is wired against legacy builder graph.
+- **Primary gap**:
+  - exact parity against legacy build workflow shape is still pending.
+- **Next increments**:
+  - tighten deterministic build parity scaffold to zero-delta shape parity.
+  - add execution bridge assertions for build workflow.
+
+## Codegen (`tools.codegen`)
+
+- **Current status**: ✅ compiles and deterministic parity scaffold is wired against legacy builder graph.
+- **Primary gap**:
+  - exact parity against legacy codegen workflow shape is still pending.
+- **Next increments**:
+  - tighten deterministic codegen parity scaffold to zero-delta shape parity.
+  - add execution assertions for codegen artifact lifecycle behavior.
+
+## Pragma (`tools.pragma`)
+
+- **Current status**: ✅ compiles and deterministic parity scaffold is wired against legacy builder graph.
+- **Primary gap**:
+  - exact parity against legacy pragma workflow shape is still pending.
+- **Next increments**:
+  - tighten deterministic pragma parity scaffold to zero-delta shape parity.
+  - add execution assertions around pragma parsing/application flow.
+
+## Docgen (`tools.docgen`)
+
+- **Current status**: ✅ compiles and deterministic parity scaffold is wired against legacy builder graph.
+- **Primary gap**:
+  - exact parity against legacy docgen workflow shape is still pending.
+- **Next increments**:
+  - tighten deterministic docgen parity scaffold to zero-delta shape parity.
+  - add execution assertions for docgen read/emit paths.
+
 ## Auth (`services.shell`)
 
 - **Current status**: ✅ compiles and emits obligations contract successfully.
