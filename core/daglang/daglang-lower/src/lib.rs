@@ -2622,6 +2622,28 @@ func run() -> { ok: Bool } provides out: Storage {
         );
     }
 
+    #[test]
+    fn makegen_builder_and_compiled_ascii_viz_match_after_normalization() {
+        let lowered = load_makegen_lowered();
+        let builder = build_makegen_graph().expect("builder makegen graph should construct");
+        let candidate = normalize_makegen_candidate(&lowered);
+        let reference = normalize_makegen_reference(&builder);
+        let candidate_ascii = candidate.to_ascii("compiled_makegen");
+        let reference_ascii = reference.to_ascii("builder_makegen");
+        let normalized_candidate_ascii = candidate_ascii
+            .replace("compiled_makegen", "makegen_parity")
+            .trim()
+            .to_string();
+        let normalized_reference_ascii = reference_ascii
+            .replace("builder_makegen", "makegen_parity")
+            .trim()
+            .to_string();
+        assert_eq!(
+            normalized_candidate_ascii, normalized_reference_ascii,
+            "normalized compiled and builder ASCII DAG views should match"
+        );
+    }
+
     // Test infrastructure: filesystem access for test fixtures
     #[allow(clippy::disallowed_methods)]
     #[test]

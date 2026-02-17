@@ -250,12 +250,12 @@ For each workflow being targeted in Phases 1-2:
 
 **Deliverables**:
 - [x] `.dag` files written for at least makegen + one other workflow — *DSL corpus exists under `dsl/` with modules spanning tools, services, pipelines, infra, cloud, and examples*
-- [ ] Side-by-side `dag viz` comparison (existing builder vs target `.dag` shape)
+- [x] Side-by-side `dag viz` comparison (existing builder vs target `.dag` shape) — *makegen normalized compiled-vs-builder ASCII DAG parity regression is in place*
 - [ ] Modeling preview document per workflow (gaps, insertions, manifest differences)
-- [~] `dag show-triplets` works (shows service call → prepare/execute/parse expansion) — *Not a CLI command yet; triplet derivation exists in obligation counting logic*
-- [~] `dag obligations` works (shows 4-bucket test obligations derived from DAG) — *`TestObligations` is derived and rendered by `dag manifest`, but not a standalone command; obligation counts are present but CLI UX needs work*
+- [x] `dag show-triplets` works (shows service call → prepare/execute/parse expansion)
+- [x] `dag obligations` works (shows 4-bucket test obligations derived from DAG)
 
-**Status: ~30% complete.** The corpus exists and obligation counting works, but the developer-facing CLI commands (`show-triplets`, `obligations`) and modeling preview documents are missing.
+**Status: ~80% complete.** Core workflow corpus and preview commands are in place; remaining gap here is dedicated per-workflow modeling preview documentation.
 
 **Why this step**: you surface modeling gaps *before* you've committed to an implementation. If the `.dag` shape doesn't match the builder shape, or the manifest is missing information the renderer needs, you catch it here — not after weeks of compiler work.
 
