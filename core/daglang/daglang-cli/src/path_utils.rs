@@ -16,6 +16,20 @@ pub fn resolve_default_root(cwd: &Path) -> PathBuf {
     normalize_path_components(&cwd.join("dsl"))
 }
 
+pub fn resolve_single_file_root(cwd: &Path, file: &Path) -> PathBuf {
+    for ancestor in file.ancestors() {
+        if ancestor
+            .file_name()
+            .is_some_and(|name| name.eq_ignore_ascii_case("dsl"))
+        {
+            return normalize_path_components(ancestor);
+        }
+    }
+    file.parent()
+        .map(normalize_path_components)
+        .unwrap_or_else(|| normalize_path_components(cwd))
+}
+
 pub fn normalize_cli_path(cwd: &Path, path: &Path) -> PathBuf {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
@@ -124,5 +138,19 @@ mod tests {
     fn normalize_path_components_never_traverses_above_absolute_root() {
         let input = PathBuf::from("/tmp/../../etc");
         assert_eq!(normalize_path_components(&input), PathBuf::from("/etc"));
+    }
+
+    #[test]
+    fn resolve_single_file_root_prefers_dsl_ancestor() {
+        let cwd = PathBuf::from("/workspace");
+        let file = PathBuf::from("/workspace/dsl/cloud/gcp/credential.dag");
+        assert_eq!(resolve_single_file_root(&cwd, &file), PathBuf::from("/workspace/dsl"));
+    }
+
+    #[test]
+    fn resolve_single_file_root_falls_back_to_parent_without_dsl_ancestor() {
+        let cwd = PathBuf::from("/workspace");
+        let file = PathBuf::from("/tmp/custom/module.dag");
+        assert_eq!(resolve_single_file_root(&cwd, &file), PathBuf::from("/tmp/custom"));
     }
 }

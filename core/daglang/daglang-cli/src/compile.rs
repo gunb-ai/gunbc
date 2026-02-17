@@ -34,10 +34,7 @@ pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineC
     let parsed = input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
     let (roots, target_file) = match parsed {
         Some(path) if path_utils::is_single_file_target(&path, true) => {
-            let root = path
-                .parent()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| cwd.to_path_buf());
+            let root = path_utils::resolve_single_file_root(cwd, &path);
             (vec![root], Some(path))
         }
         Some(path) => (vec![path], None),
