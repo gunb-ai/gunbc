@@ -471,6 +471,32 @@ fn compile_command_symlink_directory_named_uppercase_dag_extension_is_treated_as
 
 #[cfg(unix)]
 #[test]
+fn compile_command_curdir_suffix_symlink_named_dag_extension_is_invalid_single_file_target() {
+    use std::os::unix::fs::symlink;
+
+    let root = unique_temp_dir("compile_curdir_suffix_symlink_named_dag_extension");
+    let real_dir = root.join("real");
+    let link_dir = root.join("link.dag");
+    std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory root");
+    std::fs::write(
+        real_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in real directory");
+    symlink(&real_dir, &link_dir).expect("failed to create lowercase .dag directory symlink");
+
+    assert_dag_suffixed_directory_is_invalid_single_file_target(
+        &root,
+        "./link.dag",
+        &link_dir,
+        None,
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
 fn compile_command_curdir_suffix_symlink_named_uppercase_dag_extension_is_invalid_single_file_target(
 ) {
     use std::os::unix::fs::symlink;
