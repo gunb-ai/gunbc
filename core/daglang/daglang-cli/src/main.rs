@@ -1644,6 +1644,57 @@ mod tests {
     }
 
     #[test]
+    fn run_written_from_log_uses_earlier_wrapper_boolean_when_latest_wrapper_missing_written() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("status".to_string(), Value::Str("ok".to_string()))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            run_written_from_log(&log),
+            "latest wrapper entries without a written boolean should fall back to earlier wrapper boolean signals"
+        );
+    }
+
+    #[test]
+    fn run_written_from_log_returns_false_when_wrapper_signals_are_non_authoritative() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([(
+                        "written".to_string(),
+                        Value::Str("unknown".to_string()),
+                    )]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("status".to_string(), Value::Str("ok".to_string()))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            !run_written_from_log(&log),
+            "wrapper fallback should default to written=false when no wrapper entry has an authoritative boolean written signal"
+        );
+    }
+
+    #[test]
     fn run_written_from_log_treats_intercepted_transport_as_not_written() {
         let log = ExecutionLog {
             entries: vec![
