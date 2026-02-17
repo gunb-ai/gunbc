@@ -31450,6 +31450,47 @@ fn run_command_check_mode_preserves_existing_file_and_reports_not_written() {
 }
 
 #[test]
+fn run_command_check_mode_accepts_flags_after_input_path() {
+    let output_path = unique_temp_output_file("run_check_mode_flags_after_input");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
+    }
+    let stale = "check-mode ordering stale content";
+    std::fs::write(&output_path, stale).expect("failed to seed stale check-mode file");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--check-mode")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with check-mode flags after input");
+
+    assert!(
+        output.status.success(),
+        "run with check-mode flags after input should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode run with flags after input should report check-mode mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode run with flags after input should report written=false: {stdout}"
+    );
+    let after = std::fs::read_to_string(&output_path).expect("failed to read check-mode file");
+    assert_eq!(
+        after, stale,
+        "check-mode run with flags after input should preserve output content"
+    );
+    std::fs::remove_file(&output_path).expect("failed to clean up check-mode output file");
+}
+
+#[test]
 fn run_command_check_mode_preserves_existing_binary_file_and_reports_not_written() {
     let output_path = unique_temp_output_file("run_check_mode_binary");
     if output_path.exists() {
