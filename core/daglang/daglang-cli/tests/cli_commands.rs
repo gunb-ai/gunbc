@@ -16928,6 +16928,25 @@ fn modules_command_json_format_emits_machine_readable_summary() {
         Some(diagnostics.len() as u64),
         "summary diagnostic_count should match diagnostics length"
     );
+    let diagnostic_kinds = summary
+        .get("diagnostic_kinds")
+        .expect("summary diagnostic_kinds should be present");
+    assert_eq!(diagnostic_kinds.get("lex").and_then(Value::as_u64), Some(0));
+    assert_eq!(diagnostic_kinds.get("parse").and_then(Value::as_u64), Some(0));
+    assert_eq!(diagnostic_kinds.get("resolve").and_then(Value::as_u64), Some(0));
+    assert_eq!(
+        diagnostic_kinds.get("pipeline").and_then(Value::as_u64),
+        Some(0)
+    );
+    let diagnostics_detail = parsed
+        .get("diagnostics_detail")
+        .and_then(Value::as_array)
+        .expect("diagnostics_detail should be present");
+    assert_eq!(
+        diagnostics_detail.len(),
+        diagnostics.len(),
+        "diagnostics_detail length should match diagnostics length"
+    );
     assert!(
         diagnostics.is_empty(),
         "clean dsl corpus should not emit module diagnostics"
@@ -17023,6 +17042,72 @@ fn modules_command_reports_invalid_config_parse_error() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("failed to parse"));
     assert!(stderr.contains("daglang.toml"));
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_json_includes_structured_diagnostics_for_parse_errors() {
+    let cwd = unique_temp_dir("modules_json_parse_diagnostics");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    std::fs::write(cwd.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write malformed dag file");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .arg(".")
+        .arg("--format")
+        .arg("json")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run daglang modules --format json on malformed source");
+
+    assert!(
+        output.status.success(),
+        "modules json should still succeed with diagnostics: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: Value =
+        serde_json::from_slice(&output.stdout).expect("modules json output should parse");
+    let diagnostics = parsed
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .expect("diagnostics should be present");
+    assert!(
+        !diagnostics.is_empty(),
+        "malformed source should produce diagnostics"
+    );
+    let diagnostics_detail = parsed
+        .get("diagnostics_detail")
+        .and_then(Value::as_array)
+        .expect("diagnostics_detail should be present");
+    assert_eq!(
+        diagnostics_detail.len(),
+        diagnostics.len(),
+        "diagnostics_detail should align with diagnostics list"
+    );
+    let first_detail = diagnostics_detail
+        .first()
+        .expect("diagnostics_detail should have at least one entry");
+    assert!(first_detail.get("kind").and_then(Value::as_str).is_some());
+    assert!(first_detail.get("message").and_then(Value::as_str).is_some());
+    assert!(first_detail.get("rendered").and_then(Value::as_str).is_some());
+    let kind_counts = parsed
+        .get("summary")
+        .and_then(|summary| summary.get("diagnostic_kinds"))
+        .expect("diagnostic kind counts should be present");
+    let parse_count = kind_counts
+        .get("parse")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let lex_count = kind_counts
+        .get("lex")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    assert!(
+        parse_count + lex_count > 0,
+        "malformed source should produce lex or parse diagnostics"
+    );
 
     std::fs::remove_dir_all(cwd).expect("failed to cleanup temp root");
 }

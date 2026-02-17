@@ -36,6 +36,7 @@ use daglang_exec_bridge::{
     execute_resolved_dag, makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks,
     makegen_entrypoint_mocks, resolve_lowered_dag,
 };
+use daglang_syntax::diagnostic::DiagnosticKind;
 use gunbc_exec::ExecutionMode;
 use gunbc_ir::Value;
 use serde::Deserialize;
@@ -489,17 +490,39 @@ fn render_modules_result_json(result: &PipelineResult) -> String {
         .iter()
         .map(|diagnostic| diagnostic.render())
         .collect::<Vec<_>>();
+    let diagnostics_detail = result
+        .diagnostics()
+        .iter()
+        .map(|diagnostic| {
+            json!({
+                "kind": diagnostic_kind_label(&diagnostic.kind),
+                "message": diagnostic.message.clone(),
+                "file": diagnostic.file.as_ref().map(|path| path.display().to_string()),
+                "line": diagnostic.line,
+                "column": diagnostic.column,
+                "rendered": diagnostic.render(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let diagnostic_kind_counts = json!({
+        "lex": result.diagnostics().iter().filter(|d| matches!(d.kind, DiagnosticKind::Lex)).count(),
+        "parse": result.diagnostics().iter().filter(|d| matches!(d.kind, DiagnosticKind::Parse)).count(),
+        "resolve": result.diagnostics().iter().filter(|d| matches!(d.kind, DiagnosticKind::Resolve)).count(),
+        "pipeline": result.diagnostics().iter().filter(|d| matches!(d.kind, DiagnosticKind::Pipeline)).count(),
+    });
     let Some(graph) = result.module_graph() else {
         return json!({
             "summary": {
                 "parsed_files": result.parsed_count(),
                 "module_count": 0,
                 "diagnostic_count": diagnostics.len(),
+                "diagnostic_kinds": diagnostic_kind_counts,
             },
             "parsed_files": result.parsed_count(),
             "module_order": [],
             "modules": [],
             "diagnostics": diagnostics,
+            "diagnostics_detail": diagnostics_detail,
         })
         .to_string();
     };
@@ -532,13 +555,24 @@ fn render_modules_result_json(result: &PipelineResult) -> String {
             "parsed_files": result.parsed_count(),
             "module_count": modules.len(),
             "diagnostic_count": diagnostics.len(),
+            "diagnostic_kinds": diagnostic_kind_counts,
         },
         "parsed_files": result.parsed_count(),
         "module_order": module_order,
         "modules": modules,
         "diagnostics": diagnostics,
+        "diagnostics_detail": diagnostics_detail,
     })
     .to_string()
+}
+
+fn diagnostic_kind_label(kind: &DiagnosticKind) -> &'static str {
+    match kind {
+        DiagnosticKind::Lex => "lex",
+        DiagnosticKind::Parse => "parse",
+        DiagnosticKind::Resolve => "resolve",
+        DiagnosticKind::Pipeline => "pipeline",
+    }
 }
 
 fn parse_output_format(command: &str, args: &[String]) -> Result<OutputFormat, String> {
