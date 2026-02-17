@@ -132,6 +132,7 @@ version = "0.1.0"
 dependencies = [
  "daglang-derive",
  "daglang-emit",
+ "daglang-exec-bridge",
  "daglang-lower",
  "daglang-resolve",
  "daglang-syntax",
@@ -157,6 +158,15 @@ version = "0.1.0"
 dependencies = [
  "daglang-derive",
  "daglang-lower",
+ "gunbc-ir",
+]
+
+[[package]]
+name = "daglang-exec-bridge"
+version = "0.1.0"
+dependencies = [
+ "daglang-lower",
+ "gunbc-exec",
  "gunbc-ir",
 ]
 

@@ -12,6 +12,7 @@ daglang-typecheck = { path = "../daglang-typecheck" }
 daglang-lower = { path = "../daglang-lower" }
 daglang-derive = { path = "../daglang-derive" }
 daglang-emit = { path = "../daglang-emit" }
+daglang-exec-bridge = { path = "../daglang-exec-bridge" }
 gunbc-ir = { path = "../../ir" }
 gunbc-exec = { path = "../../exec" }
 serde = { workspace = true, features = ["derive"] }
