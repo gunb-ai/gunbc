@@ -445,15 +445,35 @@ impl std::fmt::Display for LowerError {
 /// - type/service/resource/interface declarations remain metadata and are not
 ///   lowered into executable graph nodes yet.
 pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, None)
+}
+
+pub fn lower_typed_project_for_modules(
+    project: &TypedProject,
+    callable_modules: &HashSet<String>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, Some(callable_modules))
+}
+
+fn lower_typed_project_with_callable_scope(
+    project: &TypedProject,
+    callable_modules: Option<&HashSet<String>>,
+) -> Result<Dag<LoweredOp>, LowerError> {
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
     let mut endpoints_by_name = HashMap::<String, Option<LoweredEndpoint>>::new();
 
     for module in &project.modules {
         let module_name = module.module_path.join(".");
+        let include_callables = callable_modules
+            .map(|scope| scope.contains(&module_name))
+            .unwrap_or(true);
         for signature in &module.signatures {
             match signature {
                 TypedItemSignature::Fn(callable) => {
+                    if !include_callables {
+                        continue;
+                    }
                     let (node, endpoint) = lower_callable(callable, &module_name, CallableKind::Fn);
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -465,6 +485,9 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
                     builder.add_node(node);
                 }
                 TypedItemSignature::Func(callable) => {
+                    if !include_callables {
+                        continue;
+                    }
                     let (node, endpoint) =
                         lower_callable(callable, &module_name, CallableKind::Func);
                     register_endpoint(
@@ -477,6 +500,9 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
                     builder.add_node(node);
                 }
                 TypedItemSignature::Pattern(callable) => {
+                    if !include_callables {
+                        continue;
+                    }
                     let (node, endpoint) =
                         lower_callable(callable, &module_name, CallableKind::Pattern);
                     register_endpoint(
@@ -489,6 +515,9 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
                     builder.add_node(node);
                 }
                 TypedItemSignature::Pipeline { name, stages } => {
+                    if !include_callables {
+                        continue;
+                    }
                     let node_id = lowered_node_id(&module_name, name);
                     builder.add_node(Node::opaque(
                         node_id,
@@ -516,9 +545,15 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
         &endpoints_by_name,
     );
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
-    let service_registry = add_service_transport_triplets(&mut builder, project);
+    let service_registry = if callable_modules.is_some() {
+        let required_service_calls = collect_required_service_call_keys(project, callable_modules);
+        add_service_transport_triplets(&mut builder, project, Some(&required_service_calls))
+    } else {
+        add_service_transport_triplets(&mut builder, project, None)
+    };
     add_service_call_edges(&mut builder, project, &endpoints_by_full, &service_registry)?;
-    let resource_registry = add_resource_lifecycle_nodes(&mut builder, project);
+    let resource_registry =
+        add_resource_lifecycle_nodes(&mut builder, project, callable_modules);
     let known_uses_types = collect_known_uses_types(project);
     add_used_resource_edges(
         &mut builder,
@@ -1147,7 +1182,7 @@ fn add_dependency_edges(
                 continue;
             };
 
-            let mut calls = HashSet::new();
+            let mut calls = BTreeSet::new();
             collect_calls_from_stmts(stmts, &mut calls);
             for call in calls {
                 let Some(Some(source)) = endpoints_by_name.get(&call) else {
@@ -1537,9 +1572,41 @@ fn derive_service_call_metadata(
     }
 }
 
+fn collect_required_service_call_keys(
+    project: &TypedProject,
+    callable_modules: Option<&HashSet<String>>,
+) -> HashSet<String> {
+    let mut required = HashSet::new();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        if callable_modules
+            .map(|scope| !scope.contains(&module_name))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        for item in &module.ast.items {
+            let Some((_, stmts)) = item_callable_body(&item.node) else {
+                continue;
+            };
+            let mut calls = Vec::<ServiceCallSite>::new();
+            collect_service_calls_from_stmts(stmts, &mut calls);
+            for call in calls {
+                if let Some(keys) = service_call_lookup_keys(&call.path) {
+                    required.insert(keys[0].clone());
+                    required.insert(keys[1].clone());
+                    required.insert(keys[2].clone());
+                }
+            }
+        }
+    }
+    required
+}
+
 fn add_service_transport_triplets(
     builder: &mut DagBuilder,
     project: &TypedProject,
+    required_calls: Option<&HashSet<String>>,
 ) -> ServiceEndpointRegistry {
     let mut registry = ServiceEndpointRegistry::default();
     for module in &project.modules {
@@ -1550,6 +1617,23 @@ fn add_service_transport_triplets(
             };
 
             for operation in &service.operations {
+                if let Some(required_calls) = required_calls {
+                    let canonical = format!("{}.{}", service.name, operation.name);
+                    let service_tail = service
+                        .name
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(service.name.as_str());
+                    let short = format!("{service_tail}.{}", operation.name);
+                    let module_scoped =
+                        format!("{}.{}.{}", module_name, service.name, operation.name);
+                    if !required_calls.contains(&canonical)
+                        && !required_calls.contains(&short)
+                        && !required_calls.contains(&module_scoped)
+                    {
+                        continue;
+                    }
+                }
                 let service_metadata = derive_service_call_metadata(service, operation);
                 let suffix = sanitize_identifier(&format!(
                     "{module_name}_{}_{}",
@@ -2063,10 +2147,17 @@ fn insert_default_known_resource_types(known: &mut HashSet<String>) {
 fn add_resource_lifecycle_nodes(
     builder: &mut DagBuilder,
     project: &TypedProject,
+    callable_modules: Option<&HashSet<String>>,
 ) -> ResourceLifecycleRegistry {
     let mut registry = ResourceLifecycleRegistry::default();
     for module in &project.modules {
         let module_name = module.module_path.join(".");
+        if callable_modules
+            .map(|scope| !scope.contains(&module_name))
+            .unwrap_or(false)
+        {
+            continue;
+        }
         for item in &module.ast.items {
             let Item::ResourceDef(resource) = &item.node else {
                 continue;
@@ -2295,7 +2386,7 @@ fn item_callable_provides(item: &Item) -> Option<(&str, &[daglang_syntax::ast::P
     }
 }
 
-fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut HashSet<String>) {
+fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut BTreeSet<String>) {
     walk_stmts(stmts, &mut |expr| {
         if let Expr::Call(name, _) = expr {
             if should_track_call(name) {

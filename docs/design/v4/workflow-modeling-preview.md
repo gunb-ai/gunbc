@@ -31,19 +31,19 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## S3 — Tool Install Upsert (`tools.bootstrap`)
 
-- **Current status**: ⚠ lower-stage unresolved service call (`shell.Find.ListDirs`).
+- **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - service call resolution coverage for this module path.
+  - parity against legacy bootstrap builder shape is still pending.
 - **Next increments**:
-  - complete service endpoint lookup/resolution path for bootstrap service calls.
+  - add parity harness coverage for bootstrap workflow shape.
 
 ## S4 — Gist Snapshot (`tools.gist`)
 
-- **Current status**: ⚠ typecheck blocked by pattern output-shape mismatches (`upsert.outputs` / `transaction.outputs` field contracts).
+- **Current status**: ⚠ typecheck blocked by remaining strict type mismatches (`String?` vs `Any`, `CommitSha` vs `Any`, `Url` vs `Url @json`).
 - **Primary gap**:
-  - gist pattern composition currently diverges from expected pattern output contracts in strict single-file checks.
+  - gist signature contracts still diverge from strict typed service/path metadata surfaces.
 - **Next increments**:
-  - align gist pattern output field contracts with current `std.patterns` shape.
+  - align gist typed metadata contracts for optional refs and URL annotation handling.
   - then validate loop/SubDag modeling parity against builder shape.
 
 ## S5 — CI Pipeline (`pipelines.ci`)
@@ -80,27 +80,27 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## Clippy (`tools.clippy`)
 
-- **Current status**: ⚠ lower-stage unresolved service call (`cargo.Build.Clippy`).
+- **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - service op resolution for cargo service path in this module.
+  - parity against legacy clippy workflow shape is still pending.
 - **Next increments**:
-  - map/service-resolve cargo operations in lowering + bridge execution path.
+  - add clippy workflow parity harness and execution assertions.
 
 ## Deps (`tools.deps`)
 
-- **Current status**: ⚠ typecheck blocked by shared pattern output-shape mismatches (`upsert.outputs`/`transaction.outputs` field contracts).
+- **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - deps workflow still depends on stale pattern field assumptions in strict checks.
+  - parity against legacy deps workflow shape is still pending.
 - **Next increments**:
-  - migrate deps workflow call-sites to current `std.patterns` output contracts.
+  - add deps workflow parity harness and execution bridge assertions.
 
 ## Auth (`services.shell`)
 
-- **Current status**: ✅ service-only module now lowers transport triplets and emits obligations.
+- **Current status**: ⚠ lower-stage no-callable/no-pipeline terminal state (service-only module).
 - **Primary gap**:
-  - still lacks a direct executable callable entrypoint by design.
+  - no callable entrypoint by design in this file; cannot lower to executable DAG directly.
 - **Next increments**:
-  - validate caller workflows against this service module for parity and runtime bridge coverage.
+  - consume this service module from executable workflows and validate through caller parity tests.
 
 ## S8 — Infra Bootstrap (`infra.core`)
 

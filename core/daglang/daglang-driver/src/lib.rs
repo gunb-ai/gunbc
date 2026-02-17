@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use daglang_derive::{derive_artifacts, DerivedArtifacts};
 use daglang_emit::{emit_rust_bundle, EmissionBundle};
-use daglang_lower::{lower_typed_project, LoweredOp};
+use daglang_lower::{lower_typed_project, lower_typed_project_for_modules, LoweredOp};
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
@@ -70,6 +70,7 @@ pub struct CheckOutput {
 
 pub fn compile_from_context(context: &DriverContext) -> Result<CompileOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
+    let callable_scope = callable_scope_for_context(context, &module_graph);
     if context.target_file.is_none() {
         validate_module_path_consistency(&module_graph, &context.roots)?;
     }
@@ -98,7 +99,12 @@ pub fn compile_from_context(context: &DriverContext) -> Result<CompileOutput, Co
             }
         }
     };
-    let lowered = lower_typed_project(&typed).map_err(|error| format!("lower error: {error}"))?;
+    let lowered = if let Some(scope) = callable_scope.as_ref() {
+        lower_typed_project_for_modules(&typed, scope)
+    } else {
+        lower_typed_project(&typed)
+    }
+    .map_err(|error| format!("lower error: {error}"))?;
     let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
     let emitted =
         emit_rust_bundle(&lowered, &derived).map_err(|error| format!("emit error: {error}"))?;
@@ -194,6 +200,21 @@ fn discover_single_file_module_graph(target_file: &PathBuf) -> Result<ModuleGrap
             dependencies: Vec::new(),
         }],
     })
+}
+
+fn callable_scope_for_context(
+    context: &DriverContext,
+    module_graph: &ModuleGraph,
+) -> Option<HashSet<String>> {
+    let target_file = context.target_file.as_ref()?;
+    let target_module = module_graph
+        .modules
+        .iter()
+        .find(|module| module.path == *target_file)
+        .or_else(|| module_graph.modules.first())?;
+    let mut scope = HashSet::new();
+    scope.insert(target_module.module_path.join("."));
+    Some(scope)
 }
 
 fn prune_module_graph_to_target(
