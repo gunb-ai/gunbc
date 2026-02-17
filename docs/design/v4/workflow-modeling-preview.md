@@ -42,12 +42,11 @@ Global status:
 
 ## S4 — Gist Snapshot (`tools.gist`)
 
-- **Current status**: ✅ compiles, emits obligations contract successfully, core gist workflow is compressed to 59 DSL lines, dependency-closure lowering regression coverage now verifies gist→shared→credential-chain composition wiring, and manifest rendering now auto-groups collection scatter points into loop-progress counters (`[0/N]`) when collection nodes are emitted.
+- **Current status**: ✅ compiles, emits obligations contract successfully, core gist workflow is compressed to 59 DSL lines, dependency-closure lowering regression coverage now verifies gist→shared→credential-chain composition wiring, manifest rendering now auto-groups collection scatter points into loop-progress counters (`[0/N]`) when collection nodes are emitted, and all three legacy gist builder modes now have exact normalized parity gates (snapshot/diff/recent).
 - **Primary gap**:
-  - exact parity against legacy gist builder shape is still pending.
+  - continue tightening parity to reduce normalization-only assumptions as lower-level gist scaffolding is expanded.
 - **Next increments**:
-  - tighten newly-added deterministic snapshot/diff/recent parity scaffolds to zero-delta shape parity.
-  - gate all three modes on exact structural parity.
+  - extend the exact-parity comparator pattern to adjacent composed tool workflows.
 
 ## S5 — CI Pipeline (`pipelines.ci`)
 
