@@ -12,5 +12,9 @@
     "infra.azure.resources",
     "infra.azure.config",
     "tools.gist"
-  ]
+  ],
+  "expand_contract": {
+    "status": "typecheck_error",
+    "error_contains": "undefined type `NonEmptyStr (in store_artifact.key)`"
+  }
 }

@@ -7,5 +7,9 @@
     "std.resources",
     "services.shell",
     "shared.dag_util"
-  ]
+  ],
+  "expand_contract": {
+    "status": "lower_error",
+    "error_contains": "unresolved service call `shell.Find.ListDirs`"
+  }
 }

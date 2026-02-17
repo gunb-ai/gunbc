@@ -8,5 +8,9 @@
     "std.resources",
     "std.types",
     "shared.gist_modes"
-  ]
+  ],
+  "expand_contract": {
+    "status": "typecheck_error",
+    "error_contains": "undefined type `CommitSha"
+  }
 }

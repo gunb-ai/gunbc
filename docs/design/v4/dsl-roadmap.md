@@ -1685,7 +1685,7 @@ The effort lands cleanly when all six criteria are met:
 - [x] Implement parser for `func` + `pattern` + `uses` syntax — *parser handles full language surface*
 - [x] Implement `Lower` phase producing gunbc IR — *`daglang-lower` produces `Dag<LoweredOp>`*
 - [ ] Run parity harness against existing `build_makegen_graph()` — *Workstream F*
-- [ ] Verify golden fixture passes for compiled `.dag` output — *Workstream C*
+- [x] Verify golden fixture passes for compiled `.dag` output — *Workstream C*
 
 ### Priority 3: Workflow contracts (Part 0, ongoing)
 
@@ -1708,10 +1708,15 @@ Current golden fixture baseline (`core/daglang/daglang-cli/tests/workflow_contra
 | **S8** | `infra.core` | `s8_infra_bootstrap.json` |
 | **S9** | `examples.deployment` | `s9_cross_cloud_deployment.json` |
 
+Each fixture now carries:
+- normalized module snapshot (`module`, `path`, `items`, `dependencies`)
+- `expand_contract` status (`success`, `typecheck_error`, or `lower_error`)
+- stable `error_contains` sentinel for expected non-success workflows
+
 ### Standing gates (must not regress)
 
 - [x] I/O only at boundaries (clippy guardrails enforce transport-only I/O)
-- [ ] DryRun interception works for compiled `.dag` output
+- [x] DryRun interception works for compiled `.dag` output
 - [ ] Generated tests derived from DAG structure (4-bucket model)
 - [x] No hidden env access (resource declarations required; CI detection hardened against spurious env vars)
 

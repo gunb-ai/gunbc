@@ -2,5 +2,9 @@
   "module": "examples.abstract_services",
   "path": "examples/abstract_services.dag",
   "items": 12,
-  "dependencies": []
+  "dependencies": [],
+  "expand_contract": {
+    "status": "typecheck_error",
+    "error_contains": "`gcs.Storage` does not match `Storage.Put` contract"
+  }
 }

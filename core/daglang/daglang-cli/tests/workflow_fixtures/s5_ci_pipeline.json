@@ -13,5 +13,9 @@
     "tools.deps",
     "std.types",
     "shared.dag_util"
-  ]
+  ],
+  "expand_contract": {
+    "status": "success",
+    "error_contains": null
+  }
 }

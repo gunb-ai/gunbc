@@ -2,5 +2,9 @@
   "module": "infra.core",
   "path": "infra/core.dag",
   "items": 10,
-  "dependencies": []
+  "dependencies": [],
+  "expand_contract": {
+    "status": "success",
+    "error_contains": null
+  }
 }

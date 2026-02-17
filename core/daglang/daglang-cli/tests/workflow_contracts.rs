@@ -3,7 +3,7 @@
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 struct WorkflowFixture {
     scenario: &'static str,
@@ -105,6 +105,62 @@ fn normalize_module_fixture(module: &Value) -> Value {
     })
 }
 
+fn expected_module_snapshot(fixture: &Value) -> Value {
+    let module_name = fixture
+        .get("module")
+        .and_then(Value::as_str)
+        .expect("fixture module field should be a string");
+    let path = fixture
+        .get("path")
+        .and_then(Value::as_str)
+        .expect("fixture path field should be a string");
+    let items = fixture
+        .get("items")
+        .and_then(Value::as_u64)
+        .expect("fixture items field should be an integer");
+    let dependencies = fixture
+        .get("dependencies")
+        .and_then(Value::as_array)
+        .expect("fixture dependencies field should be an array")
+        .iter()
+        .map(|dep| {
+            dep.as_str()
+                .expect("fixture dependency entries should be strings")
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "module": module_name,
+        "path": path,
+        "items": items,
+        "dependencies": dependencies,
+    })
+}
+
+fn classify_expand_status(output: &Output) -> &'static str {
+    if output.status.success() {
+        return "success";
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}\n{stdout}");
+    if combined.contains("typecheck errors") {
+        return "typecheck_error";
+    }
+    if combined.contains("lower error") {
+        return "lower_error";
+    }
+    "error"
+}
+
+fn combined_output(output: &Output) -> String {
+    format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout)
+    )
+}
+
 fn load_fixture(path: &Path) -> Value {
     let raw = std::fs::read_to_string(path)
         .unwrap_or_else(|err| panic!("failed to read fixture {}: {err}", path.display()));
@@ -147,10 +203,59 @@ fn workflow_module_fixtures_match_golden_snapshots() {
             });
         let actual = normalize_module_fixture(module_entry);
         let expected = load_fixture(&fixture_dir().join(fixture.fixture_file));
+        let expected_snapshot = expected_module_snapshot(&expected);
         assert_eq!(
-            actual, expected,
+            actual, expected_snapshot,
             "workflow fixture mismatch for scenario {} module {}",
             fixture.scenario, fixture.module
         );
+    }
+}
+
+#[test]
+fn workflow_expand_contracts_match_golden_snapshots() {
+    let root = workspace_root();
+    for fixture in WORKFLOW_FIXTURES {
+        let expected = load_fixture(&fixture_dir().join(fixture.fixture_file));
+        let relative_path = expected
+            .get("path")
+            .and_then(Value::as_str)
+            .expect("fixture path should be present");
+        let expected_expand = expected
+            .get("expand_contract")
+            .expect("fixture should include expand_contract object");
+        let expected_status = expected_expand
+            .get("status")
+            .and_then(Value::as_str)
+            .expect("expand_contract.status should be a string");
+        let output = Command::new(daglang_bin())
+            .arg("expand")
+            .arg(format!("dsl/{relative_path}"))
+            .current_dir(&root)
+            .output()
+            .unwrap_or_else(|err| {
+                panic!(
+                    "failed to run daglang expand for scenario {} ({}): {err}",
+                    fixture.scenario, relative_path
+                )
+            });
+        let actual_status = classify_expand_status(&output);
+        assert_eq!(
+            actual_status, expected_status,
+            "unexpected expand status for scenario {} module {}",
+            fixture.scenario, fixture.module
+        );
+        if let Some(expected_substring) = expected_expand
+            .get("error_contains")
+            .and_then(Value::as_str)
+        {
+            let output_text = combined_output(&output);
+            assert!(
+                output_text.contains(expected_substring),
+                "expected expand output for scenario {} to contain `{expected_substring}`, got: {}",
+                fixture.scenario,
+                output_text
+            );
+        }
     }
 }
