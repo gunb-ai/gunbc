@@ -31224,6 +31224,50 @@ fn run_command_supports_equals_output_flag_in_real_mode() {
 }
 
 #[test]
+fn run_command_supports_equals_output_flag_with_dash_prefixed_path_in_dry_run() {
+    let output_path = std::env::temp_dir().join(format!(
+        "--daglang_run_dash_output_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale dash-prefixed output");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .arg("--dry-run")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with dash-prefixed --output=<path>");
+
+    assert!(
+        output.status.success(),
+        "run with dash-prefixed --output=<path> should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "run should report dry-run mode with dash-prefixed output path: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "dry-run with dash-prefixed output path should report written=false: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "dry-run should not write dash-prefixed output file at {}",
+        output_path.display()
+    );
+}
+
+#[test]
 fn run_command_check_mode_preserves_existing_file_and_reports_not_written() {
     let output_path = unique_temp_output_file("run_check_mode");
     if output_path.exists() {

@@ -898,6 +898,26 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_accepts_equals_output_path_with_dash_prefix() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output=--generated.mk".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = parse_run_args(&args).expect("parse should succeed");
+        assert_eq!(
+            parsed,
+            RunArgs {
+                file: "dsl/tools/makegen.dag".to_string(),
+                output_path: "--generated.mk".to_string(),
+                dry_run: false,
+                check_mode: false,
+            }
+        );
+    }
+
+    #[test]
     fn parse_run_args_rejects_conflicting_dry_run_and_check_mode_flags() {
         let args = vec![
             "daglang".to_string(),
