@@ -1670,12 +1670,12 @@ The effort lands cleanly when all six criteria are met:
 
 > The #1 structural blocker is the ProgressManifest contract mismatch. Fix this first.
 
-- [ ] **Workstream A (Manifest contract):** Expand `ProgressManifest` to match the roadmap contract; add `dag manifest --format json`
-- [ ] **Workstream C (Parity + snapshots):** Canonical JSON serialization + IR snapshot tests for at least `tools/makegen.dag`
-- [ ] **Workstream B (Viz + expand):** ASCII default for `dag viz`; golden tests for `dag expand`
+- [x] **Workstream A (Manifest contract):** Expand `ProgressManifest` to match the roadmap contract; add `dag manifest --format json`
+- [x] **Workstream C (Parity + snapshots):** Canonical JSON serialization + IR snapshot tests for at least `tools/makegen.dag`
+- [x] **Workstream B (Viz + expand):** ASCII default for `dag viz`; golden tests for `dag expand`
 - [x] **Workstream E (Model preview commands):** `dag show-triplets` and `dag obligations` as standalone commands
-- [ ] **Workstream F (Makegen parity):** Compile `tools/makegen.dag` → compare against `build_makegen_graph()` using parity harness
-- [ ] **Workstream D (Discovery):** Config-driven roots; enriched `dag modules` output
+- [ ] **Workstream F (Makegen parity):** Compile `tools/makegen.dag` → compare against `build_makegen_graph()` using parity harness *(blocked by `gunbc-dag` MSRV dependency chain on this toolchain)*
+- [x] **Workstream D (Discovery):** Config-driven roots; enriched `dag modules` output
 
 ### Priority 2: Phase 1 makegen (S1)
 
