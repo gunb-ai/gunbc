@@ -11477,6 +11477,49 @@ fn obligations_command_directory_named_uppercase_dag_extension_is_invalid_single
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[test]
+fn obligations_command_curdir_suffix_directory_named_dag_extension_is_invalid_single_file_target() {
+    let root = unique_temp_dir("obligations_curdir_suffix_directory_named_dag_extension");
+    let dag_dir = root.join("bundle.dag");
+    std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .dag directory root");
+    std::fs::write(
+        dag_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in .dag directory");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "obligations",
+        &root,
+        "./bundle.dag",
+        &dag_dir,
+        None,
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn obligations_command_curdir_suffix_directory_named_mixed_case_dag_extension_is_invalid_single_file_target(
+) {
+    let root =
+        unique_temp_dir("obligations_curdir_suffix_directory_named_mixed_case_dag_extension");
+    let dag_dir = root.join("bundle.DaG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory root");
+    std::fs::write(dag_dir.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DaG directory");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "obligations",
+        &root,
+        "./bundle.DaG",
+        &dag_dir,
+        Some("broken.dag:2:3"),
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[cfg(unix)]
 #[test]
 fn obligations_command_symlink_directory_named_dag_extension_is_invalid_single_file_target() {
@@ -11877,6 +11920,50 @@ fn show_triplets_command_directory_named_mixed_case_dag_extension_is_invalid_sin
         "show-triplets",
         &root,
         "bundle.DaG",
+        &dag_dir,
+        Some("broken.dag:2:3"),
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn show_triplets_command_curdir_suffix_directory_named_dag_extension_is_invalid_single_file_target(
+) {
+    let root = unique_temp_dir("show_triplets_curdir_suffix_directory_named_dag_extension");
+    let dag_dir = root.join("bundle.dag");
+    std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .dag directory root");
+    std::fs::write(
+        dag_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in .dag directory");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "show-triplets",
+        &root,
+        "./bundle.dag",
+        &dag_dir,
+        None,
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn show_triplets_command_curdir_suffix_directory_named_uppercase_dag_extension_is_invalid_single_file_target(
+) {
+    let root =
+        unique_temp_dir("show_triplets_curdir_suffix_directory_named_uppercase_dag_extension");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    std::fs::write(dag_dir.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DAG directory");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "show-triplets",
+        &root,
+        "./bundle.DAG",
         &dag_dir,
         Some("broken.dag:2:3"),
     );
