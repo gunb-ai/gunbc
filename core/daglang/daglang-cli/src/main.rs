@@ -497,4 +497,37 @@ mod tests {
 
         std::fs::remove_dir_all(&root).expect("failed to cleanup temp fixture");
     }
+
+    #[test]
+    fn build_check_pipeline_context_treats_uppercase_dag_named_directory_as_root() {
+        let root = unique_temp_dir("check_context_uppercase_dag_dir");
+        let cwd = root.join("workspace");
+        let dag_dir = cwd.join("bundle.DAG");
+        std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory fixture");
+        let input = "bundle.DAG".to_string();
+
+        let context = super::build_check_pipeline_context(&cwd, Some(&input));
+
+        assert_eq!(context.target_file, None);
+        assert_eq!(context.roots, vec![dag_dir.clone()]);
+
+        std::fs::remove_dir_all(&root).expect("failed to cleanup temp fixture");
+    }
+
+    #[test]
+    fn build_check_pipeline_context_treats_mixed_case_dag_named_directory_with_trailing_slash_as_root(
+    ) {
+        let root = unique_temp_dir("check_context_mixed_case_dag_dir");
+        let cwd = root.join("workspace");
+        let dag_dir = cwd.join("bundle.DaG");
+        std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory fixture");
+        let input = "bundle.DaG/".to_string();
+
+        let context = super::build_check_pipeline_context(&cwd, Some(&input));
+
+        assert_eq!(context.target_file, None);
+        assert_eq!(context.roots, vec![dag_dir.clone()]);
+
+        std::fs::remove_dir_all(&root).expect("failed to cleanup temp fixture");
+    }
 }
