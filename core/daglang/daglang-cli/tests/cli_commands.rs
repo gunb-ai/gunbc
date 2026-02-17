@@ -30761,8 +30761,8 @@ fn run_check_mode_with_unwritable_output_path_reports_not_written() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("mode=real"),
-        "check-mode run should still report real mode summary: {stdout}"
+        stdout.contains("mode=check-mode"),
+        "check-mode run should report check-mode summary: {stdout}"
     );
     assert!(
         stdout.contains("written=false"),
@@ -30795,8 +30795,8 @@ fn run_check_mode_with_directory_output_path_reports_not_written() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("mode=real"),
-        "check-mode directory run should still report real mode summary: {stdout}"
+        stdout.contains("mode=check-mode"),
+        "check-mode directory run should report check-mode summary: {stdout}"
     );
     assert!(
         stdout.contains("written=false"),
@@ -30939,8 +30939,8 @@ fn run_command_check_mode_preserves_existing_file_and_reports_not_written() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("mode=real"),
-        "check-mode run should still report real mode: {stdout}"
+        stdout.contains("mode=check-mode"),
+        "check-mode run should report check-mode mode: {stdout}"
     );
     assert!(
         stdout.contains("written=false"),

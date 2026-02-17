@@ -285,7 +285,7 @@ fn main() {
                         "Run completed: nodes={}, output={}, written={written}, mode={}",
                         log.entries.len(),
                         run_args.output_path,
-                        if run_args.dry_run { "dry-run" } else { "real" }
+                        run_mode_label(&run_args)
                     );
                 }
                 Err(error) => {
@@ -299,6 +299,16 @@ fn main() {
             exit_usage("<command> [args...]");
         }
     }
+}
+
+fn run_mode_label(run_args: &RunArgs) -> &'static str {
+    if run_args.dry_run {
+        return "dry-run";
+    }
+    if run_args.check_mode {
+        return "check-mode";
+    }
+    "real"
 }
 
 fn run_written_from_log(log: &gunbc_exec::ExecutionLog) -> bool {
@@ -541,7 +551,8 @@ fn exit_usage(command: &str) -> ! {
 mod tests {
     use super::{
         parse_manifest_args, parse_obligations_args, parse_run_args, parse_show_triplets_args,
-        parse_viz_args, run_written_from_log, RunArgs, VizArgs, VizFormat, VizTarget,
+        parse_viz_args, run_mode_label, run_written_from_log, RunArgs, VizArgs, VizFormat,
+        VizTarget,
     };
     use crate::path_utils::{default_root_from_cwd, has_dag_extension, normalize_path_components};
     use daglang_cli::compile::ManifestFormat;
@@ -879,6 +890,27 @@ mod tests {
             error.contains("--dry-run and --check-mode cannot be used together"),
             "expected clear mode conflict error, got: {error}"
         );
+    }
+
+    #[test]
+    fn run_mode_label_distinguishes_real_dry_run_and_check_mode() {
+        let real = RunArgs {
+            file: "dsl/tools/makegen.dag".to_string(),
+            output_path: "Makefile".to_string(),
+            dry_run: false,
+            check_mode: false,
+        };
+        let dry_run = RunArgs {
+            dry_run: true,
+            ..real.clone()
+        };
+        let check_mode = RunArgs {
+            check_mode: true,
+            ..real.clone()
+        };
+        assert_eq!(run_mode_label(&real), "real");
+        assert_eq!(run_mode_label(&dry_run), "dry-run");
+        assert_eq!(run_mode_label(&check_mode), "check-mode");
     }
 
     #[test]
