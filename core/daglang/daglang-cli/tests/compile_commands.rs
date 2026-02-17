@@ -11437,6 +11437,86 @@ fn obligations_command_relative_and_absolute_targets_are_equivalent() {
 }
 
 #[test]
+fn obligations_command_json_curdir_suffix_target_matches_plain_relative_output() {
+    let plain = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run plain-target daglang obligations --format json");
+    assert!(
+        plain.status.success(),
+        "plain-target obligations --format json failed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("./dsl/tools/makegen.dag")
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run curdir-suffix-target daglang obligations --format json");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix-target obligations --format json failed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix obligations json stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix obligations json stderr should match"
+    );
+}
+
+#[test]
+fn obligations_command_json_relative_and_absolute_targets_are_equivalent() {
+    let relative = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run relative-target daglang obligations --format json");
+    assert!(
+        relative.status.success(),
+        "relative-target obligations --format json failed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run absolute-target daglang obligations --format json");
+    assert!(
+        absolute.status.success(),
+        "absolute-target obligations --format json failed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute obligations json stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute obligations json stderr should match"
+    );
+}
+
+#[test]
 fn obligations_command_directory_named_dag_extension_is_invalid_single_file_target() {
     let root = unique_temp_dir("obligations_directory_named_dag_extension");
     let dag_dir = root.join("bundle.dag");
@@ -11883,6 +11963,86 @@ fn show_triplets_command_relative_and_absolute_targets_are_equivalent() {
     assert_eq!(
         relative.stderr, absolute.stderr,
         "relative and absolute show-triplets stderr should match"
+    );
+}
+
+#[test]
+fn show_triplets_command_json_curdir_suffix_target_matches_plain_relative_output() {
+    let plain = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run plain-target daglang show-triplets --format json");
+    assert!(
+        plain.status.success(),
+        "plain-target show-triplets --format json failed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("./dsl/tools/makegen.dag")
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run curdir-suffix-target daglang show-triplets --format json");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix-target show-triplets --format json failed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix show-triplets json stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix show-triplets json stderr should match"
+    );
+}
+
+#[test]
+fn show_triplets_command_json_relative_and_absolute_targets_are_equivalent() {
+    let relative = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run relative-target daglang show-triplets --format json");
+    assert!(
+        relative.status.success(),
+        "relative-target show-triplets --format json failed: {}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+
+    let absolute = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run absolute-target daglang show-triplets --format json");
+    assert!(
+        absolute.status.success(),
+        "absolute-target show-triplets --format json failed: {}",
+        String::from_utf8_lossy(&absolute.stderr)
+    );
+
+    assert_eq!(
+        relative.stdout, absolute.stdout,
+        "relative and absolute show-triplets json stdout should match"
+    );
+    assert_eq!(
+        relative.stderr, absolute.stderr,
+        "relative and absolute show-triplets json stderr should match"
     );
 }
 
