@@ -25,6 +25,13 @@ fn expected_makegen_manifest_json_snapshot() -> String {
     )
 }
 
+fn expected_makegen_expand_snapshot() -> String {
+    format!(
+        "{}\n\n",
+        include_str!("snapshots/makegen_expand.txt").trim_end_matches('\n')
+    )
+}
+
 fn unique_temp_file(name: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -11112,6 +11119,26 @@ fn expand_command_shows_lowered_nodes_and_edges() {
     assert!(stdout.contains("Nodes:"));
     assert!(stdout.contains("tools.makegen::render_makefile"));
     assert!(stdout.contains("tools.makegen::makegen"));
+}
+
+#[test]
+fn expand_command_makegen_output_matches_snapshot() {
+    let output = Command::new(daglang_bin())
+        .arg("expand")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang expand");
+
+    assert!(
+        output.status.success(),
+        "expand command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected_makegen_expand_snapshot());
 }
 
 #[test]
