@@ -31833,6 +31833,64 @@ fn run_command_supports_equals_output_flag_with_dash_prefixed_path_in_real_mode(
 }
 
 #[test]
+fn run_command_real_mode_dash_prefixed_equals_output_reports_not_written_when_output_is_unchanged() {
+    let output_path = std::env::temp_dir().join(format!(
+        "--daglang_run_dash_output_real_unchanged_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    if output_path.exists() {
+        std::fs::remove_file(&output_path)
+            .expect("failed to remove stale unchanged real-mode dash-prefixed output");
+    }
+
+    let first_output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first real-mode dash-prefixed --output=<path> run");
+    assert!(
+        first_output.status.success(),
+        "first real-mode dash-prefixed --output=<path> run should succeed: {}",
+        String::from_utf8_lossy(&first_output.stderr)
+    );
+    let first_stdout = String::from_utf8_lossy(&first_output.stdout);
+    assert!(
+        first_stdout.contains("written=true"),
+        "first real-mode dash-prefixed --output=<path> run should report written=true: {first_stdout}"
+    );
+
+    let second_output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second real-mode dash-prefixed --output=<path> run");
+    assert!(
+        second_output.status.success(),
+        "second real-mode dash-prefixed --output=<path> run should succeed: {}",
+        String::from_utf8_lossy(&second_output.stderr)
+    );
+    let second_stdout = String::from_utf8_lossy(&second_output.stdout);
+    assert!(
+        second_stdout.contains("mode=real"),
+        "second real-mode dash-prefixed --output=<path> run should report mode=real: {second_stdout}"
+    );
+    assert!(
+        second_stdout.contains("written=false"),
+        "second real-mode dash-prefixed --output=<path> run should report written=false when output is unchanged: {second_stdout}"
+    );
+    std::fs::remove_file(&output_path)
+        .expect("failed to clean up unchanged real-mode dash-prefixed output");
+}
+
+#[test]
 fn run_command_check_mode_preserves_existing_file_and_reports_not_written() {
     let output_path = unique_temp_output_file("run_check_mode");
     if output_path.exists() {
