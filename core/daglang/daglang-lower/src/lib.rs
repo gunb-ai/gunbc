@@ -3748,6 +3748,129 @@ func run_azure() -> { ok: Bool } uses store: ObjectStorage(cloud: AzureConfig) {
     }
 
     #[test]
+    fn store_artifact_portability_wires_gcp_aws_and_azure_resources() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/examples/portability.dag",
+            r#"module examples.portability
+interface ObjectStorage {
+  capability write {
+    input { key: String, content: String }
+    output { ok: Bool }
+  }
+}
+resource GcsBucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability write {
+    input { key: String, content: String }
+    output { ok: Bool }
+  }
+}
+resource S3Bucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability write {
+    input { key: String, content: String }
+    output { ok: Bool }
+  }
+}
+resource BlobContainer implements ObjectStorage {
+  acquire { let ready = true }
+  capability write {
+    input { key: String, content: String }
+    output { ok: Bool }
+  }
+}
+func store_artifact_gcp(key: String, content: String) -> { ok: Bool } uses store: ObjectStorage(cloud: GcpConfig) {
+  result = store.write(key: key, content: content)
+  return { ok: result.ok }
+}
+func store_artifact_aws(key: String, content: String) -> { ok: Bool } uses store: ObjectStorage(cloud: AwsConfig) {
+  result = store.write(key: key, content: content)
+  return { ok: result.ok }
+}
+func store_artifact_azure(key: String, content: String) -> { ok: Bool } uses store: ObjectStorage(cloud: AzureConfig) {
+  result = store.write(key: key, content: content)
+  return { ok: result.ok }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        for (resource, target) in [
+            ("GcsBucket", "examples.portability::store_artifact_gcp"),
+            ("S3Bucket", "examples.portability::store_artifact_aws"),
+            (
+                "BlobContainer",
+                "examples.portability::store_artifact_azure",
+            ),
+        ] {
+            let acquire = format!("acquire_resource_examples_portability_{resource}");
+            assert!(
+                dag.edges.iter().any(|edge| {
+                    edge.from_node.0 == acquire
+                        && edge.from_port.0 == "resource_handle"
+                        && edge.to_node.0 == target
+                        && edge.to_port.0 == "__deps"
+                }),
+                "expected provider-specific resource wiring for {target}"
+            );
+        }
+    }
+
+    #[test]
+    fn cross_provider_auth_calls_resolve_all_credential_chains() {
+        let typed = typed_project_from_sources(&[
+            (
+                "dsl/cloud/gcp/credential.dag",
+                r#"module cloud.gcp.credential
+func acquire_gcp_secret() -> { token: String } {
+  return { token: "gcp" }
+}"#,
+            ),
+            (
+                "dsl/cloud/aws/credential.dag",
+                r#"module cloud.aws.credential
+func acquire_aws_secret() -> { token: String } {
+  return { token: "aws" }
+}"#,
+            ),
+            (
+                "dsl/cloud/azure/credential.dag",
+                r#"module cloud.azure.credential
+func acquire_azure_secret() -> { token: String } {
+  return { token: "azure" }
+}"#,
+            ),
+            (
+                "dsl/examples/auth.dag",
+                r#"module examples.auth
+import cloud.gcp.credential { acquire_gcp_secret }
+import cloud.aws.credential { acquire_aws_secret }
+import cloud.azure.credential { acquire_azure_secret }
+
+func cross_provider_auth() -> { ok: Bool } {
+  gcp = acquire_gcp_secret()
+  aws = acquire_aws_secret()
+  azure = acquire_azure_secret()
+  return { ok: true }
+}"#,
+            ),
+        ]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let caller = "examples.auth::cross_provider_auth";
+        for callee in [
+            "cloud.gcp.credential::acquire_gcp_secret",
+            "cloud.aws.credential::acquire_aws_secret",
+            "cloud.azure.credential::acquire_azure_secret",
+        ] {
+            assert!(
+                dag.edges
+                    .iter()
+                    .any(|edge| edge.from_node.0 == callee && edge.to_node.0 == caller),
+                "expected dependency edge from {callee} into cross-provider auth caller"
+            );
+        }
+    }
+
+    #[test]
     fn interface_contract_annotations_lower_to_verification_nodes_for_implementors() {
         let typed = typed_project_from_sources(&[(
             "dsl/infra/contracts.dag",
