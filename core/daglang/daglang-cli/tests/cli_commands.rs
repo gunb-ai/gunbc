@@ -16882,25 +16882,52 @@ fn modules_command_json_format_emits_machine_readable_summary() {
     );
     let parsed: Value =
         serde_json::from_slice(&output.stdout).expect("modules json output should parse");
+    let summary = parsed
+        .get("summary")
+        .expect("summary should be present in modules json output");
     let parsed_files = parsed
         .get("parsed_files")
         .and_then(Value::as_u64)
         .expect("parsed_files should be present");
+    assert_eq!(
+        summary.get("parsed_files").and_then(Value::as_u64),
+        Some(parsed_files),
+        "summary parsed_files should match top-level parsed_files"
+    );
     assert!(parsed_files > 0, "parsed_files should be positive");
     let modules = parsed
         .get("modules")
         .and_then(Value::as_array)
         .expect("modules array should be present");
     assert!(!modules.is_empty(), "modules array should not be empty");
+    assert_eq!(
+        summary.get("module_count").and_then(Value::as_u64),
+        Some(modules.len() as u64),
+        "summary module_count should match modules length"
+    );
     let first = modules.first().expect("modules should contain entries");
     assert!(first.get("module").and_then(Value::as_str).is_some());
     assert!(first.get("path").and_then(Value::as_str).is_some());
     assert!(first.get("items").and_then(Value::as_u64).is_some());
     assert!(first.get("dependencies").and_then(Value::as_array).is_some());
+    let module_order = parsed
+        .get("module_order")
+        .and_then(Value::as_array)
+        .expect("module_order should be present");
+    assert_eq!(
+        module_order.len(),
+        modules.len(),
+        "module_order should track modules in dependency order"
+    );
     let diagnostics = parsed
         .get("diagnostics")
         .and_then(Value::as_array)
         .expect("diagnostics should be an array");
+    assert_eq!(
+        summary.get("diagnostic_count").and_then(Value::as_u64),
+        Some(diagnostics.len() as u64),
+        "summary diagnostic_count should match diagnostics length"
+    );
     assert!(
         diagnostics.is_empty(),
         "clean dsl corpus should not emit module diagnostics"

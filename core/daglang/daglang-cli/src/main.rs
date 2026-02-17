@@ -484,18 +484,30 @@ fn parse_modules_args(args: &[String]) -> Result<(Option<String>, OutputFormat),
 }
 
 fn render_modules_result_json(result: &PipelineResult) -> String {
+    let diagnostics = result
+        .diagnostics()
+        .iter()
+        .map(|diagnostic| diagnostic.render())
+        .collect::<Vec<_>>();
     let Some(graph) = result.module_graph() else {
         return json!({
+            "summary": {
+                "parsed_files": result.parsed_count(),
+                "module_count": 0,
+                "diagnostic_count": diagnostics.len(),
+            },
             "parsed_files": result.parsed_count(),
+            "module_order": [],
             "modules": [],
-            "diagnostics": result
-                .diagnostics()
-                .iter()
-                .map(|diagnostic| diagnostic.render())
-                .collect::<Vec<_>>(),
+            "diagnostics": diagnostics,
         })
         .to_string();
     };
+    let module_order = graph
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
+        .collect::<Vec<_>>();
     let modules = graph
         .modules
         .iter()
@@ -516,13 +528,15 @@ fn render_modules_result_json(result: &PipelineResult) -> String {
         })
         .collect::<Vec<_>>();
     json!({
+        "summary": {
+            "parsed_files": result.parsed_count(),
+            "module_count": modules.len(),
+            "diagnostic_count": diagnostics.len(),
+        },
         "parsed_files": result.parsed_count(),
+        "module_order": module_order,
         "modules": modules,
-        "diagnostics": result
-            .diagnostics()
-            .iter()
-            .map(|diagnostic| diagnostic.render())
-            .collect::<Vec<_>>(),
+        "diagnostics": diagnostics,
     })
     .to_string()
 }
