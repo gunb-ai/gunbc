@@ -30764,6 +30764,37 @@ fn run_with_double_dash_multiple_inputs_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_double_dash_file_then_flag_like_token_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--dry-run")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with flag-like second positional token after --");
+
+    assert!(
+        !output.status.success(),
+        "run with -- and flag-like second positional token should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with -- and flag-like second positional token should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run takes exactly one <file.dag> input"),
+        "run should report single-input constraint for flag-like second positional token: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for flag-like second positional token after --: {stderr}"
+    );
+}
+
+#[test]
 fn run_with_conflicting_dry_run_and_check_mode_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
