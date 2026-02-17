@@ -521,6 +521,18 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
                     let value = args
                         .get(index + 1)
                         .ok_or_else(|| "--output requires a path".to_string())?;
+                    if value == "--" {
+                        let escaped_value = args
+                            .get(index + 2)
+                            .ok_or_else(|| "--output requires a non-empty path".to_string())?;
+                        if escaped_value.is_empty() {
+                            return Err("--output requires a non-empty path".to_string());
+                        }
+                        output_path = escaped_value.clone();
+                        has_output_path = true;
+                        index += 3;
+                        continue;
+                    }
                     if value.is_empty() || value.starts_with("--") {
                         return Err("--output requires a non-empty path".to_string());
                     }
@@ -1609,6 +1621,44 @@ mod tests {
         assert!(
             error.contains("run accepts at most one --output path"),
             "expected duplicate output-flag error for equals syntax, got: {error}"
+        );
+    }
+
+    #[test]
+    fn parse_run_args_supports_split_output_with_dash_prefixed_path_via_separator() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--dry-run".to_string(),
+            "--output".to_string(),
+            "--".to_string(),
+            "--dash-prefixed-output.mk".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = parse_run_args(&args).expect("parse should succeed");
+        assert_eq!(
+            parsed,
+            RunArgs {
+                file: "dsl/tools/makegen.dag".to_string(),
+                output_path: "--dash-prefixed-output.mk".to_string(),
+                dry_run: true,
+                check_mode: false,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_run_args_rejects_split_output_separator_without_path() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output".to_string(),
+            "--".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("--output requires a non-empty path"),
+            "expected missing escaped output path error, got: {error}"
         );
     }
 

@@ -32014,6 +32014,91 @@ fn run_with_empty_equals_output_value_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_split_output_separator_missing_path_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("--")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with split output separator and missing path");
+
+    assert!(
+        !output.status.success(),
+        "run with split output separator and missing path should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with split output separator and missing path should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--output requires a non-empty path"),
+        "run should report missing escaped output path explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for split output separator missing path: {stderr}"
+    );
+}
+
+#[test]
+fn run_dry_run_supports_split_output_dash_prefixed_path_via_separator() {
+    let execution_dir = unique_temp_dir("run_split_output_dash_prefixed_separator");
+    std::fs::create_dir_all(&execution_dir)
+        .expect("failed to create execution directory for split output separator test");
+    let output_basename = format!(
+        "--daglang_run_split_output_separator_output_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    );
+    let output_path = execution_dir.join(&output_basename);
+    if output_path.exists() {
+        std::fs::remove_file(&output_path)
+            .expect("failed to remove stale split output separator output file");
+    }
+    let input_path = workspace_root().join("dsl/tools/makegen.dag");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--dry-run")
+        .arg("--output")
+        .arg("--")
+        .arg(&output_basename)
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(&execution_dir)
+        .output()
+        .expect("failed to run daglang run with split output separator and dash-prefixed output path");
+
+    assert!(
+        output.status.success(),
+        "dry-run with split output separator and dash-prefixed output path should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "dry-run split output separator run should report mode=dry-run: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "dry-run split output separator run should report written=false: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "dry-run split output separator run should not create output file at {}",
+        output_path.display()
+    );
+
+    std::fs::remove_dir_all(&execution_dir)
+        .expect("failed to clean execution directory for split output separator test");
+}
+
+#[test]
 fn run_with_duplicate_split_output_flags_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
