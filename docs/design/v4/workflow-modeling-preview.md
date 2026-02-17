@@ -43,7 +43,7 @@ Global status:
 
 ## S4 — Gist Snapshot (`tools.gist`)
 
-- **Current status**: ✅ compiles, emits obligations contract successfully, core gist workflow is compressed to 59 DSL lines, and dependency-closure lowering regression coverage now verifies gist→shared→credential-chain composition wiring.
+- **Current status**: ✅ compiles, emits obligations contract successfully, core gist workflow is compressed to 59 DSL lines, dependency-closure lowering regression coverage now verifies gist→shared→credential-chain composition wiring, and manifest rendering now auto-groups collection scatter points into loop-progress counters (`[0/N]`) when collection nodes are emitted.
 - **Primary gap**:
   - exact parity against legacy gist builder shape is still pending.
 - **Next increments**:

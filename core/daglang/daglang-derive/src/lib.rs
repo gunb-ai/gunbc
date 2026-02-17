@@ -177,7 +177,7 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
             .map(|node_id| SubDagBoundary { node_id })
             .collect(),
         parallel_groups: derive_parallel_groups(&waves),
-        scatter_points: Vec::new(),
+        scatter_points: derive_scatter_points(&dag.nodes),
         interactive_nodes: Vec::new(),
         capture_modes: derive_capture_modes(&dag.nodes),
         stage_groups: derive_stage_groups(&dag.nodes),
@@ -318,6 +318,26 @@ fn derive_parallel_groups(waves: &[Vec<String>]) -> Vec<ParallelGroup> {
             node_ids: wave.clone(),
         })
         .collect()
+}
+
+fn derive_scatter_points(nodes: &[Node<LoweredOp>]) -> Vec<String> {
+    let mut scatter = Vec::new();
+    for node in nodes {
+        let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection {
+            module, callable, ..
+        }) = &node.body
+        else {
+            continue;
+        };
+        let scatter_id = if callable.contains("::") {
+            callable.replace("::", ".")
+        } else {
+            format!("{module}.{callable}")
+        };
+        scatter.push(scatter_id);
+    }
+    scatter.sort();
+    scatter
 }
 
 fn derive_stage_groups(nodes: &[Node<LoweredOp>]) -> Vec<StageGroup> {
@@ -720,6 +740,45 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(artifacts.manifest.stage_groups, expected_stage_groups);
+    }
+
+    #[test]
+    fn derive_manifest_collects_collection_scatter_points() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "snapshot_map_0",
+            vec![Port::scalar("items", "List<String>")],
+            vec![Port::scalar("items", "List<String>")],
+            LoweredOp::Collection {
+                module: "tools.gist".to_string(),
+                callable: "render_snapshot".to_string(),
+                kind: CollectionOpKind::Map,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "snapshot_join_1",
+            vec![Port::scalar("items", "List<String>")],
+            vec![Port::scalar("items", "String")],
+            LoweredOp::Collection {
+                module: "tools.gist".to_string(),
+                callable: "render_snapshot".to_string(),
+                kind: CollectionOpKind::Join,
+            },
+        ));
+        dag.add_node(callable_node(
+            "gist_snapshot",
+            "tools.gist",
+            "gist_snapshot",
+        ));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert_eq!(
+            artifacts.manifest.scatter_points,
+            vec![
+                "tools.gist.render_snapshot".to_string(),
+                "tools.gist.render_snapshot".to_string()
+            ]
+        );
     }
 
     #[test]

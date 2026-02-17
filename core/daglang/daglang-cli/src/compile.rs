@@ -219,16 +219,8 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
         )
         .ok();
     }
-    writeln!(
-        out,
-        "  scatter_points: {}",
-        if manifest.scatter_points.is_empty() {
-            "(none)".to_string()
-        } else {
-            manifest.scatter_points.join(", ")
-        }
-    )
-    .ok();
+    out.push_str("  scatter_points:\n");
+    render_scatter_points_text(&mut out, &manifest.scatter_points);
     writeln!(
         out,
         "  interactive_nodes: {}",
@@ -285,6 +277,20 @@ fn render_stage_groups_text(out: &mut String, stage_groups: &[daglang_derive::St
         for (stage_name, node_ids) in entries {
             writeln!(out, "      - {stage_name}: {node_ids}").ok();
         }
+    }
+}
+
+fn render_scatter_points_text(out: &mut String, scatter_points: &[String]) {
+    if scatter_points.is_empty() {
+        out.push_str("    (none)\n");
+        return;
+    }
+    let mut grouped = BTreeMap::<String, usize>::new();
+    for scatter_point in scatter_points {
+        *grouped.entry(scatter_point.clone()).or_default() += 1;
+    }
+    for (group, total) in grouped {
+        writeln!(out, "    - {group} [0/{total}]").ok();
     }
 }
 
@@ -1387,6 +1393,50 @@ fn run() -> String { return 42 }
             manifest.contains("      - bootstrap_stage:"),
             "manifest text should render bootstrap_stage inside section"
         );
+    }
+
+    #[test]
+    fn render_manifest_groups_scatter_points_as_counters() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_manifest_scatter_points_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = root.join("sample.dag");
+        std::fs::write(
+            &file,
+            r#"module sample
+fn run(values: List<String>) -> String {
+  rendered = values |> map(v => v) |> join(",")
+  return rendered
+}
+"#,
+        )
+        .expect("failed to write source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let output = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                emit_collection_nodes: true,
+            },
+        )
+        .expect("compile should succeed with collection nodes");
+
+        let manifest = render_manifest(&output.derived);
+        assert!(
+            manifest.contains("  scatter_points:\n    - sample.run [0/2]"),
+            "manifest text should render grouped scatter counter for collection pipeline: {manifest}"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 
     #[test]

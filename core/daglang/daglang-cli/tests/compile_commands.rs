@@ -22,6 +22,10 @@ fn ci_pipeline_file() -> PathBuf {
     workspace_root().join("dsl/pipelines/ci.dag")
 }
 
+fn gist_file() -> PathBuf {
+    workspace_root().join("dsl/tools/gist.dag")
+}
+
 fn dsl_root_dir() -> PathBuf {
     workspace_root().join("dsl")
 }
@@ -11694,6 +11698,30 @@ fn manifest_command_ci_text_renders_collapsible_stage_group_sections() {
 }
 
 #[test]
+fn manifest_command_collection_nodes_renders_scatter_counters() {
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(gist_file())
+        .arg("--emit-collection-nodes")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest with collection nodes");
+
+    assert!(
+        output.status.success(),
+        "manifest command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("scatter_points:"));
+    assert!(stdout.contains("[0/"));
+    assert!(stdout.contains("tools.gist.render_snapshot"));
+}
+
+#[test]
 fn manifest_command_explicit_text_format_matches_default_output() {
     let default_output = Command::new(daglang_bin())
         .arg("manifest")
@@ -11749,7 +11777,9 @@ fn manifest_command_rejects_unknown_format_flag_value() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Usage: daglang manifest <file.dag> [--format text|json]"),
+        stderr.contains(
+            "Usage: daglang manifest <file.dag> [--format text|json] [--emit-collection-nodes]"
+        ),
         "manifest unsupported format should print command usage: {stderr}"
     );
 }

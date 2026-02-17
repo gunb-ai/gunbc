@@ -10,7 +10,7 @@
 //!                                  -- DAG visualization from compiled IR
 //! - `daglang expand <file.dag> [--emit-collection-nodes]`
 //!                                  -- Show lowered GraphIR (nodes, edges, ports)
-//! - `daglang manifest <file.dag> [--format text|json]`
+//! - `daglang manifest <file.dag> [--format text|json] [--emit-collection-nodes]`
 //!                                  -- Show derived ProgressManifest
 //! - `daglang obligations <file.dag> [--format text|json]`
 //!                                  -- Show derived test obligations summary
@@ -57,7 +57,7 @@ fn main() {
         eprintln!("                      DAG visualization (default: ascii)");
         eprintln!("  expand <file.dag> [--emit-collection-nodes]");
         eprintln!("                      Show lowered GraphIR (nodes/edges/ports)");
-        eprintln!("  manifest <file.dag> [--format text|json]");
+        eprintln!("  manifest <file.dag> [--format text|json] [--emit-collection-nodes]");
         eprintln!("                      Show derived ProgressManifest");
         eprintln!("  obligations <file.dag> [--format text|json]");
         eprintln!("                      Show derived test obligations summary");
@@ -114,13 +114,17 @@ fn main() {
             println!("{}", render_expand(&output.lowered_dag));
         }
         "manifest" => {
-            if args.len() != 3 && args.len() != 5 {
-                exit_usage("manifest <file.dag> [--format text|json]");
-            }
-            let format =
-                parse_output_format("manifest", &args).unwrap_or_else(|usage| exit_usage(&usage));
-            let output = compile_target_or_exit(&cwd, args.get(2));
-            println!("{}", render_manifest_with_format(&output.derived, format));
+            let parsed =
+                parse_manifest_command_args(&args).unwrap_or_else(|usage| exit_usage(&usage));
+            let output = compile_target_or_exit_with_options(
+                &cwd,
+                Some(&parsed.input),
+                parsed.emit_collection_nodes,
+            );
+            println!(
+                "{}",
+                render_manifest_with_format(&output.derived, parsed.format)
+            );
         }
         "obligations" => {
             if args.len() != 3 && args.len() != 5 {
@@ -432,6 +436,13 @@ struct CompileCommandArgs {
     emit_collection_nodes: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ManifestCommandArgs {
+    input: String,
+    format: OutputFormat,
+    emit_collection_nodes: bool,
+}
+
 fn parse_compile_command_args(
     command: &str,
     args: &[String],
@@ -470,6 +481,59 @@ fn parse_compile_command_args(
     }
     Ok(CompileCommandArgs {
         input,
+        emit_collection_nodes,
+    })
+}
+
+fn parse_manifest_command_args(args: &[String]) -> Result<ManifestCommandArgs, String> {
+    let usage = "manifest <file.dag> [--format text|json] [--emit-collection-nodes]";
+    if args.is_empty() || args.get(1).map(String::as_str) != Some("manifest") {
+        return Err(
+            "internal error: parse_manifest_command_args expects full `daglang manifest ...` argv"
+                .to_string(),
+        );
+    }
+    let Some(input) = args.get(2).cloned() else {
+        return Err(usage.to_string());
+    };
+    if input.starts_with("--") {
+        return Err(usage.to_string());
+    }
+    let mut format = OutputFormat::Text;
+    let mut saw_format = false;
+    let mut emit_collection_nodes = false;
+    let mut i = 3usize;
+    while i < args.len() {
+        let token = &args[i];
+        if token == "--emit-collection-nodes" {
+            if emit_collection_nodes {
+                return Err(usage.to_string());
+            }
+            emit_collection_nodes = true;
+            i += 1;
+            continue;
+        }
+        if token == "--format" {
+            if saw_format {
+                return Err(usage.to_string());
+            }
+            let Some(value) = args.get(i + 1) else {
+                return Err(usage.to_string());
+            };
+            format = match value.as_str() {
+                "text" => OutputFormat::Text,
+                "json" => OutputFormat::Json,
+                _ => return Err(usage.to_string()),
+            };
+            saw_format = true;
+            i += 2;
+            continue;
+        }
+        return Err(usage.to_string());
+    }
+    Ok(ManifestCommandArgs {
+        input,
+        format,
         emit_collection_nodes,
     })
 }
@@ -1228,6 +1292,67 @@ mod tests {
         assert_eq!(
             super::parse_compile_command_args("compile", &missing_target, usage, true),
             Err(usage.to_string())
+        );
+    }
+
+    #[test]
+    fn parse_manifest_command_args_accepts_format_and_collection_flag() {
+        let args = vec![
+            "daglang".to_string(),
+            "manifest".to_string(),
+            "dsl/tools/gist.dag".to_string(),
+            "--emit-collection-nodes".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ];
+        let parsed = super::parse_manifest_command_args(&args).expect("manifest args should parse");
+        assert_eq!(parsed.input, "dsl/tools/gist.dag");
+        assert!(matches!(parsed.format, super::OutputFormat::Json));
+        assert!(parsed.emit_collection_nodes);
+    }
+
+    #[test]
+    fn parse_manifest_command_args_rejects_invalid_shapes() {
+        let usage =
+            "manifest <file.dag> [--format text|json] [--emit-collection-nodes]".to_string();
+        let missing_input = vec!["daglang".to_string(), "manifest".to_string()];
+        let duplicate_format = vec![
+            "daglang".to_string(),
+            "manifest".to_string(),
+            "dsl/tools/gist.dag".to_string(),
+            "--format".to_string(),
+            "text".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ];
+        let duplicate_collection_flag = vec![
+            "daglang".to_string(),
+            "manifest".to_string(),
+            "dsl/tools/gist.dag".to_string(),
+            "--emit-collection-nodes".to_string(),
+            "--emit-collection-nodes".to_string(),
+        ];
+        let unknown_flag = vec![
+            "daglang".to_string(),
+            "manifest".to_string(),
+            "dsl/tools/gist.dag".to_string(),
+            "--collection".to_string(),
+        ];
+        assert_eq!(
+            super::parse_manifest_command_args(&missing_input),
+            Err(usage.clone())
+        );
+        assert_eq!(
+            super::parse_manifest_command_args(&duplicate_format),
+            Err(usage.clone())
+        );
+        assert_eq!(
+            super::parse_manifest_command_args(&duplicate_collection_flag),
+            Err(usage.clone())
+        );
+        assert_eq!(
+            super::parse_manifest_command_args(&unknown_flag),
+            Err(usage)
         );
     }
 

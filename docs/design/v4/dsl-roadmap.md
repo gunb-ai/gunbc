@@ -721,7 +721,7 @@ The two workers share the `daglang-cli` crate but touch different files:
 **Acceptance Gates**
 
 - [x] **Compression**: gist workflow expressed in ~80 lines of `.dag` (vs 1,449 lines of Rust builders) — *`dsl/tools/gist.dag` now captures the full snapshot/diff/recent flows in 59 lines while retaining shared composition through `shared.gist_modes`*
-- [ ] **Loop progress**: renderers display loop progress as grouped counter without manual configuration
+- [x] **Loop progress**: renderers display loop progress as grouped counter without manual configuration — *`daglang manifest --emit-collection-nodes` now derives `scatter_points` from lowered collection nodes and renders grouped counters (`[0/N]`) automatically; covered by `render_manifest_groups_scatter_points_as_counters` and `manifest_command_collection_nodes_renders_scatter_counters`*
 - [x] **Composition**: SubDag calls work for credential chain reuse within gist workflow — *dependency-closure lowering regression `gist_dependency_closure_lowering_reuses_shared_credential_chain` verifies `tools.gist` composes through `shared.gist_modes::share_content`/`gist_upload` into `std.patterns::credential_chain`*
 - [ ] **IR parity**: compiled gist graph matches existing builder shape for all 3 modes
 - [x] **Provider portability**: `store_artifact(uses store: ObjectStorage)` compiles against all 3 providers — *lowering regression `store_artifact_portability_wires_gcp_aws_and_azure_resources` verifies provider-hinted `ObjectStorage` wiring for `GcpConfig` / `AwsConfig` / `AzureConfig`*
