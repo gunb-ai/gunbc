@@ -55,11 +55,11 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## S6 — LLM Review (`examples.abstract_services`)
 
-- **Current status**: ⚠ typecheck blocked by interface contract mismatches in fixture contract.
+- **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - interface operation signature alignment and service contract conformance.
+  - parity and runtime execution coverage for abstract-interface flows is still pending.
 - **Next increments**:
-  - complete interface/implements matching path for abstract services.
+  - add parity and execution assertions for interface-backed abstract-service workflows.
 
 ## Credential (AWS) (`cloud.aws.credential`)
 

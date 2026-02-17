@@ -152,7 +152,6 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
 
 fn expected_real_corpus_module_order() -> Vec<&'static str> {
     vec![
-        "examples.abstract_services",
         "examples.rich_types",
         "infra.aws.services",
         "infra.azure.services",
@@ -175,6 +174,7 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "std.types",
         "cloud.aws.credential",
         "cloud.azure.credential",
+        "examples.abstract_services",
         "services.git",
         "services.shell",
         "std.patterns",

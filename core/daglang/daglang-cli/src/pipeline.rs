@@ -790,7 +790,6 @@ mod tests {
 
     fn expected_real_corpus_module_order() -> Vec<&'static str> {
         vec![
-            "examples.abstract_services",
             "examples.rich_types",
             "infra.aws.services",
             "infra.azure.services",
@@ -813,6 +812,7 @@ mod tests {
             "std.types",
             "cloud.aws.credential",
             "cloud.azure.credential",
+            "examples.abstract_services",
             "services.git",
             "services.shell",
             "std.patterns",
