@@ -94,6 +94,26 @@ fn run_compile_with_optional_trailing_slash(root: &Path, input: &str) -> (Output
     (plain, trailing)
 }
 
+fn run_single_target_command_with_optional_trailing_slash(
+    command_name: &str,
+    root: &Path,
+    input: &str,
+) -> (Output, Output) {
+    let plain = Command::new(daglang_bin())
+        .arg(command_name)
+        .arg(input)
+        .current_dir(root)
+        .output()
+        .expect("failed to run plain single-target command invocation");
+    let trailing = Command::new(daglang_bin())
+        .arg(command_name)
+        .arg(format!("{input}/"))
+        .current_dir(root)
+        .output()
+        .expect("failed to run trailing-slash single-target command invocation");
+    (plain, trailing)
+}
+
 fn assert_dag_suffixed_directory_is_invalid_single_file_target(
     root: &Path,
     input: &str,
@@ -128,6 +148,47 @@ fn assert_dag_suffixed_directory_is_invalid_single_file_target(
         assert!(
             !stderr.contains(snippet),
             "{input} should fail before parsing nested files: {stderr}"
+        );
+    }
+    assert_no_stage_failures(&stderr);
+}
+
+fn assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+    command_name: &str,
+    root: &Path,
+    input: &str,
+    expected_target: &Path,
+    nested_diagnostic_snippet: Option<&str>,
+) {
+    let (plain, trailing) =
+        run_single_target_command_with_optional_trailing_slash(command_name, root, input);
+    assert!(
+        !plain.status.success(),
+        "{command_name} {input} should fail for .dag-suffixed directory target"
+    );
+    assert!(
+        !trailing.status.success(),
+        "{command_name} {input}/ should fail for .dag-suffixed directory target"
+    );
+
+    assert_eq!(
+        plain.stdout, trailing.stdout,
+        "{command_name} {input} plain and trailing-slash stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, trailing.stderr,
+        "{command_name} {input} plain and trailing-slash stderr should match"
+    );
+
+    let stderr = String::from_utf8_lossy(&plain.stderr);
+    assert!(
+        stderr.contains(&format!("failed to read {}", expected_target.display())),
+        "{command_name} should fail with normalized single-file target path: {stderr}"
+    );
+    if let Some(snippet) = nested_diagnostic_snippet {
+        assert!(
+            !stderr.contains(snippet),
+            "{command_name} should fail before parsing nested files: {stderr}"
         );
     }
     assert_no_stage_failures(&stderr);
@@ -11376,6 +11437,47 @@ fn obligations_command_relative_and_absolute_targets_are_equivalent() {
 }
 
 #[test]
+fn obligations_command_directory_named_dag_extension_is_invalid_single_file_target() {
+    let root = unique_temp_dir("obligations_directory_named_dag_extension");
+    let dag_dir = root.join("bundle.dag");
+    std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .dag directory root");
+    std::fs::write(
+        dag_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in .dag directory");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "obligations",
+        &root,
+        "bundle.dag",
+        &dag_dir,
+        None,
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn obligations_command_directory_named_uppercase_dag_extension_is_invalid_single_file_target() {
+    let root = unique_temp_dir("obligations_directory_named_uppercase_dag_extension");
+    let dag_dir = root.join("bundle.DAG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory root");
+    std::fs::write(dag_dir.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DAG directory");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "obligations",
+        &root,
+        "bundle.DAG",
+        &dag_dir,
+        Some("broken.dag:2:3"),
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn show_triplets_command_shows_transport_expansion_for_makegen() {
     let output = Command::new(daglang_bin())
         .arg("show-triplets")
@@ -11633,6 +11735,47 @@ fn show_triplets_command_relative_and_absolute_targets_are_equivalent() {
         relative.stderr, absolute.stderr,
         "relative and absolute show-triplets stderr should match"
     );
+}
+
+#[test]
+fn show_triplets_command_directory_named_dag_extension_is_invalid_single_file_target() {
+    let root = unique_temp_dir("show_triplets_directory_named_dag_extension");
+    let dag_dir = root.join("bundle.dag");
+    std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .dag directory root");
+    std::fs::write(
+        dag_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in .dag directory");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "show-triplets",
+        &root,
+        "bundle.dag",
+        &dag_dir,
+        None,
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn show_triplets_command_directory_named_mixed_case_dag_extension_is_invalid_single_file_target() {
+    let root = unique_temp_dir("show_triplets_directory_named_mixed_case_dag_extension");
+    let dag_dir = root.join("bundle.DaG");
+    std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory root");
+    std::fs::write(dag_dir.join("broken.dag"), "module sample.broken\nfn")
+        .expect("failed to write malformed source in .DaG directory");
+
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "show-triplets",
+        &root,
+        "bundle.DaG",
+        &dag_dir,
+        Some("broken.dag:2:3"),
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
 #[test]
