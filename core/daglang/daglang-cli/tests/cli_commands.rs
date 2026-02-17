@@ -30695,6 +30695,40 @@ fn run_with_uppercase_dag_input_succeeds() {
 }
 
 #[test]
+fn run_with_directory_named_dag_extension_exits_nonzero_with_usage_message() {
+    let input_dir = unique_temp_dir("run_directory_named_dag").with_extension("dag");
+    std::fs::create_dir_all(&input_dir).expect("failed to create directory .dag fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg(input_dir.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with .dag directory input");
+
+    assert!(
+        !output.status.success(),
+        "run with .dag directory input should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with .dag directory input should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run requires a .dag input file, not a directory"),
+        "run should report directory input validation explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for directory .dag input: {stderr}"
+    );
+
+    std::fs::remove_dir_all(&input_dir).expect("failed to clean .dag directory fixture");
+}
+
+#[test]
 fn run_with_missing_output_value_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")

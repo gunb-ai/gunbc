@@ -530,8 +530,12 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     }
 
     let file = file.ok_or_else(|| "run requires <file.dag>".to_string())?;
-    if !path_utils::has_dag_extension(Path::new(&file)) {
+    let file_path = Path::new(&file);
+    if !path_utils::has_dag_extension(file_path) {
         return Err("run requires a .dag input file".to_string());
+    }
+    if file_path.is_dir() {
+        return Err("run requires a .dag input file, not a directory".to_string());
     }
     if dry_run && check_mode {
         return Err("--dry-run and --check-mode cannot be used together".to_string());
@@ -918,6 +922,29 @@ mod tests {
         ];
         let parsed = parse_run_args(&args).expect("parse should succeed");
         assert_eq!(parsed.file, "dsl/tools/makegen.DAG");
+    }
+
+    #[test]
+    fn parse_run_args_rejects_directory_input_even_with_dag_extension() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "daglang_parse_run_directory_input_{}.dag",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).expect("failed to create directory fixture");
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            temp_dir.to_string_lossy().to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run requires a .dag input file, not a directory"),
+            "expected directory input validation error, got: {error}"
+        );
+        std::fs::remove_dir_all(&temp_dir).expect("failed to remove directory fixture");
     }
 
     #[test]
