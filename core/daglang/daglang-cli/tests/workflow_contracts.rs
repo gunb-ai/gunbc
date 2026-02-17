@@ -2,6 +2,7 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -283,4 +284,33 @@ fn workflow_expand_contracts_match_golden_snapshots() {
             );
         }
     }
+}
+
+#[test]
+fn workflow_fixture_registry_has_unique_entries_and_matrix_coverage() {
+    let mut scenarios = HashSet::new();
+    let mut modules = HashSet::new();
+    let mut fixture_files = HashSet::new();
+    for fixture in WORKFLOW_FIXTURES {
+        assert!(
+            scenarios.insert(fixture.scenario),
+            "duplicate scenario key in workflow fixture registry: {}",
+            fixture.scenario
+        );
+        assert!(
+            modules.insert(fixture.module),
+            "duplicate module in workflow fixture registry: {}",
+            fixture.module
+        );
+        assert!(
+            fixture_files.insert(fixture.fixture_file),
+            "duplicate fixture file in workflow fixture registry: {}",
+            fixture.fixture_file
+        );
+    }
+    assert!(
+        WORKFLOW_FIXTURES.len() >= 11,
+        "expected workflow fixture coverage for matrix rows, got {}",
+        WORKFLOW_FIXTURES.len()
+    );
 }
