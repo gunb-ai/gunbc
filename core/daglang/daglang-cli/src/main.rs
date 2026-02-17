@@ -8,7 +8,8 @@
 //!
 //! - `daglang viz <file.dag> [--format ascii|mermaid]`
 //!                                  -- DAG visualization from compiled IR
-//! - `daglang expand <file.dag>`   -- Show lowered GraphIR (nodes, edges, ports)
+//! - `daglang expand <file.dag> [--emit-collection-nodes]`
+//!                                  -- Show lowered GraphIR (nodes, edges, ports)
 //! - `daglang manifest <file.dag> [--format text|json]`
 //!                                  -- Show derived ProgressManifest
 //! - `daglang obligations <file.dag> [--format text|json]`
@@ -18,15 +19,17 @@
 //! - `daglang modules [dir] [--format text|json]`
 //!                                  -- Show the discovered module graph
 //! - `daglang check <file.dag|dir>` -- Parse modules; single-file targets also typecheck
-//! - `daglang compile <file.dag>`  -- Full compilation pipeline
+//! - `daglang compile <file.dag|dir> [--emit-collection-nodes]`
+//!                                  -- Full compilation pipeline
 //! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`
 //!                                  -- Compile + resolve + execute makegen DAG
 
 use std::path::PathBuf;
 
 use daglang_cli::compile::{
-    build_context, check_from_context, compile_from_context, render_expand,
-    render_manifest_with_format, render_obligations, render_triplets, CompileOutput, OutputFormat,
+    build_context, check_from_context, compile_from_context, compile_from_context_with_options,
+    render_expand, render_manifest_with_format, render_obligations, render_triplets,
+    CompileOptions, CompileOutput, OutputFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{
@@ -52,7 +55,8 @@ fn main() {
         eprintln!("Commands:");
         eprintln!("  viz <file.dag>|--self [--format ascii|mermaid]");
         eprintln!("                      DAG visualization (default: ascii)");
-        eprintln!("  expand <file.dag>    Show lowered GraphIR (nodes/edges/ports)");
+        eprintln!("  expand <file.dag> [--emit-collection-nodes]");
+        eprintln!("                      Show lowered GraphIR (nodes/edges/ports)");
         eprintln!("  manifest <file.dag> [--format text|json]");
         eprintln!("                      Show derived ProgressManifest");
         eprintln!("  obligations <file.dag> [--format text|json]");
@@ -62,7 +66,8 @@ fn main() {
         eprintln!("  modules [dir] [--format text|json]");
         eprintln!("                      Show discovered module graph");
         eprintln!("  check <file.dag|dir> Parse (single-file targets also typecheck)");
-        eprintln!("  compile <file.dag>   Full compilation pipeline");
+        eprintln!("  compile <file.dag|dir> [--emit-collection-nodes]");
+        eprintln!("                      Full compilation pipeline");
         eprintln!("  run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>");
         eprintln!("                      Compile + resolve + execute makegen DAG");
         std::process::exit(1);
@@ -70,8 +75,7 @@ fn main() {
 
     match args[1].as_str() {
         "viz" => {
-            let (target, format) = parse_viz_args(&args)
-                .unwrap_or_else(|usage| exit_usage(&usage));
+            let (target, format) = parse_viz_args(&args).unwrap_or_else(|usage| exit_usage(&usage));
             match target {
                 VizTarget::SelfDag => {
                     let dag = build_pipeline_dag();
@@ -92,18 +96,29 @@ fn main() {
             }
         }
         "expand" => {
-            if args.len() != 3 {
-                exit_usage("expand <file.dag>");
-            }
-            let output = compile_target_or_exit(&cwd, args.get(2));
+            let parsed = parse_compile_command_args(
+                "expand",
+                &args,
+                "expand <file.dag> [--emit-collection-nodes]",
+                true,
+            )
+            .unwrap_or_else(|usage| exit_usage(&usage));
+            let input = parsed
+                .input
+                .expect("expand parser should require input target");
+            let output = compile_target_or_exit_with_options(
+                &cwd,
+                Some(&input),
+                parsed.emit_collection_nodes,
+            );
             println!("{}", render_expand(&output.lowered_dag));
         }
         "manifest" => {
             if args.len() != 3 && args.len() != 5 {
                 exit_usage("manifest <file.dag> [--format text|json]");
             }
-            let format = parse_output_format("manifest", &args)
-                .unwrap_or_else(|usage| exit_usage(&usage));
+            let format =
+                parse_output_format("manifest", &args).unwrap_or_else(|usage| exit_usage(&usage));
             let output = compile_target_or_exit(&cwd, args.get(2));
             println!("{}", render_manifest_with_format(&output.derived, format));
         }
@@ -126,8 +141,8 @@ fn main() {
             println!("{}", render_triplets(&output.lowered_dag, format));
         }
         "modules" => {
-            let (root_arg, format) = parse_modules_args(&args)
-                .unwrap_or_else(|usage| exit_usage(&usage));
+            let (root_arg, format) =
+                parse_modules_args(&args).unwrap_or_else(|usage| exit_usage(&usage));
             let roots = if let Some(root) = root_arg {
                 vec![resolve_root(&cwd, Some(&root))]
             } else {
@@ -191,10 +206,18 @@ fn main() {
             }
         }
         "compile" => {
-            if args.len() > 3 {
-                exit_usage("compile <file.dag|dir>");
-            }
-            let output = compile_target_or_exit(&cwd, args.get(2));
+            let parsed = parse_compile_command_args(
+                "compile",
+                &args,
+                "compile <file.dag|dir> [--emit-collection-nodes]",
+                false,
+            )
+            .unwrap_or_else(|usage| exit_usage(&usage));
+            let output = compile_target_or_exit_with_options(
+                &cwd,
+                parsed.input.as_ref(),
+                parsed.emit_collection_nodes,
+            );
             println!(
                 "Compiled {} module(s) to {} node(s), {} file(s) emitted.",
                 output.emitted.summary.module_count,
@@ -355,12 +378,9 @@ fn resolve_configured_roots(cwd: &std::path::Path) -> Result<Option<Vec<PathBuf>
 ///
 /// Unlike compile context construction, `.dag`-suffixed paths that resolve to
 /// directories stay in directory mode for `daglang check`.
-fn build_check_pipeline_context(
-    cwd: &std::path::Path,
-    input: Option<&String>,
-) -> PipelineContext {
-    let normalized_input = input
-        .map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
+fn build_check_pipeline_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
+    let normalized_input =
+        input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
     let (roots, target_file) = match normalized_input {
         Some(path) if path_utils::is_single_file_target(&path, false) => {
             let root = path_utils::resolve_single_file_root(cwd, &path);
@@ -373,8 +393,21 @@ fn build_check_pipeline_context(
 }
 
 fn compile_target_or_exit(cwd: &std::path::Path, input: Option<&String>) -> CompileOutput {
+    compile_target_or_exit_with_options(cwd, input, false)
+}
+
+fn compile_target_or_exit_with_options(
+    cwd: &std::path::Path,
+    input: Option<&String>,
+    emit_collection_nodes: bool,
+) -> CompileOutput {
     let context = build_context(cwd, input);
-    match compile_from_context(&context) {
+    match compile_from_context_with_options(
+        &context,
+        CompileOptions {
+            emit_collection_nodes,
+        },
+    ) {
         Ok(output) => output,
         Err(error) => {
             eprintln!("{error}");
@@ -391,6 +424,54 @@ fn run_pipeline_or_exit(context: &PipelineContext, stop: PipelineStop) -> Pipeli
             std::process::exit(1);
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CompileCommandArgs {
+    input: Option<String>,
+    emit_collection_nodes: bool,
+}
+
+fn parse_compile_command_args(
+    command: &str,
+    args: &[String],
+    usage: &str,
+    require_input: bool,
+) -> Result<CompileCommandArgs, String> {
+    if args.is_empty() || args.get(1).map(String::as_str) != Some(command) {
+        return Err(format!(
+            "internal error: parse_compile_command_args expects full `daglang {command} ...` argv"
+        ));
+    }
+    let mut input: Option<String> = None;
+    let mut emit_collection_nodes = false;
+    let mut i = 2usize;
+    while i < args.len() {
+        let token = &args[i];
+        if token == "--emit-collection-nodes" {
+            if emit_collection_nodes {
+                return Err(usage.to_string());
+            }
+            emit_collection_nodes = true;
+            i += 1;
+            continue;
+        }
+        if token.starts_with("--") {
+            return Err(usage.to_string());
+        }
+        if input.is_some() {
+            return Err(usage.to_string());
+        }
+        input = Some(token.clone());
+        i += 1;
+    }
+    if require_input && input.is_none() {
+        return Err(usage.to_string());
+    }
+    Ok(CompileCommandArgs {
+        input,
+        emit_collection_nodes,
+    })
 }
 
 fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), String> {
@@ -679,7 +760,6 @@ fn exit_usage(command: &str) -> ! {
     std::process::exit(1);
 }
 
-
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod tests {
@@ -705,7 +785,12 @@ mod tests {
 
     #[test]
     fn normalize_path_components_collapses_curdir_and_parent_segments() {
-        let path = root_path().join("workspace").join(".").join("core").join("..").join("dsl");
+        let path = root_path()
+            .join("workspace")
+            .join(".")
+            .join("core")
+            .join("..")
+            .join("dsl");
         let normalized = normalize_path_components(&path);
         let expected = root_path().join("workspace").join("dsl");
         assert_eq!(normalized, expected);
@@ -713,7 +798,11 @@ mod tests {
 
     #[test]
     fn normalize_path_components_keeps_root_when_parent_traversal_exceeds_depth() {
-        let path = root_path().join("..").join("..").join("workspace").join("dsl");
+        let path = root_path()
+            .join("..")
+            .join("..")
+            .join("workspace")
+            .join("dsl");
         let normalized = normalize_path_components(&path);
         let expected = root_path().join("workspace").join("dsl");
         assert_eq!(normalized, expected);
@@ -721,7 +810,11 @@ mod tests {
 
     #[test]
     fn normalize_path_components_preserves_clean_absolute_paths() {
-        let path = root_path().join("workspace").join("dsl").join("tools").join("makegen.dag");
+        let path = root_path()
+            .join("workspace")
+            .join("dsl")
+            .join("tools")
+            .join("makegen.dag");
         let normalized = normalize_path_components(&path);
         assert_eq!(normalized, path);
     }
@@ -744,7 +837,10 @@ mod tests {
             std::path::MAIN_SEPARATOR
         ));
         let normalized = normalize_path_components(&path);
-        let expected = root_path().join("workspace").join("dsl").join("makegen.dag");
+        let expected = root_path()
+            .join("workspace")
+            .join("dsl")
+            .join("makegen.dag");
         assert_eq!(normalized, expected);
     }
 
@@ -765,10 +861,7 @@ mod tests {
 
     #[test]
     fn normalize_path_components_drops_curdir_suffix_with_redundant_separators() {
-        let path = PathBuf::from(format!(
-            "{}workspace//dsl//./.",
-            std::path::MAIN_SEPARATOR
-        ));
+        let path = PathBuf::from(format!("{}workspace//dsl//./.", std::path::MAIN_SEPARATOR));
         let normalized = normalize_path_components(&path);
         let expected = root_path().join("workspace").join("dsl");
         assert_eq!(normalized, expected);
@@ -782,7 +875,10 @@ mod tests {
             .join("makegen.dag")
             .join(".");
         let normalized = normalize_path_components(&path);
-        let expected = root_path().join("workspace").join("dsl").join("makegen.dag");
+        let expected = root_path()
+            .join("workspace")
+            .join("dsl")
+            .join("makegen.dag");
         assert_eq!(normalized, expected);
     }
 
@@ -871,8 +967,7 @@ mod tests {
         )
         .expect("failed to write daglang.toml");
 
-        let roots =
-            super::resolve_configured_roots(&cwd).expect("configured roots should parse");
+        let roots = super::resolve_configured_roots(&cwd).expect("configured roots should parse");
         let roots = roots.expect("roots should be present");
         assert_eq!(roots.len(), 2);
         assert_eq!(roots[0], cwd.join("dsl"));
@@ -888,8 +983,7 @@ mod tests {
         std::fs::write(cwd.join("daglang.toml"), "[discovery]\nroots = []\n")
             .expect("failed to write daglang.toml");
 
-        let error =
-            super::resolve_configured_roots(&cwd).expect_err("empty roots should fail");
+        let error = super::resolve_configured_roots(&cwd).expect_err("empty roots should fail");
         assert!(error.contains("must not be empty"));
 
         std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
@@ -995,7 +1089,11 @@ mod tests {
 
     #[test]
     fn parse_viz_args_defaults_to_ascii_for_self_target() {
-        let args = vec!["daglang".to_string(), "viz".to_string(), "--self".to_string()];
+        let args = vec![
+            "daglang".to_string(),
+            "viz".to_string(),
+            "--self".to_string(),
+        ];
         let (target, format) = super::parse_viz_args(&args).expect("viz args should parse");
         assert!(matches!(target, super::VizTarget::SelfDag));
         assert!(matches!(format, super::VizFormat::Ascii));
@@ -1069,8 +1167,68 @@ mod tests {
             "yaml".to_string(),
         ];
         let usage = "modules [dir] [--format text|json]".to_string();
-        assert_eq!(super::parse_modules_args(&duplicate_roots), Err(usage.clone()));
+        assert_eq!(
+            super::parse_modules_args(&duplicate_roots),
+            Err(usage.clone())
+        );
         assert_eq!(super::parse_modules_args(&bad_format), Err(usage));
+    }
+
+    #[test]
+    fn parse_compile_command_args_accepts_collection_flag_and_target() {
+        let args = vec![
+            "daglang".to_string(),
+            "expand".to_string(),
+            "--emit-collection-nodes".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = super::parse_compile_command_args(
+            "expand",
+            &args,
+            "expand <file.dag> [--emit-collection-nodes]",
+            true,
+        )
+        .expect("expand compile args should parse");
+        assert_eq!(parsed.input.as_deref(), Some("dsl/tools/makegen.dag"));
+        assert!(parsed.emit_collection_nodes);
+    }
+
+    #[test]
+    fn parse_compile_command_args_rejects_invalid_shapes() {
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes]";
+        let duplicate_flag = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "--emit-collection-nodes".to_string(),
+            "--emit-collection-nodes".to_string(),
+            "dsl".to_string(),
+        ];
+        let unknown_flag = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "--collection".to_string(),
+            "dsl".to_string(),
+        ];
+        let missing_target = vec!["daglang".to_string(), "compile".to_string()];
+
+        assert_eq!(
+            super::parse_compile_command_args("compile", &duplicate_flag, usage, false),
+            Err(usage.to_string())
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &unknown_flag, usage, false),
+            Err(usage.to_string())
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &missing_target, usage, false)
+                .expect("compile allows default root")
+                .input,
+            None
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &missing_target, usage, true),
+            Err(usage.to_string())
+        );
     }
 
     #[test]

@@ -11,7 +11,7 @@ use gunbc_exec::{BoundaryMocks, ExecutionLog, ExecutionMode};
 use gunbc_ir::{Dag, Node};
 use serde_json::json;
 
-pub use daglang_driver::{CheckOutput, CompileError, CompileOutput};
+pub use daglang_driver::{CheckOutput, CompileError, CompileOptions, CompileOutput};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputFormat {
@@ -45,10 +45,25 @@ pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineC
 }
 
 pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, CompileError> {
-    daglang_driver::compile_from_context(&DriverContext {
-        roots: context.roots.clone(),
-        target_file: context.target_file.clone(),
-    })
+    compile_from_context_with_options(
+        context,
+        CompileOptions {
+            emit_collection_nodes: false,
+        },
+    )
+}
+
+pub fn compile_from_context_with_options(
+    context: &PipelineContext,
+    options: CompileOptions,
+) -> Result<CompileOutput, CompileError> {
+    daglang_driver::compile_from_context_with_options(
+        &DriverContext {
+            roots: context.roots.clone(),
+            target_file: context.target_file.clone(),
+        },
+        options,
+    )
 }
 
 pub fn check_from_context(context: &PipelineContext) -> Result<CheckOutput, CompileError> {
@@ -2057,6 +2072,61 @@ fn summarize(stages: List<Stage>) -> Int {
         assert!(!output.lowered_dag.nodes.is_empty());
         assert!(output.derived.manifest.total_nodes > 0);
         assert!(!output.emitted.files.is_empty());
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_directory_collection_option_emits_collection_nodes() {
+        let root = std::env::temp_dir().join(format!(
+            "daglang_compile_collection_option_dir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/main.dag"),
+            r#"module sample.main
+fn run(values: List<String>) -> String {
+  rendered = values |> map(v => v) |> join(",")
+  return rendered
+}
+"#,
+        )
+        .expect("failed to write collection option source");
+
+        let context = PipelineContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let output = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                emit_collection_nodes: true,
+            },
+        )
+        .expect("compile should succeed with collection option");
+        assert!(output.lowered_dag.nodes.iter().any(|node| {
+            matches!(
+                node.body,
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection {
+                    kind: daglang_lower::CollectionOpKind::Map,
+                    ..
+                })
+            )
+        }));
+        assert!(output.lowered_dag.nodes.iter().any(|node| {
+            matches!(
+                node.body,
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection {
+                    kind: daglang_lower::CollectionOpKind::Join,
+                    ..
+                })
+            )
+        }));
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
