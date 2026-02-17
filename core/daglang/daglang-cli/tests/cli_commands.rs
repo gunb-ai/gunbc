@@ -31830,6 +31830,45 @@ fn compile_family_commands_execute_real_pipeline_paths_with_curdir_suffix_target
 }
 
 #[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_curdir_segment_target() {
+    let commands: [(&str, &[&str]); 5] = [
+        ("expand", &[]),
+        ("manifest", &[]),
+        ("compile", &[]),
+        ("obligations", &["--format", "json"]),
+        ("show-triplets", &["--format", "json"]),
+    ];
+    let absolute_target_with_curdir_segment =
+        workspace_root().join("./dsl/./tools/../tools/makegen.dag");
+    for (command, trailing_args) in commands {
+        let output = Command::new(daglang_bin())
+            .arg(command)
+            .arg(&absolute_target_with_curdir_segment)
+            .args(trailing_args)
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|err| {
+                panic!(
+                    "failed to run {command} with absolute curdir-segment target: {err}"
+                )
+            });
+        assert!(
+            output.status.success(),
+            "{command} should execute successfully for absolute curdir-segment makegen fixture target"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.contains("TODO"),
+            "{command} should not emit TODO placeholder output: {stderr}"
+        );
+        assert!(
+            !output.stdout.is_empty(),
+            "{command} should emit meaningful stdout output for absolute curdir-segment target"
+        );
+    }
+}
+
+#[test]
 fn viz_without_self_emits_compiled_mermaid_graph() {
     let output = Command::new(daglang_bin())
         .arg("viz")
