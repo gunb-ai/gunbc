@@ -1308,4 +1308,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn run_written_from_log_falls_back_to_wrapper_when_transport_signals_are_non_authoritative() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("status".to_string(), Value::Str("ok".to_string()))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Str("false".to_string()))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            run_written_from_log(&log),
+            "when transport entries do not expose authoritative skip/intercept signals, wrapper written value should be used"
+        );
+    }
+
 }
