@@ -30729,6 +30729,51 @@ fn run_with_directory_named_dag_extension_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_missing_dag_file_exits_nonzero_without_usage_banner() {
+    let missing_input = std::env::temp_dir().join(format!(
+        "daglang_run_missing_input_{}_{}.dag",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    if missing_input.exists() {
+        std::fs::remove_file(&missing_input).expect("failed to remove stale missing-input fixture");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg(missing_input.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with missing input file");
+
+    assert!(
+        !output.status.success(),
+        "run with missing input file should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with missing input file should use error exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("failed to read"),
+        "run should report filesystem read error for missing input: {stderr}"
+    );
+    assert!(
+        stderr.contains(missing_input.to_string_lossy().as_ref()),
+        "run should include missing input path in error output: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Usage: daglang run"),
+        "missing input is a runtime compile error, not a usage parse error: {stderr}"
+    );
+}
+
+#[test]
 fn run_with_missing_output_value_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
