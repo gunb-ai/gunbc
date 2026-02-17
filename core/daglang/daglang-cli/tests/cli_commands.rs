@@ -32559,6 +32559,39 @@ fn run_with_duplicate_split_output_flags_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_duplicate_split_output_flags_after_input_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output")
+        .arg("out/first.mk")
+        .arg("--output")
+        .arg("out/second.mk")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with duplicate split output flags after input");
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate split --output flags after input should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with duplicate split --output flags after input should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run accepts at most one --output path"),
+        "run should report duplicate output flags after input explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for duplicate output flags after input: {stderr}"
+    );
+}
+
+#[test]
 fn run_with_duplicate_mixed_output_flag_syntax_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
@@ -32587,6 +32620,37 @@ fn run_with_duplicate_mixed_output_flag_syntax_exits_nonzero_with_usage_message(
     assert!(
         stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
         "run should include usage for duplicate mixed output flags: {stderr}"
+    );
+}
+
+#[test]
+fn run_with_duplicate_equals_output_flags_after_input_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output=out/first.mk")
+        .arg("--output=out/second.mk")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with duplicate equals output flags after input");
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate equals output flags after input should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with duplicate equals output flags after input should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run accepts at most one --output path"),
+        "run should report duplicate equals output flags after input explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for duplicate equals output flags after input: {stderr}"
     );
 }
 
