@@ -30855,6 +30855,87 @@ fn run_real_mode_supports_double_dash_for_dash_prefixed_uppercase_input_paths() 
 }
 
 #[test]
+fn run_real_mode_double_dash_dash_prefixed_uppercase_input_reports_not_written_when_unchanged() {
+    let input_path = std::env::temp_dir().join(format!(
+        "--daglang_run_real_mode_dash_prefixed_uppercase_idempotent_input_{}_{}.DAG",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    std::fs::copy(
+        workspace_root().join("dsl/tools/makegen.dag"),
+        &input_path,
+    )
+    .expect("failed to copy makegen fixture for real-mode idempotent uppercase dash-prefixed input");
+    let output_path = unique_temp_output_file(
+        "run_real_mode_double_dash_dash_prefixed_uppercase_idempotent_output",
+    );
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect(
+            "failed to remove stale output for real-mode idempotent uppercase dash-prefixed input",
+        );
+    }
+
+    let first_output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("--")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first real-mode idempotent run with uppercase dash-prefixed input");
+    assert!(
+        first_output.status.success(),
+        "first real-mode run with uppercase dash-prefixed input should succeed: {}",
+        String::from_utf8_lossy(&first_output.stderr)
+    );
+    let first_stdout = String::from_utf8_lossy(&first_output.stdout);
+    assert!(
+        first_stdout.contains("mode=real"),
+        "first real-mode run with uppercase dash-prefixed input should report mode=real: {first_stdout}"
+    );
+    assert!(
+        first_stdout.contains("written=true"),
+        "first real-mode run with uppercase dash-prefixed input should report written=true: {first_stdout}"
+    );
+
+    let second_output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("--")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect(
+            "failed to run second real-mode idempotent run with uppercase dash-prefixed input",
+        );
+    assert!(
+        second_output.status.success(),
+        "second real-mode run with uppercase dash-prefixed input should succeed: {}",
+        String::from_utf8_lossy(&second_output.stderr)
+    );
+    let second_stdout = String::from_utf8_lossy(&second_output.stdout);
+    assert!(
+        second_stdout.contains("mode=real"),
+        "second real-mode run with uppercase dash-prefixed input should report mode=real: {second_stdout}"
+    );
+    assert!(
+        second_stdout.contains("written=false"),
+        "second real-mode run with uppercase dash-prefixed input should report written=false when unchanged: {second_stdout}"
+    );
+
+    std::fs::remove_file(&output_path).expect(
+        "failed to clean real-mode idempotent uppercase dash-prefixed output file",
+    );
+    std::fs::remove_file(&input_path)
+        .expect("failed to clean real-mode idempotent uppercase dash-prefixed input fixture");
+}
+
+#[test]
 fn run_with_double_dash_without_input_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
