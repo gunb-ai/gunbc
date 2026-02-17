@@ -168,6 +168,7 @@ dependencies = [
  "daglang-lower",
  "gunbc-exec",
  "gunbc-ir",
+ "serde_json",
 ]
 
 [[package]]

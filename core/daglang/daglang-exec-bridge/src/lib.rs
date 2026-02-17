@@ -3,9 +3,13 @@ use std::collections::HashMap;
 use daglang_lower::LoweredOp;
 use gunbc_exec::{
     execute_with_mode_and_inputs, BoundaryMocks, ExecError, Executable, ExecutionLog,
-    ExecutionMode,
+    ExecutionMode, OutputMap,
+};
+use gunbc_ir::transport::{
+    FileOp, FileRequest, FileResponse, TransportRequest, TransportResponse,
 };
 use gunbc_ir::{Dag, Node, Value};
+use serde_json::json;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedOp {
@@ -18,26 +22,6 @@ pub enum ResolvedOp {
     PrepareWriteContent,
     CompareContent,
     ExecuteTransport,
-}
-
-impl Executable for ResolvedOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        Err(ExecError::new(format!(
-            "execution for `{self:?}` is not wired in daglang-exec-bridge yet"
-        )))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ResolveDagError {
-    pub node_id: String,
-    pub reason: String,
-}
-
-impl std::fmt::Display for ResolveDagError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "resolve error at `{}`: {}", self.node_id, self.reason)
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +67,34 @@ impl OpRegistry {
     }
 }
 
+impl Executable for ResolvedOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        match self {
+            Self::LoadRegistry => execute_load_registry(inputs),
+            Self::FsEnv => execute_fs_env(inputs),
+            Self::RenderMakefile => execute_render_makefile(inputs),
+            Self::MakegenEntrypoint => execute_finalize_makegen(inputs),
+            Self::PrepareReadContent => execute_prepare_read_content(inputs),
+            Self::ExecuteReadContent => execute_execute_read_content(inputs),
+            Self::PrepareWriteContent => execute_prepare_write_content(inputs),
+            Self::CompareContent => execute_compare_content(inputs),
+            Self::ExecuteTransport => execute_execute_transport(inputs),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolveDagError {
+    pub node_id: String,
+    pub reason: String,
+}
+
+impl std::fmt::Display for ResolveDagError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "resolve error at `{}`: {}", self.node_id, self.reason)
+    }
+}
+
 pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<ResolvedOp>, ResolveDagError> {
     let registry = OpRegistry::makegen();
     let mut resolved = Dag::new();
@@ -120,23 +132,260 @@ pub fn makegen_entrypoint_mocks(output_path: &str) -> BoundaryMocks {
 pub fn makegen_dry_run_transport_mocks(output_path: &str) -> BoundaryMocks {
     let mut dry_run_mocks = BoundaryMocks::new();
     dry_run_mocks.set_value(
+        "fs_env",
+        "FilesystemHandle",
+        Value::Str("filesystem://dry-run".to_string()),
+    );
+    dry_run_mocks.set_value(
         "execute_read_makegen",
         "response",
-        Value::Str(format!("dry-run-read:{output_path}")),
+        Value::Response(TransportResponse::File(FileResponse::read_ok(
+            output_path.to_string(),
+            "<dry-run>",
+        ))),
     );
-    dry_run_mocks.set_value("execute_makegen_transport", "makegen_response", Value::Skipped);
+    dry_run_mocks.set_value(
+        "execute_makegen_transport",
+        "makegen_response",
+        Value::Skipped,
+    );
     dry_run_mocks
 }
 
 pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
     let mut check_mode_mocks = BoundaryMocks::new();
     check_mode_mocks.set_value(
+        "fs_env",
+        "FilesystemHandle",
+        Value::Str("filesystem://check-mode".to_string()),
+    );
+    let existing_content = std::fs::read(output_path)
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default();
+    check_mode_mocks.set_value(
         "execute_read_makegen",
         "response",
-        Value::Str(format!("check-mode-read:{output_path}")),
+        Value::Response(TransportResponse::File(FileResponse::read_ok(
+            output_path.to_string(),
+            existing_content,
+        ))),
     );
-    check_mode_mocks.set_value("execute_makegen_transport", "makegen_response", Value::Skipped);
+    check_mode_mocks.set_value(
+        "execute_makegen_transport",
+        "makegen_response",
+        Value::Skipped,
+    );
     check_mode_mocks
+}
+
+fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    OutputMap::new()
+        .json(
+            "registry",
+            json!({
+                "tools": [
+                    {
+                        "name": "makegen",
+                        "command": "cargo run -p gunbc-dag --bin gunbc-makegen"
+                    }
+                ]
+            }),
+        )
+        .ok()
+}
+
+fn execute_fs_env(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    OutputMap::new()
+        .str("FilesystemHandle", "filesystem://workspace")
+        .ok()
+}
+
+fn execute_render_makefile(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let registry = inputs
+        .get("registry")
+        .and_then(Value::as_json)
+        .ok_or_else(|| ExecError::new("missing required input `registry`".to_string()))?;
+    let tools = registry
+        .get("tools")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| ExecError::new("registry must contain `tools` array".to_string()))?;
+
+    let mut targets = Vec::new();
+    let mut lines = Vec::new();
+    for tool in tools {
+        let name = tool
+            .get("name")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| ExecError::new("registry tool entry missing `name`".to_string()))?;
+        let command = tool
+            .get("command")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| ExecError::new("registry tool entry missing `command`".to_string()))?;
+        targets.push(name.to_string());
+        lines.push(format!("{name}:\n\t{command}"));
+    }
+
+    let content = format!(
+        "# Generated by daglang\n.PHONY: {}\n\n{}\n",
+        targets.join(" "),
+        lines.join("\n\n")
+    );
+    OutputMap::new().str("return", content).ok()
+}
+
+fn execute_prepare_read_content(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let path = inputs
+        .get("path")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ExecError::new("missing required input `path`".to_string()))?;
+    OutputMap::new()
+        .request("request", TransportRequest::File(FileRequest::read(path)))
+        .ok()
+}
+
+fn execute_execute_read_content(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let request = inputs
+        .get("request")
+        .and_then(Value::as_request)
+        .ok_or_else(|| ExecError::new("missing required input `request`".to_string()))?;
+    match request {
+        TransportRequest::File(file_request) => OutputMap::new()
+            .response(
+                "response",
+                TransportResponse::File(execute_file_request(&file_request)),
+            )
+            .ok(),
+        _ => Err(ExecError::new(
+            "only file transport requests are supported by daglang-cli".to_string(),
+        )),
+    }
+}
+
+fn execute_prepare_write_content(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let path = inputs
+        .get("path")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ExecError::new("missing required input `path`".to_string()))?;
+    let content = inputs
+        .get("content")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ExecError::new("missing required input `content`".to_string()))?;
+    OutputMap::new()
+        .request("request", TransportRequest::File(FileRequest::write(path, content)))
+        .ok()
+}
+
+fn execute_compare_content(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let expected = inputs
+        .get("expected_content")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ExecError::new("missing required input `expected_content`".to_string()))?;
+    let actual = match inputs.get("response") {
+        Some(Value::Response(TransportResponse::File(file_response))) if file_response.success => {
+            file_response.content.clone().unwrap_or_default()
+        }
+        _ => String::new(),
+    };
+    let fresh = actual == expected;
+    OutputMap::new()
+        .bool("fresh", fresh)
+        .bool("skip", fresh)
+        .ok()
+}
+
+fn execute_execute_transport(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let skip = inputs.get("skip").and_then(Value::as_bool).unwrap_or(false);
+    if skip {
+        return OutputMap::new()
+            .value("makegen_response", Value::Skipped)
+            .ok();
+    }
+
+    let request = inputs
+        .get("request")
+        .and_then(Value::as_request)
+        .ok_or_else(|| ExecError::new("missing required input `request`".to_string()))?;
+    match request {
+        TransportRequest::File(file_request) => {
+            let response = execute_file_request(&file_request);
+            if file_request.operation == FileOp::Write && !response.success {
+                let error = response
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "unknown write failure".to_string());
+                return Err(ExecError::new(format!(
+                    "failed to write `{}`: {error}",
+                    file_request.path
+                )));
+            }
+            OutputMap::new()
+                .response("makegen_response", TransportResponse::File(response))
+                .ok()
+        }
+        _ => Err(ExecError::new(
+            "only file transport requests are supported by daglang-cli".to_string(),
+        )),
+    }
+}
+
+fn execute_file_request(request: &FileRequest) -> FileResponse {
+    match request.operation {
+        FileOp::Read => match std::fs::read_to_string(&request.path) {
+            Ok(content) => FileResponse::read_ok(request.path.clone(), content),
+            Err(error) => FileResponse::error(request.path.clone(), FileOp::Read, error.to_string()),
+        },
+        FileOp::Write => {
+            let write_result = (|| -> Result<(), std::io::Error> {
+                if request.create_parents {
+                    if let Some(parent) = std::path::Path::new(&request.path).parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                }
+                std::fs::write(&request.path, request.content.clone().unwrap_or_default())?;
+                Ok(())
+            })();
+            match write_result {
+                Ok(()) => FileResponse::written(request.path.clone()),
+                Err(error) => FileResponse::error(request.path.clone(), FileOp::Write, error.to_string()),
+            }
+        }
+        _ => FileResponse::error(
+            request.path.clone(),
+            request.operation,
+            "unsupported file operation",
+        ),
+    }
+}
+
+fn execute_finalize_makegen(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let written = inputs
+        .get("__deps")
+        .and_then(Value::as_list)
+        .map(|deps| {
+            deps.iter().any(|value| {
+                matches!(
+                    value,
+                    Value::Response(TransportResponse::File(response))
+                        if response.operation == FileOp::Write && response.success
+                )
+            })
+        })
+        .unwrap_or(false);
+    OutputMap::new().bool("written", written).ok()
 }
 
 fn resolve_lowered_node(
@@ -161,7 +410,9 @@ fn resolve_lowered_op(
     match op {
         LoweredOp::Pipeline { module, name, .. } => Err(ResolveDagError {
             node_id: node_id.to_string(),
-            reason: format!("unsupported pipeline `{module}.{name}` in execution resolver"),
+            reason: format!(
+                "unsupported pipeline `{module}.{name}` in execution resolver"
+            ),
         }),
         LoweredOp::Callable { module, name, .. } => {
             if module != "tools.makegen" {

@@ -9,3 +9,4 @@ description = "Lowered DAG to executable runtime bridge for daglang"
 daglang-lower = { path = "../daglang-lower" }
 gunbc-ir = { path = "../../ir" }
 gunbc-exec = { path = "../../exec" }
+serde_json = { workspace = true }
