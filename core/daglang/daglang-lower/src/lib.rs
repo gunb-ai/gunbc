@@ -2614,7 +2614,7 @@ mod tests {
     use gunbc_clippy::build_clippy_graph_lint_all;
     use gunbc_dag::{
         build_bootstrap_graph, build_build_graph, build_ci_graph, build_codegen_graph,
-        build_makegen_graph, build_pragma_graph,
+        build_docgen_graph, build_makegen_graph, build_pragma_graph,
     };
     use gunbc_deps::build_deps_graph;
     use gunbc_gist::{build_gist_graph, GistMode};
@@ -3127,6 +3127,19 @@ fn run(values: List<String>) -> String {
         let typed = typed_project_for_module_with_dependency_closure("tools.pragma");
         let dag = lower_target_module(&typed, "tools.pragma");
         let reference = build_pragma_graph().expect("pragma builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn docgen_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.docgen");
+        let dag = lower_target_module(&typed, "tools.docgen");
+        let reference = build_docgen_graph().expect("docgen builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);
