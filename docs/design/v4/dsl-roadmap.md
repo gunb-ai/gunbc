@@ -251,7 +251,7 @@ For each workflow being targeted in Phases 1-2:
 **Deliverables**:
 - [x] `.dag` files written for at least makegen + one other workflow — *DSL corpus exists under `dsl/` with modules spanning tools, services, pipelines, infra, cloud, and examples*
 - [x] Side-by-side `dag viz` comparison (existing builder vs target `.dag` shape) — *makegen normalized compiled-vs-builder ASCII DAG parity regression is in place*
-- [ ] Modeling preview document per workflow (gaps, insertions, manifest differences)
+- [x] Modeling preview document per workflow (gaps, insertions, manifest differences) — *see `workflow-modeling-preview.md`*
 - [x] `dag show-triplets` works (shows service call → prepare/execute/parse expansion)
 - [x] `dag obligations` works (shows 4-bucket test obligations derived from DAG)
 
@@ -1834,6 +1834,7 @@ Track these during migration to measure progress:
 ## References
 
 - [DSL Design Document](./dsl-design.md) — full language specification and worked examples
+- [Workflow Modeling Preview](./workflow-modeling-preview.md) — per-workflow current-state gaps and next increments
 - [Unified Registration](../unified-registration.md) — discovery unification design
 - [Unified Emission](../unified-emission.md) — emission system consolidation design
 - [Handbook](../handbook.md) — pipeline invariants and pattern catalog
