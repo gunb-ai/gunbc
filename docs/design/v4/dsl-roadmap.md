@@ -684,7 +684,7 @@ The two workers share the `daglang-cli` crate but touch different files:
 - [x] **Resource lifecycle**: acquisition/release nodes inserted by compiler; resource conflicts detected during validation — *lifecycle nodes are emitted and validation enforces conflicting binding checks*
 - [ ] **IR parity**: compiled credential chain matches existing `lib/gcp-ops/src/graph.rs` shape
 - [x] **Semantic preservation**: `@idempotent`, `@readonly`, `@permissions` annotations survive lowering and are accessible to test categorizer — *service triplet `LoweredOp` nodes expose structured `ServiceCallMetadata`*
-- [ ] **Interface resolution**: `uses store: ObjectStorage` resolves to `GcsBucket` when `CloudConfig = GcpConfig`
+- [x] **Interface resolution**: `uses store: ObjectStorage` resolves to `GcsBucket` when `CloudConfig = GcpConfig` — *lowering resolves interface-backed `uses` lifecycles via provider hint (`cloud: GcpConfig`) and avoids ambiguous multi-provider wiring*
 - [ ] **Contract verification**: `@contract` annotations on `ObjectStorage` generate behavioral tests for `GcsBucket`
 - [ ] **Collection parallelism**: `list |> map(f)` inside `fn` compiles to `MapNode` in IR; executor can parallelize
 

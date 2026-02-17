@@ -227,6 +227,81 @@ struct ResourceLifecycleEndpoint {
     release_node: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProviderHint {
+    Gcp,
+    Aws,
+    Azure,
+}
+
+fn provider_hint_from_resource_type(resource_type: &str) -> Option<ProviderHint> {
+    provider_hint_from_name(resource_type)
+}
+
+fn provider_hint_from_name(name: &str) -> Option<ProviderHint> {
+    if name.contains("GcpConfig") {
+        return Some(ProviderHint::Gcp);
+    }
+    if name.contains("AwsConfig") {
+        return Some(ProviderHint::Aws);
+    }
+    if name.contains("AzureConfig") {
+        return Some(ProviderHint::Azure);
+    }
+    None
+}
+
+fn provider_hint_from_expr(expr: &Expr) -> Option<ProviderHint> {
+    match expr {
+        Expr::Ident(name) | Expr::Call(name, _) => provider_hint_from_name(name),
+        Expr::Record(name, _) => name.as_deref().and_then(provider_hint_from_name),
+        Expr::FieldAccess(_, field) => provider_hint_from_name(field),
+        _ => None,
+    }
+}
+
+fn provider_hint_from_uses_config(config: Option<&[(String, Expr)]>) -> Option<ProviderHint> {
+    let Some(config_entries) = config else {
+        return None;
+    };
+    for (name, value) in config_entries {
+        if name == "cloud" {
+            if let Some(provider_hint) = provider_hint_from_expr(value) {
+                return Some(provider_hint);
+            }
+        }
+    }
+    None
+}
+
+fn provider_hint_from_module_name(module_name: &str) -> Option<ProviderHint> {
+    let normalized = format!(".{}.", module_name);
+    if normalized.contains(".gcp.") {
+        return Some(ProviderHint::Gcp);
+    }
+    if normalized.contains(".aws.") {
+        return Some(ProviderHint::Aws);
+    }
+    if normalized.contains(".azure.") {
+        return Some(ProviderHint::Azure);
+    }
+    None
+}
+
+fn provider_hint_from_resource_name(resource_name: &str) -> Option<ProviderHint> {
+    let lower = resource_name.to_ascii_lowercase();
+    if lower.contains("gcs") || lower.contains("gcp") {
+        return Some(ProviderHint::Gcp);
+    }
+    if lower.contains("s3") || lower.contains("aws") {
+        return Some(ProviderHint::Aws);
+    }
+    if lower.contains("blob") || lower.contains("azure") {
+        return Some(ProviderHint::Azure);
+    }
+    None
+}
+
 fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
     let canonical = canonical_type_name(name);
     let short = canonical
@@ -1730,9 +1805,14 @@ fn add_used_resource_edges(
             };
             for usage in uses {
                 let resource_type = resource_type_name(&usage.resource_type);
+                let resource_type_with_config = type_expr_to_string(&usage.resource_type);
+                let provider_hint = provider_hint_from_uses_config(usage.config.as_deref());
                 let Some(endpoint) = resolve_resource_endpoint(
                     module_name.as_str(),
                     resource_type.as_str(),
+                    resource_type_with_config.as_str(),
+                    provider_hint,
+                    project,
                     resource_registry,
                 ) else {
                     if is_known_uses_type(known_uses_types, &resource_type) {
@@ -1785,9 +1865,13 @@ fn add_provided_resource_nodes(
             };
             for provided in provides {
                 let resource_type = resource_type_name(&provided.resource_type);
+                let resource_type_with_config = type_expr_to_string(&provided.resource_type);
                 let endpoint = resolve_resource_endpoint(
                     module_name.as_str(),
                     resource_type.as_str(),
+                    resource_type_with_config.as_str(),
+                    None,
+                    project,
                     resource_registry,
                 );
                 if endpoint.is_none() && !is_known_uses_type(known_uses_types, &resource_type) {
@@ -1843,6 +1927,27 @@ fn add_provided_resource_nodes(
 fn resolve_resource_endpoint(
     module_name: &str,
     resource_type: &str,
+    resource_type_with_config: &str,
+    provider_hint: Option<ProviderHint>,
+    project: &TypedProject,
+    registry: &ResourceLifecycleRegistry,
+) -> Option<ResourceLifecycleEndpoint> {
+    if let Some(endpoint) = resolve_concrete_resource_endpoint(module_name, resource_type, registry)
+    {
+        return Some(endpoint);
+    }
+    resolve_interface_resource_endpoint(
+        resource_type,
+        resource_type_with_config,
+        provider_hint,
+        project,
+        registry,
+    )
+}
+
+fn resolve_concrete_resource_endpoint(
+    module_name: &str,
+    resource_type: &str,
     registry: &ResourceLifecycleRegistry,
 ) -> Option<ResourceLifecycleEndpoint> {
     let keys = [
@@ -1853,6 +1958,66 @@ fn resolve_resource_endpoint(
         if let Some(Some(endpoint)) = registry.by_key.get(&key) {
             return Some(endpoint.clone());
         }
+    }
+    None
+}
+
+fn resolve_interface_resource_endpoint(
+    resource_type: &str,
+    resource_type_with_config: &str,
+    provider_hint: Option<ProviderHint>,
+    project: &TypedProject,
+    registry: &ResourceLifecycleRegistry,
+) -> Option<ResourceLifecycleEndpoint> {
+    let target_canonical = canonical_type_name(resource_type);
+    let target_short = target_canonical
+        .rsplit('.')
+        .next()
+        .unwrap_or(target_canonical.as_str());
+    let provider_hint =
+        provider_hint.or_else(|| provider_hint_from_resource_type(resource_type_with_config));
+    let mut candidates = Vec::<(Option<ProviderHint>, ResourceLifecycleEndpoint)>::new();
+
+    for module in &project.modules {
+        let candidate_module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::ResourceDef(resource) = &item.node else {
+                continue;
+            };
+            let Some(implemented) = &resource.implements else {
+                continue;
+            };
+            let implemented_canonical = canonical_type_name(implemented);
+            let implemented_short = implemented_canonical
+                .rsplit('.')
+                .next()
+                .unwrap_or(implemented_canonical.as_str());
+            if implemented_canonical != target_canonical && implemented_short != target_short {
+                continue;
+            }
+            let Some(endpoint) = resolve_concrete_resource_endpoint(
+                candidate_module_name.as_str(),
+                resource.name.as_str(),
+                registry,
+            ) else {
+                continue;
+            };
+            candidates.push((
+                provider_hint_from_module_name(candidate_module_name.as_str())
+                    .or_else(|| provider_hint_from_resource_name(resource.name.as_str())),
+                endpoint,
+            ));
+        }
+    }
+
+    if let Some(required_provider) = provider_hint {
+        candidates.retain(|(candidate_provider, _)| {
+            candidate_provider.is_some_and(|provider| provider == required_provider)
+        });
+    }
+
+    if candidates.len() == 1 {
+        return candidates.into_iter().next().map(|(_, endpoint)| endpoint);
     }
     None
 }
@@ -2541,6 +2706,90 @@ func run() -> { ok: Bool } uses fs: TempFile(mode: ReadWrite) {
                 && edge.to_node.0 == "sample.resources::run"
                 && edge.to_port.0 == "__deps"
         }));
+    }
+
+    #[test]
+    fn uses_interface_with_provider_hint_resolves_matching_resource_lifecycle() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/infra/providers.dag",
+            r#"module infra.providers
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource GcsBucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource S3Bucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } uses store: ObjectStorage(cloud: GcpConfig) {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_providers_GcsBucket"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == "infra.providers::run"
+                && edge.to_port.0 == "__deps"
+        }));
+        assert!(
+            !dag.edges.iter().any(|edge| {
+                edge.from_node.0 == "acquire_resource_infra_providers_S3Bucket"
+                    && edge.to_node.0 == "infra.providers::run"
+                    && edge.to_port.0 == "__deps"
+            }),
+            "provider hint should avoid wiring non-matching provider resources"
+        );
+    }
+
+    #[test]
+    fn uses_interface_without_provider_hint_stays_unwired_when_multiple_providers_exist() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/infra/providers_ambiguous.dag",
+            r#"module infra.providers
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource GcsBucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource S3Bucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } uses store: ObjectStorage {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(
+            !dag.edges.iter().any(|edge| {
+                edge.to_node.0 == "infra.providers::run" && edge.to_port.0 == "__deps"
+            }),
+            "ambiguous interface uses should not arbitrarily wire lifecycle edges"
+        );
     }
 
     #[test]
