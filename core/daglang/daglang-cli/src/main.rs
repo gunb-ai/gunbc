@@ -315,6 +315,7 @@ fn run_written_from_log(log: &gunbc_exec::ExecutionLog) -> bool {
     if let Some(transport_entry) = log
         .entries
         .iter()
+        .rev()
         .find(|entry| entry.node_id == "execute_makegen_transport")
     {
         if transport_entry.was_intercepted {
@@ -1077,6 +1078,36 @@ mod tests {
         assert!(
             !run_written_from_log(&log),
             "intercepted transport should force written=false in run summary"
+        );
+    }
+
+    #[test]
+    fn run_written_from_log_prefers_latest_transport_entry() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Bool(false))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(false))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            run_written_from_log(&log),
+            "latest transport skip=false should win over earlier skip=true values"
         );
     }
 
