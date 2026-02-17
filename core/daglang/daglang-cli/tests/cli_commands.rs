@@ -31568,6 +31568,55 @@ fn run_command_check_mode_supports_equals_output_flag_after_input_path() {
 }
 
 #[test]
+fn run_command_check_mode_supports_dash_prefixed_equals_output_path() {
+    let output_path = std::env::temp_dir().join(format!(
+        "--daglang_run_check_mode_dash_output_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
+    }
+    let stale = "check-mode dash-prefixed output stale content";
+    std::fs::write(&output_path, stale).expect("failed to seed stale check-mode output file");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--check-mode")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with check-mode dash-prefixed --output=<path>");
+
+    assert!(
+        output.status.success(),
+        "check-mode run with dash-prefixed --output=<path> should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode run with dash-prefixed output should report check-mode mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode run with dash-prefixed output should report written=false: {stdout}"
+    );
+    let after = std::fs::read_to_string(&output_path)
+        .expect("failed to read dash-prefixed check-mode output");
+    assert_eq!(
+        after, stale,
+        "check-mode run should preserve dash-prefixed output content"
+    );
+    std::fs::remove_file(&output_path)
+        .expect("failed to clean up dash-prefixed check-mode output file");
+}
+
+#[test]
 fn run_command_check_mode_preserves_existing_binary_file_and_reports_not_written() {
     let output_path = unique_temp_output_file("run_check_mode_binary");
     if output_path.exists() {
