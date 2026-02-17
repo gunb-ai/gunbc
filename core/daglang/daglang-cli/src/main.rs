@@ -154,6 +154,10 @@ fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
     path_utils::resolve_default_root(cwd)
 }
 
+/// Builds check pipeline context from CLI input.
+///
+/// Unlike compile context construction, `.dag`-suffixed paths that resolve to
+/// directories stay in directory mode for `daglang check`.
 fn build_check_pipeline_context(
     cwd: &std::path::Path,
     input: Option<&String>,
