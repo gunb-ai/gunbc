@@ -628,12 +628,12 @@ mod tests {
         ))
     }
 
-    fn assert_typecheck_stage_error(error: &str) {
+    fn assert_typecheck_stage_error(error: &CompileError) {
         assert!(error.contains("typecheck errors"));
         assert!(!error.contains("lower error"));
     }
 
-    fn assert_lower_stage_error(error: &str) {
+    fn assert_lower_stage_error(error: &CompileError) {
         assert!(error.contains("lower error"));
         assert!(!error.contains("typecheck errors"));
     }
@@ -1618,6 +1618,7 @@ fn run(values: List<String>) -> String {
 
         let error = compile_from_context(&context).expect_err("compile should fail");
         let first_diagnostic_line = error
+            .as_str()
             .lines()
             .find(|line| line.contains(".dag:"))
             .expect("expected at least one file diagnostic line");

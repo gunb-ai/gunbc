@@ -605,6 +605,17 @@ fn lower_typed_project_with_callable_scope(
     Ok(builder.into_dag())
 }
 
+pub use parity::{
+    canonical_ir_json, compare_ci_topology, compare_gcp_credential_topology,
+    compare_gist_topology, compare_ir, compare_makegen_topology, compare_topology,
+    GistParityMode,
+};
+#[cfg(test)]
+use parity::{normalize_makegen_candidate, normalize_makegen_reference};
+
+mod parity {
+use super::*;
+
 /// Compare a lowered daglang graph against a reference graph topology.
 ///
 /// This enables incremental parity harness adoption:
@@ -924,7 +935,7 @@ fn canonical_kind_from_shape(
     "callable".to_string()
 }
 
-fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
+pub(crate) fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
     let mut normalized = Dag::new();
     let mut kept_nodes = HashSet::<String>::new();
     let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
@@ -2146,7 +2157,7 @@ fn gcp_credential_canonical_edges() -> Vec<(&'static str, &'static str, &'static
     ]
 }
 
-fn normalize_makegen_reference<T>(reference: &Dag<T>) -> Dag<()> {
+pub(crate) fn normalize_makegen_reference<T>(reference: &Dag<T>) -> Dag<()> {
     let mut normalized = Dag::new();
     let mut kept_nodes = HashSet::<String>::new();
     let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
@@ -2301,6 +2312,7 @@ fn node_body_as_opaque(body: &gunbc_ir::node::NodeBody<LoweredOp>) -> Option<&Lo
         gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
         gunbc_ir::node::NodeBody::SubDag(_) => None,
     }
+}
 }
 
 fn lower_callable(
