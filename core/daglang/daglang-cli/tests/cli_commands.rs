@@ -31864,6 +31864,29 @@ fn compile_family_commands_execute_real_pipeline_paths_with_absolute_double_sepa
 }
 
 #[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_parent_segment_target() {
+    let commands: [(&str, &[&str]); 5] = [
+        ("expand", &[]),
+        ("manifest", &[]),
+        ("compile", &[]),
+        ("obligations", &["--format", "json"]),
+        ("show-triplets", &["--format", "json"]),
+    ];
+    let absolute_target_with_parent_segment = workspace_root()
+        .join("dsl/../dsl/tools/makegen.dag")
+        .to_string_lossy()
+        .into_owned();
+    for (command, trailing_args) in commands {
+        assert_compile_family_command_succeeds(
+            command,
+            &absolute_target_with_parent_segment,
+            "absolute-parent-segment",
+            trailing_args,
+        );
+    }
+}
+
+#[test]
 fn compile_family_commands_makegen_target_variants_are_output_equivalent() {
     let commands: [(&str, &[&str]); 5] = [
         ("expand", &[]),
@@ -31892,6 +31915,13 @@ fn compile_family_commands_makegen_target_variants_are_output_equivalent() {
         (
             "absolute-double-separator",
             format!("{}/dsl//tools///makegen.dag", workspace_root().display()),
+        ),
+        (
+            "absolute-parent-segment",
+            workspace_root()
+                .join("dsl/../dsl/tools/makegen.dag")
+                .to_string_lossy()
+                .into_owned(),
         ),
     ];
 
