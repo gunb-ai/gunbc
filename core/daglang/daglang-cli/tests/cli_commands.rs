@@ -31132,6 +31132,10 @@ fn run_command_writes_makefile_in_real_mode() {
         "run should report real mode in summary: {stdout}"
     );
     assert!(
+        stdout.contains("written=true"),
+        "run should report written=true in real mode summary: {stdout}"
+    );
+    assert!(
         output_path.exists(),
         "real run should write output file at {}",
         output_path.display()
@@ -31201,6 +31205,15 @@ fn run_command_supports_equals_output_flag_in_real_mode() {
         output.status.success(),
         "run with --output=<path> should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=real"),
+        "run with --output=<path> should report real mode summary: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=true"),
+        "run with --output=<path> should report written=true summary: {stdout}"
     );
     assert!(
         output_path.exists(),
