@@ -1258,4 +1258,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn run_written_from_log_ignores_non_boolean_skip_and_uses_earlier_boolean_signal() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Bool(false))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Str("true".to_string()))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(false))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            run_written_from_log(&log),
+            "non-boolean skip values should be ignored in favor of older boolean skip signals"
+        );
+    }
+
 }
