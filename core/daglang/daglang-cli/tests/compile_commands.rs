@@ -11577,6 +11577,19 @@ fn obligations_command_absolute_parent_curdir_segment_target_matches_canonical_a
 }
 
 #[test]
+fn obligations_command_absolute_parent_double_separator_target_matches_canonical_absolute_output() {
+    let parent_double_separator_target =
+        format!("{}/dsl/..//dsl/tools/makegen.dag", workspace_root().display());
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "obligations",
+        &parent_double_separator_target,
+        &[],
+        "absolute parent-double-separator",
+    );
+}
+
+#[test]
 fn obligations_command_absolute_parent_curdir_double_separator_target_matches_canonical_absolute_output(
 ) {
     let parent_curdir_double_separator_target =
@@ -11824,6 +11837,20 @@ fn obligations_command_json_absolute_parent_curdir_segment_target_matches_canoni
         &parent_curdir_segment_target,
         &["--format", "json"],
         "absolute parent-curdir-segment",
+    );
+}
+
+#[test]
+fn obligations_command_json_absolute_parent_double_separator_target_matches_canonical_absolute_output(
+) {
+    let parent_double_separator_target =
+        format!("{}/dsl/..//dsl/tools/makegen.dag", workspace_root().display());
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "obligations",
+        &parent_double_separator_target,
+        &["--format", "json"],
+        "absolute parent-double-separator",
     );
 }
 
@@ -13602,6 +13629,19 @@ fn show_triplets_command_absolute_parent_curdir_segment_target_matches_canonical
 }
 
 #[test]
+fn show_triplets_command_absolute_parent_double_separator_target_matches_canonical_absolute_output() {
+    let parent_double_separator_target =
+        format!("{}/dsl/..//dsl/tools/makegen.dag", workspace_root().display());
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "show-triplets",
+        &parent_double_separator_target,
+        &[],
+        "absolute parent-double-separator",
+    );
+}
+
+#[test]
 fn show_triplets_command_absolute_parent_curdir_double_separator_target_matches_canonical_absolute_output(
 ) {
     let parent_curdir_double_separator_target =
@@ -13849,6 +13889,20 @@ fn show_triplets_command_json_absolute_parent_curdir_segment_target_matches_cano
         &parent_curdir_segment_target,
         &["--format", "json"],
         "absolute parent-curdir-segment",
+    );
+}
+
+#[test]
+fn show_triplets_command_json_absolute_parent_double_separator_target_matches_canonical_absolute_output(
+) {
+    let parent_double_separator_target =
+        format!("{}/dsl/..//dsl/tools/makegen.dag", workspace_root().display());
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "show-triplets",
+        &parent_double_separator_target,
+        &["--format", "json"],
+        "absolute parent-double-separator",
     );
 }
 
