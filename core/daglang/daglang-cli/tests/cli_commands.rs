@@ -31702,6 +31702,37 @@ fn run_with_duplicate_dry_run_flags_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_duplicate_dry_run_flags_after_input_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--dry-run")
+        .arg("--dry-run")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with duplicate dry-run flags after input");
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate dry-run flags after input should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with duplicate dry-run flags after input should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run accepts --dry-run at most once"),
+        "run should report duplicate dry-run flag after input explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for duplicate dry-run flags after input: {stderr}"
+    );
+}
+
+#[test]
 fn run_with_duplicate_check_mode_flags_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
@@ -31729,6 +31760,37 @@ fn run_with_duplicate_check_mode_flags_exits_nonzero_with_usage_message() {
     assert!(
         stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
         "run should include usage for duplicate check-mode flags: {stderr}"
+    );
+}
+
+#[test]
+fn run_with_duplicate_check_mode_flags_after_input_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--check-mode")
+        .arg("--check-mode")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with duplicate check-mode flags after input");
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate check-mode flags after input should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with duplicate check-mode flags after input should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run accepts --check-mode at most once"),
+        "run should report duplicate check-mode flag after input explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for duplicate check-mode flags after input: {stderr}"
     );
 }
 

@@ -1173,6 +1173,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_rejects_duplicate_dry_run_flags_after_input_path() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--dry-run".to_string(),
+            "--dry-run".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run accepts --dry-run at most once"),
+            "expected duplicate dry-run flag error after input path, got: {error}"
+        );
+    }
+
+    #[test]
     fn parse_run_args_rejects_duplicate_check_mode_flags() {
         let args = vec![
             "daglang".to_string(),
@@ -1185,6 +1201,22 @@ mod tests {
         assert!(
             error.contains("run accepts --check-mode at most once"),
             "expected duplicate check-mode flag error, got: {error}"
+        );
+    }
+
+    #[test]
+    fn parse_run_args_rejects_duplicate_check_mode_flags_after_input_path() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--check-mode".to_string(),
+            "--check-mode".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run accepts --check-mode at most once"),
+            "expected duplicate check-mode flag error after input path, got: {error}"
         );
     }
 
