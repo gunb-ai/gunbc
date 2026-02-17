@@ -30791,6 +30791,70 @@ fn run_check_mode_supports_double_dash_for_dash_prefixed_uppercase_input_paths()
 }
 
 #[test]
+fn run_real_mode_supports_double_dash_for_dash_prefixed_uppercase_input_paths() {
+    let input_path = std::env::temp_dir().join(format!(
+        "--daglang_run_real_mode_dash_prefixed_uppercase_input_{}_{}.DAG",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    std::fs::copy(
+        workspace_root().join("dsl/tools/makegen.dag"),
+        &input_path,
+    )
+    .expect("failed to copy makegen fixture for real-mode uppercase dash-prefixed input");
+    let output_path =
+        unique_temp_output_file("run_real_mode_double_dash_dash_prefixed_uppercase_output");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path)
+            .expect("failed to remove stale output for real-mode uppercase dash-prefixed input");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("--")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run real-mode with uppercase dash-prefixed input");
+
+    assert!(
+        output.status.success(),
+        "real-mode run with uppercase dash-prefixed .DAG input after -- should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=real"),
+        "real-mode run with uppercase dash-prefixed input should report mode=real: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=true"),
+        "real-mode run with uppercase dash-prefixed input should report written=true: {stdout}"
+    );
+    assert!(
+        output_path.exists(),
+        "real-mode run with uppercase dash-prefixed input should write output file at {}",
+        output_path.display()
+    );
+    let written = std::fs::read_to_string(&output_path)
+        .expect("failed to read real-mode uppercase dash-prefixed output");
+    assert!(
+        written.contains(".PHONY"),
+        "real-mode run with uppercase dash-prefixed input should write makefile content: {written}"
+    );
+
+    std::fs::remove_file(&output_path)
+        .expect("failed to clean real-mode uppercase dash-prefixed output");
+    std::fs::remove_file(&input_path)
+        .expect("failed to clean real-mode uppercase dash-prefixed input fixture");
+}
+
+#[test]
 fn run_with_double_dash_without_input_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
