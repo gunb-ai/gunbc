@@ -4,7 +4,7 @@
 use daglang_resolve::ModuleGraph;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn workspace_root() -> PathBuf {
@@ -31904,6 +31904,73 @@ fn compile_family_commands_execute_real_pipeline_paths_with_absolute_double_sepa
             !output.stdout.is_empty(),
             "{command} should emit meaningful stdout output for absolute double-separator target"
         );
+    }
+}
+
+#[test]
+fn compile_family_commands_makegen_target_variants_are_output_equivalent() {
+    let commands: [(&str, &[&str]); 5] = [
+        ("expand", &[]),
+        ("manifest", &[]),
+        ("compile", &[]),
+        ("obligations", &["--format", "json"]),
+        ("show-triplets", &["--format", "json"]),
+    ];
+    let targets = [
+        ("relative", "dsl/tools/makegen.dag".to_string()),
+        (
+            "absolute",
+            workspace_root()
+                .join("dsl/tools/makegen.dag")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        ("curdir-suffix", "./dsl/tools/makegen.dag".to_string()),
+        (
+            "absolute-curdir-segment",
+            workspace_root()
+                .join("./dsl/./tools/../tools/makegen.dag")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        (
+            "absolute-double-separator",
+            format!("{}/dsl//tools///makegen.dag", workspace_root().display()),
+        ),
+    ];
+
+    for (command, trailing_args) in commands {
+        let mut runs: Vec<(&str, Output)> = Vec::with_capacity(targets.len());
+        for (target_label, target_value) in &targets {
+            let output = Command::new(daglang_bin())
+                .arg(command)
+                .arg(target_value)
+                .args(trailing_args)
+                .current_dir(workspace_root())
+                .output()
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "failed to run {command} with {target_label} makegen target: {err}"
+                    )
+                });
+            assert!(
+                output.status.success(),
+                "{command} should succeed with {target_label} makegen target"
+            );
+            runs.push((target_label, output));
+        }
+
+        let (_, reference_output) = &runs[0];
+        for (target_label, output) in runs.iter().skip(1) {
+            assert_eq!(
+                reference_output.stdout, output.stdout,
+                "{command} stdout should match between relative and {target_label} makegen targets"
+            );
+            assert_eq!(
+                reference_output.stderr, output.stderr,
+                "{command} stderr should match between relative and {target_label} makegen targets"
+            );
+        }
     }
 }
 
