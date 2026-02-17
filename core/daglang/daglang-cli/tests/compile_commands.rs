@@ -155,6 +155,24 @@ fn assert_single_target_command_outputs_match_for_targets(
     );
 }
 
+fn assert_makegen_target_variant_matches_canonical_output(
+    command_name: &str,
+    variant_target: &str,
+    extra_args: &[&str],
+    variant_label: &str,
+) {
+    let root = workspace_root();
+    let canonical_target = makegen_file().to_string_lossy().into_owned();
+    assert_single_target_command_outputs_match_for_targets(
+        command_name,
+        &root,
+        &canonical_target,
+        variant_target,
+        extra_args,
+        variant_label,
+    );
+}
+
 fn assert_dag_suffixed_directory_is_invalid_single_file_target(
     root: &Path,
     input: &str,
@@ -11502,17 +11520,13 @@ fn obligations_command_relative_and_absolute_targets_are_equivalent() {
 
 #[test]
 fn obligations_command_absolute_curdir_segment_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
-    let curdir_segment_target = root
+    let curdir_segment_target = workspace_root()
         .join("./dsl/./tools/../tools/makegen.dag")
         .to_string_lossy()
         .into_owned();
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "obligations",
-        &root,
-        &canonical_target,
         &curdir_segment_target,
         &[],
         "absolute curdir-segment",
@@ -11521,15 +11535,11 @@ fn obligations_command_absolute_curdir_segment_target_matches_canonical_absolute
 
 #[test]
 fn obligations_command_absolute_double_separator_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
     let double_separator_target =
-        format!("{}/dsl//tools///makegen.dag", root.display());
+        format!("{}/dsl//tools///makegen.dag", workspace_root().display());
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "obligations",
-        &root,
-        &canonical_target,
         &double_separator_target,
         &[],
         "absolute double-separator",
@@ -11538,17 +11548,13 @@ fn obligations_command_absolute_double_separator_target_matches_canonical_absolu
 
 #[test]
 fn obligations_command_absolute_parent_segment_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
-    let parent_segment_target = root
+    let parent_segment_target = workspace_root()
         .join("dsl/../dsl/tools/makegen.dag")
         .to_string_lossy()
         .into_owned();
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "obligations",
-        &root,
-        &canonical_target,
         &parent_segment_target,
         &[],
         "absolute parent-segment",
@@ -11735,15 +11741,11 @@ fn obligations_command_json_relative_and_absolute_targets_are_equivalent() {
 
 #[test]
 fn obligations_command_json_absolute_double_separator_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
     let double_separator_target =
-        format!("{}/dsl//tools///makegen.dag", root.display());
+        format!("{}/dsl//tools///makegen.dag", workspace_root().display());
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "obligations",
-        &root,
-        &canonical_target,
         &double_separator_target,
         &["--format", "json"],
         "absolute double-separator",
@@ -11752,17 +11754,13 @@ fn obligations_command_json_absolute_double_separator_target_matches_canonical_a
 
 #[test]
 fn obligations_command_json_absolute_curdir_segment_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
-    let curdir_segment_target = root
+    let curdir_segment_target = workspace_root()
         .join("./dsl/./tools/../tools/makegen.dag")
         .to_string_lossy()
         .into_owned();
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "obligations",
-        &root,
-        &canonical_target,
         &curdir_segment_target,
         &["--format", "json"],
         "absolute curdir-segment",
@@ -11771,17 +11769,13 @@ fn obligations_command_json_absolute_curdir_segment_target_matches_canonical_abs
 
 #[test]
 fn obligations_command_json_absolute_parent_segment_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
-    let parent_segment_target = root
+    let parent_segment_target = workspace_root()
         .join("dsl/../dsl/tools/makegen.dag")
         .to_string_lossy()
         .into_owned();
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "obligations",
-        &root,
-        &canonical_target,
         &parent_segment_target,
         &["--format", "json"],
         "absolute parent-segment",
@@ -12932,17 +12926,13 @@ fn show_triplets_command_relative_and_absolute_targets_are_equivalent() {
 
 #[test]
 fn show_triplets_command_absolute_curdir_segment_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
-    let curdir_segment_target = root
+    let curdir_segment_target = workspace_root()
         .join("./dsl/./tools/../tools/makegen.dag")
         .to_string_lossy()
         .into_owned();
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "show-triplets",
-        &root,
-        &canonical_target,
         &curdir_segment_target,
         &[],
         "absolute curdir-segment",
@@ -12951,15 +12941,11 @@ fn show_triplets_command_absolute_curdir_segment_target_matches_canonical_absolu
 
 #[test]
 fn show_triplets_command_absolute_double_separator_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
     let double_separator_target =
-        format!("{}/dsl//tools///makegen.dag", root.display());
+        format!("{}/dsl//tools///makegen.dag", workspace_root().display());
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "show-triplets",
-        &root,
-        &canonical_target,
         &double_separator_target,
         &[],
         "absolute double-separator",
@@ -12968,17 +12954,13 @@ fn show_triplets_command_absolute_double_separator_target_matches_canonical_abso
 
 #[test]
 fn show_triplets_command_absolute_parent_segment_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
-    let parent_segment_target = root
+    let parent_segment_target = workspace_root()
         .join("dsl/../dsl/tools/makegen.dag")
         .to_string_lossy()
         .into_owned();
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "show-triplets",
-        &root,
-        &canonical_target,
         &parent_segment_target,
         &[],
         "absolute parent-segment",
@@ -13165,15 +13147,11 @@ fn show_triplets_command_json_relative_and_absolute_targets_are_equivalent() {
 
 #[test]
 fn show_triplets_command_json_absolute_double_separator_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
     let double_separator_target =
-        format!("{}/dsl//tools///makegen.dag", root.display());
+        format!("{}/dsl//tools///makegen.dag", workspace_root().display());
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "show-triplets",
-        &root,
-        &canonical_target,
         &double_separator_target,
         &["--format", "json"],
         "absolute double-separator",
@@ -13182,17 +13160,13 @@ fn show_triplets_command_json_absolute_double_separator_target_matches_canonical
 
 #[test]
 fn show_triplets_command_json_absolute_curdir_segment_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
-    let curdir_segment_target = root
+    let curdir_segment_target = workspace_root()
         .join("./dsl/./tools/../tools/makegen.dag")
         .to_string_lossy()
         .into_owned();
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "show-triplets",
-        &root,
-        &canonical_target,
         &curdir_segment_target,
         &["--format", "json"],
         "absolute curdir-segment",
@@ -13201,17 +13175,13 @@ fn show_triplets_command_json_absolute_curdir_segment_target_matches_canonical_a
 
 #[test]
 fn show_triplets_command_json_absolute_parent_segment_target_matches_canonical_absolute_output() {
-    let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
-    let parent_segment_target = root
+    let parent_segment_target = workspace_root()
         .join("dsl/../dsl/tools/makegen.dag")
         .to_string_lossy()
         .into_owned();
 
-    assert_single_target_command_outputs_match_for_targets(
+    assert_makegen_target_variant_matches_canonical_output(
         "show-triplets",
-        &root,
-        &canonical_target,
         &parent_segment_target,
         &["--format", "json"],
         "absolute parent-segment",
