@@ -170,6 +170,16 @@ pub fn emit_rust_bundle(
                 };
                 emitted_functions.push(rendered);
             }
+            LoweredOp::Collection {
+                module,
+                callable,
+                kind,
+            } => {
+                callable_count += 1;
+                let fn_name =
+                    sanitize_identifier(&format!("{module}_{callable}_collection_{kind:?}"));
+                emitted_functions.push(backend.emit_func(&fn_name));
+            }
             LoweredOp::Pipeline { module, name, .. } => {
                 pipeline_count += 1;
                 let fn_name = sanitize_identifier(&format!("{module}_{name}"));

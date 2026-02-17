@@ -20,8 +20,8 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use daglang_lower::{
-    classify_obligation, classify_service_transport, LoweredOp, ObligationCategory,
-    ServiceTransportClass,
+    classify_obligation, classify_service_transport, CollectionOpKind, LoweredOp,
+    ObligationCategory, ServiceTransportClass,
 };
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node};
 use serde::Serialize;
@@ -320,6 +320,16 @@ fn derive_parallel_groups(waves: &[Vec<String>]) -> Vec<ParallelGroup> {
         .collect()
 }
 
+fn collection_kind_label(kind: CollectionOpKind) -> &'static str {
+    match kind {
+        CollectionOpKind::Map => "MapNode",
+        CollectionOpKind::Filter => "FilterNode",
+        CollectionOpKind::Fold => "FoldNode",
+        CollectionOpKind::Join => "JoinNode",
+        CollectionOpKind::FlatMap => "FlatMapNode",
+    }
+}
+
 fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
     nodes
         .iter()
@@ -328,6 +338,11 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { module, name, .. }) => {
                     format!("{module}.{name}")
                 }
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection {
+                    module,
+                    callable,
+                    kind,
+                }) => format!("{module}.{callable}::{}", collection_kind_label(*kind)),
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { module, name, .. }) => {
                     format!("{module}.{name}")
                 }
@@ -353,6 +368,16 @@ fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
         };
         match op {
             LoweredOp::Callable { module, .. } => {
+                let entry = by_module
+                    .entry(module.clone())
+                    .or_insert_with(|| ModuleMetadata {
+                        module: module.clone(),
+                        callable_count: 0,
+                        pipeline_count: 0,
+                    });
+                entry.callable_count += 1;
+            }
+            LoweredOp::Collection { module, .. } => {
                 let entry = by_module
                     .entry(module.clone())
                     .or_insert_with(|| ModuleMetadata {
@@ -753,7 +778,12 @@ mod tests {
         assert_eq!(artifacts.obligations.resource_provide_targets, 1);
         assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
         assert_eq!(artifacts.obligations.resource_release_targets, 1);
-        assert_eq!(artifacts.obligations.interface_contract_verification_targets, 0);
+        assert_eq!(
+            artifacts
+                .obligations
+                .interface_contract_verification_targets,
+            0
+        );
     }
 
     #[test]
@@ -813,7 +843,12 @@ mod tests {
                 .service_transport_permission_scoped_targets,
             1
         );
-        assert_eq!(artifacts.obligations.interface_contract_verification_targets, 0);
+        assert_eq!(
+            artifacts
+                .obligations
+                .interface_contract_verification_targets,
+            0
+        );
     }
 
     #[test]

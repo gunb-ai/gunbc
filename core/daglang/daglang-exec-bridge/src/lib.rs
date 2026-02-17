@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use daglang_lower::LoweredOp;
+use daglang_lower::{CollectionOpKind, LoweredOp};
 use gunbc_exec::{
     execute_with_mode_and_inputs, BoundaryMocks, ExecError, Executable, ExecutionLog,
     ExecutionMode, OutputMap,
@@ -21,6 +21,7 @@ pub enum ResolvedOp {
     PrepareWriteContent,
     CompareContent,
     ExecuteTransport,
+    CollectionNode(CollectionOpKind),
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +79,7 @@ impl Executable for ResolvedOp {
             Self::PrepareWriteContent => execute_prepare_write_content(inputs),
             Self::CompareContent => execute_compare_content(inputs),
             Self::ExecuteTransport => execute_execute_transport(inputs),
+            Self::CollectionNode(_) => execute_collection_node(inputs),
         }
     }
 }
@@ -350,6 +352,16 @@ fn execute_execute_transport(
     }
 }
 
+fn execute_collection_node(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let items = inputs
+        .get("items")
+        .cloned()
+        .ok_or_else(|| ExecError::new("missing required input `items`".to_string()))?;
+    OutputMap::new().value("items", items).ok()
+}
+
 fn execute_file_request(request: &FileRequest) -> FileResponse {
     match execute_transport(&TransportRequest::File(request.clone())) {
         Ok(TransportResponse::File(response)) => response,
@@ -407,6 +419,7 @@ fn resolve_lowered_op(
             node_id: node_id.to_string(),
             reason: format!("unsupported pipeline `{module}.{name}` in execution resolver"),
         }),
+        LoweredOp::Collection { kind, .. } => Ok(ResolvedOp::CollectionNode(*kind)),
         LoweredOp::Callable { module, name, .. } => {
             if module != "tools.makegen" {
                 return Err(ResolveDagError {
@@ -471,5 +484,51 @@ mod tests {
         ));
         let error = resolve_lowered_dag(&dag).expect_err("unsupported module should fail");
         assert!(error.reason.contains("unsupported callable module"));
+    }
+
+    #[test]
+    fn resolve_lowered_dag_maps_collection_nodes() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "sample.collections::run::MapNode_0",
+            vec![],
+            vec![],
+            LoweredOp::Collection {
+                module: "sample.collections".to_string(),
+                callable: "sample.collections::run".to_string(),
+                kind: CollectionOpKind::Map,
+            },
+        ));
+        let resolved = resolve_lowered_dag(&dag).expect("collection node should resolve");
+        let Some(node) = resolved.nodes.first() else {
+            panic!("expected one node");
+        };
+        match &node.body {
+            gunbc_ir::node::NodeBody::Opaque(ResolvedOp::CollectionNode(CollectionOpKind::Map)) => {
+            }
+            _ => panic!("unexpected resolved op"),
+        }
+    }
+
+    #[test]
+    fn collection_resolved_op_passes_items_through() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "items".to_string(),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
+        );
+        let outputs = ResolvedOp::CollectionNode(CollectionOpKind::Filter)
+            .execute(inputs)
+            .expect("collection node should execute");
+        assert_eq!(
+            outputs.get("items"),
+            Some(&Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]))
+        );
     }
 }

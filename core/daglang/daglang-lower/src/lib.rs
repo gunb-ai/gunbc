@@ -38,6 +38,11 @@ pub enum LoweredOp {
         obligation: ObligationCategory,
         service_metadata: Option<ServiceCallMetadata>,
     },
+    Collection {
+        module: String,
+        callable: String,
+        kind: CollectionOpKind,
+    },
     Pipeline {
         module: String,
         name: String,
@@ -155,7 +160,7 @@ impl LoweredOp {
     pub fn obligation_category(&self) -> ObligationCategory {
         match self {
             Self::Callable { obligation, .. } => *obligation,
-            Self::Pipeline { .. } => ObligationCategory::None,
+            Self::Collection { .. } | Self::Pipeline { .. } => ObligationCategory::None,
         }
     }
 
@@ -164,7 +169,7 @@ impl LoweredOp {
             Self::Callable {
                 service_metadata, ..
             } => service_metadata.as_ref(),
-            Self::Pipeline { .. } => None,
+            Self::Collection { .. } | Self::Pipeline { .. } => None,
         }
     }
 }
@@ -794,14 +799,16 @@ fn canonicalize_ports(ports: &[Port]) -> Vec<CanonicalPort> {
 }
 
 fn canonical_kind_lowered(node: &Node<LoweredOp>) -> String {
-    let pipeline_hint = matches!(
-        node.body,
-        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { .. })
-    );
     match &node.body {
         gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
-        gunbc_ir::node::NodeBody::Opaque(_) => {
-            canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, pipeline_hint)
+        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { .. }) => {
+            canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, true)
+        }
+        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => {
+            collection_kind_node_label(*kind).to_string()
+        }
+        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { .. }) => {
+            canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
         }
     }
 }
@@ -848,21 +855,6 @@ fn canonical_kind_from_shape(
         .any(|port| port.type_id.0 == "TransportRequest")
     {
         return "transport".to_string();
-    }
-    if node_id.contains("::MapNode_") {
-        return "MapNode".to_string();
-    }
-    if node_id.contains("::FilterNode_") {
-        return "FilterNode".to_string();
-    }
-    if node_id.contains("::FoldNode_") {
-        return "FoldNode".to_string();
-    }
-    if node_id.contains("::JoinNode_") {
-        return "JoinNode".to_string();
-    }
-    if node_id.contains("::FlatMapNode_") {
-        return "FlatMapNode".to_string();
     }
     let looks_expanded = node_id.starts_with("prepare_")
         || node_id.starts_with("compare_")
@@ -1232,7 +1224,7 @@ fn add_dependency_edges(
                 endpoints_by_name,
             );
             if emit_collection_nodes {
-                add_collection_pipeline_nodes(builder, &module_name, item_name, stmts, target);
+                add_collection_pipeline_nodes(builder, &module_name, stmts, target);
             }
         }
     }
@@ -1241,7 +1233,6 @@ fn add_dependency_edges(
 fn add_collection_pipeline_nodes(
     builder: &mut DagBuilder,
     module_name: &str,
-    callable_name: &str,
     stmts: &[Stmt],
     target: &LoweredEndpoint,
 ) {
@@ -1249,7 +1240,7 @@ fn add_collection_pipeline_nodes(
     if specs.is_empty() {
         return;
     }
-    let plan = build_collection_lowering_plan(module_name, &target.node_id, callable_name, &specs);
+    let plan = build_collection_lowering_plan(module_name, &target.node_id, &specs);
     for node in plan.nodes {
         builder.add_node(node);
     }
@@ -2459,7 +2450,7 @@ struct ServiceCallSite {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CollectionOpKind {
+pub enum CollectionOpKind {
     Map,
     Filter,
     Fold,
@@ -2536,27 +2527,15 @@ fn collection_kind_node_label(kind: CollectionOpKind) -> &'static str {
     }
 }
 
-fn collection_kind_name(kind: CollectionOpKind) -> &'static str {
-    match kind {
-        CollectionOpKind::Map => "map",
-        CollectionOpKind::Filter => "filter",
-        CollectionOpKind::Fold => "fold",
-        CollectionOpKind::Join => "join",
-        CollectionOpKind::FlatMap => "flat_map",
-    }
-}
-
 fn build_collection_lowering_plan(
     module_name: &str,
     callable_node_id: &str,
-    callable_name: &str,
     specs: &[CollectionNodeSpec],
 ) -> CollectionLoweringPlan {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut previous_node_id: Option<String> = None;
     for spec in specs {
-        let label = collection_kind_name(spec.kind);
         let node = Node::opaque(
             spec.node_id.clone(),
             vec![
@@ -2564,12 +2543,10 @@ fn build_collection_lowering_plan(
                 Port::with_cardinality("__deps", "Any", Cardinality::ZERO_OR_MORE),
             ],
             vec![Port::with_cardinality("items", "Any", Cardinality::ONE)],
-            LoweredOp::Callable {
+            LoweredOp::Collection {
                 module: module_name.to_string(),
-                kind: CallableKind::Pattern,
-                name: format!("collection::{label}::{callable_name}"),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
+                callable: callable_node_id.to_string(),
+                kind: spec.kind,
             },
         );
         if let Some(prev) = &previous_node_id {
@@ -2847,14 +2824,26 @@ fn run(values: List<String>) -> { out: String } {
                 kind: CollectionOpKind::Join,
             },
         ];
-        let plan = build_collection_lowering_plan(
-            "sample.collections",
-            "sample.collections::run",
-            "run",
-            &specs,
-        );
+        let plan =
+            build_collection_lowering_plan("sample.collections", "sample.collections::run", &specs);
         assert_eq!(plan.nodes.len(), 3);
         assert_eq!(plan.edges.len(), 3);
+        let kinds = plan
+            .nodes
+            .iter()
+            .map(|node| match &node.body {
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => *kind,
+                _ => panic!("expected collection lowered op"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            kinds,
+            vec![
+                CollectionOpKind::Map,
+                CollectionOpKind::Filter,
+                CollectionOpKind::Join,
+            ]
+        );
         assert_eq!(
             plan.edges,
             vec![
@@ -2906,6 +2895,29 @@ fn run(values: List<String>) -> String {
         assert!(node_ids.contains("sample.collections::run::MapNode_0"));
         assert!(node_ids.contains("sample.collections::run::FilterNode_1"));
         assert!(node_ids.contains("sample.collections::run::JoinNode_2"));
+        let mut collection_kinds = dag
+            .nodes
+            .iter()
+            .filter_map(|node| match &node.body {
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => Some(*kind),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        collection_kinds.sort_by_key(|kind| match kind {
+            CollectionOpKind::Map => 0,
+            CollectionOpKind::Filter => 1,
+            CollectionOpKind::Fold => 2,
+            CollectionOpKind::Join => 3,
+            CollectionOpKind::FlatMap => 4,
+        });
+        assert_eq!(
+            collection_kinds,
+            vec![
+                CollectionOpKind::Map,
+                CollectionOpKind::Filter,
+                CollectionOpKind::Join,
+            ]
+        );
 
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == "sample.collections::run::MapNode_0"
