@@ -1152,4 +1152,64 @@ mod tests {
         );
     }
 
+    #[test]
+    fn run_written_from_log_latest_transport_skip_true_overrides_earlier_false() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Bool(false))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            !run_written_from_log(&log),
+            "latest transport skip=true should win over earlier skip=false values"
+        );
+    }
+
+    #[test]
+    fn run_written_from_log_latest_intercepted_transport_overrides_earlier_write_signal() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Bool(false))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Bool(false))]),
+                    was_intercepted: true,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            !run_written_from_log(&log),
+            "latest intercepted transport should force written=false"
+        );
+    }
+
 }
