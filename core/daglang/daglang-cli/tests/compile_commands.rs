@@ -11671,6 +11671,29 @@ fn manifest_command_ci_json_includes_stage_groups() {
 }
 
 #[test]
+fn manifest_command_ci_text_renders_collapsible_stage_group_sections() {
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(ci_pipeline_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest for ci pipeline");
+
+    assert!(
+        output.status.success(),
+        "manifest command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_no_stage_failures(&stderr);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("> [collapsed] pipelines.ci.ci"));
+    assert!(stdout.contains("- cloud_env:"));
+    assert!(stdout.contains("- bootstrap_stage:"));
+}
+
+#[test]
 fn manifest_command_explicit_text_format_matches_default_output() {
     let default_output = Command::new(daglang_bin())
         .arg("manifest")

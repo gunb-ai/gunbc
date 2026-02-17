@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write;
 use std::path::PathBuf;
 
@@ -244,13 +244,7 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
         writeln!(out, "    - {node_id}: {mode:?}").ok();
     }
     out.push_str("  stage_groups:\n");
-    if manifest.stage_groups.is_empty() {
-        out.push_str("    (none)\n");
-    } else {
-        for group in &manifest.stage_groups {
-            writeln!(out, "    - {}: {}", group.stage, group.node_ids.join(", ")).ok();
-        }
-    }
+    render_stage_groups_text(&mut out, &manifest.stage_groups);
     out.push_str("  resources:\n");
     if manifest.resources.is_empty() {
         out.push_str("    (none)\n");
@@ -266,6 +260,40 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
     }
     out.push_str(&render_obligations_text(&derived.obligations));
     out
+}
+
+fn render_stage_groups_text(out: &mut String, stage_groups: &[daglang_derive::StageGroup]) {
+    if stage_groups.is_empty() {
+        out.push_str("    (none)\n");
+        return;
+    }
+    let mut sections: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    for group in stage_groups {
+        let (section, stage_name) = split_stage_group_label(&group.stage);
+        sections
+            .entry(section)
+            .or_default()
+            .push((stage_name, group.node_ids.join(", ")));
+    }
+    for (section, entries) in sections {
+        writeln!(
+            out,
+            "    > [collapsed] {section} ({} stages)",
+            entries.len()
+        )
+        .ok();
+        for (stage_name, node_ids) in entries {
+            writeln!(out, "      - {stage_name}: {node_ids}").ok();
+        }
+    }
+}
+
+fn split_stage_group_label(label: &str) -> (String, String) {
+    if let Some((section, stage_name)) = label.rsplit_once(':') {
+        (section.to_string(), stage_name.to_string())
+    } else {
+        ("ungrouped".to_string(), label.to_string())
+    }
 }
 
 pub fn render_manifest_with_format(derived: &DerivedArtifacts, format: OutputFormat) -> String {
@@ -1331,6 +1359,33 @@ fn run() -> String { return 42 }
         assert!(
             manifest.ends_with(&obligations),
             "manifest output should embed the same obligations text renderer"
+        );
+    }
+
+    #[test]
+    fn render_manifest_groups_stage_groups_into_collapsible_sections() {
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/pipelines/ci.dag");
+        let context = PipelineContext {
+            roots: vec![file
+                .parent()
+                .expect("file should have parent")
+                .to_path_buf()],
+            target_file: Some(file),
+        };
+        let output = compile_from_context(&context).expect("compile should succeed");
+
+        let manifest = render_manifest(&output.derived);
+        assert!(
+            manifest.contains("  stage_groups:\n    > [collapsed] pipelines.ci.ci"),
+            "manifest text should render ci stage groups as collapsible section"
+        );
+        assert!(
+            manifest.contains("      - cloud_env:"),
+            "manifest text should render cloud_env stage inside section"
+        );
+        assert!(
+            manifest.contains("      - bootstrap_stage:"),
+            "manifest text should render bootstrap_stage inside section"
         );
     }
 
