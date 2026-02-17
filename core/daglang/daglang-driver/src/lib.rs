@@ -289,9 +289,7 @@ fn callable_scope_for_context(
         let Some(module) = module_graph.modules.get(module_index) else {
             continue;
         };
-        if module_has_callable_items(module) {
-            scope.insert(module.module_path.join("."));
-        }
+        scope.insert(module.module_path.join("."));
         for dependency in &module.dependencies {
             queue.push_back(*dependency);
         }
