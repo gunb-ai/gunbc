@@ -92,6 +92,49 @@ pub enum ResolvedOp {
     ExecuteTransport,
 }
 
+#[derive(Debug, Clone)]
+struct OpRegistry {
+    makegen_callables: HashMap<&'static str, ResolvedOp>,
+}
+
+impl OpRegistry {
+    fn makegen() -> Self {
+        let mut makegen_callables = HashMap::new();
+        makegen_callables.insert("load_registry", ResolvedOp::LoadRegistry);
+        makegen_callables.insert("fs_env", ResolvedOp::FsEnv);
+        makegen_callables.insert("render_makefile", ResolvedOp::RenderMakefile);
+        makegen_callables.insert("makegen", ResolvedOp::MakegenEntrypoint);
+        makegen_callables.insert(
+            "content_upsert::prepare_read_makegen",
+            ResolvedOp::PrepareReadContent,
+        );
+        makegen_callables.insert(
+            "content_upsert::execute_read_makegen",
+            ResolvedOp::ExecuteReadContent,
+        );
+        makegen_callables.insert(
+            "content_upsert::prepare_write_makegen",
+            ResolvedOp::PrepareWriteContent,
+        );
+        makegen_callables.insert(
+            "content_upsert::compare_makegen_content",
+            ResolvedOp::CompareContent,
+        );
+        makegen_callables.insert(
+            "content_upsert::execute_makegen_transport",
+            ResolvedOp::ExecuteTransport,
+        );
+        Self { makegen_callables }
+    }
+
+    fn resolve_callable(&self, module: &str, name: &str) -> Option<ResolvedOp> {
+        if module != "tools.makegen" {
+            return None;
+        }
+        self.makegen_callables.get(name).cloned()
+    }
+}
+
 impl Executable for ResolvedOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
@@ -196,9 +239,10 @@ pub fn check_from_context(context: &PipelineContext) -> Result<CheckOutput, Comp
 }
 
 pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<ResolvedOp>, ResolveDagError> {
+    let registry = OpRegistry::makegen();
     let mut resolved = Dag::new();
     for node in &dag.nodes {
-        let resolved_op = resolve_lowered_node(node)?;
+        let resolved_op = resolve_lowered_node(node, &registry)?;
         resolved.add_node(node.clone().map_ops(&mut |_| resolved_op.clone()));
     }
     resolved.edges = dag.edges.clone();
@@ -499,10 +543,13 @@ fn execute_finalize_makegen(
     OutputMap::new().bool("written", written).ok()
 }
 
-fn resolve_lowered_node(node: &Node<LoweredOp>) -> Result<ResolvedOp, ResolveDagError> {
+fn resolve_lowered_node(
+    node: &Node<LoweredOp>,
+    registry: &OpRegistry,
+) -> Result<ResolvedOp, ResolveDagError> {
     let node_id = node.id.0.clone();
     match &node.body {
-        gunbc_ir::node::NodeBody::Opaque(op) => resolve_lowered_op(&node_id, op),
+        gunbc_ir::node::NodeBody::Opaque(op) => resolve_lowered_op(&node_id, op, registry),
         gunbc_ir::node::NodeBody::SubDag(_) => Err(ResolveDagError {
             node_id,
             reason: "subdag nodes are not supported by daglang-cli resolver".to_string(),
@@ -510,7 +557,11 @@ fn resolve_lowered_node(node: &Node<LoweredOp>) -> Result<ResolvedOp, ResolveDag
     }
 }
 
-fn resolve_lowered_op(node_id: &str, op: &LoweredOp) -> Result<ResolvedOp, ResolveDagError> {
+fn resolve_lowered_op(
+    node_id: &str,
+    op: &LoweredOp,
+    registry: &OpRegistry,
+) -> Result<ResolvedOp, ResolveDagError> {
     match op {
         LoweredOp::Pipeline { module, name, .. } => Err(ResolveDagError {
             node_id: node_id.to_string(),
@@ -518,39 +569,19 @@ fn resolve_lowered_op(node_id: &str, op: &LoweredOp) -> Result<ResolvedOp, Resol
                 "unsupported pipeline `{module}.{name}` in execution resolver"
             ),
         }),
-        LoweredOp::Callable { module, name, .. } => resolve_makegen_callable(node_id, module, name),
-    }
-}
-
-fn resolve_makegen_callable(
-    node_id: &str,
-    module: &str,
-    name: &str,
-) -> Result<ResolvedOp, ResolveDagError> {
-    if module != "tools.makegen" {
-        return Err(ResolveDagError {
-            node_id: node_id.to_string(),
-            reason: format!("unsupported callable module `{module}`"),
-        });
-    }
-    let resolved = match name {
-        "load_registry" => ResolvedOp::LoadRegistry,
-        "fs_env" => ResolvedOp::FsEnv,
-        "render_makefile" => ResolvedOp::RenderMakefile,
-        "makegen" => ResolvedOp::MakegenEntrypoint,
-        "content_upsert::prepare_read_makegen" => ResolvedOp::PrepareReadContent,
-        "content_upsert::execute_read_makegen" => ResolvedOp::ExecuteReadContent,
-        "content_upsert::prepare_write_makegen" => ResolvedOp::PrepareWriteContent,
-        "content_upsert::compare_makegen_content" => ResolvedOp::CompareContent,
-        "content_upsert::execute_makegen_transport" => ResolvedOp::ExecuteTransport,
-        _ => {
-            return Err(ResolveDagError {
+        LoweredOp::Callable { module, name, .. } => {
+            if module != "tools.makegen" {
+                return Err(ResolveDagError {
+                    node_id: node_id.to_string(),
+                    reason: format!("unsupported callable module `{module}`"),
+                });
+            }
+            registry.resolve_callable(module, name).ok_or_else(|| ResolveDagError {
                 node_id: node_id.to_string(),
                 reason: format!("unsupported callable `tools.makegen.{name}`"),
-            });
+            })
         }
-    };
-    Ok(resolved)
+    }
 }
 
 // Compiler pipeline: reads .dag source for single-file compilation
@@ -1409,6 +1440,33 @@ fn run() -> String { return 42 }
         let error = resolve_lowered_dag(&dag).expect_err("resolver should reject pipeline nodes");
         assert_eq!(error.node_id, "pipeline::ci");
         assert!(error.reason.contains("unsupported pipeline"));
+    }
+
+    #[test]
+    fn op_registry_makegen_resolves_known_callable_names() {
+        let registry = OpRegistry::makegen();
+        assert!(matches!(
+            registry.resolve_callable("tools.makegen", "load_registry"),
+            Some(ResolvedOp::LoadRegistry)
+        ));
+        assert!(matches!(
+            registry.resolve_callable("tools.makegen", "render_makefile"),
+            Some(ResolvedOp::RenderMakefile)
+        ));
+        assert!(matches!(
+            registry.resolve_callable("tools.makegen", "content_upsert::execute_makegen_transport"),
+            Some(ResolvedOp::ExecuteTransport)
+        ));
+        assert!(
+            registry
+                .resolve_callable("tools.makegen", "missing_callable")
+                .is_none()
+        );
+        assert!(
+            registry
+                .resolve_callable("sample.module", "load_registry")
+                .is_none()
+        );
     }
 
     #[test]
