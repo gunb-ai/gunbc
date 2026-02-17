@@ -1497,6 +1497,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_rejects_output_equals_first_token_plus_second_input_after_double_dash() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--".to_string(),
+            "--output=alt.mk".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run takes exactly one <file.dag> input"),
+            "expected single-input constraint when output-like token is first positional after --, got: {error}"
+        );
+    }
+
+    #[test]
     fn parse_run_args_rejects_missing_output_path_value() {
         let args = vec![
             "daglang".to_string(),
