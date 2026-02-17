@@ -493,6 +493,7 @@ struct RunArgs {
 fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     let mut file = None::<String>;
     let mut output_path = "Makefile".to_string();
+    let mut has_output_path = false;
     let mut dry_run = false;
     let mut check_mode = false;
     let mut parse_flags = true;
@@ -514,6 +515,9 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
                     index += 1;
                 }
                 "--output" => {
+                    if has_output_path {
+                        return Err("run accepts at most one --output path".to_string());
+                    }
                     let value = args
                         .get(index + 1)
                         .ok_or_else(|| "--output requires a path".to_string())?;
@@ -521,9 +525,13 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
                         return Err("--output requires a non-empty path".to_string());
                     }
                     output_path = value.clone();
+                    has_output_path = true;
                     index += 2;
                 }
                 _ if arg.starts_with("--output=") => {
+                    if has_output_path {
+                        return Err("run accepts at most one --output path".to_string());
+                    }
                     let value = arg
                         .strip_prefix("--output=")
                         .expect("prefix just checked")
@@ -532,6 +540,7 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
                         return Err("--output requires a non-empty path".to_string());
                     }
                     output_path = value;
+                    has_output_path = true;
                     index += 1;
                 }
                 _ if arg.starts_with("--") => return Err(format!("unknown run flag `{arg}`")),
@@ -1549,6 +1558,41 @@ mod tests {
         assert!(
             error.contains("--output requires a non-empty path"),
             "expected clear empty output path error, got: {error}"
+        );
+    }
+
+    #[test]
+    fn parse_run_args_rejects_duplicate_split_output_flags() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output".to_string(),
+            "out/first.mk".to_string(),
+            "--output".to_string(),
+            "out/second.mk".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run accepts at most one --output path"),
+            "expected duplicate output-flag error for split syntax, got: {error}"
+        );
+    }
+
+    #[test]
+    fn parse_run_args_rejects_duplicate_mixed_output_flag_syntax() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output=out/first.mk".to_string(),
+            "--output".to_string(),
+            "out/second.mk".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run accepts at most one --output path"),
+            "expected duplicate output-flag error for mixed syntax, got: {error}"
         );
     }
 

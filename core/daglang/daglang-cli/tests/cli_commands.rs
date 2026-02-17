@@ -32014,6 +32014,71 @@ fn run_with_empty_equals_output_value_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_duplicate_split_output_flags_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("out/first.mk")
+        .arg("--output")
+        .arg("out/second.mk")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with duplicate split output flags");
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate split --output flags should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with duplicate split --output flags should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run accepts at most one --output path"),
+        "run should report duplicate output flags explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for duplicate output flags: {stderr}"
+    );
+}
+
+#[test]
+fn run_with_duplicate_mixed_output_flag_syntax_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output=out/first.mk")
+        .arg("--output")
+        .arg("out/second.mk")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with duplicate mixed output flag syntax");
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate mixed output flag syntax should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with duplicate mixed output flag syntax should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run accepts at most one --output path"),
+        "run should report duplicate mixed output flags explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for duplicate mixed output flags: {stderr}"
+    );
+}
+
+#[test]
 fn run_with_unwritable_output_path_exits_nonzero_with_write_error() {
     let blocker_path = std::env::temp_dir().join(format!(
         "daglang_run_write_blocker_{}_{}",
