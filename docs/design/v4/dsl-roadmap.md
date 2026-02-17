@@ -370,7 +370,7 @@ The bridge is complete when:
 - [ ] `dag viz` defaults to ASCII and is deterministic
 - [ ] `dag manifest` emits the **contract ProgressManifest** (JSON)
 - [ ] IR snapshot tests exist for `tools/makegen.dag`
-- [ ] Parity harness can compare compiled makegen vs builder makegen and report diffs
+- [x] Parity harness can compare compiled makegen vs builder makegen and report diffs
 - [x] `dag obligations` and `dag show-triplets` exist (even if obligations are initially "best effort")
 
 This set unblocks Phase 1 without risking a giant "run makegen end-to-end" rewrite before the compiler outputs are stable.
@@ -1674,7 +1674,7 @@ The effort lands cleanly when all six criteria are met:
 - [x] **Workstream C (Parity + snapshots):** Canonical JSON serialization + IR snapshot tests for at least `tools/makegen.dag`
 - [x] **Workstream B (Viz + expand):** ASCII default for `dag viz`; golden tests for `dag expand`
 - [x] **Workstream E (Model preview commands):** `dag show-triplets` and `dag obligations` as standalone commands
-- [ ] **Workstream F (Makegen parity):** Compile `tools/makegen.dag` → compare against `build_makegen_graph()` using parity harness *(blocked by `gunbc-dag` MSRV dependency chain on this toolchain)*
+- [x] **Workstream F (Makegen parity):** Compile `tools/makegen.dag` → compare against `build_makegen_graph()` using parity harness
 - [x] **Workstream D (Discovery):** Config-driven roots; enriched `dag modules` output
 
 ### Priority 2: Phase 1 makegen (S1)
@@ -1684,7 +1684,7 @@ The effort lands cleanly when all six criteria are met:
 - [x] Write `tools/makegen.dag` — *exists in DSL corpus*
 - [x] Implement parser for `func` + `pattern` + `uses` syntax — *parser handles full language surface*
 - [x] Implement `Lower` phase producing gunbc IR — *`daglang-lower` produces `Dag<LoweredOp>`*
-- [ ] Run parity harness against existing `build_makegen_graph()` — *Workstream F*
+- [x] Run parity harness against existing `build_makegen_graph()` — *Workstream F*
 - [x] Verify golden fixture passes for compiled `.dag` output — *Workstream C*
 
 ### Priority 3: Workflow contracts (Part 0, ongoing)

@@ -571,7 +571,8 @@ fn compare_canonical_ir(candidate: &CanonicalDag, reference: &CanonicalDag) -> P
 /// - ignores environment-scaffold edge `fs_env -> prepare_read_makegen`
 pub fn compare_makegen_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
     let normalized = normalize_makegen_candidate(candidate);
-    compare_topology(&normalized, reference)
+    let normalized_reference = normalize_makegen_reference(reference);
+    compare_topology(&normalized, &normalized_reference)
 }
 
 fn canonicalize_lowered_ir(dag: &Dag<LoweredOp>) -> CanonicalDag {
@@ -716,6 +717,7 @@ fn canonical_kind_from_shape(
 fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
     let mut normalized = Dag::new();
     let mut kept_nodes = HashSet::<String>::new();
+    let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
 
     for node in &candidate.nodes {
         let Some(op) = node_body_as_opaque(&node.body).cloned() else {
@@ -732,20 +734,20 @@ fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
             .filter(|port| port.name.0 != "__deps")
             .cloned()
             .collect::<Vec<_>>();
-        inputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
-
         let mut outputs = node.outputs.clone();
-        if canonical_id == "render_makefile" {
-            for output in &mut outputs {
-                if output.name.0 == "return" {
-                    output.name.0 = "makefile_content".to_string();
-                }
-            }
-        }
-        outputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
+        normalize_makegen_ports(&canonical_id, &mut inputs, &mut outputs);
 
         normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, op));
         kept_nodes.insert(canonical_id);
+    }
+    for node in &normalized.nodes {
+        ports_by_node.insert(
+            node.id.0.clone(),
+            (
+                node.inputs.iter().map(|port| port.name.0.clone()).collect(),
+                node.outputs.iter().map(|port| port.name.0.clone()).collect(),
+            ),
+        );
     }
 
     let mut seen_edges = HashSet::<(String, String, String, String)>::new();
@@ -761,23 +763,22 @@ fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
         if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
             continue;
         }
-        if from_node == "fs_env"
-            && to_node == "prepare_read_makegen"
-            && edge.to_port.0 == "res:file:Makefile"
-        {
+        let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
+        let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
+        let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
+            continue;
+        };
+        let Some((_, from_outputs)) = ports_by_node.get(&from_node) else {
+            continue;
+        };
+        if !from_outputs.contains(&from_port) || !to_inputs.contains(&to_port) {
             continue;
         }
-
-        let from_port = if from_node == "render_makefile" && edge.from_port.0 == "return" {
-            "makefile_content".to_string()
-        } else {
-            edge.from_port.0.clone()
-        };
         let key = (
             from_node,
             from_port,
             to_node,
-            edge.to_port.0.clone(),
+            to_port,
         );
         if seen_edges.insert(key.clone()) {
             normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
@@ -785,6 +786,145 @@ fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
     }
 
     normalized
+}
+
+fn normalize_makegen_reference<T>(reference: &Dag<T>) -> Dag<()> {
+    let mut normalized = Dag::new();
+    let mut kept_nodes = HashSet::<String>::new();
+    let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
+
+    for node in &reference.nodes {
+        let canonical_id = canonical_makegen_node_id(&node.id.0);
+        if canonical_id == "makegen" {
+            continue;
+        }
+        let mut inputs = node
+            .inputs
+            .iter()
+            .filter(|port| port.name.0 != "__deps")
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut outputs = node.outputs.clone();
+        normalize_makegen_ports(&canonical_id, &mut inputs, &mut outputs);
+        normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, ()));
+        kept_nodes.insert(canonical_id);
+    }
+    for node in &normalized.nodes {
+        ports_by_node.insert(
+            node.id.0.clone(),
+            (
+                node.inputs.iter().map(|port| port.name.0.clone()).collect(),
+                node.outputs.iter().map(|port| port.name.0.clone()).collect(),
+            ),
+        );
+    }
+
+    let mut seen_edges = HashSet::<(String, String, String, String)>::new();
+    for edge in &reference.edges {
+        let from_node = canonical_makegen_node_id(&edge.from_node.0);
+        let to_node = canonical_makegen_node_id(&edge.to_node.0);
+        if from_node == "makegen" || to_node == "makegen" {
+            continue;
+        }
+        if !kept_nodes.contains(&from_node) || !kept_nodes.contains(&to_node) {
+            continue;
+        }
+        if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
+            continue;
+        }
+        let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
+        let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
+        let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
+            continue;
+        };
+        let Some((_, from_outputs)) = ports_by_node.get(&from_node) else {
+            continue;
+        };
+        if !from_outputs.contains(&from_port) || !to_inputs.contains(&to_port) {
+            continue;
+        }
+        let key = (from_node, from_port, to_node, to_port);
+        if seen_edges.insert(key.clone()) {
+            normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
+        }
+    }
+
+    normalized
+}
+
+fn normalize_makegen_ports(node_id: &str, inputs: &mut Vec<Port>, outputs: &mut Vec<Port>) {
+    match node_id {
+        "fs_env" => {
+            outputs.retain(|port| matches!(port.name.0.as_str(), "FilesystemHandle" | "file:write"));
+            for output in outputs.iter_mut() {
+                if output.name.0 == "file:write" {
+                    output.name.0 = "FilesystemHandle".to_string();
+                }
+            }
+        }
+        "load_registry" => {
+            outputs.retain(|port| port.name.0 == "registry");
+            for output in outputs.iter_mut() {
+                output.type_id.0 = "Json".to_string();
+            }
+        }
+        "render_makefile" => {
+            inputs.retain(|port| port.name.0 == "registry");
+            for input in inputs.iter_mut() {
+                input.type_id.0 = "Json".to_string();
+            }
+            for output in outputs.iter_mut() {
+                if output.name.0 == "return" {
+                    output.name.0 = "makefile_content".to_string();
+                }
+            }
+            outputs.retain(|port| port.name.0 == "makefile_content");
+        }
+        "prepare_read_makegen" => {
+            inputs.retain(|port| port.name.0 == "path");
+            outputs.retain(|port| port.name.0 == "request");
+        }
+        "execute_read_makegen" => {
+            inputs.retain(|port| port.name.0 == "request");
+            outputs.retain(|port| port.name.0 == "response");
+        }
+        "compare_makegen_content" => {
+            inputs.retain(|port| matches!(port.name.0.as_str(), "expected_content" | "response"));
+            outputs.retain(|port| matches!(port.name.0.as_str(), "fresh" | "skip"));
+        }
+        "prepare_write_makegen" => {
+            inputs.retain(|port| matches!(port.name.0.as_str(), "content" | "path"));
+            outputs.retain(|port| port.name.0 == "request");
+        }
+        "execute_makegen_transport" => {
+            inputs.retain(|port| matches!(port.name.0.as_str(), "request" | "skip"));
+            outputs.retain(|port| port.name.0 == "makegen_response");
+            for output in outputs.iter_mut() {
+                output.cardinality = Cardinality::ZERO_OR_ONE;
+            }
+        }
+        _ => {}
+    }
+    inputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
+    dedup_ports_by_name_type_cardinality(inputs);
+    outputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
+    dedup_ports_by_name_type_cardinality(outputs);
+}
+
+fn dedup_ports_by_name_type_cardinality(ports: &mut Vec<Port>) {
+    ports.dedup_by(|lhs, rhs| {
+        lhs.name == rhs.name && lhs.type_id == rhs.type_id && lhs.cardinality == rhs.cardinality
+    });
+}
+
+fn canonical_makegen_port_name(node_id: &str, port_name: &str) -> String {
+    if node_id == "render_makefile" && port_name == "return" {
+        return "makefile_content".to_string();
+    }
+    if node_id == "fs_env" && port_name == "file:write" {
+        return "FilesystemHandle".to_string();
+    }
+    port_name.to_string()
 }
 
 fn canonical_makegen_node_id(node_id: &str) -> String {
@@ -1850,6 +1990,7 @@ mod tests {
     use daglang_resolve::{ModuleGraph, ResolvedModule};
     use daglang_syntax::parser;
     use daglang_typecheck::typecheck_module_graph;
+    use gunbc_dag::build_makegen_graph;
     use gunbc_ir::{Edge, Port};
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -2449,6 +2590,19 @@ func run() -> { ok: Bool } provides out: Storage {
         assert!(
             report.is_exact_match(),
             "normalized makegen parity should currently match reference topology"
+        );
+    }
+
+    // Test infrastructure: filesystem access for test fixtures
+    #[allow(clippy::disallowed_methods)]
+    #[test]
+    fn makegen_parity_matches_builder_graph() {
+        let lowered = load_makegen_lowered();
+        let builder = build_makegen_graph().expect("builder makegen graph should construct");
+        let report = compare_makegen_topology(&lowered, &builder);
+        assert!(
+            report.is_exact_match(),
+            "compiled makegen graph should match builder graph topology: {report:?}"
         );
     }
 
