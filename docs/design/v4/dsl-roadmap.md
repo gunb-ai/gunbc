@@ -212,14 +212,14 @@ Edge  render_makefile.String        → prepare_write_makegen.String
 
 - [x] "Compile-only" smoke test discovers `.dag` files and reports modules without executing anything — *`check` command runs pipeline to `Parse` and prints diagnostics*
 - [x] Can compile one `.dag` file into a valid gunbc IR structure (even with stubby node bodies) — *`compile_from_context()` returns `Dag<LoweredOp>` via discover → typecheck → lower → derive → emit*
-- [~] Parity harness can canonicalize and diff two IR graphs — *`compare_topology()` returns `ParityReport` with node/edge deltas; `compare_makegen_topology()` adds normalization rules. Needs expansion from topology-only to full IR shape (ports, node kinds, labels).*
-- [ ] IR snapshot test passes for at least one compiled `.dag` file — **Missing: no insta/snapshot-style tests yet**
-- [~] **`dag viz` produces ASCII graph for at least one `.dag` file** — *Implemented via Mermaid output (`to_mermaid`), not ASCII. Needs ASCII default with `--format mermaid` flag.*
-- [~] **`dag expand` produces full node/edge/port listing matching the existing builder IR** — *Command exists with text listing of nodes/edges/ports. Needs golden tests for output stability and verification against builder IR.*
-- [~] **`dag manifest` produces ProgressManifest matching expected topology** — *Command exists but manifest struct is `{total_nodes, total_edges, waves, entrypoint_nodes, boundary_nodes}` — does not match the roadmap contract (missing: topology list, labels, subdag_boundaries, parallel_groups, scatter_points, capture_modes, stage_groups, resources). See Bridge Milestone below.*
+- [x] Parity harness can canonicalize and diff two IR graphs — *`compare_ir()` reports port/kind/label deltas; `compare_makegen_topology()` normalizes compiled-vs-builder makegen shape and now has an exact-match regression.*
+- [x] IR snapshot test passes for at least one compiled `.dag` file — *canonical makegen IR snapshot is checked in and validated by tests.*
+- [x] **`dag viz` produces ASCII graph for at least one `.dag` file** — *ASCII is default; Mermaid remains available via `--format mermaid`.*
+- [x] **`dag expand` produces full node/edge/port listing matching the existing builder IR** — *golden snapshot coverage is in place, including makegen fixtures.*
+- [x] **`dag manifest` produces ProgressManifest matching expected topology** — *manifest contract fields + deterministic JSON output are implemented and tested.*
 - [x] **`dag modules` shows the discovered module graph** — *`modules [dir]` runs pipeline to `Report` and prints dependency-ordered module listing*
 
-**Status: ~75% complete.** Core compiler spine + CLI scaffolding are in place. Remaining gaps: viz format mismatch, manifest contract mismatch, IR snapshot tests, parity harness needs full IR shape comparison.
+**Status: Core bridge and Phase-1 proving workflow are complete.** Remaining roadmap work now sits in Phase 2+ language/modeling expansion and additional workflow ports.
 
 **Why first**: visualization is not a nice-to-have that ships later. It's the development tool that makes every subsequent phase implementable. If you can't see the DAG, the manifest, and the lowered IR, you're implementing blind. The design doc's Appendix M explicitly says "essential for trust and debugging from day one."
 
@@ -644,9 +644,9 @@ The two workers share the `daglang-cli` crate but touch different files:
 
 **Acceptance Gates**
 
-- [ ] **IR parity**: compiled IR equivalent to existing builder IR for `makegen` (nodes/edges/ports, normalized labels)
-- [ ] **Test parity**: existing obligation/testgen model runs against compiled output — same 4 buckets, "DryRun completes" and "transport interceptable" tests pass
-- [ ] **Discovery**: `makegen.dag` is auto-discovered without any manual registration
+- [x] **IR parity**: compiled IR equivalent to existing builder IR for `makegen` (nodes/edges/ports, normalized labels)
+- [x] **Test parity**: existing obligation/testgen model runs against compiled output — same 4 buckets, "DryRun completes" and "transport interceptable" tests pass
+- [x] **Discovery**: `makegen.dag` is auto-discovered without any manual registration
 
 **Corresponds to**: [dsl-design.md Phase 1](./dsl-design.md#phase-1-language-core--module-discovery--progress-manifest), [Appendix A](./dsl-design.md#appendix-a-content-upsert-makegen)
 
