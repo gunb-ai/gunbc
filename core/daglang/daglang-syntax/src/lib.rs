@@ -312,6 +312,7 @@ pub mod ast {
         Ge,
         And,
         Or,
+        NullCoalesce,
     }
 
     #[derive(Debug, Clone)]

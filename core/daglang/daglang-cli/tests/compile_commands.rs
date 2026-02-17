@@ -10249,7 +10249,7 @@ fn run() -> String { "b" }
 }
 
 #[test]
-fn compile_command_single_file_duplicate_callable_does_not_report_ambiguous_call_target() {
+fn compile_command_single_file_duplicate_callable_reports_ambiguous_call_target() {
     let fixture = unique_temp_file("compile_single_file_duplicate_callable_relaxed");
     std::fs::write(
         &fixture,
@@ -10276,8 +10276,8 @@ fn run() -> String { helper() }
     assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `helper` in module `sample.single`"));
     assert!(
-        !stderr.contains("ambiguous call target `helper`"),
-        "single-file relaxed mode should not report ambiguous call-target diagnostics: {stderr}"
+        stderr.contains("ambiguous call target `helper`"),
+        "single-file strict mode should report ambiguous call-target diagnostics: {stderr}"
     );
     assert!(
         !stderr.contains("lower error"),
@@ -10288,7 +10288,7 @@ fn run() -> String { helper() }
 }
 
 #[test]
-fn compile_command_single_file_duplicate_service_does_not_report_ambiguous_service_call() {
+fn compile_command_single_file_duplicate_service_reports_ambiguous_service_call() {
     let fixture = unique_temp_file("compile_single_file_duplicate_service_relaxed");
     std::fs::write(
         &fixture,
@@ -10328,8 +10328,8 @@ func run(path: String) -> { body: String } {
     assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `FsStorage` in module `sample.single`"));
     assert!(
-        !stderr.contains("ambiguous service call `FsStorage.read`"),
-        "single-file relaxed mode should not report ambiguous service-call diagnostics: {stderr}"
+        stderr.contains("ambiguous service call `FsStorage.read`"),
+        "single-file strict mode should report ambiguous service-call diagnostics: {stderr}"
     );
     assert!(
         !stderr.contains("lower error"),
@@ -10428,7 +10428,7 @@ func run() -> { ok: Bool } uses fs: Storage uses fs: Storage { return { ok: true
 }
 
 #[test]
-fn compile_command_single_file_duplicate_resource_uses_does_not_report_ambiguous_used_type() {
+fn compile_command_single_file_duplicate_resource_uses_reports_ambiguous_used_type() {
     let fixture = unique_temp_file("compile_single_file_duplicate_resource_uses_relaxed");
     std::fs::write(
         &fixture,
@@ -10455,8 +10455,8 @@ func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
     assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `SharedResource` in module `sample.single`"));
     assert!(
-        !stderr.contains("ambiguous used resource type `SharedResource`"),
-        "single-file relaxed mode should suppress ambiguous used resource diagnostics: {stderr}"
+        stderr.contains("ambiguous used resource type `SharedResource`"),
+        "single-file strict mode should report ambiguous used resource diagnostics: {stderr}"
     );
     assert!(
         !stderr.contains("lower error"),
@@ -10497,7 +10497,7 @@ func run() -> { ok: Bool } provides out: Storage provides out: Storage { return 
 }
 
 #[test]
-fn compile_command_single_file_duplicate_resource_provides_does_not_report_ambiguous_provided_type()
+fn compile_command_single_file_duplicate_resource_provides_reports_ambiguous_provided_type()
 {
     let fixture = unique_temp_file("compile_single_file_duplicate_resource_provides_relaxed");
     std::fs::write(
@@ -10525,8 +10525,8 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
     assert_typecheck_stage_failure(&stderr);
     assert!(stderr.contains("duplicate definition `SharedResource` in module `sample.single`"));
     assert!(
-        !stderr.contains("ambiguous provided resource type `SharedResource`"),
-        "single-file relaxed mode should suppress ambiguous provided resource diagnostics: {stderr}"
+        stderr.contains("ambiguous provided resource type `SharedResource`"),
+        "single-file strict mode should report ambiguous provided resource diagnostics: {stderr}"
     );
     assert!(
         !stderr.contains("lower error"),
@@ -10735,7 +10735,7 @@ resource Disk implements Storage {
 }
 
 #[test]
-fn compile_command_single_file_unresolved_service_call_reports_lower_error() {
+fn compile_command_single_file_unresolved_service_call_reports_typecheck_error() {
     let fixture = unique_temp_file("compile_unresolved_service_single_file");
     std::fs::write(
         &fixture,
@@ -10769,8 +10769,8 @@ func run(path: String) -> { body: String } {
         "single-file compile should fail for unresolved service call"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_lower_stage_failure(&stderr);
-    assert!(stderr.contains("lower error: unresolved service call"));
+    assert_typecheck_stage_failure(&stderr);
+    assert!(stderr.contains("unresolved service call"));
     assert!(stderr.contains("MissingStorage.read"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -10854,7 +10854,7 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
 }
 
 #[test]
-fn compile_command_single_file_unresolved_uses_reports_lower_error() {
+fn compile_command_single_file_unresolved_uses_reports_typecheck_error() {
     let fixture = unique_temp_file("compile_unresolved_uses_single_file");
     std::fs::write(
         &fixture,
@@ -10878,15 +10878,15 @@ func run() -> { ok: Bool } uses fs: MissingResource {
         "single-file compile should fail for unresolved uses binding"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_lower_stage_failure(&stderr);
-    assert!(stderr.contains("lower error: unresolved used resource"));
-    assert!(stderr.contains("fs: MissingResource"));
+    assert_typecheck_stage_failure(&stderr);
+    assert!(stderr.contains("unknown used resource type"));
+    assert!(stderr.contains("MissingResource"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
 
 #[test]
-fn compile_command_single_file_unresolved_provides_reports_lower_error() {
+fn compile_command_single_file_unresolved_provides_reports_typecheck_error() {
     let fixture = unique_temp_file("compile_unresolved_provides_single_file");
     std::fs::write(
         &fixture,
@@ -10910,9 +10910,9 @@ func run() -> { ok: Bool } provides out: MissingResource {
         "single-file compile should fail for unresolved provides binding"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_lower_stage_failure(&stderr);
-    assert!(stderr.contains("lower error: unresolved provided resource"));
-    assert!(stderr.contains("out: MissingResource"));
+    assert_typecheck_stage_failure(&stderr);
+    assert!(stderr.contains("unknown provided resource type"));
+    assert!(stderr.contains("MissingResource"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -10986,7 +10986,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
 }
 
 #[test]
-fn compile_command_single_file_allows_unresolved_imports() {
+fn compile_command_single_file_unresolved_imports_fail_in_typecheck_stage() {
     let fixture = unique_temp_file("compile_single_file_unresolved_import");
     std::fs::write(
         &fixture,
@@ -11004,22 +11004,10 @@ fn run() -> Unit {}
         .output()
         .expect("failed to run daglang compile for unresolved import fixture");
 
-    assert!(
-        output.status.success(),
-        "single-file compile should tolerate unresolved imports: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(!output.status.success(), "single-file compile should fail");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        !stderr.contains("typecheck errors"),
-        "relaxed unresolved-import path should not emit typecheck failures: {stderr}"
-    );
-    assert!(
-        !stderr.contains("lower error"),
-        "relaxed unresolved-import path should not emit lower-stage failures: {stderr}"
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Compiled 1 module(s)"));
+    assert_typecheck_stage_failure(&stderr);
+    assert!(stderr.contains("unresolved import `missing.dep`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -11063,7 +11051,7 @@ fn run() -> Unit { let x = 42 }
 }
 
 #[test]
-fn compile_command_single_file_allows_unresolved_call_targets() {
+fn compile_command_single_file_unresolved_call_targets_fail_in_typecheck_stage() {
     let fixture = unique_temp_file("compile_single_file_unresolved_call_target");
     std::fs::write(
         &fixture,
@@ -11080,22 +11068,10 @@ fn run() -> String { missing(value: "ok") }
         .output()
         .expect("failed to run daglang compile for unresolved call-target fixture");
 
-    assert!(
-        output.status.success(),
-        "single-file compile should tolerate unresolved call targets: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(!output.status.success(), "single-file compile should fail");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        !stderr.contains("typecheck errors"),
-        "relaxed unresolved-call path should not emit typecheck failures: {stderr}"
-    );
-    assert!(
-        !stderr.contains("lower error"),
-        "relaxed unresolved-call path should not emit lower-stage failures: {stderr}"
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Compiled 1 module(s)"));
+    assert_typecheck_stage_failure(&stderr);
+    assert!(stderr.contains("unresolved call target `missing` in `run`"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
@@ -17947,7 +17923,7 @@ fn manifest_command_reports_diagnostics_for_invalid_file() {
 }
 
 #[test]
-fn expand_command_reports_unresolved_service_call_lower_error() {
+fn expand_command_reports_unresolved_service_call_typecheck_error() {
     let fixture = unique_temp_file("unresolved_service_call");
     std::fs::write(
         &fixture,
@@ -17981,15 +17957,15 @@ func run(path: String) -> { body: String } {
         "expand should fail when service call endpoint cannot be resolved"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_lower_stage_failure(&stderr);
-    assert!(stderr.contains("lower error: unresolved service call"));
+    assert_typecheck_stage_failure(&stderr);
+    assert!(stderr.contains("unresolved service call"));
     assert!(stderr.contains("MissingStorage.read"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
 
 #[test]
-fn expand_command_reports_unresolved_uses_lower_error() {
+fn expand_command_reports_unresolved_uses_typecheck_error() {
     let fixture = unique_temp_file("unresolved_uses");
     std::fs::write(
         &fixture,
@@ -18013,15 +17989,15 @@ func run() -> { ok: Bool } uses fs: MissingResource {
         "expand should fail when uses target cannot be resolved"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_lower_stage_failure(&stderr);
-    assert!(stderr.contains("lower error: unresolved used resource"));
-    assert!(stderr.contains("fs: MissingResource"));
+    assert_typecheck_stage_failure(&stderr);
+    assert!(stderr.contains("unknown used resource type"));
+    assert!(stderr.contains("MissingResource"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
 
 #[test]
-fn expand_command_reports_unresolved_provides_lower_error() {
+fn expand_command_reports_unresolved_provides_typecheck_error() {
     let fixture = unique_temp_file("unresolved_provides");
     std::fs::write(
         &fixture,
@@ -18045,9 +18021,9 @@ func run() -> { ok: Bool } provides out: MissingResource {
         "expand should fail when provides target cannot be resolved"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_lower_stage_failure(&stderr);
-    assert!(stderr.contains("lower error: unresolved provided resource"));
-    assert!(stderr.contains("out: MissingResource"));
+    assert_typecheck_stage_failure(&stderr);
+    assert!(stderr.contains("unknown provided resource type"));
+    assert!(stderr.contains("MissingResource"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }

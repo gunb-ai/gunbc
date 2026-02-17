@@ -25,6 +25,7 @@ use daglang_syntax::ast_utils::{
     walk_stmts,
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
+use gunbc_ir::resource::AccessMode;
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port};
 use serde::Serialize;
 
@@ -2651,6 +2652,7 @@ fn expand_single_content_upsert(
     let compare_id = format!("compare_{suffix}_content");
     let prepare_write_id = format!("prepare_write_{suffix}");
     let execute_transport_id = format!("execute_{suffix}_transport");
+    let is_makegen_expansion = suffix == "makegen";
 
     builder.add_node(Node::opaque(
         prepare_read_id.clone(),
@@ -2709,12 +2711,20 @@ fn expand_single_content_upsert(
             service_metadata: None,
         },
     ));
+    let mut execute_transport_inputs = vec![
+        Port::scalar("request", "TransportRequest"),
+        Port::scalar("skip", "Bool"),
+    ];
+    if is_makegen_expansion {
+        execute_transport_inputs.push(Port::resource(
+            "file:*",
+            "FilesystemHandle",
+            AccessMode::Write,
+        ));
+    }
     builder.add_node(Node::opaque(
         execute_transport_id.clone(),
-        vec![
-            Port::scalar("request", "TransportRequest"),
-            Port::scalar("skip", "Bool"),
-        ],
+        execute_transport_inputs,
         vec![Port::scalar("makegen_response", "TransportResponse")],
         LoweredOp::Callable {
             module: module_name.to_string(),
@@ -2862,6 +2872,14 @@ fn add_makegen_scaffolding(
             "prepare_read_makegen",
             "res:file:Makefile",
         );
+        if builder.has_node("execute_makegen_transport") {
+            builder.add_edge(
+                "fs_env",
+                "FilesystemHandle",
+                "execute_makegen_transport",
+                "res:file:*",
+            );
+        }
     }
 }
 

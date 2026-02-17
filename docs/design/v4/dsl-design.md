@@ -2682,25 +2682,31 @@ Bucket D (Resource Hygiene):
 
 ```
 ProgressManifest {
-  total_nodes: 8
+  total_nodes: 9
   topology: [
     { id: "fs_env", depth: 0, parent: None }
     { id: "load_registry", depth: 0, parent: None }
-    { id: "render_makefile", depth: 1, parent: None }
     { id: "prepare_read_makegen", depth: 1, parent: None }
+    { id: "tools.makegen::render_makefile", depth: 1, parent: None }
     { id: "execute_read_makegen", depth: 2, parent: None }
+    { id: "prepare_write_makegen", depth: 2, parent: None }
     { id: "compare_makegen_content", depth: 3, parent: None }
-    { id: "prepare_write_makegen", depth: 3, parent: None }
     { id: "execute_makegen_transport", depth: 4, parent: None }
+    { id: "tools.makegen::makegen", depth: 5, parent: None }
   ]
   labels: {
-    "fs_env": "fs", "load_registry": "load", "render_makefile": "render",
+    "fs_env": "fs", "load_registry": "load",
+    "tools.makegen::render_makefile": "render",
     "prepare_read_makegen": "read (prepare)", "execute_read_makegen": "read",
     "compare_makegen_content": "compare", "prepare_write_makegen": "write (prepare)",
-    "execute_makegen_transport": "write"
+    "execute_makegen_transport": "write", "tools.makegen::makegen": "makegen"
   }
   subdag_boundaries: []
-  parallel_groups: [{ nodes: ["fs_env", "load_registry"], depth: 0 }]
+  parallel_groups: [
+    { nodes: ["fs_env", "load_registry"], depth: 0 }
+    { nodes: ["prepare_read_makegen", "tools.makegen::render_makefile"], depth: 1 }
+    { nodes: ["execute_read_makegen", "prepare_write_makegen"], depth: 2 }
+  ]
   scatter_points: []
 }
 ```

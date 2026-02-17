@@ -175,13 +175,14 @@ This inverts the usual "implement then visualize" flow. You see what you're buil
 `dag manifest tools/makegen.dag`:
 ```
 ProgressManifest:
-  total_nodes: 8
+  total_nodes: 9
   waves:
     [0] fs_env, load_registry
     [1] render_makefile, prepare_read
-    [2] execute_read
-    [3] compare, prepare_write
+    [2] execute_read, prepare_write
+    [3] compare
     [4] execute_write
+    [5] makegen
   subdag_boundaries: (none)
   parallel_groups:
     [0] {fs_env, load_registry}

@@ -2242,6 +2242,7 @@ fn infer_expr_type(
                 | daglang_syntax::ast::BinOp::Ge
                 | daglang_syntax::ast::BinOp::And
                 | daglang_syntax::ast::BinOp::Or => ValueType::Named("Bool".to_string()),
+                daglang_syntax::ast::BinOp::NullCoalesce => lhs_ty,
                 _ => match (lhs_ty, rhs_ty) {
                     (ValueType::Named(lhs), ValueType::Named(rhs))
                         if canonical_type_name(&lhs) == canonical_type_name(&rhs) =>
@@ -2270,11 +2271,11 @@ fn infer_expr_type(
             ValueType::Named("String".to_string())
         }
         Expr::Record(type_name, fields) => {
-            for (_, value) in fields {
-                let (_, val_errors) = infer_expr_type(value, local_bindings, infer_context);
-                errors.extend(val_errors);
-            }
             if let Some(name) = type_name {
+                for (_, value) in fields {
+                    let (_, val_errors) = infer_expr_type(value, local_bindings, infer_context);
+                    errors.extend(val_errors);
+                }
                 ValueType::Named(name.clone())
             } else {
                 ValueType::Record(

@@ -1826,8 +1826,10 @@ impl Parser {
         } else {
             match op {
                 TokenKind::PipeArrow => Expr::Pipe(Box::new(lhs), Box::new(rhs)),
-                TokenKind::NullCoalesce => Expr::BinOp(Box::new(lhs), BinOp::Or, Box::new(rhs)),
-                _ => Expr::BinOp(Box::new(lhs), BinOp::Add, Box::new(rhs)),
+                TokenKind::NullCoalesce => {
+                    Expr::BinOp(Box::new(lhs), BinOp::NullCoalesce, Box::new(rhs))
+                }
+                _ => unreachable!("unhandled infix operator: {op:?}"),
             }
         }
     }

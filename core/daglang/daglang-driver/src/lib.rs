@@ -69,17 +69,9 @@ pub struct CheckOutput {
     pub parsed_files: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CompileOptions {
     pub emit_collection_nodes: bool,
-}
-
-impl Default for CompileOptions {
-    fn default() -> Self {
-        Self {
-            emit_collection_nodes: false,
-        }
-    }
 }
 
 pub fn compile_from_context(context: &DriverContext) -> Result<CompileOutput, CompileError> {
@@ -92,7 +84,11 @@ pub fn compile_from_context_with_options(
 ) -> Result<CompileOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
     let callable_scope = callable_scope_for_context(context, &module_graph)?;
-    validate_module_path_consistency(&module_graph, &context.roots)?;
+    validate_module_path_consistency(
+        &module_graph,
+        &context.roots,
+        context.target_file.as_deref(),
+    )?;
     let typed = typecheck_module_graph_with_options(
         module_graph,
         TypecheckOptions {
@@ -106,12 +102,10 @@ pub fn compile_from_context_with_options(
         } else {
             lower_typed_project_for_modules(&typed, scope)
         }
+    } else if options.emit_collection_nodes {
+        lower_typed_project_with_collection_nodes(&typed)
     } else {
-        if options.emit_collection_nodes {
-            lower_typed_project_with_collection_nodes(&typed)
-        } else {
-            lower_typed_project(&typed)
-        }
+        lower_typed_project(&typed)
     }
     .map_err(|error| format!("lower error: {error}"))?;
     let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
@@ -127,7 +121,6 @@ pub fn compile_from_context_with_options(
 
 pub fn check_from_context(context: &DriverContext) -> Result<CheckOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
-    validate_module_path_consistency(&module_graph, &context.roots)?;
     let parsed_files = module_graph.modules.len();
     if let Err(errors) = typecheck_module_graph_with_options(
         module_graph,
@@ -150,59 +143,188 @@ fn format_typecheck_errors<E: std::fmt::Display>(errors: Vec<E>) -> CompileError
 
 fn discover_module_graph_for_context(context: &DriverContext) -> Result<ModuleGraph, CompileError> {
     if let Some(target_file) = &context.target_file {
-        let single_file_graph = discover_single_file_module_graph(target_file)?;
-        let module_path = single_file_graph.modules[0].module_path.clone();
-        let discovered =
-            ModuleGraph::discover_strict(&context.roots).map_err(format_resolve_error)?;
-        return prune_module_graph_to_target(discovered, &module_path).ok_or_else(|| {
-            format!(
-                "target module `{}` was not discovered under configured roots",
-                module_path.join(".")
-            )
-            .into()
-        });
+        return discover_target_module_graph_for_context(context, target_file);
     }
 
     ModuleGraph::discover_strict(&context.roots).map_err(format_resolve_error)
 }
 
-fn discover_single_file_module_graph(target_file: &Path) -> Result<ModuleGraph, CompileError> {
+fn discover_target_module_graph_for_context(
+    context: &DriverContext,
+    target_file: &Path,
+) -> Result<ModuleGraph, CompileError> {
+    let canonical_roots = daglang_resolve::canonicalize_roots(&context.roots);
+    let mut modules: Vec<ResolvedModule> = Vec::new();
+    let mut imports_by_index: Vec<Vec<Vec<String>>> = Vec::new();
+    let mut module_index_by_path: HashMap<PathBuf, usize> = HashMap::new();
+    let mut module_index_by_decl: HashMap<Vec<String>, usize> = HashMap::new();
+
+    let Some((target_index, _)) = add_target_module_if_applicable(
+        target_file,
+        None,
+        &context.roots,
+        &canonical_roots,
+        &mut modules,
+        &mut imports_by_index,
+        &mut module_index_by_path,
+        &mut module_index_by_decl,
+    )?
+    else {
+        return Err(
+            CompileError::from("target file module path did not match expected import path")
+        );
+    };
+
+    let mut queue = VecDeque::from([target_index]);
+    let mut visited = HashSet::new();
+    while let Some(module_index) = queue.pop_front() {
+        if !visited.insert(module_index) {
+            continue;
+        }
+        let imports = imports_by_index
+            .get(module_index)
+            .cloned()
+            .unwrap_or_default();
+        let mut dependencies = Vec::new();
+        for import in imports {
+            if let Some(dep_index) = module_index_by_decl.get(&import).copied() {
+                dependencies.push(dep_index);
+                continue;
+            }
+            let Some(import_file) = resolve_import_file_path(&context.roots, &import) else {
+                continue;
+            };
+            let Some((dep_index, is_new)) = add_target_module_if_applicable(
+                &import_file,
+                Some(&import),
+                &context.roots,
+                &canonical_roots,
+                &mut modules,
+                &mut imports_by_index,
+                &mut module_index_by_path,
+                &mut module_index_by_decl,
+            )?
+            else {
+                continue;
+            };
+            dependencies.push(dep_index);
+            if is_new {
+                queue.push_back(dep_index);
+            }
+        }
+        dependencies.sort_unstable();
+        dependencies.dedup();
+        if let Some(module) = modules.get_mut(module_index) {
+            module.dependencies = dependencies;
+        }
+    }
+
+    Ok(ModuleGraph { modules })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn add_target_module_if_applicable(
+    path: &Path,
+    expected_module_path: Option<&[String]>,
+    roots: &[PathBuf],
+    canonical_roots: &[PathBuf],
+    modules: &mut Vec<ResolvedModule>,
+    imports_by_index: &mut Vec<Vec<Vec<String>>>,
+    module_index_by_path: &mut HashMap<PathBuf, usize>,
+    module_index_by_decl: &mut HashMap<Vec<String>, usize>,
+) -> Result<Option<(usize, bool)>, CompileError> {
+    let canonical_path = {
+        #[allow(clippy::disallowed_methods)]
+        std::fs::canonicalize(path).ok()
+    };
+    if let Some(canonical_path) = canonical_path.as_ref() {
+        if let Some(existing) = module_index_by_path.get(canonical_path).copied() {
+            return Ok(Some((existing, false)));
+        }
+    }
+
+    let (mut module, imports) = parse_target_module_file(path, roots, canonical_roots)?;
+    if let Some(expected) = expected_module_path {
+        if module.module_path.as_slice() != expected {
+            return Ok(None);
+        }
+    }
+
+    let canonical_path = match canonical_path {
+        Some(path) => path,
+        None => {
+            #[allow(clippy::disallowed_methods)]
+            std::fs::canonicalize(path)
+                .map_err(|error| format!("failed to read {}: {error}", path.display()))?
+        }
+    };
+    module.path = canonical_path.clone();
+
+    if let Some(existing) = module_index_by_decl.get(&module.module_path).copied() {
+        if modules
+            .get(existing)
+            .is_some_and(|existing_module| existing_module.path != canonical_path)
+        {
+            return Err(format_resolve_error(ResolveError::DuplicateModule(
+                module.module_path.clone(),
+            )));
+        }
+        module_index_by_path.insert(canonical_path, existing);
+        return Ok(Some((existing, false)));
+    }
+
+    let index = modules.len();
+    module_index_by_path.insert(canonical_path, index);
+    module_index_by_decl.insert(module.module_path.clone(), index);
+    imports_by_index.push(imports);
+    modules.push(module);
+    Ok(Some((index, true)))
+}
+
+fn parse_target_module_file(
+    path: &Path,
+    roots: &[PathBuf],
+    canonical_roots: &[PathBuf],
+) -> Result<(ResolvedModule, Vec<Vec<String>>), CompileError> {
     let source = {
         #[allow(clippy::disallowed_methods)]
-        std::fs::read_to_string(target_file)
-            .map_err(|error| format!("failed to read {}: {error}", target_file.display()))?
+        std::fs::read_to_string(path)
+            .map_err(|error| format!("failed to read {}: {error}", path.display()))?
     };
-    let ast = parser::parse(&source).map_err(|errors| {
-        let mut message = String::from("compile diagnostics:\n");
-        for error in &errors {
-            writeln!(
-                message,
-                "  {}",
-                error.format_with_source(target_file, &source)
-            )
-            .ok();
-        }
-        message
+    let ast = parser::parse_with_file_diagnostics(path, &source).map_err(|diagnostics| {
+        format_resolve_error(ResolveError::ParseErrors(vec![(path.to_path_buf(), diagnostics)]))
     })?;
     let module_path = ast
         .module_path
         .as_ref()
         .map(|module| module.node.segments.clone())
-        .unwrap_or_else(|| {
-            target_file
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .map(|stem| vec![stem.to_string()])
-                .unwrap_or_else(|| vec!["unknown".to_string()])
-        });
-    Ok(ModuleGraph {
-        modules: vec![ResolvedModule {
-            path: target_file.to_path_buf(),
+        .unwrap_or_else(|| daglang_resolve::path_to_module_path(path, roots, canonical_roots));
+    let imports = ast
+        .imports
+        .iter()
+        .map(|import| import.node.path.segments.clone())
+        .collect::<Vec<_>>();
+    Ok((
+        ResolvedModule {
+            path: path.to_path_buf(),
             ast,
             module_path,
             dependencies: Vec::new(),
-        }],
-    })
+        },
+        imports,
+    ))
+}
+
+fn resolve_import_file_path(roots: &[PathBuf], import_path: &[String]) -> Option<PathBuf> {
+    let mut relative = PathBuf::new();
+    for segment in import_path {
+        relative.push(segment);
+    }
+    relative.set_extension("dag");
+    roots
+        .iter()
+        .map(|root| root.join(&relative))
+        .find(|candidate| candidate.is_file())
 }
 
 fn callable_scope_for_context(
@@ -226,11 +348,10 @@ fn callable_scope_for_context(
                     .is_some_and(|canonical| module.path == *canonical)
         })
         .ok_or_else(|| {
-            format!(
+            CompileError::from(format!(
                 "target file `{}` was not found in discovered module graph",
                 target_file.display()
-            )
-            .into()
+            ))
         })?;
     let Some(target_module) = module_graph.modules.get(target_index) else {
         return Err("internal error: target module index out of bounds".into());
@@ -278,57 +399,6 @@ fn module_has_callable_items(module: &ResolvedModule) -> bool {
     })
 }
 
-fn prune_module_graph_to_target(
-    graph: ModuleGraph,
-    target_module_path: &[String],
-) -> Option<ModuleGraph> {
-    let target_module = target_module_path.join(".");
-    let target_index = graph
-        .modules
-        .iter()
-        .position(|module| module.module_path.join(".") == target_module)?;
-    if target_index >= graph.modules.len() {
-        return None;
-    }
-    let mut required = HashSet::new();
-    let mut queue = VecDeque::from([target_index]);
-    while let Some(module_index) = queue.pop_front() {
-        if !required.insert(module_index) {
-            continue;
-        }
-        let Some(module) = graph.modules.get(module_index) else {
-            continue;
-        };
-        for dependency in &module.dependencies {
-            queue.push_back(*dependency);
-        }
-    }
-    let mut index_map = HashMap::new();
-    for (old_index, _) in graph.modules.iter().enumerate() {
-        if required.contains(&old_index) {
-            let new_index = index_map.len();
-            index_map.insert(old_index, new_index);
-        }
-    }
-    let modules = graph
-        .modules
-        .into_iter()
-        .enumerate()
-        .filter_map(|(old_index, mut module)| {
-            if !required.contains(&old_index) {
-                return None;
-            }
-            module.dependencies = module
-                .dependencies
-                .iter()
-                .filter_map(|dependency| index_map.get(dependency).copied())
-                .collect::<Vec<_>>();
-            Some(module)
-        })
-        .collect::<Vec<_>>();
-    Some(ModuleGraph { modules })
-}
-
 fn format_resolve_error(error: ResolveError) -> CompileError {
     match error {
         ResolveError::ParseErrors(files) => {
@@ -351,6 +421,7 @@ fn format_resolve_error(error: ResolveError) -> CompileError {
 fn validate_module_path_consistency(
     graph: &ModuleGraph,
     roots: &[PathBuf],
+    target_file: Option<&Path>,
 ) -> Result<(), CompileError> {
     let mut root_prefixes = roots.to_vec();
     for canonical_root in daglang_resolve::canonicalize_roots(roots) {
@@ -358,10 +429,21 @@ fn validate_module_path_consistency(
             root_prefixes.push(canonical_root);
         }
     }
+    let canonical_target = target_file.and_then(|target| {
+        #[allow(clippy::disallowed_methods)]
+        std::fs::canonicalize(target).ok()
+    });
     let mismatches = graph
         .modules
         .iter()
         .filter_map(|module| {
+            if target_file.is_some_and(|target| module.path == target)
+                || canonical_target
+                    .as_ref()
+                    .is_some_and(|canonical| module.path == *canonical)
+            {
+                return None;
+            }
             let declared = module.module_path.join(".");
             let relative = root_prefixes
                 .iter()

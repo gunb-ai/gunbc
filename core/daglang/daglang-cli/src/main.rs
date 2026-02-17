@@ -6,23 +6,15 @@
 //!
 //! # Commands
 //!
-//! - `daglang viz <file.dag> [--format ascii|mermaid]`
-//!                                  -- DAG visualization from compiled IR
-//! - `daglang expand <file.dag> [--emit-collection-nodes]`
-//!                                  -- Show lowered GraphIR (nodes, edges, ports)
-//! - `daglang manifest <file.dag> [--format text|json] [--emit-collection-nodes]`
-//!                                  -- Show derived ProgressManifest
-//! - `daglang obligations <file.dag> [--format text|json]`
-//!                                  -- Show derived test obligations summary
-//! - `daglang show-triplets <file.dag> [--format text|json]`
-//!                                  -- Show transport triplet expansions
-//! - `daglang modules [dir] [--format text|json]`
-//!                                  -- Show the discovered module graph
+//! - `daglang viz <file.dag> [--format ascii|mermaid]`: DAG visualization from compiled IR
+//! - `daglang expand <file.dag> [--emit-collection-nodes]`: Show lowered GraphIR (nodes, edges, ports)
+//! - `daglang manifest <file.dag> [--format text|json] [--emit-collection-nodes]`: Show derived ProgressManifest
+//! - `daglang obligations <file.dag> [--format text|json]`: Show derived test obligations summary
+//! - `daglang show-triplets <file.dag> [--format text|json]`: Show transport triplet expansions
+//! - `daglang modules [dir] [--format text|json]`: Show the discovered module graph
 //! - `daglang check <file.dag|dir>` -- Parse + typecheck modules (no lowering)
-//! - `daglang compile <file.dag|dir> [--emit-collection-nodes]`
-//!                                  -- Full compilation pipeline
-//! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`
-//!                                  -- Compile + resolve + execute makegen DAG
+//! - `daglang compile <file.dag|dir> [--emit-collection-nodes]`: Full compilation pipeline
+//! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`: Compile + resolve + execute makegen DAG
 
 use std::path::PathBuf;
 
@@ -385,6 +377,7 @@ fn resolve_configured_roots(cwd: &std::path::Path) -> Result<Option<Vec<PathBuf>
 ///
 /// Unlike compile context construction, `.dag`-suffixed paths that resolve to
 /// directories stay in directory mode for `daglang check`.
+#[cfg(test)]
 fn build_check_pipeline_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
     build_check_pipeline_context_with_default_roots(cwd, input, None)
 }

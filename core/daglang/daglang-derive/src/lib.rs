@@ -194,7 +194,8 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
     let obligation_counts = derive_obligation_counts(&dag.nodes);
     let obligations = TestObligations {
         dry_run_completion_required: true,
-        total_obligations: manifest.total_edges,
+        total_obligations: obligation_counts.transport_execution_targets
+            + obligation_counts.pure_node_determinism_targets,
         transport_execution_targets: obligation_counts.transport_execution_targets,
         pure_node_determinism_targets: obligation_counts.pure_node_determinism_targets,
         service_transport_prepare_targets: obligation_counts.service_transport_prepare_targets,
@@ -477,20 +478,7 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
 fn derive_capture_modes(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, CaptureMode> {
     nodes
         .iter()
-        .map(|node| {
-            let mode = match node.body.as_opaque() {
-                Some(LoweredOp::Callable { name, .. })
-                    if name.contains("service_transport::execute::") =>
-                {
-                    CaptureMode::Captured
-                }
-                Some(LoweredOp::Collection { .. })
-                | Some(LoweredOp::Pipeline { .. })
-                | Some(LoweredOp::Callable { .. })
-                | None => CaptureMode::Captured,
-            };
-            (node.id.0.clone(), mode)
-        })
+        .map(|node| (node.id.0.clone(), CaptureMode::Captured))
         .collect()
 }
 
@@ -524,13 +512,12 @@ fn derive_resources(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, Vec<ResourceU
                 resource: resource.to_string(),
                 usage: "release".to_string(),
             })
-        } else if let Some(binding) = name.strip_prefix("resource_provide::") {
-            Some(ResourceUsage {
-                resource: binding.to_string(),
-                usage: "provide".to_string(),
-            })
         } else {
-            None
+            name.strip_prefix("resource_provide::")
+                .map(|binding| ResourceUsage {
+                    resource: binding.to_string(),
+                    usage: "provide".to_string(),
+                })
         };
         if let Some(usage) = usage {
             resources.entry(node.id.0.clone()).or_default().push(usage);

@@ -31,7 +31,7 @@
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 1,
       "service_transport_readonly_targets": 0,
-      "total_obligations": 3,
+      "total_obligations": 4,
       "transport_execution_targets": 1
     }
   }

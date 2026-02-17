@@ -613,11 +613,13 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("system clock should be after unix epoch")
             .as_nanos();
-        std::env::temp_dir().join(format!(
-            "daglang_cli_compile_{name}_{}_{}.dag",
+        let fixture_root = std::env::temp_dir().join(format!(
+            "daglang_cli_compile_{name}_{}_{}",
             std::process::id(),
             nanos
-        ))
+        ));
+        std::fs::create_dir_all(&fixture_root).expect("failed to create temp fixture root");
+        fixture_root.join(format!("{name}.dag"))
     }
 
     fn unique_temp_output_file(name: &str, extension: &str) -> PathBuf {
@@ -633,14 +635,21 @@ mod tests {
         ))
     }
 
+    fn workspace_dsl_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl")
+    }
+
+    fn workspace_single_file_context(relative_path: &str) -> PipelineContext {
+        let root = workspace_dsl_root();
+        PipelineContext {
+            roots: vec![root.clone()],
+            target_file: Some(root.join(relative_path)),
+        }
+    }
+
     fn assert_typecheck_stage_error(error: &CompileError) {
         assert!(error.contains("typecheck errors"));
         assert!(!error.contains("lower error"));
-    }
-
-    fn assert_lower_stage_error(error: &CompileError) {
-        assert!(error.contains("lower error"));
-        assert!(!error.contains("typecheck errors"));
     }
 
     #[test]
@@ -944,14 +953,7 @@ fn run() -> String { return 42 }
 
     #[test]
     fn compile_single_file_makegen_produces_non_empty_outputs() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-        let context = PipelineContext {
-            roots: vec![file
-                .parent()
-                .expect("file should have parent")
-                .to_path_buf()],
-            target_file: Some(file),
-        };
+        let context = workspace_single_file_context("tools/makegen.dag");
 
         let output = compile_from_context(&context).expect("compile should succeed");
         assert!(!output.lowered_dag.nodes.is_empty());
@@ -966,14 +968,7 @@ fn run() -> String { return 42 }
 
     #[test]
     fn resolve_lowered_dag_maps_makegen_nodes_to_resolved_ops() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-        let context = PipelineContext {
-            roots: vec![file
-                .parent()
-                .expect("file should have parent")
-                .to_path_buf()],
-            target_file: Some(file),
-        };
+        let context = workspace_single_file_context("tools/makegen.dag");
         let output = compile_from_context(&context).expect("compile should succeed");
 
         let resolved =
@@ -1077,14 +1072,7 @@ fn run() -> String { return 42 }
 
     #[test]
     fn compile_resolve_execute_makegen_real_mode_writes_output() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-        let context = PipelineContext {
-            roots: vec![file
-                .parent()
-                .expect("file should have parent")
-                .to_path_buf()],
-            target_file: Some(file),
-        };
+        let context = workspace_single_file_context("tools/makegen.dag");
         let output_path = unique_temp_output_file("makegen_real_run", "mk");
         let output_path_str = output_path.to_string_lossy().to_string();
         let input_mocks = makegen_entrypoint_mocks(&output_path_str);
@@ -1114,14 +1102,7 @@ fn run() -> String { return 42 }
 
     #[test]
     fn compile_resolve_execute_makegen_real_mode_reports_not_written_when_fresh() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-        let context = PipelineContext {
-            roots: vec![file
-                .parent()
-                .expect("file should have parent")
-                .to_path_buf()],
-            target_file: Some(file),
-        };
+        let context = workspace_single_file_context("tools/makegen.dag");
         let output_path = unique_temp_output_file("makegen_real_idempotent", "mk");
         let output_path_str = output_path.to_string_lossy().to_string();
         let input_mocks = makegen_entrypoint_mocks(&output_path_str);
@@ -1145,20 +1126,16 @@ fn run() -> String { return 42 }
         let second_content =
             std::fs::read_to_string(&output_path).expect("second run should leave output intact");
         assert_eq!(first_content, second_content);
-
+        assert!(
+            output_path.exists(),
+            "real idempotence check should preserve generated output"
+        );
         std::fs::remove_file(output_path).expect("failed to cleanup makegen output");
     }
 
     #[test]
     fn compile_resolve_execute_makegen_dry_run_intercepts_and_skips_output_write() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-        let context = PipelineContext {
-            roots: vec![file
-                .parent()
-                .expect("file should have parent")
-                .to_path_buf()],
-            target_file: Some(file),
-        };
+        let context = workspace_single_file_context("tools/makegen.dag");
         let output_path = unique_temp_output_file("makegen_dry_run", "mk");
         let output_path_str = output_path.to_string_lossy().to_string();
         let input_mocks = makegen_entrypoint_mocks(&output_path_str);
@@ -1190,14 +1167,7 @@ fn run() -> String { return 42 }
 
     #[test]
     fn render_obligations_json_emits_expected_keys() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-        let context = PipelineContext {
-            roots: vec![file
-                .parent()
-                .expect("file should have parent")
-                .to_path_buf()],
-            target_file: Some(file),
-        };
+        let context = workspace_single_file_context("tools/makegen.dag");
         let output = compile_from_context(&context).expect("compile should succeed");
 
         let rendered = render_obligations(&output.derived, OutputFormat::Json);
@@ -1225,14 +1195,7 @@ fn run() -> String { return 42 }
 
     #[test]
     fn render_triplets_json_includes_makegen_transport_nodes() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-        let context = PipelineContext {
-            roots: vec![file
-                .parent()
-                .expect("file should have parent")
-                .to_path_buf()],
-            target_file: Some(file),
-        };
+        let context = workspace_single_file_context("tools/makegen.dag");
         let output = compile_from_context(&context).expect("compile should succeed");
 
         let rendered = render_triplets(&output.lowered_dag, OutputFormat::Json);
@@ -1360,14 +1323,7 @@ fn run() -> String { return 42 }
 
     #[test]
     fn render_triplets_text_is_deterministic() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-        let context = PipelineContext {
-            roots: vec![file
-                .parent()
-                .expect("file should have parent")
-                .to_path_buf()],
-            target_file: Some(file),
-        };
+        let context = workspace_single_file_context("tools/makegen.dag");
         let output = compile_from_context(&context).expect("compile should succeed");
 
         let first = render_triplets(&output.lowered_dag, OutputFormat::Text);
@@ -1377,14 +1333,7 @@ fn run() -> String { return 42 }
 
     #[test]
     fn render_manifest_reuses_obligations_text_block() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-        let context = PipelineContext {
-            roots: vec![file
-                .parent()
-                .expect("file should have parent")
-                .to_path_buf()],
-            target_file: Some(file),
-        };
+        let context = workspace_single_file_context("tools/makegen.dag");
         let output = compile_from_context(&context).expect("compile should succeed");
 
         let manifest = render_manifest(&output.derived);
@@ -1397,14 +1346,7 @@ fn run() -> String { return 42 }
 
     #[test]
     fn render_manifest_groups_stage_groups_into_collapsible_sections() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/pipelines/ci.dag");
-        let context = PipelineContext {
-            roots: vec![file
-                .parent()
-                .expect("file should have parent")
-                .to_path_buf()],
-            target_file: Some(file),
-        };
+        let context = workspace_single_file_context("pipelines/ci.dag");
         let output = compile_from_context(&context).expect("compile should succeed");
 
         let manifest = render_manifest(&output.derived);
@@ -1640,7 +1582,7 @@ fn run(values: List<String>) -> String {
     }
 
     #[test]
-    fn compile_single_file_unresolved_service_call_fails_in_lower_stage() {
+    fn compile_single_file_unresolved_service_call_fails_in_typecheck_stage() {
         let fixture = unique_temp_file("single_file_unresolved_service_call");
         std::fs::write(
             &fixture,
@@ -1671,7 +1613,7 @@ func run(path: String) -> { body: String } {
         };
 
         let error = compile_from_context(&context).expect_err("compile should fail");
-        assert_lower_stage_error(&error);
+        assert_typecheck_stage_error(&error);
         assert!(error.contains("unresolved service call"));
         assert!(error.contains("MissingStorage.read"));
 
@@ -1791,7 +1733,7 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
     }
 
     #[test]
-    fn compile_single_file_unresolved_uses_fails_in_lower_stage() {
+    fn compile_single_file_unresolved_uses_fails_in_typecheck_stage() {
         let fixture = unique_temp_file("single_file_unresolved_uses");
         std::fs::write(
             &fixture,
@@ -1812,8 +1754,8 @@ func run() -> { ok: Bool } uses fs: MissingResource {
         };
 
         let error = compile_from_context(&context).expect_err("compile should fail");
-        assert_lower_stage_error(&error);
-        assert!(error.contains("unresolved used resource"));
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("unknown used resource type"));
         assert!(error.contains("MissingResource"));
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -1919,7 +1861,7 @@ func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
     }
 
     #[test]
-    fn compile_single_file_unresolved_provides_fails_in_lower_stage() {
+    fn compile_single_file_unresolved_provides_fails_in_typecheck_stage() {
         let fixture = unique_temp_file("single_file_unresolved_provides");
         std::fs::write(
             &fixture,
@@ -1940,8 +1882,8 @@ func run() -> { ok: Bool } provides out: MissingResource {
         };
 
         let error = compile_from_context(&context).expect_err("compile should fail");
-        assert_lower_stage_error(&error);
-        assert!(error.contains("unresolved provided resource"));
+        assert_typecheck_stage_error(&error);
+        assert!(error.contains("unknown provided resource type"));
         assert!(error.contains("MissingResource"));
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
@@ -2477,7 +2419,7 @@ fn run(sources: DocgenSources, payload: String) -> String {
     }
 
     #[test]
-    fn compile_single_file_duplicate_service_suppresses_ambiguous_service_call() {
+    fn compile_single_file_duplicate_service_reports_ambiguous_service_call() {
         let fixture = unique_temp_file("single_file_duplicate_service");
         std::fs::write(
             &fixture,
@@ -2513,7 +2455,7 @@ func run(path: String) -> { body: String } {
         let error = compile_from_context(&context).expect_err("compile should fail");
         assert_typecheck_stage_error(&error);
         assert!(error.contains("duplicate definition `FsStorage`"));
-        assert!(!error.contains("ambiguous service call"));
+        assert!(error.contains("ambiguous service call"));
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
     }
@@ -2566,7 +2508,7 @@ func run(path: String) -> { body: String } {
     }
 
     #[test]
-    fn compile_single_file_duplicate_callable_suppresses_ambiguous_call_target() {
+    fn compile_single_file_duplicate_callable_reports_ambiguous_call_target() {
         let fixture = unique_temp_file("single_file_duplicate_callable");
         std::fs::write(
             &fixture,
@@ -2589,7 +2531,7 @@ fn run() -> String { helper() }
         let error = compile_from_context(&context).expect_err("compile should fail");
         assert_typecheck_stage_error(&error);
         assert!(error.contains("duplicate definition `helper`"));
-        assert!(!error.contains("ambiguous call target"));
+        assert!(error.contains("ambiguous call target"));
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
     }
@@ -2629,7 +2571,7 @@ fn run() -> String { helper() }
     }
 
     #[test]
-    fn compile_single_file_duplicate_resource_uses_suppresses_ambiguous_used_type() {
+    fn compile_single_file_duplicate_resource_uses_reports_ambiguous_used_type() {
         let fixture = unique_temp_file("single_file_duplicate_resource_uses");
         std::fs::write(
             &fixture,
@@ -2652,7 +2594,7 @@ func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
         let error = compile_from_context(&context).expect_err("compile should fail");
         assert_typecheck_stage_error(&error);
         assert!(error.contains("duplicate definition `SharedResource`"));
-        assert!(!error.contains("ambiguous used resource type"));
+        assert!(error.contains("ambiguous used resource type"));
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
     }
@@ -2692,7 +2634,7 @@ func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
     }
 
     #[test]
-    fn compile_single_file_duplicate_resource_provides_suppresses_ambiguous_provided_type() {
+    fn compile_single_file_duplicate_resource_provides_reports_ambiguous_provided_type() {
         let fixture = unique_temp_file("single_file_duplicate_resource_provides");
         std::fs::write(
             &fixture,
@@ -2715,7 +2657,7 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
         let error = compile_from_context(&context).expect_err("compile should fail");
         assert_typecheck_stage_error(&error);
         assert!(error.contains("duplicate definition `SharedResource`"));
-        assert!(!error.contains("ambiguous provided resource type"));
+        assert!(error.contains("ambiguous provided resource type"));
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
     }
