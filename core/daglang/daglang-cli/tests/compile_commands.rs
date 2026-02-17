@@ -11158,6 +11158,46 @@ fn manifest_command_json_format_emits_valid_json_object() {
 }
 
 #[test]
+fn manifest_command_json_output_is_deterministic_for_same_input() {
+    let first = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang manifest --format json");
+    assert!(
+        first.status.success(),
+        "first manifest json run failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let second = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang manifest --format json");
+    assert!(
+        second.status.success(),
+        "second manifest json run failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    assert_eq!(
+        first.stdout, second.stdout,
+        "manifest json output should be byte-stable across repeated runs"
+    );
+    assert_eq!(
+        first.stderr, second.stderr,
+        "manifest json stderr should be stable across repeated runs"
+    );
+}
+
+#[test]
 fn manifest_command_explicit_text_format_matches_default_output() {
     let default_output = Command::new(daglang_bin())
         .arg("manifest")
@@ -11188,6 +11228,33 @@ fn manifest_command_explicit_text_format_matches_default_output() {
     assert_eq!(
         default_output.stdout, explicit_text_output.stdout,
         "explicit text format should match default manifest output"
+    );
+}
+
+#[test]
+fn manifest_command_rejects_unknown_format_flag_value() {
+    let output = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("yaml")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest --format yaml");
+
+    assert!(
+        !output.status.success(),
+        "manifest should fail for unsupported format value"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "unsupported manifest format should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang manifest <file.dag> [--format text|json]"),
+        "manifest unsupported format should print command usage: {stderr}"
     );
 }
 
