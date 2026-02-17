@@ -31727,6 +31727,39 @@ fn obligations_and_show_triplets_with_missing_format_value_exit_with_usage_messa
     }
 }
 
+fn run_compile_family_command(command: &str, target: &str, trailing_args: &[&str]) -> Output {
+    Command::new(daglang_bin())
+        .arg(command)
+        .arg(target)
+        .args(trailing_args)
+        .current_dir(workspace_root())
+        .output()
+        .unwrap_or_else(|err| panic!("failed to run {command} for target {target}: {err}"))
+}
+
+fn assert_compile_family_command_succeeds(
+    command: &str,
+    target: &str,
+    target_label: &str,
+    trailing_args: &[&str],
+) -> Output {
+    let output = run_compile_family_command(command, target, trailing_args);
+    assert!(
+        output.status.success(),
+        "{command} should execute successfully for {target_label} makegen fixture target"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("TODO"),
+        "{command} should not emit TODO placeholder output: {stderr}"
+    );
+    assert!(
+        !output.stdout.is_empty(),
+        "{command} should emit meaningful stdout output for {target_label} target"
+    );
+    output
+}
+
 #[test]
 fn compile_family_commands_execute_real_pipeline_paths() {
     let commands: [(&str, &[&str]); 5] = [
@@ -31737,25 +31770,11 @@ fn compile_family_commands_execute_real_pipeline_paths() {
         ("show-triplets", &["--format", "json"]),
     ];
     for (command, trailing_args) in commands {
-        let output = Command::new(daglang_bin())
-            .arg(command)
-            .arg("dsl/tools/makegen.dag")
-            .args(trailing_args)
-            .current_dir(workspace_root())
-            .output()
-            .unwrap_or_else(|err| panic!("failed to run {command}: {err}"));
-        assert!(
-            output.status.success(),
-            "{command} should execute successfully for makegen fixture"
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            !stderr.contains("TODO"),
-            "{command} should no longer emit TODO placeholder output: {stderr}"
-        );
-        assert!(
-            !output.stdout.is_empty(),
-            "{command} should emit meaningful stdout output"
+        assert_compile_family_command_succeeds(
+            command,
+            "dsl/tools/makegen.dag",
+            "relative",
+            trailing_args,
         );
     }
 }
@@ -31770,26 +31789,13 @@ fn compile_family_commands_execute_real_pipeline_paths_with_absolute_target() {
         ("show-triplets", &["--format", "json"]),
     ];
     let absolute_target = workspace_root().join("dsl/tools/makegen.dag");
+    let absolute_target = absolute_target.to_string_lossy().into_owned();
     for (command, trailing_args) in commands {
-        let output = Command::new(daglang_bin())
-            .arg(command)
-            .arg(&absolute_target)
-            .args(trailing_args)
-            .current_dir(workspace_root())
-            .output()
-            .unwrap_or_else(|err| panic!("failed to run {command} with absolute target: {err}"));
-        assert!(
-            output.status.success(),
-            "{command} should execute successfully for absolute makegen fixture target"
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            !stderr.contains("TODO"),
-            "{command} should not emit TODO placeholder output: {stderr}"
-        );
-        assert!(
-            !output.stdout.is_empty(),
-            "{command} should emit meaningful stdout output for absolute target"
+        assert_compile_family_command_succeeds(
+            command,
+            &absolute_target,
+            "absolute",
+            trailing_args,
         );
     }
 }
@@ -31804,27 +31810,11 @@ fn compile_family_commands_execute_real_pipeline_paths_with_curdir_suffix_target
         ("show-triplets", &["--format", "json"]),
     ];
     for (command, trailing_args) in commands {
-        let output = Command::new(daglang_bin())
-            .arg(command)
-            .arg("./dsl/tools/makegen.dag")
-            .args(trailing_args)
-            .current_dir(workspace_root())
-            .output()
-            .unwrap_or_else(|err| {
-                panic!("failed to run {command} with curdir-suffix target: {err}")
-            });
-        assert!(
-            output.status.success(),
-            "{command} should execute successfully for curdir-suffix makegen fixture target"
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            !stderr.contains("TODO"),
-            "{command} should not emit TODO placeholder output: {stderr}"
-        );
-        assert!(
-            !output.stdout.is_empty(),
-            "{command} should emit meaningful stdout output for curdir-suffix target"
+        assert_compile_family_command_succeeds(
+            command,
+            "./dsl/tools/makegen.dag",
+            "curdir-suffix",
+            trailing_args,
         );
     }
 }
@@ -31840,30 +31830,14 @@ fn compile_family_commands_execute_real_pipeline_paths_with_absolute_curdir_segm
     ];
     let absolute_target_with_curdir_segment =
         workspace_root().join("./dsl/./tools/../tools/makegen.dag");
+    let absolute_target_with_curdir_segment =
+        absolute_target_with_curdir_segment.to_string_lossy().into_owned();
     for (command, trailing_args) in commands {
-        let output = Command::new(daglang_bin())
-            .arg(command)
-            .arg(&absolute_target_with_curdir_segment)
-            .args(trailing_args)
-            .current_dir(workspace_root())
-            .output()
-            .unwrap_or_else(|err| {
-                panic!(
-                    "failed to run {command} with absolute curdir-segment target: {err}"
-                )
-            });
-        assert!(
-            output.status.success(),
-            "{command} should execute successfully for absolute curdir-segment makegen fixture target"
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            !stderr.contains("TODO"),
-            "{command} should not emit TODO placeholder output: {stderr}"
-        );
-        assert!(
-            !output.stdout.is_empty(),
-            "{command} should emit meaningful stdout output for absolute curdir-segment target"
+        assert_compile_family_command_succeeds(
+            command,
+            &absolute_target_with_curdir_segment,
+            "absolute-curdir-segment",
+            trailing_args,
         );
     }
 }
@@ -31880,29 +31854,11 @@ fn compile_family_commands_execute_real_pipeline_paths_with_absolute_double_sepa
     let absolute_target_with_double_separators =
         format!("{}/dsl//tools///makegen.dag", workspace_root().display());
     for (command, trailing_args) in commands {
-        let output = Command::new(daglang_bin())
-            .arg(command)
-            .arg(&absolute_target_with_double_separators)
-            .args(trailing_args)
-            .current_dir(workspace_root())
-            .output()
-            .unwrap_or_else(|err| {
-                panic!(
-                    "failed to run {command} with absolute double-separator target: {err}"
-                )
-            });
-        assert!(
-            output.status.success(),
-            "{command} should execute successfully for absolute double-separator makegen fixture target"
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            !stderr.contains("TODO"),
-            "{command} should not emit TODO placeholder output: {stderr}"
-        );
-        assert!(
-            !output.stdout.is_empty(),
-            "{command} should emit meaningful stdout output for absolute double-separator target"
+        assert_compile_family_command_succeeds(
+            command,
+            &absolute_target_with_double_separators,
+            "absolute-double-separator",
+            trailing_args,
         );
     }
 }
@@ -31942,20 +31898,11 @@ fn compile_family_commands_makegen_target_variants_are_output_equivalent() {
     for (command, trailing_args) in commands {
         let mut runs: Vec<(&str, Output)> = Vec::with_capacity(targets.len());
         for (target_label, target_value) in &targets {
-            let output = Command::new(daglang_bin())
-                .arg(command)
-                .arg(target_value)
-                .args(trailing_args)
-                .current_dir(workspace_root())
-                .output()
-                .unwrap_or_else(|err| {
-                    panic!(
-                        "failed to run {command} with {target_label} makegen target: {err}"
-                    )
-                });
-            assert!(
-                output.status.success(),
-                "{command} should succeed with {target_label} makegen target"
+            let output = assert_compile_family_command_succeeds(
+                command,
+                target_value,
+                target_label,
+                trailing_args,
             );
             runs.push((target_label, output));
         }
