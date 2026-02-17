@@ -71,6 +71,31 @@ pub enum OutputFormat {
     Json,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedOp {
+    LoadRegistry,
+    FsEnv,
+    RenderMakefile,
+    MakegenEntrypoint,
+    PrepareReadContent,
+    ExecuteReadContent,
+    PrepareWriteContent,
+    CompareContent,
+    ExecuteTransport,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolveDagError {
+    pub node_id: String,
+    pub reason: String,
+}
+
+impl std::fmt::Display for ResolveDagError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "resolve error at `{}`: {}", self.node_id, self.reason)
+    }
+}
+
 /// Builds compile pipeline context from CLI input.
 ///
 /// Compatibility note: paths ending in `.dag` are always treated as
@@ -144,6 +169,70 @@ pub fn check_from_context(context: &PipelineContext) -> Result<CheckOutput, Comp
         message
     })?;
     Ok(CheckOutput { parsed_files })
+}
+
+pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<ResolvedOp>, ResolveDagError> {
+    let mut resolved = Dag::new();
+    for node in &dag.nodes {
+        let resolved_op = resolve_lowered_node(node)?;
+        resolved.add_node(node.clone().map_ops(&mut |_| resolved_op.clone()));
+    }
+    resolved.edges = dag.edges.clone();
+    Ok(resolved)
+}
+
+fn resolve_lowered_node(node: &Node<LoweredOp>) -> Result<ResolvedOp, ResolveDagError> {
+    let node_id = node.id.0.clone();
+    match &node.body {
+        gunbc_ir::node::NodeBody::Opaque(op) => resolve_lowered_op(&node_id, op),
+        gunbc_ir::node::NodeBody::SubDag(_) => Err(ResolveDagError {
+            node_id,
+            reason: "subdag nodes are not supported by daglang-cli resolver".to_string(),
+        }),
+    }
+}
+
+fn resolve_lowered_op(node_id: &str, op: &LoweredOp) -> Result<ResolvedOp, ResolveDagError> {
+    match op {
+        LoweredOp::Pipeline { module, name, .. } => Err(ResolveDagError {
+            node_id: node_id.to_string(),
+            reason: format!(
+                "unsupported pipeline `{module}.{name}` in execution resolver"
+            ),
+        }),
+        LoweredOp::Callable { module, name, .. } => resolve_makegen_callable(node_id, module, name),
+    }
+}
+
+fn resolve_makegen_callable(
+    node_id: &str,
+    module: &str,
+    name: &str,
+) -> Result<ResolvedOp, ResolveDagError> {
+    if module != "tools.makegen" {
+        return Err(ResolveDagError {
+            node_id: node_id.to_string(),
+            reason: format!("unsupported callable module `{module}`"),
+        });
+    }
+    let resolved = match name {
+        "load_registry" => ResolvedOp::LoadRegistry,
+        "fs_env" => ResolvedOp::FsEnv,
+        "render_makefile" => ResolvedOp::RenderMakefile,
+        "makegen" => ResolvedOp::MakegenEntrypoint,
+        "content_upsert::prepare_read_makegen" => ResolvedOp::PrepareReadContent,
+        "content_upsert::execute_read_makegen" => ResolvedOp::ExecuteReadContent,
+        "content_upsert::prepare_write_makegen" => ResolvedOp::PrepareWriteContent,
+        "content_upsert::compare_makegen_content" => ResolvedOp::CompareContent,
+        "content_upsert::execute_makegen_transport" => ResolvedOp::ExecuteTransport,
+        _ => {
+            return Err(ResolveDagError {
+                node_id: node_id.to_string(),
+                reason: format!("unsupported callable `tools.makegen.{name}`"),
+            });
+        }
+    };
+    Ok(resolved)
 }
 
 // Compiler pipeline: reads .dag source for single-file compilation
@@ -889,6 +978,106 @@ fn run() -> String { return 42 }
         assert!(rendered.contains("service_transport_prepare_targets:"));
         assert!(rendered.contains("service_param_source_targets:"));
         assert!(rendered.contains("resource_provide_targets:"));
+    }
+
+    #[test]
+    fn resolve_lowered_dag_maps_makegen_nodes_to_resolved_ops() {
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../dsl/tools/makegen.dag");
+        let context = PipelineContext {
+            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            target_file: Some(file),
+        };
+        let output = compile_from_context(&context).expect("compile should succeed");
+
+        let resolved =
+            resolve_lowered_dag(&output.lowered_dag).expect("makegen dag should resolve");
+        assert_eq!(resolved.nodes.len(), output.lowered_dag.nodes.len());
+        assert_eq!(resolved.edges.len(), output.lowered_dag.edges.len());
+
+        let resolved_op_for = |node_id: &str| {
+            resolved
+                .nodes
+                .iter()
+                .find(|node| node.id.0 == node_id)
+                .map(|node| match &node.body {
+                    gunbc_ir::node::NodeBody::Opaque(op) => op,
+                    gunbc_ir::node::NodeBody::SubDag(_) => {
+                        panic!("makegen fixture should not contain subdag nodes")
+                    }
+                })
+                .expect("expected node to exist in resolved dag")
+        };
+
+        assert!(matches!(resolved_op_for("load_registry"), ResolvedOp::LoadRegistry));
+        assert!(matches!(resolved_op_for("fs_env"), ResolvedOp::FsEnv));
+        assert!(matches!(
+            resolved_op_for("tools.makegen::render_makefile"),
+            ResolvedOp::RenderMakefile
+        ));
+        assert!(matches!(
+            resolved_op_for("prepare_read_makegen"),
+            ResolvedOp::PrepareReadContent
+        ));
+        assert!(matches!(
+            resolved_op_for("execute_read_makegen"),
+            ResolvedOp::ExecuteReadContent
+        ));
+        assert!(matches!(
+            resolved_op_for("prepare_write_makegen"),
+            ResolvedOp::PrepareWriteContent
+        ));
+        assert!(matches!(
+            resolved_op_for("compare_makegen_content"),
+            ResolvedOp::CompareContent
+        ));
+        assert!(matches!(
+            resolved_op_for("execute_makegen_transport"),
+            ResolvedOp::ExecuteTransport
+        ));
+        assert!(matches!(
+            resolved_op_for("tools.makegen::makegen"),
+            ResolvedOp::MakegenEntrypoint
+        ));
+    }
+
+    #[test]
+    fn resolve_lowered_dag_rejects_unknown_callable_module() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "sample::unknown",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "sample.module".to_string(),
+                kind: CallableKind::Func,
+                name: "unknown".to_string(),
+                obligation: ObligationCategory::None,
+            },
+        ));
+
+        let error = resolve_lowered_dag(&dag).expect_err("resolver should reject unknown module");
+        assert_eq!(error.node_id, "sample::unknown");
+        assert!(error.reason.contains("unsupported callable module"));
+    }
+
+    #[test]
+    fn resolve_lowered_dag_rejects_pipeline_nodes() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "pipeline::ci",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Pipeline {
+                module: "pipelines".to_string(),
+                name: "ci".to_string(),
+                stages: 3,
+            },
+        ));
+
+        let error = resolve_lowered_dag(&dag).expect_err("resolver should reject pipeline nodes");
+        assert_eq!(error.node_id, "pipeline::ci");
+        assert!(error.reason.contains("unsupported pipeline"));
     }
 
     #[test]
