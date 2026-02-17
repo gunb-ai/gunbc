@@ -367,9 +367,9 @@ Stack PRs by "API provider → API consumers" to minimize conflicts:
 
 The bridge is complete when:
 
-- [ ] `dag viz` defaults to ASCII and is deterministic
-- [ ] `dag manifest` emits the **contract ProgressManifest** (JSON)
-- [ ] IR snapshot tests exist for `tools/makegen.dag`
+- [x] `dag viz` defaults to ASCII and is deterministic
+- [x] `dag manifest` emits the **contract ProgressManifest** (JSON)
+- [x] IR snapshot tests exist for `tools/makegen.dag`
 - [x] Parity harness can compare compiled makegen vs builder makegen and report diffs
 - [x] `dag obligations` and `dag show-triplets` exist (even if obligations are initially "best effort")
 
@@ -422,11 +422,11 @@ Expand `daglang_derive::ProgressManifest` to match the roadmap contract. The cur
 Add `dag manifest --format json` for stable, machine-readable output. Keep the existing text rendering as the default, layered on the contract object.
 
 **Acceptance criteria**:
-- [ ] `ProgressManifest` struct has all contract fields (Phase 3/4 fields can be empty `Vec`s)
-- [ ] `derive_artifacts()` populates `topology`, `labels`, `parallel_groups` correctly for makegen
-- [ ] `dag manifest tools/makegen.dag` produces the expected 8-node, 4-wave manifest
-- [ ] `dag manifest --format json tools/makegen.dag` produces stable, parseable JSON
-- [ ] All existing tests pass (the struct expansion must be backward-compatible)
+- [x] `ProgressManifest` struct has all contract fields (Phase 3/4 fields can be empty `Vec`s)
+- [x] `derive_artifacts()` populates `topology`, `labels`, `parallel_groups` correctly for makegen
+- [x] `dag manifest tools/makegen.dag` produces the expected 8-node, 4-wave manifest
+- [x] `dag manifest --format json tools/makegen.dag` produces stable, parseable JSON
+- [x] All existing tests pass (the struct expansion must be backward-compatible)
 
 ##### Step 2: Parity Infrastructure (Workstream C)
 
@@ -444,11 +444,11 @@ Add canonical JSON serialization for the lowered DAG (stable sort by node ID, no
 Create IR snapshot tests: compile `tools/makegen.dag`, serialize to canonical JSON, compare against a checked-in snapshot. Any change to the compiler that alters the IR shape fails the test — forcing explicit acknowledgment.
 
 **Acceptance criteria**:
-- [ ] `compare_topology()` (or a new `compare_ir()`) diffs ports, node kinds, and labels — not just counts
-- [ ] `ParityReport` includes per-node detail: which nodes differ and how
-- [ ] Canonical JSON serialization for `Dag<LoweredOp>` is deterministic (same input → same bytes)
-- [ ] At least one IR snapshot test exists for `tools/makegen.dag` and passes
-- [ ] Snapshot test is in CI (fails if compiler changes alter makegen IR)
+- [x] `compare_topology()` (or a new `compare_ir()`) diffs ports, node kinds, and labels — not just counts
+- [x] `ParityReport` includes per-node detail: which nodes differ and how
+- [x] Canonical JSON serialization for `Dag<LoweredOp>` is deterministic (same input → same bytes)
+- [x] At least one IR snapshot test exists for `tools/makegen.dag` and passes
+- [x] Snapshot test is in CI (fails if compiler changes alter makegen IR)
 
 ##### Step 3: Makegen Parity + Execution (Workstream F)
 
@@ -468,16 +468,16 @@ Then build the dispatch layer: a registry that maps `LoweredOp` descriptions to 
 | `prepare_write_makegen` | `PrepareFileWriteOp` |
 | `execute_makegen_transport` | `TransportOps::Execute` |
 
-Write `fn resolve_dag(dag: Dag<LoweredOp>, registry: &OpRegistry) -> Result<Dag<Box<dyn Executable>>, ResolveError>` that walks the compiled DAG, replaces each `LoweredOp` node with its concrete `Executable`, and preserves all edges/ports.
+Write `fn resolve_dag(dag: Dag<LoweredOp>, registry: &OpRegistry) -> Result<Dag<ResolvedOp>, ResolveError>` that walks the compiled DAG, replaces each `LoweredOp` node with its concrete executable operation enum, and preserves all edges/ports.
 
 Then execute: pass the resolved DAG to the existing `execute_dag()` in `core/exec`. Verify it produces the same Makefile output as running the hand-wired builder.
 
 **Acceptance criteria**:
-- [ ] Parity test: compiled makegen IR matches builder IR (zero delta in `ParityReport`)
-- [ ] `OpRegistry` exists with entries for all makegen nodes
-- [ ] `resolve_dag()` converts `Dag<LoweredOp>` → `Dag<Box<dyn Executable>>` for makegen
-- [ ] End-to-end test: `compile → resolve → execute_dag()` produces valid Makefile output
-- [ ] DryRun mode works: compiled makegen executes in DryRun with transport interception
+- [x] Parity test: compiled makegen IR matches builder IR (zero delta in `ParityReport`)
+- [x] `OpRegistry` exists with entries for all makegen nodes
+- [x] `resolve_dag()` converts `Dag<LoweredOp>` → `Dag<ResolvedOp>` for makegen
+- [x] End-to-end test: `compile → resolve → execute_dag()` produces valid Makefile output
+- [x] DryRun mode works: compiled makegen executes in DryRun with transport interception
 - [ ] Existing `make test-all` still passes (no regressions)
 
 ##### Worker 1 Definition of Done
