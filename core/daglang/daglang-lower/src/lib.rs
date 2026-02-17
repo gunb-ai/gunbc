@@ -2606,6 +2606,22 @@ func run() -> { ok: Bool } provides out: Storage {
         );
     }
 
+    #[test]
+    fn makegen_builder_parity_report_is_deterministic() {
+        let lowered = load_makegen_lowered();
+        let builder = build_makegen_graph().expect("builder makegen graph should construct");
+        let report_a = compare_makegen_topology(&lowered, &builder);
+        let report_b = compare_makegen_topology(&lowered, &builder);
+        assert_eq!(
+            report_a, report_b,
+            "builder parity report must be deterministic across runs"
+        );
+        assert!(
+            report_a.is_exact_match(),
+            "builder parity report should remain exact-match for makegen"
+        );
+    }
+
     // Test infrastructure: filesystem access for test fixtures
     #[allow(clippy::disallowed_methods)]
     #[test]
