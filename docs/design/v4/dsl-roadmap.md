@@ -720,7 +720,7 @@ The two workers share the `daglang-cli` crate but touch different files:
 
 **Acceptance Gates**
 
-- [ ] **Compression**: gist workflow expressed in ~80 lines of `.dag` (vs 1,449 lines of Rust builders)
+- [x] **Compression**: gist workflow expressed in ~80 lines of `.dag` (vs 1,449 lines of Rust builders) — *`dsl/tools/gist.dag` now captures the full snapshot/diff/recent flows in 59 lines while retaining shared composition through `shared.gist_modes`*
 - [ ] **Loop progress**: renderers display loop progress as grouped counter without manual configuration
 - [ ] **Composition**: SubDag calls work for credential chain reuse within gist workflow
 - [ ] **IR parity**: compiled gist graph matches existing builder shape for all 3 modes

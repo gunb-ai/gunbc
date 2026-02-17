@@ -39,7 +39,7 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## S4 — Gist Snapshot (`tools.gist`)
 
-- **Current status**: ✅ compiles and emits obligations contract successfully.
+- **Current status**: ✅ compiles, emits obligations contract successfully, and core gist workflow is compressed to 59 DSL lines.
 - **Primary gap**:
   - exact parity against legacy gist builder shape is still pending.
 - **Next increments**:
