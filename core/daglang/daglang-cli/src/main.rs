@@ -1898,6 +1898,44 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_rejects_duplicate_dry_run_flags_across_split_output_separator_segments() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output".to_string(),
+            "--".to_string(),
+            "--dash-prefixed-output.mk".to_string(),
+            "--dry-run".to_string(),
+            "--dry-run".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run accepts --dry-run at most once"),
+            "expected duplicate dry-run flag error across split-output separator segments, got: {error}"
+        );
+    }
+
+    #[test]
+    fn parse_run_args_rejects_duplicate_check_mode_flags_across_split_output_separator_segments() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output".to_string(),
+            "--".to_string(),
+            "--dash-prefixed-output.mk".to_string(),
+            "--check-mode".to_string(),
+            "--check-mode".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run accepts --check-mode at most once"),
+            "expected duplicate check-mode flag error across split-output separator segments, got: {error}"
+        );
+    }
+
+    #[test]
     fn parse_run_args_supports_split_output_separator_with_flag_like_output_value() {
         let args = vec![
             "daglang".to_string(),

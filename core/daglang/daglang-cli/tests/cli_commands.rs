@@ -32512,6 +32512,76 @@ fn run_with_duplicate_equals_output_after_split_output_separator_escape_exits_no
 }
 
 #[test]
+fn run_with_duplicate_dry_run_flags_across_split_output_separator_segments_exits_nonzero_with_usage_message(
+) {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("--")
+        .arg("--split-output-first.mk")
+        .arg("--dry-run")
+        .arg("--dry-run")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with duplicate dry-run flags across split-output separator segments");
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate dry-run flags across split-output separator segments should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with duplicate dry-run flags across split-output separator segments should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run accepts --dry-run at most once"),
+        "run should report duplicate dry-run flags across split-output separator segments explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for duplicate dry-run flags across split-output separator segments: {stderr}"
+    );
+}
+
+#[test]
+fn run_with_duplicate_check_mode_flags_across_split_output_separator_segments_exits_nonzero_with_usage_message(
+) {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("--")
+        .arg("--split-output-first.mk")
+        .arg("--check-mode")
+        .arg("--check-mode")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with duplicate check-mode flags across split-output separator segments");
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate check-mode flags across split-output separator segments should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with duplicate check-mode flags across split-output separator segments should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run accepts --check-mode at most once"),
+        "run should report duplicate check-mode flags across split-output separator segments explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for duplicate check-mode flags across split-output separator segments: {stderr}"
+    );
+}
+
+#[test]
 fn run_dry_run_supports_split_output_separator_with_flag_like_output_value() {
     let execution_dir = unique_temp_dir("run_dry_run_split_output_separator_flag_like_output");
     std::fs::create_dir_all(&execution_dir).expect(
