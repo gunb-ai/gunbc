@@ -1863,6 +1863,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_supports_split_output_separator_with_flag_like_output_value() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output".to_string(),
+            "--".to_string(),
+            "--check-mode".to_string(),
+            "--dry-run".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let parsed = parse_run_args(&args).expect("parse should succeed");
+        assert_eq!(
+            parsed,
+            RunArgs {
+                file: "dsl/tools/makegen.dag".to_string(),
+                output_path: "--check-mode".to_string(),
+                dry_run: true,
+                check_mode: false,
+            }
+        );
+    }
+
+    #[test]
     fn parse_run_args_rejects_split_output_separator_without_path() {
         let args = vec![
             "daglang".to_string(),

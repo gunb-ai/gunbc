@@ -32478,6 +32478,58 @@ fn run_with_duplicate_output_after_split_output_separator_escape_exits_nonzero_w
 }
 
 #[test]
+fn run_dry_run_supports_split_output_separator_with_flag_like_output_value() {
+    let execution_dir = unique_temp_dir("run_dry_run_split_output_separator_flag_like_output");
+    std::fs::create_dir_all(&execution_dir).expect(
+        "failed to create execution directory for dry-run split output separator flag-like output test",
+    );
+    let output_basename = "--check-mode";
+    let output_path = execution_dir.join(output_basename);
+    if output_path.exists() {
+        std::fs::remove_file(&output_path)
+            .expect("failed to remove stale dry-run split output separator flag-like output file");
+    }
+    let input_path = workspace_root().join("dsl/tools/makegen.dag");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("--")
+        .arg(output_basename)
+        .arg("--dry-run")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(&execution_dir)
+        .output()
+        .expect(
+            "failed to run daglang run dry-run with split output separator and flag-like output value",
+        );
+
+    assert!(
+        output.status.success(),
+        "dry-run split output separator run with flag-like output value should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "dry-run split output separator run with flag-like output value should report mode=dry-run: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "dry-run split output separator run with flag-like output value should report written=false: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "dry-run split output separator run with flag-like output value should not create output file at {}",
+        output_path.display()
+    );
+
+    std::fs::remove_dir_all(&execution_dir).expect(
+        "failed to clean dry-run split output separator flag-like output execution directory",
+    );
+}
+
+#[test]
 fn run_real_mode_supports_split_output_dash_prefixed_path_via_separator_and_reports_idempotence() {
     let execution_dir = unique_temp_dir("run_real_mode_split_output_dash_prefixed_separator");
     std::fs::create_dir_all(&execution_dir)
