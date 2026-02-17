@@ -180,7 +180,7 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         scatter_points: Vec::new(),
         interactive_nodes: Vec::new(),
         capture_modes: derive_capture_modes(&dag.nodes),
-        stage_groups: Vec::new(),
+        stage_groups: derive_stage_groups(&dag.nodes),
         resources: BTreeMap::new(),
         waves,
         entrypoint_nodes,
@@ -316,6 +316,42 @@ fn derive_parallel_groups(waves: &[Vec<String>]) -> Vec<ParallelGroup> {
         .map(|(depth, wave)| ParallelGroup {
             group_id: format!("wave_{depth}"),
             node_ids: wave.clone(),
+        })
+        .collect()
+}
+
+fn derive_stage_groups(nodes: &[Node<LoweredOp>]) -> Vec<StageGroup> {
+    let mut staged = nodes
+        .iter()
+        .filter_map(|node| match node.body.as_opaque() {
+            Some(LoweredOp::Pipeline {
+                module,
+                name,
+                stages,
+            }) => Some((node.id.0.clone(), module.clone(), name.clone(), *stages)),
+            _ => None,
+        })
+        .flat_map(|(node_id, module, name, stages)| {
+            if stages == 0 {
+                return vec![(module, name, 0usize, node_id)];
+            }
+            (1..=stages)
+                .map(|stage_index| (module.clone(), name.clone(), stage_index, node_id.clone()))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    staged.sort_by(|lhs, rhs| {
+        lhs.0
+            .cmp(&rhs.0)
+            .then_with(|| lhs.1.cmp(&rhs.1))
+            .then_with(|| lhs.2.cmp(&rhs.2))
+            .then_with(|| lhs.3.cmp(&rhs.3))
+    });
+    staged
+        .into_iter()
+        .map(|(module, name, stage_index, node_id)| StageGroup {
+            stage: format!("{module}.{name}:stage_{stage_index}"),
+            node_ids: vec![node_id],
         })
         .collect()
 }
@@ -643,6 +679,13 @@ mod tests {
             .modules
             .iter()
             .any(|module| module.module == "pipelines.ci" && module.pipeline_count == 1));
+        let expected_stage_groups = (1..=12)
+            .map(|stage_index| StageGroup {
+                stage: format!("pipelines.ci.ci:stage_{stage_index}"),
+                node_ids: vec!["ci".to_string()],
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(artifacts.manifest.stage_groups, expected_stage_groups);
     }
 
     #[test]
