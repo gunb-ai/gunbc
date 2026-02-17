@@ -707,6 +707,42 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_rejects_duplicate_dry_run_flag() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--dry-run".to_string(),
+            "--dry-run".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = super::parse_run_args(&args).expect_err("duplicate dry-run should fail");
+        assert!(error.contains("duplicate --dry-run"));
+    }
+
+    #[test]
+    fn parse_run_args_rejects_output_without_value() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output".to_string(),
+        ];
+        let error = super::parse_run_args(&args).expect_err("missing output value should fail");
+        assert!(error.contains("--output requires a path"));
+    }
+
+    #[test]
+    fn parse_run_args_rejects_multiple_inputs() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "dsl/tools/other.dag".to_string(),
+        ];
+        let error = super::parse_run_args(&args).expect_err("multiple inputs should fail");
+        assert!(error.contains("exactly one <file.dag>"));
+    }
+
+    #[test]
     fn build_check_pipeline_context_defaults_to_cwd_dsl_root_without_input() {
         let cwd = root_path().join("workspace").join("project").join(".");
         let context = super::build_check_pipeline_context(&cwd, None);

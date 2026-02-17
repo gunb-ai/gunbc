@@ -11198,6 +11198,97 @@ fn run_command_dry_run_does_not_write_output_file() {
 }
 
 #[test]
+fn run_command_real_mode_reports_not_written_when_output_is_fresh() {
+    let output_path = unique_temp_output_file("run_real_idempotent", "mk");
+
+    let first = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg(&output_path)
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang run in real mode");
+    assert!(
+        first.status.success(),
+        "first real run should succeed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&first.stdout).contains("written=true"),
+        "first real run should report written=true"
+    );
+
+    let second = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg(&output_path)
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang run in real mode");
+    assert!(
+        second.status.success(),
+        "second real run should succeed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    let second_stdout = String::from_utf8_lossy(&second.stdout);
+    assert!(second_stdout.contains("mode=real"));
+    assert!(second_stdout.contains("written=false"));
+
+    std::fs::remove_file(output_path).expect("failed to cleanup run idempotent output");
+}
+
+#[test]
+fn run_command_rejects_duplicate_output_flags_with_usage() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("a.mk")
+        .arg("--output=b.mk")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with duplicate output flags");
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate output flags should fail"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "duplicate output flags should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("duplicate --output"));
+    assert!(stderr.contains(
+        "Usage: daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>"
+    ));
+}
+
+#[test]
+fn run_command_real_mode_propagates_write_failure() {
+    let output_path = "/proc/1/daglang_makegen_forbidden.mk";
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg(output_path)
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with unwritable output path");
+
+    assert!(
+        !output.status.success(),
+        "run should fail when write transport cannot persist output"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("failed to write"));
+    assert!(stderr.contains(output_path));
+}
+
+#[test]
 fn manifest_command_json_format_emits_valid_json_object() {
     let output = Command::new(daglang_bin())
         .arg("manifest")
