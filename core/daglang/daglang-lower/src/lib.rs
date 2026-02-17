@@ -2713,6 +2713,42 @@ mod tests {
         lower_typed_project_for_modules(typed, &scope).expect("lowering should succeed")
     }
 
+    fn lower_target_module_with_dependency_scope(
+        typed: &TypedProject,
+        module_name: &str,
+    ) -> Dag<LoweredOp> {
+        let module_lookup = typed
+            .modules
+            .iter()
+            .enumerate()
+            .map(|(index, module)| (module.module_path.join("."), index))
+            .collect::<HashMap<_, _>>();
+        let target_index = typed
+            .modules
+            .iter()
+            .position(|module| module.module_path.join(".") == module_name)
+            .expect("target module should exist in typed project");
+        let mut scope = HashSet::new();
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::from([target_index]);
+        while let Some(module_index) = queue.pop_front() {
+            if !visited.insert(module_index) {
+                continue;
+            }
+            let Some(module) = typed.modules.get(module_index) else {
+                continue;
+            };
+            scope.insert(module.module_path.join("."));
+            for import in &module.imports {
+                let import_name = import.join(".");
+                if let Some(import_index) = module_lookup.get(&import_name) {
+                    queue.push_back(*import_index);
+                }
+            }
+        }
+        lower_typed_project_for_modules(typed, &scope).expect("lowering should succeed")
+    }
+
     // Test infrastructure: filesystem access for test fixtures
     #[allow(clippy::disallowed_methods)]
     #[test]
@@ -2959,7 +2995,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn gcp_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
-        let dag = lower_target_module(&typed, "cloud.gcp.credential");
+        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
         let reference = build_gcp_secret_manager_credential_graph_github();
 
         let report_a = compare_ir(&dag, &reference);
@@ -2972,7 +3008,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn clippy_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.clippy");
-        let dag = lower_target_module(&typed, "tools.clippy");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.clippy");
         let reference = build_clippy_graph_lint_all();
 
         let report_a = compare_ir(&dag, &reference);
@@ -2985,7 +3021,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn deps_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.deps");
-        let dag = lower_target_module(&typed, "tools.deps");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.deps");
         let reference = build_deps_graph().expect("deps builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);
@@ -2998,7 +3034,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn gist_snapshot_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_target_module(&typed, "tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
         let reference = build_gist_graph(GistMode::Snapshot, Vec::new(), false)
             .expect("gist builder graph should be available");
 
@@ -3012,7 +3048,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn gist_diff_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_target_module(&typed, "tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
         let reference = build_gist_graph(
             GistMode::Diff {
                 base_ref: "main".to_string(),
@@ -3032,7 +3068,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn gist_recent_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_target_module(&typed, "tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
         let reference = build_gist_graph(GistMode::Recent, Vec::new(), false)
             .expect("gist builder graph should be available");
 
@@ -3080,7 +3116,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn aws_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.aws.credential");
-        let dag = lower_target_module(&typed, "cloud.aws.credential");
+        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.aws.credential");
         let reference = build_aws_secrets_manager_credential_graph();
 
         let report_a = compare_ir(&dag, &reference);
@@ -3093,7 +3129,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn azure_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.azure.credential");
-        let dag = lower_target_module(&typed, "cloud.azure.credential");
+        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.azure.credential");
         let reference = build_azure_key_vault_credential_graph();
 
         let report_a = compare_ir(&dag, &reference);
@@ -3106,7 +3142,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn ci_pipeline_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("pipelines.ci");
-        let dag = lower_target_module(&typed, "pipelines.ci");
+        let dag = lower_target_module_with_dependency_scope(&typed, "pipelines.ci");
         let reference = build_ci_graph().expect("ci builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);
@@ -3119,7 +3155,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn bootstrap_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.bootstrap");
-        let dag = lower_target_module(&typed, "tools.bootstrap");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.bootstrap");
         let reference =
             build_bootstrap_graph().expect("bootstrap builder graph should be available");
 
@@ -3133,7 +3169,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn codegen_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.codegen");
-        let dag = lower_target_module(&typed, "tools.codegen");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.codegen");
         let reference = build_codegen_graph().expect("codegen builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);
@@ -3146,7 +3182,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn build_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.build");
-        let dag = lower_target_module(&typed, "tools.build");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.build");
         let reference = build_build_graph().expect("build builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);
@@ -3159,7 +3195,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn pragma_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.pragma");
-        let dag = lower_target_module(&typed, "tools.pragma");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.pragma");
         let reference = build_pragma_graph().expect("pragma builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);
@@ -3172,7 +3208,7 @@ fn run(values: List<String>) -> String {
     #[test]
     fn docgen_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.docgen");
-        let dag = lower_target_module(&typed, "tools.docgen");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.docgen");
         let reference = build_docgen_graph().expect("docgen builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);

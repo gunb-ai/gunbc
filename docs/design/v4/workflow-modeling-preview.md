@@ -12,6 +12,7 @@ The source of truth for current status is the workflow fixture contract suite in
 
 Global status:
 - ✅ `daglang obligations dsl --format json` now succeeds end-to-end (full DSL root typechecks), which unblocks root-level obligation auditing and regression testing.
+- ✅ deterministic parity scaffolds now lower dependency-closure module scopes (not just wrapper entry modules), so parity reports carry meaningful structural deltas for credential/tool/pipeline workflows.
 
 ---
 
