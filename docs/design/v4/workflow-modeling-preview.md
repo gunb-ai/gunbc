@@ -51,8 +51,9 @@ Global status:
 
 ## S5 — CI Pipeline (`pipelines.ci`)
 
-- **Current status**: ✅ expands/obligations derive, and manifest stage groups are emitted for pipeline nodes.
+- **Current status**: ✅ expands/obligations derive, manifest stage groups are emitted for pipeline nodes, and CI single-file obligations now include transitive callable closure metrics (`pure_node_determinism_targets: 83`, `transport_execution_targets: 24`).
 - **Primary gap**:
+  - obligation parity target (133) is not yet reached.
   - exact parity against legacy CI builder shape is still pending.
   - renderer UX still needs collapsible stage-group presentation.
 - **Next increments**:

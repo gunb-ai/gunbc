@@ -95,11 +95,11 @@ pub fn compile_from_context_with_options(
     options: CompileOptions,
 ) -> Result<CompileOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
+    let allow_unresolved_imports = allow_unresolved_imports_for_context(context, &module_graph);
     let callable_scope = callable_scope_for_context(context, &module_graph);
     if context.target_file.is_none() {
         validate_module_path_consistency(&module_graph, &context.roots)?;
     }
-    let allow_unresolved_imports = context.target_file.is_some();
     let typed = match typecheck_module_graph_with_options(
         module_graph,
         TypecheckOptions {
@@ -108,12 +108,16 @@ pub fn compile_from_context_with_options(
     ) {
         Ok(typed) => typed,
         Err(errors) => {
-            if let Some(target_file) = &context.target_file {
+            if allow_unresolved_imports {
+                let target_file = context
+                    .target_file
+                    .as_ref()
+                    .expect("allow_unresolved_imports implies target_file is set");
                 let fallback_graph = discover_single_file_module_graph(target_file)?;
                 match typecheck_module_graph_with_options(
                     fallback_graph,
                     TypecheckOptions {
-                        allow_unresolved_imports,
+                        allow_unresolved_imports: true,
                     },
                 ) {
                     Ok(typed) => typed,
@@ -151,10 +155,10 @@ pub fn compile_from_context_with_options(
 
 pub fn check_from_context(context: &DriverContext) -> Result<CheckOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
+    let allow_unresolved_imports = allow_unresolved_imports_for_context(context, &module_graph);
     if context.target_file.is_none() {
         validate_module_path_consistency(&module_graph, &context.roots)?;
     }
-    let allow_unresolved_imports = context.target_file.is_some();
     let mut parsed_files = module_graph.modules.len();
     if let Err(errors) = typecheck_module_graph_with_options(
         module_graph,
@@ -162,13 +166,17 @@ pub fn check_from_context(context: &DriverContext) -> Result<CheckOutput, Compil
             allow_unresolved_imports,
         },
     ) {
-        if let Some(target_file) = &context.target_file {
+        if allow_unresolved_imports {
+            let target_file = context
+                .target_file
+                .as_ref()
+                .expect("allow_unresolved_imports implies target_file is set");
             let fallback_graph = discover_single_file_module_graph(target_file)?;
             parsed_files = fallback_graph.modules.len();
             typecheck_module_graph_with_options(
                 fallback_graph,
                 TypecheckOptions {
-                    allow_unresolved_imports,
+                    allow_unresolved_imports: true,
                 },
             )
             .map_err(|_| format_typecheck_errors(errors))?;
@@ -185,6 +193,13 @@ fn format_typecheck_errors<E: std::fmt::Display>(errors: Vec<E>) -> CompileError
         writeln!(message, "  {error}").ok();
     }
     message.into()
+}
+
+fn allow_unresolved_imports_for_context(
+    context: &DriverContext,
+    module_graph: &ModuleGraph,
+) -> bool {
+    context.target_file.is_some() && module_graph.modules.len() == 1
 }
 
 #[allow(clippy::disallowed_methods)]
@@ -245,23 +260,55 @@ fn callable_scope_for_context(
     module_graph: &ModuleGraph,
 ) -> Option<HashSet<String>> {
     let target_file = context.target_file.as_ref()?;
-    let target_module = module_graph
+    let target_index = module_graph
         .modules
         .iter()
-        .find(|module| module.path == *target_file)
-        .or_else(|| module_graph.modules.first())?;
-    let has_callable_items = target_module.ast.items.iter().any(|item| {
+        .position(|module| module.path == *target_file)
+        .unwrap_or(0);
+    let target_module = module_graph.modules.get(target_index)?;
+    let has_callable_items = module_has_callable_items(target_module);
+    if !has_callable_items {
+        return None;
+    }
+    let has_pipeline_items = target_module
+        .ast
+        .items
+        .iter()
+        .any(|item| matches!(item.node, Item::PipelineDef(_)));
+    let mut scope = HashSet::new();
+    if !has_pipeline_items {
+        scope.insert(target_module.module_path.join("."));
+        return Some(scope);
+    }
+    let mut visited = HashSet::new();
+    let mut queue = VecDeque::from([target_index]);
+    while let Some(module_index) = queue.pop_front() {
+        if !visited.insert(module_index) {
+            continue;
+        }
+        let Some(module) = module_graph.modules.get(module_index) else {
+            continue;
+        };
+        if module_has_callable_items(module) {
+            scope.insert(module.module_path.join("."));
+        }
+        for dependency in &module.dependencies {
+            queue.push_back(*dependency);
+        }
+    }
+    if scope.is_empty() {
+        scope.insert(target_module.module_path.join("."));
+    }
+    Some(scope)
+}
+
+fn module_has_callable_items(module: &ResolvedModule) -> bool {
+    module.ast.items.iter().any(|item| {
         matches!(
             item.node,
             Item::FnDef(_) | Item::FuncDef(_) | Item::PatternDef(_) | Item::PipelineDef(_)
         )
-    });
-    if !has_callable_items {
-        return None;
-    }
-    let mut scope = HashSet::new();
-    scope.insert(target_module.module_path.join("."));
-    Some(scope)
+    })
 }
 
 fn prune_module_graph_to_target(
@@ -488,6 +535,108 @@ mod tests {
             output.parsed_files, 1,
             "fallback path should keep single-file parsing when import discovery fails"
         );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn check_single_file_with_dependency_closure_does_not_relax_unresolved_imports() {
+        let root = unique_temp_dir("check_single_file_strict_with_deps");
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/dep.dag"),
+            "module sample.dep\ntype Thing = String\n",
+        )
+        .expect("failed to write dependency source");
+        let file = root.join("sample/main.dag");
+        std::fs::write(
+            &file,
+            "module sample.main\nimport sample.dep { Thing }\nfn run(v: Thing) -> Thing { unresolved_call(v) }\n",
+        )
+        .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let error =
+            check_from_context(&context).expect_err("strict dependency closure should typecheck");
+        assert!(
+            error.contains("unresolved call target"),
+            "expected unresolved call target error, got: {error}"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_single_pipeline_target_includes_callable_dependency_closure() {
+        let root = unique_temp_dir("compile_pipeline_scope_with_deps");
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/helper.dag"),
+            "module sample.helper\nfn dep_task() -> Bool { true }\n",
+        )
+        .expect("failed to write helper source");
+        let file = root.join("sample/main.dag");
+        std::fs::write(
+            &file,
+            "module sample.main\nimport sample.helper { dep_task }\npipeline run { stage only { dep = dep_task() } }\n",
+        )
+        .expect("failed to write pipeline source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let output = compile_from_context(&context).expect("compile should succeed");
+        let node_ids = output
+            .lowered_dag
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        assert!(
+            node_ids.contains("sample.helper::dep_task"),
+            "pipeline single-file compile should include callable dependencies"
+        );
+        assert!(node_ids.contains("sample.main::run"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_single_function_target_keeps_callable_scope_local() {
+        let root = unique_temp_dir("compile_function_scope_local");
+        std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+        std::fs::write(
+            root.join("sample/helper.dag"),
+            "module sample.helper\nfn dep_task() -> Bool { true }\n",
+        )
+        .expect("failed to write helper source");
+        let file = root.join("sample/main.dag");
+        std::fs::write(
+            &file,
+            "module sample.main\nimport sample.helper { dep_task }\nfn run() -> Bool { dep_task() }\n",
+        )
+        .expect("failed to write function source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let output = compile_from_context(&context).expect("compile should succeed");
+        let node_ids = output
+            .lowered_dag
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        assert!(
+            !node_ids.contains("sample.helper::dep_task"),
+            "function single-file compile should keep callable scope local"
+        );
+        assert!(node_ids.contains("sample.main::run"));
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }

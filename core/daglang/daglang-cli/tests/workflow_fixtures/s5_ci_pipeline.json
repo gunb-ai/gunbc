@@ -23,21 +23,21 @@
     "error_contains": null,
     "expected_json": {
       "dry_run_completion_required": true,
-      "pure_node_determinism_targets": 1,
+      "pure_node_determinism_targets": 83,
       "resource_acquire_targets": 0,
       "resource_provide_targets": 0,
       "resource_release_targets": 0,
       "interface_contract_verification_targets": 0,
-      "service_param_source_targets": 0,
-      "service_transport_execute_targets": 0,
-      "service_transport_external_targets": 0,
-      "service_transport_hermetic_targets": 0,
-      "service_transport_idempotent_targets": 0,
-      "service_transport_parse_targets": 0,
+      "service_param_source_targets": 3,
+      "service_transport_execute_targets": 8,
+      "service_transport_external_targets": 2,
+      "service_transport_hermetic_targets": 6,
+      "service_transport_idempotent_targets": 2,
+      "service_transport_parse_targets": 8,
       "service_transport_permission_scoped_targets": 0,
-      "service_transport_prepare_targets": 0,
-      "service_transport_readonly_targets": 0,
-      "transport_execution_targets": 0
+      "service_transport_prepare_targets": 8,
+      "service_transport_readonly_targets": 3,
+      "transport_execution_targets": 24
     }
   }
 }
