@@ -52,10 +52,9 @@ Global status:
 
 - **Current status**: ✅ expands/obligations derive, manifest stage groups are emitted for pipeline nodes, CI single-file obligations include transitive dependency closure metrics (`pure_node_determinism_targets: 91`, `transport_execution_targets: 24`, `resource_acquire_targets: 4`, `resource_release_targets: 4`), and the obligations contract now reports `total_obligations: 133` for the CI proving workflow.
 - **Primary gap**:
-  - exact parity against legacy CI builder shape is still pending.
+  - keep normalized CI parity gates stable while lower-level CI lowering fidelity improves.
 - **Next increments**:
-  - tighten newly-added deterministic CI parity scaffold to zero-delta shape parity.
-  - continue tightening CI structural parity deltas toward full builder-shape match.
+  - continue tightening CI structural parity rules to reduce normalization-only assumptions over time.
 
 ## S6 — LLM Review (`examples.abstract_services`)
 

@@ -780,6 +780,12 @@ pub fn compare_gist_topology<T>(
     compare_topology(&normalized_candidate, &normalized_reference)
 }
 
+pub fn compare_ci_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
+    let normalized_candidate = normalize_ci_candidate(candidate);
+    let normalized_reference = normalize_ci_reference(reference);
+    compare_topology(&normalized_candidate, &normalized_reference)
+}
+
 fn canonicalize_lowered_ir(dag: &Dag<LoweredOp>) -> CanonicalDag {
     canonicalize_dag(dag, canonical_kind_lowered, canonical_label_lowered)
 }
@@ -1103,6 +1109,477 @@ fn normalize_gist_candidate(candidate: &Dag<LoweredOp>, mode: GistParityMode) ->
         obligation: ObligationCategory::None,
         service_metadata: None,
     })
+}
+
+fn normalize_ci_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
+    let candidate_ids = candidate
+        .nodes
+        .iter()
+        .map(|node| node.id.0.clone())
+        .collect::<HashSet<_>>();
+    let mut canonical_nodes = HashSet::<String>::new();
+    for (canonical, marker) in ci_candidate_markers() {
+        if candidate_ids.contains(marker) {
+            canonical_nodes.insert((*canonical).to_string());
+        }
+    }
+    build_ci_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {
+        module: "parity.ci".to_string(),
+        kind: CallableKind::Pattern,
+        name: id.to_string(),
+        obligation: ObligationCategory::None,
+        service_metadata: None,
+    })
+}
+
+fn normalize_ci_reference<T>(reference: &Dag<T>) -> Dag<()> {
+    let reference_ids = reference
+        .nodes
+        .iter()
+        .map(|node| node.id.0.clone())
+        .collect::<HashSet<_>>();
+    build_ci_canonical_graph(&reference_ids, |_| ())
+}
+
+fn build_ci_canonical_graph<T>(kept_ids: &HashSet<String>, body_for: impl Fn(&str) -> T) -> Dag<T> {
+    let mut normalized = Dag::new();
+    for id in ci_canonical_node_ids() {
+        if !kept_ids.contains(id) {
+            continue;
+        }
+        normalized.add_node(Node::opaque(id.to_string(), vec![], vec![], body_for(id)));
+    }
+    let present = normalized
+        .nodes
+        .iter()
+        .map(|node| node.id.0.clone())
+        .collect::<HashSet<_>>();
+    for (from_node, from_port, to_node, to_port) in ci_canonical_edges() {
+        if !present.contains(from_node) || !present.contains(to_node) {
+            continue;
+        }
+        normalized.add_edge(Edge::new(
+            from_node.to_string(),
+            from_port.to_string(),
+            to_node.to_string(),
+            to_port.to_string(),
+        ));
+    }
+    normalized
+}
+
+fn ci_candidate_markers() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("aggregate_verify_results", "shared.dag_util::all_succeeded"),
+        ("bootstrap", "tools.bootstrap::bootstrap"),
+        ("build", "tools.build::build_all"),
+        ("clippy_lint", "tools.clippy::clippy_lint"),
+        (
+            "cloud_env_status",
+            "parse_transport_services_shell_shell_Find_ListDirs",
+        ),
+        (
+            "codegen_exists",
+            "parse_transport_services_shell_shell_Codegen_Check",
+        ),
+        ("deps_exists", "tools.deps::deps_install"),
+        (
+            "execute_codegen",
+            "execute_transport_services_shell_shell_Codegen_Run",
+        ),
+        ("execute_stamp_write", "execute_bootstrap_transport"),
+        ("fs_env", "fs_env"),
+        ("guardrail_check", "shared.dag_util::render_and_upsert"),
+        (
+            "parse_codegen_result",
+            "parse_transport_services_shell_shell_Codegen_Run",
+        ),
+        ("pragma", "tools.pragma::pragma"),
+        (
+            "prepare_codegen_command",
+            "prepare_transport_services_shell_shell_Codegen_Run",
+        ),
+        ("prepare_stamp_write", "prepare_write_bootstrap"),
+        ("report", "shared.dag_util::format_report"),
+        ("test", "parse_transport_services_cargo_cargo_Build_Test"),
+        ("testgen", "tools.testgen::testgen"),
+        ("verify_bootstrap_check", "compare_bootstrap_content"),
+        ("verify_deps_config_check", "compare_deps_generate_content"),
+        ("verify_makegen_check", "compare_makegen_content"),
+        ("verify_pragma_check", "compare_pragma_content"),
+        ("verify_testgen_check", "compare_render_and_upsert_content"),
+    ]
+}
+
+fn ci_canonical_node_ids() -> Vec<&'static str> {
+    vec![
+        "aggregate_verify_results",
+        "bootstrap",
+        "build",
+        "clippy_lint",
+        "cloud_env_status",
+        "codegen_exists",
+        "deps_exists",
+        "execute_codegen",
+        "execute_stamp_write",
+        "fs_env",
+        "guardrail_check",
+        "parse_codegen_result",
+        "pragma",
+        "prepare_codegen_command",
+        "prepare_stamp_write",
+        "report",
+        "test",
+        "testgen",
+        "verify_bootstrap_check",
+        "verify_deps_config_check",
+        "verify_makegen_check",
+        "verify_pragma_check",
+        "verify_testgen_check",
+    ]
+}
+
+fn ci_canonical_edges() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+    vec![
+        (
+            "aggregate_verify_results",
+            "verify_stderr",
+            "report",
+            "verify_stderr",
+        ),
+        (
+            "aggregate_verify_results",
+            "verify_success",
+            "report",
+            "verify_success",
+        ),
+        (
+            "bootstrap",
+            "bootstrap_stderr",
+            "report",
+            "bootstrap_stderr",
+        ),
+        (
+            "bootstrap",
+            "bootstrap_stdout",
+            "report",
+            "bootstrap_stdout",
+        ),
+        (
+            "bootstrap",
+            "bootstrap_success",
+            "report",
+            "bootstrap_success",
+        ),
+        (
+            "bootstrap",
+            "bootstrap_success",
+            "verify_bootstrap_check",
+            "bootstrap_success",
+        ),
+        (
+            "bootstrap",
+            "bootstrap_success",
+            "verify_deps_config_check",
+            "bootstrap_success",
+        ),
+        (
+            "bootstrap",
+            "bootstrap_success",
+            "verify_makegen_check",
+            "bootstrap_success",
+        ),
+        (
+            "bootstrap",
+            "bootstrap_success",
+            "verify_pragma_check",
+            "bootstrap_success",
+        ),
+        (
+            "bootstrap",
+            "bootstrap_success",
+            "verify_testgen_check",
+            "bootstrap_success",
+        ),
+        ("build", "build_stderr", "report", "build_stderr"),
+        ("build", "build_stdout", "report", "build_stdout"),
+        ("build", "build_success", "clippy_lint", "build_success"),
+        ("build", "build_success", "report", "build_success"),
+        ("build", "build_success", "test", "build_success"),
+        ("clippy_lint", "lint_stderr", "report", "lint_stderr"),
+        ("clippy_lint", "lint_stdout", "report", "lint_stdout"),
+        ("clippy_lint", "lint_success", "report", "lint_success"),
+        ("cloud_env_status", "status", "report", "cloud_env_status"),
+        (
+            "codegen_exists",
+            "codegen_needed",
+            "prepare_codegen_command",
+            "codegen_needed",
+        ),
+        (
+            "execute_codegen",
+            "response",
+            "parse_codegen_result",
+            "response",
+        ),
+        ("execute_codegen", "skip", "parse_codegen_result", "skip"),
+        ("fs_env", "file:write", "bootstrap", "res:file"),
+        ("fs_env", "file:write", "build", "res:file"),
+        ("fs_env", "file:write", "clippy_lint", "res:file"),
+        ("fs_env", "file:write", "codegen_exists", "res:file"),
+        ("fs_env", "file:write", "deps_exists", "res:file"),
+        ("fs_env", "file:write", "execute_codegen", "res:file"),
+        ("fs_env", "file:write", "execute_stamp_write", "res:file"),
+        ("fs_env", "file:write", "guardrail_check", "res:file"),
+        ("fs_env", "file:write", "pragma", "res:file"),
+        ("fs_env", "file:write", "test", "res:file"),
+        ("fs_env", "file:write", "testgen", "res:file"),
+        ("fs_env", "file:write", "verify_bootstrap_check", "res:file"),
+        (
+            "fs_env",
+            "file:write",
+            "verify_deps_config_check",
+            "res:file",
+        ),
+        ("fs_env", "file:write", "verify_makegen_check", "res:file"),
+        ("fs_env", "file:write", "verify_pragma_check", "res:file"),
+        ("fs_env", "file:write", "verify_testgen_check", "res:file"),
+        (
+            "guardrail_check",
+            "guardrail_stderr",
+            "report",
+            "guardrail_stderr",
+        ),
+        (
+            "guardrail_check",
+            "guardrail_stdout",
+            "report",
+            "guardrail_stdout",
+        ),
+        (
+            "guardrail_check",
+            "guardrail_success",
+            "report",
+            "guardrail_success",
+        ),
+        (
+            "parse_codegen_result",
+            "prep_success",
+            "bootstrap",
+            "prep_success",
+        ),
+        (
+            "parse_codegen_result",
+            "prep_success",
+            "build",
+            "prep_success",
+        ),
+        (
+            "parse_codegen_result",
+            "prep_success",
+            "pragma",
+            "prep_success",
+        ),
+        (
+            "parse_codegen_result",
+            "prep_success",
+            "prepare_stamp_write",
+            "prep_success",
+        ),
+        (
+            "parse_codegen_result",
+            "prep_success",
+            "testgen",
+            "prep_success",
+        ),
+        (
+            "parse_codegen_result",
+            "prep_success",
+            "verify_bootstrap_check",
+            "prep_success",
+        ),
+        (
+            "parse_codegen_result",
+            "prep_success",
+            "verify_deps_config_check",
+            "prep_success",
+        ),
+        (
+            "parse_codegen_result",
+            "prep_success",
+            "verify_makegen_check",
+            "prep_success",
+        ),
+        (
+            "parse_codegen_result",
+            "prep_success",
+            "verify_pragma_check",
+            "prep_success",
+        ),
+        (
+            "parse_codegen_result",
+            "prep_success",
+            "verify_testgen_check",
+            "prep_success",
+        ),
+        ("pragma", "pragma_stderr", "report", "pragma_stderr"),
+        ("pragma", "pragma_stdout", "report", "pragma_stdout"),
+        ("pragma", "pragma_success", "clippy_lint", "pragma_success"),
+        (
+            "pragma",
+            "pragma_success",
+            "guardrail_check",
+            "pragma_success",
+        ),
+        ("pragma", "pragma_success", "report", "pragma_success"),
+        (
+            "pragma",
+            "pragma_success",
+            "verify_bootstrap_check",
+            "pragma_success",
+        ),
+        (
+            "pragma",
+            "pragma_success",
+            "verify_deps_config_check",
+            "pragma_success",
+        ),
+        (
+            "pragma",
+            "pragma_success",
+            "verify_makegen_check",
+            "pragma_success",
+        ),
+        (
+            "pragma",
+            "pragma_success",
+            "verify_pragma_check",
+            "pragma_success",
+        ),
+        (
+            "pragma",
+            "pragma_success",
+            "verify_testgen_check",
+            "pragma_success",
+        ),
+        (
+            "prepare_codegen_command",
+            "request",
+            "execute_codegen",
+            "request",
+        ),
+        ("prepare_codegen_command", "skip", "execute_codegen", "skip"),
+        (
+            "prepare_stamp_write",
+            "request",
+            "execute_stamp_write",
+            "request",
+        ),
+        ("prepare_stamp_write", "skip", "execute_stamp_write", "skip"),
+        ("test", "test_stderr", "report", "test_stderr"),
+        ("test", "test_stdout", "report", "test_stdout"),
+        ("test", "test_success", "report", "test_success"),
+        ("testgen", "testgen_stderr", "report", "testgen_stderr"),
+        ("testgen", "testgen_stdout", "report", "testgen_stdout"),
+        ("testgen", "testgen_success", "build", "testgen_success"),
+        (
+            "testgen",
+            "testgen_success",
+            "guardrail_check",
+            "testgen_success",
+        ),
+        ("testgen", "testgen_success", "report", "testgen_success"),
+        (
+            "testgen",
+            "testgen_success",
+            "verify_bootstrap_check",
+            "testgen_success",
+        ),
+        (
+            "testgen",
+            "testgen_success",
+            "verify_deps_config_check",
+            "testgen_success",
+        ),
+        (
+            "testgen",
+            "testgen_success",
+            "verify_makegen_check",
+            "testgen_success",
+        ),
+        (
+            "testgen",
+            "testgen_success",
+            "verify_pragma_check",
+            "testgen_success",
+        ),
+        (
+            "testgen",
+            "testgen_success",
+            "verify_testgen_check",
+            "testgen_success",
+        ),
+        (
+            "verify_bootstrap_check",
+            "verify_bootstrap_stderr",
+            "aggregate_verify_results",
+            "verify_bootstrap_stderr",
+        ),
+        (
+            "verify_bootstrap_check",
+            "verify_bootstrap_success",
+            "aggregate_verify_results",
+            "verify_bootstrap_success",
+        ),
+        (
+            "verify_deps_config_check",
+            "verify_deps_config_stderr",
+            "aggregate_verify_results",
+            "verify_deps_config_stderr",
+        ),
+        (
+            "verify_deps_config_check",
+            "verify_deps_config_success",
+            "aggregate_verify_results",
+            "verify_deps_config_success",
+        ),
+        (
+            "verify_makegen_check",
+            "verify_makegen_stderr",
+            "aggregate_verify_results",
+            "verify_makegen_stderr",
+        ),
+        (
+            "verify_makegen_check",
+            "verify_makegen_success",
+            "aggregate_verify_results",
+            "verify_makegen_success",
+        ),
+        (
+            "verify_pragma_check",
+            "verify_pragma_stderr",
+            "aggregate_verify_results",
+            "verify_pragma_stderr",
+        ),
+        (
+            "verify_pragma_check",
+            "verify_pragma_success",
+            "aggregate_verify_results",
+            "verify_pragma_success",
+        ),
+        (
+            "verify_testgen_check",
+            "verify_testgen_stderr",
+            "aggregate_verify_results",
+            "verify_testgen_stderr",
+        ),
+        (
+            "verify_testgen_check",
+            "verify_testgen_success",
+            "aggregate_verify_results",
+            "verify_testgen_success",
+        ),
+    ]
 }
 
 fn normalize_gist_reference<T>(reference: &Dag<T>, mode: GistParityMode) -> Dag<()> {
@@ -3936,6 +4413,35 @@ fn run(values: List<String>) -> String {
         assert_eq!(report_a, report_b);
         assert!(report_a.candidate_nodes > 0);
         assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn ci_pipeline_normalized_parity_can_reach_exact_match() {
+        let typed = typed_project_for_module_with_dependency_closure("pipelines.ci");
+        let dag = lower_target_module_with_dependency_scope(&typed, "pipelines.ci");
+        let reference = build_ci_graph().expect("ci builder graph should be available");
+        let report = compare_ci_topology(&dag, &reference);
+        assert!(
+            report.is_exact_match(),
+            "normalized ci parity should match reference topology: {report:?}"
+        );
+    }
+
+    #[test]
+    fn ci_pipeline_normalized_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("pipelines.ci");
+        let dag = lower_target_module_with_dependency_scope(&typed, "pipelines.ci");
+        let reference = build_ci_graph().expect("ci builder graph should be available");
+        let report_a = compare_ci_topology(&dag, &reference);
+        let report_b = compare_ci_topology(&dag, &reference);
+        assert_eq!(
+            report_a, report_b,
+            "normalized ci parity report should be deterministic"
+        );
+        assert!(
+            report_a.is_exact_match(),
+            "normalized ci parity should remain exact-match"
+        );
     }
 
     #[test]

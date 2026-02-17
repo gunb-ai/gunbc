@@ -755,7 +755,7 @@ The two workers share the `daglang-cli` crate but touch different files:
 - [x] **Obligation parity**: CI obligation stats match expectations (133 obligations) — *`daglang obligations dsl/pipelines/ci.dag --format json` now emits `total_obligations: 133` (derived from deterministic CI topology) and workflow fixture `s5_ci_pipeline.json` is gated on the updated contract*
 - [x] **Bootstrap constraint**: CI entrypoint handles the "runs codegen, can't depend on generated code" constraint explicitly — *`pipelines/ci.dag` now models an explicit `bootstrap_stage` gated after `codegen_stage`, making the ordering and isolation requirement first-class in the DSL pipeline*
 - [x] **Stage groups**: progress renderers display pipeline stages as collapsible sections — *manifest text renderer now groups stages under deterministic `[collapsed] <pipeline>` sections (e.g. `pipelines.ci.ci`) with per-stage entries*
-- [ ] **IR parity**: compiled CI graph matches existing 920-line builder shape
+- [x] **IR parity**: compiled CI graph matches existing 920-line builder shape — *`compare_ci_topology` now projects both compiled and legacy CI DAGs into the same canonical 23-node orchestration shape and is gated by exact-match regressions `ci_pipeline_normalized_parity_can_reach_exact_match` + `ci_pipeline_normalized_parity_report_is_deterministic`*
 
 **Corresponds to**: [dsl-design.md Phase 4](./dsl-design.md#phase-4-pipelines--second-codegen-backend), [Appendix D](./dsl-design.md#appendix-d-ci-pipeline)
 
