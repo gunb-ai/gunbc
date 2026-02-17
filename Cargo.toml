@@ -20,6 +20,7 @@ members = [
     "core/daglang/daglang-lower",
     "core/daglang/daglang-derive",
     "core/daglang/daglang-emit",
+    "core/daglang/daglang-driver",
     "core/daglang/daglang-exec-bridge",
     "core/daglang/daglang-cli",
     

@@ -131,6 +131,7 @@ name = "daglang-cli"
 version = "0.1.0"
 dependencies = [
  "daglang-derive",
+ "daglang-driver",
  "daglang-emit",
  "daglang-exec-bridge",
  "daglang-lower",
@@ -150,6 +151,19 @@ dependencies = [
  "daglang-lower",
  "gunbc-ir",
  "serde",
+]
+
+[[package]]
+name = "daglang-driver"
+version = "0.1.0"
+dependencies = [
+ "daglang-derive",
+ "daglang-emit",
+ "daglang-lower",
+ "daglang-resolve",
+ "daglang-syntax",
+ "daglang-typecheck",
+ "gunbc-ir",
 ]
 
 [[package]]
