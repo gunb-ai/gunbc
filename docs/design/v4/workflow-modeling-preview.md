@@ -72,11 +72,11 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## Credential (Azure) (`cloud.azure.credential`)
 
-- **Current status**: ⚠ typecheck blocked by record-shape mismatch in credential exchange path.
+- **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - Azure credential exchange/local branch record contracts are not yet aligned for strict typecheck.
+  - parity against legacy Azure credential-chain builder shape is still pending.
 - **Next increments**:
-  - align Azure token exchange record shape and strict type signatures.
+  - add builder-parity coverage for Azure chain and restore richer federated-flow modeling.
 
 ## Clippy (`tools.clippy`)
 
