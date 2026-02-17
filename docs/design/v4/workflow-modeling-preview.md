@@ -64,11 +64,11 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## Credential (AWS) (`cloud.aws.credential`)
 
-- **Current status**: ⚠ lower-stage unresolved service call (`aws.SecretsManager.GetSecretValue`).
+- **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - AWS SecretsManager operation mapping is missing from service resolution/lowering.
+  - parity against legacy credential-chain builder shape is still pending.
 - **Next increments**:
-  - add AWS secret-manager service operation resolution and runtime bridge mapping.
+  - add credential graph parity harness coverage against legacy AWS chain.
 
 ## Credential (Azure) (`cloud.azure.credential`)
 
@@ -96,11 +96,11 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## Auth (`services.shell`)
 
-- **Current status**: ⚠ lower-stage no-callable/no-pipeline terminal state (service-only module).
+- **Current status**: ✅ service-only module now lowers transport triplets and emits obligations.
 - **Primary gap**:
-  - no callable entrypoint by design in this file; cannot lower to executable DAG directly.
+  - still lacks a direct executable callable entrypoint by design.
 - **Next increments**:
-  - consume this service module from executable workflows and validate through caller parity tests.
+  - validate caller workflows against this service module for parity and runtime bridge coverage.
 
 ## S8 — Infra Bootstrap (`infra.core`)
 

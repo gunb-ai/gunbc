@@ -1548,9 +1548,6 @@ fn add_service_transport_triplets(
             let Item::ServiceDef(service) = &item.node else {
                 continue;
             };
-            if service.implements.is_none() {
-                continue;
-            }
 
             for operation in &service.operations {
                 let service_metadata = derive_service_call_metadata(service, operation);
@@ -2518,6 +2515,40 @@ service FsStorage implements Storage {
                 && edge.from_port.0 == "response"
                 && edge.to_node.0 == parse.as_str()
                 && edge.to_port.0 == "response"
+        }));
+    }
+
+    #[test]
+    fn concrete_service_without_interface_lowers_transport_triplet_nodes() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/shell.dag",
+            r#"module sample.services
+service shell.Tools {
+  operation Echo(message: String) -> { output: String }
+}
+func run() -> { output: String } {
+  result = shell.Tools.Echo(message: "hello")
+  return { output: result.output }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let node_ids = dag
+            .nodes
+            .iter()
+            .map(|node| node.id.0.as_str())
+            .collect::<Vec<_>>();
+        let suffix = "sample_services_shell_Tools_Echo";
+        let prepare = format!("prepare_transport_{suffix}");
+        let execute = format!("execute_transport_{suffix}");
+        let parse = format!("parse_transport_{suffix}");
+
+        assert!(node_ids.contains(&prepare.as_str()));
+        assert!(node_ids.contains(&execute.as_str()));
+        assert!(node_ids.contains(&parse.as_str()));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == parse.as_str()
+                && edge.to_node.0 == "sample.services::run"
+                && edge.to_port.0 == "__deps"
         }));
     }
 
