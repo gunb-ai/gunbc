@@ -225,3 +225,59 @@ fn validate_module_path_consistency(
         Err(message.into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "daglang_driver_{label}_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn compile_directory_reports_module_path_mismatch() {
+        let root = unique_temp_dir("module_mismatch");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        std::fs::write(
+            root.join("main.dag"),
+            "module mismatch.main\nfn run() -> Unit {}",
+        )
+        .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: None,
+        };
+        let error = compile_from_context(&context).expect_err("compile should fail");
+        assert!(error.contains("module path mismatches"));
+        assert!(error.contains("declared `mismatch.main`"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn check_single_file_valid_source_succeeds() {
+        let root = unique_temp_dir("check_single_file");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = root.join("sample.dag");
+        std::fs::write(&file, "module sample\nfn run() -> Unit {}\n")
+            .expect("failed to write valid source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let output = check_from_context(&context).expect("check should succeed");
+        assert_eq!(output.parsed_files, 1);
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+}
