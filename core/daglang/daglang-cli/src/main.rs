@@ -486,47 +486,60 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     let mut output_path = "Makefile".to_string();
     let mut dry_run = false;
     let mut check_mode = false;
+    let mut parse_flags = true;
     let mut index = 2usize;
     while index < args.len() {
         let arg = args[index].as_str();
-        match arg {
-            "--dry-run" => {
-                dry_run = true;
-                index += 1;
-            }
-            "--check-mode" => {
-                check_mode = true;
-                index += 1;
-            }
-            "--output" => {
-                let value = args
-                    .get(index + 1)
-                    .ok_or_else(|| "--output requires a path".to_string())?;
-                if value.is_empty() || value.starts_with("--") {
-                    return Err("--output requires a non-empty path".to_string());
+        if parse_flags {
+            match arg {
+                "--" => {
+                    parse_flags = false;
+                    index += 1;
                 }
-                output_path = value.clone();
-                index += 2;
-            }
-            _ if arg.starts_with("--output=") => {
-                let value = arg
-                    .strip_prefix("--output=")
-                    .expect("prefix just checked")
-                    .to_string();
-                if value.is_empty() {
-                    return Err("--output requires a non-empty path".to_string());
+                "--dry-run" => {
+                    dry_run = true;
+                    index += 1;
                 }
-                output_path = value;
-                index += 1;
-            }
-            _ if arg.starts_with("--") => return Err(format!("unknown run flag `{arg}`")),
-            _ => {
-                if file.is_some() {
-                    return Err("run takes exactly one <file.dag> input".to_string());
+                "--check-mode" => {
+                    check_mode = true;
+                    index += 1;
                 }
-                file = Some(args[index].clone());
-                index += 1;
+                "--output" => {
+                    let value = args
+                        .get(index + 1)
+                        .ok_or_else(|| "--output requires a path".to_string())?;
+                    if value.is_empty() || value.starts_with("--") {
+                        return Err("--output requires a non-empty path".to_string());
+                    }
+                    output_path = value.clone();
+                    index += 2;
+                }
+                _ if arg.starts_with("--output=") => {
+                    let value = arg
+                        .strip_prefix("--output=")
+                        .expect("prefix just checked")
+                        .to_string();
+                    if value.is_empty() {
+                        return Err("--output requires a non-empty path".to_string());
+                    }
+                    output_path = value;
+                    index += 1;
+                }
+                _ if arg.starts_with("--") => return Err(format!("unknown run flag `{arg}`")),
+                _ => {
+                    if file.is_some() {
+                        return Err("run takes exactly one <file.dag> input".to_string());
+                    }
+                    file = Some(args[index].clone());
+                    index += 1;
+                }
             }
+        } else {
+            if file.is_some() {
+                return Err("run takes exactly one <file.dag> input".to_string());
+            }
+            file = Some(args[index].clone());
+            index += 1;
         }
     }
 
@@ -979,6 +992,34 @@ mod tests {
         ];
         let error = parse_run_args(&args).expect_err("parse should fail");
         assert!(error.contains("unknown run flag"));
+    }
+
+    #[test]
+    fn parse_run_args_supports_double_dash_for_dash_prefixed_file_paths() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--".to_string(),
+            "--fixture.dag".to_string(),
+        ];
+        let parsed = parse_run_args(&args).expect("parse should succeed");
+        assert_eq!(parsed.file, "--fixture.dag");
+        assert!(!parsed.dry_run);
+        assert!(!parsed.check_mode);
+    }
+
+    #[test]
+    fn parse_run_args_rejects_double_dash_without_input() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run requires <file.dag>"),
+            "expected missing input error after double dash, got: {error}"
+        );
     }
 
     #[test]

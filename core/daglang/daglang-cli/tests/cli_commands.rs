@@ -30590,6 +30590,60 @@ fn run_with_unknown_flag_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_supports_double_dash_for_dash_prefixed_input_paths() {
+    let input_path = std::env::temp_dir().join(format!(
+        "--daglang_run_dash_prefixed_input_{}_{}.dag",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    std::fs::copy(
+        workspace_root().join("dsl/tools/makegen.dag"),
+        &input_path,
+    )
+    .expect("failed to copy makegen fixture for dash-prefixed input");
+    let output_path = unique_temp_output_file("run_dash_prefixed_input_output");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path)
+            .expect("failed to remove stale output for dash-prefixed input test");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--dry-run")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("--")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with dash-prefixed input path");
+
+    assert!(
+        output.status.success(),
+        "run should accept dash-prefixed .dag inputs after -- separator: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "dash-prefixed run should execute in dry-run mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "dash-prefixed dry-run should report no writes: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "dash-prefixed dry-run should not create output file"
+    );
+
+    std::fs::remove_file(&input_path).expect("failed to clean dash-prefixed input fixture");
+}
+
+#[test]
 fn run_with_conflicting_dry_run_and_check_mode_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
