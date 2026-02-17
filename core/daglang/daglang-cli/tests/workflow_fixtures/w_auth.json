@@ -1,0 +1,10 @@
+{
+  "module": "services.shell",
+  "path": "services/shell.dag",
+  "items": 6,
+  "dependencies": [],
+  "expand_contract": {
+    "status": "lower_error",
+    "error_contains": "no callable or pipeline declarations to lower"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "module": "tools.clippy",
+  "path": "tools/clippy.dag",
+  "items": 2,
+  "dependencies": [
+    "std.patterns",
+    "std.resources",
+    "services.shell",
+    "services.cargo"
+  ],
+  "expand_contract": {
+    "status": "lower_error",
+    "error_contains": "unresolved service call `cargo.Build.Clippy` in `tools.clippy::clippy_lint`"
+  }
+}

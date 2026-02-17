@@ -1,0 +1,15 @@
+{
+  "module": "tools.deps",
+  "path": "tools/deps.dag",
+  "items": 6,
+  "dependencies": [
+    "std.patterns",
+    "std.resources",
+    "std.types",
+    "shared.dag_util"
+  ],
+  "expand_contract": {
+    "status": "typecheck_error",
+    "error_contains": "undefined type `FilePath (in deps_install.manifest_path)`"
+  }
+}

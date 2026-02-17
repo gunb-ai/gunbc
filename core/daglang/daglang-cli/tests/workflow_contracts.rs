@@ -43,6 +43,31 @@ const WORKFLOW_FIXTURES: &[WorkflowFixture] = &[
         fixture_file: "s6_llm_review.json",
     },
     WorkflowFixture {
+        scenario: "W-credential-aws",
+        module: "cloud.aws.credential",
+        fixture_file: "w_credential_aws.json",
+    },
+    WorkflowFixture {
+        scenario: "W-credential-azure",
+        module: "cloud.azure.credential",
+        fixture_file: "w_credential_azure.json",
+    },
+    WorkflowFixture {
+        scenario: "W-clippy",
+        module: "tools.clippy",
+        fixture_file: "w_clippy.json",
+    },
+    WorkflowFixture {
+        scenario: "W-deps",
+        module: "tools.deps",
+        fixture_file: "w_deps.json",
+    },
+    WorkflowFixture {
+        scenario: "W-auth",
+        module: "services.shell",
+        fixture_file: "w_auth.json",
+    },
+    WorkflowFixture {
         scenario: "S8",
         module: "infra.core",
         fixture_file: "s8_infra_bootstrap.json",

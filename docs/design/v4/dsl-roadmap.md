@@ -118,9 +118,9 @@ For each discrete workflow (gist, ci, review, auth, makegen, clippy, deps, ...):
 
 ### Acceptance Gates
 
-- [ ] Every workflow has a one-page contract document (or a row in the matrix with all columns filled)
-- [ ] At least one golden fixture per workflow with expected outputs
-- [ ] Contract tests runnable in CI (fixture → expected behavior, independent of whether DSL or builder produced the graph)
+- [x] Every workflow has a one-page contract document (or a row in the matrix with all columns filled)
+- [x] At least one golden fixture per workflow with expected outputs
+- [x] Contract tests runnable in CI (fixture → expected behavior, independent of whether DSL or builder produced the graph)
 
 ---
 
@@ -1705,6 +1705,11 @@ Current golden fixture baseline (`core/daglang/daglang-cli/tests/workflow_contra
 | **S4** | `tools.gist` | `s4_gist_snapshot.json` |
 | **S5** | `pipelines.ci` | `s5_ci_pipeline.json` |
 | **S6** | `examples.abstract_services` | `s6_llm_review.json` |
+| **Credential (AWS)** | `cloud.aws.credential` | `w_credential_aws.json` |
+| **Credential (Azure)** | `cloud.azure.credential` | `w_credential_azure.json` |
+| **Clippy** | `tools.clippy` | `w_clippy.json` |
+| **Deps** | `tools.deps` | `w_deps.json` |
+| **Auth** | `services.shell` | `w_auth.json` |
 | **S8** | `infra.core` | `s8_infra_bootstrap.json` |
 | **S9** | `examples.deployment` | `s9_cross_cloud_deployment.json` |
 
