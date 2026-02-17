@@ -1016,7 +1016,11 @@ Binary files a/image.png and b/image.png differ";
     #[test]
     fn test_truncate_diff_chunks_caps_per_file() {
         let mut chunks = BTreeMap::new();
-        let big: String = (0..200).map(|i| format!("+line {}\n", i)).collect();
+        let mut big = String::new();
+        for i in 0..200 {
+            use std::fmt::Write as _;
+            writeln!(&mut big, "+line {}", i).expect("write to string should succeed");
+        }
         chunks.insert("big.rs".to_string(), big);
 
         let truncated = truncate_diff_chunks(chunks, 50, 500);
@@ -1030,7 +1034,12 @@ Binary files a/image.png and b/image.png differ";
     fn test_truncate_diff_chunks_caps_total() {
         let mut chunks = BTreeMap::new();
         for i in 0..100 {
-            let content: String = (0..10).map(|j| format!("+line {}:{}\n", i, j)).collect();
+            let mut content = String::new();
+            for j in 0..10 {
+                use std::fmt::Write as _;
+                writeln!(&mut content, "+line {}:{}", i, j)
+                    .expect("write to string should succeed");
+            }
             chunks.insert(format!("file_{:03}.rs", i), content);
         }
 

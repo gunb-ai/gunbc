@@ -227,6 +227,7 @@ fn validate_module_path_consistency(
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};

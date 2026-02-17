@@ -49,8 +49,8 @@ mod tests {
 
     #[test]
     fn test_version_constants_are_set() {
-        assert!(!GITHUB_API_VERSION.is_empty());
-        assert!(!GH_CLI_MIN_VERSION.is_empty());
-        assert!(!GITHUB_CONTRACT_VERSION.is_empty());
+        assert_eq!(GITHUB_API_VERSION, "2022-11-28");
+        assert_eq!(GH_CLI_MIN_VERSION, "2.40.0");
+        assert!(GITHUB_CONTRACT_VERSION.starts_with("2026."));
     }
 }

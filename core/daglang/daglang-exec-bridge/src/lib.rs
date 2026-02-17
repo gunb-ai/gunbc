@@ -9,6 +9,7 @@ use gunbc_ir::transport::{
     FileOp, FileRequest, FileResponse, TransportRequest, TransportResponse,
 };
 use gunbc_ir::{Dag, Node, Value};
+use gunbc_lib_transport::executor::execute_transport;
 use serde_json::json;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,9 +160,7 @@ pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
         "FilesystemHandle",
         Value::Str("filesystem://check-mode".to_string()),
     );
-    let existing_content = std::fs::read(output_path)
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-        .unwrap_or_default();
+    let existing_content = read_existing_content(output_path);
     check_mode_mocks.set_value(
         "execute_read_makegen",
         "response",
@@ -176,6 +175,14 @@ pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
         Value::Skipped,
     );
     check_mode_mocks
+}
+
+fn read_existing_content(output_path: &str) -> String {
+    let response = execute_file_request(&FileRequest::read(output_path));
+    if response.success {
+        return response.content.unwrap_or_default();
+    }
+    String::new()
 }
 
 fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
@@ -341,31 +348,14 @@ fn execute_execute_transport(
 }
 
 fn execute_file_request(request: &FileRequest) -> FileResponse {
-    match request.operation {
-        FileOp::Read => match std::fs::read_to_string(&request.path) {
-            Ok(content) => FileResponse::read_ok(request.path.clone(), content),
-            Err(error) => FileResponse::error(request.path.clone(), FileOp::Read, error.to_string()),
-        },
-        FileOp::Write => {
-            let write_result = (|| -> Result<(), std::io::Error> {
-                if request.create_parents {
-                    if let Some(parent) = std::path::Path::new(&request.path).parent() {
-                        std::fs::create_dir_all(parent)?;
-                    }
-                }
-                std::fs::write(&request.path, request.content.clone().unwrap_or_default())?;
-                Ok(())
-            })();
-            match write_result {
-                Ok(()) => FileResponse::written(request.path.clone()),
-                Err(error) => FileResponse::error(request.path.clone(), FileOp::Write, error.to_string()),
-            }
-        }
-        _ => FileResponse::error(
+    match execute_transport(&TransportRequest::File(request.clone())) {
+        Ok(TransportResponse::File(response)) => response,
+        Ok(_other) => FileResponse::error(
             request.path.clone(),
             request.operation,
-            "unsupported file operation",
+            "transport executor returned non-file response for file request",
         ),
+        Err(error) => FileResponse::error(request.path.clone(), request.operation, error.to_string()),
     }
 }
 

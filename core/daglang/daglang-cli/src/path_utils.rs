@@ -82,8 +82,7 @@ mod tests {
 
         std::fs::remove_dir_all(
             file.parent()
-                .expect("fixture file should have parent")
-                .to_path_buf(),
+                .expect("fixture file should have parent"),
         )
         .expect("failed to cleanup fixture directory");
     }

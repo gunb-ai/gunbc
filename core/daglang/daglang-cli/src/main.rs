@@ -323,6 +323,7 @@ fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
     path_utils::resolve_default_root(cwd)
 }
 
+#[allow(clippy::disallowed_methods)]
 fn resolve_configured_roots(cwd: &std::path::Path) -> Result<Option<Vec<PathBuf>>, String> {
     let config_path = cwd.join("daglang.toml");
     if !config_path.exists() {
@@ -534,8 +535,7 @@ fn render_modules_result_json(result: &PipelineResult) -> String {
     let modules = graph
         .modules
         .iter()
-        .enumerate()
-        .map(|(_index, module)| {
+        .map(|module| {
             let dependencies = module
                 .dependencies
                 .iter()
@@ -684,6 +684,7 @@ fn exit_usage(command: &str) -> ! {
 
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use crate::path_utils::{has_dag_extension, normalize_path_components, resolve_default_root};
     use std::path::{Path, PathBuf};
