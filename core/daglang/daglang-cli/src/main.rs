@@ -329,12 +329,21 @@ fn run_written_from_log(log: &gunbc_exec::ExecutionLog) -> bool {
             return !skip;
         }
     }
-    log.entries
+    for wrapper_entry in log
+        .entries
         .iter()
-        .find(|entry| entry.node_id == "tools.makegen::makegen")
-        .and_then(|entry| entry.outputs.get("written"))
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false)
+        .rev()
+        .filter(|entry| entry.node_id == "tools.makegen::makegen")
+    {
+        if let Some(written) = wrapper_entry
+            .outputs
+            .get("written")
+            .and_then(|value| value.as_bool())
+        {
+            return written;
+        }
+    }
+    false
 }
 
 fn resolve_root(arg: Option<&String>) -> PathBuf {
@@ -1580,6 +1589,57 @@ mod tests {
         assert!(
             run_written_from_log(&log),
             "wrapper written value should be used when transport node is absent"
+        );
+    }
+
+    #[test]
+    fn run_written_from_log_prefers_latest_wrapper_signal_when_transport_missing() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(false))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            !run_written_from_log(&log),
+            "latest wrapper written=false should override earlier wrapper written=true values"
+        );
+    }
+
+    #[test]
+    fn run_written_from_log_uses_earlier_wrapper_boolean_when_latest_wrapper_non_boolean() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([(
+                        "written".to_string(),
+                        Value::Str("false".to_string()),
+                    )]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            run_written_from_log(&log),
+            "non-boolean latest wrapper written values should be ignored in favor of earlier boolean signals"
         );
     }
 
