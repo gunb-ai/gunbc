@@ -312,11 +312,11 @@ fn run_mode_label(run_args: &RunArgs) -> &'static str {
 }
 
 fn run_written_from_log(log: &gunbc_exec::ExecutionLog) -> bool {
-    if let Some(transport_entry) = log
+    for transport_entry in log
         .entries
         .iter()
         .rev()
-        .find(|entry| entry.node_id == "execute_makegen_transport")
+        .filter(|entry| entry.node_id == "execute_makegen_transport")
     {
         if transport_entry.was_intercepted {
             return false;
@@ -1225,6 +1225,36 @@ mod tests {
         assert!(
             !run_written_from_log(&log),
             "latest intercepted transport should force written=false"
+        );
+    }
+
+    #[test]
+    fn run_written_from_log_uses_earlier_transport_skip_when_latest_skip_missing() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("status".to_string(), Value::Str("ok".to_string()))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(true))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            !run_written_from_log(&log),
+            "latest transport entries without skip should fall back to earlier skip signals"
         );
     }
 
