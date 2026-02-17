@@ -580,7 +580,7 @@ While touching the CLI, add two standalone commands that are cheap to implement 
 - [x] `dag show-triplets tools/makegen.dag` shows the content_upsert triplet expansion
 - [x] `dag obligations tools/makegen.dag` shows the 4-bucket obligation summary
 - [x] Both new commands support `--format json`
-- [x] New command path handling is hardened with regression coverage (relative/absolute targets, normalized absolute path spellings including parent/curdir/double-separator variants and combined parent+curdir+double-separator forms, case-variant `.dag` files, and `.dag`-suffixed directory/symlink aliases—including absolute alias paths across text/json and directory/symlink permutations)
+- [x] New command path handling is hardened with regression coverage (relative/absolute targets, normalized absolute path spellings including parent/curdir/double-separator variants and combined parent+curdir+double-separator forms, case-variant `.dag` files, and `.dag`-suffixed directory/symlink aliases—including absolute alias paths across text/json and directory/symlink permutations, plus canonical-vs-normalized failing-output parity checks for invalid alias spellings)
 
 ##### Worker 2 Definition of Done
 
