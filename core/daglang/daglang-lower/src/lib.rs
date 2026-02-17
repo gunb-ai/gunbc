@@ -2438,6 +2438,8 @@ mod tests {
     use gunbc_dag::build_makegen_graph;
     use gunbc_deps::build_deps_graph;
     use gunbc_gist::{build_gist_graph, GistMode};
+    use gunbc_lib_aws_ops::build_aws_secrets_manager_credential_graph;
+    use gunbc_lib_azure_ops::build_azure_key_vault_credential_graph;
     use gunbc_lib_gcp_ops::build_gcp_secret_manager_credential_graph_github;
     use gunbc_ir::{Edge, Port};
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -2593,6 +2595,32 @@ mod tests {
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
         let reference = build_gist_graph(GistMode::Snapshot, Vec::new(), false)
             .expect("gist builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn aws_credential_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("cloud.aws.credential");
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let reference = build_aws_secrets_manager_credential_graph();
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn azure_credential_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("cloud.azure.credential");
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let reference = build_azure_key_vault_credential_graph();
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);

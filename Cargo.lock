@@ -205,6 +205,8 @@ dependencies = [
  "gunbc-deps",
  "gunbc-gist",
  "gunbc-ir",
+ "gunbc-lib-aws-ops",
+ "gunbc-lib-azure-ops",
  "gunbc-lib-gcp-ops",
  "serde",
  "serde_json",

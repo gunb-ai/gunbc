@@ -66,17 +66,18 @@ The source of truth for current status is the workflow fixture contract suite in
 
 - **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - parity against legacy credential-chain builder shape is still pending.
+  - exact parity against legacy credential-chain builder shape is still pending.
 - **Next increments**:
-  - add credential graph parity harness coverage against legacy AWS chain.
+  - tighten newly-added deterministic AWS credential parity scaffold to zero-delta shape parity.
 
 ## Credential (Azure) (`cloud.azure.credential`)
 
 - **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - parity against legacy Azure credential-chain builder shape is still pending.
+  - exact parity against legacy Azure credential-chain builder shape is still pending.
 - **Next increments**:
-  - add builder-parity coverage for Azure chain and restore richer federated-flow modeling.
+  - tighten newly-added deterministic Azure credential parity scaffold to zero-delta shape parity.
+  - restore richer federated-flow modeling once parity baselines are stable.
 
 ## Clippy (`tools.clippy`)
 
