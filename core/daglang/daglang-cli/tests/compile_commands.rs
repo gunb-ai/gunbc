@@ -11543,6 +11543,122 @@ fn obligations_command_json_relative_and_absolute_targets_are_equivalent() {
 }
 
 #[test]
+fn obligations_command_uppercase_extension_single_file_target_matches_curdir_suffix_output() {
+    let root = unique_temp_dir("obligations_uppercase_extension_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let target = root.join("single.DAG");
+    std::fs::write(
+        &target,
+        r#"module sample.obligations
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write uppercase-extension obligations fixture");
+
+    let plain = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("single.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run obligations on plain uppercase target");
+    assert!(
+        plain.status.success(),
+        "plain uppercase obligations command failed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("./single.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run obligations on curdir-suffix uppercase target");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix uppercase obligations command failed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix uppercase obligations stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix uppercase obligations stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&plain.stdout).contains("pure_node_determinism_targets: 1"),
+        "obligations output should include deterministic-node count for uppercase extension fixture: {}",
+        String::from_utf8_lossy(&plain.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn obligations_command_json_mixed_case_extension_single_file_target_matches_curdir_suffix_output()
+{
+    let root = unique_temp_dir("obligations_json_mixed_case_extension_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let target = root.join("single.DaG");
+    std::fs::write(
+        &target,
+        r#"module sample.obligations
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write mixed-case obligations fixture");
+
+    let plain = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("single.DaG")
+        .arg("--format")
+        .arg("json")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run obligations --format json on plain mixed-case target");
+    assert!(
+        plain.status.success(),
+        "plain mixed-case obligations json command failed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg("./single.DaG")
+        .arg("--format")
+        .arg("json")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run obligations --format json on curdir-suffix mixed-case target");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix mixed-case obligations json command failed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix mixed-case obligations json stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix mixed-case obligations json stderr should match"
+    );
+    let parsed: Value =
+        serde_json::from_slice(&plain.stdout).expect("obligations json output should be valid");
+    assert_eq!(
+        parsed
+            .get("pure_node_determinism_targets")
+            .and_then(Value::as_u64),
+        Some(1)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn obligations_command_directory_named_dag_extension_is_invalid_single_file_target() {
     let root = unique_temp_dir("obligations_directory_named_dag_extension");
     let dag_dir = root.join("bundle.dag");
@@ -12169,6 +12285,121 @@ fn show_triplets_command_json_relative_and_absolute_targets_are_equivalent() {
         relative.stderr, absolute.stderr,
         "relative and absolute show-triplets json stderr should match"
     );
+}
+
+#[test]
+fn show_triplets_command_uppercase_extension_single_file_target_matches_curdir_suffix_output() {
+    let root = unique_temp_dir("show_triplets_uppercase_extension_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let target = root.join("single.DAG");
+    std::fs::write(
+        &target,
+        r#"module sample.triplets
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write uppercase-extension show-triplets fixture");
+
+    let plain = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("single.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run show-triplets on plain uppercase target");
+    assert!(
+        plain.status.success(),
+        "plain uppercase show-triplets command failed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("./single.DAG")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run show-triplets on curdir-suffix uppercase target");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix uppercase show-triplets command failed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix uppercase show-triplets stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix uppercase show-triplets stderr should match"
+    );
+    assert!(
+        String::from_utf8_lossy(&plain.stdout).contains("(none)"),
+        "transport-free uppercase fixture should report no triplets: {}",
+        String::from_utf8_lossy(&plain.stdout)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn show_triplets_command_json_mixed_case_extension_single_file_target_matches_curdir_suffix_output(
+) {
+    let root = unique_temp_dir("show_triplets_json_mixed_case_extension_single_file");
+    std::fs::create_dir_all(&root).expect("failed to create temp root");
+    let target = root.join("single.DaG");
+    std::fs::write(
+        &target,
+        r#"module sample.triplets
+fn run() -> Unit { }
+"#,
+    )
+    .expect("failed to write mixed-case show-triplets fixture");
+
+    let plain = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("single.DaG")
+        .arg("--format")
+        .arg("json")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run show-triplets --format json on plain mixed-case target");
+    assert!(
+        plain.status.success(),
+        "plain mixed-case show-triplets json command failed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+
+    let curdir_suffix = Command::new(daglang_bin())
+        .arg("show-triplets")
+        .arg("./single.DaG")
+        .arg("--format")
+        .arg("json")
+        .current_dir(&root)
+        .output()
+        .expect("failed to run show-triplets --format json on curdir-suffix mixed-case target");
+    assert!(
+        curdir_suffix.status.success(),
+        "curdir-suffix mixed-case show-triplets json command failed: {}",
+        String::from_utf8_lossy(&curdir_suffix.stderr)
+    );
+
+    assert_eq!(
+        plain.stdout, curdir_suffix.stdout,
+        "plain and curdir-suffix mixed-case show-triplets json stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir_suffix.stderr,
+        "plain and curdir-suffix mixed-case show-triplets json stderr should match"
+    );
+    let parsed: Value =
+        serde_json::from_slice(&plain.stdout).expect("show-triplets json output should be valid");
+    let triplets = parsed
+        .get("triplets")
+        .and_then(Value::as_array)
+        .expect("triplets should be a JSON array");
+    assert!(triplets.is_empty(), "transport-free fixture should have no triplets");
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
 #[test]
