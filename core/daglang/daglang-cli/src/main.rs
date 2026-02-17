@@ -1396,6 +1396,36 @@ mod tests {
     }
 
     #[test]
+    fn run_written_from_log_latest_skip_false_overrides_earlier_intercepted_transport() {
+        let log = ExecutionLog {
+            entries: vec![
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Bool(false))]),
+                    was_intercepted: true,
+                },
+                LogEntry {
+                    node_id: "execute_makegen_transport".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("skip".to_string(), Value::Bool(false))]),
+                    was_intercepted: false,
+                },
+                LogEntry {
+                    node_id: "tools.makegen::makegen".to_string(),
+                    inputs: None,
+                    outputs: HashMap::from([("written".to_string(), Value::Bool(false))]),
+                    was_intercepted: false,
+                },
+            ],
+        };
+        assert!(
+            run_written_from_log(&log),
+            "latest non-intercepted skip=false transport should override older intercepted entries"
+        );
+    }
+
+    #[test]
     fn run_written_from_log_uses_earlier_transport_skip_when_latest_skip_missing() {
         let log = ExecutionLog {
             entries: vec![
