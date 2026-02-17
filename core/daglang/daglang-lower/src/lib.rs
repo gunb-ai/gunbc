@@ -2425,6 +2425,13 @@ struct CollectionOpSite {
 }
 
 #[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CollectionNodeSpec {
+    node_id: String,
+    kind: CollectionOpKind,
+}
+
+#[cfg(test)]
 fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
     match name {
         "map" => Some(CollectionOpKind::Map),
@@ -2449,6 +2456,23 @@ fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionO
             sites.push(CollectionOpSite { kind });
         }
     });
+}
+
+#[cfg(test)]
+fn derive_collection_node_specs(
+    callable_node_id: &str,
+    stmts: &[Stmt],
+) -> Vec<CollectionNodeSpec> {
+    let mut sites = Vec::new();
+    collect_collection_ops_from_stmts(stmts, &mut sites);
+    sites.reverse();
+    sites.into_iter()
+        .enumerate()
+        .map(|(index, site)| CollectionNodeSpec {
+            node_id: format!("{callable_node_id}::collection_{index}"),
+            kind: site.kind,
+        })
+        .collect()
 }
 
 fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallSite>) {
@@ -2651,6 +2675,40 @@ fn run(values: List<String>) -> { out: String } {
         let mut sites = Vec::new();
         collect_collection_ops_from_stmts(&stmts, &mut sites);
         assert!(sites.is_empty());
+    }
+
+    #[test]
+    fn derive_collection_node_specs_orders_pipeline_left_to_right() {
+        let stmts = callable_stmts_from_source(
+            r#"
+module sample.collections
+fn run(values: List<String>) -> { out: String } {
+  rendered = values
+    |> map(v => v)
+    |> filter(v => v != "")
+    |> join(",")
+  return { out: rendered }
+}
+"#,
+        );
+        let specs = derive_collection_node_specs("sample.collections::run", &stmts);
+        assert_eq!(
+            specs,
+            vec![
+                CollectionNodeSpec {
+                    node_id: "sample.collections::run::collection_0".to_string(),
+                    kind: CollectionOpKind::Map,
+                },
+                CollectionNodeSpec {
+                    node_id: "sample.collections::run::collection_1".to_string(),
+                    kind: CollectionOpKind::Filter,
+                },
+                CollectionNodeSpec {
+                    node_id: "sample.collections::run::collection_2".to_string(),
+                    kind: CollectionOpKind::Join,
+                },
+            ]
+        );
     }
 
     #[test]
