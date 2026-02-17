@@ -48,11 +48,13 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## S5 — CI Pipeline (`pipelines.ci`)
 
-- **Current status**: ✅ expands and obligations derive for pipeline module.
+- **Current status**: ✅ expands/obligations derive, and manifest stage groups are emitted for pipeline nodes.
 - **Primary gap**:
-  - phase-4 stage-group/renderer contract work still pending.
+  - exact parity against legacy CI builder shape is still pending.
+  - renderer UX still needs collapsible stage-group presentation.
 - **Next increments**:
-  - derive/emit stage-group manifest sections and CI parity assertions.
+  - tighten newly-added deterministic CI parity scaffold to zero-delta shape parity.
+  - wire stage-group manifest output into collapsible progress-renderer sections.
 
 ## S6 — LLM Review (`examples.abstract_services`)
 
