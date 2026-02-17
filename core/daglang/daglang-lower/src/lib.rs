@@ -18,10 +18,11 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use daglang_syntax::ast::{Expr, Item, Stmt};
+use daglang_syntax::ast::{Annotation, Expr, Item, Literal, OperationDef, ServiceDef, Stmt};
 use daglang_syntax::ast_utils::{
-    canonical_resource_type_name as canonical_type_name, resource_type_name, service_call_lookup_keys,
-    should_track_call_name as should_track_call, type_expr_to_string, walk_stmts,
+    canonical_resource_type_name as canonical_type_name, resource_type_name,
+    service_call_lookup_keys, should_track_call_name as should_track_call, type_expr_to_string,
+    walk_stmts,
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port};
@@ -35,6 +36,7 @@ pub enum LoweredOp {
         kind: CallableKind,
         name: String,
         obligation: ObligationCategory,
+        service_metadata: Option<ServiceCallMetadata>,
     },
     Pipeline {
         module: String,
@@ -129,6 +131,24 @@ pub enum ObligationCategory {
     ResourceRelease,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ServiceTransportClass {
+    Unknown,
+    ShellLocal,
+    RestNetwork,
+    FileBoundary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ServiceCallMetadata {
+    pub service: String,
+    pub operation: String,
+    pub transport: ServiceTransportClass,
+    pub idempotent: bool,
+    pub readonly: bool,
+    pub permissions: Vec<String>,
+}
+
 impl LoweredOp {
     pub fn obligation_category(&self) -> ObligationCategory {
         match self {
@@ -136,10 +156,24 @@ impl LoweredOp {
             Self::Pipeline { .. } => ObligationCategory::None,
         }
     }
+
+    pub fn service_call_metadata(&self) -> Option<&ServiceCallMetadata> {
+        match self {
+            Self::Callable {
+                service_metadata, ..
+            } => service_metadata.as_ref(),
+            Self::Pipeline { .. } => None,
+        }
+    }
 }
 
 pub fn classify_obligation(op: &LoweredOp) -> ObligationCategory {
     op.obligation_category()
+}
+
+pub fn classify_service_transport(op: &LoweredOp) -> Option<ServiceTransportClass> {
+    op.service_call_metadata()
+        .map(|metadata| metadata.transport)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -304,10 +338,7 @@ impl std::fmt::Display for LowerError {
             Self::UnresolvedServiceCall {
                 caller,
                 service_call,
-            } => write!(
-                f,
-                "unresolved service call `{service_call}` in `{caller}`"
-            ),
+            } => write!(f, "unresolved service call `{service_call}` in `{caller}`"),
             Self::UnresolvedUsedResource {
                 caller,
                 binding,
@@ -385,11 +416,7 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
                     builder.add_node(Node::opaque(
                         node_id,
                         vec![],
-                        vec![Port::with_cardinality(
-                            "stages",
-                            "Int",
-                            Cardinality::ONE,
-                        )],
+                        vec![Port::with_cardinality("stages", "Int", Cardinality::ONE)],
                         LoweredOp::Pipeline {
                             module: module_name.clone(),
                             name: name.clone(),
@@ -405,7 +432,12 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
         }
     }
 
-    add_dependency_edges(&mut builder, project, &endpoints_by_full, &endpoints_by_name);
+    add_dependency_edges(
+        &mut builder,
+        project,
+        &endpoints_by_full,
+        &endpoints_by_name,
+    );
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
     let service_registry = add_service_transport_triplets(&mut builder, project);
     add_service_call_edges(&mut builder, project, &endpoints_by_full, &service_registry)?;
@@ -647,12 +679,9 @@ fn canonical_kind_lowered(node: &Node<LoweredOp>) -> String {
     );
     match &node.body {
         gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
-        gunbc_ir::node::NodeBody::Opaque(_) => canonical_kind_from_shape(
-            &node.id.0,
-            &node.inputs,
-            &node.outputs,
-            pipeline_hint,
-        ),
+        gunbc_ir::node::NodeBody::Opaque(_) => {
+            canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, pipeline_hint)
+        }
     }
 }
 
@@ -745,7 +774,10 @@ fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
             node.id.0.clone(),
             (
                 node.inputs.iter().map(|port| port.name.0.clone()).collect(),
-                node.outputs.iter().map(|port| port.name.0.clone()).collect(),
+                node.outputs
+                    .iter()
+                    .map(|port| port.name.0.clone())
+                    .collect(),
             ),
         );
     }
@@ -774,12 +806,7 @@ fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
         if !from_outputs.contains(&from_port) || !to_inputs.contains(&to_port) {
             continue;
         }
-        let key = (
-            from_node,
-            from_port,
-            to_node,
-            to_port,
-        );
+        let key = (from_node, from_port, to_node, to_port);
         if seen_edges.insert(key.clone()) {
             normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
         }
@@ -814,7 +841,10 @@ fn normalize_makegen_reference<T>(reference: &Dag<T>) -> Dag<()> {
             node.id.0.clone(),
             (
                 node.inputs.iter().map(|port| port.name.0.clone()).collect(),
-                node.outputs.iter().map(|port| port.name.0.clone()).collect(),
+                node.outputs
+                    .iter()
+                    .map(|port| port.name.0.clone())
+                    .collect(),
             ),
         );
     }
@@ -855,7 +885,8 @@ fn normalize_makegen_reference<T>(reference: &Dag<T>) -> Dag<()> {
 fn normalize_makegen_ports(node_id: &str, inputs: &mut Vec<Port>, outputs: &mut Vec<Port>) {
     match node_id {
         "fs_env" => {
-            outputs.retain(|port| matches!(port.name.0.as_str(), "FilesystemHandle" | "file:write"));
+            outputs
+                .retain(|port| matches!(port.name.0.as_str(), "FilesystemHandle" | "file:write"));
             for output in outputs.iter_mut() {
                 if output.name.0 == "file:write" {
                     output.name.0 = "FilesystemHandle".to_string();
@@ -966,11 +997,7 @@ fn lower_callable(
             .outputs
             .iter()
             .map(|binding| {
-                Port::with_cardinality(
-                    binding.name.as_str(),
-                    binding.ty.as_str(),
-                    Cardinality::ONE,
-                )
+                Port::with_cardinality(binding.name.as_str(), binding.ty.as_str(), Cardinality::ONE)
             })
             .collect()
     };
@@ -988,6 +1015,7 @@ fn lower_callable(
                 kind,
                 name: callable.name.clone(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ),
         LoweredEndpoint {
@@ -1036,8 +1064,7 @@ fn add_dependency_edges(
             let Some((item_name, stmts)) = item_callable_body(&item.node) else {
                 continue;
             };
-            let Some(target) =
-                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) = endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
@@ -1168,6 +1195,7 @@ fn expand_single_content_upsert(
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{prepare_read_id}"),
             obligation: ObligationCategory::None,
+            service_metadata: None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -1179,6 +1207,7 @@ fn expand_single_content_upsert(
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{execute_read_id}"),
             obligation: ObligationCategory::None,
+            service_metadata: None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -1187,15 +1216,13 @@ fn expand_single_content_upsert(
             Port::scalar("expected_content", "String"),
             Port::scalar("response", "TransportResponse"),
         ],
-        vec![
-            Port::scalar("fresh", "Bool"),
-            Port::scalar("skip", "Bool"),
-        ],
+        vec![Port::scalar("fresh", "Bool"), Port::scalar("skip", "Bool")],
         LoweredOp::Callable {
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{compare_id}"),
             obligation: ObligationCategory::None,
+            service_metadata: None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -1210,6 +1237,7 @@ fn expand_single_content_upsert(
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{prepare_write_id}"),
             obligation: ObligationCategory::None,
+            service_metadata: None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -1224,33 +1252,19 @@ fn expand_single_content_upsert(
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{execute_transport_id}"),
             obligation: ObligationCategory::None,
+            service_metadata: None,
         },
     ));
 
-    builder.add_edge(
-        &prepare_read_id,
-        "request",
-        &execute_read_id,
-        "request",
-    );
-    builder.add_edge(
-        &execute_read_id,
-        "response",
-        &compare_id,
-        "response",
-    );
+    builder.add_edge(&prepare_read_id, "request", &execute_read_id, "request");
+    builder.add_edge(&execute_read_id, "response", &compare_id, "response");
     builder.add_edge(
         &prepare_write_id,
         "request",
         &execute_transport_id,
         "request",
     );
-    builder.add_edge(
-        &compare_id,
-        "skip",
-        &execute_transport_id,
-        "skip",
-    );
+    builder.add_edge(&compare_id, "skip", &execute_transport_id, "skip");
     builder.add_edge(
         &execute_transport_id,
         "makegen_response",
@@ -1290,7 +1304,9 @@ fn resolve_content_source(
         Expr::Call(name, _) => name.clone(),
         _ => return None,
     };
-    endpoints_by_name.get(&source_name).and_then(|entry| entry.clone())
+    endpoints_by_name
+        .get(&source_name)
+        .and_then(|entry| entry.clone())
 }
 
 fn expansion_suffix(item_name: &str, expansion_count: usize) -> String {
@@ -1320,8 +1336,8 @@ fn add_makegen_scaffolding(
     builder: &mut DagBuilder,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
 ) {
-    let Some(render) = endpoints_by_full
-        .get(&("tools.makegen".to_string(), "render_makefile".to_string()))
+    let Some(render) =
+        endpoints_by_full.get(&("tools.makegen".to_string(), "render_makefile".to_string()))
     else {
         return;
     };
@@ -1337,6 +1353,7 @@ fn add_makegen_scaffolding(
                 kind: CallableKind::Pattern,
                 name: "load_registry".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
     }
@@ -1366,6 +1383,7 @@ fn add_makegen_scaffolding(
                     kind: CallableKind::Pattern,
                     name: "fs_env".to_string(),
                     obligation: ObligationCategory::None,
+                    service_metadata: None,
                 },
             ));
         }
@@ -1375,6 +1393,69 @@ fn add_makegen_scaffolding(
             "prepare_read_makegen",
             "res:file:Makefile",
         );
+    }
+}
+
+fn has_annotation(annotations: &[Annotation], target: &str) -> bool {
+    annotations
+        .iter()
+        .any(|annotation| annotation.name == target)
+}
+
+fn annotation_transport_class(annotations: &[Annotation]) -> Option<ServiceTransportClass> {
+    if has_annotation(annotations, "shell") {
+        return Some(ServiceTransportClass::ShellLocal);
+    }
+    if has_annotation(annotations, "rest") {
+        return Some(ServiceTransportClass::RestNetwork);
+    }
+    if has_annotation(annotations, "file") {
+        return Some(ServiceTransportClass::FileBoundary);
+    }
+    None
+}
+
+fn annotation_permissions(annotations: &[Annotation]) -> Vec<String> {
+    let mut permissions = BTreeSet::new();
+    for annotation in annotations
+        .iter()
+        .filter(|annotation| annotation.name == "permissions")
+    {
+        for arg in &annotation.args {
+            match arg {
+                Expr::Literal(Literal::String(value)) => {
+                    permissions.insert(value.clone());
+                }
+                Expr::Ident(path) => {
+                    permissions.insert(path.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+    permissions.into_iter().collect::<Vec<_>>()
+}
+
+fn derive_service_call_metadata(
+    service: &ServiceDef,
+    operation: &OperationDef,
+) -> ServiceCallMetadata {
+    let transport = annotation_transport_class(&operation.annotations)
+        .or_else(|| annotation_transport_class(&service.annotations))
+        .unwrap_or(ServiceTransportClass::Unknown);
+    let mut permissions = annotation_permissions(&service.annotations);
+    permissions.extend(annotation_permissions(&operation.annotations));
+    permissions.sort();
+    permissions.dedup();
+    ServiceCallMetadata {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        transport,
+        idempotent: has_annotation(&operation.annotations, "idempotent")
+            || has_annotation(&service.annotations, "idempotent"),
+        readonly: has_annotation(&operation.annotations, "readonly")
+            || has_annotation(&service.annotations, "readonly"),
+        permissions,
     }
 }
 
@@ -1394,6 +1475,7 @@ fn add_service_transport_triplets(
             }
 
             for operation in &service.operations {
+                let service_metadata = derive_service_call_metadata(service, operation);
                 let suffix = sanitize_identifier(&format!(
                     "{module_name}_{}_{}",
                     service.name, operation.name
@@ -1425,6 +1507,7 @@ fn add_service_transport_triplets(
                             service.name, operation.name
                         ),
                         obligation: ObligationCategory::ServiceTransportPrepare,
+                        service_metadata: Some(service_metadata.clone()),
                     },
                 ));
                 builder.add_node(Node::opaque(
@@ -1439,6 +1522,7 @@ fn add_service_transport_triplets(
                             service.name, operation.name
                         ),
                         obligation: ObligationCategory::ServiceTransportExecute,
+                        service_metadata: Some(service_metadata.clone()),
                     },
                 ));
                 let parse_outputs = if operation.outputs.is_empty() {
@@ -1469,6 +1553,7 @@ fn add_service_transport_triplets(
                             service.name, operation.name
                         ),
                         obligation: ObligationCategory::ServiceTransportParse,
+                        service_metadata: Some(service_metadata),
                     },
                 ));
 
@@ -1525,7 +1610,6 @@ fn add_service_transport_triplets(
     registry
 }
 
-
 fn add_service_call_edges(
     builder: &mut DagBuilder,
     project: &TypedProject,
@@ -1562,8 +1646,7 @@ fn add_service_call_edges(
                 ),
                 _ => continue,
             };
-            let Some(target) =
-                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) = endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
@@ -1640,8 +1723,7 @@ fn add_used_resource_edges(
             let Some((item_name, uses)) = item_callable_uses(&item.node) else {
                 continue;
             };
-            let Some(target) =
-                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) = endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
@@ -1696,8 +1778,7 @@ fn add_provided_resource_nodes(
             let Some((item_name, provides)) = item_callable_provides(&item.node) else {
                 continue;
             };
-            let Some(target) =
-                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) = endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
@@ -1718,10 +1799,7 @@ fn add_provided_resource_nodes(
 
                 let provider_node_id = format!(
                     "provide_resource_{}",
-                    sanitize_identifier(&format!(
-                        "{module_name}_{item_name}_{}",
-                        provided.binding
-                    ))
+                    sanitize_identifier(&format!("{module_name}_{item_name}_{}", provided.binding))
                 );
                 builder.add_node(Node::opaque(
                     provider_node_id.clone(),
@@ -1734,11 +1812,9 @@ fn add_provided_resource_nodes(
                     LoweredOp::Callable {
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
-                        name: format!(
-                            "resource_provide::{}::{}",
-                            item_name, provided.binding
-                        ),
+                        name: format!("resource_provide::{}::{}", item_name, provided.binding),
                         obligation: ObligationCategory::ResourceProvide,
+                        service_metadata: None,
                     },
                 ));
                 builder.add_edge(
@@ -1838,6 +1914,7 @@ fn add_resource_lifecycle_nodes(
                         kind: CallableKind::Pattern,
                         name: format!("resource_lifecycle::acquire::{}", resource.name),
                         obligation: ObligationCategory::ResourceAcquire,
+                        service_metadata: None,
                     },
                 ));
                 has_acquire = true;
@@ -1852,6 +1929,7 @@ fn add_resource_lifecycle_nodes(
                         kind: CallableKind::Pattern,
                         name: format!("resource_lifecycle::release::{}", resource.name),
                         obligation: ObligationCategory::ResourceRelease,
+                        service_metadata: None,
                     },
                 ));
                 has_release = true;
@@ -1868,10 +1946,7 @@ fn add_resource_lifecycle_nodes(
                 acquire_node: has_acquire.then_some(acquire_id),
                 release_node: has_release.then_some(release_id),
             };
-            registry.register(
-                format!("{module_name}.{}", resource.name),
-                endpoint.clone(),
-            );
+            registry.register(format!("{module_name}.{}", resource.name), endpoint.clone());
             registry.register(resource.name.clone(), endpoint);
         }
     }
@@ -1911,6 +1986,7 @@ fn ensure_param_source_node(
             kind: CallableKind::Pattern,
             name: format!("call_param_source::{callable}::{param}"),
             obligation: ObligationCategory::ServiceParamSource,
+            service_metadata: None,
         },
     ));
     node_id
@@ -1933,9 +2009,7 @@ fn item_callable_uses(item: &Item) -> Option<(&str, &[daglang_syntax::ast::UsesC
     }
 }
 
-fn item_callable_provides(
-    item: &Item,
-) -> Option<(&str, &[daglang_syntax::ast::ProvidesClause])> {
+fn item_callable_provides(item: &Item) -> Option<(&str, &[daglang_syntax::ast::ProvidesClause])> {
     match item {
         Item::FuncDef(def) => Some((def.name.as_str(), def.provides.as_slice())),
         _ => None,
@@ -2020,8 +2094,7 @@ mod tests {
     #[allow(clippy::disallowed_methods)]
     #[test]
     fn lower_makegen_produces_callable_nodes() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let source = fs::read_to_string(file).expect("should read makegen source");
         let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
@@ -2056,8 +2129,7 @@ mod tests {
     #[allow(clippy::disallowed_methods)]
     #[test]
     fn content_upsert_expansion_wires_transport_chain_for_makegen() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let source = fs::read_to_string(file).expect("should read makegen source");
         let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
@@ -2098,7 +2170,12 @@ mod tests {
                 "tools.makegen::makegen",
                 "__deps",
             ),
-            ("load_registry", "registry", "tools.makegen::render_makefile", "registry"),
+            (
+                "load_registry",
+                "registry",
+                "tools.makegen::render_makefile",
+                "registry",
+            ),
             (
                 "fs_env",
                 "FilesystemHandle",
@@ -2160,6 +2237,90 @@ service FsStorage implements Storage {
                 && edge.to_node.0 == parse.as_str()
                 && edge.to_port.0 == "response"
         }));
+    }
+
+    #[test]
+    fn service_transport_metadata_preserves_operation_annotations() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/metadata.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service RemoteStorage implements Storage {
+  @rest
+  @idempotent
+  @permissions("storage.read", "storage.inspect")
+  operation read(path: String) -> { body: String }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let execute_node = dag
+            .nodes
+            .iter()
+            .find(|node| node.id.0 == "execute_transport_sample_services_RemoteStorage_read")
+            .expect("execute transport node should exist");
+        let metadata = match &execute_node.body {
+            gunbc_ir::node::NodeBody::Opaque(op) => op
+                .service_call_metadata()
+                .expect("service metadata should be preserved"),
+            gunbc_ir::node::NodeBody::SubDag(_) => {
+                panic!("expected opaque lowered node for execute transport")
+            }
+        };
+        assert_eq!(metadata.service, "RemoteStorage");
+        assert_eq!(metadata.operation, "read");
+        assert_eq!(metadata.transport, ServiceTransportClass::RestNetwork);
+        assert!(metadata.idempotent);
+        assert!(!metadata.readonly);
+        assert_eq!(
+            metadata.permissions,
+            vec!["storage.inspect".to_string(), "storage.read".to_string()]
+        );
+    }
+
+    #[test]
+    fn service_transport_metadata_uses_service_level_annotations_as_fallback() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/service_annotations.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+@shell
+@readonly
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let prepare_node = dag
+            .nodes
+            .iter()
+            .find(|node| node.id.0 == "prepare_transport_sample_services_FsStorage_read")
+            .expect("prepare transport node should exist");
+        let (transport_class, readonly) = match &prepare_node.body {
+            gunbc_ir::node::NodeBody::Opaque(op) => (
+                classify_service_transport(op).expect("service transport class should be present"),
+                op.service_call_metadata()
+                    .expect("service metadata should be present")
+                    .readonly,
+            ),
+            gunbc_ir::node::NodeBody::SubDag(_) => {
+                panic!("expected opaque lowered node for prepare transport")
+            }
+        };
+        assert_eq!(transport_class, ServiceTransportClass::ShellLocal);
+        assert!(
+            readonly,
+            "service-level readonly annotation should be preserved"
+        );
     }
 
     #[test]
@@ -2491,7 +2652,10 @@ func run() -> { ok: Bool } uses store: Storage {
 }"#,
         )]);
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
-        assert!(dag.nodes.iter().any(|node| node.id.0 == "sample.resources::run"));
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "sample.resources::run"));
         assert!(
             !dag.edges.iter().any(|edge| edge.to_node.0 == "sample.resources::run"
                 && edge.to_port.0 == "__deps"),
@@ -2545,6 +2709,7 @@ func run() -> { ok: Bool } provides out: Storage {
             kind: CallableKind::Pattern,
             name: "prepare_transport_sample".to_string(),
             obligation: ObligationCategory::ServiceTransportPrepare,
+            service_metadata: None,
         };
         assert_eq!(
             classify_obligation(&op),
@@ -2675,6 +2840,7 @@ func run() -> { ok: Bool } provides out: Storage {
                 kind: CallableKind::Fn,
                 name: "render".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         let mut reference = Dag::new();
@@ -2689,12 +2855,10 @@ func run() -> { ok: Bool } provides out: Storage {
         assert_eq!(report.changed_nodes, 1);
         assert_eq!(report.changed_node_details.len(), 1);
         assert_eq!(report.changed_node_details[0].node_id, "render");
-        assert!(
-            report.changed_node_details[0]
-                .differences
-                .iter()
-                .any(|difference| difference.contains("output ports differ"))
-        );
+        assert!(report.changed_node_details[0]
+            .differences
+            .iter()
+            .any(|difference| difference.contains("output ports differ")));
     }
 
     #[test]
@@ -2709,6 +2873,7 @@ func run() -> { ok: Bool } provides out: Storage {
                 kind: CallableKind::Fn,
                 name: "b".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         candidate.add_node(Node::opaque(
@@ -2720,6 +2885,7 @@ func run() -> { ok: Bool } provides out: Storage {
                 kind: CallableKind::Fn,
                 name: "a".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         candidate.add_edge(Edge::new("a", "out", "b", "in"));
@@ -2740,8 +2906,14 @@ func run() -> { ok: Bool } provides out: Storage {
         reference.add_edge(Edge::new("c", "out", "d", "in"));
 
         let report = compare_ir(&candidate, &reference);
-        assert_eq!(report.added_node_ids, vec!["a".to_string(), "b".to_string()]);
-        assert_eq!(report.removed_node_ids, vec!["c".to_string(), "d".to_string()]);
+        assert_eq!(
+            report.added_node_ids,
+            vec!["a".to_string(), "b".to_string()]
+        );
+        assert_eq!(
+            report.removed_node_ids,
+            vec!["c".to_string(), "d".to_string()]
+        );
         assert_eq!(
             report.added_edge_ids,
             vec!["a.out->b.in".to_string()],
@@ -2756,8 +2928,7 @@ func run() -> { ok: Bool } provides out: Storage {
 
     #[allow(clippy::disallowed_methods)]
     fn load_makegen_lowered() -> Dag<LoweredOp> {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let source = fs::read_to_string(file).expect("should read makegen source");
         let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
         lower_typed_project(&typed).expect("lowering should succeed")
@@ -2809,7 +2980,10 @@ func run() -> { ok: Bool } provides out: Storage {
         ));
         dag.add_node(Node::opaque(
             "prepare_write_makegen",
-            vec![Port::scalar("content", "String"), Port::scalar("path", "String")],
+            vec![
+                Port::scalar("content", "String"),
+                Port::scalar("path", "String"),
+            ],
             vec![Port::scalar("request", "TransportRequest")],
             (),
         ));

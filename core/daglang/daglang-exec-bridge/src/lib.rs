@@ -5,9 +5,7 @@ use gunbc_exec::{
     execute_with_mode_and_inputs, BoundaryMocks, ExecError, Executable, ExecutionLog,
     ExecutionMode, OutputMap,
 };
-use gunbc_ir::transport::{
-    FileOp, FileRequest, FileResponse, TransportRequest, TransportResponse,
-};
+use gunbc_ir::transport::{FileOp, FileRequest, FileResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{Dag, Node, Value};
 use gunbc_lib_transport::executor::execute_transport;
 use serde_json::json;
@@ -185,7 +183,9 @@ fn read_existing_content(output_path: &str) -> String {
     String::new()
 }
 
-fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_load_registry(
+    _inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     OutputMap::new()
         .json(
             "registry",
@@ -286,7 +286,10 @@ fn execute_prepare_write_content(
         .and_then(Value::as_str)
         .ok_or_else(|| ExecError::new("missing required input `content`".to_string()))?;
     OutputMap::new()
-        .request("request", TransportRequest::File(FileRequest::write(path, content)))
+        .request(
+            "request",
+            TransportRequest::File(FileRequest::write(path, content)),
+        )
         .ok()
 }
 
@@ -355,7 +358,9 @@ fn execute_file_request(request: &FileRequest) -> FileResponse {
             request.operation,
             "transport executor returned non-file response for file request",
         ),
-        Err(error) => FileResponse::error(request.path.clone(), request.operation, error.to_string()),
+        Err(error) => {
+            FileResponse::error(request.path.clone(), request.operation, error.to_string())
+        }
     }
 }
 
@@ -400,9 +405,7 @@ fn resolve_lowered_op(
     match op {
         LoweredOp::Pipeline { module, name, .. } => Err(ResolveDagError {
             node_id: node_id.to_string(),
-            reason: format!(
-                "unsupported pipeline `{module}.{name}` in execution resolver"
-            ),
+            reason: format!("unsupported pipeline `{module}.{name}` in execution resolver"),
         }),
         LoweredOp::Callable { module, name, .. } => {
             if module != "tools.makegen" {
@@ -411,10 +414,12 @@ fn resolve_lowered_op(
                     reason: format!("unsupported callable module `{module}`"),
                 });
             }
-            registry.resolve_callable(module, name).ok_or_else(|| ResolveDagError {
-                node_id: node_id.to_string(),
-                reason: format!("unsupported callable `tools.makegen.{name}`"),
-            })
+            registry
+                .resolve_callable(module, name)
+                .ok_or_else(|| ResolveDagError {
+                    node_id: node_id.to_string(),
+                    reason: format!("unsupported callable `tools.makegen.{name}`"),
+                })
         }
     }
 }
@@ -436,6 +441,7 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "load_registry".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         let resolved = resolve_lowered_dag(&dag).expect("makegen callable should resolve");
@@ -460,6 +466,7 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "run".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         let error = resolve_lowered_dag(&dag).expect_err("unsupported module should fail");

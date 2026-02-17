@@ -110,15 +110,11 @@ impl CodegenBackend for RustBackend {
     }
 
     fn emit_fn(&self, name: &str) -> String {
-        format!(
-            "pub fn {name}() {{\n    // TODO(fn): compile pure functor body\n}}\n"
-        )
+        format!("pub fn {name}() {{\n    // TODO(fn): compile pure functor body\n}}\n")
     }
 
     fn emit_func(&self, name: &str) -> String {
-        format!(
-            "pub fn {name}() {{\n    // TODO(func): execute lowered DAG orchestration\n}}\n"
-        )
+        format!("pub fn {name}() {{\n    // TODO(func): execute lowered DAG orchestration\n}}\n")
     }
 
     fn emit_transport(&self, spec: &str) -> String {
@@ -164,10 +160,7 @@ pub fn emit_rust_bundle(
 
         match op {
             LoweredOp::Callable {
-                module,
-                kind,
-                name,
-                ..
+                module, kind, name, ..
             } => {
                 callable_count += 1;
                 let fn_name = sanitize_identifier(&format!("{module}_{name}"));
@@ -251,7 +244,11 @@ fn render_manifest(manifest: &ProgressManifest) -> String {
     }
     out.push_str("parallel_groups=\n");
     for group in &manifest.parallel_groups {
-        out.push_str(&format!("  {}={}\n", group.group_id, group.node_ids.join(",")));
+        out.push_str(&format!(
+            "  {}={}\n",
+            group.group_id,
+            group.node_ids.join(",")
+        ));
     }
     out.push_str(&format!(
         "scatter_points={}\n",
@@ -289,11 +286,7 @@ fn sanitize_identifier(value: &str) -> String {
     if out.is_empty() {
         out.push('_');
     }
-    if out
-        .chars()
-        .next()
-        .is_some_and(|ch| ch.is_ascii_digit())
-    {
+    if out.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
         out.insert(0, '_');
     }
     out
@@ -330,6 +323,7 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: "render_makefile".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -341,6 +335,7 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "makegen".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         dag.add_edge(Edge::new(
@@ -363,7 +358,8 @@ mod tests {
         assert!(bundle
             .files
             .iter()
-            .any(|file| file.path.ends_with("main.rs") && file.content.contains("tools_makegen_makegen")));
+            .any(|file| file.path.ends_with("main.rs")
+                && file.content.contains("tools_makegen_makegen")));
         let manifest_file = bundle
             .files
             .iter()

@@ -215,9 +215,9 @@ fn compute_waves(dag: &Dag<LoweredOp>) -> Result<Vec<Vec<String>>, DeriveError> 
     for edge in &dag.edges {
         let to = edge.to_node.0.clone();
         let from = edge.from_node.0.clone();
-        let degree = indegree
-            .get_mut(&to)
-            .ok_or_else(|| DeriveError::InvalidGraph(format!("edge targets missing node `{to}`")))?;
+        let degree = indegree.get_mut(&to).ok_or_else(|| {
+            DeriveError::InvalidGraph(format!("edge targets missing node `{to}`"))
+        })?;
         *degree += 1;
         outgoing
             .get_mut(&from)
@@ -444,6 +444,7 @@ mod tests {
                 kind: CallableKind::Func,
                 name: name.to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         )
     }
@@ -560,6 +561,7 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "call_param_source::run::path".to_string(),
                 obligation: ObligationCategory::ServiceParamSource,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -571,6 +573,7 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "service_transport::prepare::FsStorage::read".to_string(),
                 obligation: ObligationCategory::ServiceTransportPrepare,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -582,6 +585,7 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "service_transport::execute::FsStorage::read".to_string(),
                 obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -593,6 +597,7 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "service_transport::parse::FsStorage::read".to_string(),
                 obligation: ObligationCategory::ServiceTransportParse,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -604,6 +609,7 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "resource_provide::run::out".to_string(),
                 obligation: ObligationCategory::ResourceProvide,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -615,6 +621,7 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "resource_lifecycle::acquire::TempFile".to_string(),
                 obligation: ObligationCategory::ResourceAcquire,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -626,6 +633,7 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "resource_lifecycle::release::TempFile".to_string(),
                 obligation: ObligationCategory::ResourceRelease,
+                service_metadata: None,
             },
         ));
         dag.add_edge(Edge::new(
@@ -683,6 +691,7 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "service_transport::prepare::Fake::op".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -694,13 +703,13 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "not_a_transport_name".to_string(),
                 obligation: ObligationCategory::ServiceTransportPrepare,
+                service_metadata: None,
             },
         ));
 
         let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
         assert_eq!(
-            artifacts.obligations.service_transport_prepare_targets,
-            1,
+            artifacts.obligations.service_transport_prepare_targets, 1,
             "classification should follow structural obligation category"
         );
     }

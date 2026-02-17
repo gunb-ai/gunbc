@@ -819,6 +819,7 @@ fn run() -> String { return 42 }
                 kind: CallableKind::Func,
                 name: "unknown".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
 
@@ -1056,6 +1057,7 @@ fn run() -> String { return 42 }
                 kind: CallableKind::Pattern,
                 name: "prepare".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1067,6 +1069,7 @@ fn run() -> String { return 42 }
                 kind: CallableKind::Pattern,
                 name: "execute".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1078,6 +1081,7 @@ fn run() -> String { return 42 }
                 kind: CallableKind::Pattern,
                 name: "parse_z".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1089,6 +1093,7 @@ fn run() -> String { return 42 }
                 kind: CallableKind::Pattern,
                 name: "parse_a".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1100,6 +1105,7 @@ fn run() -> String { return 42 }
                 kind: CallableKind::Pattern,
                 name: "sink".to_string(),
                 obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
 
