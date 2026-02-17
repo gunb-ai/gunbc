@@ -184,7 +184,7 @@ fn build_check_pipeline_context(
     let normalized_input = input
         .map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
     let (roots, target_file) = match normalized_input {
-        Some(path) if path_utils::has_dag_extension(&path) && !path.is_dir() => {
+        Some(path) if path_utils::is_single_file_target(&path, false) => {
             let root = path
                 .parent()
                 .map(PathBuf::from)

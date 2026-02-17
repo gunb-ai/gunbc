@@ -41,7 +41,7 @@ pub enum OutputFormat {
 pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
     let parsed = input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
     let (roots, target_file) = match parsed {
-        Some(path) if path_utils::has_dag_extension(&path) => {
+        Some(path) if path_utils::is_single_file_target(&path, true) => {
             let root = path
                 .parent()
                 .map(PathBuf::from)
