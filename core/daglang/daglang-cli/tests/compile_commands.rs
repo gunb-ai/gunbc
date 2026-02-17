@@ -11562,6 +11562,35 @@ fn obligations_command_absolute_parent_segment_target_matches_canonical_absolute
 }
 
 #[test]
+fn obligations_command_absolute_parent_curdir_segment_target_matches_canonical_absolute_output() {
+    let parent_curdir_segment_target = workspace_root()
+        .join("dsl/tools/./../tools/makegen.dag")
+        .to_string_lossy()
+        .into_owned();
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "obligations",
+        &parent_curdir_segment_target,
+        &[],
+        "absolute parent-curdir-segment",
+    );
+}
+
+#[test]
+fn obligations_command_absolute_parent_curdir_double_separator_target_matches_canonical_absolute_output(
+) {
+    let parent_curdir_double_separator_target =
+        format!("{}/dsl/./tools/..//tools/makegen.dag", workspace_root().display());
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "obligations",
+        &parent_curdir_double_separator_target,
+        &[],
+        "absolute parent-curdir-double-separator",
+    );
+}
+
+#[test]
 fn obligations_command_relative_and_absolute_uppercase_extension_targets_are_equivalent() {
     let root = unique_temp_dir("obligations_relative_absolute_uppercase_extension");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -11779,6 +11808,36 @@ fn obligations_command_json_absolute_parent_segment_target_matches_canonical_abs
         &parent_segment_target,
         &["--format", "json"],
         "absolute parent-segment",
+    );
+}
+
+#[test]
+fn obligations_command_json_absolute_parent_curdir_segment_target_matches_canonical_absolute_output(
+) {
+    let parent_curdir_segment_target = workspace_root()
+        .join("dsl/tools/./../tools/makegen.dag")
+        .to_string_lossy()
+        .into_owned();
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "obligations",
+        &parent_curdir_segment_target,
+        &["--format", "json"],
+        "absolute parent-curdir-segment",
+    );
+}
+
+#[test]
+fn obligations_command_json_absolute_parent_curdir_double_separator_target_matches_canonical_absolute_output(
+) {
+    let parent_curdir_double_separator_target =
+        format!("{}/dsl/./tools/..//tools/makegen.dag", workspace_root().display());
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "obligations",
+        &parent_curdir_double_separator_target,
+        &["--format", "json"],
+        "absolute parent-curdir-double-separator",
     );
 }
 
@@ -13403,6 +13462,35 @@ fn show_triplets_command_absolute_parent_segment_target_matches_canonical_absolu
 }
 
 #[test]
+fn show_triplets_command_absolute_parent_curdir_segment_target_matches_canonical_absolute_output() {
+    let parent_curdir_segment_target = workspace_root()
+        .join("dsl/tools/./../tools/makegen.dag")
+        .to_string_lossy()
+        .into_owned();
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "show-triplets",
+        &parent_curdir_segment_target,
+        &[],
+        "absolute parent-curdir-segment",
+    );
+}
+
+#[test]
+fn show_triplets_command_absolute_parent_curdir_double_separator_target_matches_canonical_absolute_output(
+) {
+    let parent_curdir_double_separator_target =
+        format!("{}/dsl/./tools/..//tools/makegen.dag", workspace_root().display());
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "show-triplets",
+        &parent_curdir_double_separator_target,
+        &[],
+        "absolute parent-curdir-double-separator",
+    );
+}
+
+#[test]
 fn show_triplets_command_relative_and_absolute_uppercase_extension_targets_are_equivalent() {
     let root = unique_temp_dir("show_triplets_relative_absolute_uppercase_extension");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -13620,6 +13708,36 @@ fn show_triplets_command_json_absolute_parent_segment_target_matches_canonical_a
         &parent_segment_target,
         &["--format", "json"],
         "absolute parent-segment",
+    );
+}
+
+#[test]
+fn show_triplets_command_json_absolute_parent_curdir_segment_target_matches_canonical_absolute_output(
+) {
+    let parent_curdir_segment_target = workspace_root()
+        .join("dsl/tools/./../tools/makegen.dag")
+        .to_string_lossy()
+        .into_owned();
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "show-triplets",
+        &parent_curdir_segment_target,
+        &["--format", "json"],
+        "absolute parent-curdir-segment",
+    );
+}
+
+#[test]
+fn show_triplets_command_json_absolute_parent_curdir_double_separator_target_matches_canonical_absolute_output(
+) {
+    let parent_curdir_double_separator_target =
+        format!("{}/dsl/./tools/..//tools/makegen.dag", workspace_root().display());
+
+    assert_makegen_target_variant_matches_canonical_output(
+        "show-triplets",
+        &parent_curdir_double_separator_target,
+        &["--format", "json"],
+        "absolute parent-curdir-double-separator",
     );
 }
 
