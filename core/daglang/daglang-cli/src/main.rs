@@ -495,7 +495,9 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     let mut output_path = "Makefile".to_string();
     let mut has_output_path = false;
     let mut dry_run = false;
+    let mut has_dry_run_flag = false;
     let mut check_mode = false;
+    let mut has_check_mode_flag = false;
     let mut parse_flags = true;
     let mut index = 2usize;
     while index < args.len() {
@@ -507,11 +509,19 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
                     index += 1;
                 }
                 "--dry-run" => {
+                    if has_dry_run_flag {
+                        return Err("run accepts --dry-run at most once".to_string());
+                    }
                     dry_run = true;
+                    has_dry_run_flag = true;
                     index += 1;
                 }
                 "--check-mode" => {
+                    if has_check_mode_flag {
+                        return Err("run accepts --check-mode at most once".to_string());
+                    }
                     check_mode = true;
+                    has_check_mode_flag = true;
                     index += 1;
                 }
                 "--output" => {
@@ -1143,6 +1153,38 @@ mod tests {
         assert!(
             error.contains("--dry-run and --check-mode cannot be used together"),
             "expected clear mode conflict error with -- separator input, got: {error}"
+        );
+    }
+
+    #[test]
+    fn parse_run_args_rejects_duplicate_dry_run_flags() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--dry-run".to_string(),
+            "--dry-run".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run accepts --dry-run at most once"),
+            "expected duplicate dry-run flag error, got: {error}"
+        );
+    }
+
+    #[test]
+    fn parse_run_args_rejects_duplicate_check_mode_flags() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--check-mode".to_string(),
+            "--check-mode".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run accepts --check-mode at most once"),
+            "expected duplicate check-mode flag error, got: {error}"
         );
     }
 
