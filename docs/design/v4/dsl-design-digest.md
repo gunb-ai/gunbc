@@ -1,18 +1,101 @@
-# DSL Design Digest
+# gunbc: Design Digest
 
-**What this is:** A concise walkthrough of the gunbc v4 DSL — what it does, how it compiles, and what you get for free at each stage. Intended as a shareable overview for someone who hasn't read the 4,000+ line spec.
+**What this is:** A complete introduction to gunbc — what it is, why it exists, and how it works. Intended as a shareable document for someone encountering the project for the first time.
 
-**Source material:** `dsl-design.md`, `dsl-roadmap.md`, and the v2/v3 contract documents in `docs/design/v4/`.
-
----
-
-## 1. The Problem in One Paragraph
-
-gunbc builds workflows as typed DAGs (directed acyclic graphs). Today those DAGs are hand-wired in Rust: 7,000+ lines of builder code, 6 separate registration islands, and per-tool boilerplate for types, tests, progress rendering, and CLI. Adding a new tool costs ~200 lines across 3 files. The DSL replaces all of that with `.dag` files that compile to the same IR, targeting ~20 lines in 1 file per tool, with 100% code generation.
+**Source material:** The v2/v3/v4 design documents, the BL1 retrospective, the DAG systems overview, testgen philosophy, and the DSL spec in `docs/design/v4/`.
 
 ---
 
-## 2. The Language at a Glance
+## 1. The Core Idea
+
+gunbc is a compiler for workflows. You describe what a tool does — its inputs, outputs, service calls, and resources — and the compiler proves as much as possible correct *before anything runs*.
+
+The animating idea: **push everything you can into compile time.** Every property that the compiler can verify statically is one fewer test to write, one fewer runtime failure to debug, one fewer class of bug that can exist in production. The ideal is that when a `.dag` file compiles, the only remaining questions are about the external world (does the API return what it says it will?) — not about the workflow's own structure.
+
+This is the Guarantee Hierarchy:
+
+| Level | Method | When | Example |
+|-------|--------|------|---------|
+| **1. Impossible by Structure** | Type system prevents invalid states | Compile | Can't wire `String` output to `Int` input |
+| **2. Impossible by Generation** | Code generation only produces valid code | Build | Generated transport code always serializes correctly |
+| **3. Validated at Build** | Explicit checks during build/validation | Build | All input ports connected, no resource conflicts |
+| **4. Validated at Runtime** | Checks during execution | Run | Transport returns expected status code |
+| **5. Tested** | Unit/integration tests | Test | Business logic produces correct output |
+
+**Preference: 1 > 2 > 3 > 4 > 5.** A proof at Level 1 is always better than a test at Level 5. The compiler's job is to move as many guarantees as possible toward Level 1.
+
+---
+
+## 2. Why This Exists: The Arc from Go to Here
+
+### The Go system: executable DAGs with contracts
+
+The original system (`OaaS_v2/pkg/dag` in Go) modeled infrastructure operations as DAGs where every node was executable code — a `func() error` — wrapped in a contract. Each node declared what it required, what it provided, what resources it claimed, and what typed data it exported. A `CompileAndValidate` phase checked the graph before execution: no cycles, contracts satisfied, data flow valid, no resource conflicts.
+
+This worked. Real tools (`make heal`, `make login`, `infra apply`, OaaS triage flows) ran in production using these patterns. The key insight: **because nodes were executable, their contracts constrained real code.** The contract wasn't a description of what the code *might* do — it was a binding declaration of what the code *must* satisfy.
+
+### The Rust V1 system: the gap
+
+When the system was rewritten in Rust, it introduced a modeling layer — "Understandings" — for describing external tools. But it made a critical mistake: behaviors within a tool were a flat list, not a DAG. The system had three natural levels of causal structure:
+
+1. **Tool → Tool** (top level: tool dependencies) — built, working via `depends_on`
+2. **Behavior → Behavior** (middle: within-tool causation) — **missing**
+3. **Block → Block** (bottom: execution graph) — built, working via GraphIR
+
+The missing middle level meant the system could describe *what* a tool does (check, create, resolve) but not *how those steps relate to each other causally*. Check → Create → Resolve were annotations, not edges. And the epistemology (how we know things about the world) was annotative — you could tag things with epistemic constructs, but the type system didn't enforce them.
+
+The BL1 retrospective distilled this:
+
+> **V1 modeled tool facts; V2 models tool obligations.** The epistemology must be structural, not annotative.
+
+### The V3 insight: one recursive type
+
+The breakthrough was realizing the entire system reduces to one recursive data structure:
+
+```rust
+enum NodeBody<T> {
+    Opaque(T),           // leaf — we trust it
+    SubDag(Dag<T>),      // recursive — same structure inside
+}
+```
+
+A node is either opaque (you don't look inside) or a sub-DAG (you do, and it's the same structure all the way down). This gives you:
+
+- **Uniformity** — the same language at every level of abstraction
+- **Opacity** — a node is "atomic" only because you choose not to look inside
+- **Fungibility** — you can replace an opaque node with a sub-DAG (or vice versa) without breaking consumers, because the interface (typed ports) is identical
+
+This is the fractal DAG. It's the same idea at every level: causes (inputs) flow through nodes to effects (outputs). Dependencies are edges. Information flows forward. Everything is a DAG.
+
+### The DSL: making the proofs automatic
+
+The hand-wired Rust builders expressed these DAGs, but at the cost of massive boilerplate: 7,000+ lines of builder code, 6 separate registration islands, per-tool ceremony for types, tests, progress rendering, and CLI. Adding a new tool cost ~200 lines across 3 files.
+
+The DSL replaces all of that with `.dag` files that compile to the same IR. The goal: ~20 lines in 1 file per tool, 100% code generation, and — critically — all the proofs that were implicit in the builder patterns become explicit compiler passes.
+
+---
+
+## 3. Comparisons to Existing Systems
+
+The closest analogues in mainstream programming:
+
+**Rust's type system and borrow checker.** The philosophy is the same: use the type system to prove properties at compile time that other languages check at runtime (or not at all). Rust proves memory safety; gunbc proves workflow safety — that data flows correctly, resources don't conflict, effects are bounded, and every input port is satisfied.
+
+**Protocol Buffers / gRPC IDL.** Like protobuf, `.dag` files declare typed interfaces that generate code in multiple target languages. But protobuf only describes data shapes; gunbc describes *computation* — the DAG of operations, their causal ordering, and the proof obligations that follow from the structure.
+
+**Terraform / Pulumi.** Infrastructure-as-code tools that build dependency graphs and plan execution. gunbc's DAG is similar, but goes further: the type system is richer (refinement types, branded types, resource lifecycles), the compiler proves more properties statically, and the output is general-purpose workflow code — not limited to infrastructure provisioning.
+
+**Java annotation processors / Lombok.** These generate code from annotations, but annotations are opaque metadata — the processor can do anything, and the compiler can't reason about the relationship between annotation and generated code. gunbc's annotations desugar to structure: `@rest(GET, "/path")` becomes a transport triplet with typed inputs and outputs. The compiler sees through every annotation.
+
+**Haskell / ML type systems.** The closest match for the type-level reasoning. Refinement types (`@range`, `@pattern`), branded types (`@brand`), and the coercion lattice are borrowed from dependent/refinement type theory. The key difference: gunbc's `fn` language is deliberately not Turing-complete (12 constructs, no general recursion), which is what makes totality provable and test generation mechanical.
+
+**Build systems (Bazel, Buck2).** Build systems also model computation as DAGs with typed inputs/outputs and deterministic execution. gunbc's compilation pipeline is similar in spirit — deterministic, cacheable, content-addressed. The difference is that gunbc models *runtime* workflows, not build-time dependencies.
+
+**What's novel:** The combination. Taking the type-level reasoning of ML, the code generation of protobuf, the DAG execution of build systems, and the resource modeling of infrastructure tools — and unifying them in a single compiler where each pass earns a specific proof or generates specific test material.
+
+---
+
+## 4. The Language at a Glance
 
 Eight constructs, each with a clear role:
 
@@ -31,7 +114,7 @@ The `fn` body language is deliberately constrained: `let`, `if/else`, `match`, `
 
 ---
 
-## 3. The Compilation Pipeline
+## 5. The Compilation Pipeline
 
 Nine passes, each producing a concrete artifact. The key insight: **every pass earns you something** — either a structural proof or generated test material.
 
@@ -78,7 +161,7 @@ Nine passes, each producing a concrete artifact. The key insight: **every pass e
 
 ---
 
-## 4. What Each Stage Buys You
+## 6. What Each Stage Buys You
 
 ### Stage 1: Discover
 **Input:** Filesystem scan of project directory.
@@ -202,7 +285,53 @@ All four rendering backends (plain, inline, TUI, JSONL) consume the same manifes
 
 ---
 
-## 5. End-to-End Example: `makegen` (The "Hello World")
+## 7. The "Proof Once" Principle
+
+Traditional approach:
+- Developer A writes workflow → writes tests for type safety → writes tests for cardinality → writes tests for acyclicity
+- Developer B writes workflow → writes the same tests again
+- Developer C writes workflow → writes the same tests again
+
+gunbc approach:
+- The system proves type safety, cardinality, acyclicity, and port saturation **once** — in the compiler.
+- Developer A writes a workflow → the compiler rejects invalid structure, no tests needed for these properties.
+- Developer B writes a workflow → same.
+- **Developers write tests for business logic, not structural correctness.**
+
+What's proven statically (no tests generated):
+
+| Property | How it's proven |
+|----------|----------------|
+| Acyclicity | DAG structure is acyclic by construction |
+| Type compatibility | Edge creation enforces matching types |
+| Cardinality satisfaction | Compiler checks all ports connect properly |
+| Boundary detection | Structural, automatically inferred |
+| Resource threading | Compiler inserts acquire/release nodes |
+
+What the compiler generates tests for (can't be proven statically):
+
+| Property | Why it needs tests |
+|----------|-------------------|
+| Transport correctness | External APIs can return anything |
+| Pure function logic | Business logic is domain-specific |
+| Failure scenarios | How the workflow behaves when transports fail |
+| Guard branch coverage | Runtime values determine which branches execute |
+
+The line between "proven" and "tested" is the line between **structure** (which the compiler controls) and **the external world** (which it doesn't).
+
+---
+
+## 8. The Node Contract
+
+For the graph to be a source of truth — not just a visualization — each opaque node must obey a contract: all input arrives through declared ports, all output leaves through declared ports, no side-channel communication.
+
+The node can do anything internally (it's Turing-complete behind its ports). But its interface to the graph must be honest. Without this contract, the DAG is a diagram, not a reasoning tool.
+
+This is why `fn` is not Turing-complete but opaque nodes can be: `fn` nodes are *inside* the compiler's reasoning boundary. Opaque nodes are *outside* it — the compiler trusts their port declarations but doesn't look inside. The test generation system compensates: every opaque transport node gets interception tests (Bucket A) and failure-scenario tests (Bucket C).
+
+---
+
+## 9. End-to-End Example: `makegen` (The "Hello World")
 
 ### What it does
 
@@ -298,7 +427,7 @@ makegen ─ 4/4 ━━━━━━━━━━━━━━━━ 100% [✓ load]
 
 ---
 
-## 6. End-to-End Example: GCP Credential Chain (The Stress Test)
+## 10. End-to-End Example: GCP Credential Chain (The Stress Test)
 
 ### What it does
 
@@ -392,7 +521,7 @@ Bucket D: TransportResourceDeclared × 4, ResourceInputConnected × 4
 
 ---
 
-## 7. The Type System and Test Generation
+## 11. The Type System and Test Generation
 
 Types are themselves DAGs of validation operations. This is what powers automatic test generation.
 
@@ -433,7 +562,7 @@ Different brands, different types. The test generator produces distinct value se
 
 ---
 
-## 8. Compiler-Enforced Policies (C1–C11)
+## 12. Compiler-Enforced Policies (C1–C11)
 
 These are invariants the compiler proves on every compilation. Each maps to a pass, an artifact, and a "free" check:
 
@@ -453,7 +582,7 @@ These are invariants the compiler proves on every compilation. Each maps to a pa
 
 ---
 
-## 9. Summary: What the DSL Earns at Each Level
+## 13. Summary: What the DSL Earns at Each Level
 
 | Level | What you write | What the compiler proves | What the compiler generates |
 |-------|---------------|------------------------|---------------------------|
@@ -467,12 +596,15 @@ These are invariants the compiler proves on every compilation. Each maps to a pa
 
 ---
 
-## 10. How to Read the Full Spec
+## 14. How to Read the Full Spec
 
 The design documents form an arc. If you want to go deeper:
 
-1. **`bl1-retrospective.md`** — Why: what went wrong with hand-wired builders
-2. **`v2-contracts-design.md`** + **`v2-worked-examples.md`** — The pattern/contract foundation
-3. **`v3-contracts-minimal.md`** + **`v3-worked-examples.md`** — The key insight: one recursive type (`Node<T>/Dag<T>`)
-4. **`dsl-design.md`** — The full spec (start at §1 and §4 for the language, §9 for the pipeline, appendices A–C for complete examples)
-5. **`dsl-roadmap.md`** — How to build it (5 phases, acceptance gates, worker assignments)
+1. **`bl1-retrospective.md`** — Why: what went wrong with hand-wired builders, the "half-built DAG" problem
+2. **`dag-systems-overview.md`** — The Go-era reference system: executable DAGs with contracts
+3. **`v2-contracts-design.md`** + **`v2-worked-examples.md`** — The pattern/contract foundation
+4. **`v3-contracts-minimal.md`** + **`v3-worked-examples.md`** — The key insight: one recursive type (`Node<T>/Dag<T>`)
+5. **`dsl-design.md`** — The full spec (start at §1 and §4 for the language, §9 for the pipeline, appendices A–C for complete examples)
+6. **`dsl-roadmap.md`** — How to build it (5 phases, acceptance gates, worker assignments)
+7. **`overview.md`** (in `docs/design/`) — The Guarantee Hierarchy, the formal model, the Erasure Lemma
+8. **`testgen.md`** (in `docs/design/`) — Proof obligations, test generation philosophy, the anti-tautology rule
