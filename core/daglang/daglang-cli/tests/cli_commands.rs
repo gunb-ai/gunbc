@@ -30644,6 +30644,65 @@ fn run_supports_double_dash_for_dash_prefixed_input_paths() {
 }
 
 #[test]
+fn run_with_double_dash_without_input_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with -- and no input");
+
+    assert!(
+        !output.status.success(),
+        "run with -- and no input should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with -- and no input should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run requires <file.dag>"),
+        "run should report missing input after -- explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for -- without input: {stderr}"
+    );
+}
+
+#[test]
+fn run_with_double_dash_non_dag_input_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--")
+        .arg("dsl/tools")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with -- and non-dag input");
+
+    assert!(
+        !output.status.success(),
+        "run with -- and non-dag input should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with -- and non-dag input should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run requires a .dag input file"),
+        "run should report non-dag input after -- explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for -- non-dag input: {stderr}"
+    );
+}
+
+#[test]
 fn run_with_conflicting_dry_run_and_check_mode_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
