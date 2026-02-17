@@ -530,4 +530,25 @@ mod tests {
 
         std::fs::remove_dir_all(&root).expect("failed to cleanup temp fixture");
     }
+
+    #[test]
+    fn resolve_root_defaults_to_cwd_dsl_when_arg_missing() {
+        let cwd = root_path().join("workspace").join("project").join(".");
+        let resolved = super::resolve_root(&cwd, None);
+        let expected = root_path().join("workspace").join("project").join("dsl");
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn resolve_root_normalizes_relative_arg_against_cwd() {
+        let cwd = root_path().join("workspace").join("project");
+        let arg = "dsl/./tools/../services".to_string();
+        let resolved = super::resolve_root(&cwd, Some(&arg));
+        let expected = root_path()
+            .join("workspace")
+            .join("project")
+            .join("dsl")
+            .join("services");
+        assert_eq!(resolved, expected);
+    }
 }
