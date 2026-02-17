@@ -42,7 +42,7 @@ Global status:
 
 ## S4 — Gist Snapshot (`tools.gist`)
 
-- **Current status**: ✅ compiles, emits obligations contract successfully, and core gist workflow is compressed to 59 DSL lines.
+- **Current status**: ✅ compiles, emits obligations contract successfully, core gist workflow is compressed to 59 DSL lines, and dependency-closure lowering regression coverage now verifies gist→shared→credential-chain composition wiring.
 - **Primary gap**:
   - exact parity against legacy gist builder shape is still pending.
 - **Next increments**:

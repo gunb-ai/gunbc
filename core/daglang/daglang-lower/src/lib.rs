@@ -3044,6 +3044,40 @@ fn run(values: List<String>) -> String {
     }
 
     #[test]
+    fn gist_dependency_closure_lowering_reuses_shared_credential_chain() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let scope = typed
+            .modules
+            .iter()
+            .map(|module| module.module_path.join("."))
+            .collect::<HashSet<_>>();
+        let dag = lower_typed_project_for_modules(&typed, &scope).expect("lowering should succeed");
+
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "shared.gist_modes::share_content"));
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "shared.gist_modes::gist_upload"));
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "std.patterns::credential_chain"));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "std.patterns::credential_chain"
+                && edge.to_node.0 == "shared.gist_modes::gist_upload"
+                && edge.to_port.0 == "__deps"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "shared.gist_modes::share_content"
+                && edge.to_node.0 == "tools.gist::gist_snapshot"
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
     fn aws_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.aws.credential");
         let dag = lower_target_module(&typed, "cloud.aws.credential");
