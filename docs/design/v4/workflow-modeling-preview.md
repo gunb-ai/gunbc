@@ -41,9 +41,10 @@ The source of truth for current status is the workflow fixture contract suite in
 
 - **Current status**: ✅ compiles and emits obligations contract successfully.
 - **Primary gap**:
-  - parity against legacy gist builder shape is still pending.
+  - exact parity against legacy gist builder shape is still pending.
 - **Next increments**:
-  - add gist mode parity harnesses (snapshot/diff/recent) against legacy graph contracts.
+  - tighten newly-added deterministic snapshot parity scaffold to zero-delta shape parity.
+  - extend parity scaffolding to diff/recent modes and then gate all three modes.
 
 ## S5 — CI Pipeline (`pipelines.ci`)
 

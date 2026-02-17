@@ -17,4 +17,5 @@ daglang-resolve = { path = "../daglang-resolve" }
 gunbc-dag = { path = "../../../gunbc-dag" }
 gunbc-clippy = { path = "../../../lib/tools/clippy" }
 gunbc-deps = { path = "../../../lib/tools/deps" }
+gunbc-gist = { path = "../../../lib/tools/gist" }
 gunbc-lib-gcp-ops = { path = "../../../lib/gcp-ops" }

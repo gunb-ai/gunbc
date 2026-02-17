@@ -203,6 +203,7 @@ dependencies = [
  "gunbc-clippy",
  "gunbc-dag",
  "gunbc-deps",
+ "gunbc-gist",
  "gunbc-ir",
  "gunbc-lib-gcp-ops",
  "serde",

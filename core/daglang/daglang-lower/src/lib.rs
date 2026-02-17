@@ -2437,6 +2437,7 @@ mod tests {
     use gunbc_clippy::build_clippy_graph_lint_all;
     use gunbc_dag::build_makegen_graph;
     use gunbc_deps::build_deps_graph;
+    use gunbc_gist::{build_gist_graph, GistMode};
     use gunbc_lib_gcp_ops::build_gcp_secret_manager_credential_graph_github;
     use gunbc_ir::{Edge, Port};
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -2578,6 +2579,20 @@ mod tests {
         let typed = typed_project_for_module_with_dependency_closure("tools.deps");
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
         let reference = build_deps_graph().expect("deps builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn gist_snapshot_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let reference = build_gist_graph(GistMode::Snapshot, Vec::new(), false)
+            .expect("gist builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);
