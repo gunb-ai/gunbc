@@ -1484,9 +1484,9 @@ Do this sweep **during** the engine unification (Workstream C0) — because the 
 | `FilesystemHandle::new()` | `uses fs: Filesystem(mode: ...)` resource declaration |
 
 **Non-negotiable gates** (already enforced, keep during migration):
-- [ ] Repo-wide purity checks
-- [ ] Resource declaration audits
-- [ ] Clippy guardrails preventing direct I/O outside transport/boundary crates
+- [x] Repo-wide purity checks — *`gunbc-dag/tests/resource_purity_checks.rs` remains green*
+- [x] Resource declaration audits — *resource purity + dependency boundary suites are passing*
+- [x] Clippy guardrails preventing direct I/O outside transport/boundary crates — *`daglang-exec-bridge` clippy gate enforced with `-D warnings`*
 
 ---
 
