@@ -24,12 +24,12 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
+use daglang_syntax::ast::{
+    Expr, Field, Item, Param, ProvidesClause, SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
+};
 use daglang_syntax::ast_utils::{
     canonical_type_name, resource_type_name, service_call_lookup_keys,
     should_track_call_name as should_validate_call_name, type_expr_to_string, walk_stmts,
-};
-use daglang_syntax::ast::{
-    Expr, Field, Item, Param, ProvidesClause, SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 
 /// A typechecked project snapshot.
@@ -85,6 +85,7 @@ pub enum TypedItemSignature {
     Pipeline {
         name: String,
         stages: usize,
+        stage_names: Vec<String>,
     },
 }
 
@@ -121,7 +122,11 @@ pub enum TypeError {
     /// A refinement constraint is unsatisfiable.
     UnsatisfiableRefinement { ty: String, constraint: String },
     /// Generic type parameter count mismatch.
-    ArityMismatch { name: String, expected: usize, got: usize },
+    ArityMismatch {
+        name: String,
+        expected: usize,
+        got: usize,
+    },
     /// Duplicate top-level item name in a module.
     DuplicateDefinition { module: String, name: String },
     /// Duplicate parameter name in a callable signature.
@@ -173,15 +178,9 @@ pub enum TypeError {
         argument: String,
     },
     /// Call expression target resolves to multiple callable contracts.
-    AmbiguousCallTarget {
-        caller: String,
-        callee: String,
-    },
+    AmbiguousCallTarget { caller: String, callee: String },
     /// Call expression target cannot be resolved to a callable contract.
-    UnresolvedCallTarget {
-        caller: String,
-        callee: String,
-    },
+    UnresolvedCallTarget { caller: String, callee: String },
     /// Service call expression used wrong number of arguments.
     ServiceCallArityMismatch {
         caller: String,
@@ -190,9 +189,15 @@ pub enum TypeError {
         got: usize,
     },
     /// Service call target could not be resolved to a known service operation contract.
-    UnresolvedServiceCall { caller: String, service_call: String },
+    UnresolvedServiceCall {
+        caller: String,
+        service_call: String,
+    },
     /// Service call target matches multiple possible service operation contracts.
-    AmbiguousServiceCall { caller: String, service_call: String },
+    AmbiguousServiceCall {
+        caller: String,
+        service_call: String,
+    },
     /// Service call expression used an unknown named argument.
     UnknownServiceCallArgument {
         caller: String,
@@ -562,7 +567,11 @@ fn collect_signatures(
                 });
             }
             Item::FnDef(def) => {
-                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
                 let item_known_types = extend_known_types(&module_known_types, &def.type_params);
                 errors.extend(validate_params(
                     &def.name,
@@ -605,7 +614,11 @@ fn collect_signatures(
                 }));
             }
             Item::FuncDef(def) => {
-                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
                 let item_known_types = extend_known_types(&module_known_types, &def.type_params);
                 errors.extend(validate_params(
                     &def.name,
@@ -631,7 +644,11 @@ fn collect_signatures(
                     context.resource_type_registry,
                     context.allow_unresolved_references,
                 ));
-                errors.extend(validate_use_provide_binding_conflicts(&def.name, &def.uses, &def.provides));
+                errors.extend(validate_use_provide_binding_conflicts(
+                    &def.name,
+                    &def.uses,
+                    &def.provides,
+                ));
                 errors.extend(validate_callable_body(
                     &def.name,
                     &def.params,
@@ -664,7 +681,11 @@ fn collect_signatures(
                 }));
             }
             Item::PatternDef(def) => {
-                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
                 let item_known_types = extend_known_types(&module_known_types, &def.type_params);
                 errors.extend(validate_params(
                     &def.name,
@@ -716,33 +737,56 @@ fn collect_signatures(
                 }));
             }
             Item::ServiceDef(def) => {
-                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
-                errors.extend(validate_service_interface_conformance(def, context.interface_registry));
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
+                errors.extend(validate_service_interface_conformance(
+                    def,
+                    context.interface_registry,
+                ));
                 signatures.push(TypedItemSignature::Service {
                     name: def.name.clone(),
                     operations: def.operations.len(),
                 });
             }
             Item::ResourceDef(def) => {
-                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
-                errors.extend(validate_resource_interface_conformance(def, context.interface_registry));
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
+                errors.extend(validate_resource_interface_conformance(
+                    def,
+                    context.interface_registry,
+                ));
                 signatures.push(TypedItemSignature::Resource {
                     name: def.name.clone(),
                     implements: def.implements.clone(),
                 });
             }
             Item::InterfaceDef(def) => {
-                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
                 signatures.push(TypedItemSignature::Interface {
                     name: def.name.clone(),
                     capabilities: def.capabilities.len(),
                 });
             }
             Item::PipelineDef(def) => {
-                errors.extend(record_duplicate_item_name(module_name, &def.name, &mut seen_items));
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
                 signatures.push(TypedItemSignature::Pipeline {
                     name: def.name.clone(),
                     stages: def.stages.len(),
+                    stage_names: def.stages.iter().map(|stage| stage.name.clone()).collect(),
                 });
             }
         }
@@ -842,10 +886,7 @@ fn collect_record_types(modules: &[ResolvedModule]) -> RecordTypeRegistry {
                     let signature = field_signature_map(fields);
                     let full_name = format!("{module_prefix}.{}", def.name);
                     registry.full.insert(full_name.clone(), signature.clone());
-                    registry
-                        .full
-                        .entry(def.name.clone())
-                        .or_insert(signature);
+                    registry.full.entry(def.name.clone()).or_insert(signature);
                     registry
                         .short
                         .entry(def.name.clone())
@@ -998,11 +1039,17 @@ fn collect_pattern_callable_names(modules: &[ResolvedModule]) -> HashSet<String>
 }
 
 fn required_param_arity(params: &[Param]) -> usize {
-    params.iter().filter(|param| param.default.is_none()).count()
+    params
+        .iter()
+        .filter(|param| param.default.is_none())
+        .count()
 }
 
 fn required_field_arity(fields: &[Field]) -> usize {
-    fields.iter().filter(|field| field.default.is_none()).count()
+    fields
+        .iter()
+        .filter(|field| field.default.is_none())
+        .count()
 }
 
 fn callable_contract_max_arity(contract: &CallableContract) -> usize {
@@ -1253,7 +1300,10 @@ fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegi
                 let mut keys = HashSet::new();
                 keys.insert(format!("{}.{}", service.name, operation.name));
                 keys.insert(format!("{service_tail}.{}", operation.name));
-                keys.insert(format!("{}.{}.{}", module_name, service.name, operation.name));
+                keys.insert(format!(
+                    "{}.{}.{}",
+                    module_name, service.name, operation.name
+                ));
                 for key in keys {
                     register_service_call_contract(&mut registry, key, contract.clone());
                 }
@@ -1695,7 +1745,10 @@ fn collect_param_callable_contracts(params: &[Param]) -> HashMap<String, Callabl
 
 fn parse_function_type_callable_contract(ty: &TypeExpr) -> Option<CallableContract> {
     let raw = type_expr_to_string(ty);
-    let compact = raw.chars().filter(|ch| !ch.is_whitespace()).collect::<String>();
+    let compact = raw
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
     if !compact.starts_with("fn(") {
         return None;
     }
@@ -1848,35 +1901,35 @@ fn validate_callable_body(
     collect_service_calls_from_stmts(body.stmts, &mut service_calls);
     for call in service_calls {
         let service_call_name = call.path.join(".");
-        let contract = match resolve_service_call_contract(&call.path, body_context.service_call_registry)
-        {
-            ServiceCallResolution::Resolved(contract) => Some(contract),
-            ServiceCallResolution::Ambiguous => {
-                if !body_context.allow_unresolved_references {
-                    errors.push(TypeError::AmbiguousServiceCall {
-                        caller: caller.to_string(),
-                        service_call: service_call_name.clone(),
-                    });
-                }
-                None
-            }
-            ServiceCallResolution::Missing => {
-                match resolve_bound_service_call_contract(&call.path, &bound_service_registry) {
-                    BoundServiceCallResolution::Resolved(contract) => Some(contract),
-                    BoundServiceCallResolution::MissingCapability
-                    | BoundServiceCallResolution::NotBound => {
-                        if !body_context.allow_unresolved_references {
-                            errors.push(TypeError::UnresolvedServiceCall {
-                                caller: caller.to_string(),
-                                service_call: service_call_name.clone(),
-                            });
-                        }
-                        None
+        let contract =
+            match resolve_service_call_contract(&call.path, body_context.service_call_registry) {
+                ServiceCallResolution::Resolved(contract) => Some(contract),
+                ServiceCallResolution::Ambiguous => {
+                    if !body_context.allow_unresolved_references {
+                        errors.push(TypeError::AmbiguousServiceCall {
+                            caller: caller.to_string(),
+                            service_call: service_call_name.clone(),
+                        });
                     }
-                    BoundServiceCallResolution::Deferred => None,
+                    None
                 }
-            }
-        };
+                ServiceCallResolution::Missing => {
+                    match resolve_bound_service_call_contract(&call.path, &bound_service_registry) {
+                        BoundServiceCallResolution::Resolved(contract) => Some(contract),
+                        BoundServiceCallResolution::MissingCapability
+                        | BoundServiceCallResolution::NotBound => {
+                            if !body_context.allow_unresolved_references {
+                                errors.push(TypeError::UnresolvedServiceCall {
+                                    caller: caller.to_string(),
+                                    service_call: service_call_name.clone(),
+                                });
+                            }
+                            None
+                        }
+                        BoundServiceCallResolution::Deferred => None,
+                    }
+                }
+            };
         let Some(contract) = contract else {
             continue;
         };
@@ -1929,11 +1982,8 @@ fn validate_callable_body(
     for stmt in body.stmts {
         match stmt {
             Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
-                let (inferred, infer_errors) = infer_expr_type(
-                    expr,
-                    &local_bindings,
-                    &infer_context,
-                );
+                let (inferred, infer_errors) =
+                    infer_expr_type(expr, &local_bindings, &infer_context);
                 errors.extend(infer_errors);
                 local_bindings.insert(name.clone(), inferred);
                 trailing_expr_type = None;
@@ -1941,11 +1991,8 @@ fn validate_callable_body(
             }
             Stmt::Expr(expr) => {
                 trailing_expr = Some(expr);
-                let (inferred, infer_errors) = infer_expr_type(
-                    expr,
-                    &local_bindings,
-                    &infer_context,
-                );
+                let (inferred, infer_errors) =
+                    infer_expr_type(expr, &local_bindings, &infer_context);
                 errors.extend(infer_errors);
                 trailing_expr_type = Some(inferred);
             }
@@ -1976,8 +2023,7 @@ fn validate_callable_body(
                     errors.extend(infer_errors);
                     val
                 }
-                None => trailing_expr_type
-                    .unwrap_or_else(|| ValueType::Named("Unit".to_string())),
+                None => trailing_expr_type.unwrap_or_else(|| ValueType::Named("Unit".to_string())),
             };
             errors.extend(push_type_mismatch_if_needed(ty, &inferred));
         }
@@ -2020,11 +2066,7 @@ fn validate_return_stmt(
                     });
                     continue;
                 };
-                let (inferred, infer_errors) = infer_expr_type(
-                    expr,
-                    local_bindings,
-                    infer_context,
-                );
+                let (inferred, infer_errors) = infer_expr_type(expr, local_bindings, infer_context);
                 errors.extend(infer_errors);
                 errors.extend(push_type_mismatch_if_needed(expected_ty, &inferred));
             }
@@ -2043,7 +2085,9 @@ fn infer_expr_type_for_expected_named_record(
         return infer_expr_type(expr, local_bindings, infer_context);
     };
 
-    let Some(expected_fields) = resolve_record_fields(expected_type, infer_context.record_type_registry) else {
+    let Some(expected_fields) =
+        resolve_record_fields(expected_type, infer_context.record_type_registry)
+    else {
         return infer_expr_type(expr, local_bindings, infer_context);
     };
 
@@ -2053,9 +2097,7 @@ fn infer_expr_type_for_expected_named_record(
     for (name, value_expr) in fields {
         let (inferred, val_errors) = infer_expr_type(value_expr, local_bindings, infer_context);
         errors.extend(val_errors);
-        let inferred_name = inferred
-            .display_name()
-            .unwrap_or_else(|| "Any".to_string());
+        let inferred_name = inferred.display_name().unwrap_or_else(|| "Any".to_string());
         inferred_fields.insert(name.clone(), inferred_name.clone());
         let Some(expected_field_ty) = expected_fields.get(name) else {
             errors.push(TypeError::NoSuchField {
@@ -2131,18 +2173,18 @@ fn infer_expr_type(
                 },
                 ValueType::Named(name) => {
                     match resolve_record_fields(&name, infer_context.record_type_registry) {
-                    Some(fields) => match fields.get(field) {
-                        Some(ty) => ValueType::Named(ty.clone()),
-                        None => {
-                            errors.push(TypeError::NoSuchField {
-                                ty: name,
-                                field: field.clone(),
-                            });
-                            ValueType::Unknown
-                        }
-                    },
-                    None => ValueType::Unknown,
-                }
+                        Some(fields) => match fields.get(field) {
+                            Some(ty) => ValueType::Named(ty.clone()),
+                            None => {
+                                errors.push(TypeError::NoSuchField {
+                                    ty: name,
+                                    field: field.clone(),
+                                });
+                                ValueType::Unknown
+                            }
+                        },
+                        None => ValueType::Unknown,
+                    }
                 }
                 ValueType::Unknown => ValueType::Unknown,
             }
@@ -2239,12 +2281,12 @@ fn infer_expr_type(
                     fields
                         .iter()
                         .map(|(name, expr)| {
-                            let (val, val_errors) = infer_expr_type(expr, local_bindings, infer_context);
+                            let (val, val_errors) =
+                                infer_expr_type(expr, local_bindings, infer_context);
                             errors.extend(val_errors);
                             (
                                 name.clone(),
-                                val.display_name()
-                                    .unwrap_or_else(|| "Any".to_string()),
+                                val.display_name().unwrap_or_else(|| "Any".to_string()),
                             )
                         })
                         .collect(),
@@ -2339,8 +2381,7 @@ fn infer_expr_type(
                     errors.extend(val_errors);
                     (
                         name.clone(),
-                        val.display_name()
-                            .unwrap_or_else(|| "Any".to_string()),
+                        val.display_name().unwrap_or_else(|| "Any".to_string()),
                     )
                 })
                 .collect(),
@@ -2660,51 +2701,54 @@ fn build_bound_service_call_registry(
     let mut registry = BoundServiceCallRegistry::default();
     for usage in uses {
         let resource_type = resource_type_name(&usage.resource_type);
-        let binding = match resolve_resource_type_name(&resource_type, body_context.resource_type_registry) {
-            ResourceTypeResolution::Resolved(resolved_type) => {
-                if let Some(interface_contract) =
-                    body_context.interface_registry.full.get(&resolved_type)
-                {
-                    let capabilities = interface_contract
-                        .capabilities
-                        .iter()
-                        .map(|(name, contract)| {
-                            (
-                                name.clone(),
-                                ServiceCallContract {
-                                    arity: contract.inputs.len(),
-                                    params: contract.inputs.keys().cloned().collect(),
-                                    outputs: contract.outputs.clone(),
-                                },
-                            )
-                        })
-                        .collect::<HashMap<_, _>>();
-                    BoundServiceCallBinding::Resolved(capabilities)
-                } else if let Some(resource_capabilities) =
-                    body_context.resource_capability_registry.full.get(&resolved_type)
-                {
-                    let capabilities = resource_capabilities
-                        .iter()
-                        .map(|(name, contract)| {
-                            (
-                                name.clone(),
-                                ServiceCallContract {
-                                    arity: contract.inputs.len(),
-                                    params: contract.inputs.keys().cloned().collect(),
-                                    outputs: contract.outputs.clone(),
-                                },
-                            )
-                        })
-                        .collect::<HashMap<_, _>>();
-                    BoundServiceCallBinding::Resolved(capabilities)
-                } else {
+        let binding =
+            match resolve_resource_type_name(&resource_type, body_context.resource_type_registry) {
+                ResourceTypeResolution::Resolved(resolved_type) => {
+                    if let Some(interface_contract) =
+                        body_context.interface_registry.full.get(&resolved_type)
+                    {
+                        let capabilities = interface_contract
+                            .capabilities
+                            .iter()
+                            .map(|(name, contract)| {
+                                (
+                                    name.clone(),
+                                    ServiceCallContract {
+                                        arity: contract.inputs.len(),
+                                        params: contract.inputs.keys().cloned().collect(),
+                                        outputs: contract.outputs.clone(),
+                                    },
+                                )
+                            })
+                            .collect::<HashMap<_, _>>();
+                        BoundServiceCallBinding::Resolved(capabilities)
+                    } else if let Some(resource_capabilities) = body_context
+                        .resource_capability_registry
+                        .full
+                        .get(&resolved_type)
+                    {
+                        let capabilities = resource_capabilities
+                            .iter()
+                            .map(|(name, contract)| {
+                                (
+                                    name.clone(),
+                                    ServiceCallContract {
+                                        arity: contract.inputs.len(),
+                                        params: contract.inputs.keys().cloned().collect(),
+                                        outputs: contract.outputs.clone(),
+                                    },
+                                )
+                            })
+                            .collect::<HashMap<_, _>>();
+                        BoundServiceCallBinding::Resolved(capabilities)
+                    } else {
+                        BoundServiceCallBinding::Deferred
+                    }
+                }
+                ResourceTypeResolution::Ambiguous | ResourceTypeResolution::Missing => {
                     BoundServiceCallBinding::Deferred
                 }
-            }
-            ResourceTypeResolution::Ambiguous | ResourceTypeResolution::Missing => {
-                BoundServiceCallBinding::Deferred
-            }
-        };
+            };
         registry.by_binding.insert(usage.binding.clone(), binding);
     }
     registry
@@ -2795,8 +2839,7 @@ fn validate_type_expr(
             }
         }
         TypeExpr::Generic(name, args) => {
-            if let Some(expected) =
-                resolve_generic_arity(name, generic_arity_registry, known_types)
+            if let Some(expected) = resolve_generic_arity(name, generic_arity_registry, known_types)
             {
                 if expected != args.len() {
                     errors.push(TypeError::ArityMismatch {
@@ -2813,14 +2856,29 @@ fn validate_type_expr(
                 }
             }
             for arg in args {
-                errors.extend(validate_type_expr(arg, known_types, generic_arity_registry, context));
+                errors.extend(validate_type_expr(
+                    arg,
+                    known_types,
+                    generic_arity_registry,
+                    context,
+                ));
             }
         }
         TypeExpr::Optional(inner) => {
-            errors.extend(validate_type_expr(inner, known_types, generic_arity_registry, context));
+            errors.extend(validate_type_expr(
+                inner,
+                known_types,
+                generic_arity_registry,
+                context,
+            ));
         }
         TypeExpr::Annotated(inner, annotations) => {
-            errors.extend(validate_type_expr(inner, known_types, generic_arity_registry, context));
+            errors.extend(validate_type_expr(
+                inner,
+                known_types,
+                generic_arity_registry,
+                context,
+            ));
             for annotation in annotations {
                 if annotation.name != "range" {
                     continue;
@@ -2927,8 +2985,7 @@ mod tests {
     #[allow(clippy::disallowed_methods)]
     #[test]
     fn typecheck_accepts_makegen_module() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let source = fs::read_to_string(file).expect("should read makegen source");
         let graph = module_graph_from_sources(&[("dsl/tools/makegen.dag", &source)]);
         let typed = typecheck_module_graph(graph).expect("makegen should typecheck");
@@ -2967,8 +3024,7 @@ func run() -> { ok: Bool, ok: Bool } {
 }
 "#,
         )]);
-        let errors =
-            typecheck_module_graph(graph).expect_err("duplicate outputs should fail");
+        let errors = typecheck_module_graph(graph).expect_err("duplicate outputs should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::DuplicateOutputField { item, field }
@@ -2983,9 +3039,9 @@ func run() -> { ok: Bool, ok: Bool } {
             "module sample.unknown\nfn run(input: MissingType) -> String { \"ok\" }",
         )]);
         let errors = typecheck_module_graph(graph).expect_err("unknown type should fail");
-        assert!(errors
-            .iter()
-            .any(|error| matches!(error, TypeError::UndefinedType(msg) if msg.contains("MissingType"))));
+        assert!(errors.iter().any(
+            |error| matches!(error, TypeError::UndefinedType(msg) if msg.contains("MissingType"))
+        ));
     }
 
     #[test]
@@ -3029,8 +3085,8 @@ service FsStorage implements Storage {
 }
 "#,
         )]);
-        let errors = typecheck_module_graph(graph)
-            .expect_err("duplicate interface definitions should fail");
+        let errors =
+            typecheck_module_graph(graph).expect_err("duplicate interface definitions should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::DuplicateDefinition { module, name }
@@ -3626,8 +3682,7 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
             "unknown_arg.dag",
             "module sample.calls\nfn fmt(value: String) -> String { value }\nfn run() -> String { fmt(text: \"ok\") }",
         )]);
-        let errors =
-            typecheck_module_graph(graph).expect_err("unknown named argument should fail");
+        let errors = typecheck_module_graph(graph).expect_err("unknown named argument should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::UnknownCallArgument {
@@ -3704,8 +3759,8 @@ func run() -> { ok: Bool } {
   return { ok: true }
 }"#,
         )]);
-        let errors = typecheck_module_graph(graph)
-            .expect_err("too many service call arguments should fail");
+        let errors =
+            typecheck_module_graph(graph).expect_err("too many service call arguments should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::ServiceCallArityMismatch {
@@ -4096,8 +4151,7 @@ resource Disk implements ObjectStorage {
                 "module sample.main\nresource Disk implements Storage { capability read { input { path: String } output { body: String } } }",
             ),
         ]);
-        let errors =
-            typecheck_module_graph(graph).expect_err("ambiguous interface should fail");
+        let errors = typecheck_module_graph(graph).expect_err("ambiguous interface should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::AmbiguousInterface {
@@ -4167,8 +4221,7 @@ service FsStorage implements Storage {
                 "module sample.main\nservice FsStorage implements Storage { operation read(path: String) -> { body: String } }",
             ),
         ]);
-        let errors =
-            typecheck_module_graph(graph).expect_err("ambiguous interface should fail");
+        let errors = typecheck_module_graph(graph).expect_err("ambiguous interface should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::AmbiguousInterface {
@@ -4642,8 +4695,8 @@ fn run() -> String { return 42 }"#,
             r#"module sample.types
 fn run() -> String { 42 }"#,
         )]);
-        let errors = typecheck_module_graph(graph)
-            .expect_err("implicit return type mismatch should fail");
+        let errors =
+            typecheck_module_graph(graph).expect_err("implicit return type mismatch should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::TypeMismatch { expected, got }
@@ -4674,7 +4727,8 @@ fn run() -> String { let x = 42 }"#,
             r#"module sample.types
 fn run() -> Unit { let x = 42 }"#,
         )]);
-        let typed = typecheck_module_graph(graph).expect("unit return type should allow no tail expression");
+        let typed = typecheck_module_graph(graph)
+            .expect("unit return type should allow no tail expression");
         assert_eq!(typed.modules.len(), 1);
     }
 

@@ -328,15 +328,45 @@ fn derive_stage_groups(nodes: &[Node<LoweredOp>]) -> Vec<StageGroup> {
                 module,
                 name,
                 stages,
-            }) => Some((node.id.0.clone(), module.clone(), name.clone(), *stages)),
+                stage_names,
+            }) => Some((
+                node.id.0.clone(),
+                module.clone(),
+                name.clone(),
+                *stages,
+                stage_names.clone(),
+            )),
             _ => None,
         })
-        .flat_map(|(node_id, module, name, stages)| {
+        .flat_map(|(node_id, module, name, stages, stage_names)| {
+            if !stage_names.is_empty() {
+                return stage_names
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, stage_name)| {
+                        (
+                            module.clone(),
+                            name.clone(),
+                            index,
+                            stage_name,
+                            node_id.clone(),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+            }
             if stages == 0 {
-                return vec![(module, name, 0usize, node_id)];
+                return vec![(module, name, 0usize, "stage_0".to_string(), node_id)];
             }
             (1..=stages)
-                .map(|stage_index| (module.clone(), name.clone(), stage_index, node_id.clone()))
+                .map(|stage_index| {
+                    (
+                        module.clone(),
+                        name.clone(),
+                        stage_index,
+                        format!("stage_{stage_index}"),
+                        node_id.clone(),
+                    )
+                })
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
@@ -346,13 +376,16 @@ fn derive_stage_groups(nodes: &[Node<LoweredOp>]) -> Vec<StageGroup> {
             .then_with(|| lhs.1.cmp(&rhs.1))
             .then_with(|| lhs.2.cmp(&rhs.2))
             .then_with(|| lhs.3.cmp(&rhs.3))
+            .then_with(|| lhs.4.cmp(&rhs.4))
     });
     staged
         .into_iter()
-        .map(|(module, name, stage_index, node_id)| StageGroup {
-            stage: format!("{module}.{name}:stage_{stage_index}"),
-            node_ids: vec![node_id],
-        })
+        .map(
+            |(module, name, _stage_order, stage_name, node_id)| StageGroup {
+                stage: format!("{module}.{name}:{stage_name}"),
+                node_ids: vec![node_id],
+            },
+        )
         .collect()
 }
 
@@ -665,6 +698,7 @@ mod tests {
                 module: "pipelines.ci".to_string(),
                 name: "ci".to_string(),
                 stages: 12,
+                stage_names: (1..=12).map(|i| format!("stage_{i}")).collect(),
             },
         ));
 

@@ -117,6 +117,7 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
                 module,
                 name,
                 stages,
+                ..
             }) => format!("pipeline {module}.{name} ({stages} stages)"),
             gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
         };
@@ -1001,6 +1002,11 @@ fn run() -> String { return 42 }
                 module: "pipelines".to_string(),
                 name: "ci".to_string(),
                 stages: 3,
+                stage_names: vec![
+                    "cloud_env".to_string(),
+                    "codegen_stage".to_string(),
+                    "generate".to_string(),
+                ],
             },
         ));
 

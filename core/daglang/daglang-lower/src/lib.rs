@@ -47,6 +47,7 @@ pub enum LoweredOp {
         module: String,
         name: String,
         stages: usize,
+        stage_names: Vec<String>,
     },
 }
 
@@ -535,7 +536,11 @@ fn lower_typed_project_with_callable_scope(
                     );
                     builder.add_node(node);
                 }
-                TypedItemSignature::Pipeline { name, stages } => {
+                TypedItemSignature::Pipeline {
+                    name,
+                    stages,
+                    stage_names,
+                } => {
                     if !include_callables {
                         continue;
                     }
@@ -548,6 +553,7 @@ fn lower_typed_project_with_callable_scope(
                             module: module_name.clone(),
                             name: name.clone(),
                             stages: *stages,
+                            stage_names: stage_names.clone(),
                         },
                     ));
                 }
@@ -3857,6 +3863,12 @@ func run() -> { ok: Bool } provides auth: AuthContext {
             module: "pipelines.ci".to_string(),
             name: "ci".to_string(),
             stages: 4,
+            stage_names: vec![
+                "cloud_env".to_string(),
+                "codegen_stage".to_string(),
+                "deps_check".to_string(),
+                "generate".to_string(),
+            ],
         };
         assert_eq!(classify_obligation(&pipeline), ObligationCategory::None);
     }

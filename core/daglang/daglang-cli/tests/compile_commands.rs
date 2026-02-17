@@ -11643,9 +11643,9 @@ fn manifest_command_ci_json_includes_stage_groups() {
             group
                 .get("stage")
                 .and_then(Value::as_str)
-                .is_some_and(|stage| stage.ends_with(":stage_1"))
+                .is_some_and(|stage| stage.ends_with(":cloud_env"))
         }),
-        "ci manifest should include stage_1 group"
+        "ci manifest should include cloud_env stage group"
     );
 }
 
