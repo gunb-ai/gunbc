@@ -1,12 +1,12 @@
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use std::path::PathBuf;
-use std::collections::{BTreeSet, HashMap};
 
 use crate::path_utils;
 use crate::pipeline::PipelineContext;
 use daglang_derive::{DerivedArtifacts, TestObligations};
 use daglang_driver::DriverContext;
-use daglang_lower::LoweredOp;
+use daglang_lower::{LoweredOp, ServiceCallMetadata};
 use gunbc_exec::{BoundaryMocks, ExecutionLog, ExecutionMode};
 use gunbc_ir::{Dag, Node};
 use serde_json::json;
@@ -20,8 +20,8 @@ pub enum OutputFormat {
 }
 
 pub use daglang_exec_bridge::{
-    makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks,
-    makegen_entrypoint_mocks, resolve_lowered_dag, ResolveDagError, ResolvedOp,
+    makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks, makegen_entrypoint_mocks,
+    resolve_lowered_dag, ResolveDagError, ResolvedOp,
 };
 
 /// Builds compile pipeline context from CLI input.
@@ -87,10 +87,7 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
     for node in &dag.nodes {
         let kind = match &node.body {
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
-                kind,
-                module,
-                name,
-                ..
+                kind, module, name, ..
             }) => {
                 format!("callable::{kind:?} {module}.{name}")
             }
@@ -106,13 +103,23 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
         if !node.inputs.is_empty() {
             out.push_str("    inputs:\n");
             for input in &node.inputs {
-                writeln!(out, "      * {}: {} ({})", input.name.0, input.type_id.0, input.cardinality).ok();
+                writeln!(
+                    out,
+                    "      * {}: {} ({})",
+                    input.name.0, input.type_id.0, input.cardinality
+                )
+                .ok();
             }
         }
         if !node.outputs.is_empty() {
             out.push_str("    outputs:\n");
             for output in &node.outputs {
-                writeln!(out, "      * {}: {} ({})", output.name.0, output.type_id.0, output.cardinality).ok();
+                writeln!(
+                    out,
+                    "      * {}: {} ({})",
+                    output.name.0, output.type_id.0, output.cardinality
+                )
+                .ok();
             }
         }
     }
@@ -122,7 +129,12 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
         out.push_str("  (none)\n");
     } else {
         for edge in &dag.edges {
-            writeln!(out, "  - {}.{} -> {}.{}", edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0).ok();
+            writeln!(
+                out,
+                "  - {}.{} -> {}.{}",
+                edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+            )
+            .ok();
         }
     }
     out
@@ -139,21 +151,25 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
         writeln!(out, "    [{index}] {}", wave.join(", ")).ok();
     }
     writeln!(
-        out, "  entrypoint_nodes: {}",
+        out,
+        "  entrypoint_nodes: {}",
         if manifest.entrypoint_nodes.is_empty() {
             "(none)".to_string()
         } else {
             manifest.entrypoint_nodes.join(", ")
         }
-    ).ok();
+    )
+    .ok();
     writeln!(
-        out, "  boundary_nodes: {}",
+        out,
+        "  boundary_nodes: {}",
         if manifest.boundary_nodes.is_empty() {
             "(none)".to_string()
         } else {
             manifest.boundary_nodes.join(", ")
         }
-    ).ok();
+    )
+    .ok();
     out.push_str("  topology:\n");
     for node in &manifest.topology {
         writeln!(out, "    - {} (depth={})", node.node_id, node.depth).ok();
@@ -255,6 +271,11 @@ pub fn render_obligations(derived: &DerivedArtifacts, format: OutputFormat) -> S
             "service_transport_prepare_targets": obligations.service_transport_prepare_targets,
             "service_transport_execute_targets": obligations.service_transport_execute_targets,
             "service_transport_parse_targets": obligations.service_transport_parse_targets,
+            "service_transport_hermetic_targets": obligations.service_transport_hermetic_targets,
+            "service_transport_external_targets": obligations.service_transport_external_targets,
+            "service_transport_idempotent_targets": obligations.service_transport_idempotent_targets,
+            "service_transport_readonly_targets": obligations.service_transport_readonly_targets,
+            "service_transport_permission_scoped_targets": obligations.service_transport_permission_scoped_targets,
             "service_param_source_targets": obligations.service_param_source_targets,
             "resource_provide_targets": obligations.resource_provide_targets,
             "resource_acquire_targets": obligations.resource_acquire_targets,
@@ -267,16 +288,96 @@ pub fn render_obligations(derived: &DerivedArtifacts, format: OutputFormat) -> S
 fn render_obligations_text(obligations: &TestObligations) -> String {
     let mut out = String::new();
     out.push_str("TestObligations:\n");
-    writeln!(out, "  dry_run_completion_required: {}", obligations.dry_run_completion_required).ok();
-    writeln!(out, "  transport_execution_targets: {}", obligations.transport_execution_targets).ok();
-    writeln!(out, "  pure_node_determinism_targets: {}", obligations.pure_node_determinism_targets).ok();
-    writeln!(out, "  service_transport_prepare_targets: {}", obligations.service_transport_prepare_targets).ok();
-    writeln!(out, "  service_transport_execute_targets: {}", obligations.service_transport_execute_targets).ok();
-    writeln!(out, "  service_transport_parse_targets: {}", obligations.service_transport_parse_targets).ok();
-    writeln!(out, "  service_param_source_targets: {}", obligations.service_param_source_targets).ok();
-    writeln!(out, "  resource_provide_targets: {}", obligations.resource_provide_targets).ok();
-    writeln!(out, "  resource_acquire_targets: {}", obligations.resource_acquire_targets).ok();
-    writeln!(out, "  resource_release_targets: {}", obligations.resource_release_targets).ok();
+    writeln!(
+        out,
+        "  dry_run_completion_required: {}",
+        obligations.dry_run_completion_required
+    )
+    .ok();
+    writeln!(
+        out,
+        "  transport_execution_targets: {}",
+        obligations.transport_execution_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  pure_node_determinism_targets: {}",
+        obligations.pure_node_determinism_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  service_transport_prepare_targets: {}",
+        obligations.service_transport_prepare_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  service_transport_execute_targets: {}",
+        obligations.service_transport_execute_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  service_transport_parse_targets: {}",
+        obligations.service_transport_parse_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  service_transport_hermetic_targets: {}",
+        obligations.service_transport_hermetic_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  service_transport_external_targets: {}",
+        obligations.service_transport_external_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  service_transport_idempotent_targets: {}",
+        obligations.service_transport_idempotent_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  service_transport_readonly_targets: {}",
+        obligations.service_transport_readonly_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  service_transport_permission_scoped_targets: {}",
+        obligations.service_transport_permission_scoped_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  service_param_source_targets: {}",
+        obligations.service_param_source_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  resource_provide_targets: {}",
+        obligations.resource_provide_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  resource_acquire_targets: {}",
+        obligations.resource_acquire_targets
+    )
+    .ok();
+    writeln!(
+        out,
+        "  resource_release_targets: {}",
+        obligations.resource_release_targets
+    )
+    .ok();
     out
 }
 
@@ -299,6 +400,18 @@ pub fn render_triplets(dag: &Dag<LoweredOp>, format: OutputFormat) -> String {
                 } else {
                     writeln!(out, "    parse: {}", triplet.parse_nodes.join(", ")).ok();
                 }
+                if let Some(metadata) = &triplet.service_metadata {
+                    writeln!(out, "    transport_class: {:?}", metadata.transport).ok();
+                    writeln!(out, "    service: {}", metadata.service).ok();
+                    writeln!(out, "    operation: {}", metadata.operation).ok();
+                    writeln!(out, "    idempotent: {}", metadata.idempotent).ok();
+                    writeln!(out, "    readonly: {}", metadata.readonly).ok();
+                    if metadata.permissions.is_empty() {
+                        out.push_str("    permissions: (none)\n");
+                    } else {
+                        writeln!(out, "    permissions: {}", metadata.permissions.join(", ")).ok();
+                    }
+                }
             }
             out
         }
@@ -309,7 +422,8 @@ pub fn render_triplets(dag: &Dag<LoweredOp>, format: OutputFormat) -> String {
                     json!({
                         "prepare_node": triplet.prepare_node,
                         "execute_node": triplet.execute_node,
-                        "parse_nodes": triplet.parse_nodes
+                        "parse_nodes": triplet.parse_nodes,
+                        "service_metadata": triplet.service_metadata
                     })
                 })
                 .collect::<Vec<_>>();
@@ -323,6 +437,7 @@ struct TransportTriplet {
     prepare_node: String,
     execute_node: String,
     parse_nodes: Vec<String>,
+    service_metadata: Option<ServiceCallMetadata>,
 }
 
 fn collect_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> {
@@ -340,8 +455,10 @@ fn collect_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> {
         let Some(execute_node) = node_by_id.get(edge.to_node.0.as_str()).copied() else {
             continue;
         };
-        if node_output_port_type(prepare_node, edge.from_port.0.as_str()) != Some("TransportRequest")
-            || node_input_port_type(execute_node, edge.to_port.0.as_str()) != Some("TransportRequest")
+        if node_output_port_type(prepare_node, edge.from_port.0.as_str())
+            != Some("TransportRequest")
+            || node_input_port_type(execute_node, edge.to_port.0.as_str())
+                != Some("TransportRequest")
         {
             continue;
         }
@@ -361,11 +478,16 @@ fn collect_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> {
             .collect::<Vec<_>>();
         parse_nodes.sort();
         parse_nodes.dedup();
+        let service_metadata = match &execute_node.body {
+            gunbc_ir::node::NodeBody::Opaque(op) => op.service_call_metadata().cloned(),
+            gunbc_ir::node::NodeBody::SubDag(_) => None,
+        };
 
         unique.insert(TransportTriplet {
             prepare_node: edge.from_node.0.clone(),
             execute_node: edge.to_node.0.clone(),
             parse_nodes,
+            service_metadata,
         });
     }
 
@@ -391,7 +513,7 @@ fn node_output_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Opti
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, ObligationCategory};
+    use daglang_lower::{CallableKind, ObligationCategory, ServiceTransportClass};
     use gunbc_ir::{Edge, Node, Port};
     use serde_json::Value;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -469,7 +591,11 @@ mod tests {
             .expect("failed to create temp file parent");
         std::fs::write(&normalized_file, "module sample.main\nfn run() -> Unit { }")
             .expect("failed to write temp dag file");
-        let input = root.join("sample").join("nested").join("..").join("main.dag");
+        let input = root
+            .join("sample")
+            .join("nested")
+            .join("..")
+            .join("main.dag");
         let input_str = input.to_string_lossy().to_string();
 
         let cwd = std::env::temp_dir();
@@ -728,10 +854,12 @@ fn run() -> String { return 42 }
 
     #[test]
     fn compile_single_file_makegen_produces_non_empty_outputs() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let context = PipelineContext {
-            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            roots: vec![file
+                .parent()
+                .expect("file should have parent")
+                .to_path_buf()],
             target_file: Some(file),
         };
 
@@ -748,10 +876,12 @@ fn run() -> String { return 42 }
 
     #[test]
     fn resolve_lowered_dag_maps_makegen_nodes_to_resolved_ops() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let context = PipelineContext {
-            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            roots: vec![file
+                .parent()
+                .expect("file should have parent")
+                .to_path_buf()],
             target_file: Some(file),
         };
         let output = compile_from_context(&context).expect("compile should succeed");
@@ -775,7 +905,10 @@ fn run() -> String { return 42 }
                 .expect("expected node to exist in resolved dag")
         };
 
-        assert!(matches!(resolved_op_for("load_registry"), ResolvedOp::LoadRegistry));
+        assert!(matches!(
+            resolved_op_for("load_registry"),
+            ResolvedOp::LoadRegistry
+        ));
         assert!(matches!(resolved_op_for("fs_env"), ResolvedOp::FsEnv));
         assert!(matches!(
             resolved_op_for("tools.makegen::render_makefile"),
@@ -849,22 +982,21 @@ fn run() -> String { return 42 }
 
     #[test]
     fn compile_resolve_execute_makegen_real_mode_writes_output() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let context = PipelineContext {
-            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            roots: vec![file
+                .parent()
+                .expect("file should have parent")
+                .to_path_buf()],
             target_file: Some(file),
         };
         let output_path = unique_temp_output_file("makegen_real_run", "mk");
         let output_path_str = output_path.to_string_lossy().to_string();
         let input_mocks = makegen_entrypoint_mocks(&output_path_str);
 
-        let log = compile_resolve_execute_from_context(
-            &context,
-            ExecutionMode::Real,
-            Some(&input_mocks),
-        )
-        .expect("real execution should succeed");
+        let log =
+            compile_resolve_execute_from_context(&context, ExecutionMode::Real, Some(&input_mocks))
+                .expect("real execution should succeed");
         assert!(
             output_path.exists(),
             "real execution should write requested output path"
@@ -887,10 +1019,12 @@ fn run() -> String { return 42 }
 
     #[test]
     fn compile_resolve_execute_makegen_real_mode_reports_not_written_when_fresh() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let context = PipelineContext {
-            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            roots: vec![file
+                .parent()
+                .expect("file should have parent")
+                .to_path_buf()],
             target_file: Some(file),
         };
         let output_path = unique_temp_output_file("makegen_real_idempotent", "mk");
@@ -922,10 +1056,12 @@ fn run() -> String { return 42 }
 
     #[test]
     fn compile_resolve_execute_makegen_dry_run_intercepts_and_skips_output_write() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let context = PipelineContext {
-            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            roots: vec![file
+                .parent()
+                .expect("file should have parent")
+                .to_path_buf()],
             target_file: Some(file),
         };
         let output_path = unique_temp_output_file("makegen_dry_run", "mk");
@@ -943,7 +1079,10 @@ fn run() -> String { return 42 }
             !output_path.exists(),
             "dry-run execution should not write output file"
         );
-        assert!(log.has_intercepted(), "dry-run should intercept boundary nodes");
+        assert!(
+            log.has_intercepted(),
+            "dry-run should intercept boundary nodes"
+        );
         let makegen_entry = log
             .get("tools.makegen::makegen")
             .expect("execution log should include makegen entrypoint node");
@@ -956,38 +1095,49 @@ fn run() -> String { return 42 }
 
     #[test]
     fn render_obligations_json_emits_expected_keys() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let context = PipelineContext {
-            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            roots: vec![file
+                .parent()
+                .expect("file should have parent")
+                .to_path_buf()],
             target_file: Some(file),
         };
         let output = compile_from_context(&context).expect("compile should succeed");
 
         let rendered = render_obligations(&output.derived, OutputFormat::Json);
-        let parsed: Value =
-            serde_json::from_str(&rendered).expect("obligations json should parse");
+        let parsed: Value = serde_json::from_str(&rendered).expect("obligations json should parse");
         assert_eq!(
-            parsed.get("dry_run_completion_required").and_then(Value::as_bool),
+            parsed
+                .get("dry_run_completion_required")
+                .and_then(Value::as_bool),
             Some(true)
         );
         assert!(parsed.get("transport_execution_targets").is_some());
         assert!(parsed.get("pure_node_determinism_targets").is_some());
+        assert!(parsed.get("service_transport_hermetic_targets").is_some());
+        assert!(parsed.get("service_transport_external_targets").is_some());
+        assert!(parsed.get("service_transport_idempotent_targets").is_some());
+        assert!(parsed.get("service_transport_readonly_targets").is_some());
+        assert!(parsed
+            .get("service_transport_permission_scoped_targets")
+            .is_some());
     }
 
     #[test]
     fn render_triplets_json_includes_makegen_transport_nodes() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let context = PipelineContext {
-            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            roots: vec![file
+                .parent()
+                .expect("file should have parent")
+                .to_path_buf()],
             target_file: Some(file),
         };
         let output = compile_from_context(&context).expect("compile should succeed");
 
         let rendered = render_triplets(&output.lowered_dag, OutputFormat::Json);
-        let parsed: Value =
-            serde_json::from_str(&rendered).expect("triplets json should parse");
+        let parsed: Value = serde_json::from_str(&rendered).expect("triplets json should parse");
         let triplets = parsed
             .get("triplets")
             .and_then(Value::as_array)
@@ -1013,11 +1163,110 @@ fn run() -> String { return 42 }
     }
 
     #[test]
+    fn render_triplets_json_includes_service_semantic_metadata_when_present() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "prepare_transport_service",
+            vec![Port::scalar("path", "String")],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::prepare::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportPrepare,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "FsStorage".to_string(),
+                    operation: "read".to_string(),
+                    transport: ServiceTransportClass::ShellLocal,
+                    idempotent: true,
+                    readonly: true,
+                    permissions: vec![],
+                }),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "execute_transport_service",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::execute::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "FsStorage".to_string(),
+                    operation: "read".to_string(),
+                    transport: ServiceTransportClass::ShellLocal,
+                    idempotent: true,
+                    readonly: true,
+                    permissions: vec![],
+                }),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "parse_transport_service",
+            vec![Port::scalar("response", "TransportResponse")],
+            vec![Port::scalar("body", "String")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::parse::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportParse,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "FsStorage".to_string(),
+                    operation: "read".to_string(),
+                    transport: ServiceTransportClass::ShellLocal,
+                    idempotent: true,
+                    readonly: true,
+                    permissions: vec![],
+                }),
+            },
+        ));
+        dag.add_edge(Edge::new(
+            "prepare_transport_service",
+            "request",
+            "execute_transport_service",
+            "request",
+        ));
+        dag.add_edge(Edge::new(
+            "execute_transport_service",
+            "response",
+            "parse_transport_service",
+            "response",
+        ));
+
+        let rendered = render_triplets(&dag, OutputFormat::Json);
+        let parsed: Value = serde_json::from_str(&rendered).expect("triplets json should parse");
+        let triplets = parsed
+            .get("triplets")
+            .and_then(Value::as_array)
+            .expect("triplets should be an array");
+        let metadata = triplets
+            .first()
+            .and_then(|triplet| triplet.get("service_metadata"))
+            .expect("triplet should include service metadata");
+        assert_eq!(
+            metadata.get("transport").and_then(Value::as_str),
+            Some("shell_local")
+        );
+        assert_eq!(
+            metadata.get("idempotent").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            metadata.get("readonly").and_then(Value::as_bool),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn render_triplets_text_is_deterministic() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let context = PipelineContext {
-            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            roots: vec![file
+                .parent()
+                .expect("file should have parent")
+                .to_path_buf()],
             target_file: Some(file),
         };
         let output = compile_from_context(&context).expect("compile should succeed");
@@ -1029,10 +1278,12 @@ fn run() -> String { return 42 }
 
     #[test]
     fn render_manifest_reuses_obligations_text_block() {
-        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let context = PipelineContext {
-            roots: vec![file.parent().expect("file should have parent").to_path_buf()],
+            roots: vec![file
+                .parent()
+                .expect("file should have parent")
+                .to_path_buf()],
             target_file: Some(file),
         };
         let output = compile_from_context(&context).expect("compile should succeed");
@@ -1133,12 +1384,10 @@ fn run() -> String { return 42 }
             .expect("failed to write broken source");
 
         let context = PipelineContext {
-            roots: vec![
-                broken_file
-                    .parent()
-                    .expect("temp file should have parent")
-                    .to_path_buf(),
-            ],
+            roots: vec![broken_file
+                .parent()
+                .expect("temp file should have parent")
+                .to_path_buf()],
             target_file: Some(broken_file.clone()),
         };
 
@@ -1243,7 +1492,10 @@ func run(path: String) -> { body: String } {
         .expect("failed to write unresolved service-call fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -1311,7 +1563,10 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
         .expect("failed to write resource-bound capability fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -1378,7 +1633,10 @@ func run() -> { ok: Bool } uses fs: MissingResource {
         .expect("failed to write unresolved uses fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -1439,7 +1697,10 @@ func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
         .expect("failed to write configured uses fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -1500,7 +1761,10 @@ func run() -> { ok: Bool } provides out: MissingResource {
         .expect("failed to write unresolved provides fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -1565,7 +1829,10 @@ func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
         .expect("failed to write configured provides fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -1629,7 +1896,10 @@ fn run() -> Unit {}
         .expect("failed to write unresolved import fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -1688,7 +1958,10 @@ fn run() -> Unit {
         .expect("failed to write unresolved callable fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2004,7 +2277,10 @@ func run(path: String) -> { body: String } {
         .expect("failed to write duplicate service fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2077,7 +2353,10 @@ fn run() -> String { helper() }
         .expect("failed to write duplicate callable fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2137,7 +2416,10 @@ func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
         .expect("failed to write duplicate resource-uses fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2197,7 +2479,10 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
         .expect("failed to write duplicate resource-provides fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2257,7 +2542,10 @@ service FsStorage implements MissingStorage {
         .expect("failed to write unresolved service-interface fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2285,7 +2573,10 @@ resource Disk implements MissingStorage {
         .expect("failed to write unresolved resource-interface fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2391,7 +2682,10 @@ service FsStorage implements Storage {
         .expect("failed to write duplicate-interface fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2463,7 +2757,10 @@ fn run() -> Unit {
         .expect("failed to write Unit-return fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2523,7 +2820,10 @@ fn run() -> String {
         .expect("failed to write non-Unit return fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2580,7 +2880,10 @@ fn run() -> String { fmt() }
         .expect("failed to write call-arity fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2605,7 +2908,10 @@ fn run() -> String { fmt(text: "ok") }
         .expect("failed to write unknown-arg fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2630,7 +2936,10 @@ fn run() -> String { fmt(value: "a", value: "b") }
         .expect("failed to write duplicate-arg fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2666,7 +2975,10 @@ func run() -> { body: String } {
         .expect("failed to write service call-arity fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2702,7 +3014,10 @@ func run() -> { body: String } {
         .expect("failed to write unknown service-arg fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2738,7 +3053,10 @@ func run() -> { body: String } {
         .expect("failed to write duplicate service-arg fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2762,7 +3080,10 @@ fn run(input: MissingType) -> String { "ok" }
         .expect("failed to write undefined-type fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2785,7 +3106,10 @@ fn run() -> String { return 42 }
         .expect("failed to write type-mismatch fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2808,7 +3132,10 @@ fn run() -> String { 42 }
         .expect("failed to write implicit-return mismatch fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2834,7 +3161,10 @@ func run() -> { body: String } {
         .expect("failed to write no-such-field record-literal fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2858,7 +3188,10 @@ fn run(input: Payload) -> String { input.missing }
         .expect("failed to write no-such-field named-record fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2881,7 +3214,10 @@ fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
         .expect("failed to write unsatisfiable-refinement fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2904,7 +3240,10 @@ fn run(values: Map<String>) -> Int { 1 }
         .expect("failed to write generic-arity mismatch fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -2928,7 +3267,10 @@ fn run(values: Box<String, Int>) -> String { values }
         .expect("failed to write user-defined generic-arity mismatch fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -3706,7 +4048,10 @@ fn run(a: String, a: Int) -> String { a }
         .expect("failed to write duplicate-parameter fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -3729,7 +4074,10 @@ func run() -> { ok: Bool, ok: String } { return { ok: true } }
         .expect("failed to write duplicate-output fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -3753,7 +4101,10 @@ func run() -> { ok: Bool } uses fs: Storage uses fs: Storage { return { ok: true
         .expect("failed to write duplicate-uses fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -3777,7 +4128,10 @@ func run() -> { ok: Bool } provides out: Storage provides out: Storage { return 
         .expect("failed to write duplicate-provides fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -3801,7 +4155,10 @@ func run() -> { ok: Bool } uses io: Storage provides io: Storage { return { ok: 
         .expect("failed to write use/provide conflict fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -3839,13 +4196,18 @@ resource Disk implements Storage {
         .expect("failed to write missing-resource-capability fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
         let error = compile_from_context(&context).expect_err("compile should fail");
         assert_typecheck_stage_error(&error);
-        assert!(error.contains("resource `Disk` is missing capability `write` for interface `Storage`"));
+        assert!(
+            error.contains("resource `Disk` is missing capability `write` for interface `Storage`")
+        );
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
     }
@@ -3874,13 +4236,17 @@ service FsStorage implements Storage {
         .expect("failed to write missing-service-operation fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
         let error = compile_from_context(&context).expect_err("compile should fail");
         assert_typecheck_stage_error(&error);
-        assert!(error.contains("service `FsStorage` is missing operation `write` for interface `Storage`"));
+        assert!(error
+            .contains("service `FsStorage` is missing operation `write` for interface `Storage`"));
 
         std::fs::remove_file(fixture).expect("failed to cleanup fixture");
     }
@@ -3905,7 +4271,10 @@ service FsStorage implements Storage {
         .expect("failed to write service-signature-mismatch fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -3940,7 +4309,10 @@ resource Disk implements Storage {
         .expect("failed to write resource-signature-mismatch fixture");
 
         let context = PipelineContext {
-            roots: vec![fixture.parent().expect("fixture should have parent").to_path_buf()],
+            roots: vec![fixture
+                .parent()
+                .expect("fixture should have parent")
+                .to_path_buf()],
             target_file: Some(fixture.clone()),
         };
 
@@ -4151,7 +4523,9 @@ resource Disk implements Storage {
 
         let error = compile_from_context(&context).expect_err("compile should fail");
         assert_typecheck_stage_error(&error);
-        assert!(error.contains("resource `Disk` is missing capability `write` for interface `Storage`"));
+        assert!(
+            error.contains("resource `Disk` is missing capability `write` for interface `Storage`")
+        );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -4194,7 +4568,8 @@ service FsStorage implements Storage {
 
         let error = compile_from_context(&context).expect_err("compile should fail");
         assert_typecheck_stage_error(&error);
-        assert!(error.contains("service `FsStorage` is missing operation `write` for interface `Storage`"));
+        assert!(error
+            .contains("service `FsStorage` is missing operation `write` for interface `Storage`"));
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }

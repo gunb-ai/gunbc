@@ -131,7 +131,8 @@ pub enum ObligationCategory {
     ResourceRelease,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ServiceTransportClass {
     Unknown,
     ShellLocal,
@@ -139,7 +140,7 @@ pub enum ServiceTransportClass {
     FileBoundary,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct ServiceCallMetadata {
     pub service: String,
     pub operation: String,

@@ -19,7 +19,10 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use daglang_lower::{classify_obligation, LoweredOp, ObligationCategory};
+use daglang_lower::{
+    classify_obligation, classify_service_transport, LoweredOp, ObligationCategory,
+    ServiceTransportClass,
+};
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node};
 use serde::Serialize;
 
@@ -95,6 +98,11 @@ pub struct TestObligations {
     pub service_transport_prepare_targets: usize,
     pub service_transport_execute_targets: usize,
     pub service_transport_parse_targets: usize,
+    pub service_transport_hermetic_targets: usize,
+    pub service_transport_external_targets: usize,
+    pub service_transport_idempotent_targets: usize,
+    pub service_transport_readonly_targets: usize,
+    pub service_transport_permission_scoped_targets: usize,
     pub service_param_source_targets: usize,
     pub resource_provide_targets: usize,
     pub resource_acquire_targets: usize,
@@ -186,6 +194,13 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         service_transport_prepare_targets: obligation_counts.service_transport_prepare_targets,
         service_transport_execute_targets: obligation_counts.service_transport_execute_targets,
         service_transport_parse_targets: obligation_counts.service_transport_parse_targets,
+        service_transport_hermetic_targets: obligation_counts.service_transport_hermetic_targets,
+        service_transport_external_targets: obligation_counts.service_transport_external_targets,
+        service_transport_idempotent_targets: obligation_counts
+            .service_transport_idempotent_targets,
+        service_transport_readonly_targets: obligation_counts.service_transport_readonly_targets,
+        service_transport_permission_scoped_targets: obligation_counts
+            .service_transport_permission_scoped_targets,
         service_param_source_targets: obligation_counts.service_param_source_targets,
         resource_provide_targets: obligation_counts.resource_provide_targets,
         resource_acquire_targets: obligation_counts.resource_acquire_targets,
@@ -366,6 +381,11 @@ struct ObligationCounts {
     service_transport_prepare_targets: usize,
     service_transport_execute_targets: usize,
     service_transport_parse_targets: usize,
+    service_transport_hermetic_targets: usize,
+    service_transport_external_targets: usize,
+    service_transport_idempotent_targets: usize,
+    service_transport_readonly_targets: usize,
+    service_transport_permission_scoped_targets: usize,
     service_param_source_targets: usize,
     resource_provide_targets: usize,
     resource_acquire_targets: usize,
@@ -393,6 +413,40 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
             }
             ObligationCategory::ServiceTransportExecute => {
                 counts.service_transport_execute_targets += 1;
+                match classify_service_transport(op) {
+                    Some(ServiceTransportClass::ShellLocal)
+                        if op
+                            .service_call_metadata()
+                            .is_some_and(|metadata| metadata.permissions.is_empty()) =>
+                    {
+                        counts.service_transport_hermetic_targets += 1;
+                    }
+                    Some(ServiceTransportClass::ShellLocal)
+                    | Some(ServiceTransportClass::RestNetwork)
+                    | Some(ServiceTransportClass::FileBoundary)
+                    | Some(ServiceTransportClass::Unknown)
+                    | None => {
+                        counts.service_transport_external_targets += 1;
+                    }
+                }
+                if op
+                    .service_call_metadata()
+                    .is_some_and(|metadata| metadata.idempotent)
+                {
+                    counts.service_transport_idempotent_targets += 1;
+                }
+                if op
+                    .service_call_metadata()
+                    .is_some_and(|metadata| metadata.readonly)
+                {
+                    counts.service_transport_readonly_targets += 1;
+                }
+                if op
+                    .service_call_metadata()
+                    .is_some_and(|metadata| !metadata.permissions.is_empty())
+                {
+                    counts.service_transport_permission_scoped_targets += 1;
+                }
             }
             ObligationCategory::ServiceTransportParse => {
                 counts.service_transport_parse_targets += 1;
@@ -431,7 +485,9 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, LoweredOp, ObligationCategory};
+    use daglang_lower::{
+        CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
+    };
     use gunbc_ir::{Edge, Node, Port};
 
     fn callable_node(id: &str, module: &str, name: &str) -> Node<LoweredOp> {
@@ -673,10 +729,82 @@ mod tests {
         assert_eq!(artifacts.obligations.service_transport_prepare_targets, 1);
         assert_eq!(artifacts.obligations.service_transport_execute_targets, 1);
         assert_eq!(artifacts.obligations.service_transport_parse_targets, 1);
+        assert_eq!(artifacts.obligations.service_transport_hermetic_targets, 0);
+        assert_eq!(artifacts.obligations.service_transport_external_targets, 1);
+        assert_eq!(
+            artifacts.obligations.service_transport_idempotent_targets,
+            0
+        );
+        assert_eq!(artifacts.obligations.service_transport_readonly_targets, 0);
+        assert_eq!(
+            artifacts
+                .obligations
+                .service_transport_permission_scoped_targets,
+            0
+        );
         assert_eq!(artifacts.obligations.service_param_source_targets, 1);
         assert_eq!(artifacts.obligations.resource_provide_targets, 1);
         assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
         assert_eq!(artifacts.obligations.resource_release_targets, 1);
+    }
+
+    #[test]
+    fn derive_obligations_tracks_service_transport_semantic_buckets() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "execute_transport_hermetic",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::execute::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "FsStorage".to_string(),
+                    operation: "read".to_string(),
+                    transport: ServiceTransportClass::ShellLocal,
+                    idempotent: true,
+                    readonly: true,
+                    permissions: vec![],
+                }),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "execute_transport_external",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::execute::GistApi::create".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "GistApi".to_string(),
+                    operation: "create".to_string(),
+                    transport: ServiceTransportClass::RestNetwork,
+                    idempotent: false,
+                    readonly: false,
+                    permissions: vec!["gist.write".to_string()],
+                }),
+            },
+        ));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert_eq!(artifacts.obligations.service_transport_execute_targets, 2);
+        assert_eq!(artifacts.obligations.service_transport_hermetic_targets, 1);
+        assert_eq!(artifacts.obligations.service_transport_external_targets, 1);
+        assert_eq!(
+            artifacts.obligations.service_transport_idempotent_targets,
+            1
+        );
+        assert_eq!(artifacts.obligations.service_transport_readonly_targets, 1);
+        assert_eq!(
+            artifacts
+                .obligations
+                .service_transport_permission_scoped_targets,
+            1
+        );
     }
 
     #[test]
