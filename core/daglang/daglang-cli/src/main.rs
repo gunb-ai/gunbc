@@ -363,10 +363,7 @@ fn build_check_pipeline_context(
         .map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
     let (roots, target_file) = match normalized_input {
         Some(path) if path_utils::is_single_file_target(&path, false) => {
-            let root = path
-                .parent()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| cwd.to_path_buf());
+            let root = path_utils::resolve_single_file_root(cwd, &path);
             (vec![root], Some(path))
         }
         Some(path) => (vec![path], None),
