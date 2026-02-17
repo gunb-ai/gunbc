@@ -910,6 +910,17 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_accepts_uppercase_dag_input_path() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "dsl/tools/makegen.DAG".to_string(),
+        ];
+        let parsed = parse_run_args(&args).expect("parse should succeed");
+        assert_eq!(parsed.file, "dsl/tools/makegen.DAG");
+    }
+
+    #[test]
     fn run_mode_label_distinguishes_real_dry_run_and_check_mode() {
         let real = RunArgs {
             file: "dsl/tools/makegen.dag".to_string(),

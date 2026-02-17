@@ -30650,6 +30650,51 @@ fn run_with_non_dag_input_exits_nonzero_with_usage_message() {
 }
 
 #[test]
+fn run_with_uppercase_dag_input_succeeds() {
+    let input_path = unique_temp_file("run_uppercase_input").with_extension("DAG");
+    std::fs::copy(
+        workspace_root().join("dsl/tools/makegen.dag"),
+        &input_path,
+    )
+    .expect("failed to copy makegen fixture to uppercase extension path");
+    let output_path = unique_temp_output_file("run_uppercase_input_output");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale uppercase output file");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg(input_path.to_string_lossy().as_ref())
+        .arg("--dry-run")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with uppercase .DAG input");
+
+    assert!(
+        output.status.success(),
+        "run should accept uppercase .DAG input paths: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=dry-run"),
+        "uppercase .DAG run should execute in dry-run mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "uppercase .DAG dry-run should report no writes: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "dry-run uppercase input should not create output file"
+    );
+
+    std::fs::remove_file(&input_path).expect("failed to clean uppercase input fixture");
+}
+
+#[test]
 fn run_with_missing_output_value_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
