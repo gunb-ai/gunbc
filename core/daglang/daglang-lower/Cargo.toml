@@ -9,6 +9,8 @@ description = "Lowers typed .dag AST to gunbc GraphIR (Dag/Node/Port/Edge)"
 daglang-syntax = { path = "../daglang-syntax" }
 daglang-typecheck = { path = "../daglang-typecheck" }
 gunbc-ir = { path = "../../ir" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 daglang-resolve = { path = "../daglang-resolve" }

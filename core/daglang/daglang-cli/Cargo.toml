@@ -13,6 +13,8 @@ daglang-lower = { path = "../daglang-lower" }
 daglang-derive = { path = "../daglang-derive" }
 daglang-emit = { path = "../daglang-emit" }
 gunbc-ir = { path = "../../ir" }
+gunbc-exec = { path = "../../exec" }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [[bin]]

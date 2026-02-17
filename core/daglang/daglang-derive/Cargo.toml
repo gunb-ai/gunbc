@@ -8,3 +8,4 @@ description = "Derives ProgressManifest, TestObligations, and ToolMetadata from 
 [dependencies]
 daglang-lower = { path = "../daglang-lower" }
 gunbc-ir = { path = "../../ir" }
+serde = { workspace = true, features = ["derive"] }
