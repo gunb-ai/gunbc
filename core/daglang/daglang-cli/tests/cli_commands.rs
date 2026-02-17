@@ -32138,6 +32138,87 @@ fn run_command_check_mode_does_not_create_missing_output_file() {
 }
 
 #[test]
+fn run_command_check_mode_equals_output_before_input_does_not_create_missing_file() {
+    let output_path = unique_temp_output_file("run_check_mode_equals_before_input_missing");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--check-mode")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with --check-mode --output=<path> before input");
+
+    assert!(
+        output.status.success(),
+        "run with check-mode equals output before input should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode equals-output run before input should report check-mode mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode equals-output run before input should report written=false: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "check-mode equals-output run before input should not create {}",
+        output_path.display()
+    );
+}
+
+#[test]
+fn run_command_check_mode_dash_prefixed_equals_output_missing_file_is_not_created() {
+    let output_path = std::env::temp_dir().join(format!(
+        "--daglang_run_check_mode_dash_missing_output_{}_{}.mk",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--check-mode")
+        .arg(format!("--output={}", output_path.to_string_lossy()))
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with dash-prefixed check-mode --output=<path>");
+
+    assert!(
+        output.status.success(),
+        "check-mode run with missing dash-prefixed output path should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode run with missing dash-prefixed output path should report mode=check-mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode run with missing dash-prefixed output path should report written=false: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "check-mode run with missing dash-prefixed output path should not create {}",
+        output_path.display()
+    );
+}
+
+#[test]
 fn compile_family_commands_execute_real_pipeline_paths() {
     for command in ["expand", "manifest", "obligations", "show-triplets", "compile"] {
         let output = Command::new(daglang_bin())
