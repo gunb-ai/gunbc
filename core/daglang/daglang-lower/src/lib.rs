@@ -2435,7 +2435,9 @@ mod tests {
     use daglang_syntax::parser;
     use daglang_typecheck::typecheck_module_graph;
     use gunbc_dag::build_makegen_graph;
+    use gunbc_lib_gcp_ops::build_gcp_secret_manager_credential_graph_github;
     use gunbc_ir::{Edge, Port};
+    use std::collections::{HashMap, HashSet, VecDeque};
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -2457,6 +2459,54 @@ mod tests {
                 }
             })
             .collect();
+        typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
+    }
+
+    // Test infrastructure: filesystem access for real DSL corpus fixtures.
+    #[allow(clippy::disallowed_methods)]
+    fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedProject {
+        let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+        let graph = ModuleGraph::discover(&[dsl_root]).expect("module graph discovery should succeed");
+        let target_index = graph
+            .modules
+            .iter()
+            .position(|module| module.module_path.join(".") == module_name)
+            .expect("target module should exist in graph");
+
+        let mut required_indices = HashSet::<usize>::new();
+        let mut queue = VecDeque::from([target_index]);
+        while let Some(module_index) = queue.pop_front() {
+            if !required_indices.insert(module_index) {
+                continue;
+            }
+            let Some(module) = graph.modules.get(module_index) else {
+                continue;
+            };
+            for dependency in &module.dependencies {
+                queue.push_back(*dependency);
+            }
+        }
+
+        let mut ordered_indices = required_indices.iter().copied().collect::<Vec<_>>();
+        ordered_indices.sort_unstable();
+        let index_map = ordered_indices
+            .iter()
+            .enumerate()
+            .map(|(new_index, old_index)| (*old_index, new_index))
+            .collect::<HashMap<_, _>>();
+
+        let mut modules = Vec::new();
+        for (old_index, mut module) in graph.modules.into_iter().enumerate() {
+            if !required_indices.contains(&old_index) {
+                continue;
+            }
+            module.dependencies = module
+                .dependencies
+                .into_iter()
+                .filter_map(|dependency| index_map.get(&dependency).copied())
+                .collect::<Vec<_>>();
+            modules.push(module);
+        }
         typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
     }
 
@@ -2493,6 +2543,19 @@ mod tests {
                 && edge.to_node.0 == "compare_makegen_content"
                 && edge.to_port.0 == "expected_content"
         }));
+    }
+
+    #[test]
+    fn gcp_credential_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let reference = build_gcp_secret_manager_credential_graph_github();
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
     }
 
     // Test infrastructure: filesystem access for test fixtures

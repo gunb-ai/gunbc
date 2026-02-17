@@ -24,9 +24,9 @@ The source of truth for current status is the workflow fixture contract suite in
 
 - **Current status**: ✅ compiles, expands, and obligations derive in workflow contract fixture.
 - **Primary gap**:
-  - parity versus legacy `lib/gcp-ops` credential graph shape is still pending.
+  - exact parity versus legacy `lib/gcp-ops` credential graph shape is still pending.
 - **Next increments**:
-  - add builder parity target for credential chain.
+  - tighten the newly-added credential parity target from deterministic report scaffolding to zero-delta structural parity.
   - align service-call lowering coverage for remaining credential operations across providers.
 
 ## S3 — Tool Install Upsert (`tools.bootstrap`)
