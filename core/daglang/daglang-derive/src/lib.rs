@@ -55,32 +55,39 @@ pub struct ProgressManifest {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TopologyNode {
-    pub node_id: String,
+    pub id: String,
     pub depth: usize,
+    pub parent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SubDagBoundary {
     pub node_id: String,
+    pub label: String,
+    pub inner_nodes: Vec<String>,
+    pub parent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ParallelGroup {
-    pub group_id: String,
-    pub node_ids: Vec<String>,
+    pub nodes: Vec<String>,
+    pub depth: usize,
+    pub parent_subdag: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CaptureMode {
     #[default]
-    Default,
+    Captured,
+    Passthrough,
+    Streamed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StageGroup {
-    pub stage: String,
-    pub node_ids: Vec<String>,
+    pub stage_id: String,
+    pub nodes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -172,17 +179,13 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         total_edges: dag.edges.len(),
         topology: derive_topology_from_waves(&waves),
         labels: derive_node_labels(&dag.nodes),
-        subdag_boundaries: boundary_nodes
-            .iter()
-            .cloned()
-            .map(|node_id| SubDagBoundary { node_id })
-            .collect(),
+        subdag_boundaries: derive_subdag_boundaries(&dag.nodes),
         parallel_groups: derive_parallel_groups(&waves),
         scatter_points: derive_scatter_points(&dag.nodes),
-        interactive_nodes: Vec::new(),
+        interactive_nodes: derive_interactive_nodes(&dag.nodes),
         capture_modes: derive_capture_modes(&dag.nodes),
         stage_groups: derive_stage_groups(&dag.nodes),
-        resources: BTreeMap::new(),
+        resources: derive_resources(&dag.nodes),
         waves,
         entrypoint_nodes,
         boundary_nodes,
@@ -300,10 +303,11 @@ fn compute_waves(dag: &Dag<LoweredOp>) -> Result<Vec<Vec<String>>, DeriveError> 
 fn derive_topology_from_waves(waves: &[Vec<String>]) -> Vec<TopologyNode> {
     let mut topology = Vec::new();
     for (depth, wave) in waves.iter().enumerate() {
-        for node_id in wave {
+        for id in wave {
             topology.push(TopologyNode {
-                node_id: node_id.clone(),
+                id: id.clone(),
                 depth,
+                parent: None,
             });
         }
     }
@@ -316,10 +320,28 @@ fn derive_parallel_groups(waves: &[Vec<String>]) -> Vec<ParallelGroup> {
         .enumerate()
         .filter(|(_depth, wave)| !wave.is_empty())
         .map(|(depth, wave)| ParallelGroup {
-            group_id: format!("wave_{depth}"),
-            node_ids: wave.clone(),
+            nodes: wave.clone(),
+            depth,
+            parent_subdag: None,
         })
         .collect()
+}
+
+fn derive_subdag_boundaries(nodes: &[Node<LoweredOp>]) -> Vec<SubDagBoundary> {
+    let mut boundaries = nodes
+        .iter()
+        .filter_map(|node| match &node.body {
+            gunbc_ir::node::NodeBody::SubDag(_subdag) => Some(SubDagBoundary {
+                node_id: node.id.0.clone(),
+                label: node.id.0.clone(),
+                inner_nodes: Vec::new(),
+                parent: None,
+            }),
+            gunbc_ir::node::NodeBody::Opaque(_) => None,
+        })
+        .collect::<Vec<_>>();
+    boundaries.sort_by(|lhs, rhs| lhs.node_id.cmp(&rhs.node_id));
+    boundaries
 }
 
 fn derive_scatter_points(nodes: &[Node<LoweredOp>]) -> Vec<String> {
@@ -402,12 +424,10 @@ fn derive_stage_groups(nodes: &[Node<LoweredOp>]) -> Vec<StageGroup> {
     });
     staged
         .into_iter()
-        .map(
-            |(module, name, _stage_order, stage_name, node_id)| StageGroup {
-                stage: format!("{module}.{name}:{stage_name}"),
-                node_ids: vec![node_id],
-            },
-        )
+        .map(|(module, name, _stage_order, stage_name, node_id)| StageGroup {
+            stage_id: format!("{module}.{name}:{stage_name}"),
+            nodes: vec![node_id],
+        })
         .collect()
 }
 
@@ -455,8 +475,73 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
 fn derive_capture_modes(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, CaptureMode> {
     nodes
         .iter()
-        .map(|node| (node.id.0.clone(), CaptureMode::Default))
+        .map(|node| {
+            let mode = match node.body.as_opaque() {
+                Some(LoweredOp::Callable { name, .. })
+                    if name.contains("service_transport::execute::") =>
+                {
+                    CaptureMode::Captured
+                }
+                Some(LoweredOp::Collection { .. })
+                | Some(LoweredOp::Pipeline { .. })
+                | Some(LoweredOp::Callable { .. })
+                | None => CaptureMode::Captured,
+            };
+            (node.id.0.clone(), mode)
+        })
         .collect()
+}
+
+fn derive_interactive_nodes(nodes: &[Node<LoweredOp>]) -> Vec<String> {
+    let mut interactive = nodes
+        .iter()
+        .filter_map(|node| match node.body.as_opaque() {
+            Some(LoweredOp::Callable { name, .. }) if name.contains("@interactive") => {
+                Some(node.id.0.clone())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    interactive.sort();
+    interactive
+}
+
+fn derive_resources(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, Vec<ResourceUsage>> {
+    let mut resources = BTreeMap::<String, Vec<ResourceUsage>>::new();
+    for node in nodes {
+        let Some(LoweredOp::Callable { name, .. }) = node.body.as_opaque() else {
+            continue;
+        };
+        let usage = if let Some(resource) = name.strip_prefix("resource_lifecycle::acquire::") {
+            Some(ResourceUsage {
+                resource: resource.to_string(),
+                usage: "acquire".to_string(),
+            })
+        } else if let Some(resource) = name.strip_prefix("resource_lifecycle::release::") {
+            Some(ResourceUsage {
+                resource: resource.to_string(),
+                usage: "release".to_string(),
+            })
+        } else if let Some(binding) = name.strip_prefix("resource_provide::") {
+            Some(ResourceUsage {
+                resource: binding.to_string(),
+                usage: "provide".to_string(),
+            })
+        } else {
+            None
+        };
+        if let Some(usage) = usage {
+            resources.entry(node.id.0.clone()).or_default().push(usage);
+        }
+    }
+    for usages in resources.values_mut() {
+        usages.sort_by(|lhs, rhs| {
+            lhs.resource
+                .cmp(&rhs.resource)
+                .then_with(|| lhs.usage.cmp(&rhs.usage))
+        });
+    }
+    resources
 }
 
 fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
@@ -659,16 +744,19 @@ mod tests {
             artifacts.manifest.topology,
             vec![
                 TopologyNode {
-                    node_id: "a".to_string(),
+                    id: "a".to_string(),
                     depth: 0,
+                    parent: None,
                 },
                 TopologyNode {
-                    node_id: "b".to_string(),
+                    id: "b".to_string(),
                     depth: 0,
+                    parent: None,
                 },
                 TopologyNode {
-                    node_id: "c".to_string(),
+                    id: "c".to_string(),
                     depth: 1,
+                    parent: None,
                 },
             ]
         );
@@ -684,12 +772,14 @@ mod tests {
             artifacts.manifest.parallel_groups,
             vec![
                 ParallelGroup {
-                    group_id: "wave_0".to_string(),
-                    node_ids: vec!["a".to_string(), "b".to_string()],
+                    nodes: vec!["a".to_string(), "b".to_string()],
+                    depth: 0,
+                    parent_subdag: None,
                 },
                 ParallelGroup {
-                    group_id: "wave_1".to_string(),
-                    node_ids: vec!["c".to_string()],
+                    nodes: vec!["c".to_string()],
+                    depth: 1,
+                    parent_subdag: None,
                 },
             ]
         );
@@ -698,14 +788,10 @@ mod tests {
             3,
             "capture modes should be derived for all nodes"
         );
-        let expected_boundaries = artifacts
-            .manifest
-            .boundary_nodes
-            .iter()
-            .cloned()
-            .map(|node_id| SubDagBoundary { node_id })
-            .collect::<Vec<_>>();
-        assert_eq!(artifacts.manifest.subdag_boundaries, expected_boundaries);
+        assert!(
+            artifacts.manifest.subdag_boundaries.is_empty(),
+            "opaque-only DAG should not report subdag boundaries"
+        );
     }
 
     #[test]
@@ -737,8 +823,8 @@ mod tests {
             .any(|module| module.module == "pipelines.ci" && module.pipeline_count == 1));
         let expected_stage_groups = (1..=12)
             .map(|stage_index| StageGroup {
-                stage: format!("pipelines.ci.ci:stage_{stage_index}"),
-                node_ids: vec!["ci".to_string()],
+                stage_id: format!("pipelines.ci.ci:stage_{stage_index}"),
+                nodes: vec!["ci".to_string()],
             })
             .collect::<Vec<_>>();
         assert_eq!(artifacts.manifest.stage_groups, expected_stage_groups);
@@ -929,6 +1015,32 @@ mod tests {
                 .obligations
                 .interface_contract_verification_targets,
             0
+        );
+        assert_eq!(
+            artifacts
+                .manifest
+                .resources
+                .get("acquire_resource")
+                .expect("acquire resource usage should be derived"),
+            &vec![ResourceUsage {
+                resource: "TempFile".to_string(),
+                usage: "acquire".to_string(),
+            }]
+        );
+        assert_eq!(
+            artifacts
+                .manifest
+                .resources
+                .get("release_resource")
+                .expect("release resource usage should be derived"),
+            &vec![ResourceUsage {
+                resource: "TempFile".to_string(),
+                usage: "release".to_string(),
+            }]
+        );
+        assert!(
+            artifacts.manifest.interactive_nodes.is_empty(),
+            "fixture DAG has no interactive annotations"
         );
     }
 

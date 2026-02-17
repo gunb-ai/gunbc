@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 struct WorkflowFixture {
     scenario: &'static str,
@@ -103,10 +104,18 @@ fn daglang_bin() -> &'static str {
 }
 
 fn normalize_module_path(path: &str) -> String {
-    let marker = "/dsl/";
-    path.split_once(marker)
-        .map(|(_, suffix)| suffix.to_string())
-        .unwrap_or_else(|| path.to_string())
+    let mut normalized_components = Path::new(path)
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    if let Some(dsl_index) = normalized_components
+        .iter()
+        .position(|component| component.eq_ignore_ascii_case("dsl"))
+    {
+        normalized_components.drain(..=dsl_index);
+        return normalized_components.join("/");
+    }
+    normalized_components.join("/")
 }
 
 fn normalize_module_fixture(module: &Value) -> Value {
@@ -202,6 +211,17 @@ fn load_fixture(path: &Path) -> Value {
         .unwrap_or_else(|err| panic!("failed to read fixture {}: {err}", path.display()));
     serde_json::from_str(&raw)
         .unwrap_or_else(|err| panic!("invalid fixture json {}: {err}", path.display()))
+}
+
+fn unique_temp_dir(label: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "daglang_workflow_contracts_{label}_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ))
 }
 
 #[test]
@@ -390,4 +410,49 @@ fn workflow_fixture_registry_has_unique_entries_and_matrix_coverage() {
         "expected workflow fixture coverage for matrix rows, got {}",
         WORKFLOW_FIXTURES.len()
     );
+}
+
+#[test]
+fn workflow_expand_negative_fixture_typecheck_error_contract() {
+    let fixture = load_fixture(&fixture_dir().join("w_negative_typecheck.json"));
+    let source = fixture
+        .get("source")
+        .and_then(Value::as_str)
+        .expect("negative fixture should include source");
+    let expected_expand = fixture
+        .get("expand_contract")
+        .expect("negative fixture should include expand_contract");
+    let expected_status = expected_expand
+        .get("status")
+        .and_then(Value::as_str)
+        .expect("negative fixture expand_contract.status should be a string");
+    let expected_substring = expected_expand
+        .get("error_contains")
+        .and_then(Value::as_str)
+        .expect("negative fixture should include error_contains");
+
+    let temp_dir = unique_temp_dir("negative_expand");
+    std::fs::create_dir_all(&temp_dir).expect("failed to create temp dir");
+    let dag_file = temp_dir.join("negative_typecheck.dag");
+    std::fs::write(&dag_file, source).expect("failed to write negative fixture dag file");
+
+    let output = Command::new(daglang_bin())
+        .arg("expand")
+        .arg(&dag_file)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang expand for negative fixture");
+    let actual_status = classify_command_status(&output);
+    assert_eq!(
+        actual_status, expected_status,
+        "negative fixture status should match expected expand status"
+    );
+    let output_text = combined_output(&output);
+    assert!(
+        output_text.contains(expected_substring),
+        "expected negative fixture output to contain `{expected_substring}`, got: {}",
+        output_text
+    );
+
+    std::fs::remove_dir_all(&temp_dir).expect("failed to remove temp dir");
 }

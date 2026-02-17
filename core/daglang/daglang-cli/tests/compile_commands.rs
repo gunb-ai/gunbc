@@ -11657,7 +11657,7 @@ fn manifest_command_ci_json_includes_stage_groups() {
     assert!(
         stage_groups.iter().any(|group| {
             group
-                .get("stage")
+                .get("stage_id")
                 .and_then(Value::as_str)
                 .is_some_and(|stage| stage.ends_with(":cloud_env"))
         }),
@@ -11666,7 +11666,7 @@ fn manifest_command_ci_json_includes_stage_groups() {
     assert!(
         stage_groups.iter().any(|group| {
             group
-                .get("stage")
+                .get("stage_id")
                 .and_then(Value::as_str)
                 .is_some_and(|stage| stage.ends_with(":bootstrap_stage"))
         }),

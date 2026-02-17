@@ -25,11 +25,11 @@ pub enum ResolvedOp {
 }
 
 #[derive(Debug, Clone)]
-struct OpRegistry {
+struct MakegenOpRegistry {
     makegen_callables: HashMap<&'static str, ResolvedOp>,
 }
 
-impl OpRegistry {
+impl MakegenOpRegistry {
     fn makegen() -> Self {
         let mut makegen_callables = HashMap::new();
         makegen_callables.insert("load_registry", ResolvedOp::LoadRegistry);
@@ -75,10 +75,10 @@ impl Executable for ResolvedOp {
             Self::RenderMakefile => execute_render_makefile(inputs),
             Self::MakegenEntrypoint => execute_finalize_makegen(inputs),
             Self::PrepareReadContent => execute_prepare_read_content(inputs),
-            Self::ExecuteReadContent => execute_execute_read_content(inputs),
+            Self::ExecuteReadContent => run_read_content_node(inputs),
             Self::PrepareWriteContent => execute_prepare_write_content(inputs),
             Self::CompareContent => execute_compare_content(inputs),
-            Self::ExecuteTransport => execute_execute_transport(inputs),
+            Self::ExecuteTransport => run_transport_node(inputs),
             Self::CollectionNode(_) => execute_collection_node(inputs),
         }
     }
@@ -97,7 +97,7 @@ impl std::fmt::Display for ResolveDagError {
 }
 
 pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<ResolvedOp>, ResolveDagError> {
-    let registry = OpRegistry::makegen();
+    let registry = MakegenOpRegistry::makegen();
     let mut resolved = Dag::new();
     for node in &dag.nodes {
         let resolved_op = resolve_lowered_node(node, &registry)?;
@@ -256,7 +256,7 @@ fn execute_prepare_read_content(
         .ok()
 }
 
-fn execute_execute_read_content(
+fn run_read_content_node(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let request = inputs
@@ -315,9 +315,7 @@ fn execute_compare_content(
         .ok()
 }
 
-fn execute_execute_transport(
-    inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
+fn run_transport_node(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let skip = inputs.get("skip").and_then(Value::as_bool).unwrap_or(false);
     if skip {
         return OutputMap::new()
@@ -355,6 +353,9 @@ fn execute_execute_transport(
 fn execute_collection_node(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    // Collection execution is currently a structural passthrough scaffold.
+    // Lowering emits collection nodes for progress/parity visibility; runtime
+    // semantics stay unchanged until dedicated collection executors land.
     let items = inputs
         .get("items")
         .cloned()
@@ -397,7 +398,7 @@ fn execute_finalize_makegen(
 
 fn resolve_lowered_node(
     node: &Node<LoweredOp>,
-    registry: &OpRegistry,
+    registry: &MakegenOpRegistry,
 ) -> Result<ResolvedOp, ResolveDagError> {
     let node_id = node.id.0.clone();
     match &node.body {
@@ -412,7 +413,7 @@ fn resolve_lowered_node(
 fn resolve_lowered_op(
     node_id: &str,
     op: &LoweredOp,
-    registry: &OpRegistry,
+    registry: &MakegenOpRegistry,
 ) -> Result<ResolvedOp, ResolveDagError> {
     match op {
         LoweredOp::Pipeline { module, name, .. } => Err(ResolveDagError {

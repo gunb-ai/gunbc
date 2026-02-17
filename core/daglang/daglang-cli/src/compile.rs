@@ -195,7 +195,8 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
     .ok();
     out.push_str("  topology:\n");
     for node in &manifest.topology {
-        writeln!(out, "    - {} (depth={})", node.node_id, node.depth).ok();
+        let parent = node.parent.as_deref().unwrap_or("none");
+        writeln!(out, "    - {} (depth={}, parent={parent})", node.id, node.depth).ok();
     }
     out.push_str("  labels:\n");
     for (node_id, label) in &manifest.labels {
@@ -206,16 +207,29 @@ pub fn render_manifest(derived: &DerivedArtifacts) -> String {
         out.push_str("    (none)\n");
     } else {
         for boundary in &manifest.subdag_boundaries {
-            writeln!(out, "    - {}", boundary.node_id).ok();
+            let parent = boundary.parent.as_deref().unwrap_or("none");
+            let inner = if boundary.inner_nodes.is_empty() {
+                "(none)".to_string()
+            } else {
+                boundary.inner_nodes.join(", ")
+            };
+            writeln!(
+                out,
+                "    - {} label={} parent={} inner_nodes={}",
+                boundary.node_id, boundary.label, parent, inner
+            )
+            .ok();
         }
     }
     out.push_str("  parallel_groups:\n");
     for group in &manifest.parallel_groups {
+        let parent = group.parent_subdag.as_deref().unwrap_or("none");
         writeln!(
             out,
-            "    - {}: {}",
-            group.group_id,
-            group.node_ids.join(", ")
+            "    - depth={} parent_subdag={} nodes={}",
+            group.depth,
+            parent,
+            group.nodes.join(", ")
         )
         .ok();
     }
@@ -261,11 +275,11 @@ fn render_stage_groups_text(out: &mut String, stage_groups: &[daglang_derive::St
     }
     let mut sections: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
     for group in stage_groups {
-        let (section, stage_name) = split_stage_group_label(&group.stage);
+        let (section, stage_name) = split_stage_group_label(&group.stage_id);
         sections
             .entry(section)
             .or_default()
-            .push((stage_name, group.node_ids.join(", ")));
+            .push((stage_name, group.nodes.join(", ")));
     }
     for (section, entries) in sections {
         writeln!(

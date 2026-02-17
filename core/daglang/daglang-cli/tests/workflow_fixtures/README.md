@@ -24,6 +24,11 @@ Why this exists:
 - Captures expected compile/lower readiness per workflow as roadmap work advances.
 - Locks derived obligation counters for workflows that successfully lower.
 
+Additionally, `w_negative_typecheck.json` is consumed by a dedicated
+negative-contract test that writes a temporary `.dag` file and asserts the
+expected `typecheck_error` status + sentinel diagnostic text for
+`daglang expand`.
+
 When updating fixtures:
 1. Run `cargo test -p daglang-cli --test workflow_contracts -- --nocapture`.
 2. Update fixture JSON intentionally (never by accident).
