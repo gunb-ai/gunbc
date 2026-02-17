@@ -427,8 +427,11 @@ pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
         "FilesystemHandle",
         Value::Str("filesystem://check-mode".to_string()),
     );
-    let read_response = match std::fs::read_to_string(output_path) {
-        Ok(content) => FileResponse::read_ok(output_path.to_string(), content),
+    let read_response = match std::fs::read(output_path) {
+        Ok(content) => FileResponse::read_ok(
+            output_path.to_string(),
+            String::from_utf8_lossy(&content).to_string(),
+        ),
         Err(error) => FileResponse::error(output_path.to_string(), FileOp::Read, error.to_string()),
     };
     check_mode_mocks.set_value(

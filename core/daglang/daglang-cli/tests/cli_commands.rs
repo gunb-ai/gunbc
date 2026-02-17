@@ -30955,6 +30955,48 @@ fn run_command_check_mode_preserves_existing_file_and_reports_not_written() {
 }
 
 #[test]
+fn run_command_check_mode_preserves_existing_binary_file_and_reports_not_written() {
+    let output_path = unique_temp_output_file("run_check_mode_binary");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale binary check-mode output");
+    }
+    let seeded_bytes = vec![0u8, 159, 255, 10, 13, 42];
+    std::fs::write(&output_path, &seeded_bytes)
+        .expect("failed to seed binary check-mode output file");
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("--check-mode")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with --check-mode for binary output");
+
+    assert!(
+        output.status.success(),
+        "run with --check-mode should succeed for binary output files: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode run should report check-mode mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode run should report written=false for binary outputs: {stdout}"
+    );
+    let after = std::fs::read(&output_path).expect("failed to read binary check-mode file");
+    assert_eq!(
+        after, seeded_bytes,
+        "check-mode run should preserve existing binary output content"
+    );
+    std::fs::remove_file(&output_path).expect("failed to clean up binary check-mode output file");
+}
+
+#[test]
 fn run_command_check_mode_does_not_create_missing_output_file() {
     let output_path = unique_temp_output_file("run_check_mode_missing");
     if output_path.exists() {
