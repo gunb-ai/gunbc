@@ -32877,6 +32877,76 @@ fn run_with_duplicate_mixed_output_flags_after_input_exits_nonzero_with_usage_me
 }
 
 #[test]
+fn run_with_duplicate_split_output_separator_after_equals_output_exits_nonzero_with_usage_message()
+{
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output=out/first.mk")
+        .arg("--output")
+        .arg("--")
+        .arg("--dash-prefixed-second.mk")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with duplicate split output separator after equals output");
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate split output separator after equals output should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with duplicate split output separator after equals output should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run accepts at most one --output path"),
+        "run should report duplicate split output separator after equals output explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for duplicate split output separator after equals output: {stderr}"
+    );
+}
+
+#[test]
+fn run_with_duplicate_split_output_separator_after_equals_output_after_input_exits_nonzero_with_usage_message(
+) {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--output=out/first.mk")
+        .arg("--output")
+        .arg("--")
+        .arg("--dash-prefixed-second.mk")
+        .current_dir(workspace_root())
+        .output()
+        .expect(
+            "failed to run daglang run with duplicate split output separator after equals output after input",
+        );
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate split output separator after equals output after input should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with duplicate split output separator after equals output after input should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run accepts at most one --output path"),
+        "run should report duplicate split output separator after equals output after input explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for duplicate split output separator after equals output after input: {stderr}"
+    );
+}
+
+#[test]
 fn run_with_duplicate_equals_output_flags_exits_nonzero_with_usage_message() {
     let output = Command::new(daglang_bin())
         .arg("run")
