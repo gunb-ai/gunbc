@@ -152,7 +152,7 @@ impl Simulator {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_nanos();
-                Value::Bool(seed % 2 == 0)
+                Value::Bool(seed.is_multiple_of(2))
             })
             .with_validator(|v| match v {
                 Value::Bool(_) => Ok(()),
