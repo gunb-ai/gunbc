@@ -32444,6 +32444,40 @@ fn run_with_split_output_separator_conflicting_modes_exits_nonzero_with_usage_me
 }
 
 #[test]
+fn run_with_duplicate_output_after_split_output_separator_escape_exits_nonzero_with_usage_message() {
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg("--")
+        .arg("--split-output-first.mk")
+        .arg("--output")
+        .arg("out/second.mk")
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with duplicate output flag after split-output separator escape");
+
+    assert!(
+        !output.status.success(),
+        "run with duplicate output flag after split-output separator escape should fail with non-zero status"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "run with duplicate output flag after split-output separator escape should use usage exit code 1"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("run accepts at most one --output path"),
+        "run should report duplicate output flag after split-output separator escape explicitly: {stderr}"
+    );
+    assert!(
+        stderr.contains("Usage: daglang run <file.dag> [--output <path>] [--dry-run|--check-mode]"),
+        "run should include usage for duplicate output after split-output separator escape: {stderr}"
+    );
+}
+
+#[test]
 fn run_real_mode_supports_split_output_dash_prefixed_path_via_separator_and_reports_idempotence() {
     let execution_dir = unique_temp_dir("run_real_mode_split_output_dash_prefixed_separator");
     std::fs::create_dir_all(&execution_dir)

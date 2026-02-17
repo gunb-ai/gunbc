@@ -1844,6 +1844,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_args_rejects_duplicate_output_flag_after_split_output_separator_escape() {
+        let args = vec![
+            "daglang".to_string(),
+            "run".to_string(),
+            "--output".to_string(),
+            "--".to_string(),
+            "--dash-prefixed-output.mk".to_string(),
+            "--output".to_string(),
+            "out/second.mk".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+        ];
+        let error = parse_run_args(&args).expect_err("parse should fail");
+        assert!(
+            error.contains("run accepts at most one --output path"),
+            "expected duplicate output flag error after split-output separator escape, got: {error}"
+        );
+    }
+
+    #[test]
     fn parse_run_args_rejects_split_output_separator_without_path() {
         let args = vec![
             "daglang".to_string(),
