@@ -99,9 +99,12 @@ pub fn parse_with_file_diagnostics(
     }
 
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_source_file()
-        .map_err(|errors| errors.iter().map(|error| error.to_diagnostic(file, source)).collect())
+    parser.parse_source_file().map_err(|errors| {
+        errors
+            .iter()
+            .map(|error| error.to_diagnostic(file, source))
+            .collect()
+    })
 }
 
 struct Parser {
@@ -1110,7 +1113,7 @@ impl Parser {
             });
         }
         let mut annotations = Vec::new();
-        while self.check(&TokenKind::At) {
+        while self.check(&TokenKind::At) && !self.next_annotation_is_contract() {
             annotations.push(self.parse_annotation()?);
         }
         Ok(CapabilityDef {
@@ -1136,7 +1139,7 @@ impl Parser {
             outputs = self.parse_field_list_until_rbrace()?;
             self.expect(&TokenKind::RBrace)?;
         }
-        while self.check(&TokenKind::At) {
+        while self.check(&TokenKind::At) && !self.next_annotation_is_contract() {
             annotations.push(self.parse_annotation()?);
         }
 
@@ -1167,6 +1170,16 @@ impl Parser {
             outputs,
             annotations,
         })
+    }
+
+    fn next_annotation_is_contract(&self) -> bool {
+        if !self.check(&TokenKind::At) {
+            return false;
+        }
+        self.tokens
+            .get(self.pos + 1)
+            .and_then(|token| Self::token_kind_as_ident(&token.kind))
+            .is_some_and(|ident| ident == "contract")
     }
 
     fn parse_return_type_expr(&mut self) -> Result<TypeExpr, ParseError> {
@@ -1367,11 +1380,7 @@ impl Parser {
         } else {
             None
         };
-        Ok(Param {
-            name,
-            ty,
-            default,
-        })
+        Ok(Param { name, ty, default })
     }
 
     // ── annotations ────────────────────────────────────────────────
@@ -1817,9 +1826,7 @@ impl Parser {
         } else {
             match op {
                 TokenKind::PipeArrow => Expr::Pipe(Box::new(lhs), Box::new(rhs)),
-                TokenKind::NullCoalesce => {
-                    Expr::BinOp(Box::new(lhs), BinOp::Or, Box::new(rhs))
-                }
+                TokenKind::NullCoalesce => Expr::BinOp(Box::new(lhs), BinOp::Or, Box::new(rhs)),
                 _ => Expr::BinOp(Box::new(lhs), BinOp::Add, Box::new(rhs)),
             }
         }
@@ -1868,16 +1875,15 @@ impl Parser {
                 Ok(Expr::Literal(Literal::String(s)))
             }
             TokenKind::StrBegin(s) => self.parse_string_interp(s),
-            kind
-                if Self::token_kind_as_ident(&kind).is_some()
-                    && !matches!(
-                        kind,
-                        TokenKind::Match
-                            | TokenKind::If
-                            | TokenKind::For
-                            | TokenKind::Return
-                            | TokenKind::Fn
-                    ) =>
+            kind if Self::token_kind_as_ident(&kind).is_some()
+                && !matches!(
+                    kind,
+                    TokenKind::Match
+                        | TokenKind::If
+                        | TokenKind::For
+                        | TokenKind::Return
+                        | TokenKind::Fn
+                ) =>
             {
                 let Some(name) = Self::token_kind_as_ident(&kind) else {
                     return Err(self.err(format!(
@@ -2393,15 +2399,43 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
     }
 
     #[test]
+    fn parse_interface_contract_annotations_are_not_capability_annotations() {
+        let sf = parse_or_panic(
+            r#"module test
+interface Storage {
+  capability read(key: String) -> { value: String }
+    @readonly
+  @contract: read(k) => { value: "ok" }
+}
+"#,
+        );
+        match &sf.items[0].node {
+            Item::InterfaceDef(def) => {
+                assert_eq!(def.capabilities.len(), 1);
+                assert_eq!(
+                    def.capabilities[0].annotations.len(),
+                    1,
+                    "capability should keep only capability-scoped annotations"
+                );
+                assert_eq!(def.capabilities[0].annotations[0].name, "readonly");
+                assert_eq!(
+                    def.contracts.len(),
+                    1,
+                    "interface @contract annotations should be collected on interface"
+                );
+                assert_eq!(def.contracts[0].name, "contract");
+            }
+            other => panic!("expected InterfaceDef, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn expression_precedence_multiplicative_over_additive() {
         let expr = parse_expr_only("a + b * c");
         match expr {
             Expr::BinOp(lhs, BinOp::Add, rhs) => {
                 assert!(matches!(*lhs, Expr::Ident(ref name) if name == "a"));
-                assert!(matches!(
-                    *rhs,
-                    Expr::BinOp(_, BinOp::Mul, _)
-                ));
+                assert!(matches!(*rhs, Expr::BinOp(_, BinOp::Mul, _)));
             }
             other => panic!("unexpected expression tree: {other:?}"),
         }

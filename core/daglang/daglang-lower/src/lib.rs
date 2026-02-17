@@ -3871,6 +3871,59 @@ func cross_provider_auth() -> { ok: Bool } {
     }
 
     #[test]
+    fn aws_resource_module_emits_object_storage_contract_verification_nodes() {
+        let typed = typed_project_for_module_with_dependency_closure("infra.aws.resources");
+        let object_storage_contracts = typed
+            .modules
+            .iter()
+            .find(|module| module.module_path.join(".") == "infra.core")
+            .and_then(|module| {
+                module.ast.items.iter().find_map(|item| match &item.node {
+                    Item::InterfaceDef(interface) if interface.name == "ObjectStorage" => {
+                        Some(interface.contracts.len())
+                    }
+                    _ => None,
+                })
+            })
+            .expect("infra.core.ObjectStorage interface should exist");
+        assert!(
+            object_storage_contracts > 0,
+            "infra.core.ObjectStorage should carry @contract annotations"
+        );
+        let dag = lower_target_module(&typed, "infra.aws.resources");
+
+        let verify_node = "verify_contract_infra_aws_resources_S3Bucket_ObjectStorage_0";
+        assert!(
+            dag.nodes.iter().any(|node| node.id.0 == verify_node),
+            "aws resources should emit object-storage contract verification nodes"
+        );
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_aws_resources_S3Bucket"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == verify_node
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
+    fn azure_resource_module_emits_object_storage_contract_verification_nodes() {
+        let typed = typed_project_for_module_with_dependency_closure("infra.azure.resources");
+        let dag = lower_target_module(&typed, "infra.azure.resources");
+
+        let verify_node = "verify_contract_infra_azure_resources_BlobContainer_ObjectStorage_0";
+        assert!(
+            dag.nodes.iter().any(|node| node.id.0 == verify_node),
+            "azure resources should emit object-storage contract verification nodes"
+        );
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_azure_resources_BlobContainer"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == verify_node
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
     fn interface_contract_annotations_lower_to_verification_nodes_for_implementors() {
         let typed = typed_project_from_sources(&[(
             "dsl/infra/contracts.dag",

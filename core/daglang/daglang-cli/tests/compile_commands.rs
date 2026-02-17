@@ -26,6 +26,14 @@ fn dsl_root_dir() -> PathBuf {
     workspace_root().join("dsl")
 }
 
+fn aws_resources_file() -> PathBuf {
+    workspace_root().join("dsl/infra/aws/resources.dag")
+}
+
+fn azure_resources_file() -> PathBuf {
+    workspace_root().join("dsl/infra/azure/resources.dag")
+}
+
 fn expected_makegen_manifest_json_snapshot() -> String {
     format!(
         "{}\n",
@@ -11949,6 +11957,80 @@ fn obligations_command_json_supports_full_dsl_root() {
     assert!(
         acquire > 0,
         "full dsl obligations should include resource acquire targets"
+    );
+}
+
+#[test]
+fn obligations_command_aws_resources_reports_contract_targets() {
+    let output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(aws_resources_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations for aws resources");
+
+    assert!(
+        output.status.success(),
+        "obligations aws resources --format json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout)
+        .expect("obligations aws resources should emit valid JSON");
+    let interface_contracts = parsed
+        .get("interface_contract_verification_targets")
+        .and_then(Value::as_u64)
+        .expect("expected interface_contract_verification_targets count");
+    let resource_acquire = parsed
+        .get("resource_acquire_targets")
+        .and_then(Value::as_u64)
+        .expect("expected resource_acquire_targets count");
+
+    assert!(
+        interface_contracts > 0,
+        "aws resources obligations should include interface contract targets"
+    );
+    assert!(
+        resource_acquire > 0,
+        "aws resources obligations should include lifecycle acquire targets"
+    );
+}
+
+#[test]
+fn obligations_command_azure_resources_reports_contract_targets() {
+    let output = Command::new(daglang_bin())
+        .arg("obligations")
+        .arg(azure_resources_file())
+        .arg("--format")
+        .arg("json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang obligations for azure resources");
+
+    assert!(
+        output.status.success(),
+        "obligations azure resources --format json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: Value = serde_json::from_slice(&output.stdout)
+        .expect("obligations azure resources should emit valid JSON");
+    let interface_contracts = parsed
+        .get("interface_contract_verification_targets")
+        .and_then(Value::as_u64)
+        .expect("expected interface_contract_verification_targets count");
+    let resource_acquire = parsed
+        .get("resource_acquire_targets")
+        .and_then(Value::as_u64)
+        .expect("expected resource_acquire_targets count");
+
+    assert!(
+        interface_contracts > 0,
+        "azure resources obligations should include interface contract targets"
+    );
+    assert!(
+        resource_acquire > 0,
+        "azure resources obligations should include lifecycle acquire targets"
     );
 }
 

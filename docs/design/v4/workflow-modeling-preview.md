@@ -157,7 +157,7 @@ Global status:
 
 ## S9 — Cross-Cloud Deployment (`examples.deployment`)
 
-- **Current status**: ✅ compiles and emits obligations contract successfully; lowering regressions now cover provider-hint portability wiring (`GcpConfig`/`AwsConfig`/`AzureConfig`) and cross-provider credential-chain call composition.
+- **Current status**: ✅ compiles and emits obligations contract successfully; lowering regressions cover provider-hint portability wiring (`GcpConfig`/`AwsConfig`/`AzureConfig`) and cross-provider credential-chain call composition, and obligations now include interface-contract verification targets from provider implementors.
 - **Primary gap**:
   - parity against legacy cross-cloud deployment graph shape is still pending.
 - **Next increments**:
