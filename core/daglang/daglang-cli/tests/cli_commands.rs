@@ -31624,7 +31624,7 @@ fn obligations_and_show_triplets_with_invalid_format_exit_with_usage_message() {
             "Usage: daglang show-triplets <file.dag> [--format text|json]",
         ),
     ] {
-        for bad_value in ["yaml", "JSON"] {
+        for bad_value in ["yaml", "JSON", "Json", "Text"] {
             let output = Command::new(daglang_bin())
                 .arg(command)
                 .arg("dsl/tools/makegen.dag")
