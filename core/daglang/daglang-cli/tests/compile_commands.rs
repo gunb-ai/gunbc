@@ -12244,6 +12244,40 @@ fn obligations_command_absolute_parent_curdir_segment_directory_named_uppercase_
     std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
+#[cfg(unix)]
+#[test]
+fn obligations_command_absolute_parent_curdir_segment_symlink_named_dag_extension_is_invalid_single_file_target(
+) {
+    let root = unique_temp_dir(
+        "obligations_absolute_parent_curdir_segment_symlink_named_dag_extension",
+    );
+    let real_dir = root.join("real");
+    std::fs::create_dir_all(root.join("nested")).expect("failed to create nested directory");
+    std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
+    std::fs::write(
+        real_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in real directory");
+    let symlink_path = root.join("bundle_link.dag");
+    std::os::unix::fs::symlink(&real_dir, &symlink_path)
+        .expect("failed to create lowercase .dag symlink");
+
+    let parent_curdir_segment_input = root
+        .join("nested/./../bundle_link.dag")
+        .to_string_lossy()
+        .into_owned();
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "obligations",
+        &root,
+        &parent_curdir_segment_input,
+        &symlink_path,
+        None,
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
 #[test]
 fn obligations_command_absolute_parent_curdir_double_separator_directory_named_dag_extension_is_invalid_single_file_target(
 ) {
@@ -12781,6 +12815,37 @@ fn obligations_command_json_absolute_parent_curdir_segment_symlink_named_mixed_c
         &root,
         &parent_curdir_segment_input,
         &symlink_path,
+        None,
+        &["--format", "json"],
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn obligations_command_json_absolute_parent_curdir_segment_directory_named_mixed_case_dag_extension_is_invalid_single_file_target(
+) {
+    let root = unique_temp_dir(
+        "obligations_json_absolute_parent_curdir_segment_directory_named_mixed_case_dag_extension",
+    );
+    let dag_dir = root.join("bundle.DaG");
+    std::fs::create_dir_all(root.join("nested")).expect("failed to create nested directory");
+    std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .DaG directory root");
+    std::fs::write(
+        dag_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in .DaG directory");
+
+    let parent_curdir_segment_input = root
+        .join("nested/./../bundle.DaG")
+        .to_string_lossy()
+        .into_owned();
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target_with_args(
+        "obligations",
+        &root,
+        &parent_curdir_segment_input,
+        &dag_dir,
         None,
         &["--format", "json"],
     );
@@ -14211,6 +14276,36 @@ fn show_triplets_command_absolute_parent_curdir_segment_symlink_named_uppercase_
 }
 
 #[test]
+fn show_triplets_command_absolute_parent_curdir_segment_directory_named_dag_extension_is_invalid_single_file_target(
+) {
+    let root = unique_temp_dir(
+        "show_triplets_absolute_parent_curdir_segment_directory_named_dag_extension",
+    );
+    let dag_dir = root.join("bundle.dag");
+    std::fs::create_dir_all(root.join("nested")).expect("failed to create nested directory");
+    std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .dag directory root");
+    std::fs::write(
+        dag_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in .dag directory");
+
+    let parent_curdir_segment_input = root
+        .join("nested/./../bundle.dag")
+        .to_string_lossy()
+        .into_owned();
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target(
+        "show-triplets",
+        &root,
+        &parent_curdir_segment_input,
+        &dag_dir,
+        None,
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn show_triplets_command_absolute_parent_curdir_double_separator_directory_named_mixed_case_dag_extension_is_invalid_single_file_target(
 ) {
     let root = unique_temp_dir(
@@ -14810,6 +14905,41 @@ fn show_triplets_command_json_absolute_parent_curdir_segment_directory_named_dag
         &root,
         &parent_curdir_segment_input,
         &dag_dir,
+        None,
+        &["--format", "json"],
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+}
+
+#[cfg(unix)]
+#[test]
+fn show_triplets_command_json_absolute_parent_curdir_segment_symlink_named_uppercase_dag_extension_is_invalid_single_file_target(
+) {
+    let root = unique_temp_dir(
+        "show_triplets_json_absolute_parent_curdir_segment_symlink_named_uppercase_dag_extension",
+    );
+    let real_dir = root.join("real");
+    std::fs::create_dir_all(root.join("nested")).expect("failed to create nested directory");
+    std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real directory");
+    std::fs::write(
+        real_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source in real directory");
+    let symlink_path = root.join("bundle_link.DAG");
+    std::os::unix::fs::symlink(&real_dir, &symlink_path)
+        .expect("failed to create uppercase .dag symlink");
+
+    let parent_curdir_segment_input = root
+        .join("nested/./../bundle_link.DAG")
+        .to_string_lossy()
+        .into_owned();
+    assert_single_target_command_treats_dag_directory_as_invalid_single_file_target_with_args(
+        "show-triplets",
+        &root,
+        &parent_curdir_segment_input,
+        &symlink_path,
         None,
         &["--format", "json"],
     );
