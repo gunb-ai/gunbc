@@ -70,7 +70,7 @@ Global status:
 
 ## Credential (AWS) (`cloud.aws.credential`)
 
-- **Current status**: ✅ compiles and emits obligations contract successfully.
+- **Current status**: ✅ compiles and emits obligations contract successfully; AWS provider resource fixture coverage now validates non-zero interface-contract verification obligations.
 - **Primary gap**:
   - exact parity against legacy credential-chain builder shape is still pending.
 - **Next increments**:
@@ -78,7 +78,7 @@ Global status:
 
 ## Credential (Azure) (`cloud.azure.credential`)
 
-- **Current status**: ✅ compiles and emits obligations contract successfully.
+- **Current status**: ✅ compiles and emits obligations contract successfully; Azure provider resource fixture coverage now validates non-zero interface-contract verification obligations.
 - **Primary gap**:
   - exact parity against legacy Azure credential-chain builder shape is still pending.
 - **Next increments**:

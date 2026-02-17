@@ -69,6 +69,16 @@ const WORKFLOW_FIXTURES: &[WorkflowFixture] = &[
         fixture_file: "w_auth.json",
     },
     WorkflowFixture {
+        scenario: "W-contract-aws",
+        module: "infra.aws.resources",
+        fixture_file: "w_contract_aws_resources.json",
+    },
+    WorkflowFixture {
+        scenario: "W-contract-azure",
+        module: "infra.azure.resources",
+        fixture_file: "w_contract_azure_resources.json",
+    },
+    WorkflowFixture {
         scenario: "S8",
         module: "infra.core",
         fixture_file: "s8_infra_bootstrap.json",

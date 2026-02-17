@@ -726,7 +726,7 @@ The two workers share the `daglang-cli` crate but touch different files:
 - [ ] **IR parity**: compiled gist graph matches existing builder shape for all 3 modes
 - [x] **Provider portability**: `store_artifact(uses store: ObjectStorage)` compiles against all 3 providers — *lowering regression `store_artifact_portability_wires_gcp_aws_and_azure_resources` verifies provider-hinted `ObjectStorage` wiring for `GcpConfig` / `AwsConfig` / `AzureConfig`*
 - [x] **Cross-provider auth**: each provider's credential chain resolves independently in a cross-provider func — *lowering regression `cross_provider_auth_calls_resolve_all_credential_chains` verifies one caller can resolve GCP/AWS/Azure credential-chain call dependencies simultaneously*
-- [ ] **Contract tests**: `@contract` behavioral tests pass for AWS and Azure implementations
+- [x] **Contract tests**: `@contract` behavioral tests pass for AWS and Azure implementations — *interface `@contract` parsing now preserves capability-style contracts, and AWS/Azure resource workflow fixtures (`w_contract_aws_resources`, `w_contract_azure_resources`) gate non-zero `interface_contract_verification_targets` with matching lifecycle obligations*
 
 **Corresponds to**: [dsl-design.md Phase 3](./dsl-design.md#phase-3-composition--tui-progress), [Appendix C](./dsl-design.md#appendix-c-service-composition-gist-snapshot), [§7.6](./dsl-design.md#76-infrastructure-as-resources-multi-cloud)
 
