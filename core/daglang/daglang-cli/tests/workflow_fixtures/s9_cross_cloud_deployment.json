@@ -11,15 +11,16 @@
     "infra.aws.config",
     "infra.azure.resources",
     "infra.azure.config",
-    "tools.gist"
+    "tools.gist",
+    "std.types"
   ],
   "expand_contract": {
     "status": "typecheck_error",
-    "error_contains": "undefined type `NonEmptyStr (in store_artifact.key)`"
+    "error_contains": "type mismatch: expected `Record`, got `Record`"
   },
   "obligations_contract": {
     "status": "typecheck_error",
-    "error_contains": "undefined type `NonEmptyStr (in store_artifact.key)`",
+    "error_contains": "type mismatch: expected `Record`, got `Record`",
     "expected_json": null
   }
 }

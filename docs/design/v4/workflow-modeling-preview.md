@@ -112,8 +112,8 @@ The source of truth for current status is the workflow fixture contract suite in
 
 ## S9 — Cross-Cloud Deployment (`examples.deployment`)
 
-- **Current status**: ⚠ typecheck blocked (cross-provider type/config model gaps).
+- **Current status**: ⚠ typecheck blocked by record-shape mismatches in provider configuration helpers.
 - **Primary gap**:
-  - unresolved provider config/type model integration in this composed workflow.
+  - provider config helper return shapes still diverge from strict expected records.
 - **Next increments**:
-  - finish provider config type wiring and cross-provider composition validation.
+  - align provider config helper return contracts and rerun full cross-provider lowering.
