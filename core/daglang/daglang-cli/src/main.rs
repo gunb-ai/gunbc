@@ -38,6 +38,7 @@ use daglang_exec_bridge::{
 };
 use gunbc_exec::ExecutionMode;
 use gunbc_ir::Value;
+use serde::Deserialize;
 use serde_json::json;
 
 fn main() {
@@ -126,7 +127,18 @@ fn main() {
         "modules" => {
             let (root_arg, format) = parse_modules_args(&args)
                 .unwrap_or_else(|usage| exit_usage(&usage));
-            let roots = vec![resolve_root(&cwd, root_arg.as_ref())];
+            let roots = if let Some(root) = root_arg {
+                vec![resolve_root(&cwd, Some(&root))]
+            } else {
+                match resolve_configured_roots(&cwd) {
+                    Ok(Some(config_roots)) => config_roots,
+                    Ok(None) => vec![resolve_root(&cwd, None)],
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(1);
+                    }
+                }
+            };
             let context = PipelineContext {
                 roots,
                 target_file: None,
@@ -281,6 +293,16 @@ struct RunArgs {
     mode: RunMode,
 }
 
+#[derive(Debug, Deserialize)]
+struct DaglangConfig {
+    discovery: Option<DiscoveryConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DiscoveryConfig {
+    roots: Option<Vec<String>>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VizFormat {
     Ascii,
@@ -298,6 +320,33 @@ fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
         return path_utils::normalize_cli_path(cwd, &PathBuf::from(path));
     }
     path_utils::resolve_default_root(cwd)
+}
+
+fn resolve_configured_roots(cwd: &std::path::Path) -> Result<Option<Vec<PathBuf>>, String> {
+    let config_path = cwd.join("daglang.toml");
+    if !config_path.exists() {
+        return Ok(None);
+    }
+    let config_text = std::fs::read_to_string(&config_path)
+        .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
+    let parsed: DaglangConfig = toml::from_str(&config_text)
+        .map_err(|error| format!("failed to parse {}: {error}", config_path.display()))?;
+    let Some(discovery) = parsed.discovery else {
+        return Ok(None);
+    };
+    let Some(config_roots) = discovery.roots else {
+        return Ok(None);
+    };
+    if config_roots.is_empty() {
+        return Err("discovery.roots in daglang.toml must not be empty".to_string());
+    }
+    let mut normalized = config_roots
+        .iter()
+        .map(|root| path_utils::normalize_cli_path(cwd, &PathBuf::from(root)))
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    Ok(Some(normalized))
 }
 
 /// Builds check pipeline context from CLI input.
@@ -752,6 +801,52 @@ mod tests {
         assert!(!has_dag_extension(Path::new("main.dag.bak")));
         assert!(!has_dag_extension(Path::new("main.txt")));
         assert!(!has_dag_extension(Path::new("main")));
+    }
+
+    #[test]
+    fn resolve_configured_roots_returns_none_when_config_missing() {
+        let cwd = unique_temp_dir("config_missing");
+        std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+
+        let roots = super::resolve_configured_roots(&cwd).expect("missing config should parse");
+        assert!(roots.is_none());
+
+        std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+    }
+
+    #[test]
+    fn resolve_configured_roots_parses_and_normalizes_entries() {
+        let cwd = unique_temp_dir("config_roots");
+        std::fs::create_dir_all(cwd.join("dsl")).expect("failed to create dsl dir");
+        std::fs::create_dir_all(cwd.join("nested")).expect("failed to create nested dir");
+        std::fs::write(
+            cwd.join("daglang.toml"),
+            "[discovery]\nroots = [\"./dsl\", \"nested/..//dsl\", \"nested\"]\n",
+        )
+        .expect("failed to write daglang.toml");
+
+        let roots =
+            super::resolve_configured_roots(&cwd).expect("configured roots should parse");
+        let roots = roots.expect("roots should be present");
+        assert_eq!(roots.len(), 2);
+        assert_eq!(roots[0], cwd.join("dsl"));
+        assert_eq!(roots[1], cwd.join("nested"));
+
+        std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
+    }
+
+    #[test]
+    fn resolve_configured_roots_rejects_empty_roots_list() {
+        let cwd = unique_temp_dir("config_empty_roots");
+        std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+        std::fs::write(cwd.join("daglang.toml"), "[discovery]\nroots = []\n")
+            .expect("failed to write daglang.toml");
+
+        let error =
+            super::resolve_configured_roots(&cwd).expect_err("empty roots should fail");
+        assert!(error.contains("must not be empty"));
+
+        std::fs::remove_dir_all(cwd).expect("failed to cleanup temp cwd");
     }
 
     #[test]

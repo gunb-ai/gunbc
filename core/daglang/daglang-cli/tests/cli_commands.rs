@@ -16942,6 +16942,65 @@ fn modules_command_json_output_is_deterministic_for_same_input() {
 }
 
 #[test]
+fn modules_command_without_dir_uses_configured_discovery_roots() {
+    let cwd = unique_temp_dir("modules_configured_roots");
+    let root_a = cwd.join("pkg_a");
+    let root_b = cwd.join("pkg_b");
+    std::fs::create_dir_all(&root_a).expect("failed to create root_a");
+    std::fs::create_dir_all(&root_b).expect("failed to create root_b");
+    std::fs::write(root_a.join("a.dag"), "module sample.a\nfn run() -> Unit {}")
+        .expect("failed to write root_a source");
+    std::fs::write(root_b.join("b.dag"), "module sample.b\nfn run() -> Unit {}")
+        .expect("failed to write root_b source");
+    std::fs::write(
+        cwd.join("daglang.toml"),
+        "[discovery]\nroots = [\"pkg_a\", \"pkg_b\"]\n",
+    )
+    .expect("failed to write daglang.toml");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run daglang modules with configured roots");
+
+    assert!(
+        output.status.success(),
+        "modules command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("sample.a"), "stdout should include sample.a");
+    assert!(stdout.contains("sample.b"), "stdout should include sample.b");
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp root");
+}
+
+#[test]
+fn modules_command_reports_invalid_config_parse_error() {
+    let cwd = unique_temp_dir("modules_invalid_config");
+    std::fs::create_dir_all(&cwd).expect("failed to create temp cwd");
+    std::fs::write(cwd.join("daglang.toml"), "[discovery]\nroots = [")
+        .expect("failed to write invalid daglang.toml");
+
+    let output = Command::new(daglang_bin())
+        .arg("modules")
+        .current_dir(&cwd)
+        .output()
+        .expect("failed to run daglang modules with invalid config");
+
+    assert!(
+        !output.status.success(),
+        "modules should fail for invalid config"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("failed to parse"));
+    assert!(stderr.contains("daglang.toml"));
+
+    std::fs::remove_dir_all(cwd).expect("failed to cleanup temp root");
+}
+
+#[test]
 fn modules_command_reports_expected_real_corpus_diagnostics() {
     let output = Command::new(daglang_bin())
         .arg("modules")

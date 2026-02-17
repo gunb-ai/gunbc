@@ -142,6 +142,7 @@ dependencies = [
  "gunbc-ir",
  "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
