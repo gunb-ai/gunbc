@@ -3684,6 +3684,70 @@ func run() -> { ok: Bool } uses store: ObjectStorage {
     }
 
     #[test]
+    fn uses_interface_with_aws_and_azure_provider_hints_wire_matching_resources() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/infra/providers_multi_cloud.dag",
+            r#"module infra.providers
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource GcsBucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource S3Bucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource BlobContainer implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run_aws() -> { ok: Bool } uses store: ObjectStorage(cloud: AwsConfig) {
+  return { ok: true }
+}
+func run_azure() -> { ok: Bool } uses store: ObjectStorage(cloud: AzureConfig) {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_providers_S3Bucket"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == "infra.providers::run_aws"
+                && edge.to_port.0 == "__deps"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_providers_BlobContainer"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == "infra.providers::run_azure"
+                && edge.to_port.0 == "__deps"
+        }));
+        assert!(
+            !dag.edges.iter().any(|edge| {
+                edge.from_node.0 == "acquire_resource_infra_providers_GcsBucket"
+                    && (edge.to_node.0 == "infra.providers::run_aws"
+                        || edge.to_node.0 == "infra.providers::run_azure")
+                    && edge.to_port.0 == "__deps"
+            }),
+            "aws/azure provider hints should not wire unrelated gcp resources"
+        );
+    }
+
+    #[test]
     fn interface_contract_annotations_lower_to_verification_nodes_for_implementors() {
         let typed = typed_project_from_sources(&[(
             "dsl/infra/contracts.dag",
@@ -3715,6 +3779,73 @@ resource GcsBucket implements ObjectStorage {
                 && edge.to_node.0 == verify_0
                 && edge.to_port.0 == "__deps"
         }));
+    }
+
+    #[test]
+    fn interface_contract_annotations_cover_all_provider_implementors() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/infra/contracts_multi_cloud.dag",
+            r#"module infra.contracts
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  @contract: read("k") => { body: "v" }
+}
+resource GcsBucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource S3Bucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource BlobContainer implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        for (resource, verify_id) in [
+            (
+                "GcsBucket",
+                "verify_contract_infra_contracts_GcsBucket_ObjectStorage_0",
+            ),
+            (
+                "S3Bucket",
+                "verify_contract_infra_contracts_S3Bucket_ObjectStorage_0",
+            ),
+            (
+                "BlobContainer",
+                "verify_contract_infra_contracts_BlobContainer_ObjectStorage_0",
+            ),
+        ] {
+            let acquire_id = format!("acquire_resource_infra_contracts_{resource}");
+            assert!(
+                dag.nodes.iter().any(|node| node.id.0 == verify_id),
+                "expected verification node for {resource}"
+            );
+            assert!(
+                dag.edges.iter().any(|edge| {
+                    edge.from_node.0 == acquire_id
+                        && edge.from_port.0 == "resource_handle"
+                        && edge.to_node.0 == verify_id
+                        && edge.to_port.0 == "__deps"
+                }),
+                "expected acquire->verify edge for {resource}"
+            );
+        }
     }
 
     #[test]
