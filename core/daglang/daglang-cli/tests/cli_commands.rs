@@ -31803,6 +31803,13 @@ fn makegen_target_variants() -> Vec<(&'static str, String)> {
                 .to_string_lossy()
                 .into_owned(),
         ),
+        (
+            "absolute-parent-curdir-double-separator",
+            format!(
+                "{}/dsl/./tools/..//tools/makegen.dag",
+                workspace_root().display()
+            ),
+        ),
     ]
 }
 
@@ -31854,6 +31861,17 @@ fn compile_family_commands_execute_real_pipeline_paths_with_absolute_parent_segm
     run_compile_family_smoke_for_target(
         "absolute-parent-segment",
         &absolute_target_with_parent_segment,
+    );
+}
+
+#[test]
+fn compile_family_commands_execute_real_pipeline_paths_with_absolute_parent_curdir_double_separator_target(
+) {
+    let absolute_target_with_parent_curdir_double_separator =
+        format!("{}/dsl/./tools/..//tools/makegen.dag", workspace_root().display());
+    run_compile_family_smoke_for_target(
+        "absolute-parent-curdir-double-separator",
+        &absolute_target_with_parent_curdir_double_separator,
     );
 }
 
