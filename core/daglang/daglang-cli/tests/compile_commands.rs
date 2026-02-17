@@ -11537,6 +11537,25 @@ fn obligations_command_absolute_double_separator_target_matches_canonical_absolu
 }
 
 #[test]
+fn obligations_command_absolute_parent_segment_target_matches_canonical_absolute_output() {
+    let root = workspace_root();
+    let canonical_target = makegen_file().to_string_lossy().into_owned();
+    let parent_segment_target = root
+        .join("dsl/../dsl/tools/makegen.dag")
+        .to_string_lossy()
+        .into_owned();
+
+    assert_single_target_command_outputs_match_for_targets(
+        "obligations",
+        &root,
+        &canonical_target,
+        &parent_segment_target,
+        &[],
+        "absolute parent-segment",
+    );
+}
+
+#[test]
 fn obligations_command_relative_and_absolute_uppercase_extension_targets_are_equivalent() {
     let root = unique_temp_dir("obligations_relative_absolute_uppercase_extension");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -11747,6 +11766,25 @@ fn obligations_command_json_absolute_curdir_segment_target_matches_canonical_abs
         &curdir_segment_target,
         &["--format", "json"],
         "absolute curdir-segment",
+    );
+}
+
+#[test]
+fn obligations_command_json_absolute_parent_segment_target_matches_canonical_absolute_output() {
+    let root = workspace_root();
+    let canonical_target = makegen_file().to_string_lossy().into_owned();
+    let parent_segment_target = root
+        .join("dsl/../dsl/tools/makegen.dag")
+        .to_string_lossy()
+        .into_owned();
+
+    assert_single_target_command_outputs_match_for_targets(
+        "obligations",
+        &root,
+        &canonical_target,
+        &parent_segment_target,
+        &["--format", "json"],
+        "absolute parent-segment",
     );
 }
 
@@ -12866,6 +12904,25 @@ fn show_triplets_command_absolute_double_separator_target_matches_canonical_abso
 }
 
 #[test]
+fn show_triplets_command_absolute_parent_segment_target_matches_canonical_absolute_output() {
+    let root = workspace_root();
+    let canonical_target = makegen_file().to_string_lossy().into_owned();
+    let parent_segment_target = root
+        .join("dsl/../dsl/tools/makegen.dag")
+        .to_string_lossy()
+        .into_owned();
+
+    assert_single_target_command_outputs_match_for_targets(
+        "show-triplets",
+        &root,
+        &canonical_target,
+        &parent_segment_target,
+        &[],
+        "absolute parent-segment",
+    );
+}
+
+#[test]
 fn show_triplets_command_relative_and_absolute_uppercase_extension_targets_are_equivalent() {
     let root = unique_temp_dir("show_triplets_relative_absolute_uppercase_extension");
     std::fs::create_dir_all(&root).expect("failed to create temp root");
@@ -13076,6 +13133,25 @@ fn show_triplets_command_json_absolute_curdir_segment_target_matches_canonical_a
         &curdir_segment_target,
         &["--format", "json"],
         "absolute curdir-segment",
+    );
+}
+
+#[test]
+fn show_triplets_command_json_absolute_parent_segment_target_matches_canonical_absolute_output() {
+    let root = workspace_root();
+    let canonical_target = makegen_file().to_string_lossy().into_owned();
+    let parent_segment_target = root
+        .join("dsl/../dsl/tools/makegen.dag")
+        .to_string_lossy()
+        .into_owned();
+
+    assert_single_target_command_outputs_match_for_targets(
+        "show-triplets",
+        &root,
+        &canonical_target,
+        &parent_segment_target,
+        &["--format", "json"],
+        "absolute parent-segment",
     );
 }
 
