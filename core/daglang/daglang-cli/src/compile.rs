@@ -21,6 +21,45 @@ pub struct CompileOutput {
     pub emitted: EmissionBundle,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompileError {
+    message: String,
+}
+
+impl CompileError {
+    pub fn contains(&self, needle: &str) -> bool {
+        self.message.contains(needle)
+    }
+}
+
+impl std::fmt::Display for CompileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl From<String> for CompileError {
+    fn from(message: String) -> Self {
+        Self { message }
+    }
+}
+
+impl From<&str> for CompileError {
+    fn from(message: &str) -> Self {
+        Self {
+            message: message.to_string(),
+        }
+    }
+}
+
+impl std::ops::Deref for CompileError {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.message.as_str()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CheckOutput {
     pub parsed_files: usize,
@@ -55,7 +94,7 @@ pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineC
     PipelineContext { roots, target_file }
 }
 
-pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, String> {
+pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
     if context.target_file.is_none() {
         validate_module_path_consistency(&module_graph, &context.roots)?;
@@ -85,7 +124,7 @@ pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, 
     })
 }
 
-pub fn check_from_context(context: &PipelineContext) -> Result<CheckOutput, String> {
+pub fn check_from_context(context: &PipelineContext) -> Result<CheckOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
     if context.target_file.is_none() {
         validate_module_path_consistency(&module_graph, &context.roots)?;
@@ -109,7 +148,7 @@ pub fn check_from_context(context: &PipelineContext) -> Result<CheckOutput, Stri
 
 // Compiler pipeline: reads .dag source for single-file compilation
 #[allow(clippy::disallowed_methods)]
-fn discover_module_graph_for_context(context: &PipelineContext) -> Result<ModuleGraph, String> {
+fn discover_module_graph_for_context(context: &PipelineContext) -> Result<ModuleGraph, CompileError> {
     if let Some(target_file) = &context.target_file {
         let source = std::fs::read_to_string(target_file)
             .map_err(|error| format!("failed to read {}: {error}", target_file.display()))?;
@@ -144,7 +183,7 @@ fn discover_module_graph_for_context(context: &PipelineContext) -> Result<Module
     ModuleGraph::discover_strict(&context.roots).map_err(format_resolve_error)
 }
 
-fn format_resolve_error(error: ResolveError) -> String {
+fn format_resolve_error(error: ResolveError) -> CompileError {
     match error {
         ResolveError::ParseErrors(files) => {
             let mut message = String::from("compile diagnostics:\n");
@@ -157,16 +196,16 @@ fn format_resolve_error(error: ResolveError) -> String {
             for diagnostic in diagnostics {
                 writeln!(message, "  {}", diagnostic.render()).ok();
             }
-            message
+            message.into()
         }
-        other => format!("resolve error: {other}"),
+        other => format!("resolve error: {other}").into(),
     }
 }
 
 fn validate_module_path_consistency(
     graph: &ModuleGraph,
     roots: &[PathBuf],
-) -> Result<(), String> {
+) -> Result<(), CompileError> {
     let mismatches = graph
         .modules
         .iter()
@@ -188,7 +227,7 @@ fn validate_module_path_consistency(
     for (path, declared, derived) in mismatches {
         writeln!(message, "  {}: declared `{declared}` but filesystem implies `{derived}`", path.display()).ok();
     }
-    Err(message)
+    Err(message.into())
 }
 
 fn derive_module_path(path: &std::path::Path, roots: &[PathBuf]) -> Option<Vec<String>> {
