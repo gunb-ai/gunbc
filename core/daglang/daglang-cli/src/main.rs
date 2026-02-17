@@ -24,13 +24,15 @@ use std::path::PathBuf;
 
 use daglang_cli::compile::{
     build_context, check_from_context, compile_from_context, render_expand,
-    compile_resolve_execute_from_context, makegen_dry_run_transport_mocks,
-    makegen_entrypoint_mocks, makegen_check_mode_transport_mocks,
     render_manifest_with_format, render_obligations, render_triplets, CompileOutput, OutputFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{
     build_pipeline_dag, run_pipeline, PipelineContext, PipelineResult, PipelineStop,
+};
+use daglang_exec_bridge::{
+    execute_resolved_dag, makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks,
+    makegen_entrypoint_mocks, resolve_lowered_dag,
 };
 use gunbc_exec::ExecutionMode;
 use gunbc_ir::Value;
@@ -192,11 +194,24 @@ fn main() {
                 }
             };
             let context = build_context(&cwd, Some(&parsed.input_path));
-            let log = match compile_resolve_execute_from_context(&context, mode, Some(&input_mocks))
-            {
-                Ok(log) => log,
+            let output = match compile_from_context(&context) {
+                Ok(output) => output,
                 Err(error) => {
                     eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            };
+            let resolved = match resolve_lowered_dag(&output.lowered_dag) {
+                Ok(resolved) => resolved,
+                Err(error) => {
+                    eprintln!("resolve error: {error}");
+                    std::process::exit(1);
+                }
+            };
+            let log = match execute_resolved_dag(&resolved, mode, Some(&input_mocks)) {
+                Ok(log) => log,
+                Err(error) => {
+                    eprintln!("execution error: {error}");
                     std::process::exit(1);
                 }
             };
