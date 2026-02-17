@@ -18,7 +18,7 @@
 //!                                  -- Show transport triplet expansions
 //! - `daglang modules [dir] [--format text|json]`
 //!                                  -- Show the discovered module graph
-//! - `daglang check <file.dag|dir>` -- Parse modules; single-file targets also typecheck
+//! - `daglang check <file.dag|dir>` -- Parse + typecheck modules (no lowering)
 //! - `daglang compile <file.dag|dir> [--emit-collection-nodes]`
 //!                                  -- Full compilation pipeline
 //! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`
@@ -65,7 +65,7 @@ fn main() {
         eprintln!("                      Show transport triplet expansions");
         eprintln!("  modules [dir] [--format text|json]");
         eprintln!("                      Show discovered module graph");
-        eprintln!("  check <file.dag|dir> Parse (single-file targets also typecheck)");
+        eprintln!("  check <file.dag|dir> Parse + typecheck modules (no lowering)");
         eprintln!("  compile <file.dag|dir> [--emit-collection-nodes]");
         eprintln!("                      Full compilation pipeline");
         eprintln!("  run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>");
@@ -180,31 +180,19 @@ fn main() {
                 exit_usage("check <file.dag|dir>");
             }
             let context = build_check_pipeline_context(&cwd, args.get(2));
-            if context.target_file.is_some() {
-                let result = run_pipeline_or_exit(&context, PipelineStop::Build);
-                if !result.diagnostics().is_empty() {
-                    for diagnostic in result.diagnostics() {
-                        eprintln!("{diagnostic}");
-                    }
-                    std::process::exit(1);
+            let result = run_pipeline_or_exit(&context, PipelineStop::Build);
+            if !result.diagnostics().is_empty() {
+                for diagnostic in result.diagnostics() {
+                    eprintln!("{diagnostic}");
                 }
-                match check_from_context(&context) {
-                    Ok(output) => {
-                        println!("OK: checked {} file(s)", output.parsed_files);
-                    }
-                    Err(error) => {
-                        eprintln!("{error}");
-                        std::process::exit(1);
-                    }
+                std::process::exit(1);
+            }
+            match check_from_context(&context) {
+                Ok(output) => {
+                    println!("OK: checked {} file(s)", output.parsed_files);
                 }
-            } else {
-                let result = run_pipeline_or_exit(&context, PipelineStop::Build);
-                if result.diagnostics().is_empty() {
-                    println!("OK: checked {} file(s)", result.parsed_count());
-                } else {
-                    for diagnostic in result.diagnostics() {
-                        eprintln!("{diagnostic}");
-                    }
+                Err(error) => {
+                    eprintln!("{error}");
                     std::process::exit(1);
                 }
             }

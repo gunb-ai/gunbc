@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use daglang_derive::{derive_artifacts, DerivedArtifacts};
 use daglang_emit::{emit_rust_bundle, EmissionBundle};
@@ -35,6 +35,10 @@ pub struct CompileError {
 }
 
 impl CompileError {
+    pub fn as_str(&self) -> &str {
+        self.message.as_str()
+    }
+
     pub fn contains(&self, needle: &str) -> bool {
         self.message.contains(needle)
     }
@@ -57,14 +61,6 @@ impl From<&str> for CompileError {
         Self {
             message: message.to_string(),
         }
-    }
-}
-
-impl std::ops::Deref for CompileError {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.message.as_str()
     }
 }
 
@@ -156,9 +152,6 @@ pub fn compile_from_context_with_options(
 pub fn check_from_context(context: &DriverContext) -> Result<CheckOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
     let allow_unresolved_imports = allow_unresolved_imports_for_context(context, &module_graph);
-    if context.target_file.is_none() {
-        validate_module_path_consistency(&module_graph, &context.roots)?;
-    }
     let mut parsed_files = module_graph.modules.len();
     if let Err(errors) = typecheck_module_graph_with_options(
         module_graph,
@@ -202,7 +195,6 @@ fn allow_unresolved_imports_for_context(
     context.target_file.is_some() && module_graph.modules.len() == 1
 }
 
-#[allow(clippy::disallowed_methods)]
 fn discover_module_graph_for_context(context: &DriverContext) -> Result<ModuleGraph, CompileError> {
     if let Some(target_file) = &context.target_file {
         let single_file_graph = discover_single_file_module_graph(target_file)?;
@@ -218,10 +210,12 @@ fn discover_module_graph_for_context(context: &DriverContext) -> Result<ModuleGr
     ModuleGraph::discover_strict(&context.roots).map_err(format_resolve_error)
 }
 
-#[allow(clippy::disallowed_methods)]
-fn discover_single_file_module_graph(target_file: &PathBuf) -> Result<ModuleGraph, CompileError> {
-    let source = std::fs::read_to_string(target_file)
-        .map_err(|error| format!("failed to read {}: {error}", target_file.display()))?;
+fn discover_single_file_module_graph(target_file: &Path) -> Result<ModuleGraph, CompileError> {
+    let source = {
+        #[allow(clippy::disallowed_methods)]
+        std::fs::read_to_string(target_file)
+            .map_err(|error| format!("failed to read {}: {error}", target_file.display()))?
+    };
     let ast = parser::parse(&source).map_err(|errors| {
         let mut message = String::from("compile diagnostics:\n");
         for error in &errors {
@@ -247,7 +241,7 @@ fn discover_single_file_module_graph(target_file: &PathBuf) -> Result<ModuleGrap
         });
     Ok(ModuleGraph {
         modules: vec![ResolvedModule {
-            path: target_file.clone(),
+            path: target_file.to_path_buf(),
             ast,
             module_path,
             dependencies: Vec::new(),
@@ -460,8 +454,9 @@ mod tests {
             target_file: None,
         };
         let error = compile_from_context(&context).expect_err("compile should fail");
-        assert!(error.contains("module path mismatches"));
-        assert!(error.contains("declared `mismatch.main`"));
+        let error_text = error.as_str();
+        assert!(error_text.contains("module path mismatches"));
+        assert!(error_text.contains("declared `mismatch.main`"));
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
@@ -560,7 +555,7 @@ mod tests {
         let error =
             check_from_context(&context).expect_err("strict dependency closure should typecheck");
         assert!(
-            error.contains("unresolved call target"),
+            error.as_str().contains("unresolved call target"),
             "expected unresolved call target error, got: {error}"
         );
 
