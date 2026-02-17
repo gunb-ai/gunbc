@@ -30915,6 +30915,68 @@ fn run_check_mode_double_dash_dash_prefixed_uppercase_input_does_not_create_miss
 }
 
 #[test]
+fn run_check_mode_split_output_double_dash_dash_prefixed_uppercase_input_does_not_create_missing_output(
+) {
+    let input_path = std::env::temp_dir().join(format!(
+        "--daglang_run_check_mode_split_output_dash_prefixed_uppercase_missing_output_input_{}_{}.DAG",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    std::fs::copy(
+        workspace_root().join("dsl/tools/makegen.dag"),
+        &input_path,
+    )
+    .expect(
+        "failed to copy makegen fixture for check-mode split-output uppercase dash-prefixed missing-output input",
+    );
+    let output_path = unique_temp_output_file(
+        "run_check_mode_split_output_double_dash_dash_prefixed_uppercase_missing_out",
+    );
+    if output_path.exists() {
+        std::fs::remove_file(&output_path)
+            .expect("failed to remove stale output for check-mode split-output missing-output case");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--check-mode")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("--")
+        .arg(input_path.to_string_lossy().as_ref())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run check-mode split-output with double-dash uppercase dash-prefixed input");
+
+    assert!(
+        output.status.success(),
+        "check-mode split-output run with double-dash uppercase dash-prefixed input should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode split-output double-dash run should report mode=check-mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode split-output double-dash run should report written=false: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "check-mode split-output double-dash run should not create missing output file at {}",
+        output_path.display()
+    );
+
+    std::fs::remove_file(&input_path).expect(
+        "failed to clean check-mode split-output uppercase dash-prefixed missing-output input fixture",
+    );
+}
+
+#[test]
 fn run_real_mode_supports_double_dash_for_dash_prefixed_uppercase_input_paths() {
     let input_path = std::env::temp_dir().join(format!(
         "--daglang_run_real_mode_dash_prefixed_uppercase_input_{}_{}.DAG",
@@ -32816,6 +32878,44 @@ fn run_command_check_mode_with_split_output_before_input_preserves_existing_file
         "check-mode run with split output flags before input should preserve output content"
     );
     std::fs::remove_file(&output_path).expect("failed to clean up check-mode output file");
+}
+
+#[test]
+fn run_command_check_mode_with_split_output_before_input_does_not_create_missing_file() {
+    let output_path = unique_temp_output_file("run_check_mode_split_before_input_missing_output");
+    if output_path.exists() {
+        std::fs::remove_file(&output_path).expect("failed to remove stale check-mode output");
+    }
+
+    let output = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--check-mode")
+        .arg("--output")
+        .arg(output_path.to_string_lossy().as_ref())
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang run with split output check-mode flags before input for missing output");
+
+    assert!(
+        output.status.success(),
+        "run with split output check-mode flags before input and missing output should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("mode=check-mode"),
+        "check-mode run with split output flags before input and missing output should report mode=check-mode: {stdout}"
+    );
+    assert!(
+        stdout.contains("written=false"),
+        "check-mode run with split output flags before input and missing output should report written=false: {stdout}"
+    );
+    assert!(
+        !output_path.exists(),
+        "check-mode run with split output flags before input should not create missing output file at {}",
+        output_path.display()
+    );
 }
 
 #[test]
