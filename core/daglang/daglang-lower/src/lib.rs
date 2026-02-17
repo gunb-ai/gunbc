@@ -2604,6 +2604,40 @@ mod tests {
     }
 
     #[test]
+    fn gist_diff_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let reference = build_gist_graph(
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
+            Vec::new(),
+            false,
+        )
+        .expect("gist builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn gist_recent_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let reference = build_gist_graph(GistMode::Recent, Vec::new(), false)
+            .expect("gist builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
     fn aws_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.aws.credential");
         let dag = lower_typed_project(&typed).expect("lowering should succeed");

@@ -43,8 +43,8 @@ The source of truth for current status is the workflow fixture contract suite in
 - **Primary gap**:
   - exact parity against legacy gist builder shape is still pending.
 - **Next increments**:
-  - tighten newly-added deterministic snapshot parity scaffold to zero-delta shape parity.
-  - extend parity scaffolding to diff/recent modes and then gate all three modes.
+  - tighten newly-added deterministic snapshot/diff/recent parity scaffolds to zero-delta shape parity.
+  - gate all three modes on exact structural parity.
 
 ## S5 — CI Pipeline (`pipelines.ci`)
 
