@@ -74,6 +74,7 @@ pub mod render_ir;
 pub mod resource;
 pub mod signature;
 pub mod symbols;
+pub mod system_model;
 pub mod transport;
 pub mod type_lib;
 pub mod type_op;
@@ -163,6 +164,12 @@ pub use resource::{
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};
+pub use system_model::{
+    default_system_models, get_registered_system_model, iter_registered_system_models,
+    registered_system_model_map, validate_dependency_graph_acyclic, validate_system_model,
+    Behavior, BehaviorInput, BehaviorOutput, Dependency, DependencyKind, InputType, Invocation,
+    OutputType, Property, SystemKind, SystemModel, SystemModelDef,
+};
 pub use transport::{
     default_transport_behaviors, AuthScheme, Credential, CredentialError, CredentialIntent,
     FieldRouteSpec, ScopeContract, ScopeContractError, Secret, SecretSource, TransportBehavior,

@@ -466,6 +466,7 @@ version = "0.1.0"
 dependencies = [
  "glob",
  "gunbc-infra",
+ "inventory",
  "proptest",
  "serde",
  "serde_json",

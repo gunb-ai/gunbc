@@ -324,18 +324,18 @@ This is the foundation for all GCP infra, credential, and transport work.
 Port the core understanding types from the-gunbai. Create `core/understanding` crate
 (or module in `core/ir`).
 
-- [ ] C6.1a — Define `Understanding` struct: id, name, kind, version, docs, behaviors,
+- [x] C6.1a — Define `Understanding` struct: id, name, kind, version, docs, behaviors, *(implemented DAG-native as `SystemModel` in `core/ir` per user direction)*
       constraints, assumptions, unknowns, depends_on
-- [ ] C6.1b — Define `SystemKind` enum: Cli, RestApi, LlmApi, Sdk, SecretProvider,
+- [x] C6.1b — Define `SystemKind` enum: Cli, RestApi, LlmApi, Sdk, SecretProvider,
       Convention, Queue, Scheduler, Runner
-- [ ] C6.1c — Define `Behavior` struct: id, description, invocation, inputs, outputs,
+- [x] C6.1c — Define `Behavior` struct: id, description, invocation, inputs, outputs,
       observed_properties, requires, upsert_phase
-- [ ] C6.1d — Define `Invocation` enum: Cli (with docs), Rest (with docs), Sdk, Protocol
-- [ ] C6.1e — Define `Property` enum: ReadOnly, WritesWorld, Deterministic, Idempotent,
+- [x] C6.1d — Define `Invocation` enum: Cli (with docs), Rest (with docs), Sdk, Protocol
+- [x] C6.1e — Define `Property` enum: ReadOnly, WritesWorld, Deterministic, Idempotent,
       IdempotentWithKey, FailsWhen, EdgeCase, etc.
-- [ ] C6.1f — Define `InputType`/`OutputType` enums with mapping to `TypeId`/`Dag<TypeOp>`
-- [ ] C6.1g — `inventory`-based auto-registration: `submit_understanding!` macro
-- [ ] C6.1h — Tests: define a minimal understanding, verify registration + retrieval
+- [x] C6.1f — Define `InputType`/`OutputType` enums with mapping to `TypeId`/`Dag<TypeOp>`
+- [x] C6.1g — `inventory`-based auto-registration: `submit_understanding!` macro *(implemented as `submit_system_model!`)*
+- [x] C6.1h — Tests: define a minimal understanding, verify registration + retrieval
 
 #### Wave 1
 
@@ -345,15 +345,15 @@ Port the core understanding types from the-gunbai. Create `core/understanding` c
 Model the first real external systems as understandings. These validate the framework
 and provide the typed foundation for E2 (GCP infra) and C4 (transport).
 
-- [ ] C6.2a — GCP Secret Manager understanding (access_secret_version, list_secrets,
+- [x] C6.2a — GCP Secret Manager understanding (access_secret_version, list_secrets,
       create_secret, destroy_secret_version)
-- [ ] C6.2b — GCP IAM understanding (SA CRUD, IAM bindings, WIF pool/provider)
-- [ ] C6.2c — GCS understanding (get, put, list, delete + versioned CAS)
-- [ ] C6.2d — File transport understanding (read, write, exists, delete)
-- [ ] C6.2e — Shell transport understanding (exec with args, env, cwd, timeout)
-- [ ] C6.2f — HTTP/REST transport understanding (GET, POST, PUT, DELETE with status semantics)
-- [ ] C6.2g — Dependency graph: GCP Secret Manager depends_on secret:GOOGLE_APPLICATION_CREDENTIALS
-- [ ] C6.2h — Tests: all understandings parseable, dependency graph acyclic
+- [x] C6.2b — GCP IAM understanding (SA CRUD, IAM bindings, WIF pool/provider)
+- [x] C6.2c — GCS understanding (get, put, list, delete + versioned CAS)
+- [x] C6.2d — File transport understanding (read, write, exists, delete)
+- [x] C6.2e — Shell transport understanding (exec with args, env, cwd, timeout)
+- [x] C6.2f — HTTP/REST transport understanding (GET, POST, PUT, DELETE with status semantics)
+- [x] C6.2g — Dependency graph: GCP Secret Manager depends_on secret:GOOGLE_APPLICATION_CREDENTIALS
+- [x] C6.2h — Tests: all understandings parseable, dependency graph acyclic
 
 #### Wave 2
 
