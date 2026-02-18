@@ -46,6 +46,11 @@ pub struct WorkspaceLayout {
 }
 
 impl WorkspaceLayout {
+    const CODEGEN_OUT_REL: &'static str = "target/codegen";
+    const CODEGEN_BIN_REL: &'static str = "target/codegen/bin";
+    const CODEGEN_LIB_REL: &'static str = "target/codegen/lib";
+    const CODEGEN_STAMP_REL: &'static str = "target/codegen/.codegen-stamp";
+
     /// Resolve layout from `cargo metadata` starting in the current directory.
     pub fn from_cargo_metadata() -> Result<Self, WorkspaceLayoutError> {
         let cwd = std::env::current_dir().map_err(WorkspaceLayoutError::CurrentDir)?;
@@ -174,6 +179,36 @@ impl WorkspaceLayout {
         globs
     }
 
+    /// Absolute `target/codegen` directory for this workspace.
+    pub fn codegen_out_dir(&self) -> PathBuf {
+        self.workspace_root.join(Self::CODEGEN_OUT_REL)
+    }
+
+    /// Absolute `target/codegen/bin` directory for this workspace.
+    pub fn codegen_bin_dir(&self) -> PathBuf {
+        self.workspace_root.join(Self::CODEGEN_BIN_REL)
+    }
+
+    /// Absolute `target/codegen/lib` directory for this workspace.
+    pub fn codegen_lib_dir(&self) -> PathBuf {
+        self.workspace_root.join(Self::CODEGEN_LIB_REL)
+    }
+
+    /// Absolute `target/codegen/.codegen-stamp` path for this workspace.
+    pub fn codegen_stamp_path(&self) -> PathBuf {
+        self.workspace_root.join(Self::CODEGEN_STAMP_REL)
+    }
+
+    /// Absolute DSL tool module root.
+    pub fn dsl_tools_root(&self) -> PathBuf {
+        self.workspace_root.join("dsl/tools")
+    }
+
+    /// Absolute DSL pipeline module root.
+    pub fn dsl_pipelines_root(&self) -> PathBuf {
+        self.workspace_root.join("dsl/pipelines")
+    }
+
     fn absolutize(&self, path: &Path) -> PathBuf {
         if path.is_absolute() {
             path.to_path_buf()
@@ -284,6 +319,27 @@ mod tests {
         assert!(
             globs.iter().any(|g| g == "core/ir/Cargo.toml"),
             "expected core/ir manifest glob, got: {globs:?}"
+        );
+    }
+
+    #[test]
+    fn codegen_paths_are_workspace_relative() {
+        let layout = WorkspaceLayout::from_env_manifest_dir().expect("resolve workspace layout");
+        assert_eq!(
+            layout.relative_path(&layout.workspace_root, &layout.codegen_out_dir()),
+            PathBuf::from("target/codegen")
+        );
+        assert_eq!(
+            layout.relative_path(&layout.workspace_root, &layout.codegen_bin_dir()),
+            PathBuf::from("target/codegen/bin")
+        );
+        assert_eq!(
+            layout.relative_path(&layout.workspace_root, &layout.codegen_lib_dir()),
+            PathBuf::from("target/codegen/lib")
+        );
+        assert_eq!(
+            layout.relative_path(&layout.workspace_root, &layout.codegen_stamp_path()),
+            PathBuf::from("target/codegen/.codegen-stamp")
         );
     }
 }

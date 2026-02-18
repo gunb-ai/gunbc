@@ -18,7 +18,7 @@ pub mod pragma;
 pub mod testgen;
 
 use crate::workspace::WorkspaceOp;
-use gunbc_ir::{BuilderError, Dag};
+use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
@@ -59,11 +59,11 @@ pub fn build_workspace_dag() -> Result<Dag<WorkspaceOp>, BuilderError> {
 }
 
 fn discover_dsl_tool_names() -> Result<BTreeSet<String>, BuilderError> {
-    discover_dsl_module_names(dsl_tools_root(), "tool")
+    discover_dsl_module_names(dsl_tools_root()?, "tool")
 }
 
 fn discover_dsl_pipeline_names() -> Result<BTreeSet<String>, BuilderError> {
-    discover_dsl_module_names(dsl_pipelines_root(), "pipeline")
+    discover_dsl_module_names(dsl_pipelines_root()?, "pipeline")
 }
 
 #[allow(clippy::disallowed_methods)] // Build-time DSL module discovery (not runtime I/O)
@@ -106,12 +106,22 @@ fn discover_dsl_module_names(
     Ok(names)
 }
 
-fn dsl_tools_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl/tools")
+fn dsl_tools_root() -> Result<PathBuf, BuilderError> {
+    Ok(workspace_layout()?.dsl_tools_root())
 }
 
-fn dsl_pipelines_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl/pipelines")
+fn dsl_pipelines_root() -> Result<PathBuf, BuilderError> {
+    Ok(workspace_layout()?.dsl_pipelines_root())
+}
+
+fn workspace_layout() -> Result<WorkspaceLayout, BuilderError> {
+    WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .map_err(|error| {
+            BuilderError::InternalInvariant(format!(
+                "failed to resolve workspace layout for subdag DSL discovery: {error}"
+            ))
+        })
 }
 
 fn validate_required_dsl_tools(tool_names: &BTreeSet<String>) -> Result<(), BuilderError> {
@@ -299,23 +309,22 @@ mod tests {
 
     #[test]
     fn test_registered_tool_subdag_mapping() {
-        let tool_names: BTreeSet<String> =
-            [
-                "build",
-                "makegen",
-                "clippy",
-                "deps",
-                "bootstrap",
-                "codegen",
-                "dag_viz",
-                "docgen",
-                "gist",
-                "pragma",
-                "testgen",
-            ]
-                .into_iter()
-                .map(|name| name.to_string())
-                .collect();
+        let tool_names: BTreeSet<String> = [
+            "build",
+            "makegen",
+            "clippy",
+            "deps",
+            "bootstrap",
+            "codegen",
+            "dag_viz",
+            "docgen",
+            "gist",
+            "pragma",
+            "testgen",
+        ]
+        .into_iter()
+        .map(|name| name.to_string())
+        .collect();
         let mut dag = Dag::new();
         add_discovered_tool_subdags(&mut dag, &tool_names)
             .expect("registered mapping should build");
@@ -389,19 +398,21 @@ mod tests {
 
     #[test]
     fn test_dsl_tools_root_exists() {
+        let tools_root = dsl_tools_root().expect("dsl tools root should resolve");
         assert!(
-            dsl_tools_root().is_dir(),
+            tools_root.is_dir(),
             "dsl tools root should exist at {}",
-            dsl_tools_root().display()
+            tools_root.display()
         );
     }
 
     #[test]
     fn test_dsl_pipelines_root_exists() {
+        let pipelines_root = dsl_pipelines_root().expect("dsl pipelines root should resolve");
         assert!(
-            dsl_pipelines_root().is_dir(),
+            pipelines_root.is_dir(),
             "dsl pipelines root should exist at {}",
-            dsl_pipelines_root().display()
+            pipelines_root.display()
         );
     }
 

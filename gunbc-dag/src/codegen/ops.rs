@@ -14,7 +14,7 @@ use gunbc_ir::resource::{
 };
 use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_STAMP_PATH};
+use gunbc_ir::WorkspaceLayout;
 use gunbc_lib_transport::TransportIo;
 use std::collections::{HashMap, HashSet};
 
@@ -48,7 +48,7 @@ impl Executable for CodegenOp {
 fn execute_prepare_codegen_exists(
     _inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let pattern = format!("{}/**/main.rs", CODEGEN_BIN_DIR);
+    let pattern = format!("{}/**/main.rs", codegen_bin_dir());
     let request = TransportRequest::File(FileRequest::glob(pattern));
 
     OutputMap::new()
@@ -284,7 +284,7 @@ fn execute_prepare_stamp_write(
     }
 
     let content = "codegen ok\n";
-    let request = TransportRequest::File(FileRequest::write(CODEGEN_STAMP_PATH, content));
+    let request = TransportRequest::File(FileRequest::write(codegen_stamp_path(), content));
 
     OutputMap::new()
         .request("request", request)
@@ -293,11 +293,34 @@ fn execute_prepare_stamp_write(
 }
 
 fn expected_codegen_paths() -> Vec<String> {
+    let bin_dir = codegen_bin_dir();
     derive_tool_defs()
         .into_iter()
         .filter(|tool| tool.invocation.is_some())
-        .map(|tool| format!("{}/{}/main.rs", CODEGEN_BIN_DIR, tool.meta.tool_name))
+        .map(|tool| format!("{}/{}/main.rs", bin_dir, tool.meta.tool_name))
         .collect()
+}
+
+fn codegen_bin_dir() -> String {
+    workspace_layout_or_none()
+        .map(|layout| normalize_path(layout.codegen_bin_dir()))
+        .unwrap_or_else(|| "target/codegen/bin".to_string())
+}
+
+fn codegen_stamp_path() -> String {
+    workspace_layout_or_none()
+        .map(|layout| normalize_path(layout.codegen_stamp_path()))
+        .unwrap_or_else(|| "target/codegen/.codegen-stamp".to_string())
+}
+
+fn workspace_layout_or_none() -> Option<WorkspaceLayout> {
+    WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .ok()
+}
+
+fn normalize_path(path: std::path::PathBuf) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 #[cfg(test)]
@@ -308,8 +331,9 @@ mod tests {
     #[test]
     fn test_codegen_outputs_exist_from_glob_response() {
         let expected = expected_codegen_paths();
+        let bin_dir = codegen_bin_dir();
         let response = TransportResponse::File(FileResponse::glob_result(
-            format!("{}/**/main.rs", CODEGEN_BIN_DIR),
+            format!("{}/**/main.rs", bin_dir),
             expected,
         ));
         assert!(codegen_outputs_exist(&response).expect("glob response should parse"));
@@ -324,7 +348,8 @@ mod tests {
     #[test]
     fn test_expected_paths_non_empty() {
         let paths = expected_codegen_paths();
+        let bin_dir = codegen_bin_dir();
         assert!(!paths.is_empty());
-        assert!(paths.iter().all(|p| p.starts_with(CODEGEN_BIN_DIR)));
+        assert!(paths.iter().all(|p| p.starts_with(&bin_dir)));
     }
 }

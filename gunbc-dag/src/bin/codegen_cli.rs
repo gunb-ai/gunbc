@@ -34,7 +34,7 @@ use gunbc_ir::resource::{
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
-use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
+use gunbc_ir::WorkspaceLayout;
 use gunbc_lib_transport::TransportIo;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::env;
@@ -258,8 +258,8 @@ fn cmd_rollback(dry_run: bool) {
     println!();
 
     let mut targets: Vec<String> = core_outputs().into_iter().map(|s| s.to_string()).collect();
-    targets.push(CODEGEN_BIN_DIR.to_string());
-    targets.push(CODEGEN_LIB_DIR.to_string());
+    targets.push(normalize_path(&codegen_bin_dir()));
+    targets.push(normalize_path(&codegen_lib_dir()));
     targets.sort();
     targets.dedup();
     let mut errors = Vec::new();
@@ -786,7 +786,10 @@ fn collect_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
             })?;
             let path = entry.path();
             if path.is_dir() {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default();
                 if matches!(name, "target" | "buck-out" | ".git") {
                     continue;
                 }
@@ -802,7 +805,9 @@ fn collect_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 #[allow(clippy::disallowed_methods)] // Build-time source discovery for generator tooling.
-fn discover_tool_defs_from_workspace_sources(workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
+fn discover_tool_defs_from_workspace_sources(
+    workspace_root: &Path,
+) -> Result<Vec<ToolDef>, String> {
     let mut by_name: BTreeMap<String, ToolDef> = BTreeMap::new();
     for path in collect_rust_files(workspace_root)? {
         let content = fs::read_to_string(&path)
@@ -848,12 +853,15 @@ fn discover_dsl_module_names(root: &Path, module_kind: &str) -> Result<BTreeSet<
         if path.extension().and_then(|ext| ext.to_str()) != Some("dag") {
             continue;
         }
-        let stem = path.file_stem().and_then(|stem| stem.to_str()).ok_or_else(|| {
-            format!(
-                "failed to parse UTF-8 module stem for DSL {module_kind} file {}",
-                path.display()
-            )
-        })?;
+        let stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| {
+                format!(
+                    "failed to parse UTF-8 module stem for DSL {module_kind} file {}",
+                    path.display()
+                )
+            })?;
         modules.insert(stem.to_string());
     }
     Ok(modules)
@@ -914,7 +922,10 @@ fn validate_codegen_dsl_coverage(
     const TOOL_MODULE_TO_TARGETS: &[(&str, &[&str])] = &[
         ("bootstrap", &["bootstrap"]),
         ("clippy", &["clippy"]),
-        ("dag_viz", &["dag-viz", "dag-viz-diff", "dag-viz-recent", "dag-snapshot"]),
+        (
+            "dag_viz",
+            &["dag-viz", "dag-viz-diff", "dag-viz-recent", "dag-snapshot"],
+        ),
         ("deps", &["deps"]),
         ("gist", &["gist", "gist-diff", "gist-recent"]),
         ("makegen", &["makegen"]),
@@ -922,7 +933,10 @@ fn validate_codegen_dsl_coverage(
     const TOOL_MODULE_EXCLUDED: &[&str] = &["build", "codegen", "docgen", "pragma", "testgen"];
     const PIPELINE_MODULE_EXCLUDED: &[&str] = &["ci"];
 
-    let tool_name_set: BTreeSet<&str> = tools.iter().map(|tool| tool.meta.tool_name.as_str()).collect();
+    let tool_name_set: BTreeSet<&str> = tools
+        .iter()
+        .map(|tool| tool.meta.tool_name.as_str())
+        .collect();
 
     let mut unknown_tool_modules = Vec::new();
     let mut missing_targets = Vec::new();
@@ -995,7 +1009,7 @@ fn discover_codegen_tools(workspace_root: &Path) -> Result<Vec<ToolDef>, String>
 /// Generate CLI main.rs files for all tools and register binary targets.
 fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     let writer = FileWriter::new(dry_run, io);
-    let output_dir = CODEGEN_BIN_DIR;
+    let output_dir = codegen_bin_dir();
 
     struct BinRegistration {
         tool_name: String,
@@ -1071,10 +1085,7 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
             }
         };
 
-        let bin_abs_path = workspace_root
-            .join(CODEGEN_BIN_DIR)
-            .join(&tool.meta.tool_name)
-            .join("main.rs");
+        let bin_abs_path = output_dir.join(&tool.meta.tool_name).join("main.rs");
         let rel_path = normalize_path(&relative_path(crate_dir, &bin_abs_path));
 
         registrations.push(BinRegistration {
@@ -1096,7 +1107,7 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     for tool in &tools {
         let code =
             generate_cli_with_import(&tool.meta, &tool.entrypoints, tool.custom_import.as_deref());
-        let tool_dir = Path::new(output_dir).join(&tool.meta.tool_name);
+        let tool_dir = output_dir.join(&tool.meta.tool_name);
         let main_path = tool_dir.join("main.rs");
 
         match writer.write_if_changed(&main_path, &code) {
@@ -1207,10 +1218,7 @@ impl CodegenResource {
     fn new() -> Self {
         Self {
             def: codegen_resource_def(),
-            outputs: vec![
-                PathBuf::from(CODEGEN_BIN_DIR),
-                PathBuf::from(CODEGEN_LIB_DIR),
-            ],
+            outputs: vec![codegen_bin_dir(), codegen_lib_dir()],
         }
     }
 }
@@ -1287,11 +1295,7 @@ fn codegen_outputs_exist(io: &dyn ResourceIo) -> bool {
         if tool.invocation.is_none() {
             continue;
         }
-        paths.push(
-            Path::new(CODEGEN_BIN_DIR)
-                .join(&tool.meta.tool_name)
-                .join("main.rs"),
-        );
+        paths.push(codegen_bin_dir().join(&tool.meta.tool_name).join("main.rs"));
     }
 
     if paths.is_empty() {
@@ -1301,6 +1305,24 @@ fn codegen_outputs_exist(io: &dyn ResourceIo) -> bool {
     paths
         .iter()
         .all(|path| io.file_exists(path).unwrap_or(false))
+}
+
+fn workspace_layout_or_none() -> Option<WorkspaceLayout> {
+    WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .ok()
+}
+
+fn codegen_bin_dir() -> PathBuf {
+    workspace_layout_or_none()
+        .map(|layout| layout.codegen_bin_dir())
+        .unwrap_or_else(|| PathBuf::from("target/codegen/bin"))
+}
+
+fn codegen_lib_dir() -> PathBuf {
+    workspace_layout_or_none()
+        .map(|layout| layout.codegen_lib_dir())
+        .unwrap_or_else(|| PathBuf::from("target/codegen/lib"))
 }
 
 /// Update the resource manifest after successful codegen.
