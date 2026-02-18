@@ -59,9 +59,9 @@ This creates repeated logic and makes it hard to add a new variant without touch
   - Evidence: `lib/transport/src/cli.rs` branches directly on `which` vs `where`.
   - Impact: host-platform behaviors are not centralized.
 
-- [ ] **Generated test mocks hardcode linux defaults**
-  - Evidence: `core/codegen/src/testgen/codegen.rs` maps `"Platform"` mocks to `"linux"`.
-  - Impact: generated tests under-exercise platform variant behavior.
+- [x] **Generated test mocks hardcode linux defaults**
+  - Update (2026-02-18): testgen platform mocks now derive host-first canonical variants and cycle across linux/macos/windows seeds (`platform_mock_token` in `core/codegen/src/testgen/codegen.rs`).
+  - Impact reduction: generated tests now exercise platform variation instead of a fixed linux literal.
 
 - [ ] **DSL layer currently encodes platform behavior as fixed shell commands**
   - Evidence: `dsl/tools/dag_viz.dag` browser service is `@shell(["xdg-open", "{path}"])`.
@@ -107,5 +107,5 @@ This creates repeated logic and makes it hard to add a new variant without touch
 ### Phase 3: DSL + Testgen Alignment
 
 - [ ] Align DSL `Platform`/`CodegenTarget` vocabulary with canonical types
-- [ ] Remove linux-hardcoded mock defaults in testgen and generate per-platform variants
+- [x] Remove linux-hardcoded mock defaults in testgen and generate per-platform variants. _(2026-02-18: replaced fixed `"linux"` platform mock with host-aware canonical variant cycling.)_
 - [ ] Add conformance tests for `linux-gnu` vs other env/ABI variants and qemu executor selection

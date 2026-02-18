@@ -36,8 +36,8 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, seed_placeholder_policy_for_type_id, Cardinality, Dag, NodeId, PortName,
-    SecretString, SeedPlaceholderPolicy, TypeRegistry, Value, ValueExpr,
+    contract, seed_placeholder_policy_for_type_id, Cardinality, Dag, NodeId, Os, PortName,
+    RuntimePlatform, SecretString, SeedPlaceholderPolicy, TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -4870,7 +4870,7 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
         "S" => Value::Str("<MOCK>".to_string()),
         "Path" | "FilePath" => Value::Str("/tmp/mock".to_string()),
         "SourceIR" => Value::Str("<SOURCE_IR>".to_string()),
-        "Platform" => Value::Str("linux".to_string()),
+        "Platform" => Value::Str(platform_mock_token(index)),
         "Error" => Value::Str("<ERROR>".to_string()),
         "Tier" => Value::Str("Ascii".to_string()),
         "Unknown" => Value::Json(JsonValue::Null),
@@ -5144,7 +5144,7 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         "S" => ValueExpr::Str("<MOCK>".to_string()),
         "Path" | "FilePath" => ValueExpr::Str("/tmp/mock".to_string()),
         "SourceIR" => ValueExpr::Str("<SOURCE_IR>".to_string()),
-        "Platform" => ValueExpr::Str("linux".to_string()),
+        "Platform" => ValueExpr::Str(platform_mock_token(index)),
         "Error" => ValueExpr::Str("<ERROR>".to_string()),
         // Container aliases: element value derives from the inner type.
         "Tier" => ValueExpr::Str("Ascii".to_string()),
@@ -5207,6 +5207,35 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
             type_id
         ),
     }
+}
+
+fn platform_mock_variants() -> Vec<String> {
+    let host_token = RuntimePlatform::detect_current()
+        .host
+        .os
+        .as_token()
+        .to_string();
+    let mut variants = vec![host_token];
+    for token in [
+        Os::Linux.as_token(),
+        Os::Macos.as_token(),
+        Os::Windows.as_token(),
+    ] {
+        let token = token.to_string();
+        if !variants.iter().any(|existing| existing == &token) {
+            variants.push(token);
+        }
+    }
+    variants
+}
+
+fn platform_mock_token(index: Option<u32>) -> String {
+    let variants = platform_mock_variants();
+    let idx = match index {
+        Some(i) if i > 0 => ((i - 1) as usize) % variants.len(),
+        _ => 0,
+    };
+    variants[idx].clone()
 }
 
 /// Generate a wrong-typed value for the given type_id.
@@ -5428,6 +5457,32 @@ fn is_pure_node<T>(node: &gunbc_ir::Node<T>) -> bool {
 mod tests {
     use super::*;
     use gunbc_ir::{build, build::*, Cardinality, Dag, Node, Value, ValueExpr};
+
+    #[test]
+    fn test_platform_mock_token_includes_host_and_variants() {
+        let variants = platform_mock_variants();
+        let host = RuntimePlatform::detect_current()
+            .host
+            .os
+            .as_token()
+            .to_string();
+        assert_eq!(variants.first(), Some(&host));
+        assert!(variants.iter().any(|v| v == "linux"));
+        assert!(variants.iter().any(|v| v == "macos"));
+        assert!(variants.iter().any(|v| v == "windows"));
+    }
+
+    #[test]
+    fn test_platform_mock_token_cycles_variants() {
+        let variants = platform_mock_variants();
+        assert_eq!(platform_mock_token(None), variants[0]);
+        assert_eq!(platform_mock_token(Some(1)), variants[0]);
+        assert_eq!(platform_mock_token(Some(2)), variants[1 % variants.len()]);
+        assert_eq!(
+            platform_mock_token(Some((variants.len() as u32) + 1)),
+            variants[0]
+        );
+    }
 
     #[test]
     fn test_generate_test_module() {
