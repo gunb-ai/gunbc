@@ -1,0 +1,9 @@
+[package]
+name = "daglang-contract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared contract types for daglang manifests and obligations"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }

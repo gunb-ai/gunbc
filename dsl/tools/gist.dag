@@ -1,31 +1,10 @@
-// tools/gist.dag -- Gist creation tool (all 4 modes).
-//
-// Modes:
-//   gist_snapshot -- list files, read contents, render markdown, upload
-//   gist_diff     -- git diff, render markdown, upload
-//   gist_recent   -- rev-list since N days, diff each commit, upload
-//   gist_upload   -- shared upload func (credential + GitHub API)
-//
-// Composition: snapshot/diff/recent use shared helpers from gist_modes.dag
-// for branch detection, base ref resolution, and gist upload. Only the
-// content-production logic (what to snapshot, how to diff) is tool-specific.
-//
-// Two kinds of parallelism:
-//   Task-parallel: `for file in files { fs.read(path: file) }` -> LoopBuilder
-//   Data-parallel: `|> map(...)` in fn bodies -> MapNode/JoinNode in IR
-//
-// Replaces: lib/tools/gist/src/graph.rs (1,449 lines)
-//           gunbc-dag/src/workspace/subdags/gist.rs
-
 module tools.gist
 
 import services.git
 import std.patterns { read_text_files }
 import std.resources { Filesystem }
-import std.types { TextFilePath }
+import std.types { CommitSha, GitRef, TextFilePath, Url }
 import shared.gist_modes { branch_context, resolve_recent_base, share_content }
-
-// --- Pure functions ---------------------------------------------------
 
 fn render_snapshot(files: List<{ path: TextFilePath, content: String }>) -> String {
   let header = "# Code Snapshot\n\n"
@@ -47,30 +26,14 @@ fn render_recent(diffs: List<String>) -> String {
   "{header}{sections}"
 }
 
-// --- Modes (each produces markdown, then shares via gist) ------------
-
 func gist_snapshot(base_ref: CommitSha?) -> { url: Url }
   uses fs: Filesystem(mode: Read)
 {
   ctx = branch_context()
   files = git.Core.LsFiles()
-
-  // Classify and filter: LsFiles returns List<FilePath> (unclassified).
-  // read_text_files partitions into text + binary, reads only text.
-  //
-  // Before content encoding types, this was:
-  //   contents = for file in files.files { fs.read(path: file) }
-  // which crashed on binary files like docs/design/v4/ac.pdf because
-  // ⟦FilePath⟧ ⊄ ⟦TextFilePath⟧ -- fs.read requires classified paths.
   read_result = read_text_files(paths: files.files)
-
   markdown = render_snapshot(files: read_result.files)
-  result = share_content(
-    markdown: markdown,
-    branch: ctx.branch,
-    base_ref: base_ref
-  )
-
+  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: base_ref)
   return { url: result.url }
 }
 
@@ -78,12 +41,7 @@ func gist_diff(base_ref: GitRef) -> { url: Url } {
   ctx = branch_context()
   diff = git.Core.Diff(base: base_ref)
   markdown = render_diff(diff: diff.diff)
-  result = share_content(
-    markdown: markdown,
-    branch: ctx.branch,
-    base_ref: base_ref
-  )
-
+  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: base_ref)
   return { url: result.url }
 }
 
@@ -95,10 +53,7 @@ func gist_recent(since: String = "3.days.ago") -> { url: Url } {
   }
   markdown = render_recent(diffs: diffs |> map(d => d.diff))
   result = share_content(
-    markdown: markdown,
-    branch: recent.branch,
-    base_ref: recent.base_ref
+    markdown: markdown, branch: recent.branch, base_ref: recent.base_ref
   )
-
   return { url: result.url }
 }

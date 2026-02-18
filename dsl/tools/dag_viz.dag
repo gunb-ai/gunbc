@@ -83,7 +83,14 @@ fn render_topology_diff(
 }
 
 fn topology_snapshot_path() -> FilePath {
-  ".dag-snapshots/workspace.json"
+  ".dag-snapshots/workspace.json" as FilePath
+}
+
+fn topology_output_path(format: String) -> FilePath {
+  match format {
+    "html" => "target/dag-viz/workspace.html" as FilePath
+    "md" => "target/dag-viz/workspace.md" as FilePath
+  }
 }
 
 fn produce_topology_diff_markdown(
@@ -115,13 +122,14 @@ func dag_viz_snapshot(format: String = "html") -> { url: Url, local_path: FilePa
     format: format
   )
 
-  local_path: FilePath = "target/dag-viz/workspace.{rendered.ext}"
+  local_path = topology_output_path(format: format)
   save = content_upsert(content: rendered.content, path: local_path)
   open = shell.Browser.Open(path: local_path) [after save]
 
   result = share_content(
     markdown: rendered.content,
-    branch: ctx.branch
+    branch: ctx.branch,
+    base_ref: None
   )
 
   return { url: result.url, local_path: local_path }

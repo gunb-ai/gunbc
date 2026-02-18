@@ -18,19 +18,14 @@ import services.git
 import services.github.gist
 import std.patterns { credential_chain }
 import std.resources { Network, AuthContext, Clock }
+import std.types { CloudRuntime, CommitSha, Url }
 
 // Get branch context for any mode.
-func branch_context() -> { branch: String, remote_branch: String? } {
+func branch_context() -> { branch: String } {
   current = git.Core.CurrentBranch()
-  remotes = git.Core.RemoteBranches()
-
-  remote = remotes.branches
-    |> filter(b => b |> ends_with("/{current.branch}"))
-    |> first()
 
   return {
-    branch: current.branch,
-    remote_branch: remote
+    branch: current.branch
   }
 }
 
@@ -38,7 +33,7 @@ func branch_context() -> { branch: String, remote_branch: String? } {
 func resolve_recent_base(since: String = "3.days.ago") -> { base_ref: CommitSha, branch: String } {
   ctx = branch_context()
   commits = git.Core.RevList(since: since)
-  base_ref = commits.commits |> last()
+  base_ref = (commits.commits |> last()) as CommitSha
 
   return {
     base_ref: base_ref,
@@ -83,21 +78,20 @@ func gist_upload(markdown: String, branch: String, base_ref: CommitSha?) -> { ur
     files: { filename: markdown }
   )
 
-  return { url: result.url }
+  return { url: result.url as Url }
 }
 
 // Share any markdown content as a gist.
-func share_content(markdown: String, branch: String?, base_ref: CommitSha?) -> { url: Url } {
-  resolved_branch = match branch {
-    Some(b) => b
-    None    => branch_context().branch
-  }
-
+func share_content(markdown: String, branch: String, base_ref: CommitSha?) -> { url: Url } {
   result = gist_upload(
     markdown: markdown,
-    branch: resolved_branch,
+    branch: branch,
     base_ref: base_ref
   )
 
   return { url: result.url }
+}
+
+fn detect_runtime() -> CloudRuntime {
+  LocalDev
 }

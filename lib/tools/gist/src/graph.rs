@@ -609,10 +609,8 @@ pub fn build_gist_graph_with_config(
     // ========================================================================
 
     let branch_dag = lift_branch_dag(build_branch_resolution_subdag());
-    let branch_resolution = builder.add_node_after(
-        Node::subdag("branch_resolution", branch_dag),
-        &fs_env,
-    )?;
+    let branch_resolution =
+        builder.add_node_after(Node::subdag("branch_resolution", branch_dag), &fs_env)?;
 
     // Wire filesystem handle to branch resolution
     builder.add_edge(
@@ -625,10 +623,8 @@ pub fn build_gist_graph_with_config(
     // ========================================================================
 
     let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(cloud_config, public));
-    let gist_upload = builder.add_node_after(
-        Node::subdag("gist_upload", gist_dag),
-        &render_markdown,
-    )?;
+    let gist_upload =
+        builder.add_node_after(Node::subdag("gist_upload", gist_dag), &render_markdown)?;
 
     // Wire: content → gist_upload.markdown
     builder.add_edge(
@@ -684,7 +680,10 @@ fn build_snapshot_acquire(
         Some(fs_env),
     )?;
 
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), list_files.in_port("res:file"))?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        list_files.in_port("res:file"),
+    )?;
 
     // Node: LoopBuilder for per-file reading
     use gunbc_ir::patterns::{LoopBuilder, ResourceInput};
@@ -699,7 +698,10 @@ fn build_snapshot_acquire(
         .build();
 
     let read_files_loop = builder.add_node_after(loop_node, &list_files)?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), read_files_loop.in_port("res:file"))?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        read_files_loop.in_port("res:file"),
+    )?;
 
     // Node: CollectFileContents (PURE - zips filenames + contents into Map)
     let collect_file_contents = builder.add_node_after(
@@ -724,10 +726,7 @@ fn build_snapshot_acquire(
     )?;
 
     // Wire snapshot pipeline (internal triplet edges handled by helper)
-    builder.add_edge(
-        list_files.out("files"),
-        read_files_loop.in_port("files"),
-    )?;
+    builder.add_edge(list_files.out("files"), read_files_loop.in_port("files"))?;
     builder.add_edge(
         list_files.out("files"),
         collect_file_contents.in_port("filenames"),
@@ -875,10 +874,7 @@ fn build_recent_acquire(
     )?;
 
     // Wire cross-triplet edges (internal triplet edges handled by helpers)
-    builder.add_edge(
-        rev_list.out("base_ref"),
-        diff.in_port("base_ref"),
-    )?;
+    builder.add_edge(rev_list.out("base_ref"), diff.in_port("base_ref"))?;
     builder.add_edge(
         diff.out("diff_files"),
         render_markdown.in_port("diff_files"),
@@ -946,9 +942,7 @@ impl Mockable for GistGraphOp {
                     GitOps::ParseRevListBefore => {
                         OutputMap::new().str("base_ref", "abc123def456").build()
                     }
-                    GitOps::ParseGitShow => {
-                        OutputMap::new().str("content", "{}").build()
-                    }
+                    GitOps::ParseGitShow => OutputMap::new().str("content", "{}").build(),
                 }
             }
 
@@ -1142,9 +1136,7 @@ mod tests {
         // Content acquisition entrypoints
         assert!(entrypoints.is_entrypoint_port(&"list_files".into(), &"repo_path".into()));
         // Branch resolution exposes repo_path
-        assert!(
-            entrypoints.is_entrypoint_port(&"branch_resolution".into(), &"repo_path".into())
-        );
+        assert!(entrypoints.is_entrypoint_port(&"branch_resolution".into(), &"repo_path".into()));
     }
 
     #[test]
@@ -1216,9 +1208,7 @@ mod tests {
 
         assert!(entrypoints.is_entrypoint_port(&"diff".into(), &"repo_path".into()));
         assert!(entrypoints.is_entrypoint_port(&"diff".into(), &"base_ref".into()));
-        assert!(
-            entrypoints.is_entrypoint_port(&"branch_resolution".into(), &"repo_path".into())
-        );
+        assert!(entrypoints.is_entrypoint_port(&"branch_resolution".into(), &"repo_path".into()));
     }
 
     #[test]
@@ -1361,9 +1351,7 @@ mod tests {
         let entrypoints = detect_entrypoints(&dag);
 
         assert!(entrypoints.is_entrypoint_port(&"rev_list".into(), &"repo_path".into()));
-        assert!(
-            entrypoints.is_entrypoint_port(&"branch_resolution".into(), &"repo_path".into())
-        );
+        assert!(entrypoints.is_entrypoint_port(&"branch_resolution".into(), &"repo_path".into()));
     }
 
     #[test]

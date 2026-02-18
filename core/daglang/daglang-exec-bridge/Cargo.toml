@@ -1,0 +1,13 @@
+[package]
+name = "daglang-exec-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lowered DAG to executable runtime bridge for daglang"
+
+[dependencies]
+daglang-lower = { path = "../daglang-lower" }
+gunbc-ir = { path = "../../ir" }
+gunbc-exec = { path = "../../exec" }
+gunbc-lib-transport = { path = "../../../lib/transport" }
+serde_json = { workspace = true }

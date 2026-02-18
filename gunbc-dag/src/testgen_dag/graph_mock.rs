@@ -115,7 +115,10 @@ pub fn testgen_dag_mock_spec() -> MockSpec {
                     error: None,
                 })),
             )
-            .resource_lock(format!("file:{}/generated_tests.rs", name.replace('-', "_")));
+            .resource_lock(format!(
+                "file:{}/generated_tests.rs",
+                name.replace('-', "_")
+            ));
     }
 
     // Probe-observer: transport terminals need chain-safe observers

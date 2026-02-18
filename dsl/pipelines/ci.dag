@@ -54,37 +54,43 @@ pipeline ci {
     deps_exists = check_deps_config()
   }
 
-  // Stage 4: Parallel generation (bootstrap, pragma, testgen)
-  // All depend on codegen success, but are independent of each other.
-  stage generate [after codegen_stage, when codegen_result.success] {
+  // Stage 4: Bootstrap gate (explicitly after codegen)
+  // This stage encodes the bootstrap constraint: CI must run codegen first,
+  // then bootstrap can execute without depending on generated outputs.
+  stage bootstrap_stage [after codegen_stage, when codegen_result.success] {
+    bootstrap_result = bootstrap()
+  }
+
+  // Stage 5: Parallel generation (pragma, testgen)
+  // Generation still requires codegen; bootstrap remains an explicit gate.
+  stage generate [after codegen_stage, after bootstrap_stage, when codegen_result.success] {
     parallel {
-      bootstrap_result = bootstrap()
       pragma_result = pragma(directives: load_pragma_directives())
       testgen_result = testgen(targets: discover_testgen_targets())
     }
   }
 
-  // Stage 5: Build (depends on codegen + testgen)
+  // Stage 6: Build (depends on codegen + testgen)
   stage build_stage [after generate] {
     build_result = build_all()
   }
 
-  // Stage 6: Test (depends on build success)
+  // Stage 7: Test (depends on build success)
   stage test_stage [after build_stage, when build_result.success] {
     test_result = cargo.Build.Test()
   }
 
-  // Stage 7: Lint (depends on build + pragma)
+  // Stage 8: Lint (depends on build + pragma)
   stage lint_stage [after build_stage, when build_result.success] {
     lint_result = clippy_lint()
   }
 
-  // Stage 8: Guardrails (depends on testgen + pragma)
+  // Stage 9: Guardrails (depends on testgen + pragma)
   stage guardrails [after generate] {
     guardrail_result = run_guardrail_checks()
   }
 
-  // Stage 9: Verify (5 parallel verification checks)
+  // Stage 10: Verify (5 parallel verification checks)
   // Each verifies a generator's output matches expectations.
   stage verify [after generate] {
     parallel {
@@ -99,7 +105,7 @@ pipeline ci {
     )
   }
 
-  // Stage 10: Report (depends on everything)
+  // Stage 11: Report (depends on everything)
   stage report [after test_stage, after lint_stage, after guardrails, after verify] {
     stages = [
       stage_result(name: "codegen",    success: codegen_result.success,    stderr: ""),

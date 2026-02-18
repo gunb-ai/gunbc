@@ -75,9 +75,24 @@ pub fn add_transport_triplet<T>(
         parse_op,
     ));
 
-    inner.add_edge(Edge::new(prepare_name.as_str(), "request", execute_name.as_str(), "request"));
-    inner.add_edge(Edge::new(prepare_name.as_str(), "skip", execute_name.as_str(), "skip"));
-    inner.add_edge(Edge::new(execute_name.as_str(), "response", parse_name.as_str(), "response"));
+    inner.add_edge(Edge::new(
+        prepare_name.as_str(),
+        "request",
+        execute_name.as_str(),
+        "request",
+    ));
+    inner.add_edge(Edge::new(
+        prepare_name.as_str(),
+        "skip",
+        execute_name.as_str(),
+        "skip",
+    ));
+    inner.add_edge(Edge::new(
+        execute_name.as_str(),
+        "response",
+        parse_name.as_str(),
+        "response",
+    ));
 
     // Wrap & insert ---------------------------------------------------------
     let subdag = Node::subdag(name, inner);
@@ -158,10 +173,30 @@ pub fn add_skippable_transport_triplet<T>(
         parse_op,
     ));
 
-    inner.add_edge(Edge::new(prepare_name.as_str(), "request", execute_name.as_str(), "request"));
-    inner.add_edge(Edge::new(prepare_name.as_str(), "skip", execute_name.as_str(), "skip"));
-    inner.add_edge(Edge::new(execute_name.as_str(), "response", parse_name.as_str(), "response"));
-    inner.add_edge(Edge::new(execute_name.as_str(), "skip", parse_name.as_str(), "skip"));
+    inner.add_edge(Edge::new(
+        prepare_name.as_str(),
+        "request",
+        execute_name.as_str(),
+        "request",
+    ));
+    inner.add_edge(Edge::new(
+        prepare_name.as_str(),
+        "skip",
+        execute_name.as_str(),
+        "skip",
+    ));
+    inner.add_edge(Edge::new(
+        execute_name.as_str(),
+        "response",
+        parse_name.as_str(),
+        "response",
+    ));
+    inner.add_edge(Edge::new(
+        execute_name.as_str(),
+        "skip",
+        parse_name.as_str(),
+        "skip",
+    ));
     inner.add_edge(Edge::new(
         prepare_name.as_str(),
         "skip_reason",
@@ -220,7 +255,12 @@ pub fn add_transport_triplet_named_with_passthrough<T>(
 
     let mut parse_inputs = vec![port("response", "TransportResponse")];
     parse_inputs.extend(passthrough.clone());
-    inner.add_node(Node::opaque(parse_name, parse_inputs, parse_outputs, parse_op));
+    inner.add_node(Node::opaque(
+        parse_name,
+        parse_inputs,
+        parse_outputs,
+        parse_op,
+    ));
 
     inner.add_edge(Edge::new(prepare_name, "request", execute_name, "request"));
     inner.add_edge(Edge::new(prepare_name, "skip", execute_name, "skip"));

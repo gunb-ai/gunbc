@@ -8,8 +8,7 @@ use gunbc_cli::BinaryArgs;
 use gunbc_dag::codegen::build_codegen_graph_with_mode;
 use gunbc_dag::CODEGEN_STAMP_PATH;
 use gunbc_exec::{
-    execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
-    ExecutionMode,
+    execute_and_display, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
@@ -80,13 +79,7 @@ fn main() {
 
     // Execute and display (progress or classic based on terminal)
     let animated = std::io::stdout().is_terminal();
-    execute_and_display(
-        &dag,
-        mode,
-        animated,
-        Some("prep_success"),
-        None,
-    );
+    execute_and_display(&dag, mode, animated, Some("prep_success"), None);
 }
 
 fn print_help() {

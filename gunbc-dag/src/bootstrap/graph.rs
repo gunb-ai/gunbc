@@ -206,7 +206,10 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     )?;
 
     // Resource wiring
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), execute_scan.in_port("res:file"))?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        execute_scan.in_port("res:file"),
+    )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
         makefile_chain.execute_read.in_port("res:file:Makefile"),

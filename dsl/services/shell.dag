@@ -8,6 +8,8 @@
 
 module services.shell
 
+import std.types { FilePath, NonEmptyStr, Secret }
+
 service gcloud.Auth {
   operation Login {
     input { update_adc: Bool = true }

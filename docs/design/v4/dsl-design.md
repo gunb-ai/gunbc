@@ -2036,6 +2036,10 @@ func store_artifact(key: NonEmptyStr, content: Bytes) -> { ok: Bool }
 //   gunbc build --env=aws-prod -> ObjectStorage = S3Bucket
 ```
 
+If an interface-typed `uses`/`provides` clause matches multiple provider resources and no
+provider hint is present (for example `cloud: GcpConfig|AwsConfig|AzureConfig`),
+lowering fails fast with an explicit ambiguity error instead of picking one implicitly.
+
 #### 7.6.4 Cross-Provider Composition
 
 Funcs can compose resources from different providers:
@@ -2576,7 +2580,7 @@ Plus: operation enum (25 lines), `Executable` impl (40 lines), operation impleme
 
 **Total: ~200+ lines across 3 files.**
 
-### Resulting IR (8 nodes, 10 edges)
+### Resulting IR (normalized parity core)
 
 ```
 Dag {
@@ -2645,9 +2649,12 @@ func makegen(registry: ToolRegistry) -> { written: Bool } {
 
 ## A.3 Compiler Output
 
-### Resulting IR (identical structure — 8 nodes, 10 edges)
+### Resulting IR (identical normalized structure)
 
-The compiler produces the same IR as the hand-wired version. The key differences:
+The compiler produces the same normalized core IR as the hand-wired version.
+The raw compiled DAG also includes the DSL wrapper callable/dependency edges
+(`tools.makegen::makegen`), so raw counts are higher (currently 9 nodes, 12 edges).
+The key differences:
 
 1. `content_upsert` pattern expansion creates the 5-node chain automatically.
 2. `render_makefile(registry: registry)` becomes a service call (pure, no transport).
@@ -2682,25 +2689,31 @@ Bucket D (Resource Hygiene):
 
 ```
 ProgressManifest {
-  total_nodes: 8
+  total_nodes: 9
   topology: [
     { id: "fs_env", depth: 0, parent: None }
     { id: "load_registry", depth: 0, parent: None }
-    { id: "render_makefile", depth: 1, parent: None }
     { id: "prepare_read_makegen", depth: 1, parent: None }
+    { id: "tools.makegen::render_makefile", depth: 1, parent: None }
     { id: "execute_read_makegen", depth: 2, parent: None }
+    { id: "prepare_write_makegen", depth: 2, parent: None }
     { id: "compare_makegen_content", depth: 3, parent: None }
-    { id: "prepare_write_makegen", depth: 3, parent: None }
     { id: "execute_makegen_transport", depth: 4, parent: None }
+    { id: "tools.makegen::makegen", depth: 5, parent: None }
   ]
   labels: {
-    "fs_env": "fs", "load_registry": "load", "render_makefile": "render",
+    "fs_env": "fs", "load_registry": "load",
+    "tools.makegen::render_makefile": "render",
     "prepare_read_makegen": "read (prepare)", "execute_read_makegen": "read",
     "compare_makegen_content": "compare", "prepare_write_makegen": "write (prepare)",
-    "execute_makegen_transport": "write"
+    "execute_makegen_transport": "write", "tools.makegen::makegen": "makegen"
   }
   subdag_boundaries: []
-  parallel_groups: [{ nodes: ["fs_env", "load_registry"], depth: 0 }]
+  parallel_groups: [
+    { nodes: ["fs_env", "load_registry"], depth: 0 }
+    { nodes: ["prepare_read_makegen", "tools.makegen::render_makefile"], depth: 1 }
+    { nodes: ["execute_read_makegen", "prepare_write_makegen"], depth: 2 }
+  ]
   scatter_points: []
 }
 ```
@@ -3865,6 +3878,9 @@ dag obligations <file.dag>     # show derived TestObligations by bucket
 dag manifest <file.dag>        # show ProgressManifest (waves, groups, scatter points)
 dag viz <file.dag>             # ASCII DAG visualization (pre-execution)
 ```
+
+CLI target parsing treats paths ending in `.dag` as single-file inputs. If such a path
+is a directory, commands fail fast with an explicit diagnostic and disambiguation hint.
 
 **Timeline:** Phase 1 (essential for trust and debugging from day one).
 

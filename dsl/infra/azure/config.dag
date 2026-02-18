@@ -5,7 +5,7 @@ module infra.azure.config
 import infra.core { CloudConfig, InfraEnvironment }
 import infra.spec { Environment }
 
-fn dev_config() -> InfraEnvironment {
+fn azure_dev_config() -> InfraEnvironment {
   {
     name: Dev,
     cloud: AzureConfig(
@@ -19,8 +19,8 @@ fn dev_config() -> InfraEnvironment {
   }
 }
 
-fn ci_config() -> InfraEnvironment {
-  dev_config() with {
+fn azure_ci_config() -> InfraEnvironment {
+  azure_dev_config() with {
     name: Ci,
     cloud: AzureConfig(
       subscription_id: "00000000-0000-0000-0000-000000000000",
@@ -33,7 +33,7 @@ fn ci_config() -> InfraEnvironment {
   }
 }
 
-fn prod_config() -> InfraEnvironment {
+fn azure_prod_config() -> InfraEnvironment {
   {
     name: Prod,
     cloud: AzureConfig(

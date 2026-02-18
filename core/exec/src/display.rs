@@ -8,7 +8,8 @@
 //!
 //! ```text
 //! animated: bool →
-//!   true  → live DAG animation via SharedProgressObserver
+//!   true  → channel-driven event loop: executor on background thread,
+//!           main thread owns DagProgress + renders on tick/event
 //!   false → observer-driven status lines + boundary outputs
 //!           (CI environments compose CiGroupObserver for workflow annotations)
 //! ```
@@ -18,8 +19,8 @@ use crate::frame_build::{build_frame, format_duration};
 use crate::frame_write::FrameWriter;
 use crate::intercept::BoundaryMocks;
 use crate::progress::{
-    ComposedObserver, DagPhase, DagProgress, DagSnapshot, OutputSummary, ProgressObserver,
-    StageGroup,
+    ComposedObserver, DagPhase, DagProgress, DagSnapshot, ExecutionEvent, OutputSummary,
+    ProgressObserver, StageGroup,
 };
 use crate::render::{Animation, RenderMode};
 use crate::terminal::TerminalProfile;
@@ -33,10 +34,7 @@ use gunbc_ir::{detect_boundaries, Dag, NodeId, Value};
 use std::collections::HashMap;
 use std::io::{self, IsTerminal, Write};
 use std::process;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -164,7 +162,7 @@ pub struct DisplayResult {
 /// - `animated`: Whether to use animated progress display.
 /// - `success_port`: Optional port name to check for `false` → exit(1).
 /// - `input_mocks`: Optional input overrides for entrypoint ports.
-pub fn execute_and_display<T: Executable + Clone + Send>(
+pub fn execute_and_display<T: Executable + Clone + Send + 'static>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     animated: bool,
@@ -203,7 +201,7 @@ pub fn print_preamble_auto(preamble: &Preamble) -> bool {
 /// Execute a DAG through the shared display path and return execution results.
 ///
 /// Unlike [`execute_and_display`], this function never exits the process.
-pub fn execute_and_display_with_result<T: Executable + Clone + Send>(
+pub fn execute_and_display_with_result<T: Executable + Clone + Send + 'static>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     animated: bool,
@@ -310,8 +308,14 @@ impl Drop for CiConcurrencyGuard {
     }
 }
 
-/// Progress-display execution: live DAG visualization driven by observer events.
-fn run_with_progress<T: Executable + Clone + Send>(
+/// Progress-display execution: channel-driven event loop on main thread.
+///
+/// The executor runs on a background thread and sends events via channel.
+/// The main thread owns `DagProgress` directly, renders frames on each tick or
+/// event, and stops when it sees a terminal phase or channel disconnect.
+///
+/// No shared mutex, no AtomicBool, no render thread.
+fn run_with_progress<T: Executable + Clone + Send + 'static>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     success_port: Option<&str>,
@@ -340,70 +344,68 @@ fn run_with_progress<T: Executable + Clone + Send>(
     let layout = compute_layout(&topo_order, &flat.dag.edges, &labels, &profile.viewport);
 
     let snapshot = DagSnapshot::from_dag(&flat.dag, &topo_order, &boundaries);
-    let progress_state = Arc::new(Mutex::new(DagProgress::new(snapshot)));
-    let stop_render = Arc::new(AtomicBool::new(false));
+    let (event_tx, event_rx) = mpsc::channel();
 
-    // Render live frames on a background thread while execution runs.
-    // CursorGuard hides the cursor during animation, restores on drop/panic.
-    let progress_for_render = Arc::clone(&progress_state);
-    let stop_for_render = Arc::clone(&stop_render);
-    let layout_for_render = layout.clone();
-    let profile_for_render = profile.clone();
-    let render_handle = thread::spawn(move || {
-        let _cursor_guard = crate::frame_write::CursorGuard::new(profile_for_render.is_tty);
-        let spinner_frames = resolve_spinner_frames(profile_for_render.tier);
-        let mut spinner = Animation::cycle(spinner_frames, PROGRESS_TICK);
-        let mut writer = FrameWriter::new(
-            profile_for_render.supports_color,
-            profile_for_render.tier,
-            &STANDARD,
-            profile_for_render.is_tty,
-        );
-        let mut stderr = io::stderr();
-        let mut last_tick = Instant::now();
+    // Clone dag and mocks so the background executor thread owns them.
+    // This avoids requiring T: Sync and BoundaryMocks: Sync.
+    let dag_owned = dag.clone();
+    let mocks_owned = input_mocks.cloned();
 
-        loop {
-            let now = Instant::now();
-            spinner.tick(now.saturating_duration_since(last_tick));
-            last_tick = now;
-
-            let progress = {
-                let guard = progress_for_render
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                guard.clone()
-            };
-
-            // Skip rendering until the DAG is actually running — avoids
-            // flashing a useless "DAG pending" frame.
-            if matches!(progress.phase, DagPhase::NotStarted) {
-                if stop_for_render.load(Ordering::Relaxed) {
-                    break;
-                }
-                thread::sleep(PROGRESS_TICK);
-                continue;
-            }
-
-            render_progress_frame(
-                &progress,
-                &layout_for_render,
-                &spinner,
-                &mut writer,
-                &mut stderr,
-                &profile_for_render,
-            );
-
-            if stop_for_render.load(Ordering::Relaxed) {
-                break;
-            }
-            thread::sleep(PROGRESS_TICK);
-        }
-        writer.last_frame_lines()
+    // Executor on background thread, orchestrator loop on main thread.
+    let exec_handle = thread::spawn(move || {
+        let mut observer = ChannelObserver::new(event_tx);
+        execute_with_progress_and_mode_and_inputs(
+            &dag_owned,
+            mode,
+            &mut observer,
+            mocks_owned.as_ref(),
+        )
     });
 
-    let mut observer = SharedProgressObserver::new(Arc::clone(&progress_state));
-    let log_result =
-        execute_with_progress_and_mode_and_inputs(dag, mode, &mut observer, input_mocks);
+    // Orchestrator loop on main thread
+    let _cursor_guard = crate::frame_write::CursorGuard::new(profile.is_tty);
+    let spinner_frames = resolve_spinner_frames(profile.tier);
+    let mut spinner = Animation::cycle(spinner_frames, PROGRESS_TICK);
+    let mut writer = FrameWriter::new(
+        profile.supports_color,
+        profile.tier,
+        &STANDARD,
+        profile.is_tty,
+    );
+    let mut stderr = io::stderr();
+    let mut last_tick = Instant::now();
+    let mut progress = DagProgress::new(snapshot);
+
+    loop {
+        match event_rx.recv_timeout(PROGRESS_TICK) {
+            Ok(event) => progress.apply(event),
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => break,
+        }
+
+        // Skip rendering until the DAG is actually running — avoids
+        // flashing a useless "DAG pending" frame.
+        if matches!(progress.phase, DagPhase::NotStarted) {
+            continue;
+        }
+
+        let now = Instant::now();
+        spinner.tick(now.saturating_duration_since(last_tick));
+        last_tick = now;
+
+        render_progress_frame(&progress, &layout, &spinner, &mut writer, &mut stderr, &profile);
+
+        if matches!(
+            progress.phase,
+            DagPhase::Failed { .. } | DagPhase::Completed { .. }
+        ) {
+            // Drain remaining events (e.g. DagComplete after Failed)
+            while let Ok(event) = event_rx.try_recv() {
+                progress.apply(event);
+            }
+            break;
+        }
+    }
 
     // Anti-flicker: if execution was very fast, wait so the final frame is visible
     let elapsed_display = display_start.elapsed();
@@ -411,31 +413,27 @@ fn run_with_progress<T: Executable + Clone + Send>(
         thread::sleep(MIN_DISPLAY_DURATION - elapsed_display);
     }
 
-    stop_render.store(true, Ordering::Relaxed);
-    let last_lines = render_handle.join().unwrap_or(0);
+    let last_lines = writer.last_frame_lines();
+    // CursorGuard drops here (restores cursor)
+    drop(_cursor_guard);
 
+    // Wait for executor to finish (workers may still be draining after failure)
+    let log_result = exec_handle.join().unwrap();
     let log = log_result?;
-
-    let final_progress = {
-        let guard = progress_state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard.clone()
-    };
 
     // Render a clean final frame with static icons (no spinner animation),
     // seeded with the last animated frame's line count for seamless overwrite.
-    render_final_static_frame_seeded(&final_progress, &layout, &profile, last_lines);
+    render_final_static_frame_seeded(&progress, &layout, &profile, last_lines);
 
     // Check final node states for hard failures
-    let mut should_fail = final_progress
+    let mut should_fail = progress
         .nodes
         .values()
         .any(|np| np.state == NodeState::Failed);
     should_fail = should_fail || success_port_failed(&log, success_port);
 
     // Render error detail boxes for failed nodes
-    print_error_boxes(&final_progress, profile.tier, profile.supports_color);
+    print_error_boxes(&progress, profile.tier, profile.supports_color);
 
     // Surface boundary outputs after progress render so users see
     // the actual tool results (e.g., gist URL) instead of only the DAG view.
@@ -444,25 +442,17 @@ fn run_with_progress<T: Executable + Clone + Send>(
     Ok(DisplayResult { log, should_fail })
 }
 
-#[derive(Clone)]
-struct SharedProgressObserver {
-    progress: Arc<Mutex<DagProgress>>,
+/// Observer that sends events to a channel instead of mutating shared state.
+///
+/// Send errors are intentionally ignored — the orchestrator may have already
+/// stopped reading after seeing a terminal phase.
+struct ChannelObserver {
+    tx: mpsc::Sender<ExecutionEvent>,
 }
 
-impl SharedProgressObserver {
-    fn new(progress: Arc<Mutex<DagProgress>>) -> Self {
-        Self { progress }
-    }
-
-    fn with_progress<F>(&self, update: F)
-    where
-        F: FnOnce(&mut DagProgress),
-    {
-        let mut guard = self
-            .progress
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        update(&mut guard);
+impl ChannelObserver {
+    fn new(tx: mpsc::Sender<ExecutionEvent>) -> Self {
+        Self { tx }
     }
 }
 
@@ -708,33 +698,40 @@ impl ProgressObserver for NonTtyProgressObserver {
     }
 }
 
-impl ProgressObserver for SharedProgressObserver {
+impl ProgressObserver for ChannelObserver {
     fn on_dag_start(&mut self, snapshot: &DagSnapshot) {
-        self.with_progress(|progress| progress.on_dag_start(snapshot));
+        let _ = self.tx.send(ExecutionEvent::DagStart(snapshot.clone()));
     }
 
     fn on_node_start(&mut self, node_id: &NodeId) {
-        self.with_progress(|progress| progress.on_node_start(node_id));
+        let _ = self.tx.send(ExecutionEvent::NodeStart(node_id.clone()));
     }
 
     fn on_node_complete(&mut self, node_id: &NodeId, summary: OutputSummary) {
-        self.with_progress(|progress| progress.on_node_complete(node_id, summary));
+        let _ = self
+            .tx
+            .send(ExecutionEvent::NodeComplete(node_id.clone(), summary));
     }
 
     fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
-        self.with_progress(|progress| progress.on_node_failed(node_id, error));
+        let _ = self.tx.send(ExecutionEvent::NodeFailed(
+            node_id.clone(),
+            error.to_string(),
+        ));
     }
 
     fn on_node_skipped(&mut self, node_id: &NodeId) {
-        self.with_progress(|progress| progress.on_node_skipped(node_id));
+        let _ = self.tx.send(ExecutionEvent::NodeSkipped(node_id.clone()));
     }
 
     fn on_node_intercepted(&mut self, node_id: &NodeId, summary: OutputSummary) {
-        self.with_progress(|progress| progress.on_node_intercepted(node_id, summary));
+        let _ = self
+            .tx
+            .send(ExecutionEvent::NodeIntercepted(node_id.clone(), summary));
     }
 
     fn on_dag_complete(&mut self, elapsed: Duration) {
-        self.with_progress(|progress| progress.on_dag_complete(elapsed));
+        let _ = self.tx.send(ExecutionEvent::DagComplete(elapsed));
     }
 }
 

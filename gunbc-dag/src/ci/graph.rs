@@ -634,20 +634,11 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     )?;
 
     // Test stage — build feeds prepare
-    builder.add_edge(
-        build.out("build_success"),
-        test.in_port("build_success"),
-    )?;
+    builder.add_edge(build.out("build_success"), test.in_port("build_success"))?;
 
     // Lint stage (parallel with test, both depend on build)
-    builder.add_edge(
-        build.out("build_success"),
-        lint.in_port("build_success"),
-    )?;
-    builder.add_edge(
-        pragma.out("pragma_success"),
-        lint.in_port("pragma_success"),
-    )?;
+    builder.add_edge(build.out("build_success"), lint.in_port("build_success"))?;
+    builder.add_edge(pragma.out("pragma_success"), lint.in_port("pragma_success"))?;
 
     // Guardrails stage — testgen feeds prepare
     builder.add_edge(
@@ -782,18 +773,9 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     )?;
 
     // Report — success flags and stderr for failure details
-    builder.add_edge(
-        build.out("build_success"),
-        report.in_port("build_success"),
-    )?;
-    builder.add_edge(
-        test.out("test_success"),
-        report.in_port("test_success"),
-    )?;
-    builder.add_edge(
-        lint.out("lint_success"),
-        report.in_port("lint_success"),
-    )?;
+    builder.add_edge(build.out("build_success"), report.in_port("build_success"))?;
+    builder.add_edge(test.out("test_success"), report.in_port("test_success"))?;
+    builder.add_edge(lint.out("lint_success"), report.in_port("lint_success"))?;
     builder.add_edge(
         testgen.out("testgen_success"),
         report.in_port("testgen_success"),
@@ -810,14 +792,8 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         guardrail.out("guardrail_success"),
         report.in_port("guardrail_success"),
     )?;
-    builder.add_edge(
-        build.out("build_stderr"),
-        report.in_port("build_stderr"),
-    )?;
-    builder.add_edge(
-        build.out("build_stdout"),
-        report.in_port("build_stdout"),
-    )?;
+    builder.add_edge(build.out("build_stderr"), report.in_port("build_stderr"))?;
+    builder.add_edge(build.out("build_stdout"), report.in_port("build_stdout"))?;
     builder.add_edge(
         testgen.out("testgen_stderr"),
         report.in_port("testgen_stderr"),
@@ -834,14 +810,8 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         bootstrap.out("bootstrap_stdout"),
         report.in_port("bootstrap_stdout"),
     )?;
-    builder.add_edge(
-        pragma.out("pragma_stderr"),
-        report.in_port("pragma_stderr"),
-    )?;
-    builder.add_edge(
-        pragma.out("pragma_stdout"),
-        report.in_port("pragma_stdout"),
-    )?;
+    builder.add_edge(pragma.out("pragma_stderr"), report.in_port("pragma_stderr"))?;
+    builder.add_edge(pragma.out("pragma_stdout"), report.in_port("pragma_stdout"))?;
     builder.add_edge(test.out("test_stdout"), report.in_port("test_stdout"))?;
     builder.add_edge(test.out("test_stderr"), report.in_port("test_stderr"))?;
     builder.add_edge(lint.out("lint_stderr"), report.in_port("lint_stderr"))?;
@@ -869,34 +839,13 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         fs_env.out(FsEnv::WRITE_PORT),
         _deps_exists.in_port("res:file"),
     )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        bootstrap.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        pragma.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        testgen.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        build.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        test.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        lint.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        guardrail.in_port("res:file"),
-    )?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), bootstrap.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), pragma.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), testgen.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), build.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), test.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), lint.in_port("res:file"))?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), guardrail.in_port("res:file"))?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
         verify_makegen.in_port("res:file"),
@@ -1093,7 +1042,10 @@ mod tests {
             ("clippy_lint", "execute_clippy_lint"),
             ("guardrail_check", "execute_guardrail_check"),
             ("verify_makegen_check", "execute_verify_makegen_check"),
-            ("verify_deps_config_check", "execute_verify_deps_config_check"),
+            (
+                "verify_deps_config_check",
+                "execute_verify_deps_config_check",
+            ),
             ("verify_bootstrap_check", "execute_verify_bootstrap_check"),
             ("verify_testgen_check", "execute_verify_testgen_check"),
             ("verify_pragma_check", "execute_verify_pragma_check"),
@@ -1102,9 +1054,12 @@ mod tests {
                 .get_node(&subdag_name.into())
                 .unwrap_or_else(|| panic!("missing SubDag: {}", subdag_name));
             if let NodeBody::SubDag(ref inner) = subdag_node.body {
-                let node = inner
-                    .get_node(&execute_name.into())
-                    .unwrap_or_else(|| panic!("missing transport node {} inside {}", execute_name, subdag_name));
+                let node = inner.get_node(&execute_name.into()).unwrap_or_else(|| {
+                    panic!(
+                        "missing transport node {} inside {}",
+                        execute_name, subdag_name
+                    )
+                });
                 assert!(
                     matches!(node.body, NodeBody::Opaque(CIGraphOp::Transport(_))),
                     "{} should be a transport node",

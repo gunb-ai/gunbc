@@ -38,9 +38,16 @@ fn item_signatures(source: &SourceFile) -> Vec<String> {
 #[test]
 fn makegen_contains_fn_and_func_items() {
     let source = parse_dsl("tools/makegen.dag");
-    assert_eq!(source.items.len(), 2, "makegen should contain 2 top-level items");
     assert_eq!(
-        source.module_path.as_ref().map(|module| module.node.segments.clone()),
+        source.items.len(),
+        2,
+        "makegen should contain 2 top-level items"
+    );
+    assert_eq!(
+        source
+            .module_path
+            .as_ref()
+            .map(|module| module.node.segments.clone()),
         Some(vec!["tools".into(), "makegen".into()])
     );
     assert!(source
@@ -86,9 +93,16 @@ fn makegen_contains_fn_and_func_items() {
 #[test]
 fn types_file_contains_record_sum_and_alias_definitions() {
     let source = parse_dsl("std/types.dag");
-    assert_eq!(source.items.len(), 37, "std/types.dag item count changed unexpectedly");
     assert_eq!(
-        source.module_path.as_ref().map(|module| module.node.segments.clone()),
+        source.items.len(),
+        37,
+        "std/types.dag item count changed unexpectedly"
+    );
+    assert_eq!(
+        source
+            .module_path
+            .as_ref()
+            .map(|module| module.node.segments.clone()),
         Some(vec!["std".into(), "types".into()])
     );
 
@@ -161,7 +175,10 @@ fn patterns_file_contains_pattern_defs() {
         "std/patterns.dag item count changed unexpectedly"
     );
     assert_eq!(
-        source.module_path.as_ref().map(|module| module.node.segments.clone()),
+        source
+            .module_path
+            .as_ref()
+            .map(|module| module.node.segments.clone()),
         Some(vec!["std".into(), "patterns".into()])
     );
     assert!(source
@@ -195,7 +212,10 @@ fn shell_service_file_contains_service_defs() {
         "services/shell.dag item count changed unexpectedly"
     );
     assert_eq!(
-        source.module_path.as_ref().map(|module| module.node.segments.clone()),
+        source
+            .module_path
+            .as_ref()
+            .map(|module| module.node.segments.clone()),
         Some(vec!["services".into(), "shell".into()])
     );
     assert!(source
@@ -224,7 +244,10 @@ fn resources_file_contains_resource_defs() {
         "std/resources.dag item count changed unexpectedly"
     );
     assert_eq!(
-        source.module_path.as_ref().map(|module| module.node.segments.clone()),
+        source
+            .module_path
+            .as_ref()
+            .map(|module| module.node.segments.clone()),
         Some(vec!["std".into(), "resources".into()])
     );
     assert!(source

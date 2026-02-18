@@ -77,6 +77,13 @@ impl<T> Dag<T> {
         self.to_mermaid_impl(name, 0)
     }
 
+    /// Render this DAG as deterministic ASCII text.
+    ///
+    /// Useful for terminal-first workflows and stable snapshot tests.
+    pub fn to_ascii(&self, name: &str) -> String {
+        self.to_ascii_impl(name, 0)
+    }
+
     /// Internal implementation with indentation level for nested subdags.
     fn to_mermaid_impl(&self, name: &str, depth: usize) -> String {
         let indent = "    ".repeat(depth);
@@ -129,6 +136,56 @@ impl<T> Dag<T> {
                     indent, parent_node_id, child_subgraph_id
                 )
                 .unwrap();
+            }
+        }
+
+        out
+    }
+
+    fn to_ascii_impl(&self, name: &str, depth: usize) -> String {
+        let indent = "  ".repeat(depth);
+        let mut out = String::new();
+        writeln!(out, "{indent}DAG {name}").unwrap();
+
+        let mut sorted_nodes: Vec<&Node<T>> = self.nodes.iter().collect();
+        sorted_nodes.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+        writeln!(out, "{indent}Nodes:").unwrap();
+        for node in &sorted_nodes {
+            let marker = if node.is_subdag() { " [subdag]" } else { "" };
+            writeln!(out, "{indent}  - {}{marker}", node.id.0).unwrap();
+        }
+
+        let mut sorted_edges: Vec<&Edge> = self.edges.iter().collect();
+        sorted_edges.sort_by(|a, b| {
+            (
+                &a.from_node.0,
+                &a.from_port.0,
+                &a.to_node.0,
+                &a.to_port.0,
+                a.index,
+            )
+                .cmp(&(
+                    &b.from_node.0,
+                    &b.from_port.0,
+                    &b.to_node.0,
+                    &b.to_port.0,
+                    b.index,
+                ))
+        });
+        writeln!(out, "{indent}Edges:").unwrap();
+        for edge in sorted_edges {
+            writeln!(
+                out,
+                "{indent}  - {}.{} -> {}.{}",
+                edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+            )
+            .unwrap();
+        }
+
+        for node in sorted_nodes {
+            if let crate::node::NodeBody::SubDag(ref subdag) = node.body {
+                let subdag_name = format!("{name}::{}", node.id.0);
+                out.push_str(&subdag.to_ascii_impl(&subdag_name, depth + 1));
             }
         }
 
@@ -653,5 +710,41 @@ mod tests {
         let port = Port::resource("platform", "Platform", AccessMode::Write);
         assert_eq!(port.name.0, "res:platform");
         assert_eq!(port.resource_access, Some(AccessMode::Write));
+    }
+
+    #[test]
+    fn test_to_ascii_sorts_nodes_and_edges_deterministically() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque("z", vec![], vec![], ()));
+        dag.add_node(Node::opaque("a", vec![], vec![], ()));
+        dag.add_edge(Edge::new("z", "out", "a", "in"));
+        dag.add_edge(Edge::new("a", "out", "z", "in"));
+
+        let rendered = dag.to_ascii("sample");
+        let expected = concat!(
+            "DAG sample\n",
+            "Nodes:\n",
+            "  - a\n",
+            "  - z\n",
+            "Edges:\n",
+            "  - a.out -> z.in\n",
+            "  - z.out -> a.in\n",
+        );
+        assert_eq!(rendered, expected);
+    }
+
+    #[test]
+    fn test_to_ascii_includes_nested_subdag_sections() {
+        let mut child = Dag::new();
+        child.add_node(Node::opaque("child_node", vec![], vec![], ()));
+
+        let mut dag = Dag::new();
+        dag.add_node(Node::subdag("group", child));
+
+        let rendered = dag.to_ascii("root");
+        assert!(rendered.contains("DAG root"));
+        assert!(rendered.contains("  - group [subdag]"));
+        assert!(rendered.contains("DAG root::group"));
+        assert!(rendered.contains("  Nodes:\n    - child_node"));
     }
 }

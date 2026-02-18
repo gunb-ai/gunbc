@@ -18,6 +18,8 @@
 
 module examples.abstract_services
 
+import std.types { FilePath }
+
 
 // =========================================================================
 // LAYER 1: Interfaces (Abstract Contracts)
@@ -86,7 +88,7 @@ interface LLM {
 // --- Queue interface -----------------------------------------------------
 // Any pub/sub backend: Pub/Sub, SQS, Kafka, in-memory channel, etc.
 
-interface Queue<T> {
+interface AbstractQueue<T> {
   operation Publish(message: T) -> { message_id: String }
   operation Pull(max_messages: Int = 1) -> { messages: List<{ id: String, body: T }> }
   operation Ack(message_id: String) -> { ok: Bool }
@@ -125,18 +127,26 @@ service gcs.Storage : Storage {
   }
 
   operation Get {
+    input { key: String }
+    output { value: Bytes?, found: Bool }
     @rest(GET, "/b/{config.bucket}/o/{key}?alt=media")
   }
 
   operation Put {
+    input { key: String, value: Bytes }
+    output { ok: Bool }
     @rest(POST, "/upload/storage/v1/b/{config.bucket}/o?name={key}")
   }
 
   operation Delete {
+    input { key: String }
+    output { ok: Bool }
     @rest(DELETE, "/b/{config.bucket}/o/{key}")
   }
 
   operation List {
+    input { prefix: String }
+    output { keys: List<String> }
     @rest(GET, "/b/{config.bucket}/o?prefix={prefix}")
   }
 }
@@ -153,18 +163,26 @@ service aws.S3 : Storage {
   }
 
   operation Get {
+    input { key: String }
+    output { value: Bytes?, found: Bool }
     @rest(GET, "/{key}")
   }
 
   operation Put {
+    input { key: String, value: Bytes }
+    output { ok: Bool }
     @rest(PUT, "/{key}")
   }
 
   operation Delete {
+    input { key: String }
+    output { ok: Bool }
     @rest(DELETE, "/{key}")
   }
 
   operation List {
+    input { prefix: String }
+    output { keys: List<String> }
     @rest(GET, "/?prefix={prefix}")
   }
 }
@@ -178,22 +196,30 @@ service local.FileStore : Storage {
   }
 
   operation Get {
+    input { key: String }
+    output { value: Bytes?, found: Bool }
     @shell(["cat", "{config.base_dir}/{key}"])
     @hermetic
   }
 
   operation Put {
+    input { key: String, value: Bytes }
+    output { ok: Bool }
     @shell(["mkdir", "-p", "$(dirname {config.base_dir}/{key})", "&&",
             "tee", "{config.base_dir}/{key}"])
     @hermetic
   }
 
   operation Delete {
+    input { key: String }
+    output { ok: Bool }
     @shell(["rm", "-f", "{config.base_dir}/{key}"])
     @hermetic
   }
 
   operation List {
+    input { prefix: String }
+    output { keys: List<String> }
     @shell(["find", "{config.base_dir}/{prefix}", "-type", "f"])
     @hermetic
   }
@@ -211,6 +237,12 @@ service openai.ChatGPT : LLM {
   }
 
   operation Complete {
+    input {
+      messages: List<Message>,
+      temperature: Float = 0.3,
+      max_tokens: Int?
+    }
+    output { content: String, usage: Usage }
     @rest(POST, "/chat/completions")
     @mock_response(
       status: 200,
@@ -222,6 +254,8 @@ service openai.ChatGPT : LLM {
   }
 
   operation Embed {
+    input { text: String }
+    output { embedding: List<Float>, dimensions: Int }
     @rest(POST, "/embeddings")
   }
 }
@@ -239,10 +273,18 @@ service gcp.VertexAI : LLM {
   }
 
   operation Complete {
+    input {
+      messages: List<Message>,
+      temperature: Float = 0.3,
+      max_tokens: Int?
+    }
+    output { content: String, usage: Usage }
     @rest(POST, "/projects/{config.project}/locations/{config.region}/publishers/google/models/{config.model}:generateContent")
   }
 
   operation Embed {
+    input { text: String }
+    output { embedding: List<Float>, dimensions: Int }
     @rest(POST, "/projects/{config.project}/locations/{config.region}/publishers/google/models/textembedding-gecko:predict")
   }
 }
@@ -276,7 +318,7 @@ func review_code(diff: String, system_prompt: String?) -> { review: String }
     { role: "system", content: system_prompt ?? "You are a code reviewer." },
     { role: "user", content: "Review this diff:\n\n{diff}" }
   ]
-  result = llm.Complete(messages: messages, temperature: 0.3)
+  result = llm.Complete(messages: messages, temperature: 0.3, max_tokens: None)
   return { review: result.content }
 }
 
@@ -285,7 +327,7 @@ func review_and_store(diff: String) -> { review: String, stored: Bool }
   uses llm: LLM
   uses store: Storage
 {
-  review = review_code(diff: diff)
+  review = review_code(diff: diff, system_prompt: None)
   stored = save_artifact(
     key: "reviews/{hash(diff)}.md",
     content: review.review |> to_bytes()

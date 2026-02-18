@@ -22,12 +22,12 @@ use crate::dag_viz::graph::{build_dag_viz_graph, DagVizMode};
 use gunbc_ir::transport::cloud::{
     CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
 };
-use gunbc_ir::transport::{
-    FileOp, FileResponse, ShellResponse, TransportResponse,
-};
+use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::{SecretString, Timestamp, Value};
 use gunbc_primitives::filename;
-use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
+use gunbc_test::{
+    extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher,
+};
 use std::collections::BTreeMap;
 use std::time::SystemTime;
 
@@ -126,9 +126,17 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                 .expect("gist_upload cloud_env request_token should match type")
                 .boundary("gist_upload/bind_secret", "config", mock_cloud_config())
                 .expect("gist_upload bind_secret config should match type")
-                .boundary("gist_upload/cloud_credential/gcp_wif_secret/build_credential", "credential", mock_credential())
+                .boundary(
+                    "gist_upload/cloud_credential/gcp_wif_secret/build_credential",
+                    "credential",
+                    mock_credential(),
+                )
                 .expect("gist_upload cloud_credential credential should match type")
-                .boundary("gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam", "ok", Value::Bool(true))
+                .boundary(
+                    "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
+                    "ok",
+                    Value::Bool(true),
+                )
                 .expect("gist_upload cloud_credential ok should match type");
 
             // Branch resolution transports
@@ -203,9 +211,17 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                 .expect("gist_upload cloud_env request_token should match type")
                 .boundary("gist_upload/bind_secret", "config", mock_cloud_config())
                 .expect("gist_upload bind_secret config should match type")
-                .boundary("gist_upload/cloud_credential/gcp_wif_secret/build_credential", "credential", mock_credential())
+                .boundary(
+                    "gist_upload/cloud_credential/gcp_wif_secret/build_credential",
+                    "credential",
+                    mock_credential(),
+                )
                 .expect("gist_upload cloud_credential credential should match type")
-                .boundary("gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam", "ok", Value::Bool(true))
+                .boundary(
+                    "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
+                    "ok",
+                    Value::Bool(true),
+                )
                 .expect("gist_upload cloud_credential ok should match type");
 
             // Branch resolution transports
@@ -267,9 +283,17 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                 .expect("gist_upload cloud_env request_token should match type")
                 .boundary("gist_upload/bind_secret", "config", mock_cloud_config())
                 .expect("gist_upload bind_secret config should match type")
-                .boundary("gist_upload/cloud_credential/gcp_wif_secret/build_credential", "credential", mock_credential())
+                .boundary(
+                    "gist_upload/cloud_credential/gcp_wif_secret/build_credential",
+                    "credential",
+                    mock_credential(),
+                )
                 .expect("gist_upload cloud_credential credential should match type")
-                .boundary("gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam", "ok", Value::Bool(true))
+                .boundary(
+                    "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
+                    "ok",
+                    Value::Bool(true),
+                )
                 .expect("gist_upload cloud_credential ok should match type");
 
             // Branch resolution transports
@@ -396,11 +420,7 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                     "repo_path",
                     Value::Str(".".into()),
                 )
-                .input_mock(
-                    "render_snapshot",
-                    "format",
-                    Value::Str("html".into()),
-                )
+                .input_mock("render_snapshot", "format", Value::Str("html".into()))
                 .expects_input("repo_path", InputConstraint::Any)
                 .expects_input("format", InputConstraint::Any);
         }
@@ -416,11 +436,7 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                     "repo_path",
                     Value::Str(".".into()),
                 )
-                .input_mock(
-                    "diff_and_render",
-                    "base_ref",
-                    Value::Str("main".into()),
-                )
+                .input_mock("diff_and_render", "base_ref", Value::Str("main".into()))
                 .expects_input("repo_path", InputConstraint::Any)
                 .expects_input("format", InputConstraint::Any)
                 .expects_input("base_ref", InputConstraint::Any);
@@ -487,7 +503,10 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                 // Tool-specific pure nodes
                 .node_example(
                     NodeExample::new("render_snapshot")
-                        .input("topology_json", Value::Str(mock_empty_topology_json().into()))
+                        .input(
+                            "topology_json",
+                            Value::Str(mock_empty_topology_json().into()),
+                        )
                         .input("branch", Value::Str("main".into()))
                         .input("format", Value::Str("html".into()))
                         .output("content", OutputMatcher::non_empty())
@@ -510,8 +529,10 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                             "response",
                             Value::Response(TransportResponse::Rest(
                                 gunbc_ir::transport::RestResponse::ok(
-                                    serde_json::from_str::<serde_json::Value>(&mock_gist_response_json())
-                                        .expect("mock gist response json should parse"),
+                                    serde_json::from_str::<serde_json::Value>(
+                                        &mock_gist_response_json(),
+                                    )
+                                    .expect("mock gist response json should parse"),
                                 ),
                             )),
                         )
@@ -544,21 +565,29 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                 )
                 .node_example(
                     NodeExample::new("browser_open/prepare_browser_open")
-                        .input("file_path", Value::Str("target/dag-viz/dag-visualization.html".into()))
+                        .input(
+                            "file_path",
+                            Value::Str("target/dag-viz/dag-visualization.html".into()),
+                        )
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares xdg-open/open command for browser"),
                 )
                 .node_example(
                     NodeExample::new("browser_open/parse_browser_open")
-                        .input(
-                            "response",
-                            Value::Response(ShellResponse::ok("").into()),
-                        )
+                        .input("response", Value::Response(ShellResponse::ok("").into()))
                         .output("opened", OutputMatcher::IsBool)
                         .description("Confirms browser open succeeded"),
                 )
-                .live_expected_output("gist_upload/parse_gist_response", "url", OutputMatcher::NonEmpty)
-                .live_expected_output("browser_open/parse_browser_open", "opened", OutputMatcher::IsBool)
+                .live_expected_output(
+                    "gist_upload/parse_gist_response",
+                    "url",
+                    OutputMatcher::NonEmpty,
+                )
+                .live_expected_output(
+                    "browser_open/parse_browser_open",
+                    "opened",
+                    OutputMatcher::IsBool,
+                )
                 .live_expected_output(
                     "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
                     "ok",
@@ -615,7 +644,10 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                 )
                 .node_example(
                     NodeExample::new("diff_and_render")
-                        .input("current_json", Value::Str(mock_empty_topology_json().into()))
+                        .input(
+                            "current_json",
+                            Value::Str(mock_empty_topology_json().into()),
+                        )
                         .input("base_json", Value::Str(mock_empty_topology_json().into()))
                         .input("branch", Value::Str("main".into()))
                         .input("base_ref", Value::Str("main".into()))
@@ -638,15 +670,21 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                             "response",
                             Value::Response(TransportResponse::Rest(
                                 gunbc_ir::transport::RestResponse::ok(
-                                    serde_json::from_str::<serde_json::Value>(&mock_gist_response_json())
-                                        .expect("mock gist response json should parse"),
+                                    serde_json::from_str::<serde_json::Value>(
+                                        &mock_gist_response_json(),
+                                    )
+                                    .expect("mock gist response json should parse"),
                                 ),
                             )),
                         )
                         .output("url", OutputMatcher::contains("gist.github.com"))
                         .description("Extracts gist URL from response"),
                 )
-                .live_expected_output("gist_upload/parse_gist_response", "url", OutputMatcher::NonEmpty)
+                .live_expected_output(
+                    "gist_upload/parse_gist_response",
+                    "url",
+                    OutputMatcher::NonEmpty,
+                )
                 .live_expected_output(
                     "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
                     "ok",
@@ -718,7 +756,10 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                 )
                 .node_example(
                     NodeExample::new("diff_and_render")
-                        .input("current_json", Value::Str(mock_empty_topology_json().into()))
+                        .input(
+                            "current_json",
+                            Value::Str(mock_empty_topology_json().into()),
+                        )
                         .input("base_json", Value::Str(mock_empty_topology_json().into()))
                         .input("branch", Value::Str("main".into()))
                         .input("base_ref", Value::Str("abc123def456".into()))
@@ -741,15 +782,21 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                             "response",
                             Value::Response(TransportResponse::Rest(
                                 gunbc_ir::transport::RestResponse::ok(
-                                    serde_json::from_str::<serde_json::Value>(&mock_gist_response_json())
-                                        .expect("mock gist response json should parse"),
+                                    serde_json::from_str::<serde_json::Value>(
+                                        &mock_gist_response_json(),
+                                    )
+                                    .expect("mock gist response json should parse"),
                                 ),
                             )),
                         )
                         .output("url", OutputMatcher::contains("gist.github.com"))
                         .description("Extracts gist URL from response"),
                 )
-                .live_expected_output("gist_upload/parse_gist_response", "url", OutputMatcher::NonEmpty)
+                .live_expected_output(
+                    "gist_upload/parse_gist_response",
+                    "url",
+                    OutputMatcher::NonEmpty,
+                )
                 .live_expected_output(
                     "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
                     "ok",
@@ -769,7 +816,10 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
             spec = spec
                 .node_example(
                     NodeExample::new("prepare_write_snapshot")
-                        .input("topology_json", Value::Str(mock_empty_topology_json().into()))
+                        .input(
+                            "topology_json",
+                            Value::Str(mock_empty_topology_json().into()),
+                        )
                         .output("request", OutputMatcher::IsRequest)
                         .description("Prepares file write request for topology JSON"),
                 )

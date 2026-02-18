@@ -10,20 +10,85 @@ pub struct Token {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     // Keywords
-    Module, Import, Type, Fn, Func, Pattern, Service, Resource, Interface, Pipeline,
-    Let, Return, Match, If, Else, For, In, When, After, Node, Uses, Provides,
-    Acquire, Release, Capability, Operation, Input, Output, Stage,
-    True, False, NoneLit, As, Implements, Parallel, Config, With, SelfKw,
+    Module,
+    Import,
+    Type,
+    Fn,
+    Func,
+    Pattern,
+    Service,
+    Resource,
+    Interface,
+    Pipeline,
+    Let,
+    Return,
+    Match,
+    If,
+    Else,
+    For,
+    In,
+    When,
+    After,
+    Node,
+    Uses,
+    Provides,
+    Acquire,
+    Release,
+    Capability,
+    Operation,
+    Input,
+    Output,
+    Stage,
+    True,
+    False,
+    NoneLit,
+    As,
+    Implements,
+    Parallel,
+    Config,
+    With,
+    SelfKw,
     // Delimiters
-    LBrace, RBrace, LParen, RParen, LBracket, RBracket,
+    LBrace,
+    RBrace,
+    LParen,
+    RParen,
+    LBracket,
+    RBracket,
     // Operators
-    Lt, Gt, PipeArrow, FatArrow, Arrow, Colon, Comma, Dot, Eq, Pipe,
-    Plus, Minus, Star, Slash, Percent, Bang, And, Or,
-    EqEq, Ne, Le, Ge, At, Question, NullCoalesce,
+    Lt,
+    Gt,
+    PipeArrow,
+    FatArrow,
+    Arrow,
+    Colon,
+    Comma,
+    Dot,
+    Eq,
+    Pipe,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Bang,
+    And,
+    Or,
+    EqEq,
+    Ne,
+    Le,
+    Ge,
+    At,
+    Question,
+    NullCoalesce,
     // Strings
-    Str(String), StrBegin(String), StrMid(String), StrEnd(String),
+    Str(String),
+    StrBegin(String),
+    StrMid(String),
+    StrEnd(String),
     // Literals
-    Int(i64), Float(f64),
+    Int(i64),
+    Float(f64),
     // Identifier
     Ident(String),
     // Invalid token encountered during lexing.
@@ -35,34 +100,83 @@ pub enum TokenKind {
 impl TokenKind {
     pub fn desc(&self) -> &'static str {
         match self {
-            Self::Module => "module", Self::Import => "import", Self::Type => "type",
-            Self::Fn => "fn", Self::Func => "func", Self::Pattern => "pattern",
-            Self::Service => "service", Self::Resource => "resource",
-            Self::Interface => "interface", Self::Pipeline => "pipeline",
-            Self::Let => "let", Self::Return => "return", Self::Match => "match",
-            Self::If => "if", Self::Else => "else", Self::For => "for",
-            Self::In => "in", Self::When => "when", Self::After => "after",
-            Self::Node => "node", Self::Uses => "uses", Self::Provides => "provides",
-            Self::Acquire => "acquire", Self::Release => "release",
-            Self::Capability => "capability", Self::Operation => "operation",
-            Self::Input => "input", Self::Output => "output", Self::Stage => "stage",
-            Self::True => "true", Self::False => "false", Self::NoneLit => "none",
-            Self::As => "as", Self::Implements => "implements",
-            Self::Parallel => "parallel", Self::Config => "config",
-            Self::With => "with", Self::SelfKw => "self",
-            Self::LBrace => "{", Self::RBrace => "}", Self::LParen => "(",
-            Self::RParen => ")", Self::LBracket => "[", Self::RBracket => "]",
-            Self::Lt => "<", Self::Gt => ">", Self::PipeArrow => "|>",
-            Self::FatArrow => "=>", Self::Arrow => "->", Self::Colon => ":",
-            Self::Comma => ",", Self::Dot => ".", Self::Eq => "=", Self::Pipe => "|",
-            Self::Plus => "+", Self::Minus => "-", Self::Star => "*", Self::Slash => "/",
-            Self::Percent => "%", Self::Bang => "!", Self::And => "&&", Self::Or => "||",
-            Self::EqEq => "==", Self::Ne => "!=", Self::Le => "<=", Self::Ge => ">=",
-            Self::At => "@", Self::Question => "?", Self::NullCoalesce => "??",
-            Self::Str(_) => "string", Self::StrBegin(_) => "string-begin",
-            Self::StrMid(_) => "string-mid", Self::StrEnd(_) => "string-end",
-            Self::Int(_) => "integer", Self::Float(_) => "float",
-            Self::Ident(_) => "identifier", Self::Unknown(_) => "unknown-token",
+            Self::Module => "module",
+            Self::Import => "import",
+            Self::Type => "type",
+            Self::Fn => "fn",
+            Self::Func => "func",
+            Self::Pattern => "pattern",
+            Self::Service => "service",
+            Self::Resource => "resource",
+            Self::Interface => "interface",
+            Self::Pipeline => "pipeline",
+            Self::Let => "let",
+            Self::Return => "return",
+            Self::Match => "match",
+            Self::If => "if",
+            Self::Else => "else",
+            Self::For => "for",
+            Self::In => "in",
+            Self::When => "when",
+            Self::After => "after",
+            Self::Node => "node",
+            Self::Uses => "uses",
+            Self::Provides => "provides",
+            Self::Acquire => "acquire",
+            Self::Release => "release",
+            Self::Capability => "capability",
+            Self::Operation => "operation",
+            Self::Input => "input",
+            Self::Output => "output",
+            Self::Stage => "stage",
+            Self::True => "true",
+            Self::False => "false",
+            Self::NoneLit => "none",
+            Self::As => "as",
+            Self::Implements => "implements",
+            Self::Parallel => "parallel",
+            Self::Config => "config",
+            Self::With => "with",
+            Self::SelfKw => "self",
+            Self::LBrace => "{",
+            Self::RBrace => "}",
+            Self::LParen => "(",
+            Self::RParen => ")",
+            Self::LBracket => "[",
+            Self::RBracket => "]",
+            Self::Lt => "<",
+            Self::Gt => ">",
+            Self::PipeArrow => "|>",
+            Self::FatArrow => "=>",
+            Self::Arrow => "->",
+            Self::Colon => ":",
+            Self::Comma => ",",
+            Self::Dot => ".",
+            Self::Eq => "=",
+            Self::Pipe => "|",
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::Star => "*",
+            Self::Slash => "/",
+            Self::Percent => "%",
+            Self::Bang => "!",
+            Self::And => "&&",
+            Self::Or => "||",
+            Self::EqEq => "==",
+            Self::Ne => "!=",
+            Self::Le => "<=",
+            Self::Ge => ">=",
+            Self::At => "@",
+            Self::Question => "?",
+            Self::NullCoalesce => "??",
+            Self::Str(_) => "string",
+            Self::StrBegin(_) => "string-begin",
+            Self::StrMid(_) => "string-mid",
+            Self::StrEnd(_) => "string-end",
+            Self::Int(_) => "integer",
+            Self::Float(_) => "float",
+            Self::Ident(_) => "identifier",
+            Self::Unknown(_) => "unknown-token",
             Self::Eof => "EOF",
         }
     }
@@ -118,23 +232,35 @@ impl<'a> Lexer<'a> {
             let tok = lexer.next_token();
             let done = tok.kind == TokenKind::Eof;
             tokens.push(tok);
-            if done { break; }
+            if done {
+                break;
+            }
         }
         (tokens, lexer.errors)
     }
 
     fn peek(&self) -> u8 {
-        if self.pos < self.source.len() { self.source[self.pos] } else { 0 }
+        if self.pos < self.source.len() {
+            self.source[self.pos]
+        } else {
+            0
+        }
     }
 
     fn peek_at(&self, off: usize) -> u8 {
         let i = self.pos + off;
-        if i < self.source.len() { self.source[i] } else { 0 }
+        if i < self.source.len() {
+            self.source[i]
+        } else {
+            0
+        }
     }
 
     fn advance(&mut self) -> u8 {
         let ch = self.peek();
-        if self.pos < self.source.len() { self.pos += 1; }
+        if self.pos < self.source.len() {
+            self.pos += 1;
+        }
         ch
     }
 
@@ -143,7 +269,13 @@ impl<'a> Lexer<'a> {
     }
 
     fn tok(&self, kind: TokenKind, start: usize) -> Token {
-        Token { kind, span: Span { start, end: self.pos } }
+        Token {
+            kind,
+            span: Span {
+                start,
+                end: self.pos,
+            },
+        }
     }
 
     fn push_error(&mut self, message: impl Into<String>, span: Span) {
@@ -211,37 +343,153 @@ impl<'a> Lexer<'a> {
             b'"' => self.scan_str(start),
             b'0'..=b'9' => self.scan_num(start),
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => self.scan_ident(start),
-            b'{' => { self.advance(); if let Some(d) = self.interp_depth.last_mut() { *d += 1; } self.tok(TokenKind::LBrace, start) }
-            b'}' => { self.advance(); if let Some(d) = self.interp_depth.last_mut() { *d -= 1; } self.tok(TokenKind::RBrace, start) }
-            b'(' => { self.advance(); self.tok(TokenKind::LParen, start) }
-            b')' => { self.advance(); self.tok(TokenKind::RParen, start) }
-            b'[' => { self.advance(); self.tok(TokenKind::LBracket, start) }
-            b']' => { self.advance(); self.tok(TokenKind::RBracket, start) }
-            b':' => { self.advance(); self.tok(TokenKind::Colon, start) }
-            b',' => { self.advance(); self.tok(TokenKind::Comma, start) }
-            b'.' => { self.advance(); self.tok(TokenKind::Dot, start) }
-            b'+' => { self.advance(); self.tok(TokenKind::Plus, start) }
-            b'*' => { self.advance(); self.tok(TokenKind::Star, start) }
-            b'%' => { self.advance(); self.tok(TokenKind::Percent, start) }
-            b'@' => { self.advance(); self.tok(TokenKind::At, start) }
-            b'/' => { self.advance(); self.tok(TokenKind::Slash, start) }
-            b'-' => { self.advance(); if self.peek() == b'>' { self.advance(); self.tok(TokenKind::Arrow, start) } else { self.tok(TokenKind::Minus, start) } }
-            b'=' => { self.advance(); if self.peek() == b'=' { self.advance(); self.tok(TokenKind::EqEq, start) } else if self.peek() == b'>' { self.advance(); self.tok(TokenKind::FatArrow, start) } else { self.tok(TokenKind::Eq, start) } }
-            b'!' => { self.advance(); if self.peek() == b'=' { self.advance(); self.tok(TokenKind::Ne, start) } else { self.tok(TokenKind::Bang, start) } }
-            b'<' => { self.advance(); if self.peek() == b'=' { self.advance(); self.tok(TokenKind::Le, start) } else { self.tok(TokenKind::Lt, start) } }
-            b'>' => { self.advance(); if self.peek() == b'=' { self.advance(); self.tok(TokenKind::Ge, start) } else { self.tok(TokenKind::Gt, start) } }
-            b'|' => { self.advance(); if self.peek() == b'>' { self.advance(); self.tok(TokenKind::PipeArrow, start) } else if self.peek() == b'|' { self.advance(); self.tok(TokenKind::Or, start) } else { self.tok(TokenKind::Pipe, start) } }
+            b'{' => {
+                self.advance();
+                if let Some(d) = self.interp_depth.last_mut() {
+                    *d += 1;
+                }
+                self.tok(TokenKind::LBrace, start)
+            }
+            b'}' => {
+                self.advance();
+                if let Some(d) = self.interp_depth.last_mut() {
+                    *d -= 1;
+                }
+                self.tok(TokenKind::RBrace, start)
+            }
+            b'(' => {
+                self.advance();
+                self.tok(TokenKind::LParen, start)
+            }
+            b')' => {
+                self.advance();
+                self.tok(TokenKind::RParen, start)
+            }
+            b'[' => {
+                self.advance();
+                self.tok(TokenKind::LBracket, start)
+            }
+            b']' => {
+                self.advance();
+                self.tok(TokenKind::RBracket, start)
+            }
+            b':' => {
+                self.advance();
+                self.tok(TokenKind::Colon, start)
+            }
+            b',' => {
+                self.advance();
+                self.tok(TokenKind::Comma, start)
+            }
+            b'.' => {
+                self.advance();
+                self.tok(TokenKind::Dot, start)
+            }
+            b'+' => {
+                self.advance();
+                self.tok(TokenKind::Plus, start)
+            }
+            b'*' => {
+                self.advance();
+                self.tok(TokenKind::Star, start)
+            }
+            b'%' => {
+                self.advance();
+                self.tok(TokenKind::Percent, start)
+            }
+            b'@' => {
+                self.advance();
+                self.tok(TokenKind::At, start)
+            }
+            b'/' => {
+                self.advance();
+                self.tok(TokenKind::Slash, start)
+            }
+            b'-' => {
+                self.advance();
+                if self.peek() == b'>' {
+                    self.advance();
+                    self.tok(TokenKind::Arrow, start)
+                } else {
+                    self.tok(TokenKind::Minus, start)
+                }
+            }
+            b'=' => {
+                self.advance();
+                if self.peek() == b'=' {
+                    self.advance();
+                    self.tok(TokenKind::EqEq, start)
+                } else if self.peek() == b'>' {
+                    self.advance();
+                    self.tok(TokenKind::FatArrow, start)
+                } else {
+                    self.tok(TokenKind::Eq, start)
+                }
+            }
+            b'!' => {
+                self.advance();
+                if self.peek() == b'=' {
+                    self.advance();
+                    self.tok(TokenKind::Ne, start)
+                } else {
+                    self.tok(TokenKind::Bang, start)
+                }
+            }
+            b'<' => {
+                self.advance();
+                if self.peek() == b'=' {
+                    self.advance();
+                    self.tok(TokenKind::Le, start)
+                } else {
+                    self.tok(TokenKind::Lt, start)
+                }
+            }
+            b'>' => {
+                self.advance();
+                if self.peek() == b'=' {
+                    self.advance();
+                    self.tok(TokenKind::Ge, start)
+                } else {
+                    self.tok(TokenKind::Gt, start)
+                }
+            }
+            b'|' => {
+                self.advance();
+                if self.peek() == b'>' {
+                    self.advance();
+                    self.tok(TokenKind::PipeArrow, start)
+                } else if self.peek() == b'|' {
+                    self.advance();
+                    self.tok(TokenKind::Or, start)
+                } else {
+                    self.tok(TokenKind::Pipe, start)
+                }
+            }
             b'&' => {
                 self.advance();
                 if self.peek() == b'&' {
                     self.advance();
                     self.tok(TokenKind::And, start)
                 } else {
-                    self.push_error("unexpected character '&'".to_string(), Span { start, end: self.pos });
+                    self.push_error(
+                        "unexpected character '&'".to_string(),
+                        Span {
+                            start,
+                            end: self.pos,
+                        },
+                    );
                     self.tok(TokenKind::Unknown('&'), start)
                 }
             }
-            b'?' => { self.advance(); if self.peek() == b'?' { self.advance(); self.tok(TokenKind::NullCoalesce, start) } else { self.tok(TokenKind::Question, start) } }
+            b'?' => {
+                self.advance();
+                if self.peek() == b'?' {
+                    self.advance();
+                    self.tok(TokenKind::NullCoalesce, start)
+                } else {
+                    self.tok(TokenKind::Question, start)
+                }
+            }
             _ => {
                 self.advance();
                 self.push_error(
@@ -264,24 +512,44 @@ impl<'a> Lexer<'a> {
         }
         let text = self.slice(start, self.pos);
         let kind = match text {
-            "module" => TokenKind::Module, "import" => TokenKind::Import,
-            "type" => TokenKind::Type, "fn" => TokenKind::Fn, "func" => TokenKind::Func,
-            "pattern" => TokenKind::Pattern, "service" => TokenKind::Service,
-            "resource" => TokenKind::Resource, "interface" => TokenKind::Interface,
-            "pipeline" => TokenKind::Pipeline, "let" => TokenKind::Let,
-            "return" => TokenKind::Return, "match" => TokenKind::Match,
-            "if" => TokenKind::If, "else" => TokenKind::Else, "for" => TokenKind::For,
-            "in" => TokenKind::In, "when" => TokenKind::When, "after" => TokenKind::After,
-            "node" => TokenKind::Node, "uses" => TokenKind::Uses,
-            "provides" => TokenKind::Provides, "acquire" => TokenKind::Acquire,
-            "release" => TokenKind::Release, "capability" => TokenKind::Capability,
-            "operation" => TokenKind::Operation, "input" => TokenKind::Input,
-            "output" => TokenKind::Output, "stage" => TokenKind::Stage,
-            "true" => TokenKind::True, "false" => TokenKind::False,
-            "none" => TokenKind::NoneLit, "as" => TokenKind::As,
+            "module" => TokenKind::Module,
+            "import" => TokenKind::Import,
+            "type" => TokenKind::Type,
+            "fn" => TokenKind::Fn,
+            "func" => TokenKind::Func,
+            "pattern" => TokenKind::Pattern,
+            "service" => TokenKind::Service,
+            "resource" => TokenKind::Resource,
+            "interface" => TokenKind::Interface,
+            "pipeline" => TokenKind::Pipeline,
+            "let" => TokenKind::Let,
+            "return" => TokenKind::Return,
+            "match" => TokenKind::Match,
+            "if" => TokenKind::If,
+            "else" => TokenKind::Else,
+            "for" => TokenKind::For,
+            "in" => TokenKind::In,
+            "when" => TokenKind::When,
+            "after" => TokenKind::After,
+            "node" => TokenKind::Node,
+            "uses" => TokenKind::Uses,
+            "provides" => TokenKind::Provides,
+            "acquire" => TokenKind::Acquire,
+            "release" => TokenKind::Release,
+            "capability" => TokenKind::Capability,
+            "operation" => TokenKind::Operation,
+            "input" => TokenKind::Input,
+            "output" => TokenKind::Output,
+            "stage" => TokenKind::Stage,
+            "true" => TokenKind::True,
+            "false" => TokenKind::False,
+            "none" => TokenKind::NoneLit,
+            "as" => TokenKind::As,
             "implements" => TokenKind::Implements,
-            "parallel" => TokenKind::Parallel, "config" => TokenKind::Config,
-            "with" => TokenKind::With, "self" | "Self" => TokenKind::SelfKw,
+            "parallel" => TokenKind::Parallel,
+            "config" => TokenKind::Config,
+            "with" => TokenKind::With,
+            "self" | "Self" => TokenKind::SelfKw,
             _ => TokenKind::Ident(text.to_string()),
         };
         self.tok(kind, start)
@@ -305,15 +573,39 @@ impl<'a> Lexer<'a> {
     }
 
     fn scan_escape(&mut self, buf: &mut String) {
-        if self.pos >= self.source.len() { return; }
+        if self.pos >= self.source.len() {
+            return;
+        }
         match self.peek() {
-            b'n' => { buf.push('\n'); self.pos += 1; }
-            b't' => { buf.push('\t'); self.pos += 1; }
-            b'\\' => { buf.push('\\'); self.pos += 1; }
-            b'"' => { buf.push('"'); self.pos += 1; }
-            b'{' => { buf.push('{'); self.pos += 1; }
-            b'}' => { buf.push('}'); self.pos += 1; }
-            other => { buf.push('\\'); buf.push(other as char); self.pos += 1; }
+            b'n' => {
+                buf.push('\n');
+                self.pos += 1;
+            }
+            b't' => {
+                buf.push('\t');
+                self.pos += 1;
+            }
+            b'\\' => {
+                buf.push('\\');
+                self.pos += 1;
+            }
+            b'"' => {
+                buf.push('"');
+                self.pos += 1;
+            }
+            b'{' => {
+                buf.push('{');
+                self.pos += 1;
+            }
+            b'}' => {
+                buf.push('}');
+                self.pos += 1;
+            }
+            other => {
+                buf.push('\\');
+                buf.push(other as char);
+                self.pos += 1;
+            }
         }
     }
 
@@ -321,9 +613,14 @@ impl<'a> Lexer<'a> {
         self.pos += 1; // skip opening "
         let mut buf = String::new();
         loop {
-            if self.pos >= self.source.len() { break; }
+            if self.pos >= self.source.len() {
+                break;
+            }
             match self.peek() {
-                b'"' => { self.pos += 1; return self.tok(TokenKind::Str(buf), start); }
+                b'"' => {
+                    self.pos += 1;
+                    return self.tok(TokenKind::Str(buf), start);
+                }
                 b'{' => {
                     if self.should_start_interpolation() {
                         self.pos += 1;
@@ -345,7 +642,10 @@ impl<'a> Lexer<'a> {
                     self.pos += 1;
                     self.scan_escape(&mut buf);
                 }
-                ch => { buf.push(ch as char); self.pos += 1; }
+                ch => {
+                    buf.push(ch as char);
+                    self.pos += 1;
+                }
             }
         }
         self.push_error(
@@ -361,9 +661,14 @@ impl<'a> Lexer<'a> {
     fn scan_str_cont(&mut self, start: usize) -> Token {
         let mut buf = String::new();
         loop {
-            if self.pos >= self.source.len() { break; }
+            if self.pos >= self.source.len() {
+                break;
+            }
             match self.peek() {
-                b'"' => { self.pos += 1; return self.tok(TokenKind::StrEnd(buf), start); }
+                b'"' => {
+                    self.pos += 1;
+                    return self.tok(TokenKind::StrEnd(buf), start);
+                }
                 b'{' => {
                     if self.should_start_interpolation() {
                         self.pos += 1;
@@ -373,8 +678,14 @@ impl<'a> Lexer<'a> {
                     buf.push('{');
                     self.pos += 1;
                 }
-                b'\\' => { self.pos += 1; self.scan_escape(&mut buf); }
-                ch => { buf.push(ch as char); self.pos += 1; }
+                b'\\' => {
+                    self.pos += 1;
+                    self.scan_escape(&mut buf);
+                }
+                ch => {
+                    buf.push(ch as char);
+                    self.pos += 1;
+                }
             }
         }
         self.push_error(
@@ -389,8 +700,7 @@ impl<'a> Lexer<'a> {
 
     fn should_start_interpolation(&self) -> bool {
         let next = self.peek_at(1);
-        matches!(next, b'a'..=b'z' | b'A'..=b'Z' | b'_')
-            || matches!(next, b'(' | b'!' | b'-')
+        matches!(next, b'a'..=b'z' | b'A'..=b'Z' | b'_') || matches!(next, b'(' | b'!' | b'-')
     }
 }
 
@@ -404,85 +714,128 @@ mod tests {
 
     #[test]
     fn keywords_and_idents() {
-        assert_eq!(kinds("module foo import bar"), vec![
-            TokenKind::Module, TokenKind::Ident("foo".into()),
-            TokenKind::Import, TokenKind::Ident("bar".into()), TokenKind::Eof,
-        ]);
+        assert_eq!(
+            kinds("module foo import bar"),
+            vec![
+                TokenKind::Module,
+                TokenKind::Ident("foo".into()),
+                TokenKind::Import,
+                TokenKind::Ident("bar".into()),
+                TokenKind::Eof,
+            ]
+        );
     }
 
     #[test]
     fn operators() {
-        assert_eq!(kinds("|> => -> == != <= >= && || ??"), vec![
-            TokenKind::PipeArrow, TokenKind::FatArrow, TokenKind::Arrow,
-            TokenKind::EqEq, TokenKind::Ne, TokenKind::Le, TokenKind::Ge,
-            TokenKind::And, TokenKind::Or, TokenKind::NullCoalesce, TokenKind::Eof,
-        ]);
+        assert_eq!(
+            kinds("|> => -> == != <= >= && || ??"),
+            vec![
+                TokenKind::PipeArrow,
+                TokenKind::FatArrow,
+                TokenKind::Arrow,
+                TokenKind::EqEq,
+                TokenKind::Ne,
+                TokenKind::Le,
+                TokenKind::Ge,
+                TokenKind::And,
+                TokenKind::Or,
+                TokenKind::NullCoalesce,
+                TokenKind::Eof,
+            ]
+        );
     }
 
     #[test]
     fn longest_match_operators() {
-        assert_eq!(kinds("|>| => = > -> - !="), vec![
-            TokenKind::PipeArrow,
-            TokenKind::Pipe,
-            TokenKind::FatArrow,
-            TokenKind::Eq,
-            TokenKind::Gt,
-            TokenKind::Arrow,
-            TokenKind::Minus,
-            TokenKind::Ne,
-            TokenKind::Eof,
-        ]);
+        assert_eq!(
+            kinds("|>| => = > -> - !="),
+            vec![
+                TokenKind::PipeArrow,
+                TokenKind::Pipe,
+                TokenKind::FatArrow,
+                TokenKind::Eq,
+                TokenKind::Gt,
+                TokenKind::Arrow,
+                TokenKind::Minus,
+                TokenKind::Ne,
+                TokenKind::Eof,
+            ]
+        );
     }
 
     #[test]
     fn longest_match_comparison_and_question_operators() {
-        assert_eq!(kinds("<= < >= > ?? ? != !"), vec![
-            TokenKind::Le,
-            TokenKind::Lt,
-            TokenKind::Ge,
-            TokenKind::Gt,
-            TokenKind::NullCoalesce,
-            TokenKind::Question,
-            TokenKind::Ne,
-            TokenKind::Bang,
-            TokenKind::Eof,
-        ]);
+        assert_eq!(
+            kinds("<= < >= > ?? ? != !"),
+            vec![
+                TokenKind::Le,
+                TokenKind::Lt,
+                TokenKind::Ge,
+                TokenKind::Gt,
+                TokenKind::NullCoalesce,
+                TokenKind::Question,
+                TokenKind::Ne,
+                TokenKind::Bang,
+                TokenKind::Eof,
+            ]
+        );
     }
 
     #[test]
     fn numbers() {
-        assert_eq!(kinds("42 2.5"), vec![
-            TokenKind::Int(42), TokenKind::Float(2.5), TokenKind::Eof,
-        ]);
+        assert_eq!(
+            kinds("42 2.5"),
+            vec![TokenKind::Int(42), TokenKind::Float(2.5), TokenKind::Eof,]
+        );
     }
 
     #[test]
     fn simple_string() {
-        assert_eq!(kinds(r#""hello""#), vec![TokenKind::Str("hello".into()), TokenKind::Eof]);
+        assert_eq!(
+            kinds(r#""hello""#),
+            vec![TokenKind::Str("hello".into()), TokenKind::Eof]
+        );
     }
 
     #[test]
     fn string_interp() {
-        assert_eq!(kinds(r#""hi {name}!""#), vec![
-            TokenKind::StrBegin("hi ".into()), TokenKind::Ident("name".into()),
-            TokenKind::StrEnd("!".into()), TokenKind::Eof,
-        ]);
+        assert_eq!(
+            kinds(r#""hi {name}!""#),
+            vec![
+                TokenKind::StrBegin("hi ".into()),
+                TokenKind::Ident("name".into()),
+                TokenKind::StrEnd("!".into()),
+                TokenKind::Eof,
+            ]
+        );
     }
 
     #[test]
     fn string_interp_multi() {
-        assert_eq!(kinds(r#""{a}_{b}""#), vec![
-            TokenKind::StrBegin(String::new()), TokenKind::Ident("a".into()),
-            TokenKind::StrMid("_".into()), TokenKind::Ident("b".into()),
-            TokenKind::StrEnd(String::new()), TokenKind::Eof,
-        ]);
+        assert_eq!(
+            kinds(r#""{a}_{b}""#),
+            vec![
+                TokenKind::StrBegin(String::new()),
+                TokenKind::Ident("a".into()),
+                TokenKind::StrMid("_".into()),
+                TokenKind::Ident("b".into()),
+                TokenKind::StrEnd(String::new()),
+                TokenKind::Eof,
+            ]
+        );
     }
 
     #[test]
     fn comments_skipped() {
-        assert_eq!(kinds("foo // comment\nbar"), vec![
-            TokenKind::Ident("foo".into()), TokenKind::Ident("bar".into()), TokenKind::Eof,
-        ]);
+        assert_eq!(
+            kinds("foo // comment\nbar"),
+            vec![
+                TokenKind::Ident("foo".into()),
+                TokenKind::Ident("bar".into()),
+                TokenKind::Eof,
+            ]
+        );
     }
 
     #[test]

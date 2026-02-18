@@ -27,6 +27,27 @@
 //!   └── makefile/   Makefile target (from module metadata)
 //! ```
 
+// ── Task-owned modules (dsl-codegen-tasks.md) ──────────────────────
+// Wave 1
+pub mod computation; // Task 1: Computation types
+pub mod rust_exec_runtime; // Task 3: Exec-runtime fast path
+
+// Wave 2
+pub mod plan; // Task 4: EmitPlan builder
+
+// Wave 3
+pub mod lower_to_ir; // Task 8: Computation → AbstractIR
+pub mod lower_rust; // Task 9: AbstractIR → Rust lowering
+pub mod lower_go; // Task 10: AbstractIR → Go lowering
+pub mod lower_c; // Task 11: AbstractIR → C lowering
+
+// Wave 4
+pub mod lower_mips; // Task 15: C → MIPS lowering
+pub mod render_rust; // Task 12: Rust renderer
+pub mod render_go; // Task 13: Go renderer
+pub mod render_c; // Task 14: C renderer
+pub mod render_mips; // Task 16: MIPS renderer
+
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
 use daglang_lower::{CallableKind, LoweredOp};
 use gunbc_ir::Dag;
@@ -110,15 +131,11 @@ impl CodegenBackend for RustBackend {
     }
 
     fn emit_fn(&self, name: &str) -> String {
-        format!(
-            "pub fn {name}() {{\n    // TODO(fn): compile pure functor body\n}}\n"
-        )
+        format!("pub fn {name}() {{\n    // TODO(fn): compile pure functor body\n}}\n")
     }
 
     fn emit_func(&self, name: &str) -> String {
-        format!(
-            "pub fn {name}() {{\n    // TODO(func): execute lowered DAG orchestration\n}}\n"
-        )
+        format!("pub fn {name}() {{\n    // TODO(func): execute lowered DAG orchestration\n}}\n")
     }
 
     fn emit_transport(&self, spec: &str) -> String {
@@ -163,7 +180,9 @@ pub fn emit_rust_bundle(
         };
 
         match op {
-            LoweredOp::Callable { module, kind, name } => {
+            LoweredOp::Callable {
+                module, kind, name, ..
+            } => {
                 callable_count += 1;
                 let fn_name = sanitize_identifier(&format!("{module}_{name}"));
                 let rendered = match kind {
@@ -171,6 +190,16 @@ pub fn emit_rust_bundle(
                     CallableKind::Func | CallableKind::Pattern => backend.emit_func(&fn_name),
                 };
                 emitted_functions.push(rendered);
+            }
+            LoweredOp::Collection {
+                module,
+                callable,
+                kind,
+            } => {
+                callable_count += 1;
+                let fn_name =
+                    sanitize_identifier(&format!("{module}_{callable}_collection_{kind:?}"));
+                emitted_functions.push(backend.emit_func(&fn_name));
             }
             LoweredOp::Pipeline { module, name, .. } => {
                 pipeline_count += 1;
@@ -232,6 +261,56 @@ fn render_manifest(manifest: &ProgressManifest) -> String {
         "boundary_nodes={}\n",
         manifest.boundary_nodes.join(", ")
     ));
+    out.push_str("topology=\n");
+    for node in &manifest.topology {
+        out.push_str(&format!("  {}@{}\n", node.id, node.depth));
+    }
+    out.push_str("labels=\n");
+    for (node_id, label) in &manifest.labels {
+        out.push_str(&format!("  {}={}\n", node_id, label));
+    }
+    out.push_str("subdag_boundaries=\n");
+    for boundary in &manifest.subdag_boundaries {
+        out.push_str(&format!(
+            "  {} label={} inner=[{}]\n",
+            boundary.node_id,
+            boundary.label,
+            boundary.inner_nodes.join(",")
+        ));
+    }
+    out.push_str("parallel_groups=\n");
+    for group in &manifest.parallel_groups {
+        out.push_str(&format!(
+            "  depth:{} nodes={}\n",
+            group.depth,
+            group.nodes.join(",")
+        ));
+    }
+    out.push_str(&format!(
+        "scatter_points={}\n",
+        manifest.scatter_points.join(", ")
+    ));
+    out.push_str(&format!(
+        "interactive_nodes={}\n",
+        manifest.interactive_nodes.join(", ")
+    ));
+    out.push_str("capture_modes=\n");
+    for (node_id, mode) in &manifest.capture_modes {
+        out.push_str(&format!("  {}={:?}\n", node_id, mode));
+    }
+    out.push_str("stage_groups=\n");
+    for group in &manifest.stage_groups {
+        out.push_str(&format!("  {}={}\n", group.stage_id, group.nodes.join(",")));
+    }
+    out.push_str("resources=\n");
+    for (node_id, usages) in &manifest.resources {
+        let usages_rendered = usages
+            .iter()
+            .map(|usage| format!("{}:{}", usage.resource, usage.usage))
+            .collect::<Vec<_>>()
+            .join(",");
+        out.push_str(&format!("  {}={}\n", node_id, usages_rendered));
+    }
     out
 }
 
@@ -243,11 +322,7 @@ fn sanitize_identifier(value: &str) -> String {
     if out.is_empty() {
         out.push('_');
     }
-    if out
-        .chars()
-        .next()
-        .is_some_and(|ch| ch.is_ascii_digit())
-    {
+    if out.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
         out.insert(0, '_');
     }
     out
@@ -270,6 +345,7 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
 mod tests {
     use super::*;
     use daglang_derive::derive_artifacts;
+    use daglang_lower::ObligationCategory;
     use gunbc_ir::{Edge, Node, Port};
 
     fn sample_dag() -> Dag<LoweredOp> {
@@ -282,6 +358,8 @@ mod tests {
                 module: "tools.makegen".to_string(),
                 kind: CallableKind::Fn,
                 name: "render_makefile".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -292,6 +370,8 @@ mod tests {
                 module: "tools.makegen".to_string(),
                 kind: CallableKind::Func,
                 name: "makegen".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
         dag.add_edge(Edge::new(
@@ -314,11 +394,18 @@ mod tests {
         assert!(bundle
             .files
             .iter()
-            .any(|file| file.path.ends_with("main.rs") && file.content.contains("tools_makegen_makegen")));
-        assert!(bundle
+            .any(|file| file.path.ends_with("main.rs")
+                && file.content.contains("tools_makegen_makegen")));
+        let manifest_file = bundle
             .files
             .iter()
-            .any(|file| file.path.ends_with("progress_manifest.txt") && file.content.contains("total_nodes=")));
+            .find(|file| file.path.ends_with("progress_manifest.txt"))
+            .expect("progress manifest artifact should be emitted");
+        assert!(manifest_file.content.contains("total_nodes="));
+        assert!(manifest_file.content.contains("topology="));
+        assert!(manifest_file.content.contains("labels="));
+        assert!(manifest_file.content.contains("parallel_groups="));
+        assert!(manifest_file.content.contains("capture_modes="));
         assert_eq!(bundle.summary.callable_count, 2);
     }
 }

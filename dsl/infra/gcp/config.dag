@@ -36,7 +36,7 @@ type GcpServiceAccountSpec {
 
 // --- Environment configs -------------------------------------------------
 
-fn dev_config() -> InfraEnvironment {
+fn gcp_dev_config() -> InfraEnvironment {
   {
     name: Dev,
     cloud: GcpConfig(
@@ -50,15 +50,15 @@ fn dev_config() -> InfraEnvironment {
   }
 }
 
-fn ci_config() -> InfraEnvironment {
-  dev_config() with {
+fn gcp_ci_config() -> InfraEnvironment {
+  gcp_dev_config() with {
     name: Ci,
     secrets_prefix: "ci-",
     tags: { "environment": "ci", "managed-by": "gunbc" }
   }
 }
 
-fn prod_config() -> InfraEnvironment {
+fn gcp_prod_config() -> InfraEnvironment {
   {
     name: Prod,
     cloud: GcpConfig(

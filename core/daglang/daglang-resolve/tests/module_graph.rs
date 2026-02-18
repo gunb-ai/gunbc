@@ -15,7 +15,11 @@ fn unique_temp_dir(name: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system clock should be after unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!("daglang_resolve_{name}_{}_{}", std::process::id(), nanos))
+    std::env::temp_dir().join(format!(
+        "daglang_resolve_{name}_{}_{}",
+        std::process::id(),
+        nanos
+    ))
 }
 
 fn write_file(path: &Path, content: &str) {
@@ -74,7 +78,6 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
 
 fn expected_real_corpus_module_order() -> Vec<&'static str> {
     vec![
-        "examples.abstract_services",
         "examples.rich_types",
         "infra.aws.services",
         "infra.azure.services",
@@ -92,17 +95,18 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "services.gcp.iam",
         "services.gcp.secret_manager",
         "services.gcp.sts",
-        "services.git",
         "services.github.gist",
-        "services.shell",
         "std.resources",
-        "std.patterns",
-        "shared.gist_modes",
         "std.types",
         "cloud.aws.credential",
         "cloud.azure.credential",
+        "examples.abstract_services",
+        "services.git",
+        "services.shell",
+        "std.patterns",
         "cloud.gcp.credential",
         "shared.dag_util",
+        "shared.gist_modes",
         "tools.bootstrap",
         "tools.build",
         "tools.clippy",
@@ -167,7 +171,8 @@ fn discovered_module_paths_match_ast_module_declarations() {
             .map(|module| module.node.segments.clone())
             .expect("real corpus files should contain module declarations");
         assert_eq!(
-            module.module_path, ast_module_path,
+            module.module_path,
+            ast_module_path,
             "resolved module path should match parsed AST module declaration for {}",
             module.path.display()
         );
@@ -185,11 +190,11 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         .map(|module| (module.module_path.join("."), module.dependencies.len()))
         .collect();
     let expected: BTreeMap<String, usize> = BTreeMap::from([
-        ("cloud.aws.credential".into(), 2),
-        ("cloud.azure.credential".into(), 2),
-        ("cloud.gcp.credential".into(), 5),
-        ("examples.abstract_services".into(), 0),
-        ("examples.deployment".into(), 9),
+        ("cloud.aws.credential".into(), 3),
+        ("cloud.azure.credential".into(), 3),
+        ("cloud.gcp.credential".into(), 6),
+        ("examples.abstract_services".into(), 1),
+        ("examples.deployment".into(), 10),
         ("examples.integration_tests".into(), 2),
         ("examples.rich_types".into(), 0),
         ("infra.aws.config".into(), 2),
@@ -208,12 +213,12 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("services.gcp.iam".into(), 0),
         ("services.gcp.secret_manager".into(), 0),
         ("services.gcp.sts".into(), 0),
-        ("services.git".into(), 0),
+        ("services.git".into(), 1),
         ("services.github.gist".into(), 0),
-        ("services.shell".into(), 0),
+        ("services.shell".into(), 1),
         ("shared.dag_util".into(), 2),
-        ("shared.gist_modes".into(), 4),
-        ("std.patterns".into(), 4),
+        ("shared.gist_modes".into(), 5),
+        ("std.patterns".into(), 5),
         ("std.resources".into(), 0),
         ("std.types".into(), 0),
         ("tools.bootstrap".into(), 4),
@@ -335,7 +340,8 @@ fn duplicate_module_paths_are_rejected() {
         "module dup.mod\nfn two() -> Unit {}",
     );
 
-    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected duplicate module error");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect_err("expected duplicate module error");
     match err {
         ResolveError::DuplicateModule(path) => {
             assert_eq!(path.join("."), "dup.mod");
@@ -349,7 +355,8 @@ fn duplicate_module_paths_are_rejected() {
 #[test]
 fn missing_discovery_root_is_rejected() {
     let root = unique_temp_dir("missing_root");
-    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected invalid root error");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect_err("expected invalid root error");
     match err {
         ResolveError::InvalidRootPath { path, reason } => {
             assert_eq!(path, root);
@@ -386,7 +393,8 @@ fn non_directory_discovery_root_is_rejected() {
     let root = unique_temp_dir("non_directory_root");
     write_file(&root, "not a directory");
 
-    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected invalid root error");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect_err("expected invalid root error");
     match err {
         ResolveError::InvalidRootPath { path, reason } => {
             assert_eq!(path, root);
@@ -425,8 +433,8 @@ fn discovery_fails_when_any_root_is_non_directory() {
 #[test]
 fn invalid_root_path_error_display_includes_path_and_reason() {
     let missing_root = unique_temp_dir("display_missing_root");
-    let missing_err =
-        ModuleGraph::discover(std::slice::from_ref(&missing_root)).expect_err("expected invalid root error");
+    let missing_err = ModuleGraph::discover(std::slice::from_ref(&missing_root))
+        .expect_err("expected invalid root error");
     let missing_rendered = missing_err.to_string();
     assert!(missing_rendered.contains("invalid discovery root"));
     assert!(missing_rendered.contains(&missing_root.display().to_string()));
@@ -434,8 +442,8 @@ fn invalid_root_path_error_display_includes_path_and_reason() {
 
     let non_dir_root = unique_temp_dir("display_non_dir_root");
     write_file(&non_dir_root, "not a directory");
-    let non_dir_err =
-        ModuleGraph::discover(std::slice::from_ref(&non_dir_root)).expect_err("expected invalid root error");
+    let non_dir_err = ModuleGraph::discover(std::slice::from_ref(&non_dir_root))
+        .expect_err("expected invalid root error");
     let non_dir_rendered = non_dir_err.to_string();
     assert!(non_dir_rendered.contains("invalid discovery root"));
     assert!(non_dir_rendered.contains(&non_dir_root.display().to_string()));
@@ -452,7 +460,8 @@ fn unresolved_imports_are_tolerated_for_phase_zero_discovery() {
         "module a.main\nimport missing.dep\nfn run() -> Unit {}",
     );
 
-    let graph = ModuleGraph::discover(std::slice::from_ref(&root)).expect("expected graph discovery success");
+    let graph = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect("expected graph discovery success");
     assert_eq!(graph.modules.len(), 1);
     assert_eq!(graph.modules[0].module_path.join("."), "a.main");
     assert!(
@@ -475,7 +484,8 @@ fn cyclic_dependencies_are_reported_as_resolve_errors() {
         "module cycle.b\nimport cycle.a\nfn b() -> Unit {}",
     );
 
-    let err = ModuleGraph::discover_strict(std::slice::from_ref(&root)).expect_err("expected cycle error");
+    let err = ModuleGraph::discover_strict(std::slice::from_ref(&root))
+        .expect_err("expected cycle error");
     match err {
         ResolveError::CyclicDependency(cycle) => {
             let module_names = cycle
@@ -500,7 +510,10 @@ fn parse_error_contains_file_line_col_rendering() {
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 1);
-            assert_eq!(files[0].0.file_name().and_then(|n| n.to_str()), Some("broken.dag"));
+            assert_eq!(
+                files[0].0.file_name().and_then(|n| n.to_str()),
+                Some("broken.dag")
+            );
             assert!(
                 files[0].1.iter().any(|diag| diag.render().contains(":2:")),
                 "expected diagnostic to include line/column: {:?}",
@@ -529,11 +542,11 @@ fn lex_error_is_reported_with_lex_diagnostic_kind() {
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 1);
-            assert_eq!(files[0].0.file_name().and_then(|n| n.to_str()), Some("broken.dag"));
-            let diag = files[0]
-                .1
-                .first()
-                .expect("expected a lexical diagnostic");
+            assert_eq!(
+                files[0].0.file_name().and_then(|n| n.to_str()),
+                Some("broken.dag")
+            );
+            let diag = files[0].1.first().expect("expected a lexical diagnostic");
             assert_eq!(diag.kind, DiagnosticKind::Lex);
             assert!(diag.render().contains(":2:1:"));
         }
@@ -552,7 +565,11 @@ fn lex_error_file_order_is_deterministic() {
     let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected lex errors");
     match err {
         ResolveError::ParseErrors(files) => {
-            assert_eq!(files.len(), 2, "expected diagnostics for both lex-broken files");
+            assert_eq!(
+                files.len(),
+                2,
+                "expected diagnostics for both lex-broken files"
+            );
             let names: Vec<String> = files
                 .iter()
                 .map(|(path, _)| path.file_name().unwrap().to_string_lossy().to_string())
@@ -564,7 +581,9 @@ fn lex_error_file_order_is_deterministic() {
             );
             for (_path, diagnostics) in &files {
                 assert!(
-                    diagnostics.iter().all(|diag| diag.kind == DiagnosticKind::Lex),
+                    diagnostics
+                        .iter()
+                        .all(|diag| diag.kind == DiagnosticKind::Lex),
                     "expected lexical diagnostic kinds for lex-broken files"
                 );
             }
@@ -590,7 +609,9 @@ fn lex_errors_are_aggregated_within_single_file() {
                 2,
                 "expected both lexical diagnostics for one file"
             );
-            assert!(diagnostics.iter().all(|diag| diag.kind == DiagnosticKind::Lex));
+            assert!(diagnostics
+                .iter()
+                .all(|diag| diag.kind == DiagnosticKind::Lex));
             assert_eq!(diagnostics[0].line, Some(2));
             assert_eq!(diagnostics[0].column, Some(1));
             assert_eq!(diagnostics[1].line, Some(3));
@@ -608,7 +629,8 @@ fn parse_errors_are_aggregated_across_multiple_files() {
     write_file(&root.join("broken_a.dag"), "module sample.a\nfn");
     write_file(&root.join("broken_b.dag"), "module sample.b\nimport");
 
-    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected parse errors");
+    let err =
+        ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected parse errors");
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 2, "expected diagnostics for both broken files");
@@ -631,7 +653,8 @@ fn parse_error_file_order_is_deterministic() {
     write_file(&root.join("z_broken.dag"), "module sample.z\nfn");
     write_file(&root.join("a_broken.dag"), "module sample.a\nimport");
 
-    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected parse errors");
+    let err =
+        ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected parse errors");
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 2, "expected diagnostics for both broken files");
@@ -657,7 +680,8 @@ fn mixed_lex_and_parse_error_file_order_is_path_sorted() {
     write_file(&root.join("a_parse.dag"), "module sample.a\nfn");
     write_file(&root.join("z_lex.dag"), "module sample.z\n$\n");
 
-    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected mixed errors");
+    let err =
+        ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected mixed errors");
     match err {
         ResolveError::ParseErrors(files) => {
             assert_eq!(files.len(), 2, "expected diagnostics for both broken files");
@@ -708,9 +732,9 @@ fn parse_errors_are_independent_of_root_argument_order() {
         (ResolveError::ParseErrors(files_first), ResolveError::ParseErrors(files_second)) => {
             (files_first, files_second)
         }
-        (left, right) => panic!(
-            "expected ParseErrors for both runs, got left={left:?}, right={right:?}"
-        ),
+        (left, right) => {
+            panic!("expected ParseErrors for both runs, got left={left:?}, right={right:?}")
+        }
     };
 
     assert_eq!(files_first, files_second);
@@ -725,7 +749,8 @@ fn parse_error_display_includes_all_files_and_locations() {
     write_file(&root.join("broken_a.dag"), "module sample.a\nfn");
     write_file(&root.join("broken_b.dag"), "module sample.b\nimport");
 
-    let err = ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected parse errors");
+    let err =
+        ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("expected parse errors");
     let rendered = err.to_string();
     assert!(
         rendered.contains("broken_a.dag"),
@@ -746,7 +771,8 @@ fn parse_error_display_includes_all_files_and_locations() {
 #[test]
 fn discovery_order_is_deterministic_across_runs() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
-    let graph_a = ModuleGraph::discover(std::slice::from_ref(&dsl_root)).expect("first discover should succeed");
+    let graph_a = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
+        .expect("first discover should succeed");
     let graph_b = ModuleGraph::discover(&[dsl_root]).expect("second discover should succeed");
 
     let order_a: Vec<String> = graph_a
@@ -766,7 +792,8 @@ fn discovery_order_is_deterministic_across_runs() {
 #[test]
 fn display_tree_output_is_deterministic_across_runs() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
-    let graph_a = ModuleGraph::discover(std::slice::from_ref(&dsl_root)).expect("first discover should succeed");
+    let graph_a = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
+        .expect("first discover should succeed");
     let graph_b = ModuleGraph::discover(&[dsl_root]).expect("second discover should succeed");
 
     assert_eq!(
@@ -832,7 +859,8 @@ fn discovery_ignores_non_dag_files() {
     );
     write_file(&root.join("notes.txt"), "module not.real\n$");
 
-    let graph = ModuleGraph::discover(std::slice::from_ref(&root)).expect("discover should ignore non-dag");
+    let graph =
+        ModuleGraph::discover(std::slice::from_ref(&root)).expect("discover should ignore non-dag");
     assert_eq!(graph.modules.len(), 1);
     assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
 
@@ -1060,9 +1088,9 @@ fn discovery_parse_errors_are_independent_of_symlink_alias_root_order() {
         (ResolveError::ParseErrors(first_files), ResolveError::ParseErrors(second_files)) => {
             assert_eq!(first_files, second_files);
         }
-        (left, right) => panic!(
-            "expected ParseErrors for both runs, got left={left:?}, right={right:?}"
-        ),
+        (left, right) => {
+            panic!("expected ParseErrors for both runs, got left={left:?}, right={right:?}")
+        }
     }
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
@@ -1193,9 +1221,9 @@ fn discovery_parse_errors_are_deterministic_in_directory_symlink_cycle() {
         (ResolveError::ParseErrors(first_files), ResolveError::ParseErrors(second_files)) => {
             assert_eq!(first_files, second_files);
         }
-        (left, right) => panic!(
-            "expected ParseErrors for both runs, got left={left:?}, right={right:?}"
-        ),
+        (left, right) => {
+            panic!("expected ParseErrors for both runs, got left={left:?}, right={right:?}")
+        }
     }
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
@@ -1265,8 +1293,8 @@ fn discovery_reports_io_error_for_dangling_dag_symlink() {
     let dangling_link = root.join("broken.dag");
     symlink(&dangling_target, &dangling_link).expect("failed to create dangling symlink");
 
-    let err =
-        ModuleGraph::discover(std::slice::from_ref(&root)).expect_err("dangling symlink should fail discover");
+    let err = ModuleGraph::discover(std::slice::from_ref(&root))
+        .expect_err("dangling symlink should fail discover");
     match err {
         ResolveError::IoError(path, io_error) => {
             assert_eq!(

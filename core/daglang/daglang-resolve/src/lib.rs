@@ -28,11 +28,29 @@ use daglang_syntax::parser;
 
 type ParsedModuleRecord = (PathBuf, Vec<String>, Vec<Vec<String>>, SourceFile);
 
-/// Case-insensitive check for `.dag` file extension.
+/// Strict check for `.dag` file extension (lowercase only).
 pub fn has_dag_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext == "dag")
+}
+
+/// Case-insensitive check — matches `.dag`, `.DAG`, `.DaG`, etc.
+/// Used internally to detect wrong-cased extensions and produce clear errors.
+pub fn has_dag_like_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
         .is_some_and(|ext| ext.eq_ignore_ascii_case("dag"))
+}
+
+/// Discover `.dag` files recursively under a root directory.
+pub fn discover_dag_files(root: &Path) -> Result<Vec<PathBuf>, ResolveError> {
+    let mut files = Vec::new();
+    let mut visited_dirs = HashSet::new();
+    collect_dag_files(root, &mut files, &mut visited_dirs)?;
+    files.sort();
+    files.dedup();
+    Ok(files)
 }
 
 /// A resolved module in the dependency graph.
@@ -97,8 +115,8 @@ impl ModuleGraph {
         }
         let mut canonical_dag_files = Vec::with_capacity(dag_files.len());
         for path in dag_files {
-            let canonical = std::fs::canonicalize(&path)
-                .map_err(|e| ResolveError::IoError(path.clone(), e))?;
+            let canonical =
+                std::fs::canonicalize(&path).map_err(|e| ResolveError::IoError(path.clone(), e))?;
             canonical_dag_files.push(canonical);
         }
         dag_files = canonical_dag_files;
@@ -171,7 +189,12 @@ impl ModuleGraph {
             let path_str = m.module_path.join(".");
             let dep_count = m.dependencies.len();
             let n_items = m.ast.items.len();
-            writeln!(out, "  {path_str}  ({n_items} items, {dep_count} deps)  [{}]", m.path.display()).ok();
+            writeln!(
+                out,
+                "  {path_str}  ({n_items} items, {dep_count} deps)  [{}]",
+                m.path.display()
+            )
+            .ok();
         }
         out
     }
@@ -202,6 +225,8 @@ fn collect_dag_files(
             collect_dag_files(&p, out, visited_dirs)?;
         } else if has_dag_extension(&p) {
             out.push(p);
+        } else if has_dag_like_extension(&p) {
+            return Err(ResolveError::InvalidExtensionCase(p));
         }
     }
     Ok(())
@@ -260,7 +285,11 @@ pub fn canonicalize_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
 
 /// Resolve a filesystem path to a module path using canonical path comparison.
 #[allow(clippy::disallowed_methods)]
-pub fn path_to_module_path(path: &Path, roots: &[PathBuf], canonical_roots: &[PathBuf]) -> Vec<String> {
+pub fn path_to_module_path(
+    path: &Path,
+    roots: &[PathBuf],
+    canonical_roots: &[PathBuf],
+) -> Vec<String> {
     let canonical_path = std::fs::canonicalize(path).ok();
     let mut best_relative: Option<PathBuf> = None;
     for root in roots {
@@ -343,7 +372,10 @@ fn topo_sort(modules: &mut Vec<ResolvedModule>, fail_on_cycles: bool) -> Result<
     reorder_modules_by_order(modules, &order)
 }
 
-fn reorder_modules_by_order(modules: &mut Vec<ResolvedModule>, order: &[usize]) -> Result<(), ResolveError> {
+fn reorder_modules_by_order(
+    modules: &mut Vec<ResolvedModule>,
+    order: &[usize],
+) -> Result<(), ResolveError> {
     let n = modules.len();
     let mut old_to_new = vec![0usize; n];
     for (new_idx, old_idx) in order.iter().enumerate() {
@@ -385,6 +417,8 @@ pub enum ResolveError {
     DuplicateModule(Vec<String>),
     /// Discovery root path is invalid.
     InvalidRootPath { path: PathBuf, reason: String },
+    /// A `.dag` file has wrong-cased extension (e.g., `.DAG`, `.DaG`).
+    InvalidExtensionCase(PathBuf),
     /// Internal invariant violation while resolving modules.
     InternalInvariant(String),
 }
@@ -425,6 +459,13 @@ impl std::fmt::Display for ResolveError {
             Self::DuplicateModule(path) => write!(f, "duplicate module: {}", path.join(".")),
             Self::InvalidRootPath { path, reason } => {
                 write!(f, "invalid discovery root {}: {reason}", path.display())
+            }
+            Self::InvalidExtensionCase(path) => {
+                write!(
+                    f,
+                    "file `{}` has wrong-cased extension; rename to `.dag` (lowercase)",
+                    path.display()
+                )
             }
             Self::InternalInvariant(message) => {
                 write!(f, "internal resolver invariant failed: {message}")

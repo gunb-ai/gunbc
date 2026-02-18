@@ -99,9 +99,12 @@ pub fn parse_with_file_diagnostics(
     }
 
     let mut parser = Parser::new(tokens);
-    parser
-        .parse_source_file()
-        .map_err(|errors| errors.iter().map(|error| error.to_diagnostic(file, source)).collect())
+    parser.parse_source_file().map_err(|errors| {
+        errors
+            .iter()
+            .map(|error| error.to_diagnostic(file, source))
+            .collect()
+    })
 }
 
 struct Parser {
@@ -1110,7 +1113,7 @@ impl Parser {
             });
         }
         let mut annotations = Vec::new();
-        while self.check(&TokenKind::At) {
+        while self.check(&TokenKind::At) && !self.next_annotation_is_contract() {
             annotations.push(self.parse_annotation()?);
         }
         Ok(CapabilityDef {
@@ -1136,7 +1139,7 @@ impl Parser {
             outputs = self.parse_field_list_until_rbrace()?;
             self.expect(&TokenKind::RBrace)?;
         }
-        while self.check(&TokenKind::At) {
+        while self.check(&TokenKind::At) && !self.next_annotation_is_contract() {
             annotations.push(self.parse_annotation()?);
         }
 
@@ -1167,6 +1170,16 @@ impl Parser {
             outputs,
             annotations,
         })
+    }
+
+    fn next_annotation_is_contract(&self) -> bool {
+        if !self.check(&TokenKind::At) {
+            return false;
+        }
+        self.tokens
+            .get(self.pos + 1)
+            .and_then(|token| Self::token_kind_as_ident(&token.kind))
+            .is_some_and(|ident| ident == "contract")
     }
 
     fn parse_return_type_expr(&mut self) -> Result<TypeExpr, ParseError> {
@@ -1238,10 +1251,14 @@ impl Parser {
         }
     }
 
-    fn parse_fn_body_lossy(&mut self) -> Result<FnBody, ParseError> {
+    fn parse_body_lossy<T>(
+        &mut self,
+        parse: impl FnOnce(&mut Self) -> Result<T, ParseError>,
+        make_lossy: impl FnOnce() -> T,
+    ) -> Result<T, ParseError> {
         let start_pos = self.pos;
         let start_errors = self.errors.len();
-        let parsed = self.parse_fn_body();
+        let parsed = parse(self);
 
         let should_fallback = parsed.is_err() || self.errors.len() > start_errors;
         if !should_fallback {
@@ -1252,27 +1269,18 @@ impl Parser {
         self.pos = start_pos;
         self.errors.truncate(start_errors);
         self.consume_brace_block_contents()?;
-        Ok(FnBody {
+        Ok(make_lossy())
+    }
+
+    fn parse_fn_body_lossy(&mut self) -> Result<FnBody, ParseError> {
+        self.parse_body_lossy(Self::parse_fn_body, || FnBody {
             stmts: Vec::new(),
             lossy: true,
         })
     }
 
     fn parse_func_body_lossy(&mut self) -> Result<FuncBody, ParseError> {
-        let start_pos = self.pos;
-        let start_errors = self.errors.len();
-        let parsed = self.parse_func_body();
-
-        let should_fallback = parsed.is_err() || self.errors.len() > start_errors;
-        if !should_fallback {
-            self.expect(&TokenKind::RBrace)?;
-            return parsed;
-        }
-
-        self.pos = start_pos;
-        self.errors.truncate(start_errors);
-        self.consume_brace_block_contents()?;
-        Ok(FuncBody {
+        self.parse_body_lossy(Self::parse_func_body, || FuncBody {
             stmts: Vec::new(),
             lossy: true,
         })
@@ -1367,11 +1375,7 @@ impl Parser {
         } else {
             None
         };
-        Ok(Param {
-            name,
-            ty,
-            default,
-        })
+        Ok(Param { name, ty, default })
     }
 
     // ── annotations ────────────────────────────────────────────────
@@ -1434,23 +1438,6 @@ impl Parser {
                 && matches!(next2, Some(TokenKind::Colon)))
             || (next.and_then(Self::token_kind_as_ident).is_some()
                 && matches!(next2, Some(TokenKind::Colon)))
-    }
-
-    fn parse_annotation_named_args(&mut self) -> Result<Expr, ParseError> {
-        let mut fields = Vec::new();
-        loop {
-            let k = self.expect_ident()?;
-            self.expect(&TokenKind::Colon)?;
-            let v = self.parse_expr(0)?;
-            fields.push((k, v));
-            if !self.eat(&TokenKind::Comma) {
-                break;
-            }
-            if self.check(&TokenKind::RParen) {
-                break;
-            }
-        }
-        Ok(Expr::Record(None, fields))
     }
 
     fn parse_record_like_block(&mut self) -> Result<Expr, ParseError> {
@@ -1818,9 +1805,9 @@ impl Parser {
             match op {
                 TokenKind::PipeArrow => Expr::Pipe(Box::new(lhs), Box::new(rhs)),
                 TokenKind::NullCoalesce => {
-                    Expr::BinOp(Box::new(lhs), BinOp::Or, Box::new(rhs))
+                    Expr::BinOp(Box::new(lhs), BinOp::NullCoalesce, Box::new(rhs))
                 }
-                _ => Expr::BinOp(Box::new(lhs), BinOp::Add, Box::new(rhs)),
+                _ => unreachable!("unhandled infix operator: {op:?}"),
             }
         }
     }
@@ -1868,16 +1855,15 @@ impl Parser {
                 Ok(Expr::Literal(Literal::String(s)))
             }
             TokenKind::StrBegin(s) => self.parse_string_interp(s),
-            kind
-                if Self::token_kind_as_ident(&kind).is_some()
-                    && !matches!(
-                        kind,
-                        TokenKind::Match
-                            | TokenKind::If
-                            | TokenKind::For
-                            | TokenKind::Return
-                            | TokenKind::Fn
-                    ) =>
+            kind if Self::token_kind_as_ident(&kind).is_some()
+                && !matches!(
+                    kind,
+                    TokenKind::Match
+                        | TokenKind::If
+                        | TokenKind::For
+                        | TokenKind::Return
+                        | TokenKind::Fn
+                ) =>
             {
                 let Some(name) = Self::token_kind_as_ident(&kind) else {
                     return Err(self.err(format!(
@@ -2126,94 +2112,6 @@ impl Parser {
         Ok(Expr::Match(Box::new(scrutinee), Vec::new()))
     }
 
-    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
-        match self.peek().kind.clone() {
-            kind if Self::token_kind_as_ident(&kind).is_some() => {
-                let Some(name) = Self::token_kind_as_ident(&kind) else {
-                    return Err(self.err(format!(
-                        "expected identifier, found {}",
-                        self.peek().kind.desc()
-                    )));
-                };
-                self.advance();
-                if name.chars().next().is_some_and(|c| c.is_uppercase()) {
-                    if self.eat(&TokenKind::LParen) {
-                        let mut fields = Vec::new();
-                        let mut positional_index = 0usize;
-                        while !self.check(&TokenKind::RParen) && !self.at_eof() {
-                            let (fname, pat) = if Self::token_kind_as_ident(&self.peek().kind)
-                                .is_some()
-                                && self.peek2().kind == TokenKind::Colon
-                            {
-                                let fname = self.expect_ident()?;
-                                self.expect(&TokenKind::Colon)?;
-                                let pat = self.parse_pattern()?;
-                                (fname, pat)
-                            } else {
-                                let pat = self.parse_pattern()?;
-                                let fname = format!("_{positional_index}");
-                                positional_index += 1;
-                                (fname, pat)
-                            };
-                            fields.push((fname, pat));
-                            self.eat(&TokenKind::Comma);
-                        }
-                        self.expect(&TokenKind::RParen)?;
-                        return Ok(Pattern::Variant(name, fields));
-                    }
-                    if self.eat(&TokenKind::LBrace) {
-                        let mut fields = Vec::new();
-                        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
-                            if self.eat(&TokenKind::Dot) {
-                                self.eat(&TokenKind::Dot);
-                                self.eat(&TokenKind::Dot);
-                                if Self::token_kind_as_ident(&self.peek().kind).is_some() {
-                                    let _ = self.expect_ident()?;
-                                }
-                                self.eat(&TokenKind::Comma);
-                                continue;
-                            }
-                            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
-                                let fname = self.expect_ident()?;
-                                let pat = if self.eat(&TokenKind::Colon) {
-                                    self.parse_pattern()?
-                                } else {
-                                    Pattern::Ident(fname.clone())
-                                };
-                                fields.push((fname, pat));
-                            } else {
-                                self.advance();
-                            }
-                            self.eat(&TokenKind::Comma);
-                        }
-                        self.expect(&TokenKind::RBrace)?;
-                        return Ok(Pattern::Variant(name, fields));
-                    }
-                    Ok(Pattern::Variant(name, Vec::new()))
-                } else {
-                    Ok(Pattern::Ident(name))
-                }
-            }
-            TokenKind::True => {
-                self.advance();
-                Ok(Pattern::Literal(Literal::Bool(true)))
-            }
-            TokenKind::False => {
-                self.advance();
-                Ok(Pattern::Literal(Literal::Bool(false)))
-            }
-            TokenKind::Int(n) => {
-                self.advance();
-                Ok(Pattern::Literal(Literal::Int(n)))
-            }
-            TokenKind::Str(s) => {
-                self.advance();
-                Ok(Pattern::Literal(Literal::String(s)))
-            }
-            _ => Ok(Pattern::Wildcard),
-        }
-    }
-
     fn parse_if_expr(&mut self) -> Result<Expr, ParseError> {
         self.expect(&TokenKind::If)?;
         let cond = self.parse_expr(0)?;
@@ -2393,15 +2291,43 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
     }
 
     #[test]
+    fn parse_interface_contract_annotations_are_not_capability_annotations() {
+        let sf = parse_or_panic(
+            r#"module test
+interface Storage {
+  capability read(key: String) -> { value: String }
+    @readonly
+  @contract: read(k) => { value: "ok" }
+}
+"#,
+        );
+        match &sf.items[0].node {
+            Item::InterfaceDef(def) => {
+                assert_eq!(def.capabilities.len(), 1);
+                assert_eq!(
+                    def.capabilities[0].annotations.len(),
+                    1,
+                    "capability should keep only capability-scoped annotations"
+                );
+                assert_eq!(def.capabilities[0].annotations[0].name, "readonly");
+                assert_eq!(
+                    def.contracts.len(),
+                    1,
+                    "interface @contract annotations should be collected on interface"
+                );
+                assert_eq!(def.contracts[0].name, "contract");
+            }
+            other => panic!("expected InterfaceDef, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn expression_precedence_multiplicative_over_additive() {
         let expr = parse_expr_only("a + b * c");
         match expr {
             Expr::BinOp(lhs, BinOp::Add, rhs) => {
                 assert!(matches!(*lhs, Expr::Ident(ref name) if name == "a"));
-                assert!(matches!(
-                    *rhs,
-                    Expr::BinOp(_, BinOp::Mul, _)
-                ));
+                assert!(matches!(*rhs, Expr::BinOp(_, BinOp::Mul, _)));
             }
             other => panic!("unexpected expression tree: {other:?}"),
         }

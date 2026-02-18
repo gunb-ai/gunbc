@@ -9,3 +9,4 @@ description = "CodegenBackend trait and Rust backend — emits runnable code fro
 daglang-derive = { path = "../daglang-derive" }
 daglang-lower = { path = "../daglang-lower" }
 gunbc-ir = { path = "../../ir" }
+serde_json = { workspace = true }

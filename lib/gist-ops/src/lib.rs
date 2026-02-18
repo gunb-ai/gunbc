@@ -26,8 +26,7 @@ use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{Timestamp, Value};
 use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_from_config, CloudOps,
-    CloudSecretManagerGraphOp,
+    build_cloud_secret_manager_credential_graph_from_config, CloudOps, CloudSecretManagerGraphOp,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::filename;
@@ -457,10 +456,7 @@ fn execute_gist_resolve_auth(
 /// The credential chain is fully self-contained — consumers don't need to
 /// understand cloud credentials at all. They just wire `markdown` in and get
 /// `url` out.
-pub fn build_gist_upload_subdag(
-    config: CloudSecretConfig,
-    public: bool,
-) -> Dag<GistUploadOp> {
+pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<GistUploadOp> {
     let mut dag = Dag::new();
 
     // ========================================================================
@@ -584,37 +580,142 @@ pub fn build_gist_upload_subdag(
     // ========================================================================
 
     dag.add_edge(Edge::new("cloud_env", "config", "bind_secret", "config"));
-    dag.add_edge(Edge::new("resolve_auth", "service", "bind_secret", "service"));
-    dag.add_edge(Edge::new("resolve_auth", "secret_name", "bind_secret", "secret_name"));
-    dag.add_edge(Edge::new("bind_secret", "config", "cloud_credential", "config"));
-    dag.add_edge(Edge::new("resolve_auth", "service", "cloud_credential", "source_id"));
-    dag.add_edge(Edge::new("resolve_auth", "scheme", "cloud_credential", "scheme"));
-    dag.add_edge(Edge::new("resolve_auth", "header_name", "cloud_credential", "header_name"));
-    dag.add_edge(Edge::new("resolve_auth", "lifetime_seconds", "cloud_credential", "lifetime_seconds"));
-    dag.add_edge(Edge::new("resolve_auth", "interactive_allowed", "cloud_credential", "interactive_allowed"));
-    dag.add_edge(Edge::new("resolve_auth", "required_scopes", "cloud_credential", "required_scopes"));
-    dag.add_edge(Edge::new("cloud_env", "request_url", "cloud_credential", "request_url"));
-    dag.add_edge(Edge::new("cloud_env", "request_token", "cloud_credential", "request_token"));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "service",
+        "bind_secret",
+        "service",
+    ));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "secret_name",
+        "bind_secret",
+        "secret_name",
+    ));
+    dag.add_edge(Edge::new(
+        "bind_secret",
+        "config",
+        "cloud_credential",
+        "config",
+    ));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "service",
+        "cloud_credential",
+        "source_id",
+    ));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "scheme",
+        "cloud_credential",
+        "scheme",
+    ));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "header_name",
+        "cloud_credential",
+        "header_name",
+    ));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "lifetime_seconds",
+        "cloud_credential",
+        "lifetime_seconds",
+    ));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "interactive_allowed",
+        "cloud_credential",
+        "interactive_allowed",
+    ));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "required_scopes",
+        "cloud_credential",
+        "required_scopes",
+    ));
+    dag.add_edge(Edge::new(
+        "cloud_env",
+        "request_url",
+        "cloud_credential",
+        "request_url",
+    ));
+    dag.add_edge(Edge::new(
+        "cloud_env",
+        "request_token",
+        "cloud_credential",
+        "request_token",
+    ));
 
     // ========================================================================
     // Edges: scope preflight
     // ========================================================================
 
-    dag.add_edge(Edge::new("resolve_auth", "required_scopes", "scope_preflight", "required_scopes"));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "required_scopes",
+        "scope_preflight",
+        "required_scopes",
+    ));
 
     // ========================================================================
     // Edges: gist request pipeline
     // ========================================================================
 
-    dag.add_edge(Edge::new("fs_env", FsEnv::WRITE_PORT, "prepare_gist_request", "res:file"));
-    dag.add_edge(Edge::new("clock_env", "clock", "prepare_gist_request", "res:clock"));
-    dag.add_edge(Edge::new("cloud_credential", "expires_in", "prepare_gist_request", "credential_expires_in"));
-    dag.add_edge(Edge::new("resolve_auth", "required_scopes", "prepare_gist_request", "required_scopes"));
-    dag.add_edge(Edge::new("prepare_gist_request", "request", "execute_gist", "request"));
-    dag.add_edge(Edge::new("prepare_gist_request", "skip", "execute_gist", "skip"));
-    dag.add_edge(Edge::new("scope_preflight", "scope_verified", "execute_gist", "scope_verified"));
-    dag.add_edge(Edge::new("cloud_credential", "credential", "execute_gist", "res:credential"));
-    dag.add_edge(Edge::new("execute_gist", "response", "parse_gist_response", "response"));
+    dag.add_edge(Edge::new(
+        "fs_env",
+        FsEnv::WRITE_PORT,
+        "prepare_gist_request",
+        "res:file",
+    ));
+    dag.add_edge(Edge::new(
+        "clock_env",
+        "clock",
+        "prepare_gist_request",
+        "res:clock",
+    ));
+    dag.add_edge(Edge::new(
+        "cloud_credential",
+        "expires_in",
+        "prepare_gist_request",
+        "credential_expires_in",
+    ));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "required_scopes",
+        "prepare_gist_request",
+        "required_scopes",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_gist_request",
+        "request",
+        "execute_gist",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_gist_request",
+        "skip",
+        "execute_gist",
+        "skip",
+    ));
+    dag.add_edge(Edge::new(
+        "scope_preflight",
+        "scope_verified",
+        "execute_gist",
+        "scope_verified",
+    ));
+    dag.add_edge(Edge::new(
+        "cloud_credential",
+        "credential",
+        "execute_gist",
+        "res:credential",
+    ));
+    dag.add_edge(Edge::new(
+        "execute_gist",
+        "response",
+        "parse_gist_response",
+        "response",
+    ));
 
     dag
 }

@@ -5,8 +5,8 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_codegen::file_writer::{format_diff, FileWriter};
-use gunbc_dag::resources::DEPS_CONFIG_OUTPUT_PATH;
 use gunbc_dag::deps_config_resource_def;
+use gunbc_dag::resources::DEPS_CONFIG_OUTPUT_PATH;
 use gunbc_deps::generate_deps_toml_from_registry;
 use gunbc_exec::{print_attention, AttentionLevel};
 use gunbc_ir::resource::{

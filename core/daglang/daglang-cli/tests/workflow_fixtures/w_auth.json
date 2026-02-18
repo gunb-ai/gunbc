@@ -1,0 +1,35 @@
+{
+  "module": "services.shell",
+  "path": "services/shell.dag",
+  "items": 6,
+  "dependencies": [
+    "std.types"
+  ],
+  "expand_contract": {
+    "status": "success",
+    "error_contains": null
+  },
+  "obligations_contract": {
+    "status": "success",
+    "error_contains": null,
+    "expected_json": {
+      "dry_run_completion_required": true,
+      "interface_contract_verification_targets": 0,
+      "pure_node_determinism_targets": 16,
+      "resource_acquire_targets": 0,
+      "resource_provide_targets": 0,
+      "resource_release_targets": 0,
+      "service_param_source_targets": 0,
+      "service_transport_execute_targets": 8,
+      "service_transport_external_targets": 2,
+      "service_transport_hermetic_targets": 6,
+      "service_transport_idempotent_targets": 1,
+      "service_transport_parse_targets": 8,
+      "service_transport_permission_scoped_targets": 0,
+      "service_transport_prepare_targets": 8,
+      "service_transport_readonly_targets": 4,
+      "total_obligations": 24,
+      "transport_execution_targets": 8
+    }
+  }
+}

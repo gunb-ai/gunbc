@@ -19,7 +19,14 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use daglang_lower::LoweredOp;
+pub use daglang_contract::{
+    CaptureMode, ParallelGroup, ProgressManifest, ResourceUsage, StageGroup, SubDagBoundary,
+    TestObligations, TopologyNode,
+};
+use daglang_lower::{
+    classify_obligation, classify_service_transport, CollectionOpKind, LoweredOp,
+    ObligationCategory, ServiceTransportClass,
+};
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node};
 
 /// Derived artifacts produced from lowered GraphIR.
@@ -28,31 +35,6 @@ pub struct DerivedArtifacts {
     pub manifest: ProgressManifest,
     pub obligations: TestObligations,
     pub tool_metadata: ToolMetadata,
-}
-
-/// Minimal progress manifest for Phase-1 compiler scaffolding.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProgressManifest {
-    pub total_nodes: usize,
-    pub total_edges: usize,
-    pub waves: Vec<Vec<String>>,
-    pub entrypoint_nodes: Vec<String>,
-    pub boundary_nodes: Vec<String>,
-}
-
-/// Minimal obligation summary derived from graph structure.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TestObligations {
-    pub dry_run_completion_required: bool,
-    pub transport_execution_targets: usize,
-    pub pure_node_determinism_targets: usize,
-    pub service_transport_prepare_targets: usize,
-    pub service_transport_execute_targets: usize,
-    pub service_transport_parse_targets: usize,
-    pub service_param_source_targets: usize,
-    pub resource_provide_targets: usize,
-    pub resource_acquire_targets: usize,
-    pub resource_release_targets: usize,
 }
 
 /// Metadata summary for lowered modules.
@@ -92,42 +74,65 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         ));
     }
 
+    let waves = compute_waves(dag)?;
+    let entrypoint_nodes = {
+        let mut nodes = detect_entrypoints(dag)
+            .entrypoint_nodes
+            .into_iter()
+            .map(|node_id| node_id.0)
+            .collect::<Vec<_>>();
+        nodes.sort();
+        nodes
+    };
+    let boundary_nodes = {
+        let mut nodes = detect_boundaries(dag)
+            .boundary_nodes
+            .into_iter()
+            .map(|node_id| node_id.0)
+            .collect::<Vec<_>>();
+        nodes.sort();
+        nodes
+    };
     let manifest = ProgressManifest {
         total_nodes: dag.nodes.len(),
         total_edges: dag.edges.len(),
-        waves: compute_waves(dag)?,
-        entrypoint_nodes: {
-            let mut nodes = detect_entrypoints(dag)
-                .entrypoint_nodes
-                .into_iter()
-                .map(|node_id| node_id.0)
-                .collect::<Vec<_>>();
-            nodes.sort();
-            nodes
-        },
-        boundary_nodes: {
-            let mut nodes = detect_boundaries(dag)
-                .boundary_nodes
-                .into_iter()
-                .map(|node_id| node_id.0)
-                .collect::<Vec<_>>();
-            nodes.sort();
-            nodes
-        },
+        topology: derive_topology_from_waves(&waves),
+        labels: derive_node_labels(&dag.nodes),
+        subdag_boundaries: derive_subdag_boundaries(&dag.nodes),
+        parallel_groups: derive_parallel_groups(&waves),
+        scatter_points: derive_scatter_points(&dag.nodes),
+        interactive_nodes: derive_interactive_nodes(&dag.nodes),
+        capture_modes: derive_capture_modes(&dag.nodes),
+        stage_groups: derive_stage_groups(&dag.nodes),
+        resources: derive_resources(&dag.nodes),
+        waves,
+        entrypoint_nodes,
+        boundary_nodes,
     };
 
     let obligation_counts = derive_obligation_counts(&dag.nodes);
     let obligations = TestObligations {
         dry_run_completion_required: true,
+        total_obligations: obligation_counts.transport_execution_targets
+            + obligation_counts.pure_node_determinism_targets,
         transport_execution_targets: obligation_counts.transport_execution_targets,
         pure_node_determinism_targets: obligation_counts.pure_node_determinism_targets,
         service_transport_prepare_targets: obligation_counts.service_transport_prepare_targets,
         service_transport_execute_targets: obligation_counts.service_transport_execute_targets,
         service_transport_parse_targets: obligation_counts.service_transport_parse_targets,
+        service_transport_hermetic_targets: obligation_counts.service_transport_hermetic_targets,
+        service_transport_external_targets: obligation_counts.service_transport_external_targets,
+        service_transport_idempotent_targets: obligation_counts
+            .service_transport_idempotent_targets,
+        service_transport_readonly_targets: obligation_counts.service_transport_readonly_targets,
+        service_transport_permission_scoped_targets: obligation_counts
+            .service_transport_permission_scoped_targets,
         service_param_source_targets: obligation_counts.service_param_source_targets,
         resource_provide_targets: obligation_counts.resource_provide_targets,
         resource_acquire_targets: obligation_counts.resource_acquire_targets,
         resource_release_targets: obligation_counts.resource_release_targets,
+        interface_contract_verification_targets: obligation_counts
+            .interface_contract_verification_targets,
     };
 
     let tool_metadata = ToolMetadata {
@@ -153,9 +158,9 @@ fn compute_waves(dag: &Dag<LoweredOp>) -> Result<Vec<Vec<String>>, DeriveError> 
     for edge in &dag.edges {
         let to = edge.to_node.0.clone();
         let from = edge.from_node.0.clone();
-        let degree = indegree
-            .get_mut(&to)
-            .ok_or_else(|| DeriveError::InvalidGraph(format!("edge targets missing node `{to}`")))?;
+        let degree = indegree.get_mut(&to).ok_or_else(|| {
+            DeriveError::InvalidGraph(format!("edge targets missing node `{to}`"))
+        })?;
         *degree += 1;
         outgoing
             .get_mut(&from)
@@ -215,33 +220,274 @@ fn compute_waves(dag: &Dag<LoweredOp>) -> Result<Vec<Vec<String>>, DeriveError> 
     Ok(waves)
 }
 
+fn derive_topology_from_waves(waves: &[Vec<String>]) -> Vec<TopologyNode> {
+    let mut topology = Vec::new();
+    for (depth, wave) in waves.iter().enumerate() {
+        for id in wave {
+            topology.push(TopologyNode {
+                id: id.clone(),
+                depth,
+            });
+        }
+    }
+    topology
+}
+
+fn derive_parallel_groups(waves: &[Vec<String>]) -> Vec<ParallelGroup> {
+    waves
+        .iter()
+        .enumerate()
+        .filter(|(_depth, wave)| !wave.is_empty())
+        .map(|(depth, wave)| ParallelGroup {
+            nodes: wave.clone(),
+            depth,
+            parent_subdag: None, // nesting support arrives in Phase 3
+        })
+        .collect()
+}
+
+fn derive_subdag_boundaries(nodes: &[Node<LoweredOp>]) -> Vec<SubDagBoundary> {
+    let mut boundaries = nodes
+        .iter()
+        .filter_map(|node| match &node.body {
+            gunbc_ir::node::NodeBody::SubDag(subdag) => {
+                let mut inner_nodes: Vec<String> =
+                    subdag.nodes.iter().map(|n| n.id.0.clone()).collect();
+                inner_nodes.sort();
+                Some(SubDagBoundary {
+                    node_id: node.id.0.clone(),
+                    label: node.id.0.clone(),
+                    inner_nodes,
+                    parent: None, // nesting support arrives in Phase 3
+                })
+            }
+            gunbc_ir::node::NodeBody::Opaque(_) => None,
+        })
+        .collect::<Vec<_>>();
+    boundaries.sort_by(|lhs, rhs| lhs.node_id.cmp(&rhs.node_id));
+    boundaries
+}
+
+fn derive_scatter_points(nodes: &[Node<LoweredOp>]) -> Vec<String> {
+    let mut scatter = Vec::new();
+    for node in nodes {
+        let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection {
+            module, callable, ..
+        }) = &node.body
+        else {
+            continue;
+        };
+        let scatter_id = if callable.contains("::") {
+            callable.replace("::", ".")
+        } else {
+            format!("{module}.{callable}")
+        };
+        scatter.push(scatter_id);
+    }
+    scatter.sort();
+    scatter
+}
+
+fn derive_stage_groups(nodes: &[Node<LoweredOp>]) -> Vec<StageGroup> {
+    let mut staged = nodes
+        .iter()
+        .filter_map(|node| match node.body.as_opaque() {
+            Some(LoweredOp::Pipeline {
+                module,
+                name,
+                stages,
+                stage_names,
+            }) => Some((
+                node.id.0.clone(),
+                module.clone(),
+                name.clone(),
+                *stages,
+                stage_names.clone(),
+            )),
+            _ => None,
+        })
+        .flat_map(|(node_id, module, name, stages, stage_names)| {
+            if !stage_names.is_empty() {
+                return stage_names
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, stage_name)| {
+                        (
+                            module.clone(),
+                            name.clone(),
+                            index,
+                            stage_name,
+                            node_id.clone(),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+            }
+            if stages == 0 {
+                return vec![(module, name, 0usize, "stage_0".to_string(), node_id)];
+            }
+            (1..=stages)
+                .map(|stage_index| {
+                    (
+                        module.clone(),
+                        name.clone(),
+                        stage_index,
+                        format!("stage_{stage_index}"),
+                        node_id.clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    staged.sort_by(|lhs, rhs| {
+        lhs.0
+            .cmp(&rhs.0)
+            .then_with(|| lhs.1.cmp(&rhs.1))
+            .then_with(|| lhs.2.cmp(&rhs.2))
+            .then_with(|| lhs.3.cmp(&rhs.3))
+            .then_with(|| lhs.4.cmp(&rhs.4))
+    });
+    staged
+        .into_iter()
+        .map(
+            |(module, name, _stage_order, stage_name, node_id)| StageGroup {
+                stage_id: format!("{module}.{name}:{stage_name}"),
+                nodes: vec![node_id],
+            },
+        )
+        .collect()
+}
+
+fn collection_kind_label(kind: CollectionOpKind) -> &'static str {
+    match kind {
+        CollectionOpKind::Map => "MapNode",
+        CollectionOpKind::Filter => "FilterNode",
+        CollectionOpKind::Fold => "FoldNode",
+        CollectionOpKind::Join => "JoinNode",
+        CollectionOpKind::FlatMap => "FlatMapNode",
+    }
+}
+
+fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
+    nodes
+        .iter()
+        .map(|node| {
+            let label = match &node.body {
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { module, name, .. }) => {
+                    format!("{module}.{name}")
+                }
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection {
+                    module,
+                    callable,
+                    kind,
+                }) => {
+                    let callable_label = callable
+                        .strip_prefix(&format!("{module}::"))
+                        .unwrap_or(callable);
+                    format!(
+                        "{module}.{callable_label}::{}",
+                        collection_kind_label(*kind)
+                    )
+                }
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { module, name, .. }) => {
+                    format!("{module}.{name}")
+                }
+                gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+            };
+            (node.id.0.clone(), label)
+        })
+        .collect()
+}
+
+// TODO(Phase 3): Derive capture mode from node kind (transport → Captured,
+// @interactive → Passthrough, streaming → Streamed) via structural classification
+// in daglang-lower, matching the pattern used for obligations.
+fn derive_capture_modes(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, CaptureMode> {
+    nodes
+        .iter()
+        .map(|node| (node.id.0.clone(), CaptureMode::Captured))
+        .collect()
+}
+
+// TODO(Phase 3): Replace substring matching with a structural `is_interactive`
+// field on LoweredOp (parsed from a DSL attribute, propagated through lowering),
+// matching the pattern used for obligation classification.
+fn derive_interactive_nodes(nodes: &[Node<LoweredOp>]) -> Vec<String> {
+    let mut interactive = nodes
+        .iter()
+        .filter_map(|node| match node.body.as_opaque() {
+            Some(LoweredOp::Callable { name, .. }) if name.contains("@interactive") => {
+                Some(node.id.0.clone())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    interactive.sort();
+    interactive
+}
+
+// TODO(Phase 3): Replace string-prefix matching with a structural classification
+// function in daglang-lower (e.g. LoweredOpKind::ResourceAcquire { resource }),
+// matching the pattern used for obligation classification.
+fn derive_resources(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, Vec<ResourceUsage>> {
+    let mut resources = BTreeMap::<String, Vec<ResourceUsage>>::new();
+    for node in nodes {
+        let Some(LoweredOp::Callable { name, .. }) = node.body.as_opaque() else {
+            continue;
+        };
+        let usage = if let Some(resource) = name.strip_prefix("resource_lifecycle::acquire::") {
+            Some(ResourceUsage {
+                resource: resource.to_string(),
+                usage: "acquire".to_string(),
+            })
+        } else if let Some(resource) = name.strip_prefix("resource_lifecycle::release::") {
+            Some(ResourceUsage {
+                resource: resource.to_string(),
+                usage: "release".to_string(),
+            })
+        } else {
+            name.strip_prefix("resource_provide::")
+                .map(|binding| ResourceUsage {
+                    resource: binding.to_string(),
+                    usage: "provide".to_string(),
+                })
+        };
+        if let Some(usage) = usage {
+            resources.entry(node.id.0.clone()).or_default().push(usage);
+        }
+    }
+    for usages in resources.values_mut() {
+        usages.sort_by(|lhs, rhs| {
+            lhs.resource
+                .cmp(&rhs.resource)
+                .then_with(|| lhs.usage.cmp(&rhs.usage))
+        });
+    }
+    resources
+}
+
 fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
     let mut by_module: BTreeMap<String, ModuleMetadata> = BTreeMap::new();
     for node in nodes {
         let Some(op) = node.body.as_opaque() else {
             continue;
         };
-        match op {
-            LoweredOp::Callable { module, .. } => {
-                let entry = by_module
-                    .entry(module.clone())
-                    .or_insert_with(|| ModuleMetadata {
-                        module: module.clone(),
-                        callable_count: 0,
-                        pipeline_count: 0,
-                    });
-                entry.callable_count += 1;
+        let (module, is_pipeline) = match op {
+            LoweredOp::Callable { module, .. } | LoweredOp::Collection { module, .. } => {
+                (module, false)
             }
-            LoweredOp::Pipeline { module, .. } => {
-                let entry = by_module
-                    .entry(module.clone())
-                    .or_insert_with(|| ModuleMetadata {
-                        module: module.clone(),
-                        callable_count: 0,
-                        pipeline_count: 0,
-                    });
-                entry.pipeline_count += 1;
-            }
+            LoweredOp::Pipeline { module, .. } => (module, true),
+        };
+        let entry = by_module
+            .entry(module.clone())
+            .or_insert_with(|| ModuleMetadata {
+                module: module.clone(),
+                callable_count: 0,
+                pipeline_count: 0,
+            });
+        if is_pipeline {
+            entry.pipeline_count += 1;
+        } else {
+            entry.callable_count += 1;
         }
     }
     by_module.into_values().collect()
@@ -254,10 +500,16 @@ struct ObligationCounts {
     service_transport_prepare_targets: usize,
     service_transport_execute_targets: usize,
     service_transport_parse_targets: usize,
+    service_transport_hermetic_targets: usize,
+    service_transport_external_targets: usize,
+    service_transport_idempotent_targets: usize,
+    service_transport_readonly_targets: usize,
+    service_transport_permission_scoped_targets: usize,
     service_param_source_targets: usize,
     resource_provide_targets: usize,
     resource_acquire_targets: usize,
     resource_release_targets: usize,
+    interface_contract_verification_targets: usize,
 }
 
 fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
@@ -272,23 +524,69 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
         } else {
             counts.pure_node_determinism_targets += 1;
         }
-        let Some(LoweredOp::Callable { name, .. }) = node.body.as_opaque() else {
+        let Some(op) = node.body.as_opaque() else {
             continue;
         };
-        if name.starts_with("service_transport::prepare::") {
-            counts.service_transport_prepare_targets += 1;
-        } else if name.starts_with("service_transport::execute::") {
-            counts.service_transport_execute_targets += 1;
-        } else if name.starts_with("service_transport::parse::") {
-            counts.service_transport_parse_targets += 1;
-        } else if name.starts_with("call_param_source::") {
-            counts.service_param_source_targets += 1;
-        } else if name.starts_with("resource_provide::") {
-            counts.resource_provide_targets += 1;
-        } else if name.starts_with("resource_lifecycle::acquire::") {
-            counts.resource_acquire_targets += 1;
-        } else if name.starts_with("resource_lifecycle::release::") {
-            counts.resource_release_targets += 1;
+        match classify_obligation(op) {
+            ObligationCategory::ServiceTransportPrepare => {
+                counts.service_transport_prepare_targets += 1;
+            }
+            ObligationCategory::ServiceTransportExecute => {
+                counts.service_transport_execute_targets += 1;
+                match classify_service_transport(op) {
+                    Some(ServiceTransportClass::ShellLocal)
+                        if op
+                            .service_call_metadata()
+                            .is_some_and(|metadata| metadata.permissions.is_empty()) =>
+                    {
+                        counts.service_transport_hermetic_targets += 1;
+                    }
+                    Some(ServiceTransportClass::ShellLocal)
+                    | Some(ServiceTransportClass::RestNetwork)
+                    | Some(ServiceTransportClass::FileBoundary)
+                    | Some(ServiceTransportClass::Unknown)
+                    | None => {
+                        counts.service_transport_external_targets += 1;
+                    }
+                }
+                if op
+                    .service_call_metadata()
+                    .is_some_and(|metadata| metadata.idempotent)
+                {
+                    counts.service_transport_idempotent_targets += 1;
+                }
+                if op
+                    .service_call_metadata()
+                    .is_some_and(|metadata| metadata.readonly)
+                {
+                    counts.service_transport_readonly_targets += 1;
+                }
+                if op
+                    .service_call_metadata()
+                    .is_some_and(|metadata| !metadata.permissions.is_empty())
+                {
+                    counts.service_transport_permission_scoped_targets += 1;
+                }
+            }
+            ObligationCategory::ServiceTransportParse => {
+                counts.service_transport_parse_targets += 1;
+            }
+            ObligationCategory::ServiceParamSource => {
+                counts.service_param_source_targets += 1;
+            }
+            ObligationCategory::ResourceProvide => {
+                counts.resource_provide_targets += 1;
+            }
+            ObligationCategory::ResourceAcquire => {
+                counts.resource_acquire_targets += 1;
+            }
+            ObligationCategory::ResourceRelease => {
+                counts.resource_release_targets += 1;
+            }
+            ObligationCategory::InterfaceContractVerification => {
+                counts.interface_contract_verification_targets += 1;
+            }
+            ObligationCategory::None => {}
         }
     }
     counts
@@ -310,7 +608,9 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, LoweredOp};
+    use daglang_lower::{
+        CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
+    };
     use gunbc_ir::{Edge, Node, Port};
 
     fn callable_node(id: &str, module: &str, name: &str) -> Node<LoweredOp> {
@@ -322,6 +622,8 @@ mod tests {
                 module: module.to_string(),
                 kind: CallableKind::Func,
                 name: name.to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         )
     }
@@ -345,6 +647,55 @@ mod tests {
         );
         assert_eq!(artifacts.manifest.total_nodes, 3);
         assert_eq!(artifacts.manifest.total_edges, 2);
+        assert_eq!(
+            artifacts.manifest.topology,
+            vec![
+                TopologyNode {
+                    id: "a".to_string(),
+                    depth: 0,
+                },
+                TopologyNode {
+                    id: "b".to_string(),
+                    depth: 0,
+                },
+                TopologyNode {
+                    id: "c".to_string(),
+                    depth: 1,
+                },
+            ]
+        );
+        assert_eq!(
+            artifacts
+                .manifest
+                .labels
+                .get("a")
+                .expect("label should exist for node a"),
+            "tools.makegen.a"
+        );
+        assert_eq!(
+            artifacts.manifest.parallel_groups,
+            vec![
+                ParallelGroup {
+                    nodes: vec!["a".to_string(), "b".to_string()],
+                    depth: 0,
+                    parent_subdag: None,
+                },
+                ParallelGroup {
+                    nodes: vec!["c".to_string()],
+                    depth: 1,
+                    parent_subdag: None,
+                },
+            ]
+        );
+        assert_eq!(
+            artifacts.manifest.capture_modes.len(),
+            3,
+            "capture modes should be derived for all nodes"
+        );
+        assert!(
+            artifacts.manifest.subdag_boundaries.is_empty(),
+            "opaque-only DAG should not report subdag boundaries"
+        );
     }
 
     #[test]
@@ -359,6 +710,7 @@ mod tests {
                 module: "pipelines.ci".to_string(),
                 name: "ci".to_string(),
                 stages: 12,
+                stage_names: (1..=12).map(|i| format!("stage_{i}")).collect(),
             },
         ));
 
@@ -373,6 +725,52 @@ mod tests {
             .modules
             .iter()
             .any(|module| module.module == "pipelines.ci" && module.pipeline_count == 1));
+        let expected_stage_groups = (1..=12)
+            .map(|stage_index| StageGroup {
+                stage_id: format!("pipelines.ci.ci:stage_{stage_index}"),
+                nodes: vec!["ci".to_string()],
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(artifacts.manifest.stage_groups, expected_stage_groups);
+    }
+
+    #[test]
+    fn derive_manifest_collects_collection_scatter_points() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "snapshot_map_0",
+            vec![Port::scalar("items", "List<String>")],
+            vec![Port::scalar("items", "List<String>")],
+            LoweredOp::Collection {
+                module: "tools.gist".to_string(),
+                callable: "render_snapshot".to_string(),
+                kind: CollectionOpKind::Map,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "snapshot_join_1",
+            vec![Port::scalar("items", "List<String>")],
+            vec![Port::scalar("items", "String")],
+            LoweredOp::Collection {
+                module: "tools.gist".to_string(),
+                callable: "render_snapshot".to_string(),
+                kind: CollectionOpKind::Join,
+            },
+        ));
+        dag.add_node(callable_node(
+            "gist_snapshot",
+            "tools.gist",
+            "gist_snapshot",
+        ));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert_eq!(
+            artifacts.manifest.scatter_points,
+            vec![
+                "tools.gist.render_snapshot".to_string(),
+                "tools.gist.render_snapshot".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -386,6 +784,8 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "call_param_source::run::path".to_string(),
+                obligation: ObligationCategory::ServiceParamSource,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -396,6 +796,8 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::prepare::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportPrepare,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -406,6 +808,8 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::execute::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -416,6 +820,8 @@ mod tests {
                 module: "sample.services".to_string(),
                 kind: CallableKind::Pattern,
                 name: "service_transport::parse::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportParse,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -426,6 +832,8 @@ mod tests {
                 module: "sample.resources".to_string(),
                 kind: CallableKind::Pattern,
                 name: "resource_provide::run::out".to_string(),
+                obligation: ObligationCategory::ResourceProvide,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -436,6 +844,8 @@ mod tests {
                 module: "sample.resources".to_string(),
                 kind: CallableKind::Pattern,
                 name: "resource_lifecycle::acquire::TempFile".to_string(),
+                obligation: ObligationCategory::ResourceAcquire,
+                service_metadata: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -446,6 +856,8 @@ mod tests {
                 module: "sample.resources".to_string(),
                 kind: CallableKind::Pattern,
                 name: "resource_lifecycle::release::TempFile".to_string(),
+                obligation: ObligationCategory::ResourceRelease,
+                service_metadata: None,
             },
         ));
         dag.add_edge(Edge::new(
@@ -485,9 +897,154 @@ mod tests {
         assert_eq!(artifacts.obligations.service_transport_prepare_targets, 1);
         assert_eq!(artifacts.obligations.service_transport_execute_targets, 1);
         assert_eq!(artifacts.obligations.service_transport_parse_targets, 1);
+        assert_eq!(artifacts.obligations.service_transport_hermetic_targets, 0);
+        assert_eq!(artifacts.obligations.service_transport_external_targets, 1);
+        assert_eq!(
+            artifacts.obligations.service_transport_idempotent_targets,
+            0
+        );
+        assert_eq!(artifacts.obligations.service_transport_readonly_targets, 0);
+        assert_eq!(
+            artifacts
+                .obligations
+                .service_transport_permission_scoped_targets,
+            0
+        );
         assert_eq!(artifacts.obligations.service_param_source_targets, 1);
         assert_eq!(artifacts.obligations.resource_provide_targets, 1);
         assert_eq!(artifacts.obligations.resource_acquire_targets, 1);
         assert_eq!(artifacts.obligations.resource_release_targets, 1);
+        assert_eq!(
+            artifacts
+                .obligations
+                .interface_contract_verification_targets,
+            0
+        );
+        assert_eq!(
+            artifacts
+                .manifest
+                .resources
+                .get("acquire_resource")
+                .expect("acquire resource usage should be derived"),
+            &vec![ResourceUsage {
+                resource: "TempFile".to_string(),
+                usage: "acquire".to_string(),
+            }]
+        );
+        assert_eq!(
+            artifacts
+                .manifest
+                .resources
+                .get("release_resource")
+                .expect("release resource usage should be derived"),
+            &vec![ResourceUsage {
+                resource: "TempFile".to_string(),
+                usage: "release".to_string(),
+            }]
+        );
+        assert!(
+            artifacts.manifest.interactive_nodes.is_empty(),
+            "fixture DAG has no interactive annotations"
+        );
+    }
+
+    #[test]
+    fn derive_obligations_tracks_service_transport_semantic_buckets() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "execute_transport_hermetic",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::execute::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "FsStorage".to_string(),
+                    operation: "read".to_string(),
+                    transport: ServiceTransportClass::ShellLocal,
+                    idempotent: true,
+                    readonly: true,
+                    permissions: vec![],
+                }),
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "execute_transport_external",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::execute::GistApi::create".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "GistApi".to_string(),
+                    operation: "create".to_string(),
+                    transport: ServiceTransportClass::RestNetwork,
+                    idempotent: false,
+                    readonly: false,
+                    permissions: vec!["gist.write".to_string()],
+                }),
+            },
+        ));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert_eq!(artifacts.obligations.service_transport_execute_targets, 2);
+        assert_eq!(artifacts.obligations.service_transport_hermetic_targets, 1);
+        assert_eq!(artifacts.obligations.service_transport_external_targets, 1);
+        assert_eq!(
+            artifacts.obligations.service_transport_idempotent_targets,
+            1
+        );
+        assert_eq!(artifacts.obligations.service_transport_readonly_targets, 1);
+        assert_eq!(
+            artifacts
+                .obligations
+                .service_transport_permission_scoped_targets,
+            1
+        );
+        assert_eq!(
+            artifacts
+                .obligations
+                .interface_contract_verification_targets,
+            0
+        );
+    }
+
+    #[test]
+    fn derive_obligations_uses_structural_category_not_callable_name_prefix() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "misleading_name",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::prepare::Fake::op".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "structural_category",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "not_a_transport_name".to_string(),
+                obligation: ObligationCategory::ServiceTransportPrepare,
+                service_metadata: None,
+            },
+        ));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert_eq!(
+            artifacts.obligations.service_transport_prepare_targets, 1,
+            "classification should follow structural obligation category"
+        );
     }
 }

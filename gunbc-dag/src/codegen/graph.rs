@@ -223,7 +223,10 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
         fs_env.out(FsEnv::WRITE_PORT),
         codegen_exists.in_port("res:file"),
     )?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), execute_codegen.in_port("res:file"))?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        execute_codegen.in_port("res:file"),
+    )?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
         execute_stamp_write.in_port("res:file"),

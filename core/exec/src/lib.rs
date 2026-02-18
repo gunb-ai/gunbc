@@ -76,8 +76,8 @@ pub use intercept::{BoundaryMock, BoundaryMocks};
 
 pub use lower::{lower, LoopInfo, LowerError, LowerResult};
 pub use progress::{
-    ComposedObserver, DagPhase, DagProgress, DagSnapshot, EdgeProgress, EdgeState, FieldKind,
-    FieldSummary, GroupProgress, NodeProgress, NodeState, OutputSummary, ProgressEvent,
+    ComposedObserver, DagPhase, DagProgress, DagSnapshot, EdgeProgress, EdgeState, ExecutionEvent,
+    FieldKind, FieldSummary, GroupProgress, NodeProgress, NodeState, OutputSummary, ProgressEvent,
     ProgressObserver, RecordingObserver, StageGroup,
 };
 pub use render::{Animation, AnimationMode, RenderMode};

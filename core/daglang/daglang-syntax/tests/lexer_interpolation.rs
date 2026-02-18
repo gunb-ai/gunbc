@@ -1,7 +1,10 @@
 use daglang_syntax::lexer::{Lexer, TokenKind};
 
 fn kinds(src: &str) -> Vec<TokenKind> {
-    Lexer::tokenize(src).into_iter().map(|token| token.kind).collect()
+    Lexer::tokenize(src)
+        .into_iter()
+        .map(|token| token.kind)
+        .collect()
 }
 
 #[test]
@@ -41,10 +44,7 @@ fn interpolation_does_not_start_on_escaped_brace() {
 fn interpolation_does_not_start_on_numeric_brace_sequences() {
     assert_eq!(
         kinds(r#""regex \d{2}-\w{3}""#),
-        vec![
-            TokenKind::Str(r"regex \d{2}-\w{3}".into()),
-            TokenKind::Eof,
-        ]
+        vec![TokenKind::Str(r"regex \d{2}-\w{3}".into()), TokenKind::Eof,]
     );
 }
 

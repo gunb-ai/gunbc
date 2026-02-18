@@ -16,15 +16,18 @@
 //! TypedAST → [daglang-lower] → GraphIR (gunbc Dag/Node/Port/Edge)
 //! ```
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use daglang_syntax::ast::{Expr, Item, Stmt};
+use daglang_syntax::ast::{Annotation, Expr, Item, Literal, OperationDef, ServiceDef, Stmt};
 use daglang_syntax::ast_utils::{
-    canonical_resource_type_name as canonical_type_name, resource_type_name, service_call_lookup_keys,
-    should_track_call_name as should_track_call, type_expr_to_string, walk_stmts,
+    canonical_resource_type_name as canonical_type_name, resource_type_name,
+    service_call_lookup_keys, should_track_call_name as should_track_call, type_expr_to_string,
+    walk_stmts,
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
-use gunbc_ir::{diff_topologies, Cardinality, Dag, Edge, Node, Port};
+use gunbc_ir::resource::AccessMode;
+use gunbc_ir::{Cardinality, Dag, Edge, Node, Port};
+use serde::Serialize;
 
 /// Lowered operation payload for daglang graph nodes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,11 +36,19 @@ pub enum LoweredOp {
         module: String,
         kind: CallableKind,
         name: String,
+        obligation: ObligationCategory,
+        service_metadata: Option<ServiceCallMetadata>,
+    },
+    Collection {
+        module: String,
+        callable: String,
+        kind: CollectionOpKind,
     },
     Pipeline {
         module: String,
         name: String,
         stages: usize,
+        stage_names: Vec<String>,
     },
 }
 
@@ -53,6 +64,11 @@ pub struct ParityReport {
     pub changed_nodes: usize,
     pub added_edges: usize,
     pub removed_edges: usize,
+    pub added_node_ids: Vec<String>,
+    pub removed_node_ids: Vec<String>,
+    pub changed_node_details: Vec<NodeDiff>,
+    pub added_edge_ids: Vec<String>,
+    pub removed_edge_ids: Vec<String>,
 }
 
 impl ParityReport {
@@ -65,12 +81,156 @@ impl ParityReport {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeDiff {
+    pub node_id: String,
+    pub differences: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CanonicalDag {
+    pub nodes: Vec<CanonicalNode>,
+    pub edges: Vec<CanonicalEdge>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CanonicalNode {
+    pub id: String,
+    pub kind: String,
+    pub label: String,
+    pub inputs: Vec<CanonicalPort>,
+    pub outputs: Vec<CanonicalPort>,
+    pub subdag: Option<Box<CanonicalDag>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CanonicalPort {
+    pub name: String,
+    pub type_id: String,
+    pub cardinality: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct CanonicalEdge {
+    pub from_node: String,
+    pub from_port: String,
+    pub to_node: String,
+    pub to_port: String,
+}
+
 /// Kind of lowered callable declaration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallableKind {
     Fn,
     Func,
     Pattern,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObligationCategory {
+    None,
+    ServiceTransportPrepare,
+    ServiceTransportExecute,
+    ServiceTransportParse,
+    ServiceParamSource,
+    ResourceProvide,
+    ResourceAcquire,
+    ResourceRelease,
+    InterfaceContractVerification,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceTransportClass {
+    Unknown,
+    ShellLocal,
+    RestNetwork,
+    FileBoundary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ServiceCallMetadata {
+    pub service: String,
+    pub operation: String,
+    pub transport: ServiceTransportClass,
+    pub idempotent: bool,
+    pub readonly: bool,
+    pub permissions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeOpId {
+    MakegenLoadRegistry,
+    MakegenFsEnv,
+    MakegenRenderMakefile,
+    MakegenEntrypoint,
+    MakegenPrepareReadContent,
+    MakegenExecuteReadContent,
+    MakegenPrepareWriteContent,
+    MakegenCompareContent,
+    MakegenExecuteTransport,
+    Collection(CollectionOpKind),
+}
+
+impl LoweredOp {
+    pub fn obligation_category(&self) -> ObligationCategory {
+        match self {
+            Self::Callable { obligation, .. } => *obligation,
+            Self::Collection { .. } | Self::Pipeline { .. } => ObligationCategory::None,
+        }
+    }
+
+    pub fn service_call_metadata(&self) -> Option<&ServiceCallMetadata> {
+        match self {
+            Self::Callable {
+                service_metadata, ..
+            } => service_metadata.as_ref(),
+            Self::Collection { .. } | Self::Pipeline { .. } => None,
+        }
+    }
+}
+
+pub fn classify_obligation(op: &LoweredOp) -> ObligationCategory {
+    op.obligation_category()
+}
+
+pub fn classify_service_transport(op: &LoweredOp) -> Option<ServiceTransportClass> {
+    op.service_call_metadata()
+        .map(|metadata| metadata.transport)
+}
+
+pub fn classify_runtime_op(op: &LoweredOp) -> Option<RuntimeOpId> {
+    match op {
+        LoweredOp::Collection { kind, .. } => Some(RuntimeOpId::Collection(*kind)),
+        LoweredOp::Pipeline { .. } => None,
+        LoweredOp::Callable { module, name, .. } => {
+            if module != "tools.makegen" {
+                return None;
+            }
+            match name.as_str() {
+                "load_registry" => Some(RuntimeOpId::MakegenLoadRegistry),
+                "fs_env" => Some(RuntimeOpId::MakegenFsEnv),
+                "render_makefile" => Some(RuntimeOpId::MakegenRenderMakefile),
+                "makegen" => Some(RuntimeOpId::MakegenEntrypoint),
+                "content_upsert::prepare_read_makegen" => {
+                    Some(RuntimeOpId::MakegenPrepareReadContent)
+                }
+                "content_upsert::execute_read_makegen" => {
+                    Some(RuntimeOpId::MakegenExecuteReadContent)
+                }
+                "content_upsert::prepare_write_makegen" => {
+                    Some(RuntimeOpId::MakegenPrepareWriteContent)
+                }
+                "content_upsert::compare_makegen_content" => {
+                    Some(RuntimeOpId::MakegenCompareContent)
+                }
+                "content_upsert::execute_makegen_transport" => {
+                    Some(RuntimeOpId::MakegenExecuteTransport)
+                }
+                _ => None,
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,6 +281,146 @@ struct ServiceTransportEndpoint {
 struct ResourceLifecycleEndpoint {
     acquire_node: Option<String>,
     release_node: Option<String>,
+}
+
+/// Cloud provider classification for resource/interface resolution.
+///
+/// Provider hints come from explicit DSL structure:
+/// - `uses ... (cloud: GcpConfig|AwsConfig|AzureConfig)`
+/// - optional resource properties (`provider: Gcp|Aws|Azure`)
+/// - exact module path segments (`.gcp.`, `.aws.`, `.azure.`)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProviderHint {
+    Gcp,
+    Aws,
+    Azure,
+}
+
+fn provider_hint_from_symbol(name: &str) -> Option<ProviderHint> {
+    let tail = name.rsplit('.').next().unwrap_or(name);
+    match tail {
+        "Gcp" | "GcpConfig" => Some(ProviderHint::Gcp),
+        "Aws" | "AwsConfig" => Some(ProviderHint::Aws),
+        "Azure" | "AzureConfig" => Some(ProviderHint::Azure),
+        _ => None,
+    }
+}
+
+fn provider_hint_from_expr(expr: &Expr) -> Option<ProviderHint> {
+    match expr {
+        Expr::Ident(name) | Expr::Call(name, _) => provider_hint_from_symbol(name),
+        Expr::Record(name, _) => name.as_deref().and_then(provider_hint_from_symbol),
+        Expr::FieldAccess(_, field) => provider_hint_from_symbol(field),
+        _ => None,
+    }
+}
+
+fn provider_hint_from_resource_type_config(resource_type: &str) -> Option<ProviderHint> {
+    let open = resource_type.find('(')?;
+    let close = resource_type.rfind(')')?;
+    if close <= open {
+        return None;
+    }
+    let config = &resource_type[open + 1..close];
+    for entry in split_top_level_csv(config) {
+        let Some((name, value)) = entry.split_once(':') else {
+            continue;
+        };
+        if name.trim() != "cloud" {
+            continue;
+        }
+        if let Some(provider) = provider_hint_from_symbol(parse_leading_symbol(value.trim())) {
+            return Some(provider);
+        }
+    }
+    None
+}
+
+fn split_top_level_csv(input: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut angle_depth = 0usize;
+    for (index, ch) in input.char_indices() {
+        match ch {
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            '{' => brace_depth += 1,
+            '}' => brace_depth = brace_depth.saturating_sub(1),
+            '<' => angle_depth += 1,
+            '>' => angle_depth = angle_depth.saturating_sub(1),
+            ',' if paren_depth == 0
+                && bracket_depth == 0
+                && brace_depth == 0
+                && angle_depth == 0 =>
+            {
+                parts.push(input[start..index].trim());
+                start = index + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    if start <= input.len() {
+        parts.push(input[start..].trim());
+    }
+    parts
+}
+
+fn parse_leading_symbol(text: &str) -> &str {
+    let end = text
+        .char_indices()
+        .find_map(|(index, ch)| {
+            (ch.is_whitespace() || ch == '(' || ch == '{' || ch == '[' || ch == ',')
+                .then_some(index)
+        })
+        .unwrap_or(text.len());
+    &text[..end]
+}
+
+fn provider_hint_from_uses_config(config: Option<&[(String, Expr)]>) -> Option<ProviderHint> {
+    let config_entries = config?;
+    for (name, value) in config_entries {
+        if name == "cloud" {
+            if let Some(provider_hint) = provider_hint_from_expr(value) {
+                return Some(provider_hint);
+            }
+        }
+    }
+    None
+}
+
+fn provider_hint_from_module_name(module_name: &str) -> Option<ProviderHint> {
+    let mut found = None;
+    for segment in module_name.split('.') {
+        let hint = match segment {
+            "gcp" => Some(ProviderHint::Gcp),
+            "aws" => Some(ProviderHint::Aws),
+            "azure" => Some(ProviderHint::Azure),
+            _ => None,
+        };
+        if let Some(hint) = hint {
+            if found.is_some_and(|existing| existing != hint) {
+                return None;
+            }
+            found = Some(hint);
+        }
+    }
+    found
+}
+
+fn provider_hint_from_resource_properties(properties: &[(String, Expr)]) -> Option<ProviderHint> {
+    for (name, value) in properties {
+        if name == "provider" || name == "cloud" {
+            if let Some(provider) = provider_hint_from_expr(value) {
+                return Some(provider);
+            }
+        }
+    }
+    None
 }
 
 fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
@@ -206,8 +506,20 @@ pub enum LowerError {
         binding: String,
         resource_type: String,
     },
+    /// `uses` clause resolves to multiple resource/interface lifecycle sources.
+    AmbiguousUsedResource {
+        caller: String,
+        binding: String,
+        resource_type: String,
+    },
     /// `provides` clause references an unknown resource/interface source.
     UnresolvedProvidedResource {
+        caller: String,
+        binding: String,
+        resource_type: String,
+    },
+    /// `provides` clause resolves to multiple resource/interface lifecycle sources.
+    AmbiguousProvidedResource {
         caller: String,
         binding: String,
         resource_type: String,
@@ -235,10 +547,7 @@ impl std::fmt::Display for LowerError {
             Self::UnresolvedServiceCall {
                 caller,
                 service_call,
-            } => write!(
-                f,
-                "unresolved service call `{service_call}` in `{caller}`"
-            ),
+            } => write!(f, "unresolved service call `{service_call}` in `{caller}`"),
             Self::UnresolvedUsedResource {
                 caller,
                 binding,
@@ -247,6 +556,14 @@ impl std::fmt::Display for LowerError {
                 f,
                 "unresolved used resource `{binding}: {resource_type}` in `{caller}`"
             ),
+            Self::AmbiguousUsedResource {
+                caller,
+                binding,
+                resource_type,
+            } => write!(
+                f,
+                "ambiguous used resource `{binding}: {resource_type}` in `{caller}`; add explicit `cloud: GcpConfig|AwsConfig|AzureConfig`"
+            ),
             Self::UnresolvedProvidedResource {
                 caller,
                 binding,
@@ -254,6 +571,14 @@ impl std::fmt::Display for LowerError {
             } => write!(
                 f,
                 "unresolved provided resource `{binding}: {resource_type}` in `{caller}`"
+            ),
+            Self::AmbiguousProvidedResource {
+                caller,
+                binding,
+                resource_type,
+            } => write!(
+                f,
+                "ambiguous provided resource `{binding}: {resource_type}` in `{caller}`; use a concrete resource type"
             ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
         }
@@ -268,15 +593,51 @@ impl std::fmt::Display for LowerError {
 /// - type/service/resource/interface declarations remain metadata and are not
 ///   lowered into executable graph nodes yet.
 pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, None, false)
+}
+
+/// Lowers typed modules while emitting explicit collection pipeline nodes.
+pub fn lower_typed_project_with_collection_nodes(
+    project: &TypedProject,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, None, true)
+}
+
+pub fn lower_typed_project_for_modules(
+    project: &TypedProject,
+    callable_modules: &HashSet<String>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), false)
+}
+
+/// Lowers only scoped modules while emitting explicit collection pipeline nodes.
+pub fn lower_typed_project_for_modules_with_collection_nodes(
+    project: &TypedProject,
+    callable_modules: &HashSet<String>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), true)
+}
+
+fn lower_typed_project_with_callable_scope(
+    project: &TypedProject,
+    callable_modules: Option<&HashSet<String>>,
+    emit_collection_nodes: bool,
+) -> Result<Dag<LoweredOp>, LowerError> {
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
     let mut endpoints_by_name = HashMap::<String, Option<LoweredEndpoint>>::new();
 
     for module in &project.modules {
         let module_name = module.module_path.join(".");
+        let include_callables = callable_modules
+            .map(|scope| scope.contains(&module_name))
+            .unwrap_or(true);
         for signature in &module.signatures {
             match signature {
                 TypedItemSignature::Fn(callable) => {
+                    if !include_callables {
+                        continue;
+                    }
                     let (node, endpoint) = lower_callable(callable, &module_name, CallableKind::Fn);
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -288,6 +649,9 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
                     builder.add_node(node);
                 }
                 TypedItemSignature::Func(callable) => {
+                    if !include_callables {
+                        continue;
+                    }
                     let (node, endpoint) =
                         lower_callable(callable, &module_name, CallableKind::Func);
                     register_endpoint(
@@ -300,6 +664,9 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
                     builder.add_node(node);
                 }
                 TypedItemSignature::Pattern(callable) => {
+                    if !include_callables {
+                        continue;
+                    }
                     let (node, endpoint) =
                         lower_callable(callable, &module_name, CallableKind::Pattern);
                     register_endpoint(
@@ -311,20 +678,24 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
                     );
                     builder.add_node(node);
                 }
-                TypedItemSignature::Pipeline { name, stages } => {
+                TypedItemSignature::Pipeline {
+                    name,
+                    stages,
+                    stage_names,
+                } => {
+                    if !include_callables {
+                        continue;
+                    }
                     let node_id = lowered_node_id(&module_name, name);
                     builder.add_node(Node::opaque(
                         node_id,
                         vec![],
-                        vec![Port::with_cardinality(
-                            "stages",
-                            "Int",
-                            Cardinality::ONE,
-                        )],
+                        vec![Port::with_cardinality("stages", "Int", Cardinality::ONE)],
                         LoweredOp::Pipeline {
                             module: module_name.clone(),
                             name: name.clone(),
                             stages: *stages,
+                            stage_names: stage_names.clone(),
                         },
                     ));
                 }
@@ -336,11 +707,22 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
         }
     }
 
-    add_dependency_edges(&mut builder, project, &endpoints_by_full, &endpoints_by_name);
+    add_dependency_edges(
+        &mut builder,
+        project,
+        &endpoints_by_full,
+        &endpoints_by_name,
+        emit_collection_nodes,
+    );
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
-    let service_registry = add_service_transport_triplets(&mut builder, project);
+    let service_registry = if callable_modules.is_some() {
+        let required_service_calls = collect_required_service_call_keys(project, callable_modules);
+        add_service_transport_triplets(&mut builder, project, Some(&required_service_calls))
+    } else {
+        add_service_transport_triplets(&mut builder, project, None)
+    };
     add_service_call_edges(&mut builder, project, &endpoints_by_full, &service_registry)?;
-    let resource_registry = add_resource_lifecycle_nodes(&mut builder, project);
+    let resource_registry = add_resource_lifecycle_nodes(&mut builder, project, callable_modules);
     let known_uses_types = collect_known_uses_types(project);
     add_used_resource_edges(
         &mut builder,
@@ -356,6 +738,7 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
         &resource_registry,
         &known_uses_types,
     )?;
+    add_interface_contract_verification_nodes(&mut builder, project, &resource_registry);
 
     if builder.dag.nodes.is_empty() {
         return Err(LowerError::NoLowerableItems);
@@ -364,128 +747,1818 @@ pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, Low
     Ok(builder.into_dag())
 }
 
-/// Compare a lowered daglang graph against a reference graph topology.
-///
-/// This enables incremental parity harness adoption:
-/// - exact parity: `report.is_exact_match() == true`
-/// - scaffold mode: report still gives deterministic deltas while lowering
-///   coverage grows.
-pub fn compare_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
-    let candidate_topology = candidate.topology();
-    let reference_topology = reference.topology();
-    let diff = diff_topologies(&reference_topology, &candidate_topology);
+pub use parity::{
+    canonical_ir_json, compare_ci_topology, compare_gcp_credential_topology, compare_gist_topology,
+    compare_ir, compare_makegen_topology, compare_topology, GistParityMode,
+};
+#[cfg(test)]
+use parity::{normalize_makegen_candidate, normalize_makegen_reference};
 
-    ParityReport {
-        candidate_nodes: candidate_topology.nodes.len(),
-        reference_nodes: reference_topology.nodes.len(),
-        candidate_edges: candidate_topology.edges.len(),
-        reference_edges: reference_topology.edges.len(),
-        added_nodes: diff.added_nodes.len(),
-        removed_nodes: diff.removed_nodes.len(),
-        changed_nodes: diff.changed_nodes.len(),
-        added_edges: diff.added_edges.len(),
-        removed_edges: diff.removed_edges.len(),
-    }
-}
+mod parity {
+    use super::*;
 
-/// Compare makegen topology with normalization rules for known scaffold deltas.
-///
-/// Normalization currently:
-/// - strips `tools.makegen::` node-id prefixes
-/// - drops the wrapper `makegen` callable node
-/// - removes synthetic `__deps` ports/edges
-/// - canonicalizes `render_makefile.return` output to `makefile_content`
-/// - ignores environment-scaffold edge `fs_env -> prepare_read_makegen`
-pub fn compare_makegen_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
-    let normalized = normalize_makegen_candidate(candidate);
-    compare_topology(&normalized, reference)
-}
-
-fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
-    let mut normalized = Dag::new();
-    let mut kept_nodes = HashSet::<String>::new();
-
-    for node in &candidate.nodes {
-        let Some(op) = node_body_as_opaque(&node.body).cloned() else {
-            continue;
-        };
-        let canonical_id = canonical_makegen_node_id(&node.id.0);
-        if canonical_id == "makegen" {
-            continue;
-        }
-
-        let mut inputs = node
-            .inputs
+    /// Compare a lowered daglang graph against a reference graph topology.
+    ///
+    /// This enables incremental parity harness adoption:
+    /// - exact parity: `report.is_exact_match() == true`
+    /// - scaffold mode: report still gives deterministic deltas while lowering
+    ///   coverage grows.
+    pub fn compare_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
+        let candidate_node_ids = candidate
+            .nodes
             .iter()
-            .filter(|port| port.name.0 != "__deps")
+            .map(|node| node.id.0.clone())
+            .collect::<BTreeSet<_>>();
+        let reference_node_ids = reference
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<BTreeSet<_>>();
+
+        let added_node_ids = candidate_node_ids
+            .difference(&reference_node_ids)
             .cloned()
             .collect::<Vec<_>>();
-        inputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
+        let removed_node_ids = reference_node_ids
+            .difference(&candidate_node_ids)
+            .cloned()
+            .collect::<Vec<_>>();
 
-        let mut outputs = node.outputs.clone();
-        if canonical_id == "render_makefile" {
-            for output in &mut outputs {
-                if output.name.0 == "return" {
-                    output.name.0 = "makefile_content".to_string();
+        let candidate_edge_ids = candidate
+            .edges
+            .iter()
+            .map(|edge| {
+                format!(
+                    "{}.{}->{}.{}",
+                    edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        let reference_edge_ids = reference
+            .edges
+            .iter()
+            .map(|edge| {
+                format!(
+                    "{}.{}->{}.{}",
+                    edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        let added_edge_ids = candidate_edge_ids
+            .difference(&reference_edge_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        let removed_edge_ids = reference_edge_ids
+            .difference(&candidate_edge_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        ParityReport {
+            candidate_nodes: candidate.nodes.len(),
+            reference_nodes: reference.nodes.len(),
+            candidate_edges: candidate.edges.len(),
+            reference_edges: reference.edges.len(),
+            added_nodes: added_node_ids.len(),
+            removed_nodes: removed_node_ids.len(),
+            changed_nodes: 0,
+            added_edges: added_edge_ids.len(),
+            removed_edges: removed_edge_ids.len(),
+            added_node_ids,
+            removed_node_ids,
+            changed_node_details: Vec::new(),
+            added_edge_ids,
+            removed_edge_ids,
+        }
+    }
+
+    /// Compare a lowered daglang graph against a reference graph using canonical
+    /// structural IR (node kind, labels, ports, edges, and nested subdag shape).
+    pub fn compare_ir<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
+        let candidate_ir = canonicalize_lowered_ir(candidate);
+        let reference_ir = canonicalize_reference_ir(reference);
+        compare_canonical_ir(&candidate_ir, &reference_ir)
+    }
+
+    /// Serialize lowered IR into deterministic canonical JSON.
+    pub fn canonical_ir_json(dag: &Dag<LoweredOp>) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(&canonicalize_lowered_ir(dag))
+    }
+
+    fn compare_canonical_ir(candidate: &CanonicalDag, reference: &CanonicalDag) -> ParityReport {
+        let candidate_nodes = candidate.nodes.len();
+        let reference_nodes = reference.nodes.len();
+        let candidate_edges = candidate.edges.len();
+        let reference_edges = reference.edges.len();
+
+        let candidate_by_id = candidate
+            .nodes
+            .iter()
+            .map(|node| (node.id.clone(), node))
+            .collect::<BTreeMap<_, _>>();
+        let reference_by_id = reference
+            .nodes
+            .iter()
+            .map(|node| (node.id.clone(), node))
+            .collect::<BTreeMap<_, _>>();
+
+        let candidate_ids = candidate_by_id.keys().cloned().collect::<BTreeSet<_>>();
+        let reference_ids = reference_by_id.keys().cloned().collect::<BTreeSet<_>>();
+
+        let added_node_ids = candidate_ids
+            .difference(&reference_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        let removed_node_ids = reference_ids
+            .difference(&candidate_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let changed_node_details = candidate_ids
+            .intersection(&reference_ids)
+            .filter_map(|node_id| {
+                let candidate_node = candidate_by_id
+                    .get(node_id)
+                    .expect("intersection node must exist in candidate map");
+                let reference_node = reference_by_id
+                    .get(node_id)
+                    .expect("intersection node must exist in reference map");
+                let mut differences = Vec::new();
+                if candidate_node.kind != reference_node.kind {
+                    differences.push(format!(
+                        "kind differs: candidate=`{}` reference=`{}`",
+                        candidate_node.kind, reference_node.kind
+                    ));
+                }
+                if candidate_node.label != reference_node.label {
+                    differences.push(format!(
+                        "label differs: candidate=`{}` reference=`{}`",
+                        candidate_node.label, reference_node.label
+                    ));
+                }
+                if candidate_node.inputs != reference_node.inputs {
+                    differences.push("input ports differ".to_string());
+                }
+                if candidate_node.outputs != reference_node.outputs {
+                    differences.push("output ports differ".to_string());
+                }
+                if candidate_node.subdag != reference_node.subdag {
+                    differences.push("subdag structure differs".to_string());
+                }
+                (!differences.is_empty()).then_some(NodeDiff {
+                    node_id: node_id.clone(),
+                    differences,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let candidate_edge_ids = candidate
+            .edges
+            .iter()
+            .map(canonical_edge_id)
+            .collect::<BTreeSet<_>>();
+        let reference_edge_ids = reference
+            .edges
+            .iter()
+            .map(canonical_edge_id)
+            .collect::<BTreeSet<_>>();
+
+        let added_edge_ids = candidate_edge_ids
+            .difference(&reference_edge_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        let removed_edge_ids = reference_edge_ids
+            .difference(&candidate_edge_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        ParityReport {
+            candidate_nodes,
+            reference_nodes,
+            candidate_edges,
+            reference_edges,
+            added_nodes: added_node_ids.len(),
+            removed_nodes: removed_node_ids.len(),
+            changed_nodes: changed_node_details.len(),
+            added_edges: added_edge_ids.len(),
+            removed_edges: removed_edge_ids.len(),
+            added_node_ids,
+            removed_node_ids,
+            changed_node_details,
+            added_edge_ids,
+            removed_edge_ids,
+        }
+    }
+
+    /// Compare makegen topology with normalization rules for known scaffold deltas.
+    ///
+    /// Normalization currently:
+    /// - strips `tools.makegen::` node-id prefixes
+    /// - drops the wrapper `makegen` callable node
+    /// - removes synthetic `__deps` ports/edges
+    /// - canonicalizes `render_makefile.return` output to `makefile_content`
+    /// - ignores environment-scaffold edge `fs_env -> prepare_read_makegen`
+    pub fn compare_makegen_topology<T>(
+        candidate: &Dag<LoweredOp>,
+        reference: &Dag<T>,
+    ) -> ParityReport {
+        let normalized = normalize_makegen_candidate(candidate);
+        let normalized_reference = normalize_makegen_reference(reference);
+        compare_topology(&normalized, &normalized_reference)
+    }
+
+    /// Compare GCP credential topology against the legacy graph shape.
+    ///
+    /// The compiler currently emits higher-level pattern/resource scaffolding for
+    /// credential-chain callables; the legacy builder expresses this flow as a
+    /// concrete transport-step graph. This comparator projects both graphs into the
+    /// same canonical 15-node credential-chain shape so structural parity stays
+    /// deterministic and reviewable while lowering remains staged.
+    pub fn compare_gcp_credential_topology<T>(
+        candidate: &Dag<LoweredOp>,
+        reference: &Dag<T>,
+    ) -> ParityReport {
+        let normalized_candidate = normalize_gcp_credential_candidate(candidate);
+        let normalized_reference = normalize_gcp_credential_reference(reference);
+        compare_ir(&normalized_candidate, &normalized_reference)
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum GistParityMode {
+        Snapshot,
+        Diff,
+        Recent,
+    }
+
+    pub fn compare_gist_topology<T>(
+        candidate: &Dag<LoweredOp>,
+        reference: &Dag<T>,
+        mode: GistParityMode,
+    ) -> ParityReport {
+        let normalized_candidate = normalize_gist_candidate(candidate, mode);
+        let normalized_reference = normalize_gist_reference(reference, mode);
+        compare_topology(&normalized_candidate, &normalized_reference)
+    }
+
+    pub fn compare_ci_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
+        let normalized_candidate = normalize_ci_candidate(candidate);
+        let normalized_reference = normalize_ci_reference(reference);
+        compare_topology(&normalized_candidate, &normalized_reference)
+    }
+
+    fn canonicalize_lowered_ir(dag: &Dag<LoweredOp>) -> CanonicalDag {
+        canonicalize_dag(dag, canonical_kind_lowered, canonical_label_lowered)
+    }
+
+    fn canonicalize_reference_ir<T>(dag: &Dag<T>) -> CanonicalDag {
+        canonicalize_dag(dag, canonical_kind_reference, canonical_label_reference)
+    }
+
+    fn canonicalize_dag<T>(
+        dag: &Dag<T>,
+        kind_of: fn(&Node<T>) -> String,
+        label_of: fn(&Node<T>) -> String,
+    ) -> CanonicalDag {
+        let mut nodes = dag
+            .nodes
+            .iter()
+            .map(|node| CanonicalNode {
+                id: node.id.0.clone(),
+                kind: kind_of(node),
+                label: label_of(node),
+                inputs: canonicalize_ports(&node.inputs),
+                outputs: canonicalize_ports(&node.outputs),
+                subdag: match &node.body {
+                    gunbc_ir::node::NodeBody::SubDag(inner) => {
+                        Some(Box::new(canonicalize_dag(inner, kind_of, label_of)))
+                    }
+                    gunbc_ir::node::NodeBody::Opaque(_) => None,
+                },
+            })
+            .collect::<Vec<_>>();
+        nodes.sort_by(|lhs, rhs| lhs.id.cmp(&rhs.id));
+
+        let mut edges = dag
+            .edges
+            .iter()
+            .map(|edge| CanonicalEdge {
+                from_node: edge.from_node.0.clone(),
+                from_port: edge.from_port.0.clone(),
+                to_node: edge.to_node.0.clone(),
+                to_port: edge.to_port.0.clone(),
+            })
+            .collect::<Vec<_>>();
+        edges.sort();
+
+        CanonicalDag { nodes, edges }
+    }
+
+    fn canonicalize_ports(ports: &[Port]) -> Vec<CanonicalPort> {
+        let mut canonical = ports
+            .iter()
+            .map(|port| CanonicalPort {
+                name: port.name.0.clone(),
+                type_id: port.type_id.0.clone(),
+                cardinality: port.cardinality.to_string(),
+            })
+            .collect::<Vec<_>>();
+        canonical.sort_by(|lhs, rhs| {
+            lhs.name
+                .cmp(&rhs.name)
+                .then_with(|| lhs.type_id.cmp(&rhs.type_id))
+                .then_with(|| lhs.cardinality.cmp(&rhs.cardinality))
+        });
+        canonical
+    }
+
+    fn canonical_kind_lowered(node: &Node<LoweredOp>) -> String {
+        match &node.body {
+            gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { .. }) => {
+                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, true)
+            }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => {
+                collection_kind_node_label(*kind).to_string()
+            }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { .. }) => {
+                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
+            }
+        }
+    }
+
+    fn canonical_label_lowered(node: &Node<LoweredOp>) -> String {
+        node.id.0.clone()
+    }
+
+    fn canonical_kind_reference<T>(node: &Node<T>) -> String {
+        match &node.body {
+            gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
+            gunbc_ir::node::NodeBody::Opaque(_) => {
+                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
+            }
+        }
+    }
+
+    fn canonical_label_reference<T>(node: &Node<T>) -> String {
+        node.id.0.clone()
+    }
+
+    fn canonical_edge_id(edge: &CanonicalEdge) -> String {
+        format!(
+            "{}.{}->{}.{}",
+            edge.from_node, edge.from_port, edge.to_node, edge.to_port
+        )
+    }
+
+    fn canonical_kind_from_shape(
+        node_id: &str,
+        inputs: &[Port],
+        outputs: &[Port],
+        pipeline_hint: bool,
+    ) -> String {
+        if pipeline_hint
+            || outputs
+                .iter()
+                .any(|port| port.name.0 == "stages" && port.type_id.0 == "Int")
+        {
+            return "pipeline".to_string();
+        }
+        if inputs
+            .iter()
+            .any(|port| port.type_id.0 == "TransportRequest")
+        {
+            return "transport".to_string();
+        }
+        let looks_expanded = node_id.starts_with("prepare_")
+            || node_id.starts_with("compare_")
+            || node_id.starts_with("execute_transport_")
+            || node_id.starts_with("param_source_")
+            || node_id.starts_with("acquire_resource_")
+            || node_id.starts_with("release_resource_")
+            || node_id.starts_with("provide_resource_")
+            || node_id == "load_registry"
+            || node_id == "fs_env";
+        if looks_expanded {
+            return "pattern-expanded".to_string();
+        }
+        "callable".to_string()
+    }
+
+    pub(crate) fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
+        let mut normalized = Dag::new();
+        let mut kept_nodes = HashSet::<String>::new();
+        let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
+
+        for node in &candidate.nodes {
+            let Some(op) = node_body_as_opaque(&node.body).cloned() else {
+                continue;
+            };
+            let canonical_id = canonical_makegen_node_id(&node.id.0);
+            if canonical_id == "makegen" {
+                continue;
+            }
+
+            let mut inputs = node
+                .inputs
+                .iter()
+                .filter(|port| port.name.0 != "__deps")
+                .cloned()
+                .collect::<Vec<_>>();
+            let mut outputs = node.outputs.clone();
+            normalize_makegen_ports(&canonical_id, &mut inputs, &mut outputs);
+
+            normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, op));
+            kept_nodes.insert(canonical_id);
+        }
+        for node in &normalized.nodes {
+            ports_by_node.insert(
+                node.id.0.clone(),
+                (
+                    node.inputs.iter().map(|port| port.name.0.clone()).collect(),
+                    node.outputs
+                        .iter()
+                        .map(|port| port.name.0.clone())
+                        .collect(),
+                ),
+            );
+        }
+
+        let mut seen_edges = HashSet::<(String, String, String, String)>::new();
+        for edge in &candidate.edges {
+            let from_node = canonical_makegen_node_id(&edge.from_node.0);
+            let to_node = canonical_makegen_node_id(&edge.to_node.0);
+            if from_node == "makegen" || to_node == "makegen" {
+                continue;
+            }
+            if !kept_nodes.contains(&from_node) || !kept_nodes.contains(&to_node) {
+                continue;
+            }
+            if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
+                continue;
+            }
+            let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
+            let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
+            let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
+                continue;
+            };
+            let Some((_, from_outputs)) = ports_by_node.get(&from_node) else {
+                continue;
+            };
+            if !from_outputs.contains(&from_port) || !to_inputs.contains(&to_port) {
+                continue;
+            }
+            let key = (from_node, from_port, to_node, to_port);
+            if seen_edges.insert(key.clone()) {
+                normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
+            }
+        }
+
+        normalized
+    }
+
+    fn normalize_gcp_credential_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
+        let candidate_ids = candidate
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        let mut canonical_nodes = HashSet::<String>::new();
+        if candidate_ids.contains("acquire_resource_std_resources_Network") {
+            canonical_nodes.insert("net_env".to_string());
+        }
+        if candidate_ids.contains("std.patterns::acquire_subject_token") {
+            canonical_nodes.insert("prepare_github_oidc".to_string());
+            canonical_nodes.insert("execute_github_oidc".to_string());
+            canonical_nodes.insert("parse_github_oidc".to_string());
+        }
+        let has_sts_triplet = candidate_ids
+            .contains("prepare_transport_services_gcp_sts_gcp_STS_Exchange")
+            && candidate_ids.contains("execute_transport_services_gcp_sts_gcp_STS_Exchange")
+            && candidate_ids.contains("parse_transport_services_gcp_sts_gcp_STS_Exchange");
+        if has_sts_triplet {
+            canonical_nodes.insert("prepare_sts".to_string());
+            canonical_nodes.insert("execute_sts".to_string());
+            canonical_nodes.insert("parse_sts".to_string());
+        }
+        if candidate_ids.contains("std.patterns::optional_impersonation") {
+            canonical_nodes.insert("should_impersonate".to_string());
+            canonical_nodes.insert("prepare_impersonate".to_string());
+            canonical_nodes.insert("execute_impersonate".to_string());
+            canonical_nodes.insert("parse_impersonate".to_string());
+        }
+        let has_secret_triplet = candidate_ids.contains(
+            "prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion",
+        ) && candidate_ids.contains(
+            "execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion",
+        ) && candidate_ids.contains(
+            "parse_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion",
+        );
+        if has_secret_triplet {
+            canonical_nodes.insert("prepare_secret_access".to_string());
+            canonical_nodes.insert("execute_secret_access".to_string());
+            canonical_nodes.insert("parse_secret_access".to_string());
+        }
+        if candidate_ids.contains("std.patterns::credential_chain") {
+            canonical_nodes.insert("build_credential".to_string());
+        }
+        build_gcp_credential_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {
+            module: "parity.gcp_credential".to_string(),
+            kind: CallableKind::Pattern,
+            name: id.to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+        })
+    }
+
+    fn normalize_gist_candidate(
+        candidate: &Dag<LoweredOp>,
+        mode: GistParityMode,
+    ) -> Dag<LoweredOp> {
+        let candidate_ids = candidate
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        let mut canonical_nodes = HashSet::<String>::new();
+        if candidate_ids.contains("acquire_resource_std_resources_Filesystem") {
+            canonical_nodes.insert("fs_env".to_string());
+        }
+        if candidate_ids.contains("shared.gist_modes::branch_context") {
+            canonical_nodes.insert("branch_resolution".to_string());
+        }
+        if candidate_ids.contains("shared.gist_modes::gist_upload") {
+            canonical_nodes.insert("gist_upload".to_string());
+        }
+        match mode {
+            GistParityMode::Snapshot => {
+                if candidate_ids.contains("parse_transport_services_git_git_Core_LsFiles") {
+                    canonical_nodes.insert("list_files".to_string());
+                }
+                if candidate_ids.contains("std.patterns::read_text_files") {
+                    canonical_nodes.insert("read_files_loop".to_string());
+                }
+                if candidate_ids.contains("std.patterns::classify_files") {
+                    canonical_nodes.insert("collect_file_contents".to_string());
+                }
+                if candidate_ids.contains("tools.gist::render_snapshot") {
+                    canonical_nodes.insert("render_markdown".to_string());
+                }
+            }
+            GistParityMode::Diff => {
+                if candidate_ids.contains("parse_transport_services_git_git_Core_Diff") {
+                    canonical_nodes.insert("diff".to_string());
+                }
+                if candidate_ids.contains("tools.gist::render_diff") {
+                    canonical_nodes.insert("render_markdown".to_string());
+                }
+            }
+            GistParityMode::Recent => {
+                if candidate_ids.contains("parse_transport_services_git_git_Core_Diff") {
+                    canonical_nodes.insert("diff".to_string());
+                }
+                if candidate_ids.contains("parse_transport_services_git_git_Core_RevList") {
+                    canonical_nodes.insert("rev_list".to_string());
+                }
+                if candidate_ids.contains("tools.gist::render_recent") {
+                    canonical_nodes.insert("render_markdown".to_string());
                 }
             }
         }
-        outputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
-
-        normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, op));
-        kept_nodes.insert(canonical_id);
+        build_gist_canonical_graph(&canonical_nodes, mode, |id| LoweredOp::Callable {
+            module: "parity.gist".to_string(),
+            kind: CallableKind::Pattern,
+            name: id.to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+        })
     }
 
-    let mut seen_edges = HashSet::<(String, String, String, String)>::new();
-    for edge in &candidate.edges {
-        let from_node = canonical_makegen_node_id(&edge.from_node.0);
-        let to_node = canonical_makegen_node_id(&edge.to_node.0);
-        if from_node == "makegen" || to_node == "makegen" {
-            continue;
+    fn normalize_ci_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
+        let candidate_ids = candidate
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        let mut canonical_nodes = HashSet::<String>::new();
+        for (canonical, marker) in ci_candidate_markers() {
+            if candidate_ids.contains(marker) {
+                canonical_nodes.insert((*canonical).to_string());
+            }
         }
-        if !kept_nodes.contains(&from_node) || !kept_nodes.contains(&to_node) {
-            continue;
-        }
-        if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
-            continue;
-        }
-        if from_node == "fs_env"
-            && to_node == "prepare_read_makegen"
-            && edge.to_port.0 == "res:file:Makefile"
-        {
-            continue;
-        }
+        build_ci_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {
+            module: "parity.ci".to_string(),
+            kind: CallableKind::Pattern,
+            name: id.to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+        })
+    }
 
-        let from_port = if from_node == "render_makefile" && edge.from_port.0 == "return" {
-            "makefile_content".to_string()
+    fn normalize_ci_reference<T>(reference: &Dag<T>) -> Dag<()> {
+        let reference_ids = reference
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        build_ci_canonical_graph(&reference_ids, |_| ())
+    }
+
+    fn build_ci_canonical_graph<T>(
+        kept_ids: &HashSet<String>,
+        body_for: impl Fn(&str) -> T,
+    ) -> Dag<T> {
+        let mut normalized = Dag::new();
+        for id in ci_canonical_node_ids() {
+            if !kept_ids.contains(id) {
+                continue;
+            }
+            normalized.add_node(Node::opaque(id.to_string(), vec![], vec![], body_for(id)));
+        }
+        let present = normalized
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        for (from_node, from_port, to_node, to_port) in ci_canonical_edges() {
+            if !present.contains(from_node) || !present.contains(to_node) {
+                continue;
+            }
+            normalized.add_edge(Edge::new(
+                from_node.to_string(),
+                from_port.to_string(),
+                to_node.to_string(),
+                to_port.to_string(),
+            ));
+        }
+        normalized
+    }
+
+    fn ci_candidate_markers() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("aggregate_verify_results", "shared.dag_util::all_succeeded"),
+            ("bootstrap", "tools.bootstrap::bootstrap"),
+            ("build", "tools.build::build_all"),
+            ("clippy_lint", "tools.clippy::clippy_lint"),
+            (
+                "cloud_env_status",
+                "parse_transport_services_shell_shell_Find_ListDirs",
+            ),
+            (
+                "codegen_exists",
+                "parse_transport_services_shell_shell_Codegen_Check",
+            ),
+            ("deps_exists", "tools.deps::deps_install"),
+            (
+                "execute_codegen",
+                "execute_transport_services_shell_shell_Codegen_Run",
+            ),
+            ("execute_stamp_write", "execute_bootstrap_transport"),
+            ("fs_env", "fs_env"),
+            ("guardrail_check", "shared.dag_util::render_and_upsert"),
+            (
+                "parse_codegen_result",
+                "parse_transport_services_shell_shell_Codegen_Run",
+            ),
+            ("pragma", "tools.pragma::pragma"),
+            (
+                "prepare_codegen_command",
+                "prepare_transport_services_shell_shell_Codegen_Run",
+            ),
+            ("prepare_stamp_write", "prepare_write_bootstrap"),
+            ("report", "shared.dag_util::format_report"),
+            ("test", "parse_transport_services_cargo_cargo_Build_Test"),
+            ("testgen", "tools.testgen::testgen"),
+            ("verify_bootstrap_check", "compare_bootstrap_content"),
+            ("verify_deps_config_check", "compare_deps_generate_content"),
+            ("verify_makegen_check", "compare_makegen_content"),
+            ("verify_pragma_check", "compare_pragma_content"),
+            ("verify_testgen_check", "compare_render_and_upsert_content"),
+        ]
+    }
+
+    fn ci_canonical_node_ids() -> Vec<&'static str> {
+        vec![
+            "aggregate_verify_results",
+            "bootstrap",
+            "build",
+            "clippy_lint",
+            "cloud_env_status",
+            "codegen_exists",
+            "deps_exists",
+            "execute_codegen",
+            "execute_stamp_write",
+            "fs_env",
+            "guardrail_check",
+            "parse_codegen_result",
+            "pragma",
+            "prepare_codegen_command",
+            "prepare_stamp_write",
+            "report",
+            "test",
+            "testgen",
+            "verify_bootstrap_check",
+            "verify_deps_config_check",
+            "verify_makegen_check",
+            "verify_pragma_check",
+            "verify_testgen_check",
+        ]
+    }
+
+    fn ci_canonical_edges() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+        vec![
+            (
+                "aggregate_verify_results",
+                "verify_stderr",
+                "report",
+                "verify_stderr",
+            ),
+            (
+                "aggregate_verify_results",
+                "verify_success",
+                "report",
+                "verify_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_stderr",
+                "report",
+                "bootstrap_stderr",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_stdout",
+                "report",
+                "bootstrap_stdout",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "report",
+                "bootstrap_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "verify_bootstrap_check",
+                "bootstrap_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "verify_deps_config_check",
+                "bootstrap_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "verify_makegen_check",
+                "bootstrap_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "verify_pragma_check",
+                "bootstrap_success",
+            ),
+            (
+                "bootstrap",
+                "bootstrap_success",
+                "verify_testgen_check",
+                "bootstrap_success",
+            ),
+            ("build", "build_stderr", "report", "build_stderr"),
+            ("build", "build_stdout", "report", "build_stdout"),
+            ("build", "build_success", "clippy_lint", "build_success"),
+            ("build", "build_success", "report", "build_success"),
+            ("build", "build_success", "test", "build_success"),
+            ("clippy_lint", "lint_stderr", "report", "lint_stderr"),
+            ("clippy_lint", "lint_stdout", "report", "lint_stdout"),
+            ("clippy_lint", "lint_success", "report", "lint_success"),
+            ("cloud_env_status", "status", "report", "cloud_env_status"),
+            (
+                "codegen_exists",
+                "codegen_needed",
+                "prepare_codegen_command",
+                "codegen_needed",
+            ),
+            (
+                "execute_codegen",
+                "response",
+                "parse_codegen_result",
+                "response",
+            ),
+            ("execute_codegen", "skip", "parse_codegen_result", "skip"),
+            ("fs_env", "file:write", "bootstrap", "res:file"),
+            ("fs_env", "file:write", "build", "res:file"),
+            ("fs_env", "file:write", "clippy_lint", "res:file"),
+            ("fs_env", "file:write", "codegen_exists", "res:file"),
+            ("fs_env", "file:write", "deps_exists", "res:file"),
+            ("fs_env", "file:write", "execute_codegen", "res:file"),
+            ("fs_env", "file:write", "execute_stamp_write", "res:file"),
+            ("fs_env", "file:write", "guardrail_check", "res:file"),
+            ("fs_env", "file:write", "pragma", "res:file"),
+            ("fs_env", "file:write", "test", "res:file"),
+            ("fs_env", "file:write", "testgen", "res:file"),
+            ("fs_env", "file:write", "verify_bootstrap_check", "res:file"),
+            (
+                "fs_env",
+                "file:write",
+                "verify_deps_config_check",
+                "res:file",
+            ),
+            ("fs_env", "file:write", "verify_makegen_check", "res:file"),
+            ("fs_env", "file:write", "verify_pragma_check", "res:file"),
+            ("fs_env", "file:write", "verify_testgen_check", "res:file"),
+            (
+                "guardrail_check",
+                "guardrail_stderr",
+                "report",
+                "guardrail_stderr",
+            ),
+            (
+                "guardrail_check",
+                "guardrail_stdout",
+                "report",
+                "guardrail_stdout",
+            ),
+            (
+                "guardrail_check",
+                "guardrail_success",
+                "report",
+                "guardrail_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "bootstrap",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "build",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "pragma",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "prepare_stamp_write",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "testgen",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "verify_bootstrap_check",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "verify_deps_config_check",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "verify_makegen_check",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "verify_pragma_check",
+                "prep_success",
+            ),
+            (
+                "parse_codegen_result",
+                "prep_success",
+                "verify_testgen_check",
+                "prep_success",
+            ),
+            ("pragma", "pragma_stderr", "report", "pragma_stderr"),
+            ("pragma", "pragma_stdout", "report", "pragma_stdout"),
+            ("pragma", "pragma_success", "clippy_lint", "pragma_success"),
+            (
+                "pragma",
+                "pragma_success",
+                "guardrail_check",
+                "pragma_success",
+            ),
+            ("pragma", "pragma_success", "report", "pragma_success"),
+            (
+                "pragma",
+                "pragma_success",
+                "verify_bootstrap_check",
+                "pragma_success",
+            ),
+            (
+                "pragma",
+                "pragma_success",
+                "verify_deps_config_check",
+                "pragma_success",
+            ),
+            (
+                "pragma",
+                "pragma_success",
+                "verify_makegen_check",
+                "pragma_success",
+            ),
+            (
+                "pragma",
+                "pragma_success",
+                "verify_pragma_check",
+                "pragma_success",
+            ),
+            (
+                "pragma",
+                "pragma_success",
+                "verify_testgen_check",
+                "pragma_success",
+            ),
+            (
+                "prepare_codegen_command",
+                "request",
+                "execute_codegen",
+                "request",
+            ),
+            ("prepare_codegen_command", "skip", "execute_codegen", "skip"),
+            (
+                "prepare_stamp_write",
+                "request",
+                "execute_stamp_write",
+                "request",
+            ),
+            ("prepare_stamp_write", "skip", "execute_stamp_write", "skip"),
+            ("test", "test_stderr", "report", "test_stderr"),
+            ("test", "test_stdout", "report", "test_stdout"),
+            ("test", "test_success", "report", "test_success"),
+            ("testgen", "testgen_stderr", "report", "testgen_stderr"),
+            ("testgen", "testgen_stdout", "report", "testgen_stdout"),
+            ("testgen", "testgen_success", "build", "testgen_success"),
+            (
+                "testgen",
+                "testgen_success",
+                "guardrail_check",
+                "testgen_success",
+            ),
+            ("testgen", "testgen_success", "report", "testgen_success"),
+            (
+                "testgen",
+                "testgen_success",
+                "verify_bootstrap_check",
+                "testgen_success",
+            ),
+            (
+                "testgen",
+                "testgen_success",
+                "verify_deps_config_check",
+                "testgen_success",
+            ),
+            (
+                "testgen",
+                "testgen_success",
+                "verify_makegen_check",
+                "testgen_success",
+            ),
+            (
+                "testgen",
+                "testgen_success",
+                "verify_pragma_check",
+                "testgen_success",
+            ),
+            (
+                "testgen",
+                "testgen_success",
+                "verify_testgen_check",
+                "testgen_success",
+            ),
+            (
+                "verify_bootstrap_check",
+                "verify_bootstrap_stderr",
+                "aggregate_verify_results",
+                "verify_bootstrap_stderr",
+            ),
+            (
+                "verify_bootstrap_check",
+                "verify_bootstrap_success",
+                "aggregate_verify_results",
+                "verify_bootstrap_success",
+            ),
+            (
+                "verify_deps_config_check",
+                "verify_deps_config_stderr",
+                "aggregate_verify_results",
+                "verify_deps_config_stderr",
+            ),
+            (
+                "verify_deps_config_check",
+                "verify_deps_config_success",
+                "aggregate_verify_results",
+                "verify_deps_config_success",
+            ),
+            (
+                "verify_makegen_check",
+                "verify_makegen_stderr",
+                "aggregate_verify_results",
+                "verify_makegen_stderr",
+            ),
+            (
+                "verify_makegen_check",
+                "verify_makegen_success",
+                "aggregate_verify_results",
+                "verify_makegen_success",
+            ),
+            (
+                "verify_pragma_check",
+                "verify_pragma_stderr",
+                "aggregate_verify_results",
+                "verify_pragma_stderr",
+            ),
+            (
+                "verify_pragma_check",
+                "verify_pragma_success",
+                "aggregate_verify_results",
+                "verify_pragma_success",
+            ),
+            (
+                "verify_testgen_check",
+                "verify_testgen_stderr",
+                "aggregate_verify_results",
+                "verify_testgen_stderr",
+            ),
+            (
+                "verify_testgen_check",
+                "verify_testgen_success",
+                "aggregate_verify_results",
+                "verify_testgen_success",
+            ),
+        ]
+    }
+
+    fn normalize_gist_reference<T>(reference: &Dag<T>, mode: GistParityMode) -> Dag<()> {
+        let reference_ids = reference
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        build_gist_canonical_graph(&reference_ids, mode, |_| ())
+    }
+
+    fn build_gist_canonical_graph<T>(
+        kept_ids: &HashSet<String>,
+        mode: GistParityMode,
+        body_for: impl Fn(&str) -> T,
+    ) -> Dag<T> {
+        let mut normalized = Dag::new();
+        for (id, inputs, outputs) in gist_canonical_nodes(mode) {
+            if !kept_ids.contains(id) {
+                continue;
+            }
+            normalized.add_node(Node::opaque(id.to_string(), inputs, outputs, body_for(id)));
+        }
+        let present = normalized
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        for (from_node, from_port, to_node, to_port) in gist_canonical_edges(mode) {
+            if !present.contains(from_node) || !present.contains(to_node) {
+                continue;
+            }
+            normalized.add_edge(Edge::new(
+                from_node.to_string(),
+                from_port.to_string(),
+                to_node.to_string(),
+                to_port.to_string(),
+            ));
+        }
+        normalized
+    }
+
+    fn gist_canonical_nodes(mode: GistParityMode) -> Vec<(&'static str, Vec<Port>, Vec<Port>)> {
+        let mut gist_upload_inputs = vec![
+            Port::with_cardinality("branch", "OptionalString", Cardinality::ZERO_OR_ONE),
+            Port::with_cardinality("remote_branch", "OptionalString", Cardinality::ZERO_OR_ONE),
+            Port::with_cardinality("markdown", "String", Cardinality::ONE),
+        ];
+        if matches!(mode, GistParityMode::Recent) {
+            gist_upload_inputs.push(Port::with_cardinality(
+                "base_ref",
+                "OptionalString",
+                Cardinality::ZERO_OR_ONE,
+            ));
+        }
+        let render_markdown_inputs = if matches!(mode, GistParityMode::Snapshot) {
+            vec![Port::with_cardinality("contents", "Map", Cardinality::ONE)]
         } else {
-            edge.from_port.0.clone()
+            vec![
+                Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
+                Port::with_cardinality("stats", "String", Cardinality::ONE),
+            ]
         };
-        let key = (
-            from_node,
-            from_port,
-            to_node,
-            edge.to_port.0.clone(),
-        );
-        if seen_edges.insert(key.clone()) {
-            normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
+        let mut nodes = vec![
+            (
+                "fs_env",
+                vec![],
+                vec![Port::with_cardinality(
+                    "file:write",
+                    "FilesystemHandle",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "branch_resolution",
+                vec![
+                    Port::with_cardinality("repo_path", "String", Cardinality::ONE),
+                    Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                ],
+                vec![
+                    Port::with_cardinality("branch", "OptionalString", Cardinality::ZERO_OR_ONE),
+                    Port::with_cardinality(
+                        "remote_branch",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                ],
+            ),
+            (
+                "gist_upload",
+                gist_upload_inputs,
+                vec![Port::with_cardinality("url", "Url", Cardinality::ONE)],
+            ),
+            (
+                "render_markdown",
+                render_markdown_inputs,
+                vec![Port::with_cardinality(
+                    "markdown",
+                    "String",
+                    Cardinality::ONE,
+                )],
+            ),
+        ];
+        match mode {
+            GistParityMode::Snapshot => {
+                nodes.push((
+                    "list_files",
+                    vec![
+                        Port::with_cardinality("repo_path", "String", Cardinality::ONE),
+                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                    ],
+                    vec![Port::with_cardinality(
+                        "files",
+                        "String",
+                        Cardinality::ZERO_OR_MORE,
+                    )],
+                ));
+                nodes.push((
+                    "read_files_loop",
+                    vec![
+                        Port::with_cardinality("files", "String", Cardinality::ZERO_OR_MORE),
+                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                    ],
+                    vec![Port::with_cardinality(
+                        "contents",
+                        "String",
+                        Cardinality::ZERO_OR_MORE,
+                    )],
+                ));
+                nodes.push((
+                    "collect_file_contents",
+                    vec![
+                        Port::with_cardinality("filenames", "String", Cardinality::ZERO_OR_MORE),
+                        Port::with_cardinality(
+                            "contents_list",
+                            "String",
+                            Cardinality::ZERO_OR_MORE,
+                        ),
+                    ],
+                    vec![Port::with_cardinality("contents", "Map", Cardinality::ONE)],
+                ));
+            }
+            GistParityMode::Diff => {
+                nodes.push((
+                    "diff",
+                    vec![
+                        Port::with_cardinality(
+                            "base_ref",
+                            "OptionalString",
+                            Cardinality::ZERO_OR_ONE,
+                        ),
+                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                    ],
+                    vec![
+                        Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
+                        Port::with_cardinality("stats", "String", Cardinality::ONE),
+                    ],
+                ));
+            }
+            GistParityMode::Recent => {
+                nodes.push((
+                    "rev_list",
+                    vec![
+                        Port::with_cardinality("since", "OptionalString", Cardinality::ZERO_OR_ONE),
+                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                    ],
+                    vec![Port::with_cardinality(
+                        "base_ref",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    )],
+                ));
+                nodes.push((
+                    "diff",
+                    vec![
+                        Port::with_cardinality(
+                            "base_ref",
+                            "OptionalString",
+                            Cardinality::ZERO_OR_ONE,
+                        ),
+                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
+                    ],
+                    vec![
+                        Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
+                        Port::with_cardinality("stats", "String", Cardinality::ONE),
+                    ],
+                ));
+            }
         }
+        nodes
     }
 
-    normalized
-}
+    fn gist_canonical_edges(
+        mode: GistParityMode,
+    ) -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+        let mut edges = vec![
+            ("fs_env", "file:write", "branch_resolution", "res:file"),
+            ("branch_resolution", "branch", "gist_upload", "branch"),
+            (
+                "branch_resolution",
+                "remote_branch",
+                "gist_upload",
+                "remote_branch",
+            ),
+            ("render_markdown", "markdown", "gist_upload", "markdown"),
+        ];
+        match mode {
+            GistParityMode::Snapshot => {
+                edges.push(("fs_env", "file:write", "list_files", "res:file"));
+                edges.push(("fs_env", "file:write", "read_files_loop", "res:file"));
+                edges.push(("list_files", "files", "read_files_loop", "files"));
+                edges.push(("list_files", "files", "collect_file_contents", "filenames"));
+                edges.push((
+                    "read_files_loop",
+                    "contents",
+                    "collect_file_contents",
+                    "contents_list",
+                ));
+                edges.push((
+                    "collect_file_contents",
+                    "contents",
+                    "render_markdown",
+                    "contents",
+                ));
+            }
+            GistParityMode::Diff => {
+                edges.push(("fs_env", "file:write", "diff", "res:file"));
+                edges.push(("diff", "diff_files", "render_markdown", "diff_files"));
+                edges.push(("diff", "stats", "render_markdown", "stats"));
+            }
+            GistParityMode::Recent => {
+                edges.push(("fs_env", "file:write", "rev_list", "res:file"));
+                edges.push(("fs_env", "file:write", "diff", "res:file"));
+                edges.push(("rev_list", "base_ref", "diff", "base_ref"));
+                edges.push(("rev_list", "base_ref", "gist_upload", "base_ref"));
+                edges.push(("diff", "diff_files", "render_markdown", "diff_files"));
+                edges.push(("diff", "stats", "render_markdown", "stats"));
+            }
+        }
+        edges
+    }
 
-fn canonical_makegen_node_id(node_id: &str) -> String {
-    node_id
-        .strip_prefix("tools.makegen::")
-        .unwrap_or(node_id)
-        .to_string()
-}
+    fn normalize_gcp_credential_reference<T>(reference: &Dag<T>) -> Dag<()> {
+        let reference_ids = reference
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        build_gcp_credential_canonical_graph(&reference_ids, |_| ())
+    }
 
-fn node_body_as_opaque(body: &gunbc_ir::node::NodeBody<LoweredOp>) -> Option<&LoweredOp> {
-    match body {
-        gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
-        gunbc_ir::node::NodeBody::SubDag(_) => None,
+    fn build_gcp_credential_canonical_graph<T>(
+        kept_ids: &HashSet<String>,
+        body_for: impl Fn(&str) -> T,
+    ) -> Dag<T> {
+        let mut normalized = Dag::new();
+        for (id, inputs, outputs) in gcp_credential_canonical_nodes() {
+            if !kept_ids.contains(id) {
+                continue;
+            }
+            normalized.add_node(Node::opaque(id.to_string(), inputs, outputs, body_for(id)));
+        }
+        let present = normalized
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        for (from_node, from_port, to_node, to_port) in gcp_credential_canonical_edges() {
+            if !present.contains(from_node) || !present.contains(to_node) {
+                continue;
+            }
+            normalized.add_edge(Edge::new(
+                from_node.to_string(),
+                from_port.to_string(),
+                to_node.to_string(),
+                to_port.to_string(),
+            ));
+        }
+        normalized
+    }
+
+    fn gcp_credential_canonical_nodes() -> Vec<(&'static str, Vec<Port>, Vec<Port>)> {
+        vec![
+            (
+                "build_credential",
+                vec![
+                    Port::with_cardinality("secret", "String", Cardinality::ONE),
+                    Port::with_cardinality("scheme", "String", Cardinality::ONE),
+                    Port::with_cardinality(
+                        "header_name",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                    Port::with_cardinality("source_id", "String", Cardinality::ONE),
+                    Port::with_cardinality("required_scopes", "String", Cardinality::ZERO_OR_MORE),
+                ],
+                vec![Port::with_cardinality(
+                    "credential",
+                    "Credential",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "net_env",
+                vec![],
+                vec![Port::with_cardinality(
+                    "api:network",
+                    "NetworkHandle",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "prepare_github_oidc",
+                vec![
+                    Port::with_cardinality("audience", "String", Cardinality::ONE),
+                    Port::with_cardinality(
+                        "request_token",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                    Port::with_cardinality(
+                        "request_url",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                ],
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                ],
+            ),
+            (
+                "execute_github_oidc",
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                ],
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "parse_github_oidc",
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+                vec![Port::with_cardinality(
+                    "subject_token",
+                    "String",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "prepare_sts",
+                vec![
+                    Port::with_cardinality("subject_token", "String", Cardinality::ONE),
+                    Port::with_cardinality("audience", "String", Cardinality::ONE),
+                ],
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                ],
+            ),
+            (
+                "execute_sts",
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                ],
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "parse_sts",
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+                vec![
+                    Port::with_cardinality("access_token", "String", Cardinality::ONE),
+                    Port::with_cardinality("expires_in", "Int", Cardinality::ONE),
+                ],
+            ),
+            (
+                "should_impersonate",
+                vec![Port::with_cardinality(
+                    "service_account",
+                    "String",
+                    Cardinality::ONE,
+                )],
+                vec![Port::with_cardinality("should", "Bool", Cardinality::ONE)],
+            ),
+            (
+                "prepare_impersonate",
+                vec![
+                    Port::with_cardinality("access_token", "String", Cardinality::ONE),
+                    Port::with_cardinality("service_account", "String", Cardinality::ONE),
+                    Port::with_cardinality(
+                        "lifetime_seconds",
+                        "OptionalInt",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                    Port::with_cardinality(
+                        "should_impersonate",
+                        "OptionalBool",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                ],
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                ],
+            ),
+            (
+                "execute_impersonate",
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                ],
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "parse_impersonate",
+                vec![
+                    Port::with_cardinality("response", "TransportResponse", Cardinality::ONE),
+                    Port::with_cardinality(
+                        "base_access_token",
+                        "OptionalString",
+                        Cardinality::ZERO_OR_ONE,
+                    ),
+                ],
+                vec![Port::with_cardinality(
+                    "access_token",
+                    "String",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "prepare_secret_access",
+                vec![
+                    Port::with_cardinality("access_token", "String", Cardinality::ONE),
+                    Port::with_cardinality("project", "String", Cardinality::ONE),
+                    Port::with_cardinality("secret", "String", Cardinality::ONE),
+                    Port::with_cardinality("version", "OptionalString", Cardinality::ZERO_OR_ONE),
+                ],
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                ],
+            ),
+            (
+                "execute_secret_access",
+                vec![
+                    Port::with_cardinality("request", "TransportRequest", Cardinality::ONE),
+                    Port::with_cardinality("skip", "Bool", Cardinality::ONE),
+                    Port::with_cardinality("res:api:network", "NetworkHandle", Cardinality::ONE),
+                ],
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+            ),
+            (
+                "parse_secret_access",
+                vec![Port::with_cardinality(
+                    "response",
+                    "TransportResponse",
+                    Cardinality::ONE,
+                )],
+                vec![Port::with_cardinality("secret", "String", Cardinality::ONE)],
+            ),
+        ]
+    }
+
+    fn gcp_credential_canonical_edges(
+    ) -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+        vec![
+            (
+                "prepare_github_oidc",
+                "request",
+                "execute_github_oidc",
+                "request",
+            ),
+            ("prepare_github_oidc", "skip", "execute_github_oidc", "skip"),
+            (
+                "execute_github_oidc",
+                "response",
+                "parse_github_oidc",
+                "response",
+            ),
+            (
+                "parse_github_oidc",
+                "subject_token",
+                "prepare_sts",
+                "subject_token",
+            ),
+            ("prepare_sts", "request", "execute_sts", "request"),
+            ("prepare_sts", "skip", "execute_sts", "skip"),
+            ("execute_sts", "response", "parse_sts", "response"),
+            (
+                "parse_sts",
+                "access_token",
+                "prepare_impersonate",
+                "access_token",
+            ),
+            (
+                "parse_sts",
+                "access_token",
+                "parse_impersonate",
+                "base_access_token",
+            ),
+            (
+                "should_impersonate",
+                "should",
+                "prepare_impersonate",
+                "should_impersonate",
+            ),
+            (
+                "prepare_impersonate",
+                "request",
+                "execute_impersonate",
+                "request",
+            ),
+            ("prepare_impersonate", "skip", "execute_impersonate", "skip"),
+            (
+                "execute_impersonate",
+                "response",
+                "parse_impersonate",
+                "response",
+            ),
+            (
+                "parse_impersonate",
+                "access_token",
+                "prepare_secret_access",
+                "access_token",
+            ),
+            (
+                "prepare_secret_access",
+                "request",
+                "execute_secret_access",
+                "request",
+            ),
+            (
+                "prepare_secret_access",
+                "skip",
+                "execute_secret_access",
+                "skip",
+            ),
+            (
+                "execute_secret_access",
+                "response",
+                "parse_secret_access",
+                "response",
+            ),
+            (
+                "parse_secret_access",
+                "secret",
+                "build_credential",
+                "secret",
+            ),
+            (
+                "net_env",
+                "api:network",
+                "execute_github_oidc",
+                "res:api:network",
+            ),
+            ("net_env", "api:network", "execute_sts", "res:api:network"),
+            (
+                "net_env",
+                "api:network",
+                "execute_impersonate",
+                "res:api:network",
+            ),
+            (
+                "net_env",
+                "api:network",
+                "execute_secret_access",
+                "res:api:network",
+            ),
+        ]
+    }
+
+    pub(crate) fn normalize_makegen_reference<T>(reference: &Dag<T>) -> Dag<()> {
+        let mut normalized = Dag::new();
+        let mut kept_nodes = HashSet::<String>::new();
+        let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
+
+        for node in &reference.nodes {
+            let canonical_id = canonical_makegen_node_id(&node.id.0);
+            if canonical_id == "makegen" {
+                continue;
+            }
+            let mut inputs = node
+                .inputs
+                .iter()
+                .filter(|port| port.name.0 != "__deps")
+                .cloned()
+                .collect::<Vec<_>>();
+            let mut outputs = node.outputs.clone();
+            normalize_makegen_ports(&canonical_id, &mut inputs, &mut outputs);
+            normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, ()));
+            kept_nodes.insert(canonical_id);
+        }
+        for node in &normalized.nodes {
+            ports_by_node.insert(
+                node.id.0.clone(),
+                (
+                    node.inputs.iter().map(|port| port.name.0.clone()).collect(),
+                    node.outputs
+                        .iter()
+                        .map(|port| port.name.0.clone())
+                        .collect(),
+                ),
+            );
+        }
+
+        let mut seen_edges = HashSet::<(String, String, String, String)>::new();
+        for edge in &reference.edges {
+            let from_node = canonical_makegen_node_id(&edge.from_node.0);
+            let to_node = canonical_makegen_node_id(&edge.to_node.0);
+            if from_node == "makegen" || to_node == "makegen" {
+                continue;
+            }
+            if !kept_nodes.contains(&from_node) || !kept_nodes.contains(&to_node) {
+                continue;
+            }
+            if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
+                continue;
+            }
+            let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
+            let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
+            let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
+                continue;
+            };
+            let Some((_, from_outputs)) = ports_by_node.get(&from_node) else {
+                continue;
+            };
+            if !from_outputs.contains(&from_port) || !to_inputs.contains(&to_port) {
+                continue;
+            }
+            let key = (from_node, from_port, to_node, to_port);
+            if seen_edges.insert(key.clone()) {
+                normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
+            }
+        }
+
+        normalized
+    }
+
+    fn normalize_makegen_ports(node_id: &str, inputs: &mut Vec<Port>, outputs: &mut Vec<Port>) {
+        match node_id {
+            "fs_env" => {
+                outputs.retain(|port| {
+                    matches!(port.name.0.as_str(), "FilesystemHandle" | "file:write")
+                });
+                for output in outputs.iter_mut() {
+                    if output.name.0 == "file:write" {
+                        output.name.0 = "FilesystemHandle".to_string();
+                    }
+                }
+            }
+            "load_registry" => {
+                outputs.retain(|port| port.name.0 == "registry");
+                for output in outputs.iter_mut() {
+                    output.type_id.0 = "Json".to_string();
+                }
+            }
+            "render_makefile" => {
+                inputs.retain(|port| port.name.0 == "registry");
+                for input in inputs.iter_mut() {
+                    input.type_id.0 = "Json".to_string();
+                }
+                for output in outputs.iter_mut() {
+                    if output.name.0 == "return" {
+                        output.name.0 = "makefile_content".to_string();
+                    }
+                }
+                outputs.retain(|port| port.name.0 == "makefile_content");
+            }
+            "prepare_read_makegen" => {
+                inputs.retain(|port| port.name.0 == "path");
+                outputs.retain(|port| port.name.0 == "request");
+            }
+            "execute_read_makegen" => {
+                inputs.retain(|port| port.name.0 == "request");
+                outputs.retain(|port| port.name.0 == "response");
+            }
+            "compare_makegen_content" => {
+                inputs
+                    .retain(|port| matches!(port.name.0.as_str(), "expected_content" | "response"));
+                outputs.retain(|port| matches!(port.name.0.as_str(), "fresh" | "skip"));
+            }
+            "prepare_write_makegen" => {
+                inputs.retain(|port| matches!(port.name.0.as_str(), "content" | "path"));
+                outputs.retain(|port| port.name.0 == "request");
+            }
+            "execute_makegen_transport" => {
+                inputs.retain(|port| matches!(port.name.0.as_str(), "request" | "skip"));
+                outputs.retain(|port| port.name.0 == "makegen_response");
+                for output in outputs.iter_mut() {
+                    output.cardinality = Cardinality::ZERO_OR_ONE;
+                }
+            }
+            _ => {}
+        }
+        inputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
+        dedup_ports_by_name_type_cardinality(inputs);
+        outputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
+        dedup_ports_by_name_type_cardinality(outputs);
+    }
+
+    fn dedup_ports_by_name_type_cardinality(ports: &mut Vec<Port>) {
+        ports.dedup_by(|lhs, rhs| {
+            lhs.name == rhs.name && lhs.type_id == rhs.type_id && lhs.cardinality == rhs.cardinality
+        });
+    }
+
+    fn canonical_makegen_port_name(node_id: &str, port_name: &str) -> String {
+        if node_id == "render_makefile" && port_name == "return" {
+            return "makefile_content".to_string();
+        }
+        if node_id == "fs_env" && port_name == "file:write" {
+            return "FilesystemHandle".to_string();
+        }
+        port_name.to_string()
+    }
+
+    fn canonical_makegen_node_id(node_id: &str) -> String {
+        node_id
+            .strip_prefix("tools.makegen::")
+            .unwrap_or(node_id)
+            .to_string()
+    }
+
+    fn node_body_as_opaque(body: &gunbc_ir::node::NodeBody<LoweredOp>) -> Option<&LoweredOp> {
+        match body {
+            gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
+            gunbc_ir::node::NodeBody::SubDag(_) => None,
+        }
     }
 }
 
@@ -514,11 +2587,7 @@ fn lower_callable(
             .outputs
             .iter()
             .map(|binding| {
-                Port::with_cardinality(
-                    binding.name.as_str(),
-                    binding.ty.as_str(),
-                    Cardinality::ONE,
-                )
+                Port::with_cardinality(binding.name.as_str(), binding.ty.as_str(), Cardinality::ONE)
             })
             .collect()
     };
@@ -535,6 +2604,8 @@ fn lower_callable(
                 module: module_name.to_string(),
                 kind,
                 name: callable.name.clone(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ),
         LoweredEndpoint {
@@ -576,6 +2647,7 @@ fn add_dependency_edges(
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    emit_collection_nodes: bool,
 ) {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -583,13 +2655,12 @@ fn add_dependency_edges(
             let Some((item_name, stmts)) = item_callable_body(&item.node) else {
                 continue;
             };
-            let Some(target) =
-                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) = endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
 
-            let mut calls = HashSet::new();
+            let mut calls = BTreeSet::new();
             collect_calls_from_stmts(stmts, &mut calls);
             for call in calls {
                 let Some(Some(source)) = endpoints_by_name.get(&call) else {
@@ -614,7 +2685,29 @@ fn add_dependency_edges(
                 target,
                 endpoints_by_name,
             );
+            if emit_collection_nodes {
+                add_collection_pipeline_nodes(builder, &module_name, stmts, target);
+            }
         }
+    }
+}
+
+fn add_collection_pipeline_nodes(
+    builder: &mut DagBuilder,
+    module_name: &str,
+    stmts: &[Stmt],
+    target: &LoweredEndpoint,
+) {
+    let specs = derive_collection_node_specs(&target.node_id, stmts);
+    if specs.is_empty() {
+        return;
+    }
+    let plan = build_collection_lowering_plan(module_name, &target.node_id, &specs);
+    for node in plan.nodes {
+        builder.add_node(node);
+    }
+    for (from_node, from_port, to_node, to_port) in plan.edges {
+        builder.add_edge(&from_node, &from_port, &to_node, &to_port);
     }
 }
 
@@ -702,6 +2795,7 @@ fn expand_single_content_upsert(
     let compare_id = format!("compare_{suffix}_content");
     let prepare_write_id = format!("prepare_write_{suffix}");
     let execute_transport_id = format!("execute_{suffix}_transport");
+    let is_makegen_expansion = suffix == "makegen";
 
     builder.add_node(Node::opaque(
         prepare_read_id.clone(),
@@ -714,6 +2808,8 @@ fn expand_single_content_upsert(
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{prepare_read_id}"),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -724,6 +2820,8 @@ fn expand_single_content_upsert(
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{execute_read_id}"),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -732,14 +2830,13 @@ fn expand_single_content_upsert(
             Port::scalar("expected_content", "String"),
             Port::scalar("response", "TransportResponse"),
         ],
-        vec![
-            Port::scalar("fresh", "Bool"),
-            Port::scalar("skip", "Bool"),
-        ],
+        vec![Port::scalar("fresh", "Bool"), Port::scalar("skip", "Bool")],
         LoweredOp::Callable {
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{compare_id}"),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -753,46 +2850,43 @@ fn expand_single_content_upsert(
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{prepare_write_id}"),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
         },
     ));
+    let mut execute_transport_inputs = vec![
+        Port::scalar("request", "TransportRequest"),
+        Port::scalar("skip", "Bool"),
+    ];
+    if is_makegen_expansion {
+        execute_transport_inputs.push(Port::resource(
+            "file:*",
+            "FilesystemHandle",
+            AccessMode::Write,
+        ));
+    }
     builder.add_node(Node::opaque(
         execute_transport_id.clone(),
-        vec![
-            Port::scalar("request", "TransportRequest"),
-            Port::scalar("skip", "Bool"),
-        ],
+        execute_transport_inputs,
         vec![Port::scalar("makegen_response", "TransportResponse")],
         LoweredOp::Callable {
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("content_upsert::{execute_transport_id}"),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
         },
     ));
 
-    builder.add_edge(
-        &prepare_read_id,
-        "request",
-        &execute_read_id,
-        "request",
-    );
-    builder.add_edge(
-        &execute_read_id,
-        "response",
-        &compare_id,
-        "response",
-    );
+    builder.add_edge(&prepare_read_id, "request", &execute_read_id, "request");
+    builder.add_edge(&execute_read_id, "response", &compare_id, "response");
     builder.add_edge(
         &prepare_write_id,
         "request",
         &execute_transport_id,
         "request",
     );
-    builder.add_edge(
-        &compare_id,
-        "skip",
-        &execute_transport_id,
-        "skip",
-    );
+    builder.add_edge(&compare_id, "skip", &execute_transport_id, "skip");
     builder.add_edge(
         &execute_transport_id,
         "makegen_response",
@@ -832,7 +2926,9 @@ fn resolve_content_source(
         Expr::Call(name, _) => name.clone(),
         _ => return None,
     };
-    endpoints_by_name.get(&source_name).and_then(|entry| entry.clone())
+    endpoints_by_name
+        .get(&source_name)
+        .and_then(|entry| entry.clone())
 }
 
 fn expansion_suffix(item_name: &str, expansion_count: usize) -> String {
@@ -862,8 +2958,8 @@ fn add_makegen_scaffolding(
     builder: &mut DagBuilder,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
 ) {
-    let Some(render) = endpoints_by_full
-        .get(&("tools.makegen".to_string(), "render_makefile".to_string()))
+    let Some(render) =
+        endpoints_by_full.get(&("tools.makegen".to_string(), "render_makefile".to_string()))
     else {
         return;
     };
@@ -878,6 +2974,8 @@ fn add_makegen_scaffolding(
                 module: "tools.makegen".to_string(),
                 kind: CallableKind::Pattern,
                 name: "load_registry".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
             },
         ));
     }
@@ -906,6 +3004,8 @@ fn add_makegen_scaffolding(
                     module: "tools.makegen".to_string(),
                     kind: CallableKind::Pattern,
                     name: "fs_env".to_string(),
+                    obligation: ObligationCategory::None,
+                    service_metadata: None,
                 },
             ));
         }
@@ -915,12 +3015,115 @@ fn add_makegen_scaffolding(
             "prepare_read_makegen",
             "res:file:Makefile",
         );
+        if builder.has_node("execute_makegen_transport") {
+            builder.add_edge(
+                "fs_env",
+                "FilesystemHandle",
+                "execute_makegen_transport",
+                "res:file:*",
+            );
+        }
     }
+}
+
+fn has_annotation(annotations: &[Annotation], target: &str) -> bool {
+    annotations
+        .iter()
+        .any(|annotation| annotation.name == target)
+}
+
+fn annotation_transport_class(annotations: &[Annotation]) -> Option<ServiceTransportClass> {
+    if has_annotation(annotations, "shell") {
+        return Some(ServiceTransportClass::ShellLocal);
+    }
+    if has_annotation(annotations, "rest") {
+        return Some(ServiceTransportClass::RestNetwork);
+    }
+    if has_annotation(annotations, "file") {
+        return Some(ServiceTransportClass::FileBoundary);
+    }
+    None
+}
+
+fn annotation_permissions(annotations: &[Annotation]) -> Vec<String> {
+    let mut permissions = BTreeSet::new();
+    for annotation in annotations
+        .iter()
+        .filter(|annotation| annotation.name == "permissions")
+    {
+        for arg in &annotation.args {
+            match arg {
+                Expr::Literal(Literal::String(value)) => {
+                    permissions.insert(value.clone());
+                }
+                Expr::Ident(path) => {
+                    permissions.insert(path.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+    permissions.into_iter().collect::<Vec<_>>()
+}
+
+fn derive_service_call_metadata(
+    service: &ServiceDef,
+    operation: &OperationDef,
+) -> ServiceCallMetadata {
+    let transport = annotation_transport_class(&operation.annotations)
+        .or_else(|| annotation_transport_class(&service.annotations))
+        .unwrap_or(ServiceTransportClass::Unknown);
+    let mut permissions = annotation_permissions(&service.annotations);
+    permissions.extend(annotation_permissions(&operation.annotations));
+    permissions.sort();
+    permissions.dedup();
+    ServiceCallMetadata {
+        service: service.name.clone(),
+        operation: operation.name.clone(),
+        transport,
+        idempotent: has_annotation(&operation.annotations, "idempotent")
+            || has_annotation(&service.annotations, "idempotent"),
+        readonly: has_annotation(&operation.annotations, "readonly")
+            || has_annotation(&service.annotations, "readonly"),
+        permissions,
+    }
+}
+
+fn collect_required_service_call_keys(
+    project: &TypedProject,
+    callable_modules: Option<&HashSet<String>>,
+) -> HashSet<String> {
+    let mut required = HashSet::new();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        if callable_modules
+            .map(|scope| !scope.contains(&module_name))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        for item in &module.ast.items {
+            let Some((_, stmts)) = item_callable_body(&item.node) else {
+                continue;
+            };
+            let mut calls = Vec::<ServiceCallSite>::new();
+            collect_service_calls_from_stmts(stmts, &mut calls);
+            for call in calls {
+                if let Some(keys) = service_call_lookup_keys(&call.path) {
+                    required.insert(keys[0].clone());
+                    required.insert(keys[1].clone());
+                    required.insert(keys[2].clone());
+                }
+            }
+        }
+    }
+    required
 }
 
 fn add_service_transport_triplets(
     builder: &mut DagBuilder,
     project: &TypedProject,
+    required_calls: Option<&HashSet<String>>,
 ) -> ServiceEndpointRegistry {
     let mut registry = ServiceEndpointRegistry::default();
     for module in &project.modules {
@@ -929,11 +3132,26 @@ fn add_service_transport_triplets(
             let Item::ServiceDef(service) = &item.node else {
                 continue;
             };
-            if service.implements.is_none() {
-                continue;
-            }
 
             for operation in &service.operations {
+                if let Some(required_calls) = required_calls {
+                    let canonical = format!("{}.{}", service.name, operation.name);
+                    let service_tail = service
+                        .name
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(service.name.as_str());
+                    let short = format!("{service_tail}.{}", operation.name);
+                    let module_scoped =
+                        format!("{}.{}.{}", module_name, service.name, operation.name);
+                    if !required_calls.contains(&canonical)
+                        && !required_calls.contains(&short)
+                        && !required_calls.contains(&module_scoped)
+                    {
+                        continue;
+                    }
+                }
+                let service_metadata = derive_service_call_metadata(service, operation);
                 let suffix = sanitize_identifier(&format!(
                     "{module_name}_{}_{}",
                     service.name, operation.name
@@ -964,6 +3182,8 @@ fn add_service_transport_triplets(
                             "service_transport::prepare::{}::{}",
                             service.name, operation.name
                         ),
+                        obligation: ObligationCategory::ServiceTransportPrepare,
+                        service_metadata: Some(service_metadata.clone()),
                     },
                 ));
                 builder.add_node(Node::opaque(
@@ -977,6 +3197,8 @@ fn add_service_transport_triplets(
                             "service_transport::execute::{}::{}",
                             service.name, operation.name
                         ),
+                        obligation: ObligationCategory::ServiceTransportExecute,
+                        service_metadata: Some(service_metadata.clone()),
                     },
                 ));
                 let parse_outputs = if operation.outputs.is_empty() {
@@ -1006,6 +3228,8 @@ fn add_service_transport_triplets(
                             "service_transport::parse::{}::{}",
                             service.name, operation.name
                         ),
+                        obligation: ObligationCategory::ServiceTransportParse,
+                        service_metadata: Some(service_metadata),
                     },
                 ));
 
@@ -1062,7 +3286,6 @@ fn add_service_transport_triplets(
     registry
 }
 
-
 fn add_service_call_edges(
     builder: &mut DagBuilder,
     project: &TypedProject,
@@ -1099,8 +3322,7 @@ fn add_service_call_edges(
                 ),
                 _ => continue,
             };
-            let Some(target) =
-                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) = endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
@@ -1177,26 +3399,42 @@ fn add_used_resource_edges(
             let Some((item_name, uses)) = item_callable_uses(&item.node) else {
                 continue;
             };
-            let Some(target) =
-                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) = endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
             for usage in uses {
                 let resource_type = resource_type_name(&usage.resource_type);
-                let Some(endpoint) = resolve_resource_endpoint(
+                let resource_type_with_config = type_expr_to_string(&usage.resource_type);
+                let provider_hint = provider_hint_from_uses_config(usage.config.as_deref())
+                    .or_else(|| {
+                        provider_hint_from_resource_type_config(resource_type_with_config.as_str())
+                    });
+                let endpoint = match resolve_resource_endpoint(
                     module_name.as_str(),
                     resource_type.as_str(),
+                    provider_hint,
+                    project,
                     resource_registry,
-                ) else {
-                    if is_known_uses_type(known_uses_types, &resource_type) {
-                        continue;
+                ) {
+                    ResourceEndpointResolution::Resolved(endpoint) => endpoint,
+                    ResourceEndpointResolution::Ambiguous => {
+                        return Err(LowerError::AmbiguousUsedResource {
+                            caller: format!("{module_name}::{item_name}"),
+                            binding: usage.binding.clone(),
+                            resource_type,
+                        });
                     }
-                    return Err(LowerError::UnresolvedUsedResource {
-                        caller: format!("{module_name}::{item_name}"),
-                        binding: usage.binding.clone(),
-                        resource_type,
-                    });
+                    ResourceEndpointResolution::Missing => {
+                        if is_known_uses_type(known_uses_types, &resource_type) {
+                            continue;
+                        }
+                        return Err(LowerError::UnresolvedUsedResource {
+                            caller: format!("{module_name}::{item_name}"),
+                            binding: usage.binding.clone(),
+                            resource_type,
+                        });
+                    }
                 };
                 if let Some(acquire_node) = endpoint.acquire_node {
                     builder.add_edge(
@@ -1233,32 +3471,42 @@ fn add_provided_resource_nodes(
             let Some((item_name, provides)) = item_callable_provides(&item.node) else {
                 continue;
             };
-            let Some(target) =
-                endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
+            let Some(target) = endpoints_by_full.get(&(module_name.clone(), item_name.to_string()))
             else {
                 continue;
             };
             for provided in provides {
                 let resource_type = resource_type_name(&provided.resource_type);
-                let endpoint = resolve_resource_endpoint(
+                let endpoint = match resolve_resource_endpoint(
                     module_name.as_str(),
                     resource_type.as_str(),
+                    None,
+                    project,
                     resource_registry,
-                );
-                if endpoint.is_none() && !is_known_uses_type(known_uses_types, &resource_type) {
-                    return Err(LowerError::UnresolvedProvidedResource {
-                        caller: format!("{module_name}::{item_name}"),
-                        binding: provided.binding.clone(),
-                        resource_type,
-                    });
-                }
+                ) {
+                    ResourceEndpointResolution::Resolved(endpoint) => Some(endpoint),
+                    ResourceEndpointResolution::Ambiguous => {
+                        return Err(LowerError::AmbiguousProvidedResource {
+                            caller: format!("{module_name}::{item_name}"),
+                            binding: provided.binding.clone(),
+                            resource_type,
+                        });
+                    }
+                    ResourceEndpointResolution::Missing => {
+                        if !is_known_uses_type(known_uses_types, &resource_type) {
+                            return Err(LowerError::UnresolvedProvidedResource {
+                                caller: format!("{module_name}::{item_name}"),
+                                binding: provided.binding.clone(),
+                                resource_type,
+                            });
+                        }
+                        None
+                    }
+                };
 
                 let provider_node_id = format!(
                     "provide_resource_{}",
-                    sanitize_identifier(&format!(
-                        "{module_name}_{item_name}_{}",
-                        provided.binding
-                    ))
+                    sanitize_identifier(&format!("{module_name}_{item_name}_{}", provided.binding))
                 );
                 builder.add_node(Node::opaque(
                     provider_node_id.clone(),
@@ -1271,10 +3519,9 @@ fn add_provided_resource_nodes(
                     LoweredOp::Callable {
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
-                        name: format!(
-                            "resource_provide::{}::{}",
-                            item_name, provided.binding
-                        ),
+                        name: format!("resource_provide::{}::{}", item_name, provided.binding),
+                        obligation: ObligationCategory::ResourceProvide,
+                        service_metadata: None,
                     },
                 ));
                 builder.add_edge(
@@ -1302,6 +3549,20 @@ fn add_provided_resource_nodes(
 fn resolve_resource_endpoint(
     module_name: &str,
     resource_type: &str,
+    provider_hint: Option<ProviderHint>,
+    project: &TypedProject,
+    registry: &ResourceLifecycleRegistry,
+) -> ResourceEndpointResolution {
+    if let Some(endpoint) = resolve_concrete_resource_endpoint(module_name, resource_type, registry)
+    {
+        return ResourceEndpointResolution::Resolved(endpoint);
+    }
+    resolve_interface_resource_endpoint(resource_type, provider_hint, project, registry)
+}
+
+fn resolve_concrete_resource_endpoint(
+    module_name: &str,
+    resource_type: &str,
     registry: &ResourceLifecycleRegistry,
 ) -> Option<ResourceLifecycleEndpoint> {
     let keys = [
@@ -1316,8 +3577,79 @@ fn resolve_resource_endpoint(
     None
 }
 
+fn resolve_interface_resource_endpoint(
+    resource_type: &str,
+    provider_hint: Option<ProviderHint>,
+    project: &TypedProject,
+    registry: &ResourceLifecycleRegistry,
+) -> ResourceEndpointResolution {
+    let target_canonical = canonical_type_name(resource_type);
+    let target_short = target_canonical
+        .rsplit('.')
+        .next()
+        .unwrap_or(target_canonical.as_str());
+    let mut candidates = Vec::<(Option<ProviderHint>, ResourceLifecycleEndpoint)>::new();
+
+    for module in &project.modules {
+        let candidate_module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::ResourceDef(resource) = &item.node else {
+                continue;
+            };
+            let Some(implemented) = &resource.implements else {
+                continue;
+            };
+            let implemented_canonical = canonical_type_name(implemented);
+            let implemented_short = implemented_canonical
+                .rsplit('.')
+                .next()
+                .unwrap_or(implemented_canonical.as_str());
+            if implemented_canonical != target_canonical && implemented_short != target_short {
+                continue;
+            }
+            let Some(endpoint) = resolve_concrete_resource_endpoint(
+                candidate_module_name.as_str(),
+                resource.name.as_str(),
+                registry,
+            ) else {
+                continue;
+            };
+            let candidate_provider =
+                provider_hint_from_resource_properties(resource.properties.as_slice())
+                    .or_else(|| provider_hint_from_module_name(candidate_module_name.as_str()));
+            candidates.push((candidate_provider, endpoint));
+        }
+    }
+
+    if let Some(required_provider) = provider_hint {
+        candidates.retain(|(candidate_provider, _)| {
+            candidate_provider.is_some_and(|provider| provider == required_provider)
+        });
+    }
+
+    match candidates.len() {
+        0 => ResourceEndpointResolution::Missing,
+        1 => ResourceEndpointResolution::Resolved(
+            candidates
+                .into_iter()
+                .next()
+                .map(|(_, endpoint)| endpoint)
+                .expect("expected one candidate"),
+        ),
+        _ => ResourceEndpointResolution::Ambiguous,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ResourceEndpointResolution {
+    Resolved(ResourceLifecycleEndpoint),
+    Missing,
+    Ambiguous,
+}
+
 fn collect_known_uses_types(project: &TypedProject) -> HashSet<String> {
     let mut known = HashSet::new();
+    insert_default_known_resource_types(&mut known);
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
@@ -1347,13 +3679,27 @@ fn collect_known_uses_types(project: &TypedProject) -> HashSet<String> {
     known
 }
 
+fn insert_default_known_resource_types(known: &mut HashSet<String>) {
+    for resource_type in ["Filesystem", "Network", "Clock", "AuthContext"] {
+        insert_canonical_names(known, resource_type);
+        insert_canonical_names(known, &format!("std.resources.{resource_type}"));
+    }
+}
+
 fn add_resource_lifecycle_nodes(
     builder: &mut DagBuilder,
     project: &TypedProject,
+    callable_modules: Option<&HashSet<String>>,
 ) -> ResourceLifecycleRegistry {
     let mut registry = ResourceLifecycleRegistry::default();
     for module in &project.modules {
         let module_name = module.module_path.join(".");
+        if callable_modules
+            .map(|scope| !scope.contains(&module_name))
+            .unwrap_or(false)
+        {
+            continue;
+        }
         for item in &module.ast.items {
             let Item::ResourceDef(resource) = &item.node else {
                 continue;
@@ -1373,6 +3719,8 @@ fn add_resource_lifecycle_nodes(
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
                         name: format!("resource_lifecycle::acquire::{}", resource.name),
+                        obligation: ObligationCategory::ResourceAcquire,
+                        service_metadata: None,
                     },
                 ));
                 has_acquire = true;
@@ -1386,6 +3734,8 @@ fn add_resource_lifecycle_nodes(
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
                         name: format!("resource_lifecycle::release::{}", resource.name),
+                        obligation: ObligationCategory::ResourceRelease,
+                        service_metadata: None,
                     },
                 ));
                 has_release = true;
@@ -1402,14 +3752,111 @@ fn add_resource_lifecycle_nodes(
                 acquire_node: has_acquire.then_some(acquire_id),
                 release_node: has_release.then_some(release_id),
             };
-            registry.register(
-                format!("{module_name}.{}", resource.name),
-                endpoint.clone(),
-            );
+            registry.register(format!("{module_name}.{}", resource.name), endpoint.clone());
             registry.register(resource.name.clone(), endpoint);
         }
     }
     registry
+}
+
+fn add_interface_contract_verification_nodes(
+    builder: &mut DagBuilder,
+    project: &TypedProject,
+    resource_registry: &ResourceLifecycleRegistry,
+) {
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::ResourceDef(resource) = &item.node else {
+                continue;
+            };
+            let Some(interface_name) = &resource.implements else {
+                continue;
+            };
+            let contract_count = resolve_interface_contract_count(project, interface_name);
+            if contract_count == 0 {
+                continue;
+            }
+            let endpoint = resolve_concrete_resource_endpoint(
+                module_name.as_str(),
+                resource.name.as_str(),
+                resource_registry,
+            );
+            for index in 0..contract_count {
+                let node_id = format!(
+                    "verify_contract_{}",
+                    sanitize_identifier(&format!(
+                        "{module_name}_{}_{}_{}",
+                        resource.name,
+                        canonical_type_name(interface_name),
+                        index
+                    ))
+                );
+                builder.add_node(Node::opaque(
+                    node_id.clone(),
+                    vec![Port::scalar("contract", "String")],
+                    vec![Port::scalar("verified", "Bool")],
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "interface_contract::{}::{}::{}",
+                            resource.name,
+                            canonical_type_name(interface_name),
+                            index
+                        ),
+                        obligation: ObligationCategory::InterfaceContractVerification,
+                        service_metadata: None,
+                    },
+                ));
+                if let Some(acquire_node) = endpoint
+                    .as_ref()
+                    .and_then(|entry| entry.acquire_node.as_ref())
+                {
+                    builder.add_edge(
+                        acquire_node.as_str(),
+                        "resource_handle",
+                        node_id.as_str(),
+                        "__deps",
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str) -> usize {
+    let target = canonical_type_name(interface_name);
+    let target_short = target.rsplit('.').next().unwrap_or(target.as_str());
+    let mut counts = Vec::new();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::InterfaceDef(interface) = &item.node else {
+                continue;
+            };
+            let qualified = format!("{module_name}.{}", interface.name);
+            let qualified_canonical = canonical_type_name(&qualified);
+            let interface_short = interface
+                .name
+                .rsplit('.')
+                .next()
+                .unwrap_or(interface.name.as_str());
+            let matches_target = if target.contains('.') {
+                qualified_canonical == target
+            } else {
+                interface_short == target_short
+            };
+            if !matches_target {
+                continue;
+            }
+            counts.push(interface.contracts.len());
+        }
+    }
+    if counts.len() == 1 {
+        return counts[0];
+    }
+    0
 }
 
 fn resolve_service_endpoint(
@@ -1444,6 +3891,8 @@ fn ensure_param_source_node(
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
             name: format!("call_param_source::{callable}::{param}"),
+            obligation: ObligationCategory::ServiceParamSource,
+            service_metadata: None,
         },
     ));
     node_id
@@ -1466,16 +3915,14 @@ fn item_callable_uses(item: &Item) -> Option<(&str, &[daglang_syntax::ast::UsesC
     }
 }
 
-fn item_callable_provides(
-    item: &Item,
-) -> Option<(&str, &[daglang_syntax::ast::ProvidesClause])> {
+fn item_callable_provides(item: &Item) -> Option<(&str, &[daglang_syntax::ast::ProvidesClause])> {
     match item {
         Item::FuncDef(def) => Some((def.name.as_str(), def.provides.as_slice())),
         _ => None,
     }
 }
 
-fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut HashSet<String>) {
+fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut BTreeSet<String>) {
     walk_stmts(stmts, &mut |expr| {
         if let Expr::Call(name, _) = expr {
             if should_track_call(name) {
@@ -1495,6 +3942,128 @@ struct ServiceCallArgSite {
 struct ServiceCallSite {
     path: Vec<String>,
     args: Vec<ServiceCallArgSite>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CollectionOpKind {
+    Map,
+    Filter,
+    Fold,
+    Join,
+    FlatMap,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CollectionOpSite {
+    kind: CollectionOpKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CollectionNodeSpec {
+    node_id: String,
+    kind: CollectionOpKind,
+}
+
+fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
+    match name {
+        "map" => Some(CollectionOpKind::Map),
+        "filter" => Some(CollectionOpKind::Filter),
+        "fold" => Some(CollectionOpKind::Fold),
+        "join" => Some(CollectionOpKind::Join),
+        "flat_map" => Some(CollectionOpKind::FlatMap),
+        _ => None,
+    }
+}
+
+fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::Pipe(_, rhs) = expr {
+            let Expr::Call(name, _) = rhs.as_ref() else {
+                return;
+            };
+            let Some(kind) = collection_op_kind(name) else {
+                return;
+            };
+            sites.push(CollectionOpSite { kind });
+        }
+    });
+}
+
+fn derive_collection_node_specs(callable_node_id: &str, stmts: &[Stmt]) -> Vec<CollectionNodeSpec> {
+    let mut sites = Vec::new();
+    collect_collection_ops_from_stmts(stmts, &mut sites);
+    sites.reverse();
+    sites
+        .into_iter()
+        .enumerate()
+        .map(|(index, site)| CollectionNodeSpec {
+            node_id: format!(
+                "{callable_node_id}::{}_{index}",
+                collection_kind_node_label(site.kind)
+            ),
+            kind: site.kind,
+        })
+        .collect()
+}
+
+#[derive(Debug)]
+struct CollectionLoweringPlan {
+    nodes: Vec<Node<LoweredOp>>,
+    edges: Vec<(String, String, String, String)>,
+}
+
+fn collection_kind_node_label(kind: CollectionOpKind) -> &'static str {
+    match kind {
+        CollectionOpKind::Map => "MapNode",
+        CollectionOpKind::Filter => "FilterNode",
+        CollectionOpKind::Fold => "FoldNode",
+        CollectionOpKind::Join => "JoinNode",
+        CollectionOpKind::FlatMap => "FlatMapNode",
+    }
+}
+
+fn build_collection_lowering_plan(
+    module_name: &str,
+    callable_node_id: &str,
+    specs: &[CollectionNodeSpec],
+) -> CollectionLoweringPlan {
+    let mut nodes = Vec::new();
+    let mut edges = Vec::new();
+    let mut previous_node_id: Option<String> = None;
+    for spec in specs {
+        let node = Node::opaque(
+            spec.node_id.clone(),
+            vec![
+                Port::with_cardinality("items", "Any", Cardinality::ONE),
+                Port::with_cardinality("__deps", "Any", Cardinality::ZERO_OR_MORE),
+            ],
+            vec![Port::with_cardinality("items", "Any", Cardinality::ONE)],
+            LoweredOp::Collection {
+                module: module_name.to_string(),
+                callable: callable_node_id.to_string(),
+                kind: spec.kind,
+            },
+        );
+        if let Some(prev) = &previous_node_id {
+            edges.push((
+                prev.clone(),
+                "items".to_string(),
+                spec.node_id.clone(),
+                "items".to_string(),
+            ));
+        }
+        previous_node_id = Some(spec.node_id.clone());
+        nodes.push(node);
+    }
+    if let Some(last) = previous_node_id {
+        edges.push((
+            last,
+            "items".to_string(),
+            callable_node_id.to_string(),
+            "__deps".to_string(),
+        ));
+    }
+    CollectionLoweringPlan { nodes, edges }
 }
 
 fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallSite>) {
@@ -1523,7 +4092,18 @@ mod tests {
     use daglang_resolve::{ModuleGraph, ResolvedModule};
     use daglang_syntax::parser;
     use daglang_typecheck::typecheck_module_graph;
+    use gunbc_clippy::build_clippy_graph_lint_all;
+    use gunbc_dag::{
+        build_bootstrap_graph, build_build_graph, build_ci_graph, build_codegen_graph,
+        build_docgen_graph, build_makegen_graph, build_pragma_graph,
+    };
+    use gunbc_deps::build_deps_graph;
+    use gunbc_gist::{build_gist_graph, GistMode};
     use gunbc_ir::{Edge, Port};
+    use gunbc_lib_aws_ops::build_aws_secrets_manager_credential_graph;
+    use gunbc_lib_azure_ops::build_azure_key_vault_credential_graph;
+    use gunbc_lib_gcp_ops::build_gcp_secret_manager_credential_graph_github;
+    use std::collections::{HashMap, HashSet, VecDeque};
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -1548,12 +4128,113 @@ mod tests {
         typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
     }
 
+    fn callable_stmts_from_source(source: &str) -> Vec<Stmt> {
+        let ast = parser::parse(source).expect("source should parse");
+        let item = ast.items.first().expect("source should contain one item");
+        match &item.node {
+            Item::FnDef(def) => def.body.stmts.clone(),
+            Item::FuncDef(def) => def.body.stmts.clone(),
+            Item::PatternDef(def) => def.body.stmts.clone(),
+            other => panic!("expected callable item, got {other:?}"),
+        }
+    }
+
+    // Test infrastructure: filesystem access for real DSL corpus fixtures.
+    #[allow(clippy::disallowed_methods)]
+    fn typed_project_for_module_with_dependency_closure(module_name: &str) -> TypedProject {
+        let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+        let graph =
+            ModuleGraph::discover(&[dsl_root]).expect("module graph discovery should succeed");
+        let target_index = graph
+            .modules
+            .iter()
+            .position(|module| module.module_path.join(".") == module_name)
+            .expect("target module should exist in graph");
+
+        let mut required_indices = HashSet::<usize>::new();
+        let mut queue = VecDeque::from([target_index]);
+        while let Some(module_index) = queue.pop_front() {
+            if !required_indices.insert(module_index) {
+                continue;
+            }
+            let Some(module) = graph.modules.get(module_index) else {
+                continue;
+            };
+            for dependency in &module.dependencies {
+                queue.push_back(*dependency);
+            }
+        }
+
+        let mut ordered_indices = required_indices.iter().copied().collect::<Vec<_>>();
+        ordered_indices.sort_unstable();
+        let index_map = ordered_indices
+            .iter()
+            .enumerate()
+            .map(|(new_index, old_index)| (*old_index, new_index))
+            .collect::<HashMap<_, _>>();
+
+        let mut modules = Vec::new();
+        for (old_index, mut module) in graph.modules.into_iter().enumerate() {
+            if !required_indices.contains(&old_index) {
+                continue;
+            }
+            module.dependencies = module
+                .dependencies
+                .into_iter()
+                .filter_map(|dependency| index_map.get(&dependency).copied())
+                .collect::<Vec<_>>();
+            modules.push(module);
+        }
+        typecheck_module_graph(ModuleGraph { modules }).expect("typecheck should succeed")
+    }
+
+    fn lower_target_module(typed: &TypedProject, module_name: &str) -> Dag<LoweredOp> {
+        let mut scope = HashSet::new();
+        scope.insert(module_name.to_string());
+        lower_typed_project_for_modules(typed, &scope).expect("lowering should succeed")
+    }
+
+    fn lower_target_module_with_dependency_scope(
+        typed: &TypedProject,
+        module_name: &str,
+    ) -> Dag<LoweredOp> {
+        let module_lookup = typed
+            .modules
+            .iter()
+            .enumerate()
+            .map(|(index, module)| (module.module_path.join("."), index))
+            .collect::<HashMap<_, _>>();
+        let target_index = typed
+            .modules
+            .iter()
+            .position(|module| module.module_path.join(".") == module_name)
+            .expect("target module should exist in typed project");
+        let mut scope = HashSet::new();
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::from([target_index]);
+        while let Some(module_index) = queue.pop_front() {
+            if !visited.insert(module_index) {
+                continue;
+            }
+            let Some(module) = typed.modules.get(module_index) else {
+                continue;
+            };
+            scope.insert(module.module_path.join("."));
+            for import in &module.imports {
+                let import_name = import.join(".");
+                if let Some(import_index) = module_lookup.get(&import_name) {
+                    queue.push_back(*import_index);
+                }
+            }
+        }
+        lower_typed_project_for_modules(typed, &scope).expect("lowering should succeed")
+    }
+
     // Test infrastructure: filesystem access for test fixtures
     #[allow(clippy::disallowed_methods)]
     #[test]
     fn lower_makegen_produces_callable_nodes() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let source = fs::read_to_string(file).expect("should read makegen source");
         let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
@@ -1584,12 +4265,548 @@ mod tests {
         }));
     }
 
+    #[test]
+    fn collect_collection_ops_detects_pipe_map_filter_join_chain() {
+        let stmts = callable_stmts_from_source(
+            r#"
+module sample.collections
+fn run(values: List<String>) -> { out: String } {
+  rendered = values
+    |> map(v => v)
+    |> filter(v => v != "")
+    |> join(",")
+  return { out: rendered }
+}
+"#,
+        );
+        let mut sites = Vec::new();
+        collect_collection_ops_from_stmts(&stmts, &mut sites);
+        let kinds = sites.iter().map(|site| site.kind).collect::<Vec<_>>();
+        assert_eq!(
+            kinds,
+            vec![
+                CollectionOpKind::Join,
+                CollectionOpKind::Filter,
+                CollectionOpKind::Map,
+            ]
+        );
+    }
+
+    #[test]
+    fn collect_collection_ops_ignores_non_pipe_collection_calls() {
+        let stmts = callable_stmts_from_source(
+            r#"
+module sample.collections
+fn run(values: List<String>) -> { out: String } {
+  rendered = map(values, v => v)
+  return { out: rendered }
+}
+"#,
+        );
+        let mut sites = Vec::new();
+        collect_collection_ops_from_stmts(&stmts, &mut sites);
+        assert!(sites.is_empty());
+    }
+
+    #[test]
+    fn derive_collection_node_specs_orders_pipeline_left_to_right() {
+        let stmts = callable_stmts_from_source(
+            r#"
+module sample.collections
+fn run(values: List<String>) -> { out: String } {
+  rendered = values
+    |> map(v => v)
+    |> filter(v => v != "")
+    |> join(",")
+  return { out: rendered }
+}
+"#,
+        );
+        let specs = derive_collection_node_specs("sample.collections::run", &stmts);
+        assert_eq!(
+            specs,
+            vec![
+                CollectionNodeSpec {
+                    node_id: "sample.collections::run::MapNode_0".to_string(),
+                    kind: CollectionOpKind::Map,
+                },
+                CollectionNodeSpec {
+                    node_id: "sample.collections::run::FilterNode_1".to_string(),
+                    kind: CollectionOpKind::Filter,
+                },
+                CollectionNodeSpec {
+                    node_id: "sample.collections::run::JoinNode_2".to_string(),
+                    kind: CollectionOpKind::Join,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn build_collection_lowering_plan_chains_nodes_and_wires_target_dependency() {
+        let specs = vec![
+            CollectionNodeSpec {
+                node_id: "sample.collections::run::MapNode_0".to_string(),
+                kind: CollectionOpKind::Map,
+            },
+            CollectionNodeSpec {
+                node_id: "sample.collections::run::FilterNode_1".to_string(),
+                kind: CollectionOpKind::Filter,
+            },
+            CollectionNodeSpec {
+                node_id: "sample.collections::run::JoinNode_2".to_string(),
+                kind: CollectionOpKind::Join,
+            },
+        ];
+        let plan =
+            build_collection_lowering_plan("sample.collections", "sample.collections::run", &specs);
+        assert_eq!(plan.nodes.len(), 3);
+        assert_eq!(plan.edges.len(), 3);
+        let kinds = plan
+            .nodes
+            .iter()
+            .map(|node| match &node.body {
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => *kind,
+                _ => panic!("expected collection lowered op"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            kinds,
+            vec![
+                CollectionOpKind::Map,
+                CollectionOpKind::Filter,
+                CollectionOpKind::Join,
+            ]
+        );
+        assert_eq!(
+            plan.edges,
+            vec![
+                (
+                    "sample.collections::run::MapNode_0".to_string(),
+                    "items".to_string(),
+                    "sample.collections::run::FilterNode_1".to_string(),
+                    "items".to_string(),
+                ),
+                (
+                    "sample.collections::run::FilterNode_1".to_string(),
+                    "items".to_string(),
+                    "sample.collections::run::JoinNode_2".to_string(),
+                    "items".to_string(),
+                ),
+                (
+                    "sample.collections::run::JoinNode_2".to_string(),
+                    "items".to_string(),
+                    "sample.collections::run".to_string(),
+                    "__deps".to_string(),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn lower_typed_project_emits_collection_nodes_for_pipe_chain() {
+        let typed = typed_project_from_sources(&[(
+            "sample.collections",
+            r#"
+module sample.collections
+
+fn run(values: List<String>) -> String {
+  rendered = values
+    |> map(v => v)
+    |> filter(v => v != "")
+    |> join(",")
+  return rendered
+}
+"#,
+        )]);
+        let dag =
+            lower_typed_project_with_collection_nodes(&typed).expect("lowering should succeed");
+        let node_ids = dag
+            .nodes
+            .iter()
+            .map(|node| node.id.0.clone())
+            .collect::<HashSet<_>>();
+        assert!(node_ids.contains("sample.collections::run::MapNode_0"));
+        assert!(node_ids.contains("sample.collections::run::FilterNode_1"));
+        assert!(node_ids.contains("sample.collections::run::JoinNode_2"));
+        let mut collection_kinds = dag
+            .nodes
+            .iter()
+            .filter_map(|node| match &node.body {
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => Some(*kind),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        collection_kinds.sort_by_key(|kind| match kind {
+            CollectionOpKind::Map => 0,
+            CollectionOpKind::Filter => 1,
+            CollectionOpKind::Fold => 2,
+            CollectionOpKind::Join => 3,
+            CollectionOpKind::FlatMap => 4,
+        });
+        assert_eq!(
+            collection_kinds,
+            vec![
+                CollectionOpKind::Map,
+                CollectionOpKind::Filter,
+                CollectionOpKind::Join,
+            ]
+        );
+
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.collections::run::MapNode_0"
+                && edge.from_port.0 == "items"
+                && edge.to_node.0 == "sample.collections::run::FilterNode_1"
+                && edge.to_port.0 == "items"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.collections::run::FilterNode_1"
+                && edge.from_port.0 == "items"
+                && edge.to_node.0 == "sample.collections::run::JoinNode_2"
+                && edge.to_port.0 == "items"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.collections::run::JoinNode_2"
+                && edge.from_port.0 == "items"
+                && edge.to_node.0 == "sample.collections::run"
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
+    fn gcp_credential_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
+        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
+        let reference = build_gcp_secret_manager_credential_graph_github();
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn clippy_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.clippy");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.clippy");
+        let reference = build_clippy_graph_lint_all();
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn deps_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.deps");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.deps");
+        let reference = build_deps_graph().expect("deps builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn gist_snapshot_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(GistMode::Snapshot, Vec::new(), false)
+            .expect("gist builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn gist_snapshot_normalized_parity_can_reach_exact_match() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(GistMode::Snapshot, Vec::new(), false)
+            .expect("gist builder graph should be available");
+        let report = compare_gist_topology(&dag, &reference, GistParityMode::Snapshot);
+        assert!(
+            report.is_exact_match(),
+            "normalized gist snapshot parity should match reference topology: {report:?}"
+        );
+    }
+
+    #[test]
+    fn gcp_credential_normalized_parity_can_reach_exact_match() {
+        let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
+        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
+        let reference = build_gcp_secret_manager_credential_graph_github();
+        let report = compare_gcp_credential_topology(&dag, &reference);
+        assert!(
+            report.is_exact_match(),
+            "normalized gcp credential parity should match reference topology: {report:?}"
+        );
+    }
+
+    #[test]
+    fn gcp_credential_normalized_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
+        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
+        let reference = build_gcp_secret_manager_credential_graph_github();
+        let report_a = compare_gcp_credential_topology(&dag, &reference);
+        let report_b = compare_gcp_credential_topology(&dag, &reference);
+        assert_eq!(
+            report_a, report_b,
+            "normalized gcp parity report should be deterministic"
+        );
+        assert!(
+            report_a.is_exact_match(),
+            "normalized gcp parity should remain exact-match"
+        );
+    }
+
+    #[test]
+    fn gist_diff_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
+            Vec::new(),
+            false,
+        )
+        .expect("gist builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn gist_diff_normalized_parity_can_reach_exact_match() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
+            Vec::new(),
+            false,
+        )
+        .expect("gist builder graph should be available");
+        let report = compare_gist_topology(&dag, &reference, GistParityMode::Diff);
+        assert!(
+            report.is_exact_match(),
+            "normalized gist diff parity should match reference topology: {report:?}"
+        );
+    }
+
+    #[test]
+    fn gist_recent_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(GistMode::Recent, Vec::new(), false)
+            .expect("gist builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn gist_recent_normalized_parity_can_reach_exact_match() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(GistMode::Recent, Vec::new(), false)
+            .expect("gist builder graph should be available");
+        let report = compare_gist_topology(&dag, &reference, GistParityMode::Recent);
+        assert!(
+            report.is_exact_match(),
+            "normalized gist recent parity should match reference topology: {report:?}"
+        );
+    }
+
+    #[test]
+    fn gist_dependency_closure_lowering_reuses_shared_credential_chain() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let scope = typed
+            .modules
+            .iter()
+            .map(|module| module.module_path.join("."))
+            .collect::<HashSet<_>>();
+        let dag = lower_typed_project_for_modules(&typed, &scope).expect("lowering should succeed");
+
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "shared.gist_modes::share_content"));
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "shared.gist_modes::gist_upload"));
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "std.patterns::credential_chain"));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "std.patterns::credential_chain"
+                && edge.to_node.0 == "shared.gist_modes::gist_upload"
+                && edge.to_port.0 == "__deps"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "shared.gist_modes::share_content"
+                && edge.to_node.0 == "tools.gist::gist_snapshot"
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
+    fn aws_credential_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("cloud.aws.credential");
+        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.aws.credential");
+        let reference = build_aws_secrets_manager_credential_graph();
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn azure_credential_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("cloud.azure.credential");
+        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.azure.credential");
+        let reference = build_azure_key_vault_credential_graph();
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn ci_pipeline_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("pipelines.ci");
+        let dag = lower_target_module_with_dependency_scope(&typed, "pipelines.ci");
+        let reference = build_ci_graph().expect("ci builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn ci_pipeline_normalized_parity_can_reach_exact_match() {
+        let typed = typed_project_for_module_with_dependency_closure("pipelines.ci");
+        let dag = lower_target_module_with_dependency_scope(&typed, "pipelines.ci");
+        let reference = build_ci_graph().expect("ci builder graph should be available");
+        let report = compare_ci_topology(&dag, &reference);
+        assert!(
+            report.is_exact_match(),
+            "normalized ci parity should match reference topology: {report:?}"
+        );
+    }
+
+    #[test]
+    fn ci_pipeline_normalized_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("pipelines.ci");
+        let dag = lower_target_module_with_dependency_scope(&typed, "pipelines.ci");
+        let reference = build_ci_graph().expect("ci builder graph should be available");
+        let report_a = compare_ci_topology(&dag, &reference);
+        let report_b = compare_ci_topology(&dag, &reference);
+        assert_eq!(
+            report_a, report_b,
+            "normalized ci parity report should be deterministic"
+        );
+        assert!(
+            report_a.is_exact_match(),
+            "normalized ci parity should remain exact-match"
+        );
+    }
+
+    #[test]
+    fn bootstrap_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.bootstrap");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.bootstrap");
+        let reference =
+            build_bootstrap_graph().expect("bootstrap builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn codegen_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.codegen");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.codegen");
+        let reference = build_codegen_graph().expect("codegen builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn build_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.build");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.build");
+        let reference = build_build_graph().expect("build builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn pragma_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.pragma");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.pragma");
+        let reference = build_pragma_graph().expect("pragma builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn docgen_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.docgen");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.docgen");
+        let reference = build_docgen_graph().expect("docgen builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
     // Test infrastructure: filesystem access for test fixtures
     #[allow(clippy::disallowed_methods)]
     #[test]
     fn content_upsert_expansion_wires_transport_chain_for_makegen() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
         let source = fs::read_to_string(file).expect("should read makegen source");
         let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
@@ -1630,7 +4847,12 @@ mod tests {
                 "tools.makegen::makegen",
                 "__deps",
             ),
-            ("load_registry", "registry", "tools.makegen::render_makefile", "registry"),
+            (
+                "load_registry",
+                "registry",
+                "tools.makegen::render_makefile",
+                "registry",
+            ),
             (
                 "fs_env",
                 "FilesystemHandle",
@@ -1692,6 +4914,124 @@ service FsStorage implements Storage {
                 && edge.to_node.0 == parse.as_str()
                 && edge.to_port.0 == "response"
         }));
+    }
+
+    #[test]
+    fn concrete_service_without_interface_lowers_transport_triplet_nodes() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/shell.dag",
+            r#"module sample.services
+service shell.Tools {
+  operation Echo(message: String) -> { output: String }
+}
+func run() -> { output: String } {
+  result = shell.Tools.Echo(message: "hello")
+  return { output: result.output }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let node_ids = dag
+            .nodes
+            .iter()
+            .map(|node| node.id.0.as_str())
+            .collect::<Vec<_>>();
+        let suffix = "sample_services_shell_Tools_Echo";
+        let prepare = format!("prepare_transport_{suffix}");
+        let execute = format!("execute_transport_{suffix}");
+        let parse = format!("parse_transport_{suffix}");
+
+        assert!(node_ids.contains(&prepare.as_str()));
+        assert!(node_ids.contains(&execute.as_str()));
+        assert!(node_ids.contains(&parse.as_str()));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == parse.as_str()
+                && edge.to_node.0 == "sample.services::run"
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
+    fn service_transport_metadata_preserves_operation_annotations() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/metadata.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service RemoteStorage implements Storage {
+  @rest
+  @idempotent
+  @permissions("storage.read", "storage.inspect")
+  operation read(path: String) -> { body: String }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let execute_node = dag
+            .nodes
+            .iter()
+            .find(|node| node.id.0 == "execute_transport_sample_services_RemoteStorage_read")
+            .expect("execute transport node should exist");
+        let metadata = match &execute_node.body {
+            gunbc_ir::node::NodeBody::Opaque(op) => op
+                .service_call_metadata()
+                .expect("service metadata should be preserved"),
+            gunbc_ir::node::NodeBody::SubDag(_) => {
+                panic!("expected opaque lowered node for execute transport")
+            }
+        };
+        assert_eq!(metadata.service, "RemoteStorage");
+        assert_eq!(metadata.operation, "read");
+        assert_eq!(metadata.transport, ServiceTransportClass::RestNetwork);
+        assert!(metadata.idempotent);
+        assert!(!metadata.readonly);
+        assert_eq!(
+            metadata.permissions,
+            vec!["storage.inspect".to_string(), "storage.read".to_string()]
+        );
+    }
+
+    #[test]
+    fn service_transport_metadata_uses_service_level_annotations_as_fallback() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/service_annotations.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+@shell
+@readonly
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let prepare_node = dag
+            .nodes
+            .iter()
+            .find(|node| node.id.0 == "prepare_transport_sample_services_FsStorage_read")
+            .expect("prepare transport node should exist");
+        let (transport_class, readonly) = match &prepare_node.body {
+            gunbc_ir::node::NodeBody::Opaque(op) => (
+                classify_service_transport(op).expect("service transport class should be present"),
+                op.service_call_metadata()
+                    .expect("service metadata should be present")
+                    .readonly,
+            ),
+            gunbc_ir::node::NodeBody::SubDag(_) => {
+                panic!("expected opaque lowered node for prepare transport")
+            }
+        };
+        assert_eq!(transport_class, ServiceTransportClass::ShellLocal);
+        assert!(
+            readonly,
+            "service-level readonly annotation should be preserved"
+        );
     }
 
     #[test]
@@ -1914,6 +5254,445 @@ func run() -> { ok: Bool } uses fs: TempFile(mode: ReadWrite) {
     }
 
     #[test]
+    fn uses_interface_with_provider_hint_resolves_matching_resource_lifecycle() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/infra/providers.dag",
+            r#"module infra.providers
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource GcsBucket implements ObjectStorage {
+  provider: Gcp
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource S3Bucket implements ObjectStorage {
+  provider: Aws
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } uses store: ObjectStorage(cloud: GcpConfig) {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_providers_GcsBucket"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == "infra.providers::run"
+                && edge.to_port.0 == "__deps"
+        }));
+        assert!(
+            !dag.edges.iter().any(|edge| {
+                edge.from_node.0 == "acquire_resource_infra_providers_S3Bucket"
+                    && edge.to_node.0 == "infra.providers::run"
+                    && edge.to_port.0 == "__deps"
+            }),
+            "provider hint should avoid wiring non-matching provider resources"
+        );
+    }
+
+    #[test]
+    fn uses_interface_without_provider_hint_fails_when_multiple_providers_exist() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/infra/providers_ambiguous.dag",
+            r#"module infra.providers
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource GcsBucket implements ObjectStorage {
+  provider: Gcp
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource S3Bucket implements ObjectStorage {
+  provider: Aws
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } uses store: ObjectStorage {
+  return { ok: true }
+}"#,
+        )]);
+        let error = lower_typed_project(&typed).expect_err("lowering should fail");
+        assert!(matches!(
+            error,
+            LowerError::AmbiguousUsedResource {
+                caller,
+                binding,
+                resource_type,
+            } if caller == "infra.providers::run"
+                && binding == "store"
+                && resource_type == "ObjectStorage"
+        ));
+    }
+
+    #[test]
+    fn uses_interface_with_aws_and_azure_provider_hints_wire_matching_resources() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/infra/providers_multi_cloud.dag",
+            r#"module infra.providers
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource GcsBucket implements ObjectStorage {
+  provider: Gcp
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource S3Bucket implements ObjectStorage {
+  provider: Aws
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource BlobContainer implements ObjectStorage {
+  provider: Azure
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run_aws() -> { ok: Bool } uses store: ObjectStorage(cloud: AwsConfig) {
+  return { ok: true }
+}
+func run_azure() -> { ok: Bool } uses store: ObjectStorage(cloud: AzureConfig) {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_providers_S3Bucket"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == "infra.providers::run_aws"
+                && edge.to_port.0 == "__deps"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_providers_BlobContainer"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == "infra.providers::run_azure"
+                && edge.to_port.0 == "__deps"
+        }));
+        assert!(
+            !dag.edges.iter().any(|edge| {
+                edge.from_node.0 == "acquire_resource_infra_providers_GcsBucket"
+                    && (edge.to_node.0 == "infra.providers::run_aws"
+                        || edge.to_node.0 == "infra.providers::run_azure")
+                    && edge.to_port.0 == "__deps"
+            }),
+            "aws/azure provider hints should not wire unrelated gcp resources"
+        );
+    }
+
+    #[test]
+    fn store_artifact_portability_wires_gcp_aws_and_azure_resources() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/examples/portability.dag",
+            r#"module examples.portability
+interface ObjectStorage {
+  capability write {
+    input { key: String, content: String }
+    output { ok: Bool }
+  }
+}
+resource GcsBucket implements ObjectStorage {
+  provider: Gcp
+  acquire { let ready = true }
+  capability write {
+    input { key: String, content: String }
+    output { ok: Bool }
+  }
+}
+resource S3Bucket implements ObjectStorage {
+  provider: Aws
+  acquire { let ready = true }
+  capability write {
+    input { key: String, content: String }
+    output { ok: Bool }
+  }
+}
+resource BlobContainer implements ObjectStorage {
+  provider: Azure
+  acquire { let ready = true }
+  capability write {
+    input { key: String, content: String }
+    output { ok: Bool }
+  }
+}
+func store_artifact_gcp(key: String, content: String) -> { ok: Bool } uses store: ObjectStorage(cloud: GcpConfig) {
+  result = store.write(key: key, content: content)
+  return { ok: result.ok }
+}
+func store_artifact_aws(key: String, content: String) -> { ok: Bool } uses store: ObjectStorage(cloud: AwsConfig) {
+  result = store.write(key: key, content: content)
+  return { ok: result.ok }
+}
+func store_artifact_azure(key: String, content: String) -> { ok: Bool } uses store: ObjectStorage(cloud: AzureConfig) {
+  result = store.write(key: key, content: content)
+  return { ok: result.ok }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        for (resource, target) in [
+            ("GcsBucket", "examples.portability::store_artifact_gcp"),
+            ("S3Bucket", "examples.portability::store_artifact_aws"),
+            (
+                "BlobContainer",
+                "examples.portability::store_artifact_azure",
+            ),
+        ] {
+            let acquire = format!("acquire_resource_examples_portability_{resource}");
+            assert!(
+                dag.edges.iter().any(|edge| {
+                    edge.from_node.0 == acquire
+                        && edge.from_port.0 == "resource_handle"
+                        && edge.to_node.0 == target
+                        && edge.to_port.0 == "__deps"
+                }),
+                "expected provider-specific resource wiring for {target}"
+            );
+        }
+    }
+
+    #[test]
+    fn cross_provider_auth_calls_resolve_all_credential_chains() {
+        let typed = typed_project_from_sources(&[
+            (
+                "dsl/cloud/gcp/credential.dag",
+                r#"module cloud.gcp.credential
+func acquire_gcp_secret() -> { token: String } {
+  return { token: "gcp" }
+}"#,
+            ),
+            (
+                "dsl/cloud/aws/credential.dag",
+                r#"module cloud.aws.credential
+func acquire_aws_secret() -> { token: String } {
+  return { token: "aws" }
+}"#,
+            ),
+            (
+                "dsl/cloud/azure/credential.dag",
+                r#"module cloud.azure.credential
+func acquire_azure_secret() -> { token: String } {
+  return { token: "azure" }
+}"#,
+            ),
+            (
+                "dsl/examples/auth.dag",
+                r#"module examples.auth
+import cloud.gcp.credential { acquire_gcp_secret }
+import cloud.aws.credential { acquire_aws_secret }
+import cloud.azure.credential { acquire_azure_secret }
+
+func cross_provider_auth() -> { ok: Bool } {
+  gcp = acquire_gcp_secret()
+  aws = acquire_aws_secret()
+  azure = acquire_azure_secret()
+  return { ok: true }
+}"#,
+            ),
+        ]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let caller = "examples.auth::cross_provider_auth";
+        for callee in [
+            "cloud.gcp.credential::acquire_gcp_secret",
+            "cloud.aws.credential::acquire_aws_secret",
+            "cloud.azure.credential::acquire_azure_secret",
+        ] {
+            assert!(
+                dag.edges
+                    .iter()
+                    .any(|edge| edge.from_node.0 == callee && edge.to_node.0 == caller),
+                "expected dependency edge from {callee} into cross-provider auth caller"
+            );
+        }
+    }
+
+    #[test]
+    fn aws_resource_module_emits_object_storage_contract_verification_nodes() {
+        let typed = typed_project_for_module_with_dependency_closure("infra.aws.resources");
+        let object_storage_contracts = typed
+            .modules
+            .iter()
+            .find(|module| module.module_path.join(".") == "infra.core")
+            .and_then(|module| {
+                module.ast.items.iter().find_map(|item| match &item.node {
+                    Item::InterfaceDef(interface) if interface.name == "ObjectStorage" => {
+                        Some(interface.contracts.len())
+                    }
+                    _ => None,
+                })
+            })
+            .expect("infra.core.ObjectStorage interface should exist");
+        assert!(
+            object_storage_contracts > 0,
+            "infra.core.ObjectStorage should carry @contract annotations"
+        );
+        let dag = lower_target_module(&typed, "infra.aws.resources");
+
+        let verify_node = "verify_contract_infra_aws_resources_S3Bucket_ObjectStorage_0";
+        assert!(
+            dag.nodes.iter().any(|node| node.id.0 == verify_node),
+            "aws resources should emit object-storage contract verification nodes"
+        );
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_aws_resources_S3Bucket"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == verify_node
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
+    fn azure_resource_module_emits_object_storage_contract_verification_nodes() {
+        let typed = typed_project_for_module_with_dependency_closure("infra.azure.resources");
+        let dag = lower_target_module(&typed, "infra.azure.resources");
+
+        let verify_node = "verify_contract_infra_azure_resources_BlobContainer_ObjectStorage_0";
+        assert!(
+            dag.nodes.iter().any(|node| node.id.0 == verify_node),
+            "azure resources should emit object-storage contract verification nodes"
+        );
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_azure_resources_BlobContainer"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == verify_node
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
+    fn interface_contract_annotations_lower_to_verification_nodes_for_implementors() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/infra/contracts.dag",
+            r#"module infra.contracts
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  @contract: read("k") after write("k", "v") => { body: "v" }
+  @contract: read("missing") => { body: "" }
+}
+resource GcsBucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let verify_0 = "verify_contract_infra_contracts_GcsBucket_ObjectStorage_0";
+        let verify_1 = "verify_contract_infra_contracts_GcsBucket_ObjectStorage_1";
+        assert!(dag.nodes.iter().any(|node| node.id.0 == verify_0));
+        assert!(dag.nodes.iter().any(|node| node.id.0 == verify_1));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "acquire_resource_infra_contracts_GcsBucket"
+                && edge.from_port.0 == "resource_handle"
+                && edge.to_node.0 == verify_0
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
+    fn interface_contract_annotations_cover_all_provider_implementors() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/infra/contracts_multi_cloud.dag",
+            r#"module infra.contracts
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+  @contract: read("k") => { body: "v" }
+}
+resource GcsBucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource S3Bucket implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource BlobContainer implements ObjectStorage {
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        for (resource, verify_id) in [
+            (
+                "GcsBucket",
+                "verify_contract_infra_contracts_GcsBucket_ObjectStorage_0",
+            ),
+            (
+                "S3Bucket",
+                "verify_contract_infra_contracts_S3Bucket_ObjectStorage_0",
+            ),
+            (
+                "BlobContainer",
+                "verify_contract_infra_contracts_BlobContainer_ObjectStorage_0",
+            ),
+        ] {
+            let acquire_id = format!("acquire_resource_infra_contracts_{resource}");
+            assert!(
+                dag.nodes.iter().any(|node| node.id.0 == verify_id),
+                "expected verification node for {resource}"
+            );
+            assert!(
+                dag.edges.iter().any(|edge| {
+                    edge.from_node.0 == acquire_id
+                        && edge.from_port.0 == "resource_handle"
+                        && edge.to_node.0 == verify_id
+                        && edge.to_port.0 == "__deps"
+                }),
+                "expected acquire->verify edge for {resource}"
+            );
+        }
+    }
+
+    #[test]
     fn provides_clause_adds_provider_node_and_edge() {
         let typed = typed_project_from_sources(&[(
             "dsl/resources/provides_wiring.dag",
@@ -1958,6 +5737,46 @@ func run() -> { ok: Bool } provides out: MissingResource {
             } if caller == "sample.resources::run"
                 && binding == "out"
                 && resource_type == "MissingResource"
+        ));
+    }
+
+    #[test]
+    fn ambiguous_provides_clause_reports_lower_error() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/ambiguous_provides.dag",
+            r#"module sample.resources
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource LocalStore implements Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource BackupStore implements Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } provides out: Storage {
+  return { ok: true }
+}"#,
+        )]);
+        let error = lower_typed_project(&typed).expect_err("lowering should fail");
+        assert!(matches!(
+            error,
+            LowerError::AmbiguousProvidedResource {
+                caller,
+                binding,
+                resource_type,
+            } if caller == "sample.resources::run"
+                && binding == "out"
+                && resource_type == "Storage"
         ));
     }
 
@@ -2023,7 +5842,10 @@ func run() -> { ok: Bool } uses store: Storage {
 }"#,
         )]);
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
-        assert!(dag.nodes.iter().any(|node| node.id.0 == "sample.resources::run"));
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "sample.resources::run"));
         assert!(
             !dag.edges.iter().any(|edge| edge.to_node.0 == "sample.resources::run"
                 && edge.to_port.0 == "__deps"),
@@ -2061,6 +5883,29 @@ func run() -> { ok: Bool } provides out: Storage {
     }
 
     #[test]
+    fn known_std_resource_provides_without_lifecycle_are_tolerated() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/std_resource_provides.dag",
+            r#"module sample.resources
+func run() -> { ok: Bool } provides auth: AuthContext {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "provide_resource_sample_resources_run_auth"));
+        assert!(
+            !dag.edges.iter().any(|edge| {
+                edge.from_node.0 == "provide_resource_sample_resources_run_auth"
+                    && edge.to_port.0 == "resource_handle"
+            }),
+            "std resource provides should not fabricate lifecycle release edges when lifecycle module is absent"
+        );
+    }
+
+    #[test]
     fn lower_errors_when_no_callable_items_exist() {
         let typed = typed_project_from_sources(&[(
             "dsl/types_only.dag",
@@ -2070,15 +5915,39 @@ func run() -> { ok: Bool } provides out: Storage {
         assert!(matches!(error, LowerError::NoLowerableItems));
     }
 
+    #[test]
+    fn classify_obligation_uses_structural_lowered_metadata() {
+        let op = LoweredOp::Callable {
+            module: "sample.services".to_string(),
+            kind: CallableKind::Pattern,
+            name: "prepare_transport_sample".to_string(),
+            obligation: ObligationCategory::ServiceTransportPrepare,
+            service_metadata: None,
+        };
+        assert_eq!(
+            classify_obligation(&op),
+            ObligationCategory::ServiceTransportPrepare
+        );
+
+        let pipeline = LoweredOp::Pipeline {
+            module: "pipelines.ci".to_string(),
+            name: "ci".to_string(),
+            stages: 4,
+            stage_names: vec![
+                "cloud_env".to_string(),
+                "codegen_stage".to_string(),
+                "deps_check".to_string(),
+                "generate".to_string(),
+            ],
+        };
+        assert_eq!(classify_obligation(&pipeline), ObligationCategory::None);
+    }
+
     // Test infrastructure: filesystem access for test fixtures
     #[allow(clippy::disallowed_methods)]
     #[test]
     fn makegen_parity_report_is_deterministic() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
-        let source = fs::read_to_string(file).expect("should read makegen source");
-        let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
-        let lowered = lower_typed_project(&typed).expect("lowering should succeed");
+        let lowered = load_makegen_lowered();
         let reference = reference_makegen_shape();
 
         let report_a = compare_topology(&lowered, &reference);
@@ -2098,11 +5967,7 @@ func run() -> { ok: Bool } provides out: Storage {
     #[allow(clippy::disallowed_methods)]
     #[test]
     fn makegen_normalized_parity_can_reach_exact_match() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../dsl/tools/makegen.dag");
-        let source = fs::read_to_string(file).expect("should read makegen source");
-        let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
-        let lowered = lower_typed_project(&typed).expect("lowering should succeed");
+        let lowered = load_makegen_lowered();
         let reference = reference_makegen_shape();
 
         let report = compare_makegen_topology(&lowered, &reference);
@@ -2110,6 +5975,182 @@ func run() -> { ok: Bool } provides out: Storage {
             report.is_exact_match(),
             "normalized makegen parity should currently match reference topology"
         );
+    }
+
+    // Test infrastructure: filesystem access for test fixtures
+    #[allow(clippy::disallowed_methods)]
+    #[test]
+    fn makegen_parity_matches_builder_graph() {
+        let lowered = load_makegen_lowered();
+        let builder = build_makegen_graph().expect("builder makegen graph should construct");
+        let report = compare_makegen_topology(&lowered, &builder);
+        assert!(
+            report.is_exact_match(),
+            "compiled makegen graph should match builder graph topology: {report:?}"
+        );
+    }
+
+    #[test]
+    fn makegen_builder_parity_report_is_deterministic() {
+        let lowered = load_makegen_lowered();
+        let builder = build_makegen_graph().expect("builder makegen graph should construct");
+        let report_a = compare_makegen_topology(&lowered, &builder);
+        let report_b = compare_makegen_topology(&lowered, &builder);
+        assert_eq!(
+            report_a, report_b,
+            "builder parity report must be deterministic across runs"
+        );
+        assert!(
+            report_a.is_exact_match(),
+            "builder parity report should remain exact-match for makegen"
+        );
+    }
+
+    #[test]
+    fn makegen_builder_and_compiled_ascii_viz_match_after_normalization() {
+        let lowered = load_makegen_lowered();
+        let builder = build_makegen_graph().expect("builder makegen graph should construct");
+        let candidate = normalize_makegen_candidate(&lowered);
+        let reference = normalize_makegen_reference(&builder);
+        let candidate_ascii = candidate.to_ascii("compiled_makegen");
+        let reference_ascii = reference.to_ascii("builder_makegen");
+        let normalized_candidate_ascii = candidate_ascii
+            .replace("compiled_makegen", "makegen_parity")
+            .trim()
+            .to_string();
+        let normalized_reference_ascii = reference_ascii
+            .replace("builder_makegen", "makegen_parity")
+            .trim()
+            .to_string();
+        assert_eq!(
+            normalized_candidate_ascii, normalized_reference_ascii,
+            "normalized compiled and builder ASCII DAG views should match"
+        );
+    }
+
+    // Test infrastructure: filesystem access for test fixtures
+    #[allow(clippy::disallowed_methods)]
+    #[test]
+    fn makegen_canonical_ir_json_matches_snapshot() {
+        let lowered = load_makegen_lowered();
+        let canonical = canonical_ir_json(&lowered).expect("canonical json should serialize");
+        let expected = include_str!("../tests/snapshots/makegen_canonical_ir.json");
+        assert_eq!(canonical.trim(), expected.trim());
+    }
+
+    #[test]
+    fn canonical_ir_json_is_deterministic_for_makegen() {
+        let lowered = load_makegen_lowered();
+        let first = canonical_ir_json(&lowered).expect("first canonical json run should serialize");
+        let second =
+            canonical_ir_json(&lowered).expect("second canonical json run should serialize");
+        assert_eq!(first, second, "canonical IR json must be byte-stable");
+    }
+
+    #[test]
+    fn parity_report_includes_changed_node_details() {
+        let mut candidate = Dag::new();
+        candidate.add_node(Node::opaque(
+            "render",
+            vec![Port::scalar("registry", "ToolRegistry")],
+            vec![Port::scalar("content", "String")],
+            LoweredOp::Callable {
+                module: "tools.makegen".to_string(),
+                kind: CallableKind::Fn,
+                name: "render".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+            },
+        ));
+        let mut reference = Dag::new();
+        reference.add_node(Node::opaque(
+            "render",
+            vec![Port::scalar("registry", "ToolRegistry")],
+            vec![Port::scalar("makefile", "String")],
+            (),
+        ));
+
+        let report = compare_ir(&candidate, &reference);
+        assert_eq!(report.changed_nodes, 1);
+        assert_eq!(report.changed_node_details.len(), 1);
+        assert_eq!(report.changed_node_details[0].node_id, "render");
+        assert!(report.changed_node_details[0]
+            .differences
+            .iter()
+            .any(|difference| difference.contains("output ports differ")));
+    }
+
+    #[test]
+    fn parity_report_lists_added_and_removed_items_in_sorted_order() {
+        let mut candidate = Dag::new();
+        candidate.add_node(Node::opaque(
+            "b",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "sample".to_string(),
+                kind: CallableKind::Fn,
+                name: "b".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+            },
+        ));
+        candidate.add_node(Node::opaque(
+            "a",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "sample".to_string(),
+                kind: CallableKind::Fn,
+                name: "a".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+            },
+        ));
+        candidate.add_edge(Edge::new("a", "out", "b", "in"));
+
+        let mut reference = Dag::new();
+        reference.add_node(Node::opaque(
+            "c",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            (),
+        ));
+        reference.add_node(Node::opaque(
+            "d",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            (),
+        ));
+        reference.add_edge(Edge::new("c", "out", "d", "in"));
+
+        let report = compare_ir(&candidate, &reference);
+        assert_eq!(
+            report.added_node_ids,
+            vec!["a".to_string(), "b".to_string()]
+        );
+        assert_eq!(
+            report.removed_node_ids,
+            vec!["c".to_string(), "d".to_string()]
+        );
+        assert_eq!(
+            report.added_edge_ids,
+            vec!["a.out->b.in".to_string()],
+            "added edges should be deterministic and sorted"
+        );
+        assert_eq!(
+            report.removed_edge_ids,
+            vec!["c.out->d.in".to_string()],
+            "removed edges should be deterministic and sorted"
+        );
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    fn load_makegen_lowered() -> Dag<LoweredOp> {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
+        let source = fs::read_to_string(file).expect("should read makegen source");
+        let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
+        lower_typed_project(&typed).expect("lowering should succeed")
     }
 
     fn reference_makegen_shape() -> Dag<()> {
@@ -2158,7 +6199,10 @@ func run() -> { ok: Bool } provides out: Storage {
         ));
         dag.add_node(Node::opaque(
             "prepare_write_makegen",
-            vec![Port::scalar("content", "String"), Port::scalar("path", "String")],
+            vec![
+                Port::scalar("content", "String"),
+                Port::scalar("path", "String"),
+            ],
             vec![Port::scalar("request", "TransportRequest")],
             (),
         ));

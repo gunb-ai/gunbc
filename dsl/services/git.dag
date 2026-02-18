@@ -8,6 +8,8 @@
 
 module services.git
 
+import std.types { CommitSha, FilePath, GitRef }
+
 service git.Core {
   operation CurrentBranch {
     input {}

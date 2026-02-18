@@ -241,17 +241,15 @@ impl Executable for DagVizGraphOp {
 fn execute_build_topology(
     _inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let dag = build_workspace_dag().map_err(|e| {
-        ExecError::new(format!("Failed to build workspace DAG: {}", e))
-    })?;
+    let dag = build_workspace_dag()
+        .map_err(|e| ExecError::new(format!("Failed to build workspace DAG: {}", e)))?;
     let topo = dag.topology();
 
     let node_count = topo.node_count();
     let total_node_count = topo.total_node_count();
 
-    let json = serde_json::to_string(&topo).map_err(|e| {
-        ExecError::new(format!("Failed to serialize DagTopology: {}", e))
-    })?;
+    let json = serde_json::to_string(&topo)
+        .map_err(|e| ExecError::new(format!("Failed to serialize DagTopology: {}", e)))?;
 
     OutputMap::new()
         .str("topology_json", json)
@@ -267,9 +265,8 @@ fn execute_parse_base_topology(
     let json = gunbc_exec::require_str(&inputs, "topology_json")?;
 
     // Validate it parses, but pass through as-is
-    let _topo: DagTopology = serde_json::from_str(json).map_err(|e| {
-        ExecError::new(format!("Failed to parse base topology: {}", e))
-    })?;
+    let _topo: DagTopology = serde_json::from_str(json)
+        .map_err(|e| ExecError::new(format!("Failed to parse base topology: {}", e)))?;
 
     OutputMap::new().str("topology_json", json).ok()
 }
@@ -283,24 +280,19 @@ fn execute_diff_and_render(
 ) -> Result<HashMap<String, Value>, ExecError> {
     let current_json = gunbc_exec::require_str(&inputs, "current_json")?;
     let base_json = gunbc_exec::require_str(&inputs, "base_json")?;
-    let branch = gunbc_exec::optional_str_strict(&inputs, "branch")?
-        .unwrap_or("unknown");
-    let base_ref = gunbc_exec::optional_str_strict(&inputs, "base_ref")?
-        .unwrap_or("HEAD~1");
+    let branch = gunbc_exec::optional_str_strict(&inputs, "branch")?.unwrap_or("unknown");
+    let base_ref = gunbc_exec::optional_str_strict(&inputs, "base_ref")?.unwrap_or("HEAD~1");
 
-    let current: DagTopology = serde_json::from_str(current_json).map_err(|e| {
-        ExecError::new(format!("Failed to parse current topology: {}", e))
-    })?;
-    let base: DagTopology = serde_json::from_str(base_json).map_err(|e| {
-        ExecError::new(format!("Failed to parse base topology: {}", e))
-    })?;
+    let current: DagTopology = serde_json::from_str(current_json)
+        .map_err(|e| ExecError::new(format!("Failed to parse current topology: {}", e)))?;
+    let base: DagTopology = serde_json::from_str(base_json)
+        .map_err(|e| ExecError::new(format!("Failed to parse base topology: {}", e)))?;
 
     let diff = gunbc_ir::dag_diff::diff_topologies(&base, &current);
     let is_empty = diff.is_empty();
 
     let title = format!("DAG Diff: {}...{}", base_ref, branch);
-    let content =
-        gunbc_lib_markdown::render_dag_diff_snapshot(&title, &current, &diff, &base);
+    let content = gunbc_lib_markdown::render_dag_diff_snapshot(&title, &current, &diff, &base);
 
     OutputMap::new()
         .str("content", content)
@@ -313,25 +305,23 @@ fn execute_render_snapshot(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let topology_json = gunbc_exec::require_str(&inputs, "topology_json")?;
-    let branch = gunbc_exec::optional_str_strict(&inputs, "branch")?
-        .unwrap_or("unknown");
+    let branch = gunbc_exec::optional_str_strict(&inputs, "branch")?.unwrap_or("unknown");
     let format = gunbc_exec::require_str(&inputs, "format")?;
 
-    let topo: DagTopology = serde_json::from_str(topology_json).map_err(|e| {
-        ExecError::new(format!("Failed to parse topology: {}", e))
-    })?;
+    let topo: DagTopology = serde_json::from_str(topology_json)
+        .map_err(|e| ExecError::new(format!("Failed to parse topology: {}", e)))?;
 
     let title = format!("DAG Snapshot ({})", branch);
 
     let (content, ext) = match format {
-        "md" => (
-            gunbc_lib_markdown::render_dag_snapshot(&title, &topo),
-            "md",
-        ),
+        "md" => (gunbc_lib_markdown::render_dag_snapshot(&title, &topo), "md"),
         _ => (crate::viewer::render_viewer(&title, &topo), "html"),
     };
 
-    OutputMap::new().str("content", content).str("ext", ext).ok()
+    OutputMap::new()
+        .str("content", content)
+        .str("ext", ext)
+        .ok()
 }
 
 /// Parse git show response into topology JSON (dag-viz specific).
@@ -354,9 +344,8 @@ fn execute_parse_git_show_topology(
         OutputMap::new().str("topology_json", empty_json).ok()
     } else {
         // Validate JSON parses as DagTopology
-        let _: DagTopology = serde_json::from_str(&json).map_err(|e| {
-            ExecError::new(format!("Invalid base topology JSON: {}", e))
-        })?;
+        let _: DagTopology = serde_json::from_str(&json)
+            .map_err(|e| ExecError::new(format!("Invalid base topology JSON: {}", e)))?;
         OutputMap::new().str("topology_json", json).ok()
     }
 }
@@ -368,9 +357,8 @@ fn execute_prepare_write_snapshot(
     let topology_json = gunbc_exec::require_str(&inputs, "topology_json")?;
 
     // Pretty-print the JSON for readability
-    let topo: DagTopology = serde_json::from_str(topology_json).map_err(|e| {
-        ExecError::new(format!("Failed to parse topology: {}", e))
-    })?;
+    let topo: DagTopology = serde_json::from_str(topology_json)
+        .map_err(|e| ExecError::new(format!("Failed to parse topology: {}", e)))?;
     let pretty_json = serde_json::to_string_pretty(&topo).unwrap();
 
     let request = TransportRequest::File(FileRequest {
@@ -638,10 +626,8 @@ fn build_snapshot_graph(
 ) -> Result<(), BuilderError> {
     // Branch resolution SubDag
     let branch_dag = lift_branch_dag(build_branch_resolution_subdag());
-    let branch_resolution = builder.add_node_after(
-        Node::subdag("branch_resolution", branch_dag),
-        fs_env,
-    )?;
+    let branch_resolution =
+        builder.add_node_after(Node::subdag("branch_resolution", branch_dag), fs_env)?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
         branch_resolution.in_port("res:file"),
@@ -673,10 +659,8 @@ fn build_snapshot_graph(
 
     // Gist upload SubDag (replaces gh gist create shell approach)
     let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false));
-    let gist_upload = builder.add_node_after(
-        Node::subdag("gist_upload", gist_dag),
-        &render_snapshot,
-    )?;
+    let gist_upload =
+        builder.add_node_after(Node::subdag("gist_upload", gist_dag), &render_snapshot)?;
 
     builder.add_edge(
         render_snapshot.out("content"),
@@ -710,10 +694,7 @@ fn build_snapshot_graph(
         render_snapshot.out("content"),
         local_save.in_port("content"),
     )?;
-    builder.add_edge(
-        render_snapshot.out("ext"),
-        local_save.in_port("ext"),
-    )?;
+    builder.add_edge(render_snapshot.out("ext"), local_save.in_port("ext"))?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
         local_save.in_port("res:file"),
@@ -753,10 +734,8 @@ fn build_diff_graph(
 ) -> Result<(), BuilderError> {
     // Branch resolution SubDag
     let branch_dag = lift_branch_dag(build_branch_resolution_subdag());
-    let branch_resolution = builder.add_node_after(
-        Node::subdag("branch_resolution", branch_dag),
-        fs_env,
-    )?;
+    let branch_resolution =
+        builder.add_node_after(Node::subdag("branch_resolution", branch_dag), fs_env)?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
         branch_resolution.in_port("res:file"),
@@ -778,10 +757,7 @@ fn build_diff_graph(
         Some(fs_env),
     )?;
 
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        git_show.in_port("res:file"),
-    )?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), git_show.in_port("res:file"))?;
 
     // Parse git show content as DagTopology (dag-viz-specific validation)
     let parse_base_topology = builder.add_node_after(
@@ -829,10 +805,8 @@ fn build_diff_graph(
 
     // Gist upload SubDag
     let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false));
-    let gist_upload = builder.add_node_after(
-        Node::subdag("gist_upload", gist_dag),
-        &diff_and_render,
-    )?;
+    let gist_upload =
+        builder.add_node_after(Node::subdag("gist_upload", gist_dag), &diff_and_render)?;
 
     builder.add_edge(
         diff_and_render.out("content"),
@@ -858,10 +832,8 @@ fn build_recent_graph(
 ) -> Result<(), BuilderError> {
     // Branch resolution SubDag
     let branch_dag = lift_branch_dag(build_branch_resolution_subdag());
-    let branch_resolution = builder.add_node_after(
-        Node::subdag("branch_resolution", branch_dag),
-        fs_env,
-    )?;
+    let branch_resolution =
+        builder.add_node_after(Node::subdag("branch_resolution", branch_dag), fs_env)?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
         branch_resolution.in_port("res:file"),
@@ -882,10 +854,7 @@ fn build_recent_graph(
         Some(fs_env),
     )?;
 
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        rev_list.in_port("res:file"),
-    )?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), rev_list.in_port("res:file"))?;
 
     // Git show: load base topology (generic git show triplet + dag-viz-specific parsing)
     let git_show = add_transport_triplet(
@@ -903,16 +872,10 @@ fn build_recent_graph(
         Some(&rev_list),
     )?;
 
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        git_show.in_port("res:file"),
-    )?;
+    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), git_show.in_port("res:file"))?;
 
     // Wire rev-list base_ref → git_show
-    builder.add_edge(
-        rev_list.out("base_ref"),
-        git_show.in_port("base_ref"),
-    )?;
+    builder.add_edge(rev_list.out("base_ref"), git_show.in_port("base_ref"))?;
 
     // Parse git show content as DagTopology (dag-viz-specific validation)
     let parse_base_topology = builder.add_node_after(
@@ -942,7 +905,12 @@ fn build_recent_graph(
             vec![scalar("content", "String"), scalar("is_empty", "Bool")],
             DagVizGraphOp::DiffAndRender,
         ),
-        &[build_topology, &parse_base_topology, &branch_resolution, &rev_list],
+        &[
+            build_topology,
+            &parse_base_topology,
+            &branch_resolution,
+            &rev_list,
+        ],
     )?;
 
     builder.add_edge(
@@ -964,10 +932,8 @@ fn build_recent_graph(
 
     // Gist upload SubDag
     let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false));
-    let gist_upload = builder.add_node_after(
-        Node::subdag("gist_upload", gist_dag),
-        &diff_and_render,
-    )?;
+    let gist_upload =
+        builder.add_node_after(Node::subdag("gist_upload", gist_dag), &diff_and_render)?;
 
     builder.add_edge(
         diff_and_render.out("content"),
@@ -982,10 +948,7 @@ fn build_recent_graph(
         gist_upload.in_port("remote_branch"),
     )?;
     // Wire rev-list base_ref → gist_upload for Recent mode
-    builder.add_edge(
-        rev_list.out("base_ref"),
-        gist_upload.in_port("base_ref"),
-    )?;
+    builder.add_edge(rev_list.out("base_ref"), gist_upload.in_port("base_ref"))?;
 
     Ok(())
 }
@@ -1096,9 +1059,9 @@ impl Mockable for DagVizGraphOp {
                 gunbc_lib_git_ops::GitOps::ParseRevListBefore => {
                     OutputMap::new().str("base_ref", "abc123").build()
                 }
-                gunbc_lib_git_ops::GitOps::ParseGitShow => {
-                    OutputMap::new().str("content", r#"{"nodes":[],"edges":[]}"#).build()
-                }
+                gunbc_lib_git_ops::GitOps::ParseGitShow => OutputMap::new()
+                    .str("content", r#"{"nodes":[],"edges":[]}"#)
+                    .build(),
                 _ => HashMap::new(),
             },
 
@@ -1182,9 +1145,7 @@ impl Mockable for DagVizGraphOp {
                 .bool("skip", false)
                 .build(),
 
-            DagVizGraphOp::ParseBrowserOpen => OutputMap::new()
-                .bool("opened", true)
-                .build(),
+            DagVizGraphOp::ParseBrowserOpen => OutputMap::new().bool("opened", true).build(),
         }
     }
 }
@@ -1228,9 +1189,7 @@ fn mock_gist_upload_op(op: &GistUploadOp) -> HashMap<String, Value> {
         GistUploadOp::Transport(_) => OutputMap::new()
             .response(
                 "response",
-                TransportResponse::Shell(ShellResponse::ok(
-                    "https://gist.github.com/mock/123\n",
-                )),
+                TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/123\n")),
             )
             .build(),
         GistUploadOp::FsEnv(op) => op.mock_outputs(),

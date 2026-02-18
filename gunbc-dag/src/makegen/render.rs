@@ -271,13 +271,11 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     blocks.push(StructuredBlock::Target(Target {
         name: "deps-config".into(),
         deps: vec!["build-release-bins".into()],
-        body: vec![
-            format!(
-                "@target/release/{} --mode=ensure",
-                WorkspaceBinary::DepsConfig.invocation().binary
-            )
-            .into(),
-        ],
+        body: vec![format!(
+            "@target/release/{} --mode=ensure",
+            WorkspaceBinary::DepsConfig.invocation().binary
+        )
+        .into()],
         comment: Some("Ensure deps.toml matches the canonical generated configuration".into()),
     }));
 
@@ -285,13 +283,11 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     blocks.push(StructuredBlock::Target(Target {
         name: "deps-config-check".into(),
         deps: vec!["build-release-bins".into()],
-        body: vec![
-            format!(
-                "@target/release/{} --mode=verify",
-                WorkspaceBinary::DepsConfig.invocation().binary
-            )
-            .into(),
-        ],
+        body: vec![format!(
+            "@target/release/{} --mode=verify",
+            WorkspaceBinary::DepsConfig.invocation().binary
+        )
+        .into()],
         comment: Some("Check if deps.toml is stale (fails if regeneration needed)".into()),
     }));
 
@@ -947,7 +943,8 @@ mod tests {
         );
         // Tool targets use cargo run (dev mode); release build is a freshness step
         assert!(
-            makefile.contains("RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-gist --bin gunbc-gist --"),
+            makefile
+                .contains("RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-gist --bin gunbc-gist --"),
             "tool targets should use cargo run with RUSTFLAGS"
         );
         assert!(

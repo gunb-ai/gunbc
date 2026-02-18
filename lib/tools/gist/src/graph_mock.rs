@@ -143,9 +143,17 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .expect("cloud_env request_token should match type")
         .boundary("gist_upload/bind_secret", "config", mock_cloud_config())
         .expect("bind_secret config should match type")
-        .boundary("gist_upload/cloud_credential/gcp_wif_secret/build_credential", "credential", mock_credential())
+        .boundary(
+            "gist_upload/cloud_credential/gcp_wif_secret/build_credential",
+            "credential",
+            mock_credential(),
+        )
         .expect("cloud_credential credential should match type")
-        .boundary("gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam", "ok", Value::Bool(true))
+        .boundary(
+            "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
+            "ok",
+            Value::Bool(true),
+        )
         .expect("cloud_credential ok should match type");
 
     // Mode-specific transport mocks
@@ -251,7 +259,11 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     match mode {
         GistMode::Snapshot => {
             spec = spec
-                .input_mock("list_files/prepare_list_files", "repo_path", Value::Str(".".into()))
+                .input_mock(
+                    "list_files/prepare_list_files",
+                    "repo_path",
+                    Value::Str(".".into()),
+                )
                 .input_mock("read_files_loop", "repo_path", Value::Str(".".into()));
         }
         GistMode::Diff { .. } => {
@@ -259,7 +271,11 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         }
         GistMode::Recent => {
             spec = spec
-                .input_mock("rev_list/prepare_rev_list", "repo_path", Value::Str(".".into()))
+                .input_mock(
+                    "rev_list/prepare_rev_list",
+                    "repo_path",
+                    Value::Str(".".into()),
+                )
                 .input_mock("diff/prepare_diff", "repo_path", Value::Str(".".into()));
         }
     }
@@ -359,7 +375,11 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .description("Extracts gist URL from response JSON"),
         )
         // Probe-observer: terminals need chain-safe observers
-        .live_expected_output("gist_upload/parse_gist_response", "url", OutputMatcher::NonEmpty)
+        .live_expected_output(
+            "gist_upload/parse_gist_response",
+            "url",
+            OutputMatcher::NonEmpty,
+        )
         .live_expected_output(
             "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
             "ok",

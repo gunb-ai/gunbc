@@ -114,7 +114,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                         .add_edge(prepare.out("skip"), execute.in_port("skip"))
                         .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
                     builder
-                        .add_edge(net_env.out(NetEnv::PORT), execute.in_port(RESOURCE_API_NETWORK))
+                        .add_edge(
+                            net_env.out(NetEnv::PORT),
+                            execute.in_port(RESOURCE_API_NETWORK),
+                        )
                         .expect("net_env -> execute_github_oidc.res:api:network");
                     builder
                         .add_edge(execute.out("response"), parse.in_port("response"))
@@ -167,7 +170,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                         .add_edge(prepare.out("skip"), execute.in_port("skip"))
                         .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
                     builder
-                        .add_edge(net_env.out(NetEnv::PORT), execute.in_port(RESOURCE_API_NETWORK))
+                        .add_edge(
+                            net_env.out(NetEnv::PORT),
+                            execute.in_port(RESOURCE_API_NETWORK),
+                        )
                         .expect("net_env -> execute_metadata_oidc.res:api:network");
                     builder
                         .add_edge(execute.out("response"), parse.in_port("response"))
@@ -232,7 +238,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                 .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
                 .expect("prepare_sts.skip -> execute_sts.skip");
             builder
-                .add_edge(net_env.out(NetEnv::PORT), execute_sts.in_port(RESOURCE_API_NETWORK))
+                .add_edge(
+                    net_env.out(NetEnv::PORT),
+                    execute_sts.in_port(RESOURCE_API_NETWORK),
+                )
                 .expect("net_env -> execute_sts.res:api:network");
             builder
                 .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
@@ -345,7 +354,10 @@ pub fn build_gcp_secret_manager_credential_graph(
         )
         .expect("prepare_impersonate.skip -> execute_impersonate.skip");
     builder
-        .add_edge(net_env.out(NetEnv::PORT), execute_impersonate.in_port(RESOURCE_API_NETWORK))
+        .add_edge(
+            net_env.out(NetEnv::PORT),
+            execute_impersonate.in_port(RESOURCE_API_NETWORK),
+        )
         .expect("net_env -> execute_impersonate.res:api:network");
     builder
         .add_edge(
@@ -425,7 +437,10 @@ pub fn build_gcp_secret_manager_credential_graph(
         .add_edge(prepare_secret.out("skip"), execute_secret.in_port("skip"))
         .expect("prepare_secret.skip -> execute_secret.skip");
     builder
-        .add_edge(net_env.out(NetEnv::PORT), execute_secret.in_port(RESOURCE_API_NETWORK))
+        .add_edge(
+            net_env.out(NetEnv::PORT),
+            execute_secret.in_port(RESOURCE_API_NETWORK),
+        )
         .expect("net_env -> execute_secret_access.res:api:network");
     builder
         .add_edge(
@@ -572,7 +587,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         .add_edge(prepare.out("skip"), execute.in_port("skip"))
                         .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
                     builder
-                        .add_edge(net_env.out(NetEnv::PORT), execute.in_port(RESOURCE_API_NETWORK))
+                        .add_edge(
+                            net_env.out(NetEnv::PORT),
+                            execute.in_port(RESOURCE_API_NETWORK),
+                        )
                         .expect("net_env -> execute_github_oidc.res:api:network");
                     builder
                         .add_edge(execute.out("response"), parse.in_port("response"))
@@ -625,7 +643,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         .add_edge(prepare.out("skip"), execute.in_port("skip"))
                         .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
                     builder
-                        .add_edge(net_env.out(NetEnv::PORT), execute.in_port(RESOURCE_API_NETWORK))
+                        .add_edge(
+                            net_env.out(NetEnv::PORT),
+                            execute.in_port(RESOURCE_API_NETWORK),
+                        )
                         .expect("net_env -> execute_metadata_oidc.res:api:network");
                     builder
                         .add_edge(execute.out("response"), parse.in_port("response"))
@@ -690,7 +711,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
                 .expect("prepare_sts.skip -> execute_sts.skip");
             builder
-                .add_edge(net_env.out(NetEnv::PORT), execute_sts.in_port(RESOURCE_API_NETWORK))
+                .add_edge(
+                    net_env.out(NetEnv::PORT),
+                    execute_sts.in_port(RESOURCE_API_NETWORK),
+                )
                 .expect("net_env -> execute_sts.res:api:network");
             builder
                 .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
@@ -803,7 +827,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
         )
         .expect("prepare_impersonate.skip -> execute_impersonate.skip");
     builder
-        .add_edge(net_env.out(NetEnv::PORT), execute_impersonate.in_port(RESOURCE_API_NETWORK))
+        .add_edge(
+            net_env.out(NetEnv::PORT),
+            execute_impersonate.in_port(RESOURCE_API_NETWORK),
+        )
         .expect("net_env -> execute_impersonate.res:api:network");
     builder
         .add_edge(
@@ -879,7 +906,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_edge(prepare_get.out("skip"), execute_get.in_port("skip"))
         .expect("prepare_secret_get.skip -> execute_secret_get.skip");
     builder
-        .add_edge(net_env.out(NetEnv::PORT), execute_get.in_port(RESOURCE_API_NETWORK))
+        .add_edge(
+            net_env.out(NetEnv::PORT),
+            execute_get.in_port(RESOURCE_API_NETWORK),
+        )
         .expect("net_env -> execute_secret_get.res:api:network");
     builder
         .add_edge(execute_get.out("response"), parse_get.in_port("response"))
@@ -937,7 +967,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_edge(prepare_create.out("skip"), execute_create.in_port("skip"))
         .expect("prepare_secret_create.skip -> execute_secret_create.skip");
     builder
-        .add_edge(net_env.out(NetEnv::PORT), execute_create.in_port(RESOURCE_API_NETWORK))
+        .add_edge(
+            net_env.out(NetEnv::PORT),
+            execute_create.in_port(RESOURCE_API_NETWORK),
+        )
         .expect("net_env -> execute_secret_create.res:api:network");
 
     let prepare_add = builder
@@ -1005,7 +1038,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_edge(prepare_add.out("skip"), execute_add.in_port("skip"))
         .expect("prepare_secret_add_version.skip -> execute_secret_add_version.skip");
     builder
-        .add_edge(net_env.out(NetEnv::PORT), execute_add.in_port(RESOURCE_API_NETWORK))
+        .add_edge(
+            net_env.out(NetEnv::PORT),
+            execute_add.in_port(RESOURCE_API_NETWORK),
+        )
         .expect("net_env -> execute_secret_add_version.res:api:network");
     builder
         .add_edge(execute_add.out("response"), parse_add.in_port("response"))
@@ -1168,7 +1204,10 @@ fn add_ensure_iam_nodes(
         )
         .expect("prepare_ensure_iam.skip -> execute_get_iam.skip");
     builder
-        .add_edge(net_env.out(NetEnv::PORT), execute_get_iam.in_port(RESOURCE_API_NETWORK))
+        .add_edge(
+            net_env.out(NetEnv::PORT),
+            execute_get_iam.in_port(RESOURCE_API_NETWORK),
+        )
         .expect("net_env -> execute_get_iam.res:api:network");
 
     // Wire: execute_get_iam -> check_iam_binding
@@ -1200,7 +1239,10 @@ fn add_ensure_iam_nodes(
         .add_edge(check_iam.out("skip"), execute_set_iam.in_port("skip"))
         .expect("check_iam_binding.skip -> execute_set_iam.skip");
     builder
-        .add_edge(net_env.out(NetEnv::PORT), execute_set_iam.in_port(RESOURCE_API_NETWORK))
+        .add_edge(
+            net_env.out(NetEnv::PORT),
+            execute_set_iam.in_port(RESOURCE_API_NETWORK),
+        )
         .expect("net_env -> execute_set_iam.res:api:network");
 
     // Wire: execute_set_iam -> parse_set_iam
@@ -1297,7 +1339,12 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "request",
     ));
     dag.add_edge(Edge::new("prepare_check", "skip", "execute_check", "skip"));
-    dag.add_edge(Edge::new("net_env", NetEnv::PORT, "execute_check", RESOURCE_API_NETWORK));
+    dag.add_edge(Edge::new(
+        "net_env",
+        NetEnv::PORT,
+        "execute_check",
+        RESOURCE_API_NETWORK,
+    ));
     dag.add_edge(Edge::new(
         "execute_check",
         "response",
@@ -1395,7 +1442,12 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "execute_read_adc",
         "skip",
     ));
-    dag.add_edge(Edge::new("net_env", NetEnv::PORT, "execute_read_adc", RESOURCE_API_NETWORK));
+    dag.add_edge(Edge::new(
+        "net_env",
+        NetEnv::PORT,
+        "execute_read_adc",
+        RESOURCE_API_NETWORK,
+    ));
     dag.add_edge(Edge::new(
         "execute_read_adc",
         "response",
@@ -1434,7 +1486,12 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "execute_oauth2",
         "skip",
     ));
-    dag.add_edge(Edge::new("net_env", NetEnv::PORT, "execute_oauth2", RESOURCE_API_NETWORK));
+    dag.add_edge(Edge::new(
+        "net_env",
+        NetEnv::PORT,
+        "execute_oauth2",
+        RESOURCE_API_NETWORK,
+    ));
     dag.add_edge(Edge::new(
         "execute_oauth2",
         "response",
@@ -1555,7 +1612,12 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "execute_reread_adc",
         "skip",
     ));
-    dag.add_edge(Edge::new("net_env", NetEnv::PORT, "execute_reread_adc", RESOURCE_API_NETWORK));
+    dag.add_edge(Edge::new(
+        "net_env",
+        NetEnv::PORT,
+        "execute_reread_adc",
+        RESOURCE_API_NETWORK,
+    ));
     dag.add_edge(Edge::new(
         "execute_reread_adc",
         "response",

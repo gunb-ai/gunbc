@@ -328,6 +328,26 @@ impl StageGroup {
 }
 
 // ---------------------------------------------------------------------------
+// ExecutionEvent — channel-friendly event enum
+// ---------------------------------------------------------------------------
+
+/// Events sent from executor to display orchestrator via channel.
+///
+/// Mirrors the 7 core [`ProgressObserver`] methods used by the animated
+/// display path. Each variant carries owned data (no references) so events
+/// can cross thread boundaries without lifetime constraints.
+#[derive(Debug, Clone)]
+pub enum ExecutionEvent {
+    DagStart(DagSnapshot),
+    NodeStart(NodeId),
+    NodeComplete(NodeId, OutputSummary),
+    NodeFailed(NodeId, String),
+    NodeSkipped(NodeId),
+    NodeIntercepted(NodeId, OutputSummary),
+    DagComplete(Duration),
+}
+
+// ---------------------------------------------------------------------------
 // DagProgress — live state machine
 // ---------------------------------------------------------------------------
 
@@ -447,6 +467,22 @@ impl DagProgress {
             edges,
             phase: DagPhase::NotStarted,
             start_time: None,
+        }
+    }
+
+    /// Apply a channel event, dispatching to the corresponding `on_*` method.
+    ///
+    /// This is the pure state-transition entry point used by the channel-driven
+    /// orchestrator. No new logic — just routes events to existing methods.
+    pub fn apply(&mut self, event: ExecutionEvent) {
+        match event {
+            ExecutionEvent::DagStart(snapshot) => self.on_dag_start(&snapshot),
+            ExecutionEvent::NodeStart(id) => self.on_node_start(&id),
+            ExecutionEvent::NodeComplete(id, summary) => self.on_node_complete(&id, summary),
+            ExecutionEvent::NodeFailed(id, error) => self.on_node_failed(&id, &error),
+            ExecutionEvent::NodeSkipped(id) => self.on_node_skipped(&id),
+            ExecutionEvent::NodeIntercepted(id, summary) => self.on_node_intercepted(&id, summary),
+            ExecutionEvent::DagComplete(elapsed) => self.on_dag_complete(elapsed),
         }
     }
 

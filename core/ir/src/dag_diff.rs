@@ -74,14 +74,8 @@ pub enum PortDirection {
 pub enum PortChangeKind {
     Added,
     Removed,
-    TypeChanged {
-        old_type: String,
-        new_type: String,
-    },
-    CardinalityChanged {
-        old: String,
-        new: String,
-    },
+    TypeChanged { old_type: String, new_type: String },
+    CardinalityChanged { old: String, new: String },
 }
 
 // ---------------------------------------------------------------------------
@@ -93,10 +87,8 @@ pub fn diff_topologies(old: &DagTopology, new: &DagTopology) -> DagDiffResult {
     let mut result = DagDiffResult::default();
 
     // Index old nodes by ID for O(1) lookup.
-    let old_map: BTreeMap<&NodeId, &NodeTopology> =
-        old.nodes.iter().map(|n| (&n.id, n)).collect();
-    let new_map: BTreeMap<&NodeId, &NodeTopology> =
-        new.nodes.iter().map(|n| (&n.id, n)).collect();
+    let old_map: BTreeMap<&NodeId, &NodeTopology> = old.nodes.iter().map(|n| (&n.id, n)).collect();
+    let new_map: BTreeMap<&NodeId, &NodeTopology> = new.nodes.iter().map(|n| (&n.id, n)).collect();
 
     // Classify nodes
     for (id, new_node) in &new_map {

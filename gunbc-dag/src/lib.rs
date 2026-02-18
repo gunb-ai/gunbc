@@ -24,6 +24,7 @@ pub mod ci;
 pub mod cloud_env;
 pub mod codegen;
 pub mod credential_lifecycle;
+pub mod dag_viz;
 #[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
 pub mod docgen;
 pub mod file_ops_graph;
@@ -33,7 +34,6 @@ pub mod pragma;
 pub mod resources;
 pub mod testgen_dag;
 pub mod tool_testgen;
-pub mod dag_viz;
 pub mod viewer;
 pub mod workspace;
 
@@ -54,7 +54,9 @@ pub use codegen::{
     CodegenOp,
 };
 pub use dag_viz::{build_dag_viz_graph, dag_viz_signature, DagVizGraphOp, DagVizMode};
-pub use docgen::{build_docgen_graph, DocgenGraphOp, DocgenOp, DocgenReadTarget, DOCGEN_READ_TARGETS};
+pub use docgen::{
+    build_docgen_graph, DocgenGraphOp, DocgenOp, DocgenReadTarget, DOCGEN_READ_TARGETS,
+};
 pub use file_ops_graph::FileOpsGraph;
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
 pub use makegen::{

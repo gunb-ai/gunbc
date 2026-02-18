@@ -6,8 +6,8 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::build_pragma_graph;
 use gunbc_exec::{
-    execute_and_display, execute_and_display_with_result, print_attention,
-    AttentionLevel, BoundaryMocks, ExecutionMode,
+    execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
+    BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
@@ -132,13 +132,7 @@ fn main() {
 
     if resource_mode == ExecMode::Verify {
         // Check mode: execute through shared display path and inspect log outputs.
-        match execute_and_display_with_result(
-            &dag,
-            mode,
-            animated,
-            None,
-            Some(&input_mocks),
-        ) {
+        match execute_and_display_with_result(&dag, mode, animated, None, Some(&input_mocks)) {
             Ok(result) => {
                 let log = result.log;
                 let mut ok_count = 0;
@@ -206,13 +200,7 @@ fn main() {
         println!();
 
         // Execute and display (progress or classic based on terminal)
-        execute_and_display(
-            &dag,
-            mode,
-            animated,
-            None,
-            Some(&input_mocks),
-        );
+        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
     }
 }
 
