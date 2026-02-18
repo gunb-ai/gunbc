@@ -167,10 +167,10 @@ pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, ST
 pub use system_model::{
     default_system_models, derive_contract_test_specs, generate_contract_test_harnesses,
     get_registered_system_model, iter_registered_system_models, registered_system_model_map,
-    render_contract_test_harness, validate_dependency_graph_acyclic, validate_system_model,
-    Behavior, BehaviorInput, BehaviorOutput, ContractTestSpec, Dependency, DependencyKind,
-    InputType, Invocation, OutputType, Property, SystemKind, SystemModel, SystemModelDef,
-    UpsertPhase,
+    render_contract_test_harness, validate_dependency_graph_acyclic,
+    validate_store_behavior_mapping, validate_system_model, Behavior, BehaviorInput,
+    BehaviorOutput, ContractTestSpec, Dependency, DependencyKind, InputType, Invocation,
+    OutputType, Property, SystemKind, SystemModel, SystemModelDef, UpsertPhase,
 };
 pub use transport::{
     default_transport_behaviors, AuthScheme, Credential, CredentialError, CredentialIntent,

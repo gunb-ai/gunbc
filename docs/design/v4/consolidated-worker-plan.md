@@ -376,15 +376,15 @@ Auto-generate behavioral contract tests from understanding specs.
 Model a second cloud provider to validate that the understanding + type system
 handles cross-provider concerns correctly.
 
-- [ ] C6.4a — AWS Secrets Manager understanding (get_secret_value, create_secret,
+- [x] C6.4a — AWS Secrets Manager understanding (get_secret_value, create_secret,
       put_secret_value, describe_secret)
-- [ ] C6.4b — AWS IAM understanding (role CRUD, policy attachment, assume-role)
-- [ ] C6.4c — S3 understanding (get_object, put_object, list_objects + versioned CAS)
-- [ ] C6.4d — Type alignment test: GCP SecretPayload and AWS SecretValue both refine
+- [x] C6.4b — AWS IAM understanding (role CRUD, policy attachment, assume-role)
+- [x] C6.4c — S3 understanding (get_object, put_object, list_objects + versioned CAS)
+- [x] C6.4d — Type alignment test: GCP SecretPayload and AWS SecretValue both refine
       String but are not mutually coercible
-- [ ] C6.4e — Cross-provider credential test: `GcpAccessToken` vs `AwsSessionToken` —
+- [x] C6.4e — Cross-provider credential test: `GcpAccessToken` vs `AwsSessionToken` —
       both satisfy `Credential` interface but different provider strategies
-- [ ] C6.4f — Storage abstraction test: `Store` trait behaviors map to both GCS and S3
+- [x] C6.4f — Storage abstraction test: `Store` trait behaviors map to both GCS and S3
       understandings with correct property preservation (CAS atomicity, TTL semantics)
 
 ---
