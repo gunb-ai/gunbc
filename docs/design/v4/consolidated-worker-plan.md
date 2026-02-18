@@ -4,9 +4,14 @@
 **Companion**: [`dsl-roadmap.md`](./dsl-roadmap.md), [`dsl-codegen-roadmap.md`](./dsl-codegen-roadmap.md), [`TODO/README.md`](../../../TODO/README.md)
 **Track A (DSL Core)**: DONE — compiler produces real binaries across 4 targets (see dsl-codegen-roadmap.md)
 
-This document unifies 11 active TODO files into a single dependency-ordered execution plan.
+This document unifies all active TODO files into a single dependency-ordered execution plan.
 Original TODO files retain detailed rationale; this doc provides sequencing, dependencies, and
 task assignments.
+
+**Guiding principle**: All new modeling and infrastructure work must be properly typed from the
+ground up — types are DAGs, coercion is DAG comparison/transform, and external systems are
+modeled as versioned understandings (following the-gunbai patterns). GCP and domain work is
+gated on having these foundations in place.
 
 ---
 
@@ -16,9 +21,9 @@ task assignments.
 |-------|--------|---------|
 | **A — DSL Core** | DONE | Compiler pipeline complete: parse → resolve → typecheck → lower → derive → emit. 4 targets (Rust/Go/C/MIPS), exec-runtime fast path, cross-language parity tests. |
 | **B — Migration** | ~30% | Workflow audit Phases A-C done (~85%); Phase D pending. DSL migration backlog created but 0% implemented. |
-| **C — Modeling** | 0% | 4 URGENT items (platform, browser, anemic, transport) — all planning/spec only, no implementation. |
+| **C — Modeling** | ~15% | Type DAG infrastructure exists (`Dag<TypeOp>`, contract tower L1-L3, `can_safely_coerce_to`). Coercion Phases 1-2 done, Phases 3-4 deferred. No understanding layer. Platform/browser/anemic/transport at 0%. |
 | **D — Runtime/Test** | ~40% | Logging consolidation ~44% (basics done, quality/safety/tests remain). Testgen seed policy ~50% (core fix done). Codegen quality ongoing. |
-| **E — Domain Parity** | ~5% | Credential lifecycle has some wiring. GCP infra at 0%. LLM review V0 complete. |
+| **E — Domain Parity** | ~5% | Credential lifecycle has some wiring. GCP infra at 0%. LLM review V0 complete. **Gated on C5+C6 foundations.** |
 | **F — Debt Ledger** | ~55% | Hacks: 20/35 resolved. Consolidation: ongoing. |
 
 ---
@@ -26,30 +31,32 @@ task assignments.
 ## Dependency DAG
 
 ```
-WAVE 1 (unblocked)          WAVE 2 (after W1)         WAVE 3 (after W2)         WAVE 4 (horizon)
-─────────────────           ─────────────────         ─────────────────         ────────────────
-B1.1 pragma ─────────────────────────────────────────┐
-B1.2 transport triplets ─────────────────────────────┤
-B1.3 codegen graph ──────────────────────────────────┼─▶ B2.1 workflow reg ───▶ B2.2 admission ctrl
-B1.4 skip semantics ─────────────────────────────────┘                    ├──▶ B2.3 freshness
-                                                                          └──▶ B2.4 sandbox RFC
+WAVE 0 (type foundations)   WAVE 1 (model + migrate)   WAVE 2 (build-on)          WAVE 3+4 (complete)
+─────────────────────────   ────────────────────────   ──────────────────         ─────────────────
+C5.1 coerce via DAG walk ─▶ C5.3 stress tests ─────────────────────────────────▶ (validates all)
+C5.2 eliminate dual enc  ─▶ C5.3
+C6.1 understanding types ─▶ C6.2 GCP understandings ─▶ C6.3 contract tests ────▶ C6.4 multi-cloud
+                     ├────▶ E2.1* SA/IAM (via C6)  ──▶ E2.2 WIF ──────────────▶ E2.3-E2.8
+                     └────▶ C6.2b transport specs
+
+B1.1 pragma ──────────────────────────────────────────┐
+B1.2 transport triplets ──────────────────────────────┤
+B1.3 codegen graph ───────────────────────────────────┼─▶ B2.1 workflow reg ───▶ B2.2-B2.4
+B1.4 skip semantics ──────────────────────────────────┘
+
 C1.1 platform types ──────▶ C1.2 toolchain migrate ──▶ C1.3 DSL alignment
                      ├────▶ C2.1 browser utility
                      └────▶ (C3.2 partial)
 C3.1 delegate macro ──────▶ C3.2 run_tool() ──────────▶ C3.3 list elimination
-C4.1 transport tests ─────▶ C4.2 typed ports ─────────▶ C4.3 behavioral specs ▶ C4.4 sub-DAGs?
+C4.1 transport tests ─────▶ C4.2 typed ports ─────────▶ C4.3 behavioral specs
 
-D1.1 DisplayConfig ───────▶ D1.4 failure-first ───────▶ D1.6 preflight ────────▶ D1.9 summaries
-D1.2 secret redaction      D1.5 grouped progress       D1.7 error conventions
-D1.3 stderr capture ──────▶ D1.4                        D1.8 attention fmt
-
-D2.1 seed classify ───────▶ D2.2 matrix extend
-                     └────▶ D2.3 fail closed
+D1.1 DisplayConfig ───────▶ D1.4 failure-first ───────▶ D1.6-D1.9
+D1.2 secret redaction      D1.5 grouped progress
+D1.3 stderr capture ──────▶ D1.4
 
 E1.0 cred diagnostics ────▶ E1.1 context/profile ─────▶ E1.2 policy binding ───▶ E1.3-E1.5
-E2.1 SA/IAM ──────────────▶ E2.2 WIF bootstrap ───────▶ E2.3-E2.4 ────────────▶ E2.5-E2.8
 
-[B1.5-B1.8 blocked on DSL reactive/metaprogramming primitives — Wave 3+ when ready]
+* E2.1+ now depends on C6.1 (GCP services modeled as understandings, not ad-hoc)
 ```
 
 ---
@@ -58,18 +65,19 @@ E2.1 SA/IAM ──────────────▶ E2.2 WIF bootstrap ─
 
 | From | To | Relationship |
 |------|----|-------------|
+| **C5.1** | **C5.3, C6.3** | DAG-based coercion validates understanding type flows |
+| **C5.2** | **C5.1** | Dual encoding elimination simplifies coercion |
+| **C6.1** | **C6.2, E2.1+** | Understanding types must exist before GCP services are modeled |
+| **C6.2** | **C6.3** | Understandings enable contract test generation |
 | C1.1 | C2.1 | Platform/Env types needed for browser utility |
 | C1.1 | C1.2 | Foundation types enable toolchain migration |
 | C3.1 | C3.2 | Delegation macro enables binary ceremony reduction |
 | C4.1 | C4.2 | Tests-first before typed decomposition |
 | D1.1 + D1.3 | D1.4 | DisplayConfig + stderr capture enable failure-first rendering |
-| D1.4 + D1.5 | D1.6 | Rendering + progress model enable preflight integration |
-| D2.1 | D2.2, D2.3 | Shared classification enables matrix extension |
 | E1.0 | E1.1 | Diagnostics baseline enables context/profile work |
 | E2.1 | E2.2 | SA/IAM lifecycle enables WIF bootstrap |
 | E2.2 | E1.2+ | GCP WIF needed for credential policy binding |
 | B1.1-B1.4 | B2.1 | Migration experience informs workflow registry design |
-| B2.1 | B2.2, B2.3 | Registry enables admission control + freshness |
 | DSL core (ext) | B1.5-B1.8 | Reactive/metaprog primitives not yet in DSL |
 
 ---
@@ -78,9 +86,10 @@ E2.1 SA/IAM ──────────────▶ E2.2 WIF bootstrap ─
 
 | Wave | Tasks | Parallel Swimlanes | Theme |
 |------|-------|--------------------|-------|
-| **1** | ~20 | 5 | Foundations: unblocked migrations, modeling types, runtime basics, domain baselines |
-| **2** | ~15 | 4 | Build-on: platform migrations, logging quality, credential context, WIF |
-| **3** | ~15 | 4 | Completion: modeling finish, logging finish, auth policy, DSL-blocked items |
+| **0** | ~6 | 2 | **Type foundations**: DAG-based coercion + understanding layer. Validates modeling approach before building on it. |
+| **1** | ~20 | 5 | Model + migrate: GCP understandings, DSL migrations, platform types, runtime basics |
+| **2** | ~15 | 4 | Build-on: contract tests, platform migrations, logging quality, credential context |
+| **3** | ~15 | 4 | Completion: multi-cloud stress tests, logging finish, auth policy |
 | **4** | ~12 | 3 | Horizon: credential hardening, GCP compute, sandbox RFC |
 
 ---
@@ -234,6 +243,142 @@ Design sandbox mode (no real I/O) and replay/durability for DAG execution.
 ---
 
 ## Track C — Modeling Foundation
+
+### C5 — Type DAG Coercion (Wave 0)
+**Source**: `TODO/TODONE/design-type-coercion.md` Phases 3-4 (deferred), `core/ir/src/type_op.rs`,
+`core/ir/src/contract.rs`, `core/ir/src/coerce.rs`
+
+Types are already DAGs (`Dag<TypeOp>`) with a contract tower (L1 cardinality, L2 base type,
+L3 predicates). Phases 1-2 done: contract extraction + `can_safely_coerce_to()`. But coercion
+currently uses hardcoded rules, not DAG comparison. This must work before we build on it.
+
+**Existing infrastructure**:
+- `TypeOp` enum: `Identity`, `Validate(Predicate)`, `Transform(Coercion)`, `Wrap(WrapperKind)`, `Unwrap`
+- `TypeRegistry`: maps `TypeId` → `Dag<TypeOp>`
+- `TypeContract`: extracted cardinality + base_type + predicates
+- `base_type_upcasts_to()`: hardcoded lattice (everything → Json, Url → String)
+- Type library: `type_lib::url()`, `type_lib::string()`, etc. — constructors for common type DAGs
+
+#### Wave 0
+
+##### C5.1 — Coercion as DAG walk [M]
+**Deps**: C5.2
+
+Given source type DAG and target type DAG, find a valid transform path by walking both
+DAGs, not by checking hardcoded rules.
+
+- [ ] C5.1a — Replace `base_type_upcasts_to()` with registry-driven DAG ancestry check
+- [ ] C5.1b — Coercion discovery: given `Dag<TypeOp>` for source and target, find the
+      transform chain (e.g., Url→String = unwrap NonEmpty + unwrap Matches)
+- [ ] C5.1c — `TypeOp::Transform(Coercion)` used as explicit coercion edges in registry
+- [ ] C5.1d — Tests: Url→String, Int→Json, String→Json coercion found via DAG walk
+- [ ] C5.1e — Tests: String→Url coercion correctly rejected (narrowing = unsafe)
+
+##### C5.2 — Eliminate cardinality dual encoding [M]
+**Deps**: None
+
+Port cardinality and type DAG `Wrap` nodes encode the same information independently.
+Derive port cardinality from the type DAG so there's one source of truth.
+
+- [ ] C5.2a — `infer_cardinality()` from type DAG `Wrap`/`Unwrap` nodes
+- [ ] C5.2b — Audit ports that set cardinality independently of type DAG
+- [ ] C5.2c — Migrate to single source: type DAG drives cardinality, port just references type
+- [ ] C5.2d — Tests: `Optional<String>` type DAG → port cardinality [0,1] automatically
+
+##### C5.3 — Type system stress tests [M]
+**Deps**: C5.1, C5.2
+
+Validate that the DAG-based coercion handles real-world type relationships.
+
+- [ ] C5.3a — Multi-step coercion: `NonEmptyUrl` → `Url` → `String` → `Json`
+- [ ] C5.3b — Container coercion: `List<Url>` → `List<String>` (covariant)
+- [ ] C5.3c — Optional unwrap: `Optional<String>` → `String` (requires value present)
+- [ ] C5.3d — Map coercion: `Map<String, Url>` → `Map<String, String>`
+- [ ] C5.3e — Cross-provider type alignment: `GcpSecretPayload` refines `String`,
+      `AwsSecretValue` refines `String` — both coerce to `String` but not to each other
+- [ ] C5.3f — Credential coercion: `GcpAccessToken` and `AwsSessionToken` both refine
+      `Credential` but are not interchangeable
+
+---
+
+### C6 — Understanding / Modeling Layer (Wave 0-1)
+**Source**: the-gunbai `understanding/` pattern
+
+External systems must be modeled as typed, versioned understandings — not ad-hoc code.
+This is the foundation for all GCP infra, credential, and transport work.
+
+#### Wave 0
+
+##### C6.1 — Understanding type definitions [L]
+**Deps**: None
+
+Port the core understanding types from the-gunbai. Create `core/understanding` crate
+(or module in `core/ir`).
+
+- [ ] C6.1a — Define `Understanding` struct: id, name, kind, version, docs, behaviors,
+      constraints, assumptions, unknowns, depends_on
+- [ ] C6.1b — Define `SystemKind` enum: Cli, RestApi, LlmApi, Sdk, SecretProvider,
+      Convention, Queue, Scheduler, Runner
+- [ ] C6.1c — Define `Behavior` struct: id, description, invocation, inputs, outputs,
+      observed_properties, requires, upsert_phase
+- [ ] C6.1d — Define `Invocation` enum: Cli (with docs), Rest (with docs), Sdk, Protocol
+- [ ] C6.1e — Define `Property` enum: ReadOnly, WritesWorld, Deterministic, Idempotent,
+      IdempotentWithKey, FailsWhen, EdgeCase, etc.
+- [ ] C6.1f — Define `InputType`/`OutputType` enums with mapping to `TypeId`/`Dag<TypeOp>`
+- [ ] C6.1g — `inventory`-based auto-registration: `submit_understanding!` macro
+- [ ] C6.1h — Tests: define a minimal understanding, verify registration + retrieval
+
+#### Wave 1
+
+##### C6.2 — First understandings: GCP + transport [L]
+**Deps**: C6.1
+
+Model the first real external systems as understandings. These validate the framework
+and provide the typed foundation for E2 (GCP infra) and C4 (transport).
+
+- [ ] C6.2a — GCP Secret Manager understanding (access_secret_version, list_secrets,
+      create_secret, destroy_secret_version)
+- [ ] C6.2b — GCP IAM understanding (SA CRUD, IAM bindings, WIF pool/provider)
+- [ ] C6.2c — GCS understanding (get, put, list, delete + versioned CAS)
+- [ ] C6.2d — File transport understanding (read, write, exists, delete)
+- [ ] C6.2e — Shell transport understanding (exec with args, env, cwd, timeout)
+- [ ] C6.2f — HTTP/REST transport understanding (GET, POST, PUT, DELETE with status semantics)
+- [ ] C6.2g — Dependency graph: GCP Secret Manager depends_on secret:GOOGLE_APPLICATION_CREDENTIALS
+- [ ] C6.2h — Tests: all understandings parseable, dependency graph acyclic
+
+#### Wave 2
+
+##### C6.3 — Contract test generation [L]
+**Deps**: C6.2, C5.1
+
+Auto-generate behavioral contract tests from understanding specs.
+
+- [ ] C6.3a — Define `ContractTestSpec` from Behavior + observed_properties
+- [ ] C6.3b — Upsert phase enforcement: Check=ReadOnly+Deterministic,
+      Create=IdempotentWithKey, Resolve=ReadOnly+FailsWhen
+- [ ] C6.3c — Generate type-safe test harnesses from InputType/OutputType
+- [ ] C6.3d — Wire into testgen for understanding-driven test generation
+
+#### Wave 3
+
+##### C6.4 — Multi-cloud stress test understandings [L]
+**Deps**: C6.2, C5.3
+
+Model a second cloud provider to validate that the understanding + type system
+handles cross-provider concerns correctly.
+
+- [ ] C6.4a — AWS Secrets Manager understanding (get_secret_value, create_secret,
+      put_secret_value, describe_secret)
+- [ ] C6.4b — AWS IAM understanding (role CRUD, policy attachment, assume-role)
+- [ ] C6.4c — S3 understanding (get_object, put_object, list_objects + versioned CAS)
+- [ ] C6.4d — Type alignment test: GCP SecretPayload and AWS SecretValue both refine
+      String but are not mutually coercible
+- [ ] C6.4e — Cross-provider credential test: `GcpAccessToken` vs `AwsSessionToken` —
+      both satisfy `Credential` interface but different provider strategies
+- [ ] C6.4f — Storage abstraction test: `Store` trait behaviors map to both GCS and S3
+      understandings with correct property preservation (CAS atomicity, TTL semantics)
+
+---
 
 ### C1 — Platform/Toolchain Modeling
 **Source**: `TODO/TODO_URGENT_platform_toolchain_modeling.md`
@@ -616,14 +761,18 @@ Reconcile/rotate/prune loops for secrets.
 ### E2 — GCP Infra Parity
 **Source**: `TODO/TODO_gcp_infra_parity.md`
 
-8 phases to build out GCP infrastructure management.
+8 phases to build out GCP infrastructure management. **All GCP work builds on the
+understanding layer (C6)** — services are modeled as typed understandings first,
+then implemented against those specs.
 
 #### Wave 1
 
 ##### E2.1 — SA/IAM lifecycle [L]
-**Deps**: None
+**Deps**: C6.1 (understanding types), C6.2b (GCP IAM understanding)
 
-- [ ] E2.1a — Service Account CRUD (create, update, delete)
+Implementation of SA/IAM operations against the typed understanding spec from C6.2b.
+
+- [ ] E2.1a — Service Account CRUD (create, update, delete) — impl against IAM understanding
 - [ ] E2.1b — SA IAM Bindings (who can impersonate)
 - [ ] E2.1c — Expand SA spec (display_name, self_roles, wif_bindings)
 - [ ] E2.1d — Expand SA Catalog (from 2 to ~8 SAs)
@@ -744,6 +893,17 @@ V0 complete (Tracks 2-6). Track 1 (Resource abstraction trait) still in design.
 
 ## Parallel Swimlane Guide
 
+### Wave 0 — 2 independent swimlanes (START HERE)
+
+| Swimlane | Tasks | Focus |
+|----------|-------|-------|
+| **Type System** | C5.1, C5.2 | DAG-based coercion + eliminate dual encoding |
+| **Understanding** | C6.1 | Understanding type definitions + registration |
+
+These two swimlanes are independent and can run concurrently. **Wave 0 must complete
+before Wave 1 domain work (E2) begins**, because GCP services must be modeled as
+understandings.
+
 ### Wave 1 — 5 independent swimlanes
 
 | Swimlane | Tasks | Focus |
@@ -751,18 +911,16 @@ V0 complete (Tracks 2-6). Track 1 (Resource abstraction trait) still in design.
 | **A** | B1.1, B1.2, B1.3, B1.4 | DSL migration (Ready Now) |
 | **B** | C1.1, C3.1, C3.1b, C4.1 | Modeling foundations |
 | **C** | D1.1, D1.2, D1.3, D2.1 | Runtime hardening |
-| **D** | E1.0, E2.1 | Domain baselines |
-| **E** | F1.6, F1.10, F1.23, F1.30, F2.1 | Debt cleanup |
-
-All 5 swimlanes can run concurrently with no conflicts.
+| **D** | C5.3, C6.2 | Type stress tests + first understandings (GCP, transport) |
+| **E** | E1.0, E2.1, F1.x | Domain baselines (E2.1 requires C6.1+C6.2b), debt cleanup |
 
 ### Highest-ROI Starting Points
 
-1. **B1.1** (Pragma DSL migration) — 3 identical upsert chains → proves DSL production readiness
-2. **C3.1** (DelegateExecutable macro) — eliminates ~200 lines boilerplate across 15+ files
-3. **D1.1** (DisplayConfig) — already ~44% done, unblocks entire logging chain
-4. **C4.1** (Transport tests) — ~200 lines fills zero-coverage gap, unblocks C4.2-C4.3
-5. **C1.1** (Platform types) — single source of truth replaces 5+ fragmented models
+1. **C5.1+C5.2** (Type DAG coercion) — validates the core modeling approach before everything else
+2. **C6.1** (Understanding types) — creates the foundation for all external system modeling
+3. **C6.2** (GCP + transport understandings) — first real systems modeled properly, unblocks E2
+4. **C5.3** (Stress tests) — multi-step coercion, cross-provider types, container covariance
+5. **B1.1** (Pragma DSL migration) — highest-ROI migration, proves DSL production readiness
 
 ---
 
