@@ -93,8 +93,10 @@ Failures become policy-driven, not node-driven:
 
 ## Follow-Up Work
 
-1. Move seed-class classification to a shared IR-level module so codegen/testgen
-   and future generators consume one source of truth.
+1. ✅ Move seed-class classification to a shared IR-level module so codegen/testgen
+   and future generators consume one source of truth. _(2026-02-18: `SemanticCarrierClass`
+   + `semantic_carrier_class_for_type_id` moved to `core/ir::types`, and testgen now reads
+   classification from shared IR helpers.)_
 2. Extend matrix enforcement beyond current slice:
    - scenario generation contexts
    - live-flow generation contexts

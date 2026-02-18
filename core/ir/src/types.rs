@@ -563,6 +563,15 @@ pub enum SeedPlaceholderPolicy {
     ExplicitSeedRequired,
 }
 
+/// Semantic carrier classification for seed-policy enforcement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SemanticCarrierClass {
+    /// Structural type where synthesized placeholders are valid.
+    StructuralGeneratable,
+    /// Semantically meaningful type requiring authored seeds in strict contexts.
+    SemanticCarrier,
+}
+
 impl TypeId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
@@ -575,10 +584,23 @@ impl TypeId {
     pub fn seed_placeholder_policy(&self) -> SeedPlaceholderPolicy {
         seed_placeholder_policy_for_type_id(&self.0)
     }
+
+    /// Classify this type into structural vs semantic-carrier seed class.
+    pub fn semantic_carrier_class(&self) -> SemanticCarrierClass {
+        semantic_carrier_class_for_type_id(&self.0)
+    }
 }
 
 /// Classify placeholder seed policy for a raw type ID.
 pub fn seed_placeholder_policy_for_type_id(type_id: &str) -> SeedPlaceholderPolicy {
+    match semantic_carrier_class_for_type_id(type_id) {
+        SemanticCarrierClass::StructuralGeneratable => SeedPlaceholderPolicy::Generated,
+        SemanticCarrierClass::SemanticCarrier => SeedPlaceholderPolicy::ExplicitSeedRequired,
+    }
+}
+
+/// Classify semantic-carrier class for a raw type ID.
+pub fn semantic_carrier_class_for_type_id(type_id: &str) -> SemanticCarrierClass {
     match type_id {
         // Primitives.
         "String" | "Bool" | "Int" | "Unit" | "Json" | "Void"
@@ -591,8 +613,8 @@ pub fn seed_placeholder_policy_for_type_id(type_id: &str) -> SeedPlaceholderPoli
         | "StringList" | "IntList" | "BoolList" | "JsonList"
         | "UrlList" | "FilePathList"
         | "NonEmptyStringList" | "NonEmptyFilePathList"
-        => SeedPlaceholderPolicy::Generated,
-        _ => SeedPlaceholderPolicy::ExplicitSeedRequired,
+        => SemanticCarrierClass::StructuralGeneratable,
+        _ => SemanticCarrierClass::SemanticCarrier,
     }
 }
 
@@ -744,6 +766,26 @@ mod tests {
         assert_eq!(
             seed_placeholder_policy_for_type_id("TransportResponse"),
             SeedPlaceholderPolicy::ExplicitSeedRequired
+        );
+    }
+
+    #[test]
+    fn test_semantic_carrier_class_known_types() {
+        assert_eq!(
+            semantic_carrier_class_for_type_id("String"),
+            SemanticCarrierClass::StructuralGeneratable
+        );
+        assert_eq!(
+            semantic_carrier_class_for_type_id("OptionalString"),
+            SemanticCarrierClass::StructuralGeneratable
+        );
+        assert_eq!(
+            semantic_carrier_class_for_type_id("TransportResponse"),
+            SemanticCarrierClass::SemanticCarrier
+        );
+        assert_eq!(
+            TypeId::from("ToolHandle").semantic_carrier_class(),
+            SemanticCarrierClass::SemanticCarrier
         );
     }
 

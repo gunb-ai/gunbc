@@ -36,8 +36,9 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, seed_placeholder_policy_for_type_id, Cardinality, Dag, NodeId, Os, PortName,
-    RuntimePlatform, SecretString, SeedPlaceholderPolicy, TypeRegistry, Value, ValueExpr,
+    contract, semantic_carrier_class_for_type_id, Cardinality, Dag, NodeId, Os, PortName,
+    RuntimePlatform, SecretString, SeedPlaceholderPolicy, SemanticCarrierClass, TypeRegistry,
+    Value, ValueExpr,
 };
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -45,14 +46,22 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 
 type SeedPolicy = SeedPlaceholderPolicy;
+type SeedClass = SemanticCarrierClass;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SeedContext {
     RealSingleNodeRequiredInput,
 }
 
+fn seed_class_for_type(type_id: &str) -> SeedClass {
+    semantic_carrier_class_for_type_id(type_id)
+}
+
 fn seed_policy_for_type(type_id: &str) -> SeedPolicy {
-    seed_placeholder_policy_for_type_id(type_id)
+    match seed_class_for_type(type_id) {
+        SeedClass::StructuralGeneratable => SeedPolicy::Generated,
+        SeedClass::SemanticCarrier => SeedPolicy::ExplicitSeedRequired,
+    }
 }
 
 fn requires_explicit_seed(type_id: &str, context: SeedContext) -> bool {

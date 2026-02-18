@@ -742,8 +742,8 @@ Core fix landed (semantic-carrier inputs seeded correctly). 4 follow-ups.
 
 Currently testgen-local. Move to `core/ir` so other consumers can use it.
 
-- [ ] D2.1a — Extract `SemanticCarrierClass` enum to `core/ir`
-- [ ] D2.1b — Move classification logic from testgen to shared module
+- [x] D2.1a — Extract `SemanticCarrierClass` enum to `core/ir`
+- [x] D2.1b — Move classification logic from testgen to shared module
 
 #### Wave 2
 

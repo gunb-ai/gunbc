@@ -171,8 +171,9 @@ pub use transport::{
 pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{
-    boundary_label, seed_placeholder_policy_for_type_id, Cardinality, CardinalityMismatch, NodeId,
-    PortName, SeedPlaceholderPolicy, TypeId,
+    boundary_label, seed_placeholder_policy_for_type_id, semantic_carrier_class_for_type_id,
+    Cardinality, CardinalityMismatch, NodeId, PortName, SeedPlaceholderPolicy,
+    SemanticCarrierClass, TypeId,
 };
 pub use validate::{
     validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,
