@@ -4,9 +4,9 @@
 **Companion**: [`dsl-design.md`](./dsl-design.md), [`dsl-roadmap.md`](./dsl-roadmap.md)
 
 **Definition of Done**: `daglang compile foo.dag --target {rust,go,c,mips}` produces
-a compilable/assembable artifact that runs identically to the hand-built binary.
-Multiple language flavors prove the emit layer understands the computation, not just
-the target syntax.
+compilable/assemblable artifacts that run identically to the hand-built binary.
+All targets share a single language DAG — each target is an exit point, not a
+separate backend.
 
 ---
 
@@ -17,724 +17,614 @@ Parse → Resolve → Typecheck → Lower → Derive → Emit
   ✓        ✓          ✓          ✓        ✓       STUB
 ```
 
-The compiler pipeline is complete through derive. The emit phase (`daglang-emit`) is
-scaffold-only — `RustBackend` has 6/7 trait methods returning TODO comments.
+The emit phase (`daglang-emit`) is scaffold-only. But significant infrastructure
+already exists for the language DAG model:
 
-Two execution paths exist today:
-
-| Path | Status | How it works |
-|------|--------|-------------|
-| **Hand-built** | Production (10 binaries) | Rust `Dag<ConcreteOp>` + `gunbc-exec` engine |
-| **Exec-bridge** | Makegen only | `Dag<LoweredOp>` → `Dag<ResolvedOp>` runtime dispatch |
-
-Neither path generates source code. The exec-bridge proves DSL → execution works at
-runtime for makegen. The codegen path must produce static source files that compile to
-equivalent binaries.
-
-### Operation catalog (from codebase survey)
-
-~95 distinct `Executable` implementations across the codebase:
-- **~90% pure computation** (string transforms, list ops, JSON extraction, template rendering)
-- **1 transport boundary** (`TransportOps::Execute` — the only node that performs world I/O)
-- **3 resource acquisition** nodes (`FsEnv`, `ClockEnv`, `NetEnv`)
-- **20+ prepare→execute→parse triplets** (universal I/O pattern)
-
-Every operation follows the same contract:
-```
-fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError>
-```
+| Component | Location | Status |
+|-----------|----------|--------|
+| `code_ir.rs` | `core/ir/src/code_ir.rs` | Target-agnostic AST (Stmt, Expr, Item, FnDef, EnumDef, StructDef) — slightly Rust-flavored |
+| `render_ir.rs` | `core/ir/src/render_ir.rs` | OutputMedium trait + CodeRenderer/MarkupRenderer/FrameRenderer traits |
+| `language/` | `core/ir/src/language/` | SubDag-composed language model: TuringComplete/ConfigFormat categories, TypeSystemMapping/NamingConventions/CommentPrefix traits, 8+ languages |
+| CodeRenderer impls | `core/codegen/src/testgen/` | Rust, Python, TypeScript renderers (stub-level) |
+| the-gunbai IR | `the-gunbai/crates/gunbai-ir/` | EdgeKind (DataFlow/Control/TriggerGate), Effect 2-bit, Scatter/RepeatUntil, Understanding-driven codegen |
 
 ---
 
-## Architecture: Three Language Flavors
+## Architecture: Languages as a DAG
 
-The backends are chosen to stress-test different dimensions of the emit layer:
-
-| Target | Why | Forces |
-|--------|-----|--------|
-| **Rust** | Closest to source, reuse gunbc-exec runtime | Correct trait impls, dependency wiring |
-| **Go** | GC'd, simple types, different concurrency model | No ownership, different error handling, goroutines |
-| **C** | No runtime, manual memory, stepping stone to asm | Explicit allocation, no generics, function pointers |
-| **MIPS** | No abstractions at all | Register allocation, memory layout, proves emit understands the actual computation |
-
-Rust starts with Layer 1 (exec-runtime) then moves to Layer 2 (native). Go/C/MIPS
-are Layer 2 from the start — they can't use gunbc-exec.
-
-### Layer 1 vs Layer 2
-
-**Layer 1**: Generated code builds a `Dag<T>` and calls `gunbc-exec` to run it.
-The binary depends on gunbc-ir + gunbc-exec as libraries. Fast to implement.
-
-**Layer 2**: Generated code IS the computation. Topo-sorted function calls with
-data passing between them. No DAG runtime. The binary is standalone.
+Languages are not independent backends. They are nodes in an abstraction DAG where
+each level's IR is the interface the level below must satisfy.
 
 ```
-Layer 1 (Rust only):
-  Generated main.rs → build_graph() → execute_and_display()
-  Dependencies: gunbc-ir, gunbc-exec, gunbc-lib-transport
-
-Layer 2 (all targets):
-  Generated code → topo-ordered function calls → direct transport calls
-  Dependencies: only libc (C/MIPS) or stdlib (Go) or minimal runtime crate (Rust)
+                        Computation
+                     (from daglang-lower:
+                      what each node DOES)
+                            │
+                            ▼
+                       AbstractIR
+              (functions, variables, conditionals,
+               calls, loops — no language features)
+                            │
+              ┌─────────────┴─────────────┐
+              │                           │
+          Turing                       Markup
+              │                           │
+    ┌─────────┼─────────┐         ┌──────┴──────┐
+    │         │         │         │             │
+ Systems   Managed   Scripted   Block        Inline
+ (Rust)    (Go)     (Python)  (Markdown)    (HTML)
+    │         │         │
+    └────┬────┘         │
+         │              │
+     C-style            │
+   (C, structs,         │
+    pointers,           │
+    malloc)             │
+         │              │
+         ▼              │
+     Register           │
+   (MIPS, x86:          │
+    registers,          │
+    syscalls,           │
+    labeled blocks)     │
 ```
+
+### Lowering between levels
+
+Each level defines the same semantic operations with increasing detail:
+
+| Operation | AbstractIR | C-style | Register (MIPS) |
+|-----------|-----------|---------|-----------------|
+| Store value | `Let(name, expr)` | `Type name = expr;` | `sw $t0, offset($sp)` |
+| Call function | `Call(fn, args)` | `fn(a0, a1)` | `move $a0,..; jal fn` |
+| Conditional | `If(cond, then, else)` | `if (cond) {..} else {..}` | `beq $t0,$zero,L_else` |
+| Iterate | `For(x, items, body)` | `for(int i=0;i<n;i++){..}` | `L_top: bge $t0,$t1,L_end` |
+| Return | `Return(expr)` | `return expr;` | `move $v0,$t0; jr $ra` |
+| String concat | `BinOp(a, "+", b)` | `snprintf(buf,..,a,b)` | byte-copy loop |
+| File write | `Transport(Write,path,data)` | `fwrite(data,1,n,fp)` | `li $v0,4; syscall` |
+
+Emitting at any level means: lower `Computation` → `AbstractIR` → then lower through
+the DAG until you reach your target level, then render to text.
+
+### What already exists vs what's needed
+
+**Exists (reuse):**
+- `code_ir.rs` Stmt/Expr/Item hierarchy → this IS the AbstractIR (needs minor refactoring)
+- `CodeRenderer<M>` trait → this is the "render to text" step at each level
+- `TypeSystemMapping` → maps abstract types to concrete per-language
+- `NamingConventions` → converts identifiers per-language
+- `LanguageOp` SubDag composition → the DAG structure for language relationships
+
+**Needs work:**
+- Factor `code_ir.rs` to separate target-agnostic core from Rust-specific extensions
+- Add `CStyleIR` lowering (AbstractIR → C constructs)
+- Add `RegisterIR` lowering (CStyleIR → register-level instructions)
+- Implement `CodeRenderer` for C and MIPS
+- Bridge `Computation` (from daglang-lower) to `AbstractIR` (code_ir)
 
 ---
 
-## Track A: Emit Infrastructure (shared across all backends)
+## Track A: Computation → AbstractIR Bridge
 
-### A1. Redesign CodegenBackend trait
-**Files**: `core/daglang/daglang-emit/src/lib.rs`
-
-Replace the current string-in/string-out trait with structured IR input:
-
-```rust
-pub trait CodegenBackend {
-    fn emit_crate(
-        &self,
-        dag: &Dag<LoweredOp>,
-        artifacts: &DerivedArtifacts,
-        config: &EmitConfig,
-    ) -> Result<EmissionBundle, EmitError>;
-}
-```
-
-The backend receives the full lowered DAG with all port types, cardinalities, service
-metadata, obligations, and derived artifacts. It returns a bundle of files.
-
-Tasks:
-- [ ] A1.1 — Define `EmitConfig` (module name, output dir, target-specific options)
-- [ ] A1.2 — Replace `CodegenBackend` trait with `emit_crate` method
-- [ ] A1.3 — Update `emit_rust_bundle()` to use new trait (keep scaffold behavior for now)
-- [ ] A1.4 — Update `daglang-driver` to pass full config through pipeline
-
-### A2. Computation model for emit
+### A1. Define Computation model
 **Files**: new `core/daglang/daglang-emit/src/computation.rs`
 
-Before emitting any language, formalize what each node DOES as a
-target-independent computation description:
+The target-independent description of what each DAG node does.
+Not "how" (that's language-specific) but "what" (semantically).
 
 ```rust
 enum Computation {
-    /// Pure function: read named inputs, apply transform, produce named outputs
-    Pure {
-        inputs: Vec<(String, ValueType)>,
-        outputs: Vec<(String, ValueType)>,
-        body: PureBody,
-    },
-    /// Transport boundary: build request, execute I/O, parse response
-    Transport {
-        request_builder: RequestSpec,
-        response_parser: ResponseSpec,
-    },
-    /// Resource acquisition: produce a handle value
+    /// Pure: read inputs, apply transform, produce outputs
+    Pure { inputs: Vec<TypedPort>, outputs: Vec<TypedPort>, body: PureBody },
+    /// Transport boundary: world I/O
+    Transport { prepare: RequestSpec, execute: TransportKind, parse: ResponseSpec },
+    /// Resource acquisition: produce a handle
     ResourceAcquire { handle_type: String, handle_value: String },
-    /// Collection operation: apply function to list elements
-    Collection { kind: CollectionOpKind, element_computation: Box<Computation> },
+    /// Collection: apply operation to list elements
+    Collection { kind: CollectionOpKind, element_type: String },
 }
 
 enum PureBody {
-    /// Hardcoded JSON value (LoadRegistry, FsEnv)
-    Literal(serde_json::Value),
-    /// Template interpolation (Format, RenderMakefile)
-    Template { template: String, variables: Vec<String> },
-    /// String operation (Concat, Split, Filter, Map)
-    StringOp(StringOpKind),
-    /// JSON extraction (Extract, ParseJson)
-    JsonOp(JsonOpKind),
-    /// Comparison (CompareContent)
-    Compare { left: String, right: String, output: String },
-    /// Conditional passthrough (Guard, Branch)
-    Conditional { condition: String, if_true: String, if_false: Option<String> },
-    /// Delegated to service-specific handler
-    ServiceCall(ServiceCallMetadata),
+    Literal(serde_json::Value),       // Hardcoded value (LoadRegistry, FsEnv)
+    Template { pattern: String, vars: Vec<String> },  // String interpolation
+    StringOp(StringOpKind),           // Concat, Split, Filter, Map operations
+    JsonOp(JsonOpKind),               // Extract, Parse, Serialize
+    Compare { left: String, right: String },  // Content freshness
+    Conditional { condition: String, then_port: String, else_port: Option<String> },
+    Aggregate { inputs: Vec<String>, strategy: AggregateKind },  // Multi-input combine
+    ServiceCall(ServiceCallMetadata), // Delegated to service handler
+}
+
+enum TransportKind {
+    FileRead,
+    FileWrite,
+    FileExists,
+    ShellExec,
+    HttpRequest,
 }
 ```
 
-This is the intermediate representation between `LoweredOp` and target-specific code.
-Every backend consumes `Computation`, not `LoweredOp` directly.
-
 Tasks:
-- [ ] A2.1 — Define `Computation` enum and `PureBody` variants
-- [ ] A2.2 — Define `ValueType` enum (Str, Bool, Int, Json, List, Map, TransportRequest, TransportResponse, Skipped)
-- [ ] A2.3 — Implement `lower_to_computation(node: &Node<LoweredOp>) -> Computation`
-- [ ] A2.4 — Write tests: every makegen node → expected Computation variant
+- [ ] A1.1 — Define `Computation` enum, `PureBody`, `TransportKind`
+- [ ] A1.2 — Define `TypedPort` (name + abstract type + cardinality)
+- [ ] A1.3 — Implement `classify_computation(node: &Node<LoweredOp>) -> Computation`
+- [ ] A1.4 — Tests: every makegen node → expected Computation variant
+- [ ] A1.5 — Tests: every pragma node → expected Computation variant
 
-### A3. Topo-order emission plan
+### A2. Build EmitPlan from DAG
 **Files**: new `core/daglang/daglang-emit/src/plan.rs`
 
-Compute the emit plan: ordered list of computations with data flow between them.
-This is what every backend walks to generate code.
+Topo-ordered list of computations with data flow.
+Every backend consumes this same plan.
 
 ```rust
 struct EmitPlan {
-    /// Nodes in topological execution order
     steps: Vec<EmitStep>,
-    /// Entrypoint ports (become CLI args or function params)
     entrypoints: Vec<EntrypointPort>,
-    /// Transport node IDs (become intercept points in dry-run)
     transport_nodes: Vec<String>,
 }
 
 struct EmitStep {
     node_id: String,
     computation: Computation,
-    /// Where this step's inputs come from
-    input_sources: Vec<InputSource>,
-    /// Where this step's outputs flow to
-    output_sinks: Vec<OutputSink>,
+    input_sources: Vec<InputBinding>,
+    output_bindings: Vec<OutputBinding>,
 }
 
-enum InputSource {
-    /// From a previous step's output
-    Edge { from_step: usize, from_port: String },
-    /// From CLI arg / entrypoint
-    Entrypoint { port_name: String },
+enum InputBinding {
+    FromStep { step_index: usize, port: String },
+    FromEntrypoint { port: String },
+    Constant(serde_json::Value),
 }
 ```
 
 Tasks:
-- [ ] A3.1 — Define `EmitPlan`, `EmitStep`, `InputSource`, `OutputSink`
-- [ ] A3.2 — Implement `build_emit_plan(dag, artifacts) -> EmitPlan`
-- [ ] A3.3 — Write tests: makegen DAG → expected plan with 10 steps in topo order
-- [ ] A3.4 — Write tests: pragma DAG → expected plan with 3 parallel chains
+- [ ] A2.1 — Define `EmitPlan`, `EmitStep`, `InputBinding`, `OutputBinding`
+- [ ] A2.2 — Implement `build_emit_plan(dag, artifacts) -> EmitPlan`
+- [ ] A2.3 — Tests: makegen → 10-step plan in topo order
+- [ ] A2.4 — Tests: pragma → plan with 3 parallel chains correctly ordered
 
-### A4. `daglang compile` CLI command
+### A3. Computation → AbstractIR lowering
+**Files**: new `core/daglang/daglang-emit/src/lower_to_ir.rs`
+
+Convert EmitPlan steps into `code_ir` constructs (Stmt, Expr, Item).
+This is the bridge from "what" to "how" — but still target-agnostic.
+
+```rust
+/// Lower an EmitPlan into a SourceFile (code_ir)
+fn lower_plan_to_abstract_ir(plan: &EmitPlan) -> SourceFile {
+    // Each EmitStep becomes a sequence of Stmts in main()
+    // InputBindings become variable references
+    // OutputBindings become let-bindings
+    // Transport nodes become function calls to a transport API
+    // Entrypoints become function parameters
+}
+```
+
+For makegen, this produces:
+```
+fn main(path: String) {
+    let registry = literal_json({...});              // Step 1: LoadRegistry
+    let makefile_content = render_template(...);      // Step 2: RenderMakefile
+    let read_request = file_read_request(path);       // Step 3: PrepareRead
+    let read_response = execute_transport(read_req);  // Step 4: ExecuteRead
+    let fresh = compare(read_response, makefile);     // Step 5: Compare
+    if !fresh {                                       // Step 6-8: Conditional write
+        let write_request = file_write_request(...);
+        execute_transport(write_request);
+    }
+    report(fresh);                                    // Step 9: Report
+}
+```
+
+Tasks:
+- [ ] A3.1 — Lower `PureBody::Literal` → `Expr::Value` or `Expr::Call` to constructor
+- [ ] A3.2 — Lower `PureBody::Template` → `Expr::FormatStr` or string concat chain
+- [ ] A3.3 — Lower `PureBody::Compare` → `Expr::BinOp("==", left, right)`
+- [ ] A3.4 — Lower `PureBody::Conditional` → `Stmt::If`
+- [ ] A3.5 — Lower `Transport` → `Stmt::Let` + `Expr::Call` to transport API
+- [ ] A3.6 — Lower `InputBinding::FromStep` → `Expr::Var(step_output_name)`
+- [ ] A3.7 — Lower `EntrypointPort` → function parameter
+- [ ] A3.8 — Assemble into `SourceFile` with `fn main()`
+- [ ] A3.9 — Tests: makegen EmitPlan → expected SourceFile structure
+- [ ] A3.10 — Tests: pragma EmitPlan → expected SourceFile with parallel chains
+
+---
+
+## Track B: Factor code_ir into Abstraction Tiers
+
+### B1. Extract AbstractIR core from code_ir
+**Files**: `core/ir/src/code_ir.rs`
+
+The existing `code_ir.rs` is 90% target-agnostic but has Rust-specific constructs
+mixed in (`Deref`, `RefMut`, `MacroCall`, `ImplBlock`). Factor into tiers.
+
+**Tier 0 — AbstractIR** (truly universal):
+```
+Stmt: Let, Expr, If, For, Return, Comment, Blank
+Expr: Var, Str, IntLit, BoolLit, Call, BinOp, UnaryOp, Field, Array, Block
+Item: FnDef, StructDef, EnumDef (without derives)
+```
+
+**Tier 1 — SystemsIR** (Rust/C++ extensions):
+```
+Expr: Deref, Ref, RefMut, MacroCall, Path, Closure
+Item: ImplBlock, EnumDef with derives
+Stmt: TailExpr (implicit return)
+```
+
+**Tier 2 — ManagedIR** (Go/Python extensions):
+```
+Expr: GoRoutine, Channel, Defer, Slice
+Stmt: GoDefer, GoSelect
+```
+
+**Tier 3 — CStyleIR** (C lowering target):
+```
+Expr: Malloc, Free, Cast, SizeOf, AddressOf
+Stmt: Goto, Label
+Item: Typedef, FunctionPointer
+```
+
+**Tier 4 — RegisterIR** (MIPS/x86 lowering target):
+```
+Instruction: Load, Store, Add, Sub, Mul, Branch, Jump, Syscall
+Operand: Register, Immediate, Label, StackOffset
+```
+
+Tasks:
+- [ ] B1.1 — Audit code_ir.rs: tag each Stmt/Expr variant with its tier
+- [ ] B1.2 — Extract Tier 0 (AbstractIR) as base types — all existing code still works
+- [ ] B1.3 — Gate Tier 1 (SystemsIR) extensions behind feature or module boundary
+- [ ] B1.4 — Define Tier 3 (CStyleIR) types — new, doesn't exist yet
+- [ ] B1.5 — Define Tier 4 (RegisterIR) types — new, doesn't exist yet
+- [ ] B1.6 — Define lowering trait: `trait LowerIR<From, To> { fn lower(from: &From) -> To; }`
+
+### B2. AbstractIR → SystemsIR lowering (Rust target)
+**Files**: new `core/daglang/daglang-emit/src/lower_systems.rs`
+
+Add Rust-specific constructs: ownership, Result, derive macros, use statements.
+
+```rust
+fn lower_to_rust(abstract_ir: &SourceFile) -> SourceFile {
+    // FnDef → add Result<_, ExecError> return type
+    // StructDef → add #[derive(Debug, Clone)]
+    // Call to transport API → Result<_, _> with ? operator
+    // String values → .to_string() calls
+    // Add use/import statements
+}
+```
+
+Tasks:
+- [ ] B2.1 — Add Result wrapping for fallible functions
+- [ ] B2.2 — Add derive macros to generated structs/enums
+- [ ] B2.3 — Add `use` statements from import analysis
+- [ ] B2.4 — String literal → `String` ownership conversion
+- [ ] B2.5 — Transport API calls → gunbc-exec or standalone runtime calls
+- [ ] B2.6 — Tests: abstract makegen IR → expected Rust-specific IR
+
+### B3. AbstractIR → ManagedIR lowering (Go target)
+**Files**: new `core/daglang/daglang-emit/src/lower_managed.rs`
+
+Add Go-specific constructs: multiple returns, error handling, package imports.
+
+```rust
+fn lower_to_go(abstract_ir: &SourceFile) -> GoSourceFile {
+    // FnDef → add (result, error) multi-return
+    // If(err != nil) error handling pattern
+    // Package declaration + imports
+    // String handling (Go strings are already value types)
+}
+```
+
+Tasks:
+- [ ] B3.1 — Define `GoSourceFile` (or extend code_ir with Go variants)
+- [ ] B3.2 — Multi-return error handling pattern
+- [ ] B3.3 — Package + import emission
+- [ ] B3.4 — Go type mapping via existing `TypeSystemMapping`
+- [ ] B3.5 — Tests: abstract makegen IR → expected Go-specific IR
+
+### B4. AbstractIR → CStyleIR lowering
+**Files**: new `core/daglang/daglang-emit/src/lower_c.rs`
+
+Lower to C: explicit memory, function pointers, no generics.
+
+```rust
+fn lower_to_c(abstract_ir: &SourceFile) -> CSourceFile {
+    // StructDef → C struct with tagged union for variant types
+    // FnDef → C function with return value + error out-param
+    // String → char* with explicit length tracking
+    // List → array pointer + count
+    // Let → stack allocation or malloc based on escape analysis
+    // Cleanup → free() chains or arena scope
+}
+```
+
+Tasks:
+- [ ] B4.1 — Define `CSourceFile` and C-specific AST nodes
+- [ ] B4.2 — Value type → C tagged union mapping
+- [ ] B4.3 — String handling (char*, length, null-termination)
+- [ ] B4.4 — Memory strategy: arena allocator for most allocations
+- [ ] B4.5 — Error handling: return code + errno or out-param
+- [ ] B4.6 — Tests: abstract makegen IR → expected C IR
+
+### B5. CStyleIR → RegisterIR lowering
+**Files**: new `core/daglang/daglang-emit/src/lower_register.rs`
+
+Lower C to MIPS instructions.
+
+```rust
+fn lower_to_mips(c_ir: &CSourceFile) -> MipsProgram {
+    // Function → label + stack frame setup + jr $ra
+    // Local variables → stack offsets
+    // Function calls → $a0-$a3 args + jal + $v0 return
+    // If → beq/bne + labels
+    // String literal → .data section label
+    // File I/O → syscall sequences
+    // String ops → byte-copy loops
+}
+```
+
+Tasks:
+- [ ] B5.1 — Define `MipsProgram`, `MipsFunction`, `MipsInstruction`
+- [ ] B5.2 — Register allocation: linear scan ($t0-$t9 temps, $s0-$s7 saved)
+- [ ] B5.3 — Stack frame layout (arguments, locals, saved registers)
+- [ ] B5.4 — Calling convention ($a0-$a3 in, $v0 out, $ra save/restore)
+- [ ] B5.5 — String operations as byte-copy/compare loops
+- [ ] B5.6 — Syscall emission (open/read/write/close/exit)
+- [ ] B5.7 — Tests: C makegen IR → expected MIPS program
+
+---
+
+## Track C: Renderers (IR → Text at Each Level)
+
+### C1. Extend existing CodeRenderer for Rust
+**Files**: `core/codegen/src/testgen/` (existing renderer stubs)
+
+The `CodeRenderer<M>` trait already exists. The Rust renderer is partially implemented
+for testgen. Extend it to handle full SourceFile emission for generated binaries.
+
+Tasks:
+- [ ] C1.1 — Render `FnDef` with full signature, body, attributes
+- [ ] C1.2 — Render `EnumDef` with derives and variants
+- [ ] C1.3 — Render `StructDef` with field types and visibility
+- [ ] C1.4 — Render `ImplBlock` with trait and methods
+- [ ] C1.5 — Render `Import` as `use` statements
+- [ ] C1.6 — Emit `Cargo.toml` with dependencies
+- [ ] C1.7 — Tests: Rust IR → expected source text (snapshot tests)
+
+### C2. Go renderer (CodeRenderer impl)
+**Files**: new `core/codegen/src/go_renderer.rs` or similar
+
+Tasks:
+- [ ] C2.1 — Render Go function definitions with multi-return
+- [ ] C2.2 — Render Go struct types
+- [ ] C2.3 — Render Go error handling idiom (`if err != nil`)
+- [ ] C2.4 — Render Go imports and package declaration
+- [ ] C2.5 — Emit `go.mod`
+- [ ] C2.6 — Use existing `TypeSystemMapping` for Go type names
+- [ ] C2.7 — Use existing `NamingConventions` for Go identifier style (camelCase)
+- [ ] C2.8 — Tests: Go IR → expected source text
+
+### C3. C renderer (CodeRenderer impl)
+**Files**: new `core/codegen/src/c_renderer.rs`
+
+Tasks:
+- [ ] C3.1 — Render C function definitions with prototypes
+- [ ] C3.2 — Render C structs with tagged union Value type
+- [ ] C3.3 — Render C include directives
+- [ ] C3.4 — Render C main() with argc/argv
+- [ ] C3.5 — Emit Makefile for C compilation
+- [ ] C3.6 — Tests: C IR → expected source text
+
+### C4. MIPS renderer (new trait or RegisterRenderer)
+**Files**: new `core/codegen/src/mips_renderer.rs`
+
+Tasks:
+- [ ] C4.1 — Render .data section (string literals, constants)
+- [ ] C4.2 — Render .text section (functions as labeled blocks)
+- [ ] C4.3 — Render instructions (load, store, arithmetic, branch, jump, syscall)
+- [ ] C4.4 — Render stack frame prologues/epilogues
+- [ ] C4.5 — Tests: MIPS program → expected assembly text
+
+---
+
+## Track D: Exec-Runtime Fast Path (Rust Layer 1)
+
+While Tracks A-C build the language DAG properly, this track gets a working
+generated binary ASAP using the existing gunbc-exec runtime.
+
+### D1. Rust exec-runtime codegen
+**Files**: `core/daglang/daglang-emit/src/rust_exec_runtime.rs`
+
+Generate Rust code that builds `Dag<Op>` + calls `gunbc-exec`. This bypasses
+the language DAG temporarily — it's the bootstrap path.
+
+Tasks:
+- [ ] D1.1 — Emit Op enum with one variant per DAG node
+- [ ] D1.2 — Emit `impl Executable for Op` with match dispatch
+- [ ] D1.3 — Emit executor bodies (port from exec-bridge implementations)
+- [ ] D1.4 — Emit graph construction (`Dag::new() + add_node + add_edge`)
+- [ ] D1.5 — Emit `fn main()` with CLI arg parsing + execute_and_display
+- [ ] D1.6 — Emit `Cargo.toml` with gunbc-ir/gunbc-exec path deps
+- [ ] D1.7 — Makegen end-to-end: generated binary produces identical Makefile
+- [ ] D1.8 — Pragma end-to-end: generated binary produces identical pragma files
+
+### D2. Reconcile with language DAG
+Once Tracks A-C mature, the exec-runtime path becomes one rendering of
+`SystemsIR` — the Rust-specific lowering that happens to use gunbc-exec.
+Eventually the native Rust path (Track B2) replaces it.
+
+Tasks:
+- [ ] D2.1 — Express exec-runtime codegen as AbstractIR → SystemsIR → Rust text
+- [ ] D2.2 — Verify output identical to D1 path
+- [ ] D2.3 — Remove D1 standalone path (replaced by language DAG path)
+
+---
+
+## Track E: CLI + Testing + CI
+
+### E1. `daglang compile` command
 **Files**: `core/daglang/daglang-cli/src/main.rs`
 
-Add the compile subcommand that drives the full pipeline:
-
 ```
-daglang compile <input.dag> --target {rust|go|c|mips} [--out <dir>] [--layer {1|2}]
+daglang compile <input.dag> --target {rust|go|c|mips} [--out <dir>] [--layer 1|2]
 ```
 
 Tasks:
-- [ ] A4.1 — Add `compile` subcommand to CLI arg parser
-- [ ] A4.2 — Wire compile command through driver → emit pipeline
-- [ ] A4.3 — Write output files to `--out` directory
-- [ ] A4.4 — Add `--target` flag with backend selection
+- [ ] E1.1 — Add `compile` subcommand to CLI parser
+- [ ] E1.2 — Wire through driver: parse → lower → derive → plan → lower_ir → render
+- [ ] E1.3 — `--target` selects exit point in language DAG
+- [ ] E1.4 — `--layer 1` (exec-runtime, Rust only) vs `--layer 2` (native, all targets)
+- [ ] E1.5 — Write generated files to `--out` directory
 
-### A5. Cross-language parity test harness
+### E2. Cross-language parity test harness
 **Files**: new `core/daglang/daglang-cli/tests/codegen_parity.rs`
 
-For each target, the test harness:
-1. Compiles .dag → target source
-2. Builds target (cargo build / go build / gcc / mips-gcc)
-3. Runs generated binary with test fixtures
-4. Captures output
-5. Asserts identical output across all targets
+Tasks:
+- [ ] E2.1 — Build and run generated binaries per target (cargo, go build, gcc, mips-as+qemu)
+- [ ] E2.2 — Capture output (file content written)
+- [ ] E2.3 — Assert identical output across all targets
+- [ ] E2.4 — Makegen parity: Rust == Go == C == MIPS Makefile output
+- [ ] E2.5 — CI integration: run parity tests on every push
+
+### E3. Obligation-driven test generation
+**Files**: new `core/daglang/daglang-emit/src/test_gen.rs`
 
 Tasks:
-- [ ] A5.1 — Define parity test trait/interface
-- [ ] A5.2 — Implement file-content comparison (ignore timestamps/paths)
-- [ ] A5.3 — Implement cross-target parity assertion
-- [ ] A5.4 — Makegen parity fixture: known tool registry → expected Makefile content
+- [ ] E3.1 — Emit dry-run completion test per target language
+- [ ] E3.2 — Emit per-transport-node mock test
+- [ ] E3.3 — Emit pure-node snapshot test from NodeIoExample
+- [ ] E3.4 — Rust: `#[test]` functions
+- [ ] E3.5 — Go: `func Test*` functions
+- [ ] E3.6 — C: test runner with assert macros
 
 ---
 
-## Track B: Rust Backend
+## Track F: Reconciliation with the-gunbai
 
-### B1. Layer 1 — Exec-runtime Rust codegen (fast path)
-**Files**: `core/daglang/daglang-emit/src/rust_backend.rs` (new, extracted from lib.rs)
-
-Generate Rust code that uses gunbc-exec as runtime. This is the fastest path to a
-working generated binary.
-
-#### B1.1 — Op enum generation
-Emit a `#[derive(Debug, Clone)]` enum with one variant per DAG node:
-```rust
-// Generated: target/generated/makegen/src/ops.rs
-#[derive(Debug, Clone)]
-pub enum Op {
-    LoadRegistry,
-    FsEnv,
-    RenderMakefile,
-    PrepareReadMakegen,
-    ExecuteReadMakegen,
-    CompareContent,
-    PrepareWriteMakegen,
-    ExecuteTransport,
-    MakegenEntrypoint,
-}
-```
+### F1. Shared abstractions
+Align the two repos' models where they overlap.
 
 Tasks:
-- [ ] B1.1.a — Walk DAG nodes, collect unique op names
-- [ ] B1.1.b — Emit enum definition with derive macros
-- [ ] B1.1.c — Emit `impl std::fmt::Display for Op`
+- [ ] F1.1 — Reconcile EdgeKind: adopt the-gunbai's DataFlow/Control/TriggerGate in gunbc
+- [ ] F1.2 — Reconcile Effect model: adopt 2-bit (writes_world × deterministic) classification
+- [ ] F1.3 — Reconcile Value types: bridge gunbai Value (Artifact, Secret, Capability) ↔ gunbc Value
+- [ ] F1.4 — Reconcile PortType: align gunbai's simpler type system with gunbc's TypeId strings
+- [ ] F1.5 — Document shared abstractions in a cross-repo design doc
 
-#### B1.2 — Executable impl generation
-Emit `impl Executable for Op` with a match arm per variant. Each arm delegates to
-an executor function (either inline or from runtime library).
-
-For makegen, the 10 executor bodies are already implemented in `daglang-exec-bridge`.
-The codegen emits equivalent source code:
-
-```rust
-// Generated
-impl Executable for Op {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            Op::LoadRegistry => {
-                // Emit literal JSON value
-                OutputMap::new().json("registry", json!({...})).ok()
-            }
-            Op::RenderMakefile => {
-                // Emit template rendering logic
-                let registry = require_json(&inputs, "registry")?;
-                // ...string building...
-                OutputMap::new().str("return", &makefile_content).ok()
-            }
-            // ...
-        }
-    }
-}
-```
+### F2. Understanding-driven codegen alignment
+the-gunbai generates code from Understandings (versioned system knowledge).
+The language DAG should be the shared rendering layer.
 
 Tasks:
-- [ ] B1.2.a — Emit executor for `Computation::Pure(Literal)` — hardcoded values
-- [ ] B1.2.b — Emit executor for `Computation::Pure(Template)` — string interpolation
-- [ ] B1.2.c — Emit executor for `Computation::Transport` — TransportRequest build + execute
-- [ ] B1.2.d — Emit executor for `Computation::Pure(Compare)` — content freshness
-- [ ] B1.2.e — Emit executor for `Computation::Pure(Conditional)` — skip/guard logic
-- [ ] B1.2.f — Emit the full `impl Executable for Op` match block
-
-#### B1.3 — Graph construction generation
-Emit `fn build_graph() -> Dag<Op>` that reconstructs the DAG from IR:
-
-Tasks:
-- [ ] B1.3.a — Emit node construction (id, input ports, output ports, op variant)
-- [ ] B1.3.b — Emit edge construction (from_node, from_port, to_node, to_port)
-- [ ] B1.3.c — Port cardinality and type_id emission
-
-#### B1.4 — CLI main() generation
-Emit `fn main()` with:
-- CLI arg parsing (from entrypoint ports)
-- BoundaryMocks wiring
-- ExecutionMode setup (Real / DryRun with transport mocks)
-- execute_and_display() call
-
-Tasks:
-- [ ] B1.4.a — Emit CLI arg parsing from entrypoint port names/types
-- [ ] B1.4.b — Emit BoundaryMocks wiring (entrypoint ports → input mocks)
-- [ ] B1.4.c — Emit DryRun transport mock setup (from transport node IDs)
-- [ ] B1.4.d — Emit execute_and_display() call with mode
-- [ ] B1.4.e — Emit Cargo.toml with workspace-relative path deps
-
-#### B1.5 — Makegen end-to-end
-Wire everything together and verify:
-
-Tasks:
-- [ ] B1.5.a — Generate full makegen crate from `dsl/tools/makegen.dag`
-- [ ] B1.5.b — `cargo build` the generated crate (must compile)
-- [ ] B1.5.c — Run generated binary → verify Makefile output matches hand-built
-- [ ] B1.5.d — Run generated binary in --dry-run → verify no file writes
-- [ ] B1.5.e — Structural parity: generated DAG topology == hand-built topology
-- [ ] B1.5.f — Add to CI as regression test
-
-### B2. Layer 2 — Native Rust codegen (no DAG runtime)
-**Files**: `core/daglang/daglang-emit/src/rust_native.rs`
-
-Generate standalone Rust code that IS the computation — no gunbc-exec dependency.
-The EmitPlan drives this: each step becomes a function call in topo order.
-
-```rust
-// Generated (Layer 2) — no Dag<T>, no execute(), no gunbc-exec
-fn main() {
-    let args = parse_cli_args();
-
-    // Step 1: load_registry (pure)
-    let registry = json!({ "tools": [{ "name": "makegen", "command": "..." }] });
-
-    // Step 2: render_makefile (pure)
-    let makefile_content = render_makefile(&registry);
-
-    // Step 3: prepare_read (transport prep)
-    let read_request = TransportRequest::File(FileRequest::read(&args.path));
-
-    // Step 4: execute_read (transport boundary)
-    let read_response = execute_file_transport(&read_request);
-
-    // Step 5: compare_content (pure)
-    let fresh = read_response.content() == &makefile_content;
-
-    // Step 6-8: conditional write
-    if !fresh {
-        let write_request = TransportRequest::File(FileRequest::write(&args.path, &makefile_content));
-        execute_file_transport(&write_request);
-    }
-
-    // Step 9: report
-    println!("written: {}", !fresh);
-}
-```
-
-Tasks:
-- [ ] B2.1 — Emit topo-ordered function calls from EmitPlan
-- [ ] B2.2 — Emit variable declarations with proper types
-- [ ] B2.3 — Emit data flow: step outputs → next step inputs via local variables
-- [ ] B2.4 — Emit transport calls via minimal runtime crate (just file I/O + shell exec)
-- [ ] B2.5 — Emit conditional execution (skip semantics)
-- [ ] B2.6 — Emit CLI arg parsing (standalone, no gunbc-cli dep)
-- [ ] B2.7 — Create `daglang-runtime-rs` minimal crate (transport + value types only)
-- [ ] B2.8 — Makegen Layer 2 end-to-end parity test
-
-### B3. Expand to more workflows (Rust)
-
-Tasks:
-- [ ] B3.1 — Pragma: 3 parallel content upsert chains (tests parallel codegen)
-- [ ] B3.2 — Codegen: conditional execution with `when` guards
-- [ ] B3.3 — Build: parallel test + clippy after build, aggregate results
-- [ ] B3.4 — Bootstrap: workspace scan → generate files
-- [ ] B3.5 — Parity tests for each (generated output == hand-built output)
-
----
-
-## Track C: Go Backend
-
-### C1. Go emission framework
-**Files**: new `core/daglang/daglang-emit/src/go_backend.rs`
-
-Go is Layer 2 from the start — no gunbc-exec equivalent exists.
-
-#### C1.1 — Go type emission
-Map DSL value types to Go:
-```
-String → string           List<String> → []string
-Bool → bool               Map<K,V> → map[K]V
-Int → int64               Json → interface{}
-TransportRequest → struct TransportResponse → struct
-```
-
-Tasks:
-- [ ] C1.1.a — Define Go type mapping table
-- [ ] C1.1.b — Emit Go struct definitions from port type_ids
-- [ ] C1.1.c — Emit TransportRequest/TransportResponse Go structs
-
-#### C1.2 — Go function emission
-Each EmitStep becomes a Go function:
-```go
-func loadRegistry() map[string]interface{} {
-    return map[string]interface{}{
-        "tools": []interface{}{
-            map[string]interface{}{"name": "makegen", "command": "..."},
-        },
-    }
-}
-
-func renderMakefile(registry map[string]interface{}) string {
-    // template rendering
-}
-```
-
-Tasks:
-- [ ] C1.2.a — Emit Go functions from `Computation::Pure(Literal)`
-- [ ] C1.2.b — Emit Go functions from `Computation::Pure(Template)`
-- [ ] C1.2.c — Emit Go functions from `Computation::Transport`
-- [ ] C1.2.d — Emit Go functions from `Computation::Pure(Compare)`
-- [ ] C1.2.e — Emit Go functions from `Computation::Pure(Conditional)`
-
-#### C1.3 — Go main() and transport runtime
-```go
-func main() {
-    path := flag.String("path", "Makefile", "output path")
-    flag.Parse()
-    // topo-ordered calls...
-}
-```
-
-Tasks:
-- [ ] C1.3.a — Emit `package main` with flag parsing from entrypoints
-- [ ] C1.3.b — Emit topo-ordered function calls in main()
-- [ ] C1.3.c — Emit Go file I/O runtime (os.ReadFile, os.WriteFile)
-- [ ] C1.3.d — Emit Go shell exec runtime (os/exec.Command)
-- [ ] C1.3.e — Emit `go.mod`
-
-#### C1.4 — Go makegen end-to-end
-
-Tasks:
-- [ ] C1.4.a — Generate full Go module from `dsl/tools/makegen.dag`
-- [ ] C1.4.b — `go build` succeeds
-- [ ] C1.4.c — Output parity: Go binary produces identical Makefile to Rust
-- [ ] C1.4.d — Cross-language parity test in CI
-
-#### C1.5 — Expand Go to more workflows
-
-Tasks:
-- [ ] C1.5.a — Pragma in Go
-- [ ] C1.5.b — Build in Go (tests goroutine-based parallelism in generated code)
-
----
-
-## Track D: C Backend
-
-### D1. C emission framework
-**Files**: new `core/daglang/daglang-emit/src/c_backend.rs`
-
-C forces explicit memory management, no generics, function pointers for dispatch.
-This is the stepping stone to MIPS — if C works, the assembly mapping is mechanical.
-
-#### D1.1 — C type emission
-```c
-// Value type — tagged union
-typedef enum { VAL_STR, VAL_BOOL, VAL_INT, VAL_JSON, VAL_LIST, VAL_SKIP } ValueTag;
-typedef struct {
-    ValueTag tag;
-    union {
-        char *str;
-        int boolean;
-        int64_t integer;
-        char *json;  // serialized JSON string
-        struct { char **items; size_t count; } list;
-    };
-} Value;
-```
-
-Tasks:
-- [ ] D1.1.a — Define C Value tagged union
-- [ ] D1.1.b — Define C TransportRequest/TransportResponse structs
-- [ ] D1.1.c — Emit helper functions: `value_str()`, `value_bool()`, `value_list_get()`
-
-#### D1.2 — C function emission
-```c
-Value load_registry(void) {
-    // Return literal JSON string
-    return value_str("{\"tools\":[{\"name\":\"makegen\",\"command\":\"...\"}]}");
-}
-
-Value render_makefile(Value registry) {
-    // String building
-}
-```
-
-Tasks:
-- [ ] D1.2.a — Emit C functions from `Computation::Pure(Literal)`
-- [ ] D1.2.b — Emit C functions from `Computation::Pure(Template)` (snprintf-based)
-- [ ] D1.2.c — Emit C functions from `Computation::Transport` (system() or popen())
-- [ ] D1.2.d — Emit C string operations (strcmp for Compare, strcat for Template)
-- [ ] D1.2.e — Emit C conditional execution
-
-#### D1.3 — C main() and runtime
-
-Tasks:
-- [ ] D1.3.a — Emit `main()` with getopt-style arg parsing
-- [ ] D1.3.b — Emit topo-ordered function calls
-- [ ] D1.3.c — Emit C file I/O (fopen/fread/fwrite/fclose)
-- [ ] D1.3.d — Emit C shell exec (popen/pclose)
-- [ ] D1.3.e — Emit Makefile or build script for compilation
-- [ ] D1.3.f — Memory management: arena allocator or explicit free chains
-
-#### D1.4 — C makegen end-to-end
-
-Tasks:
-- [ ] D1.4.a — Generate C source from `dsl/tools/makegen.dag`
-- [ ] D1.4.b — `gcc -o makegen makegen.c` succeeds
-- [ ] D1.4.c — Output parity: C binary produces identical Makefile
-- [ ] D1.4.d — Cross-language parity test in CI
-- [ ] D1.4.e — Valgrind clean (no memory leaks)
-
----
-
-## Track E: MIPS Backend
-
-### E1. MIPS emission framework
-**Files**: new `core/daglang/daglang-emit/src/mips_backend.rs`
-
-MIPS forces the emit layer to reason about:
-- Register allocation (which values live in $t0-$t9, $s0-$s7)
-- Stack frame layout (function arguments, local variables, return values)
-- String operations at the byte level (no stdlib beyond syscalls)
-- System calls for I/O (read/write/open/close via $v0 syscall numbers)
-
-If we can emit correct MIPS for makegen, the codegen truly understands the computation.
-
-#### E1.1 — MIPS value representation
-```asm
-# Value = 8-byte tagged pointer
-# [tag:4][payload:4]
-# tag: 0=str(ptr), 1=bool(0/1), 2=int(i32), 3=list(ptr,len)
-# Strings: null-terminated, heap-allocated
-# Lists: contiguous array of Value pointers
-```
-
-Tasks:
-- [ ] E1.1.a — Define MIPS value layout (tagged pointer, 8 bytes)
-- [ ] E1.1.b — Emit string literal data section (.data segment)
-- [ ] E1.1.c — Emit heap allocator (sbrk-based bump allocator)
-- [ ] E1.1.d — Emit value constructors (value_str, value_bool, value_int)
-
-#### E1.2 — MIPS function emission
-Each computation step becomes a labeled MIPS procedure:
-
-```asm
-load_registry:
-    # Return pointer to embedded JSON string literal
-    la   $v0, _str_registry_json
-    jr   $ra
-
-render_makefile:
-    # $a0 = registry JSON pointer
-    # Build Makefile content string on heap
-    # ... string concatenation via byte copies ...
-    # $v0 = pointer to result string
-    jr   $ra
-```
-
-Tasks:
-- [ ] E1.2.a — Emit MIPS functions from `Computation::Pure(Literal)` (la + jr)
-- [ ] E1.2.b — Emit MIPS string concatenation (byte-copy loop)
-- [ ] E1.2.c — Emit MIPS string comparison (byte-compare loop for freshness check)
-- [ ] E1.2.d — Emit MIPS conditional branches (beq/bne for skip logic)
-- [ ] E1.2.e — Emit MIPS function calling convention ($a0-$a3 args, $v0 return, $ra save)
-
-#### E1.3 — MIPS I/O and syscalls
-
-```asm
-# File read via Linux syscalls
-#   li $v0, 5         # sys_open
-#   la $a0, filepath
-#   li $a1, 0         # O_RDONLY
-#   syscall
-#   move $s0, $v0     # fd in $s0
-#
-#   li $v0, 3         # sys_read
-#   move $a0, $s0     # fd
-#   la $a1, buffer
-#   li $a2, 4096      # count
-#   syscall
-```
-
-Tasks:
-- [ ] E1.3.a — Emit MIPS file open/read/write/close syscall sequences
-- [ ] E1.3.b — Emit MIPS main entry point with stack setup
-- [ ] E1.3.c — Emit MIPS CLI arg parsing (walk argv on stack)
-- [ ] E1.3.d — Emit topo-ordered jal (jump-and-link) sequence in main
-- [ ] E1.3.e — Register allocation strategy (simple: $s0-$s7 for step outputs, spill to stack)
-
-#### E1.4 — MIPS makegen end-to-end
-
-Tasks:
-- [ ] E1.4.a — Generate MIPS assembly from `dsl/tools/makegen.dag`
-- [ ] E1.4.b — Assemble with `mips-linux-gnu-as` (or SPIM/MARS for testing)
-- [ ] E1.4.c — Link with `mips-linux-gnu-ld`
-- [ ] E1.4.d — Run under QEMU user-mode emulation
-- [ ] E1.4.e — Output parity: MIPS binary produces identical Makefile
-- [ ] E1.4.f — Cross-language parity test: Rust == Go == C == MIPS output
-
----
-
-## Track F: Test Generation
-
-### F1. Obligation-driven test emission
-
-The derive phase already computes `TestObligations` per workflow. Emit test suites
-that satisfy these obligations in each target language.
-
-Tasks:
-- [ ] F1.1 — Emit dry-run completion test (execute full DAG with transport mocks)
-- [ ] F1.2 — Emit per-transport-node mock test (one test per transport node)
-- [ ] F1.3 — Emit pure-node snapshot test (from `NodeIoExample` on nodes)
-- [ ] F1.4 — Emit integration test (compile → build → run → verify)
-- [ ] F1.5 — Rust: `#[test]` functions in generated crate
-- [ ] F1.6 — Go: `func Test*` in generated module
-- [ ] F1.7 — C: test runner main with assert macros
-- [ ] F1.8 — CI integration: run generated tests alongside hand-built tests
+- [ ] F2.1 — Map gunbai's `CodegenEngine` output to `code_ir::SourceFile`
+- [ ] F2.2 — Route gunbai's Rust/Python/TypeScript generation through CodeRenderer<M>
+- [ ] F2.3 — Share `TypeSystemMapping` and `NamingConventions` across repos
 
 ---
 
 ## Execution Order & Dependencies
 
 ```
-Track A (infra):
-  A1 (trait) ──→ A2 (computation model) ──→ A3 (emit plan) ──→ A4 (CLI)
-                                                    │
-                                                    ▼
-Track B (Rust):                          ┌── B1 (Layer 1: exec-runtime)
-                                         │          │
-                                         │          ▼
-                                         │   B1.5 (makegen e2e)
-                                         │          │
-                                         ├── B2 (Layer 2: native) ◄─ can start after A3
-                                         │          │
-                                         └── B3 (more workflows)
-                                                    │
-Track C (Go):                            ┌── C1 (emission) ◄─── can start after A3
-                                         │          │
-                                         └── C1.4 (makegen e2e)
-                                                    │
-Track D (C):                             ┌── D1 (emission) ◄─── can start after A3
-                                         │          │
-                                         └── D1.4 (makegen e2e)
-                                                    │
-Track E (MIPS):                          ┌── E1 (emission) ◄─── can start after A3 + D1.1
-                                         │          │
-                                         └── E1.4 (makegen e2e)
-                                                    │
-                                                    ▼
-Track A continued:                           A5 (cross-language parity)
-                                                    │
-Track F (tests):                             F1 (test generation)
+Week 1-2: Foundation
+  ├── A1 (Computation model) ──→ A2 (EmitPlan)
+  ├── B1 (Factor code_ir into tiers)
+  └── D1 (exec-runtime fast path — working binary ASAP)
+
+Week 2-3: Bridge + First Targets
+  ├── A3 (Computation → AbstractIR lowering)
+  ├── B2 (AbstractIR → SystemsIR/Rust)
+  ├── C1 (Rust renderer extension)
+  └── D1.7-D1.8 (makegen + pragma e2e)
+
+Week 3-4: Parallel Language Targets
+  ├── B3 + C2 (Go: ManagedIR + renderer)
+  ├── B4 + C3 (C: CStyleIR + renderer)
+  └── E1 (daglang compile CLI)
+
+Week 4-5: Assembly + Parity
+  ├── B5 + C4 (MIPS: RegisterIR + renderer)
+  ├── E2 (cross-language parity tests)
+  └── D2 (reconcile exec-runtime with language DAG)
+
+Week 5-6: Polish
+  ├── E3 (test generation)
+  ├── F1-F2 (the-gunbai reconciliation)
+  └── More workflows (codegen, build, bootstrap)
 ```
 
-### Recommended work order
+### Critical path
 
-**Week 1**: A1-A3 (emit infrastructure) + B1.1-B1.4 (Rust Layer 1 codegen)
-**Week 2**: B1.5 (Rust makegen e2e) + A4 (CLI) + start C1.1-C1.2 (Go types/functions)
-**Week 3**: B2 (Rust Layer 2 native) + C1.3-C1.4 (Go runtime + e2e) + start D1.1 (C types)
-**Week 4**: D1.2-D1.4 (C functions + e2e) + E1.1-E1.2 (MIPS values + functions)
-**Week 5**: E1.3-E1.4 (MIPS I/O + e2e) + A5 (cross-language parity) + B3 (more workflows)
-**Week 6**: F1 (test generation) + polish + CI integration
+```
+A1 (computation) → A2 (plan) → A3 (lower to IR) → B2 (Rust) + B3 (Go) + B4 (C)
+                                                          │
+B1 (factor code_ir) ─────────────────────────────────────┘
+                                                          │
+D1 (exec-runtime) ── parallel, delivers working binary ──→ D2 (reconcile)
 
-### Parallelism opportunities
+B4 (C-style) → B5 (Register/MIPS) → C4 (MIPS renderer) → E2 (parity)
+```
 
-Once A3 (emit plan) is done, all four backends (B/C/D/E) can proceed in parallel.
-Within each backend, type emission → function emission → main/runtime → e2e is sequential.
-Cross-language parity (A5) requires at least 2 backends working.
+### What can run in parallel
+
+- **D1** (exec-runtime) is independent — start day 1, delivers working binary fast
+- **A1-A3** (computation model) is independent of D1
+- **B2, B3, B4** (language tier lowerings) can all proceed in parallel once B1 + A3 land
+- **B5** (MIPS) depends on B4 (C) — C is the stepping stone
+- **C1-C4** (renderers) each parallel with their corresponding B-track lowering
+- **F1-F2** (reconciliation) can start anytime, no blocking dependency
 
 ---
 
 ## Gap Analysis
 
-| Component | Current | Needed | Effort |
-|-----------|---------|--------|--------|
-| **Emit infrastructure** | | | |
-| `CodegenBackend` trait | String-in/string-out | Structured IR input | S |
-| `Computation` IR | None | Target-independent computation model | M |
-| `EmitPlan` | None | Topo-ordered step list with data flow | M |
-| `daglang compile` CLI | None | Driver integration | S |
-| Cross-language parity harness | None | Build + run + compare framework | M |
-| **Rust backend** | | | |
-| Layer 1 (exec-runtime) | Stub | Full graph + ops + main codegen | L |
-| Layer 2 (native) | None | Standalone topo-ordered codegen | L |
-| `daglang-runtime-rs` | None | Minimal transport + value crate | M |
-| **Go backend** | | | |
-| Type emission | None | struct + interface codegen | M |
-| Function emission | None | func codegen from Computation | L |
-| Go runtime (transport) | None | os.ReadFile + exec.Command | M |
-| **C backend** | | | |
-| Tagged union Value type | None | C struct with enum tag | M |
-| Function emission | None | C functions from Computation | L |
-| Memory management | None | Arena or explicit free | M |
-| **MIPS backend** | | | |
-| Value representation | None | Tagged pointer layout | M |
-| Function emission | None | MIPS procedures from Computation | XL |
-| Syscall I/O | None | open/read/write/close sequences | L |
-| Register allocation | None | Linear scan or simple strategy | L |
+| Component | Exists | Needed | Effort |
+|-----------|--------|--------|--------|
+| **Track A: Computation → IR** | | | |
+| Computation model | No | Classify all ~95 ops | M |
+| EmitPlan (topo steps + data flow) | No | Build from DAG + derive | M |
+| Computation → AbstractIR lowering | No | Map each PureBody to code_ir | L |
+| **Track B: IR Tier Factoring** | | | |
+| AbstractIR (Tier 0) | 90% (code_ir.rs) | Factor out Rust-specific bits | S |
+| SystemsIR (Tier 1, Rust) | Exists mixed in code_ir | Separate as extension | S |
+| ManagedIR (Tier 2, Go) | No | Define Go-specific constructs | M |
+| CStyleIR (Tier 3, C) | No | Define C constructs | M |
+| RegisterIR (Tier 4, MIPS) | No | Define instruction model | L |
+| AbstractIR → Rust lowering | No | Ownership, Result, derives | M |
+| AbstractIR → Go lowering | No | Multi-return, error idiom | M |
+| AbstractIR → C lowering | No | malloc, structs, pointers | L |
+| C → MIPS lowering | No | Register alloc, syscalls | XL |
+| **Track C: Renderers** | | | |
+| Rust CodeRenderer | Partial (testgen stubs) | Full SourceFile rendering | M |
+| Go CodeRenderer | No | Full Go file rendering | M |
+| C CodeRenderer | No | Full C file rendering | M |
+| MIPS RegisterRenderer | No | Assembly text rendering | M |
+| **Track D: Exec-Runtime** | | | |
+| Rust exec-runtime codegen | No | Op enum + Executable + main | L |
+| **Track E: CLI + Testing** | | | |
+| `daglang compile` CLI | No | Subcommand + driver wiring | S |
+| Cross-language parity | No | Build + run + compare framework | M |
+| Test generation | No | From TestObligations | M |
+| **Track F: Reconciliation** | | | |
+| EdgeKind alignment | Separate models | Adopt DataFlow/Control/TriggerGate | M |
+| Effect model alignment | Different taxonomies | Adopt 2-bit model | S |
+| Shared rendering layer | Separate codegen engines | Route through CodeRenderer | L |
 
-**S** = small (< 1 day), **M** = medium (1-3 days), **L** = large (3-5 days), **XL** = extra-large (5-8 days)
+**S** < 1 day, **M** 1-3 days, **L** 3-5 days, **XL** 5-8 days
 
 ---
 
 ## Success Criteria
 
-The project is **done** when:
-
-1. `daglang compile dsl/tools/makegen.dag --target rust` → cargo build → produces correct Makefile
-2. `daglang compile dsl/tools/makegen.dag --target go` → go build → produces identical Makefile
-3. `daglang compile dsl/tools/makegen.dag --target c` → gcc → produces identical Makefile
-4. `daglang compile dsl/tools/makegen.dag --target mips` → mips-as + qemu → produces identical Makefile
-5. At least 1 additional workflow (pragma) compiles to Rust and Go with output parity
-6. Generated test suites pass in at least Rust and Go
-7. Cross-language parity test runs in CI
+1. `daglang compile dsl/tools/makegen.dag --target rust` → cargo build → correct Makefile
+2. `daglang compile dsl/tools/makegen.dag --target go` → go build → identical Makefile
+3. `daglang compile dsl/tools/makegen.dag --target c` → gcc → identical Makefile
+4. `daglang compile dsl/tools/makegen.dag --target mips` → mips-as + qemu → identical Makefile
+5. All four targets share the same `Computation → AbstractIR → LevelIR → Text` pipeline
+6. Adding a new language = implementing a level's lowering + renderer (not a new backend)
+7. Pragma compiles to at least Rust and Go with output parity
+8. Cross-language parity test runs in CI
 
 ---
 
@@ -742,7 +632,10 @@ The project is **done** when:
 
 | Document | Scope | Overlap |
 |----------|-------|---------|
-| `dsl-roadmap.md` Part 1 | DSL Build (compiler pipeline) | **Complete** — this roadmap starts where Part 1 ends |
-| `dsl-roadmap.md` Part 2 | Migration plan | This roadmap is the **prerequisite** — codegen must work before migration |
-| `dsl-design.md` §Emit | Emission target spec (13 targets) | This roadmap implements targets 1-4 (Rust, Go, C, MIPS) |
-| `TODO_URGENT_dsl_migration.md` | Migration checklist | The "Ready Now" items become Track B3 targets |
+| `dsl-roadmap.md` Part 1 | DSL Build | **Complete** — this starts where Part 1 ends |
+| `dsl-roadmap.md` Part 2 | Migration | This is the **prerequisite** — codegen before migration |
+| `dsl-design.md` §Emit | 13 emission targets | This implements targets via language DAG (not per-target backends) |
+| `TODO_URGENT_dsl_migration.md` | Migration checklist | "Ready Now" items become Track D1.7+ |
+| `code_ir.rs` | Target-agnostic AST | Becomes AbstractIR (Tier 0) with factoring |
+| `render_ir.rs` | OutputMedium + renderers | CodeRenderer<M> is the rendering interface at each tier |
+| `language/mod.rs` | Language SubDag compositions | Provides TypeSystemMapping + NamingConventions for all targets |
