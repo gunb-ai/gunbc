@@ -75,16 +75,6 @@ pub fn build_pragma_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codegen::build_codegen_graph;
-    use crate::wire_fs_env_write_mock;
-    use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionLog, ExecutionMode};
-
-    fn find_bool_output(log: &ExecutionLog, key: &str) -> Option<bool> {
-        log.entries
-            .iter()
-            .rev()
-            .find_map(|entry| entry.outputs.get(key).and_then(|value| value.as_bool()))
-    }
 
     #[test]
     fn builds_makegen_dsl_graph() {
@@ -128,31 +118,4 @@ mod tests {
         assert!(!dag.nodes.is_empty());
     }
 
-    #[test]
-    fn codegen_dsl_matches_hand_built_dry_run_behavior() {
-        let hand_built = build_codegen_graph().expect("hand-built codegen graph should build");
-        let dsl = build_codegen_graph_dsl().expect("DSL codegen graph should resolve");
-
-        let mut hand_mocks = BoundaryMocks::new();
-        wire_fs_env_write_mock(&hand_built, &mut hand_mocks);
-        let hand_log = execute_with_mode(&hand_built, ExecutionMode::DryRun(hand_mocks))
-            .expect("hand-built dry-run should execute");
-
-        let mut dsl_mocks = BoundaryMocks::new();
-        wire_fs_env_write_mock(&dsl, &mut dsl_mocks);
-        let dsl_log = execute_with_mode(&dsl, ExecutionMode::DryRun(dsl_mocks))
-            .expect("DSL dry-run should execute");
-
-        let hand_success =
-            find_bool_output(&hand_log, "prep_success").expect("hand-built prep_success missing");
-        let hand_ran =
-            find_bool_output(&hand_log, "codegen_ran").expect("hand-built codegen_ran missing");
-
-        let dsl_success =
-            find_bool_output(&dsl_log, "success").expect("DSL success output missing");
-        let dsl_ran = find_bool_output(&dsl_log, "ran").expect("DSL ran output missing");
-
-        assert_eq!(hand_success, dsl_success, "success behavior diverged");
-        assert_eq!(hand_ran, dsl_ran, "ran behavior diverged");
-    }
 }

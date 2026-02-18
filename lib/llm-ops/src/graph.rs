@@ -11,7 +11,7 @@
 //! This graph can be embedded as a sub-DAG in larger workflows that need
 //! LLM capabilities (code review, code generation, etc.).
 
-use gunbc_delegate_macros::DelegateExecutable;
+use gunbc_exec::DynOp;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
     add_transport_triplet_named_with_passthrough, build::*, validate_authenticate_bindings,
@@ -25,18 +25,7 @@ use gunbc_lib_transport::TransportOps;
 
 use crate::LlmOps;
 
-/// Operation type for LLM chat completion graphs.
-///
-/// Union of pure LLM ops and the transport boundary.
-#[derive(Debug, Clone, DelegateExecutable)]
-pub enum LlmGraphOp {
-    /// Prepare a chat completion request (PURE - no I/O)
-    Llm(LlmOps),
-    /// Transport execution (BOUNDARY - actual I/O)
-    Transport(TransportOps),
-    /// Cloud credential flow (GCP/AWS/Azure graph)
-    Cloud(CloudSecretManagerGraphOp),
-}
+pub type LlmGraphOp = DynOp;
 
 /// Build a chat completion DAG.
 ///
@@ -78,11 +67,9 @@ pub fn build_chat_completion_graph_with_config(
             optional("request_url", "OptionalString"),
             optional("request_token", "OptionalString"),
         ],
-        LlmGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-            CloudOps::ConstCloudConfig {
-                config: cloud_config.clone(),
-            },
-        )),
+        DynOp::new(CloudOps::ConstCloudConfig {
+            config: cloud_config.clone(),
+        }),
     ))?;
 
     // Node 1: Resolve auth requirements (pure)
@@ -98,7 +85,7 @@ pub fn build_chat_completion_graph_with_config(
             list("required_scopes", "String"),
             port("interactive_allowed", "Bool"),
         ],
-        LlmGraphOp::Llm(LlmOps::ResolveAuth),
+        DynOp::new(LlmOps::ResolveAuth),
     ))?;
 
     // Node 3: Bind secret name onto cloud config
@@ -111,7 +98,7 @@ pub fn build_chat_completion_graph_with_config(
                 optional("secret_name", "OptionalString"),
             ],
             vec![port("config", "CloudSecretConfig")],
-            LlmGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
+            DynOp::new(CloudOps::BindSecretName),
         ),
         &[&cloud_env, &resolve_auth],
     )?;
@@ -129,7 +116,7 @@ pub fn build_chat_completion_graph_with_config(
             "scope_preflight",
             vec![list("required_scopes", "String")],
             vec![port("scope_verified", "Bool")],
-            LlmGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ScopePreflight)),
+            DynOp::new(CloudOps::ScopePreflight),
         ),
         &resolve_auth,
     )?;
@@ -161,9 +148,9 @@ pub fn build_chat_completion_graph_with_config(
             port("input_tokens", "Int"),
             port("output_tokens", "Int"),
         ],
-        LlmGraphOp::Llm(LlmOps::PrepareChatRequest),
-        LlmGraphOp::Llm(LlmOps::ParseChatResponse),
-        LlmGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(LlmOps::PrepareChatRequest),
+        DynOp::new(LlmOps::ParseChatResponse),
+        DynOp::new(TransportOps::Execute),
         Some(&cloud_credential),
     )?;
 
@@ -238,7 +225,7 @@ fn llm_authenticate_bindings() -> Vec<AuthenticatePhaseBinding> {
 }
 
 fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<LlmGraphOp> {
-    dag.map_ops(&mut LlmGraphOp::Cloud)
+    dag
 }
 
 #[cfg(test)]
@@ -253,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_chat_completion_graph_boundaries() {
-        let dag = build_chat_completion_graph().unwrap();
+        let dag = build_chat_completion_graph();
         let boundaries = detect_boundaries(&dag);
 
         // The chat_completion SubDag's outputs are boundaries (no downstream)
@@ -268,7 +255,7 @@ mod tests {
 
     #[test]
     fn test_chat_completion_graph_entrypoints() {
-        let dag = build_chat_completion_graph().unwrap();
+        let dag = build_chat_completion_graph();
         let entrypoints = detect_entrypoints(&dag);
 
         // chat_completion SubDag's inputs are entrypoints

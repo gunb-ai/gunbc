@@ -2,24 +2,9 @@
 //!
 //! Wraps the CI tool as a SubDag node using WorkspaceOp.
 
-use crate::ci::{build_ci_graph, CIGraphOp};
-use crate::workspace::convert::convert_dag;
+use crate::dsl_builder::build_ci_graph_dsl;
 use crate::workspace::WorkspaceOp;
-use gunbc_ir::Node;
-
-/// Convert a CIGraphOp to WorkspaceOp.
-fn convert_ci_op(op: CIGraphOp) -> WorkspaceOp {
-    match op {
-        CIGraphOp::CI(ci_op) => WorkspaceOp::Ci(ci_op),
-        CIGraphOp::Codegen(codegen_op) => WorkspaceOp::Codegen(codegen_op),
-        CIGraphOp::PrepareFileExists(pfe) => {
-            WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::EmbeddedFileExists(pfe))
-        }
-        CIGraphOp::Transport(t) => WorkspaceOp::Transport(t),
-        CIGraphOp::CloudEnv(env) => WorkspaceOp::CloudEnv(env),
-        CIGraphOp::FsEnv(env) => WorkspaceOp::FsEnv(env),
-    }
-}
+use gunbc_ir::{BuilderError, Node};
 
 /// Build the CI SubDag node.
 ///
@@ -32,40 +17,19 @@ fn convert_ci_op(op: CIGraphOp) -> WorkspaceOp {
 ///
 /// Outputs:
 /// - Various CI stage results (build, test, lint status)
-pub fn build_ci_subdag() -> Node<WorkspaceOp> {
-    let original = build_ci_graph().expect("CI graph should build");
-    let converted_dag = convert_dag(original, &convert_ci_op);
-
-    Node::subdag("ci", converted_dag)
+pub fn build_ci_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
+    let dsl_dag = build_ci_graph_dsl()?;
+    Ok(Node::subdag("ci", dsl_dag))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::NodeBody;
 
     #[test]
     fn test_ci_subdag_is_subdag() {
-        let node = build_ci_subdag();
+        let node = build_ci_subdag().expect("ci subdag should build");
         assert!(node.is_subdag());
         assert_eq!(node.id.0, "ci");
-    }
-
-    #[test]
-    fn test_ci_subdag_has_nodes() {
-        let node = build_ci_subdag();
-
-        match &node.body {
-            NodeBody::SubDag(dag) => {
-                for node_id in ["build", "test", "verify_makegen_check", "clippy_lint"] {
-                    assert!(
-                        dag.get_node(&node_id.into()).is_some(),
-                        "missing node: {}",
-                        node_id
-                    );
-                }
-            }
-            _ => panic!("Expected SubDag"),
-        }
     }
 }

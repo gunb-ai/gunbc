@@ -10,7 +10,7 @@
 //! 1. Blob fetch (for non-inline sources)
 //! 2. LLM call
 
-use gunbc_delegate_macros::DelegateExecutable;
+use gunbc_exec::DynOp;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
     add_transport_triplet_named_with_passthrough, build::*, BuilderError, Dag, DagBuilder, Node,
@@ -28,30 +28,7 @@ use gunbc_primitives::{filename, FsEnv};
 
 use crate::{ReviewOps, ReviewPipelineConfig};
 
-// ============================================================================
-// Unified Operation Type
-// ============================================================================
-
-/// Operation type for review phase graphs.
-///
-/// Union of all ops needed for a complete review workflow.
-#[derive(Debug, Clone, DelegateExecutable)]
-pub enum ReviewGraphOp {
-    /// Blob acquisition operations (PURE)
-    Blob(BlobOps),
-    /// Git operations (PURE)
-    Git(GitOps),
-    /// Review-specific operations (PURE)
-    Review(ReviewOps),
-    /// LLM chat operations (PURE)
-    Llm(LlmOps),
-    /// Filesystem environment (resource acquisition)
-    FsEnv(FsEnv),
-    /// Cloud credential flow (GCP/AWS/Azure graph)
-    Cloud(CloudSecretManagerGraphOp),
-    /// Transport execution (BOUNDARY - actual I/O)
-    Transport(TransportOps),
-}
+pub type ReviewGraphOp = DynOp;
 
 // ---------------------------------------------------------------------------
 // Cloud credential wiring helpers
@@ -72,7 +49,7 @@ fn add_cloud_credential_chain(
                 optional("secret_name", "OptionalString"),
             ],
             vec![port("config", "CloudSecretConfig")],
-            ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
+            DynOp::new(CloudOps::BindSecretName),
         ),
         &[cloud_env, resolve_auth],
     )?;
@@ -131,7 +108,7 @@ fn add_scope_preflight_chain(
             "scope_preflight",
             vec![list("required_scopes", "String")],
             vec![port("scope_verified", "Bool")],
-            ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ScopePreflight)),
+            DynOp::new(CloudOps::ScopePreflight),
         ),
         resolve_auth,
     )?;
@@ -145,7 +122,7 @@ fn add_scope_preflight_chain(
 }
 
 fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<ReviewGraphOp> {
-    dag.map_ops(&mut ReviewGraphOp::Cloud)
+    dag
 }
 
 /// Create the `cloud_env` root node using `ConstCloudConfig`.
@@ -161,11 +138,9 @@ fn add_cloud_env_node(
             optional("request_url", "OptionalString"),
             optional("request_token", "OptionalString"),
         ],
-        ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-            CloudOps::ConstCloudConfig {
-                config: cloud_config.clone(),
-            },
-        )),
+        DynOp::new(CloudOps::ConstCloudConfig {
+            config: cloud_config.clone(),
+        }),
     ))
 }
 
@@ -220,7 +195,7 @@ pub fn build_review_phase_graph_with_config(
         "fs_env",
         vec![],
         vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        ReviewGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+        DynOp::new(FsEnv::new(filename::Scope::Write)),
     ))?;
 
     // Node 0: Cloud environment (config + OIDC request inputs)
@@ -241,7 +216,7 @@ pub fn build_review_phase_graph_with_config(
             port("handle", "Json"), // Present if inline
             port("source", "Json"), // Echo for parse
         ],
-        ReviewGraphOp::Blob(BlobOps::PrepareFetch),
+        DynOp::new(BlobOps::PrepareFetch),
     ))?;
 
     // Node 2: Execute blob fetch (I/O boundary)
@@ -255,7 +230,7 @@ pub fn build_review_phase_graph_with_config(
                 resource("file", "FilesystemHandle", AccessMode::Read),
             ],
             vec![port("response", "TransportResponse")],
-            ReviewGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_blob,
     )?;
@@ -271,7 +246,7 @@ pub fn build_review_phase_graph_with_config(
                 port("skip", "Bool"),
             ],
             vec![port("handle", "Json"), port("meta", "Json")],
-            ReviewGraphOp::Blob(BlobOps::ParseFetch),
+            DynOp::new(BlobOps::ParseFetch),
         ),
         &execute_blob,
     )?;
@@ -289,7 +264,7 @@ pub fn build_review_phase_graph_with_config(
             optional("context", "OptionalString"),
         ],
         vec![port("question", "String"), port("system_prompt", "String")],
-        ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
+        DynOp::new(ReviewOps::PrepareReviewPrompt),
     ))?;
 
     // ========================================================================
@@ -308,7 +283,7 @@ pub fn build_review_phase_graph_with_config(
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
             ],
-            ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
+            DynOp::new(ReviewOps::ResolveAuthContract),
         ),
         &prepare_prompt,
     )?;
@@ -338,9 +313,9 @@ pub fn build_review_phase_graph_with_config(
         ],
         vec![port("provider", "String")],
         vec![port("answer", "String")],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-        ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-        ReviewGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(LlmOps::PrepareSimpleRequest),
+        DynOp::new(LlmOps::ParseSimpleResponse),
+        DynOp::new(TransportOps::Execute),
         Some(&cloud_credential),
     )?;
     builder.add_edge(
@@ -358,7 +333,7 @@ pub fn build_review_phase_graph_with_config(
             "parse_response",
             vec![port("answer", "String"), port("criteria", "Json")],
             vec![port("output", "Json"), port("errors", "Json")],
-            ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
+            DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
     )?;
@@ -435,7 +410,7 @@ pub fn build_inline_review_graph_with_config(
             optional("context", "OptionalString"),
         ],
         vec![port("question", "String"), port("system_prompt", "String")],
-        ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
+        DynOp::new(ReviewOps::PrepareReviewPrompt),
     ))?;
 
     // Resolve auth requirements (pure)
@@ -450,7 +425,7 @@ pub fn build_inline_review_graph_with_config(
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
             ],
-            ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
+            DynOp::new(ReviewOps::ResolveAuthContract),
         ),
         &prepare_prompt,
     )?;
@@ -480,9 +455,9 @@ pub fn build_inline_review_graph_with_config(
         ],
         vec![port("provider", "String")],
         vec![port("answer", "String")],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-        ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-        ReviewGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(LlmOps::PrepareSimpleRequest),
+        DynOp::new(LlmOps::ParseSimpleResponse),
+        DynOp::new(TransportOps::Execute),
         Some(&cloud_credential),
     )?;
     builder.add_edge(
@@ -496,7 +471,7 @@ pub fn build_inline_review_graph_with_config(
             "parse_response",
             vec![port("answer", "String"), port("criteria", "Json")],
             vec![port("output", "Json"), port("errors", "Json")],
-            ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
+            DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
     )?;
@@ -582,7 +557,7 @@ pub fn build_diff_review_graph_with_cloud_config(
         "fs_env",
         vec![],
         vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        ReviewGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+        DynOp::new(FsEnv::new(filename::Scope::Write)),
     ))?;
 
     // Cloud environment (config + OIDC request inputs)
@@ -602,7 +577,7 @@ pub fn build_diff_review_graph_with_cloud_config(
             port("model", "String"),
             port("criteria", "Json"),
         ],
-        ReviewGraphOp::Review(ReviewOps::LoadPipelineConfig(config)),
+        DynOp::new(ReviewOps::LoadPipelineConfig(config)),
     ))?;
 
     // ========================================================================
@@ -625,12 +600,12 @@ pub fn build_diff_review_graph_with_cloud_config(
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![],
         vec![port("diff_files", "Map"), port("stats", "String")],
-        ReviewGraphOp::Git(GitOps::PrepareDiff {
+        DynOp::new(GitOps::PrepareDiff {
             base_ref: default_branch,
             extensions: vec![],
         }),
-        ReviewGraphOp::Git(GitOps::ParseDiff),
-        ReviewGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(GitOps::ParseDiff),
+        DynOp::new(TransportOps::Execute),
         Some(&fs_env),
     )?;
 
@@ -643,7 +618,7 @@ pub fn build_diff_review_graph_with_cloud_config(
             "format_artifact",
             vec![port("diff_files", "Map")],
             vec![port("artifact", "String")],
-            ReviewGraphOp::Review(ReviewOps::FormatDiffArtifact),
+            DynOp::new(ReviewOps::FormatDiffArtifact),
         ),
         &diff_triplet,
     )?;
@@ -661,7 +636,7 @@ pub fn build_diff_review_graph_with_cloud_config(
                 optional("context", "OptionalString"),
             ],
             vec![port("question", "String"), port("system_prompt", "String")],
-            ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
+            DynOp::new(ReviewOps::PrepareReviewPrompt),
         ),
         &format_artifact,
     )?;
@@ -681,7 +656,7 @@ pub fn build_diff_review_graph_with_cloud_config(
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
             ],
-            ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
+            DynOp::new(ReviewOps::ResolveAuthContract),
         ),
         &prepare_prompt,
     )?;
@@ -710,9 +685,9 @@ pub fn build_diff_review_graph_with_cloud_config(
         ],
         vec![port("provider", "String")],
         vec![port("answer", "String")],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-        ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-        ReviewGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(LlmOps::PrepareSimpleRequest),
+        DynOp::new(LlmOps::ParseSimpleResponse),
+        DynOp::new(TransportOps::Execute),
         Some(&cloud_credential),
     )?;
     builder.add_edge(
@@ -729,7 +704,7 @@ pub fn build_diff_review_graph_with_cloud_config(
             "parse_response",
             vec![port("answer", "String"), port("criteria", "Json")],
             vec![port("output", "Json"), port("errors", "Json")],
-            ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
+            DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
     )?;
@@ -863,7 +838,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
             port("model", "String"),
             port("criteria", "Json"),
         ],
-        ReviewGraphOp::Review(ReviewOps::LoadPipelineConfig(config)),
+        DynOp::new(ReviewOps::LoadPipelineConfig(config)),
     ))?;
 
     // ========================================================================
@@ -879,7 +854,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
                 optional("context", "OptionalString"),
             ],
             vec![port("question", "String"), port("system_prompt", "String")],
-            ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
+            DynOp::new(ReviewOps::PrepareReviewPrompt),
         ),
         &config_node,
     )?;
@@ -895,7 +870,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
             ],
-            ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
+            DynOp::new(ReviewOps::ResolveAuthContract),
         ),
         &prepare_prompt,
     )?;
@@ -924,9 +899,9 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         ],
         vec![port("provider", "String")],
         vec![port("answer", "String")],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-        ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-        ReviewGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(LlmOps::PrepareSimpleRequest),
+        DynOp::new(LlmOps::ParseSimpleResponse),
+        DynOp::new(TransportOps::Execute),
         Some(&cloud_credential),
     )?;
     builder.add_edge(
@@ -939,7 +914,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
             "parse_response",
             vec![port("answer", "String"), port("criteria", "Json")],
             vec![port("output", "Json"), port("errors", "Json")],
-            ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
+            DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
     )?;
@@ -953,7 +928,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
             "merge",
             vec![list("outputs", "JsonList")],
             vec![port("bundle", "Json"), port("conflicts", "Json")],
-            ReviewGraphOp::Review(ReviewOps::MergeOutputs),
+            DynOp::new(ReviewOps::MergeOutputs),
         ),
         &parse_response,
     )?;
@@ -1085,13 +1060,13 @@ mod tests {
     fn test_review_graph_ops_execute() {
         // Test that all ops can be executed (basic smoke test)
         let ops = vec![
-            ReviewGraphOp::Blob(BlobOps::PrepareFetch),
-            ReviewGraphOp::Git(GitOps::ParseDiff),
-            ReviewGraphOp::Review(ReviewOps::HashFinding),
-            ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-            ReviewGraphOp::Llm(LlmOps::ResolveAuth),
-            ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ResolveConfig)),
-            ReviewGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(BlobOps::PrepareFetch),
+            DynOp::new(GitOps::ParseDiff),
+            DynOp::new(ReviewOps::HashFinding),
+            DynOp::new(LlmOps::PrepareSimpleRequest),
+            DynOp::new(LlmOps::ResolveAuth),
+            DynOp::new(CloudOps::ResolveConfig),
+            DynOp::new(TransportOps::Execute),
         ];
 
         for op in ops {

@@ -4,6 +4,7 @@
 //! Provides both install and generate workflows.
 
 use crate::workspace::WorkspaceOp;
+use gunbc_exec::DynOp;
 use gunbc_deps::{DepsOp, PlatformEnv};
 use gunbc_ir::build::*;
 use gunbc_ir::{BuilderError, DagBuilder, Node};
@@ -37,7 +38,7 @@ pub fn build_deps_install_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
         "platform_env",
         vec![],
         vec![port("platform", "Platform")],
-        WorkspaceOp::DepsEnv(PlatformEnv),
+        DynOp::new(PlatformEnv),
     ))?;
 
     // Node: PrepareLoadManifest (PURE)
@@ -49,7 +50,7 @@ pub fn build_deps_install_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
             port("manifest_path", "String"),
             port("skip", "Bool"),
         ],
-        WorkspaceOp::Deps(DepsOp::PrepareLoadManifest),
+        DynOp::new(DepsOp::PrepareLoadManifest),
     ))?;
 
     // Node: Execute manifest load (BOUNDARY)
@@ -58,7 +59,7 @@ pub fn build_deps_install_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
             "execute_load_manifest",
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
-            WorkspaceOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_load,
     )?;
@@ -77,7 +78,7 @@ pub fn build_deps_install_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
                 scalar("manifest_path", "String"),
                 scalar("manifest_content", "String"),
             ],
-            WorkspaceOp::Deps(DepsOp::ParseManifest),
+            DynOp::new(DepsOp::ParseManifest),
         ),
         &execute_load,
     )?;
@@ -96,7 +97,7 @@ pub fn build_deps_install_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
                 list("needs_install", "StringList"),
                 scalar("platform", "String"),
             ],
-            WorkspaceOp::Deps(DepsOp::GenerateScripts),
+            DynOp::new(DepsOp::GenerateScripts),
         ),
         &parse_manifest,
     )?;
@@ -111,7 +112,7 @@ pub fn build_deps_install_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
                 port("script", "String"),
                 port("skip", "Bool"),
             ],
-            WorkspaceOp::Deps(DepsOp::PrepareExecuteInstalls),
+            DynOp::new(DepsOp::PrepareExecuteInstalls),
         ),
         &generate_scripts,
     )?;
@@ -122,7 +123,7 @@ pub fn build_deps_install_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
             "execute_installs",
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
-            WorkspaceOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_execute,
     )?;
@@ -142,7 +143,7 @@ pub fn build_deps_install_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
                 scalar("stdout", "String"),
                 scalar("stderr", "String"),
             ],
-            WorkspaceOp::Deps(DepsOp::ParseExecuteResult),
+            DynOp::new(DepsOp::ParseExecuteResult),
         ),
         &execute_installs,
     )?;
@@ -219,7 +220,7 @@ pub fn build_deps_generate_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
             scalar("tool_count", "Int"),
             non_empty_list("tool_names", "NonEmptyStringList"),
         ],
-        WorkspaceOp::Deps(DepsOp::LoadToolRegistry),
+        DynOp::new(DepsOp::LoadToolRegistry),
     ))?;
 
     // Node: RenderDepsToml
@@ -228,7 +229,7 @@ pub fn build_deps_generate_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
             "render_deps_toml",
             vec![],
             vec![scalar("deps_toml_content", "String")],
-            WorkspaceOp::Deps(DepsOp::RenderDepsToml),
+            DynOp::new(DepsOp::RenderDepsToml),
         ),
         &load_registry,
     )?;
@@ -239,9 +240,7 @@ pub fn build_deps_generate_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
             "prepare_file_write",
             vec![scalar("content", "String"), port("path", "String")],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
-                PrepareFileWriteOp,
-            )),
+            DynOp::new(gunbc_primitives::PrimitiveOp::PrepareFileWrite(PrepareFileWriteOp)),
         ),
         &render_deps_toml,
     )?;
@@ -256,7 +255,7 @@ pub fn build_deps_generate_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
                 port("written_path", "String"),
                 port("content", "String"),
             ],
-            WorkspaceOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_write,
     )?;

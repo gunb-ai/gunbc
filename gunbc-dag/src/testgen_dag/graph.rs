@@ -1,11 +1,10 @@
 //! Graph builder for the testgen DAG.
 //!
 //! Builds a dynamic DAG with N parallel upsert chains, one per testgen target.
-//! Target count is known after inventory discovery but before graph construction.
 
-use crate::file_ops_graph::FileOpsGraph;
 use crate::testgen_dag::ops::TestgenOp;
 use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
+use gunbc_exec::{DynOp, Executable};
 use gunbc_ir::{add_content_upsert_chain, build::*, BuilderError, Dag, DagBuilder, Node};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
@@ -13,25 +12,24 @@ use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
 use gunbc_testgen_registry::DagSpecDef;
 use std::path::Path;
 
-/// The operation type for testgen graphs - a union of testgen ops, primitives, and transport.
-pub type TestgenGraphOp = FileOpsGraph<TestgenOp>;
+/// Runtime op type for testgen graphs.
+pub type TestgenGraphOp = DynOp;
+
+fn dyn_op<T>(op: T) -> TestgenGraphOp
+where
+    T: Executable + Send + Sync + 'static,
+{
+    DynOp::new(op)
+}
 
 /// Build the testgen graph from discovered DAG specs.
-///
-/// For each target, builds a 6-node upsert chain:
-/// ```text
-/// generate_{name} → prepare_read_{name} → execute_read_{name} → compare_{name}_content → execute_{name}_transport
-///                 └→ prepare_write_{name} ────────────────────────────────────────────→ (request)
-/// ```
-///
-/// All chains are independent (parallel roots).
 pub fn build_testgen_graph(
     targets: &[&DagSpecDef],
     output_dir: &Path,
 ) -> Result<Dag<TestgenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    let fs_env = add_fs_env_root_node(&mut builder, TestgenGraphOp::FsEnv)?;
+    let fs_env = add_fs_env_root_node(&mut builder, dyn_op)?;
 
     for target in targets {
         let config = target.to_def();
@@ -41,7 +39,7 @@ pub fn build_testgen_graph(
             &mut builder,
             &fs_env,
             &name,
-            TestgenGraphOp::Domain(TestgenOp::Generate {
+            dyn_op(TestgenOp::Generate {
                 name: name.to_string(),
                 target_def: config,
                 generate_fn: target.generate,
@@ -49,7 +47,7 @@ pub fn build_testgen_graph(
         )?;
     }
 
-    let _ = output_dir; // paths are wired as entrypoints by the binary
+    let _ = output_dir;
 
     Ok(builder.build())
 }
@@ -79,7 +77,7 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
     ];
 
     let mut builder = DagBuilder::new();
-    let fs_env = add_fs_env_root_node(&mut builder, TestgenGraphOp::FsEnv)?;
+    let fs_env = add_fs_env_root_node(&mut builder, dyn_op)?;
 
     for (name, output_path, module_name) in &targets {
         let def = TestgenTargetDef::new(*name, *output_path, *module_name);
@@ -88,7 +86,7 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
             &mut builder,
             &fs_env,
             name,
-            TestgenGraphOp::Domain(TestgenOp::Generate {
+            dyn_op(TestgenOp::Generate {
                 name: name.to_string(),
                 target_def: def,
                 generate_fn: mock_generate,
@@ -99,7 +97,6 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
     Ok(builder.build())
 }
 
-/// Add a single 6-node upsert chain for a named target.
 fn add_upsert_chain(
     builder: &mut DagBuilder<TestgenGraphOp>,
     fs_env: &gunbc_ir::builder::NodeRef<TestgenGraphOp>,
@@ -108,7 +105,6 @@ fn add_upsert_chain(
 ) -> Result<(), BuilderError> {
     let gen_id = format!("generate_{name}");
 
-    // Generate node (root)
     let generate = builder.add_root_node(Node::opaque(
         gen_id.as_str(),
         vec![],
@@ -125,10 +121,10 @@ fn add_upsert_chain(
         "content",
         vec![read_res],
         vec![write_res],
-        TestgenGraphOp::PrepareFileRead(PrepareFileReadOp),
-        TestgenGraphOp::PrepareFileWrite(PrepareFileWriteOp),
-        TestgenGraphOp::Blob(BlobOps::CompareContent),
-        TestgenGraphOp::Transport(TransportOps::Execute),
+        dyn_op(PrepareFileReadOp),
+        dyn_op(PrepareFileWriteOp),
+        dyn_op(BlobOps::CompareContent),
+        dyn_op(TransportOps::Execute),
     )?;
 
     wire_fs_env_write_edges(

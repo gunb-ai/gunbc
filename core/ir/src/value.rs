@@ -140,7 +140,71 @@ pub enum Value {
     Skipped,
 }
 
+/// Discriminant tag for [`Value`] variants.
+///
+/// Allows type-level dispatch without manufacturing strings.
+/// Used by [`ValueBacking::accepts_value_kind`] for mock compatibility checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ValueKind {
+    Unit,
+    Bool,
+    String,
+    Int,
+    List,
+    Set,
+    Map,
+    Json,
+    TransportRequest,
+    TransportResponse,
+    Secret,
+    Skipped,
+}
+
+impl ValueKind {
+    /// Canonical display name for diagnostics/error messages.
+    pub fn type_name(self) -> &'static str {
+        match self {
+            ValueKind::Unit => "Unit",
+            ValueKind::Bool => "Bool",
+            ValueKind::String => "String",
+            ValueKind::Int => "Int",
+            ValueKind::List => "List",
+            ValueKind::Set => "Set",
+            ValueKind::Map => "Map",
+            ValueKind::Json => "Json",
+            ValueKind::TransportRequest => "TransportRequest",
+            ValueKind::TransportResponse => "TransportResponse",
+            ValueKind::Secret => "Secret",
+            ValueKind::Skipped => "Skipped",
+        }
+    }
+}
+
+impl fmt::Display for ValueKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.type_name())
+    }
+}
+
 impl Value {
+    /// Returns the discriminant tag for this value.
+    pub fn kind(&self) -> ValueKind {
+        match self {
+            Value::Unit => ValueKind::Unit,
+            Value::Bool(_) => ValueKind::Bool,
+            Value::Str(_) => ValueKind::String,
+            Value::Int(_) => ValueKind::Int,
+            Value::List(_) => ValueKind::List,
+            Value::Set(_) => ValueKind::Set,
+            Value::Map(_) => ValueKind::Map,
+            Value::Json(_) => ValueKind::Json,
+            Value::Request(_) => ValueKind::TransportRequest,
+            Value::Response(_) => ValueKind::TransportResponse,
+            Value::Secret(_) => ValueKind::Secret,
+            Value::Skipped => ValueKind::Skipped,
+        }
+    }
+
     // =========================================================================
     // Construction helpers (convenience for common compound types)
     // =========================================================================

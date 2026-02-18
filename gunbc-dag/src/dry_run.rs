@@ -2,7 +2,7 @@
 
 use gunbc_exec::BoundaryMocks;
 use gunbc_ir::{Dag, NodeId};
-use gunbc_primitives::{filename, FsEnv};
+use gunbc_primitives::filename;
 
 fn is_fs_env_node(node_id: &NodeId) -> bool {
     node_id
@@ -13,21 +13,25 @@ fn is_fs_env_node(node_id: &NodeId) -> bool {
 }
 
 /// Auto-wire a filesystem write-handle dry-run mock when the DAG declares an
-/// `fs_env` node with the `file:write` output port.
+/// `fs_env` node with a `FilesystemHandle` output.
 ///
 /// Returns true when a mock was inserted.
 pub fn wire_fs_env_write_mock<T>(dag: &Dag<T>, mocks: &mut BoundaryMocks) -> bool {
-    let has_fs_env_write = dag.nodes.iter().any(|node| {
-        is_fs_env_node(&node.id) && node.outputs.iter().any(|p| p.name.0 == FsEnv::WRITE_PORT)
-    });
+    let fs: gunbc_ir::Value = filename::FilesystemHandle::cross_platform(filename::Scope::Write).into();
+    let mut inserted = false;
 
-    if has_fs_env_write {
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
-        true
-    } else {
-        false
+    for node in dag.nodes.iter().filter(|node| is_fs_env_node(&node.id)) {
+        for port in node
+            .outputs
+            .iter()
+            .filter(|port| port.type_id.0 == "FilesystemHandle")
+        {
+            mocks.set_value(node.id.0.as_str(), port.name.0.as_str(), fs.clone());
+            inserted = true;
+        }
     }
+
+    inserted
 }
 
 #[cfg(test)]
@@ -65,5 +69,23 @@ mod tests {
         let dag: Dag<()> = Dag::new();
         let mut mocks = BoundaryMocks::new();
         assert!(!wire_fs_env_write_mock(&dag, &mut mocks));
+    }
+
+    #[test]
+    fn wire_fs_env_write_mock_supports_dsl_port_name() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "fs_env",
+            vec![],
+            vec![Port::new("FilesystemHandle", "FilesystemHandle")],
+            (),
+        ));
+
+        let mut mocks = BoundaryMocks::new();
+        assert!(wire_fs_env_write_mock(&dag, &mut mocks));
+        assert!(mocks.has_mock(
+            &NodeId::from("fs_env"),
+            &PortName::from("FilesystemHandle")
+        ));
     }
 }

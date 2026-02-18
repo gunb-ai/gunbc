@@ -34,14 +34,27 @@ pub fn wire_fs_env_write_edges<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::file_ops_graph::FileOpsGraph;
+    use gunbc_exec::{DynOp, ExecError, Executable};
     use gunbc_ir::{DagBuilder, Node, Port};
+    use gunbc_ir::Value;
+    use std::collections::HashMap;
+
+    #[derive(Debug, Clone)]
+    struct NoopOp;
+
+    impl Executable for NoopOp {
+        fn execute(
+            &self,
+            _inputs: HashMap<String, Value>,
+        ) -> Result<HashMap<String, Value>, ExecError> {
+            Ok(HashMap::new())
+        }
+    }
 
     #[test]
     fn add_fs_env_root_node_uses_standard_shape() {
         let mut builder = DagBuilder::new();
-        let fs_env =
-            add_fs_env_root_node(&mut builder, FileOpsGraph::<()>::FsEnv).expect("fs_env root");
+        let fs_env = add_fs_env_root_node(&mut builder, DynOp::new).expect("fs_env root");
         let sink = builder
             .add_node_after(
                 Node::opaque(
@@ -52,7 +65,7 @@ mod tests {
                         gunbc_ir::AccessMode::Write,
                     )],
                     vec![],
-                    FileOpsGraph::Domain(()),
+                    DynOp::new(NoopOp),
                 ),
                 &fs_env,
             )

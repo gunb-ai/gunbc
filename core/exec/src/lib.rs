@@ -123,3 +123,9 @@ impl Executable for DynOp {
         self.0.execute(inputs)
     }
 }
+
+impl From<gunbc_ir::patterns::PatternOp> for DynOp {
+    fn from(op: gunbc_ir::patterns::PatternOp) -> Self {
+        DynOp::new(op)
+    }
+}

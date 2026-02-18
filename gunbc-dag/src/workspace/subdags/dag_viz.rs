@@ -5,16 +5,13 @@
 use crate::dag_viz::{build_dag_viz_graph, DagVizMode};
 use crate::workspace::convert::convert_dag;
 use crate::workspace::WorkspaceOp;
+use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Node};
-
-fn convert_dag_viz_op(op: crate::dag_viz::DagVizGraphOp) -> WorkspaceOp {
-    WorkspaceOp::DagViz(op)
-}
 
 /// Build the dag_viz SubDag node.
 pub fn build_dag_viz_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
     let original = build_dag_viz_graph(DagVizMode::Snapshot)?;
-    let converted_dag = convert_dag(original, &convert_dag_viz_op);
+    let converted_dag = convert_dag(original, &|op| DynOp::new(op));
     Ok(Node::subdag("dag_viz", converted_dag))
 }
 

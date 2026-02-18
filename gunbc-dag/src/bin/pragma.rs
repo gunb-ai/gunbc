@@ -37,9 +37,9 @@ fn main() {
 
     // File paths for the three pragma outputs
     let file_paths: &[(&str, &str)] = &[
-        ("clippy", "clippy.toml"),
-        ("allowlist", "tools/disallowed-methods-allowlist.txt"),
-        ("policy", "tools/pragma-lint-policy.txt"),
+        ("pragma_3", "tools/pragma-lint-policy.txt"),
+        ("pragma_2", "tools/disallowed-methods-allowlist.txt"),
+        ("pragma", "clippy.toml"),
     ];
 
     // Set up entrypoint inputs
@@ -101,13 +101,9 @@ fn main() {
             );
 
             // Write transport mock
-            let response_key = format!("{}_response", key);
-            let path_key = format!("{}_written_path", key);
-            let content_key = format!("{}_content", key);
-
             mocks.set_value(
                 &write_node,
-                &response_key,
+                "response",
                 Value::Response(TransportResponse::File(FileResponse {
                     path: (*path).into(),
                     operation: FileOp::Write,
@@ -117,14 +113,6 @@ fn main() {
                     error: None,
                 })),
             );
-            mocks.set_value(&write_node, &path_key, Value::Str("<DRY-RUN>".to_string()));
-            mocks.set_value(
-                &write_node,
-                &content_key,
-                Value::Str("<DRY-RUN>".to_string()),
-            );
-            mocks.set_value(&write_node, "skip", Value::Bool(false));
-            mocks.set_value(&write_node, "skip_reason", Value::Str(String::new()));
         }
 
         ExecutionMode::DryRun(mocks)

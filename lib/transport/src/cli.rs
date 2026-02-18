@@ -196,6 +196,31 @@ pub fn execute_cli_tool_op_with_inputs(
 }
 
 // ============================================================================
+// Executable wrapper for CliToolOp (enables DynOp::new())
+// ============================================================================
+
+use crate::TransportOps;
+use gunbc_exec::{ExecError, Executable};
+
+/// Executable wrapper for `CliToolOp`.
+///
+/// Makes `CliToolOp` usable with `DynOp::new()` by implementing `Executable`.
+/// `Transport` variants delegate to `TransportOps::Execute`; all others
+/// delegate to `execute_cli_tool_op_with_inputs`.
+#[derive(Debug, Clone)]
+pub struct CliToolOpExec(pub CliToolOp);
+
+impl Executable for CliToolOpExec {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        match &self.0 {
+            CliToolOp::Transport => TransportOps::Execute.execute(inputs),
+            op => execute_cli_tool_op_with_inputs(op, &inputs)
+                .map_err(|e| ExecError::new(e.to_string())),
+        }
+    }
+}
+
+// ============================================================================
 // Prepare functions (pure: build ShellRequest → TransportRequest)
 // ============================================================================
 

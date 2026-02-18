@@ -1,34 +1,19 @@
 //! Makegen SubDag builder.
 //!
-//! Wraps the makegen tool as a SubDag node using WorkspaceOp.
+//! Wraps the makegen tool as a SubDag node using `DynOp`.
 
 use crate::makegen::MakegenOp;
 use crate::workspace::WorkspaceOp;
+use gunbc_exec::DynOp;
 use gunbc_ir::build::*;
 use gunbc_ir::{DagBuilder, Node};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::PrepareFileWriteOp;
 
 /// Build the makegen SubDag node.
-///
-/// This wraps the makegen workflow as a `Node<WorkspaceOp>` that can be
-/// composed into the Workspace DAG.
-///
-/// # I/O Interface
-///
-/// Inputs:
-/// - `path`: String - Path for generated Makefile
-///
-/// Outputs:
-/// - `response`: TransportResponse - File write response
-/// - `written_path`: String - Actual path written to
-/// - `content`: String - Generated content
-/// - `tool_count`: Int - Number of tools in registry
-/// - `tool_names`: List - Names of registered tools
 pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
     let mut builder: DagBuilder<WorkspaceOp> = DagBuilder::new();
 
-    // Node: LoadRegistry (makegen-specific) - generation 0
     let load_registry = builder
         .add_root_node(Node::opaque(
             "load_registry",
@@ -38,31 +23,29 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
                 non_empty_list("tool_names", "NonEmptyStringList"),
                 scalar("registry", "Json"),
             ],
-            WorkspaceOp::Makegen(MakegenOp::LoadRegistry),
+            DynOp::new(MakegenOp::LoadRegistry),
         ))
         .expect("load_registry node");
 
-    // Node: RenderMakefile (makegen-specific) - generation 1
     let render_makefile = builder
         .add_node_after(
             Node::opaque(
                 "render_makefile",
                 vec![scalar("registry", "Json")],
                 vec![scalar("makefile_content", "String")],
-                WorkspaceOp::Makegen(MakegenOp::RenderMakefile),
+                DynOp::new(MakegenOp::RenderMakefile),
             ),
             &load_registry,
         )
         .expect("render_makefile node");
 
-    // Node: PrepareFileWrite (primitive - PURE) - generation 2
     let prepare_file_write = builder
         .add_node_after(
             Node::opaque(
                 "prepare_file_write",
                 vec![port("content", "String"), port("path", "String")],
                 vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
+                DynOp::new(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
                     PrepareFileWriteOp,
                 )),
             ),
@@ -70,7 +53,6 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
         )
         .expect("prepare_file_write node");
 
-    // Node: ExecuteTransport (transport - BOUNDARY) - generation 3
     let execute_transport = builder
         .add_node_after(
             Node::opaque(
@@ -81,13 +63,12 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
                     port("written_path", "String"),
                     port("content", "String"),
                 ],
-                WorkspaceOp::Transport(TransportOps::Execute),
+                DynOp::new(TransportOps::Execute),
             ),
             &prepare_file_write,
         )
         .expect("execute_transport node");
 
-    // Wire up the pipeline
     builder
         .add_edge(
             load_registry.out("registry"),
@@ -114,8 +95,6 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
         .expect("skip edge");
 
     let inner_dag = builder.build();
-
-    // Wrap as SubDag with explicit I/O interface
     Node::subdag("makegen", inner_dag)
 }
 
@@ -135,10 +114,7 @@ mod tests {
     fn test_makegen_subdag_interface() {
         let node = build_makegen_subdag();
 
-        // Check inputs
         assert!(node.inputs.iter().any(|p| p.name.0 == "path"));
-
-        // Check outputs
         assert!(node.outputs.iter().any(|p| p.name.0 == "response"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "written_path"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "content"));

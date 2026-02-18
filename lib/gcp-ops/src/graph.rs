@@ -1,19 +1,14 @@
 //! DAGs for GCP WIF + Secret Manager.
 
 use crate::ops::{GcpOps, GcpRuntimeKind};
-use gunbc_delegate_macros::DelegateExecutable;
+use gunbc_exec::DynOp;
 use gunbc_ir::build::{list, optional, port, resource, AccessMode};
 use gunbc_ir::builder::BuilderError;
 use gunbc_ir::{Dag, DagBuilder, Edge, Node, NodeRef, RESOURCE_API_NETWORK};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::NetEnv;
 
-#[derive(Debug, Clone, DelegateExecutable)]
-pub enum GcpSecretManagerGraphOp {
-    Gcp(GcpOps),
-    NetEnv(NetEnv),
-    Transport(TransportOps),
-}
+pub type GcpSecretManagerGraphOp = DynOp;
 
 /// Build a GCP Secret Manager credential acquisition graph for the given runtime.
 ///
@@ -42,7 +37,7 @@ pub fn build_gcp_secret_manager_credential_graph(
         "net_env",
         vec![],
         vec![port(NetEnv::PORT, "NetworkHandle")],
-        GcpSecretManagerGraphOp::NetEnv(NetEnv),
+        DynOp::new(NetEnv),
     ))?;
 
     // ---------------------------------------------------------------------
@@ -62,7 +57,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                             optional("request_token", "OptionalString"),
                         ],
                         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGitHubOidcRequest),
+                        DynOp::new(GcpOps::PrepareGitHubOidcRequest),
                     ))?;
 
                     let execute = builder.add_node_after(
@@ -74,7 +69,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                                 resource("api:network", "NetworkHandle", AccessMode::Read),
                             ],
                             vec![port("response", "TransportResponse")],
-                            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                            DynOp::new(TransportOps::Execute),
                         ),
                         &prepare,
                     )?;
@@ -84,7 +79,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                             "parse_github_oidc",
                             vec![port("response", "TransportResponse")],
                             vec![port("subject_token", "String")],
-                            GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGitHubOidcResponse),
+                            DynOp::new(GcpOps::ParseGitHubOidcResponse),
                         ),
                         &execute,
                     )?;
@@ -104,7 +99,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                         "prepare_metadata_oidc",
                         vec![port("audience", "String")],
                         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareMetadataOidcRequest),
+                        DynOp::new(GcpOps::PrepareMetadataOidcRequest),
                     ))?;
 
                     let execute = builder.add_node_after(
@@ -116,7 +111,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                                 resource("api:network", "NetworkHandle", AccessMode::Read),
                             ],
                             vec![port("response", "TransportResponse")],
-                            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                            DynOp::new(TransportOps::Execute),
                         ),
                         &prepare,
                     )?;
@@ -126,7 +121,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                             "parse_metadata_oidc",
                             vec![port("response", "TransportResponse")],
                             vec![port("subject_token", "String")],
-                            GcpSecretManagerGraphOp::Gcp(GcpOps::ParseMetadataOidcResponse),
+                            DynOp::new(GcpOps::ParseMetadataOidcResponse),
                         ),
                         &execute,
                     )?;
@@ -150,7 +145,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                     "prepare_sts",
                     vec![port("audience", "String"), port("subject_token", "String")],
                     vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                    GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareStsExchange),
+                    DynOp::new(GcpOps::PrepareStsExchange),
                 ),
                 &subject_token_node,
             )?;
@@ -164,7 +159,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                         resource("api:network", "NetworkHandle", AccessMode::Read),
                     ],
                     vec![port("response", "TransportResponse")],
-                    GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                    DynOp::new(TransportOps::Execute),
                 ),
                 &prepare_sts,
             )?;
@@ -174,7 +169,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                     "parse_sts",
                     vec![port("response", "TransportResponse")],
                     vec![port("access_token", "String"), port("expires_in", "Int")],
-                    GcpSecretManagerGraphOp::Gcp(GcpOps::ParseStsExchange),
+                    DynOp::new(GcpOps::ParseStsExchange),
                 ),
                 &execute_sts,
             )?;
@@ -219,7 +214,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 optional("allow_impersonation", "OptionalBool"),
             ],
             vec![port("should", "Bool")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::ShouldImpersonate),
+            DynOp::new(GcpOps::ShouldImpersonate),
         ),
         &access_token_node,
     )?;
@@ -234,7 +229,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 optional("should_impersonate", "OptionalBool"),
             ],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareImpersonate),
+            DynOp::new(GcpOps::PrepareImpersonate),
         ),
         &should_impersonate,
     )?;
@@ -248,7 +243,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 resource("api:network", "NetworkHandle", AccessMode::Read),
             ],
             vec![port("response", "TransportResponse")],
-            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_impersonate,
     )?;
@@ -261,7 +256,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 optional("base_access_token", "OptionalString"),
             ],
             vec![port("access_token", "String")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::ParseImpersonate),
+            DynOp::new(GcpOps::ParseImpersonate),
         ),
         &execute_impersonate,
     )?;
@@ -309,7 +304,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 optional("version", "OptionalString"),
             ],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareSecretAccess),
+            DynOp::new(GcpOps::PrepareSecretAccess),
         ),
         &parse_impersonate,
     )?;
@@ -323,7 +318,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 resource("api:network", "NetworkHandle", AccessMode::Read),
             ],
             vec![port("response", "TransportResponse")],
-            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_secret,
     )?;
@@ -333,7 +328,7 @@ pub fn build_gcp_secret_manager_credential_graph(
             "parse_secret_access",
             vec![port("response", "TransportResponse")],
             vec![port("secret", "String")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::ParseSecretAccess),
+            DynOp::new(GcpOps::ParseSecretAccess),
         ),
         &execute_secret,
     )?;
@@ -371,7 +366,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 list("required_scopes", "String"),
             ],
             vec![port("credential", "Credential")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::BuildCredential),
+            DynOp::new(GcpOps::BuildCredential),
         ),
         &parse_secret,
     )?;
@@ -433,7 +428,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
         "net_env",
         vec![],
         vec![port(NetEnv::PORT, "NetworkHandle")],
-        GcpSecretManagerGraphOp::NetEnv(NetEnv),
+        DynOp::new(NetEnv),
     ))?;
 
     // ---------------------------------------------------------------------
@@ -453,7 +448,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                             optional("request_token", "OptionalString"),
                         ],
                         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGitHubOidcRequest),
+                        DynOp::new(GcpOps::PrepareGitHubOidcRequest),
                     ))?;
 
                     let execute = builder.add_node_after(
@@ -465,7 +460,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                                 resource("api:network", "NetworkHandle", AccessMode::Read),
                             ],
                             vec![port("response", "TransportResponse")],
-                            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                            DynOp::new(TransportOps::Execute),
                         ),
                         &prepare,
                     )?;
@@ -475,7 +470,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                             "parse_github_oidc",
                             vec![port("response", "TransportResponse")],
                             vec![port("subject_token", "String")],
-                            GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGitHubOidcResponse),
+                            DynOp::new(GcpOps::ParseGitHubOidcResponse),
                         ),
                         &execute,
                     )?;
@@ -495,7 +490,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         "prepare_metadata_oidc",
                         vec![port("audience", "String")],
                         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareMetadataOidcRequest),
+                        DynOp::new(GcpOps::PrepareMetadataOidcRequest),
                     ))?;
 
                     let execute = builder.add_node_after(
@@ -507,7 +502,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                                 resource("api:network", "NetworkHandle", AccessMode::Read),
                             ],
                             vec![port("response", "TransportResponse")],
-                            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                            DynOp::new(TransportOps::Execute),
                         ),
                         &prepare,
                     )?;
@@ -517,7 +512,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                             "parse_metadata_oidc",
                             vec![port("response", "TransportResponse")],
                             vec![port("subject_token", "String")],
-                            GcpSecretManagerGraphOp::Gcp(GcpOps::ParseMetadataOidcResponse),
+                            DynOp::new(GcpOps::ParseMetadataOidcResponse),
                         ),
                         &execute,
                     )?;
@@ -541,7 +536,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                     "prepare_sts",
                     vec![port("audience", "String"), port("subject_token", "String")],
                     vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                    GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareStsExchange),
+                    DynOp::new(GcpOps::PrepareStsExchange),
                 ),
                 &subject_token_node,
             )?;
@@ -555,7 +550,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         resource("api:network", "NetworkHandle", AccessMode::Read),
                     ],
                     vec![port("response", "TransportResponse")],
-                    GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                    DynOp::new(TransportOps::Execute),
                 ),
                 &prepare_sts,
             )?;
@@ -565,7 +560,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                     "parse_sts",
                     vec![port("response", "TransportResponse")],
                     vec![port("access_token", "String"), port("expires_in", "Int")],
-                    GcpSecretManagerGraphOp::Gcp(GcpOps::ParseStsExchange),
+                    DynOp::new(GcpOps::ParseStsExchange),
                 ),
                 &execute_sts,
             )?;
@@ -610,7 +605,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 optional("allow_impersonation", "OptionalBool"),
             ],
             vec![port("should", "Bool")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::ShouldImpersonate),
+            DynOp::new(GcpOps::ShouldImpersonate),
         ),
         &access_token_node,
     )?;
@@ -625,7 +620,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 optional("should_impersonate", "OptionalBool"),
             ],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareImpersonate),
+            DynOp::new(GcpOps::PrepareImpersonate),
         ),
         &should_impersonate,
     )?;
@@ -639,7 +634,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 resource("api:network", "NetworkHandle", AccessMode::Read),
             ],
             vec![port("response", "TransportResponse")],
-            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_impersonate,
     )?;
@@ -652,7 +647,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 optional("base_access_token", "OptionalString"),
             ],
             vec![port("access_token", "String")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::ParseImpersonate),
+            DynOp::new(GcpOps::ParseImpersonate),
         ),
         &execute_impersonate,
     )?;
@@ -699,7 +694,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 port("secret", "String"),
             ],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareSecretGet),
+            DynOp::new(GcpOps::PrepareSecretGet),
         ),
         &parse_impersonate,
     )?;
@@ -713,7 +708,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 resource("api:network", "NetworkHandle", AccessMode::Read),
             ],
             vec![port("response", "TransportResponse")],
-            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_get,
     )?;
@@ -723,7 +718,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
             "parse_secret_get",
             vec![port("response", "TransportResponse")],
             vec![port("exists", "Bool")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::ParseSecretGet),
+            DynOp::new(GcpOps::ParseSecretGet),
         ),
         &execute_get,
     )?;
@@ -750,7 +745,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 port("exists", "Bool"),
             ],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareSecretCreate),
+            DynOp::new(GcpOps::PrepareSecretCreate),
         ),
         &parse_get,
     )?;
@@ -764,7 +759,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 resource("api:network", "NetworkHandle", AccessMode::Read),
             ],
             vec![port("response", "TransportResponse"), port("skip", "Bool")],
-            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_create,
     )?;
@@ -795,7 +790,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 optional("create_done", "OptionalBool"),
             ],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareSecretAddVersion),
+            DynOp::new(GcpOps::PrepareSecretAddVersion),
         ),
         &execute_create,
     )?;
@@ -809,7 +804,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 resource("api:network", "NetworkHandle", AccessMode::Read),
             ],
             vec![port("response", "TransportResponse")],
-            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_add,
     )?;
@@ -819,7 +814,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
             "parse_secret_add_version",
             vec![port("response", "TransportResponse")],
             vec![port("version", "String")],
-            GcpSecretManagerGraphOp::Gcp(GcpOps::ParseSecretAddVersion),
+            DynOp::new(GcpOps::ParseSecretAddVersion),
         ),
         &execute_add,
     )?;
@@ -1000,7 +995,7 @@ fn add_ensure_iam_nodes_with_mode(
             prepare_node_id,
             prepare_inputs,
             prepare_outputs,
-            GcpSecretManagerGraphOp::Gcp(prepare_op),
+            DynOp::new(prepare_op),
         ),
         access_token_node,
     )?;
@@ -1014,7 +1009,7 @@ fn add_ensure_iam_nodes_with_mode(
                 resource("api:network", "NetworkHandle", AccessMode::Read),
             ],
             vec![port("response", "TransportResponse")],
-            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_ensure_iam,
     )?;
@@ -1024,7 +1019,7 @@ fn add_ensure_iam_nodes_with_mode(
             check_node_id,
             check_inputs,
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            GcpSecretManagerGraphOp::Gcp(check_op),
+            DynOp::new(check_op),
         ),
         &execute_get_iam,
     )?;
@@ -1038,7 +1033,7 @@ fn add_ensure_iam_nodes_with_mode(
                 resource("api:network", "NetworkHandle", AccessMode::Read),
             ],
             vec![port("response", "TransportResponse")],
-            GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &check_iam,
     )?;
@@ -1048,7 +1043,7 @@ fn add_ensure_iam_nodes_with_mode(
             parse_node_id,
             vec![port("response", "TransportResponse")],
             vec![port("ok", "Bool")],
-            GcpSecretManagerGraphOp::Gcp(parse_op),
+            DynOp::new(parse_op),
         ),
         &execute_set_iam,
     )?;
@@ -1139,7 +1134,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "net_env",
         vec![],
         vec![port(NetEnv::PORT, "NetworkHandle")],
-        GcpSecretManagerGraphOp::NetEnv(NetEnv),
+        DynOp::new(NetEnv),
     ));
 
     // ========================================================================
@@ -1150,7 +1145,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "prepare_check",
         vec![],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareCheckAdc),
+        DynOp::new(GcpOps::PrepareCheckAdc),
     ));
 
     dag.add_node(Node::opaque(
@@ -1161,14 +1156,14 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     dag.add_node(Node::opaque(
         "parse_check",
         vec![port("response", "TransportResponse")],
         vec![port("exists", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseCheckAdc),
+        DynOp::new(GcpOps::ParseCheckAdc),
     ));
 
     // Check edges
@@ -1201,7 +1196,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "prepare_read_adc",
         vec![port("exists", "Bool")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareReadAdc),
+        DynOp::new(GcpOps::PrepareReadAdc),
     ));
 
     dag.add_node(Node::opaque(
@@ -1212,7 +1207,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     // Step 2: Parse ADC credentials
@@ -1224,7 +1219,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             port("client_secret", "String"),
             port("refresh_token", "String"),
         ],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseAdcCredentials),
+        DynOp::new(GcpOps::ParseAdcCredentials),
     ));
 
     // Step 3: Prepare OAuth2 token refresh
@@ -1236,7 +1231,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             port("refresh_token", "String"),
         ],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareOAuth2Refresh),
+        DynOp::new(GcpOps::PrepareOAuth2Refresh),
     ));
 
     // Step 4: Execute OAuth2 refresh
@@ -1248,7 +1243,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     // Step 5: Try-parse — catches auth errors as needs_reauth instead of failing
@@ -1260,7 +1255,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             optional("access_token", "OptionalString"),
             optional("expires_in", "OptionalInt"),
         ],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseTryRefresh),
+        DynOp::new(GcpOps::ParseTryRefresh),
     ));
 
     // Try-refresh edges
@@ -1349,7 +1344,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "prepare_gcloud_auth",
         vec![port("needs_reauth", "Bool")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGcloudAuth),
+        DynOp::new(GcpOps::PrepareGcloudAuth),
     ));
 
     dag.add_node(Node::opaque(
@@ -1360,14 +1355,14 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     dag.add_node(Node::opaque(
         "parse_gcloud_auth",
         vec![port("response", "TransportResponse")],
         vec![port("ok", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGcloudAuth),
+        DynOp::new(GcpOps::ParseGcloudAuth),
     ));
 
     // Re-auth edges
@@ -1408,7 +1403,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "prepare_reread_adc",
         vec![port("exists", "Bool")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareReadAdc),
+        DynOp::new(GcpOps::PrepareReadAdc),
     ));
 
     dag.add_node(Node::opaque(
@@ -1419,7 +1414,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     dag.add_node(Node::opaque(
@@ -1430,7 +1425,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             port("client_secret", "String"),
             port("refresh_token", "String"),
         ],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseAdcCredentials),
+        DynOp::new(GcpOps::ParseAdcCredentials),
     ));
 
     // Re-read edges (gcloud auth ok -> treat as "exists" for PrepareReadAdc)
@@ -1474,7 +1469,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             port("refresh_token", "String"),
         ],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareOAuth2Refresh),
+        DynOp::new(GcpOps::PrepareOAuth2Refresh),
     ));
 
     dag.add_node(Node::opaque(
@@ -1485,7 +1480,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     dag.add_node(Node::opaque(
@@ -1495,7 +1490,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             optional("access_token", "OptionalString"),
             optional("expires_in", "OptionalInt"),
         ],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseOAuth2Refresh),
+        DynOp::new(GcpOps::ParseOAuth2Refresh),
     ));
 
     // Retry edges
@@ -1555,7 +1550,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             optional("retry_expires_in", "OptionalInt"),
         ],
         vec![port("access_token", "String"), port("expires_in", "Int")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::MergeAuthResult),
+        DynOp::new(GcpOps::MergeAuthResult),
     ));
 
     // Merge edges: try-refresh outputs
@@ -1603,7 +1598,7 @@ mod tests {
                 "net_env",
                 vec![],
                 vec![port(NetEnv::PORT, "NetworkHandle")],
-                GcpSecretManagerGraphOp::NetEnv(NetEnv),
+                DynOp::new(NetEnv),
             ))
             .expect("net_env");
         let access_token = builder
@@ -1611,7 +1606,7 @@ mod tests {
                 "access_token_source",
                 vec![],
                 vec![port("access_token", "String")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ResolveRuntime),
+                DynOp::new(GcpOps::ResolveRuntime),
             ))
             .expect("access_token_source");
         (builder, net_env, access_token)

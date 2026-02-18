@@ -12,17 +12,16 @@
 
 use gunbc_exec::{
     optional_str_list_strict, optional_str_strict, propagate_skipped, require_response,
-    require_str, ExecError, Executable, OutputMap, TransportResponseExt,
+    require_str, DynOp, ExecError, Executable, OutputMap, TransportResponseExt,
 };
-use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
-use gunbc_ir::transport::{FileOp, FileRequest, ShellRequest, TransportRequest, TransportResponse};
+use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest};
 use gunbc_ir::{
     add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
     WorkflowSignature,
 };
 use gunbc_lib_cloud_ops::graph_cloud_config;
-use gunbc_lib_gist_ops::{build_gist_upload_subdag, GistOps, GistUploadOp};
+use gunbc_lib_gist_ops::{build_gist_upload_subdag, GistUploadOp};
 use gunbc_lib_git_ops::{build_branch_resolution_subdag, BranchResolutionOp, GitOps};
 use gunbc_lib_markdown::MarkdownOp;
 use gunbc_lib_transport::TransportOps;
@@ -65,108 +64,42 @@ pub enum GistMode {
     Recent,
 }
 
-/// The operation type for gist graphs - a union of pure ops, library ops, and transport.
-///
-/// Following the CI pattern: all I/O happens through `Transport(TransportOps::Execute)` nodes.
-#[derive(Debug, Clone)]
-pub enum GistGraphOp {
-    // ========================================================================
-    // Git operations (via git-ops crate)
-    // ========================================================================
-    /// Git operations (PURE - builds requests, parses responses)
-    Git(GitOps),
-
-    // ========================================================================
-    // Environment ops (resource acquisition)
-    // ========================================================================
-    /// Filesystem environment (resource acquisition)
-    FsEnv(FsEnv),
-
-    // ========================================================================
-    // Single-file operations (used by LoopBuilder in snapshot mode)
-    // ========================================================================
-    /// Prepare single file read request (PURE - no I/O)
-    /// Takes filename and repo_path, outputs file read request for one file
-    PrepareReadFile,
-    /// Parse single file read response (PURE - no I/O)
-    /// Takes file response, outputs filename and content
-    ParseReadFile,
-    /// Collect file results into a map (PURE - no I/O)
-    /// Takes list of (filename, content) pairs, outputs Map
-    CollectFileContents,
-
-    // ========================================================================
-    // Library ops
-    // ========================================================================
-    /// Markdown operations
-    Markdown(MarkdownOp),
-
-    // ========================================================================
-    // Pattern operations (for LoopBuilder integration)
-    // ========================================================================
-    /// Pattern operations (loop unpack/pack, branch merge, etc.)
-    Pattern(PatternOp),
-
-    // ========================================================================
-    // Transport boundary (actual I/O)
-    // ========================================================================
-    /// Transport operations (boundary - actual I/O)
-    Transport(TransportOps),
-
-    // ========================================================================
-    // SubDag wrappers (shared library SubDags)
-    // ========================================================================
-    /// Gist upload pipeline (credential chain + request + response).
-    ///
-    /// Self-contained SubDag — includes its own `fs_env`, `clock_env`,
-    /// cloud credential chain, and gist upload pipeline.
-    GistUpload(GistUploadOp),
-
-    /// Branch resolution (current_branch + remote_branches).
-    ///
-    /// Wraps the two-triplet branch resolution SubDag from git-ops.
-    BranchResolution(BranchResolutionOp),
-}
-
-impl From<PatternOp> for GistGraphOp {
-    fn from(op: PatternOp) -> Self {
-        GistGraphOp::Pattern(op)
-    }
-}
-
-impl Executable for GistGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            // Git operations (delegated to git-ops crate)
-            GistGraphOp::Git(op) => op.execute(inputs),
-
-            // Environment ops (resource acquisition)
-            GistGraphOp::FsEnv(op) => op.execute(inputs),
-
-            // Single-file operations (pure)
-            GistGraphOp::PrepareReadFile => execute_prepare_read_file(inputs),
-            GistGraphOp::ParseReadFile => execute_parse_read_file(inputs),
-            GistGraphOp::CollectFileContents => execute_collect_file_contents(inputs),
-
-            // Pattern ops (loop unpack/pack, etc.)
-            GistGraphOp::Pattern(op) => op.execute(inputs),
-
-            // Library ops
-            GistGraphOp::Markdown(op) => op.execute(inputs),
-
-            // Transport boundary
-            GistGraphOp::Transport(op) => op.execute(inputs),
-
-            // SubDag wrappers (delegated to shared libraries)
-            GistGraphOp::GistUpload(op) => op.execute(inputs),
-            GistGraphOp::BranchResolution(op) => op.execute(inputs),
-        }
-    }
-}
+/// The operation type for gist graphs — type-erased via DynOp.
+pub type GistGraphOp = DynOp;
 
 // ============================================================================
 // Single-file operations (for LoopBuilder integration)
 // ============================================================================
+
+/// Prepare single file read request (PURE - no I/O).
+#[derive(Debug, Clone)]
+pub struct PrepareReadFileOp;
+
+impl Executable for PrepareReadFileOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        execute_prepare_read_file(inputs)
+    }
+}
+
+/// Parse single file read response (PURE - no I/O).
+#[derive(Debug, Clone)]
+pub struct ParseReadFileOp;
+
+impl Executable for ParseReadFileOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        execute_parse_read_file(inputs)
+    }
+}
+
+/// Collect file results into a map (PURE - no I/O).
+#[derive(Debug, Clone)]
+pub struct CollectFileContentsOp;
+
+impl Executable for CollectFileContentsOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        execute_collect_file_contents(inputs)
+    }
+}
 
 /// Prepare single file read request (PURE - no I/O).
 ///
@@ -313,7 +246,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
             port("filename", "String"),
             port("skip", "Bool"),
         ],
-        GistGraphOp::PrepareReadFile,
+        DynOp::new(PrepareReadFileOp),
     ));
 
     // Execute node
@@ -325,7 +258,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
             resource("file", "FilesystemHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GistGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     // ParseReadFile node — only outputs "result" (the loop pack collects these)
@@ -336,7 +269,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
             port("filename", "String"),
         ],
         vec![port("result", "String")],
-        GistGraphOp::ParseReadFile,
+        DynOp::new(ParseReadFileOp),
     ));
 
     // Wire the pipeline
@@ -431,7 +364,7 @@ pub fn build_gist_graph_with_config(
         "fs_env",
         vec![],
         vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        GistGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+        DynOp::new(FsEnv::new(filename::Scope::Write)),
     ))?;
 
     // ========================================================================
@@ -524,9 +457,9 @@ fn build_snapshot_acquire(
         vec![port("repo_path", "String")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![list("files", "String")],
-        GistGraphOp::Git(GitOps::PrepareLsFiles { extensions }),
-        GistGraphOp::Git(GitOps::ParseLsFiles),
-        GistGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(GitOps::PrepareLsFiles { extensions }),
+        DynOp::new(GitOps::ParseLsFiles),
+        DynOp::new(TransportOps::Execute),
         Some(fs_env),
     )?;
 
@@ -559,7 +492,7 @@ fn build_snapshot_acquire(
             "collect_file_contents",
             vec![list("filenames", "String"), list("contents_list", "String")],
             vec![port("contents", "Map")],
-            GistGraphOp::CollectFileContents,
+            DynOp::new(CollectFileContentsOp),
         ),
         &read_files_loop,
     )?;
@@ -570,7 +503,7 @@ fn build_snapshot_acquire(
             "render_markdown",
             vec![port("contents", "Map")],
             vec![scalar("markdown", "String")],
-            GistGraphOp::Markdown(MarkdownOp::RenderCodeSnapshot),
+            DynOp::new(MarkdownOp::RenderCodeSnapshot),
         ),
         &collect_file_contents,
     )?;
@@ -611,12 +544,12 @@ fn build_diff_acquire(
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![port("diff_files", "Map"), scalar("stats", "String")],
-        GistGraphOp::Git(GitOps::PrepareDiff {
+        DynOp::new(GitOps::PrepareDiff {
             base_ref: base_ref.to_string(),
             extensions,
         }),
-        GistGraphOp::Git(GitOps::ParseDiff),
-        GistGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(GitOps::ParseDiff),
+        DynOp::new(TransportOps::Execute),
         Some(fs_env),
     )?;
 
@@ -631,7 +564,7 @@ fn build_diff_acquire(
                 optional("stats", "OptionalString"),
             ],
             vec![scalar("markdown", "String")],
-            GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
+            DynOp::new(MarkdownOp::RenderDiffSnapshot),
         ),
         &diff,
     )?;
@@ -675,11 +608,11 @@ fn build_recent_acquire(
         vec![port("repo_path", "String")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![optional("base_ref", "OptionalString")],
-        GistGraphOp::Git(GitOps::PrepareRevListBefore {
+        DynOp::new(GitOps::PrepareRevListBefore {
             before: "3 days ago".to_string(),
         }),
-        GistGraphOp::Git(GitOps::ParseRevListBefore),
-        GistGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(GitOps::ParseRevListBefore),
+        DynOp::new(TransportOps::Execute),
         Some(fs_env),
     )?;
 
@@ -698,12 +631,12 @@ fn build_recent_acquire(
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![port("diff_files", "Map"), scalar("stats", "String")],
-        GistGraphOp::Git(GitOps::PrepareDiff {
+        DynOp::new(GitOps::PrepareDiff {
             base_ref: "HEAD".to_string(),
             extensions,
         }),
-        GistGraphOp::Git(GitOps::ParseDiff),
-        GistGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(GitOps::ParseDiff),
+        DynOp::new(TransportOps::Execute),
         Some(&rev_list),
     )?;
 
@@ -718,7 +651,7 @@ fn build_recent_acquire(
                 optional("stats", "OptionalString"),
             ],
             vec![scalar("markdown", "String")],
-            GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
+            DynOp::new(MarkdownOp::RenderDiffSnapshot),
         ),
         &diff,
     )?;
@@ -735,210 +668,11 @@ fn build_recent_acquire(
 }
 
 fn lift_gist_upload_dag(dag: Dag<GistUploadOp>) -> Dag<GistGraphOp> {
-    dag.map_ops(&mut GistGraphOp::GistUpload)
+    dag.map_ops(&mut |op: GistUploadOp| DynOp::new(op))
 }
 
 fn lift_branch_dag(dag: Dag<BranchResolutionOp>) -> Dag<GistGraphOp> {
-    dag.map_ops(&mut GistGraphOp::BranchResolution)
-}
-
-// Mockable implementation for test generation
-use gunbc_test::Mockable;
-
-impl Mockable for GistGraphOp {
-    fn mock_outputs(&self) -> HashMap<String, Value> {
-        match self {
-            // Git operations (delegated)
-            GistGraphOp::Git(op) => {
-                // Return appropriate mock outputs based on the git op variant
-                match op {
-                    GitOps::PrepareLsFiles { .. } => {
-                        let request =
-                            gunbc_ir::transport::git::GitRequest::ls_files().to_shell_request();
-                        OutputMap::new()
-                            .request("request", request)
-                            .bool("skip", false)
-                            .build()
-                    }
-                    GitOps::ParseLsFiles => OutputMap::new()
-                        .str_list(
-                            "files",
-                            vec!["src/main.rs".to_string(), "README.md".to_string()],
-                        )
-                        .build(),
-                    GitOps::PrepareDiff { .. }
-                    | GitOps::PrepareDiffNameOnly { .. }
-                    | GitOps::PrepareCurrentBranch
-                    | GitOps::PrepareRemoteBranchesAtHead
-                    | GitOps::PrepareRevListBefore { .. }
-                    | GitOps::PrepareGitShow { .. } => OutputMap::new()
-                        .request(
-                            "request",
-                            ShellRequest::new("git")
-                                .arg("mock")
-                                .into_transport_request(),
-                        )
-                        .bool("skip", false)
-                        .build(),
-                    GitOps::ParseDiff => OutputMap::new()
-                        .map_str_str("diff_files", std::collections::BTreeMap::new())
-                        .str("stats", "+0 -0 across 0 files")
-                        .build(),
-                    GitOps::ParseDiffNameOnly => OutputMap::new().str_list("files", vec![]).build(),
-                    GitOps::ParseCurrentBranch => OutputMap::new().str("branch", "main").build(),
-                    GitOps::ParseRemoteBranchesAtHead => {
-                        OutputMap::new().str("remote_branch", "main").build()
-                    }
-                    GitOps::ParseRevListBefore => {
-                        OutputMap::new().str("base_ref", "abc123def456").build()
-                    }
-                    GitOps::ParseGitShow => OutputMap::new().str("content", "{}").build(),
-                }
-            }
-
-            // Single-file operations
-            GistGraphOp::PrepareReadFile => OutputMap::new()
-                .request(
-                    "request",
-                    TransportRequest::File(FileRequest::read("src/main.rs")),
-                )
-                .str("filename", "src/main.rs")
-                .bool("skip", false)
-                .build(),
-            GistGraphOp::ParseReadFile => OutputMap::new()
-                .str("filename", "src/main.rs")
-                .str("result", "fn main() {}")
-                .build(),
-            GistGraphOp::CollectFileContents => {
-                let mut contents = std::collections::BTreeMap::new();
-                contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
-                OutputMap::new().map_str_str("contents", contents).build()
-            }
-
-            // Pattern ops (mock outputs match what the pattern ops produce)
-            GistGraphOp::Pattern(op) => match op {
-                PatternOp::LoopUnpack { element_port, .. } => OutputMap::new()
-                    .str(element_port, "mock_element")
-                    .int("index", 0)
-                    .int("count", 1)
-                    .build(),
-                PatternOp::LoopPack { output_port } => OutputMap::new()
-                    .str(output_port, "mock_result")
-                    .int("iterations", 1)
-                    .build(),
-                PatternOp::BranchMerge { output_port } => {
-                    OutputMap::new().str(output_port, "mock_merge").build()
-                }
-                _ => HashMap::new(),
-            },
-
-            // Environment ops
-            GistGraphOp::FsEnv(op) => op.mock_outputs(),
-
-            // Pure ops
-            GistGraphOp::Markdown(_) => OutputMap::new()
-                .str("markdown", "# Code Snapshot\n```rust\nfn main() {}\n```")
-                .build(),
-
-            // Transport boundary
-            GistGraphOp::Transport(_) => OutputMap::new()
-                .response(
-                    "response",
-                    TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(
-                        "src/main.rs\nREADME.md\n",
-                    )),
-                )
-                .build(),
-
-            // SubDag wrappers — delegate to inner op's mock outputs
-            GistGraphOp::GistUpload(op) => mock_gist_upload_op(op),
-            GistGraphOp::BranchResolution(op) => mock_branch_resolution_op(op),
-        }
-    }
-}
-
-/// Mock outputs for gist upload SubDag operations.
-fn mock_gist_upload_op(op: &GistUploadOp) -> HashMap<String, Value> {
-    match op {
-        GistUploadOp::Gist(gist_op) => match gist_op {
-            GistOps::PrepareRequest { .. } => OutputMap::new()
-                .request(
-                    "request",
-                    ShellRequest::new("gh")
-                        .args(["gist", "create"])
-                        .into_transport_request(),
-                )
-                .bool("skip", false)
-                .build(),
-            GistOps::ParseGistResponse => OutputMap::new()
-                .str("url", "https://gist.github.com/mock/123")
-                .build(),
-        },
-        GistUploadOp::Cloud(_) => OutputMap::new()
-            .value(
-                "credential",
-                Value::Map(std::collections::BTreeMap::from([
-                    (
-                        "token".to_string(),
-                        Value::Secret(gunbc_ir::SecretString::new("<MOCK_GITHUB_TOKEN>")),
-                    ),
-                    ("source_type".to_string(), Value::Str("static".to_string())),
-                    ("scheme".to_string(), Value::Str("bearer".to_string())),
-                    (
-                        "cap".to_string(),
-                        Value::Secret(gunbc_ir::SecretString::new("capability")),
-                    ),
-                ])),
-            )
-            .int("expires_in", 3600)
-            .build(),
-        GistUploadOp::Transport(_) => OutputMap::new()
-            .response(
-                "response",
-                TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(
-                    "https://gist.github.com/mock/123\n",
-                )),
-            )
-            .build(),
-        GistUploadOp::FsEnv(op) => op.mock_outputs(),
-        GistUploadOp::ClockEnv(op) => op.mock_outputs(),
-        GistUploadOp::ResolveAuth => OutputMap::new()
-            .str("service", "github")
-            .str("scheme", "bearer")
-            .str("header_name", "")
-            .str_list("required_scopes", vec!["gist:write".to_string()])
-            .bool("interactive_allowed", true)
-            .int("lifetime_seconds", 3600)
-            .build(),
-    }
-}
-
-/// Mock outputs for branch resolution SubDag operations.
-fn mock_branch_resolution_op(op: &BranchResolutionOp) -> HashMap<String, Value> {
-    match op {
-        BranchResolutionOp::Git(git_op) => match git_op {
-            GitOps::PrepareCurrentBranch | GitOps::PrepareRemoteBranchesAtHead => OutputMap::new()
-                .request(
-                    "request",
-                    ShellRequest::new("git")
-                        .arg("mock")
-                        .into_transport_request(),
-                )
-                .bool("skip", false)
-                .build(),
-            GitOps::ParseCurrentBranch => OutputMap::new().str("branch", "main").build(),
-            GitOps::ParseRemoteBranchesAtHead => {
-                OutputMap::new().str("remote_branch", "main").build()
-            }
-            _ => HashMap::new(),
-        },
-        BranchResolutionOp::Transport(_) => OutputMap::new()
-            .response(
-                "response",
-                TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok("main\n")),
-            )
-            .build(),
-    }
+    dag.map_ops(&mut |op: BranchResolutionOp| DynOp::new(op))
 }
 
 #[cfg(test)]

@@ -17,7 +17,6 @@ const FORBIDDEN_CALLS: &[&str] = &[
 
 const ALLOWED_FILES: &[&str] = &[
     "core/exec/src/execute.rs",
-    "core/daglang/daglang-exec-bridge/src/lib.rs",
     "core/daglang/daglang-emit/src/rust_exec_runtime.rs",
     "core/codegen/src/cli_gen.rs",
     "core/test/src/boundary.rs",

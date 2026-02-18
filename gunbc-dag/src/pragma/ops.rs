@@ -32,15 +32,24 @@ impl Executable for PragmaOp {
         match self {
             PragmaOp::RenderClippy => {
                 let content = clippy_renderer().render();
-                OutputMap::new().str("content", content).ok()
+                OutputMap::new()
+                    .str("content", content.clone())
+                    .str("return", content)
+                    .ok()
             }
             PragmaOp::RenderAllowlist => {
                 let content = render_disallowed_methods_allowlist();
-                OutputMap::new().str("content", content).ok()
+                OutputMap::new()
+                    .str("content", content.clone())
+                    .str("return", content)
+                    .ok()
             }
             PragmaOp::RenderLintPolicy => {
                 let content = render_pragma_lint_policy();
-                OutputMap::new().str("content", content).ok()
+                OutputMap::new()
+                    .str("content", content.clone())
+                    .str("return", content)
+                    .ok()
             }
         }
     }
@@ -54,12 +63,15 @@ impl Mockable for PragmaOp {
         match self {
             PragmaOp::RenderClippy => OutputMap::new()
                 .str("content", "# Mock clippy.toml")
+                .str("return", "# Mock clippy.toml")
                 .build(),
-            PragmaOp::RenderAllowlist => {
-                OutputMap::new().str("content", "# Mock allowlist").build()
-            }
+            PragmaOp::RenderAllowlist => OutputMap::new()
+                .str("content", "# Mock allowlist")
+                .str("return", "# Mock allowlist")
+                .build(),
             PragmaOp::RenderLintPolicy => OutputMap::new()
                 .str("content", "# Mock lint policy")
+                .str("return", "# Mock lint policy")
                 .build(),
         }
     }

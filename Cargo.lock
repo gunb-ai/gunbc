@@ -193,17 +193,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "daglang-exec-bridge"
-version = "0.1.0"
-dependencies = [
- "daglang-lower",
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-transport",
- "serde_json",
-]
-
-[[package]]
 name = "daglang-lower"
 version = "0.1.0"
 dependencies = [

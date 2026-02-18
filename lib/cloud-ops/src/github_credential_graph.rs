@@ -9,7 +9,9 @@ use crate::graph::{
 };
 use crate::ops::CloudOps;
 use gunbc_delegate_macros::DelegateExecutable;
-use gunbc_exec::{optional_str_list_strict, require_response, ExecError, Executable, OutputMap};
+use gunbc_exec::{
+    optional_str_list_strict, require_response, DynOp, ExecError, Executable, OutputMap,
+};
 use gunbc_ir::build::{list, optional, port, resource};
 use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
 use gunbc_ir::transport::rest::RestResponse;
@@ -168,11 +170,9 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
             optional("request_url", "OptionalString"),
             optional("request_token", "OptionalString"),
         ],
-        GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-            CloudOps::ConstCloudConfig {
-                config: config.clone(),
-            },
-        )),
+        GitHubCredentialGraphOp::Cloud(DynOp::new(CloudOps::ConstCloudConfig {
+            config: config.clone(),
+        })),
     ))?;
 
     // Resolve auth (pure).
@@ -200,9 +200,7 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
                 optional("secret_name", "OptionalString"),
             ],
             vec![port("config", "CloudSecretConfig")],
-            GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-                CloudOps::BindSecretName,
-            )),
+            GitHubCredentialGraphOp::Cloud(DynOp::new(CloudOps::BindSecretName)),
         ),
         &[&cloud_env, &resolve_auth],
     )?;
@@ -260,9 +258,7 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
             "scope_preflight",
             vec![list("required_scopes", "String")],
             vec![port("scope_verified", "Bool")],
-            GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-                CloudOps::ScopePreflight,
-            )),
+            GitHubCredentialGraphOp::Cloud(DynOp::new(CloudOps::ScopePreflight)),
         ),
         &resolve_auth,
     )?;

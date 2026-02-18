@@ -158,20 +158,6 @@ pub struct ServiceCallMetadata {
     pub permissions: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuntimeOpId {
-    MakegenLoadRegistry,
-    MakegenFsEnv,
-    MakegenRenderMakefile,
-    MakegenEntrypoint,
-    MakegenPrepareReadContent,
-    MakegenExecuteReadContent,
-    MakegenPrepareWriteContent,
-    MakegenCompareContent,
-    MakegenExecuteTransport,
-    Collection(CollectionOpKind),
-}
-
 impl LoweredOp {
     pub fn obligation_category(&self) -> ObligationCategory {
         match self {
@@ -215,40 +201,6 @@ pub fn canonical_kind_for_obligation(obligation: ObligationCategory) -> Option<&
 pub fn classify_service_transport(op: &LoweredOp) -> Option<ServiceTransportClass> {
     op.service_call_metadata()
         .map(|metadata| metadata.transport)
-}
-
-pub fn classify_runtime_op(op: &LoweredOp) -> Option<RuntimeOpId> {
-    match op {
-        LoweredOp::Collection { kind, .. } => Some(RuntimeOpId::Collection(*kind)),
-        LoweredOp::Pipeline { .. } => None,
-        LoweredOp::Callable { module, name, .. } => {
-            if module != "tools.makegen" {
-                return None;
-            }
-            match name.as_str() {
-                "load_registry" => Some(RuntimeOpId::MakegenLoadRegistry),
-                "fs_env" => Some(RuntimeOpId::MakegenFsEnv),
-                "render_makefile" => Some(RuntimeOpId::MakegenRenderMakefile),
-                "makegen" => Some(RuntimeOpId::MakegenEntrypoint),
-                "content_upsert::prepare_read_makegen" => {
-                    Some(RuntimeOpId::MakegenPrepareReadContent)
-                }
-                "content_upsert::execute_read_makegen" => {
-                    Some(RuntimeOpId::MakegenExecuteReadContent)
-                }
-                "content_upsert::prepare_write_makegen" => {
-                    Some(RuntimeOpId::MakegenPrepareWriteContent)
-                }
-                "content_upsert::compare_makegen_content" => {
-                    Some(RuntimeOpId::MakegenCompareContent)
-                }
-                "content_upsert::execute_makegen_transport" => {
-                    Some(RuntimeOpId::MakegenExecuteTransport)
-                }
-                _ => None,
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4512,7 +4464,7 @@ fn run(values: List<String>) -> String {
     fn gcp_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
         let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
-        let reference = build_gcp_secret_manager_credential_graph_github();
+        let reference = build_gcp_secret_manager_credential_graph_github().unwrap();
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);
@@ -4578,7 +4530,7 @@ fn run(values: List<String>) -> String {
     fn gcp_credential_normalized_parity_can_reach_exact_match() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
         let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
-        let reference = build_gcp_secret_manager_credential_graph_github();
+        let reference = build_gcp_secret_manager_credential_graph_github().unwrap();
         let report = compare_gcp_credential_topology(&dag, &reference);
         assert!(
             report.is_exact_match(),
@@ -4590,7 +4542,7 @@ fn run(values: List<String>) -> String {
     fn gcp_credential_normalized_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
         let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
-        let reference = build_gcp_secret_manager_credential_graph_github();
+        let reference = build_gcp_secret_manager_credential_graph_github().unwrap();
         let report_a = compare_gcp_credential_topology(&dag, &reference);
         let report_b = compare_gcp_credential_topology(&dag, &reference);
         assert_eq!(
@@ -4886,7 +4838,7 @@ fn run(values: List<String>) -> String {
             ),
             (
                 "execute_makegen_transport",
-                "makegen_response",
+                "response",
                 "tools.makegen::makegen",
                 "__deps",
             ),

@@ -23,7 +23,7 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::{
-    build_ci_graph_with_mode, print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions,
+    build_ci_graph_dsl, print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions,
 };
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, CiContext, ExecutionMode};
 use gunbc_ir::resource::ExecMode;
@@ -47,8 +47,8 @@ fn main() {
     let dry_run = parsed.dry_run;
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
 
-    // Build the CI graph with the exec mode embedded in the inlined codegen DAG
-    let dag = match build_ci_graph_with_mode(resource_mode) {
+    // Build the CI graph from DSL
+    let dag = match build_ci_graph_dsl() {
         Ok(d) => d,
         Err(e) => {
             print_attention(

@@ -1,14 +1,11 @@
 //! Stub graph for AWS Secrets Manager.
 
 use crate::ops::AwsOps;
-use gunbc_delegate_macros::DelegateExecutable;
+use gunbc_exec::DynOp;
 use gunbc_ir::build::{list, optional, port};
 use gunbc_ir::{BuilderError, Dag, DagBuilder, Node};
 
-#[derive(Debug, Clone, DelegateExecutable)]
-pub enum AwsSecretManagerGraphOp {
-    Aws(AwsOps),
-}
+pub type AwsSecretManagerGraphOp = DynOp;
 
 /// Placeholder DAG for AWS Secrets Manager credentials.
 ///
@@ -31,7 +28,7 @@ pub fn build_aws_secrets_manager_credential_graph(
             optional("request_token", "OptionalString"),
         ],
         vec![port("credential", "Credential")],
-        AwsSecretManagerGraphOp::Aws(AwsOps::Unsupported),
+        DynOp::new(AwsOps::Unsupported),
     ))?;
 
     Ok(builder.build())
@@ -54,7 +51,7 @@ pub fn build_aws_secrets_manager_upsert_graph() -> Result<Dag<AwsSecretManagerGr
             port("secret_value", "Secret"),
         ],
         vec![port("version", "String")],
-        AwsSecretManagerGraphOp::Aws(AwsOps::Unsupported),
+        DynOp::new(AwsOps::Unsupported),
     ))?;
 
     Ok(builder.build())

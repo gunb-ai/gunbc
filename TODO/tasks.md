@@ -19,11 +19,11 @@ Every "wire DSL binary into build system" task (B1.1b/c, B1.3b) is blocked on th
 | **T1** | Add `DynOp` to `core/exec` (~20 lines: `Arc<dyn Executable + Send + Sync>`, Clone via Arc) | — | S | 2026-02-18 | 2026-02-18 |
 | **T2** | Central resolver `gunbc-dag/src/resolve.rs`: `LoweredOp` → existing domain ops via `DynOp::new()` | T1 | M | 2026-02-18 | 2026-02-18 |
 | **T3** | DSL builder per module (~15 lines each): compile `.dag` → `resolve_lowered_dag()` → `Dag<DynOp>` | T2 | M | 2026-02-18 | 2026-02-18 |
-| **T4** | Delete manual `graph.rs` builders (pragma, codegen, makegen, ci, bootstrap, build, docgen — ~4,000 lines) | T3 | L | 2026-02-18 | |
-| **T5** | Delete boilerplate layer: `WorkspaceOp` enum + 16 `From` impls + 10 converter fns + `FileOpsGraph<T>` (~600 lines) | T4 | M | | |
-| **T6** | Delete/simplify `daglang-exec-bridge`: `ResolvedOp` + `RuntimeOpId` + duplicated handlers (~300 lines) | T2 | M | | |
-| **T7** | Update callers: bin/*.rs, graph_mock.rs, parity tests, integration tests, resource registry tests | T4, T5 | L | | |
-| **T8** | Lib crate cleanup: DynOp for DepsGraphOp, ClippyGraphOp, GistGraphOp, GcpGraphOps, ReviewGraphOp, LlmGraphOp (~300 lines) | T5 | M | | |
+| **T4** | Delete manual `graph.rs` builders (pragma, codegen, makegen, ci, bootstrap, build, docgen — ~4,000 lines) | T3 | L | 2026-02-18 | 2026-02-18 |
+| **T5** | Delete boilerplate layer: `WorkspaceOp` enum + 16 `From` impls + 10 converter fns + `FileOpsGraph<T>` (~600 lines) | T4 | M | 2026-02-18 | 2026-02-18 |
+| **T6** | Delete/simplify `daglang-exec-bridge`: `ResolvedOp` + `RuntimeOpId` + duplicated handlers (~300 lines) | T2 | M | 2026-02-18 | 2026-02-18 |
+| **T7** | Update callers: bin/*.rs, graph_mock.rs, parity tests, integration tests, resource registry tests | T4, T5 | L | 2026-02-18 | 2026-02-18 |
+| **T8** | Lib crate cleanup: DynOp for DepsGraphOp, ClippyGraphOp, GistGraphOp, GcpGraphOps, ReviewGraphOp, LlmGraphOp (~300 lines) | T5 | M | 2026-02-18 | 2026-02-18 |
 
 **Net**: ~5,950 lines deleted, ~300 added.
 
@@ -38,8 +38,8 @@ These can start immediately, in parallel with the DynOp work above.
 | ID | Task | Deps | Size | Started | Done |
 |----|------|------|------|---------|------|
 | **M1** | Pragma: verify generated binary produces identical output to hand-built | T3 | S | 2026-02-18 | 2026-02-18 |
-| **M2** | Pragma: wire DSL binary into build system (replace hand-built pragma binary) | M1, T4 | M | | |
-| **M3** | Codegen: verify generated binary matches hand-built codegen behavior | T3 | S | 2026-02-18 | |
+| **M2** | Pragma: wire DSL binary into build system (replace hand-built pragma binary) | M1, T4 | M | 2026-02-18 | 2026-02-18 |
+| **M3** | Codegen: verify generated binary matches hand-built codegen behavior | T3 | S | 2026-02-18 | 2026-02-18 |
 
 ### 1B: Bridge & Codegen Hygiene
 
@@ -131,7 +131,7 @@ These can start immediately, in parallel with the DynOp work above.
 | ID | Task | Deps | Size | Started | Done |
 |----|------|------|------|---------|------|
 | **E1** | Provider-granted scope verification (E1.3b) | — | M | 2026-02-18 | 2026-02-18 |
-| **E2** | `make gist-recent` works without hidden hardcoded defaults (E1.5a) | E1 | M | | |
+| **E2** | `make gist-recent` works without hidden hardcoded defaults (E1.5a) | E1 | M | 2026-02-18 | 2026-02-18 |
 | **E3** | WIF Bootstrap DAG — idempotent setup flow (E2.2b) | — | L | | |
 | **E4** | Unified infra CLI: bootstrap, plan, apply, spec, graph (E2.7a) | E3 | M | | |
 | **E5** | Enhanced login flow: verify ADC, SA impersonate, direnv (E2.7b) | E3 | M | | |
@@ -153,9 +153,9 @@ These can start immediately, in parallel with the DynOp work above.
 | **CO2** | Split `MergeOutputs` dedup from cardinality handling | — | M | 2026-02-18 | 2026-02-18 |
 | **CO3** | Probe-observer analysis single-source bundle (consolidation §17.A) | — | M | 2026-02-18 | 2026-02-18 |
 | **CO4** | Seed policy ownership in IR types, not testgen whitelist (consolidation §17.B) | — | M | 2026-02-18 | 2026-02-18 |
-| **CO5** | Live-secret requirements as generated workflow metadata (consolidation §17.C) | — | M | 2026-02-18 | 2026-02-18 |
-| **CO6** | Execution trace inputs for coercion/assertion observability (consolidation §17.D) | — | M | 2026-02-18 | 2026-02-18 |
-| **CO7** | Add `ValueKind` enum on `Value` so `types_compatible` becomes `TypeId backing accepts ValueKind` without manufacturing type-name strings (eliminates `mock_value_type_name` smell) | — | M | 2026-02-18 | 2026-02-18 |
+| **CO5** | Live-secret requirements as generated workflow metadata (consolidation §17.C) | — | M | | |
+| **CO6** | Execution trace inputs for coercion/assertion observability (consolidation §17.D) | — | M | | |
+| **CO7** | Add `ValueKind` enum on `Value` so `types_compatible` becomes `TypeId backing accepts ValueKind` without manufacturing type-name strings (eliminates `mock_value_type_name` smell) | — | M | 2026-02-18 | |
 
 ---
 

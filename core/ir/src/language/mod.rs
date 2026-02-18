@@ -194,7 +194,7 @@ impl NamingCase {
 /// Split a name into words by separators and case boundaries.
 fn split_into_words(name: &str) -> Vec<String> {
     let mut words = Vec::new();
-    for segment in name.split(['_', '-', '/', '.']) {
+    for segment in name.split(['_', '-', '/', '.', ':']) {
         if segment.is_empty() {
             continue;
         }
@@ -317,6 +317,10 @@ mod tests {
             "my_function_name"
         );
         assert_eq!(NamingCase::SnakeCase.apply("MyClassName"), "my_class_name");
+        assert_eq!(
+            NamingCase::SnakeCase.apply("tools_bootstrap::render_makefile"),
+            "tools_bootstrap_render_makefile"
+        );
     }
 
     #[test]

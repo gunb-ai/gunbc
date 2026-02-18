@@ -1,33 +1,25 @@
 //! Provider-neutral cloud credential DAGs.
 
 use crate::ops::CloudOps;
-use gunbc_delegate_macros::DelegateExecutable;
+use gunbc_exec::DynOp;
 use gunbc_ir::build::{list, optional, port};
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig};
 use gunbc_ir::{BuilderError, Dag, DagBuilder, Node};
 use gunbc_lib_aws_ops::{
     build_aws_secrets_manager_credential_graph, build_aws_secrets_manager_upsert_graph,
-    AwsSecretManagerGraphOp,
 };
 use gunbc_lib_azure_ops::{
     build_azure_key_vault_credential_graph, build_azure_key_vault_upsert_graph,
-    AzureKeyVaultGraphOp,
 };
 use gunbc_lib_gcp_ops::{
     build_gcp_secret_manager_credential_graph_github,
     build_gcp_secret_manager_credential_graph_local,
     build_gcp_secret_manager_credential_graph_metadata,
     build_gcp_secret_manager_upsert_graph_github, build_gcp_secret_manager_upsert_graph_local,
-    build_gcp_secret_manager_upsert_graph_metadata, GcpSecretManagerGraphOp,
+    build_gcp_secret_manager_upsert_graph_metadata,
 };
 
-#[derive(Debug, Clone, DelegateExecutable)]
-pub enum CloudSecretManagerGraphOp {
-    Cloud(CloudOps),
-    Gcp(GcpSecretManagerGraphOp),
-    Aws(AwsSecretManagerGraphOp),
-    Azure(AzureKeyVaultGraphOp),
-}
+pub type CloudSecretManagerGraphOp = DynOp;
 
 // ---------------------------------------------------------------------------
 // Public builders
@@ -198,7 +190,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
             optional("service_account_or_role", "OptionalString"),
             optional("impersonate_account_or_role", "OptionalString"),
         ],
-        CloudSecretManagerGraphOp::Cloud(CloudOps::ResolveConfig),
+        DynOp::new(CloudOps::ResolveConfig),
     ))?;
 
     let mut map_outputs = vec![
@@ -253,7 +245,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
                 optional("request_token", "OptionalString"),
             ],
             map_outputs,
-            CloudSecretManagerGraphOp::Cloud(CloudOps::MapToGcpInputs { runtime }),
+            DynOp::new(CloudOps::MapToGcpInputs { runtime }),
         ),
         &resolve_config,
     )?;
@@ -358,7 +350,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
             optional("service_account_or_role", "OptionalString"),
             optional("impersonate_account_or_role", "OptionalString"),
         ],
-        CloudSecretManagerGraphOp::Cloud(CloudOps::ResolveConfig),
+        DynOp::new(CloudOps::ResolveConfig),
     ))?;
 
     let mut map_outputs = vec![
@@ -398,7 +390,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
                 optional("request_token", "OptionalString"),
             ],
             map_outputs,
-            CloudSecretManagerGraphOp::Cloud(CloudOps::MapToGcpSecretInputs { runtime }),
+            DynOp::new(CloudOps::MapToGcpSecretInputs { runtime }),
         ),
         &resolve_config,
     )?;
@@ -467,19 +459,19 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
 }
 
 // ---------------------------------------------------------------------------
-// DAG lifting helpers (provider op → cloud op)
+// DAG lifting helpers — identity since all provider types are now DynOp
 // ---------------------------------------------------------------------------
 
-fn lift_gcp(dag: Dag<GcpSecretManagerGraphOp>) -> Dag<CloudSecretManagerGraphOp> {
-    dag.map_ops(&mut CloudSecretManagerGraphOp::Gcp)
+fn lift_gcp(dag: Dag<DynOp>) -> Dag<CloudSecretManagerGraphOp> {
+    dag
 }
 
-fn lift_aws(dag: Dag<AwsSecretManagerGraphOp>) -> Dag<CloudSecretManagerGraphOp> {
-    dag.map_ops(&mut CloudSecretManagerGraphOp::Aws)
+fn lift_aws(dag: Dag<DynOp>) -> Dag<CloudSecretManagerGraphOp> {
+    dag
 }
 
-fn lift_azure(dag: Dag<AzureKeyVaultGraphOp>) -> Dag<CloudSecretManagerGraphOp> {
-    dag.map_ops(&mut CloudSecretManagerGraphOp::Azure)
+fn lift_azure(dag: Dag<DynOp>) -> Dag<CloudSecretManagerGraphOp> {
+    dag
 }
 
 #[cfg(test)]

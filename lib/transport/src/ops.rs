@@ -16,7 +16,7 @@
 
 use crate::backend::execute_transport_with_backend;
 use gunbc_exec::{
-    optional_int_strict, optional_str_strict, require_bool, require_int, require_request,
+    optional_bool_strict, optional_int_strict, optional_str_strict, require_int, require_request,
     require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
     TransportResponseExt,
 };
@@ -41,7 +41,9 @@ impl Executable for TransportOps {
             TransportOps::PrepareTcp => execute_prepare_tcp(inputs),
             TransportOps::ParseTcpResponse => execute_parse_tcp_response(inputs),
             TransportOps::Execute => {
-                let skip = require_bool(&inputs, "skip")?;
+                // Legacy hand-built DAGs usually wire `skip`; DSL-lowered graphs may omit it.
+                // Treat missing skip as false so execute remains backward-compatible.
+                let skip = optional_bool_strict(&inputs, "skip")?.unwrap_or(false);
 
                 if skip {
                     let mut out = OutputMap::new()

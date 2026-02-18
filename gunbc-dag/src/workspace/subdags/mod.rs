@@ -266,7 +266,7 @@ fn add_discovered_pipeline_subdags(
     pipeline_names: &BTreeSet<String>,
 ) -> Result<(), BuilderError> {
     if pipeline_names.contains("ci") {
-        dag.add_node(ci::build_ci_subdag());
+        dag.add_node(ci::build_ci_subdag()?);
     }
     Ok(())
 }

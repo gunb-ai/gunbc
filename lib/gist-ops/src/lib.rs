@@ -16,7 +16,7 @@
 #![deny(dead_code)]
 use gunbc_exec::{
     optional_int_strict, optional_str_list_strict, optional_str_strict, propagate_skipped,
-    require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
+    require_response, require_str, DynOp, ExecError, Executable, IntoExecResult, OutputMap,
 };
 use gunbc_ir::build::{list, optional, port, resource, scalar, AccessMode};
 use gunbc_ir::builder::BuilderError;
@@ -500,11 +500,9 @@ pub fn build_gist_upload_subdag(
             optional("request_url", "OptionalString"),
             optional("request_token", "OptionalString"),
         ],
-        GistUploadOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-            CloudOps::ConstCloudConfig {
-                config: config.clone(),
-            },
-        )),
+        GistUploadOp::Cloud(DynOp::new(CloudOps::ConstCloudConfig {
+            config: config.clone(),
+        })),
     ));
 
     dag.add_node(Node::opaque(
@@ -535,7 +533,7 @@ pub fn build_gist_upload_subdag(
             optional("secret_name", "OptionalString"),
         ],
         vec![port("config", "CloudSecretConfig")],
-        GistUploadOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
+        GistUploadOp::Cloud(DynOp::new(CloudOps::BindSecretName)),
     ));
 
     let cloud_subdag = build_cloud_secret_manager_credential_graph_from_config(&config)?
@@ -546,7 +544,7 @@ pub fn build_gist_upload_subdag(
         "scope_preflight",
         vec![list("required_scopes", "String")],
         vec![scalar("scope_verified", "Bool")],
-        GistUploadOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ScopePreflight)),
+        GistUploadOp::Cloud(DynOp::new(CloudOps::ScopePreflight)),
     ));
 
     // ========================================================================

@@ -1,14 +1,11 @@
 //! Stub graph for Azure Key Vault.
 
 use crate::ops::AzureOps;
-use gunbc_delegate_macros::DelegateExecutable;
+use gunbc_exec::DynOp;
 use gunbc_ir::build::{list, optional, port};
 use gunbc_ir::{BuilderError, Dag, DagBuilder, Node};
 
-#[derive(Debug, Clone, DelegateExecutable)]
-pub enum AzureKeyVaultGraphOp {
-    Azure(AzureOps),
-}
+pub type AzureKeyVaultGraphOp = DynOp;
 
 /// Placeholder DAG for Azure Key Vault credentials.
 pub fn build_azure_key_vault_credential_graph() -> Result<Dag<AzureKeyVaultGraphOp>, BuilderError> {
@@ -27,7 +24,7 @@ pub fn build_azure_key_vault_credential_graph() -> Result<Dag<AzureKeyVaultGraph
             optional("request_token", "OptionalString"),
         ],
         vec![port("credential", "Credential")],
-        AzureKeyVaultGraphOp::Azure(AzureOps::Unsupported),
+        DynOp::new(AzureOps::Unsupported),
     ))?;
 
     Ok(builder.build())
@@ -49,7 +46,7 @@ pub fn build_azure_key_vault_upsert_graph() -> Result<Dag<AzureKeyVaultGraphOp>,
             port("secret_value", "Secret"),
         ],
         vec![port("version", "String")],
-        AzureKeyVaultGraphOp::Azure(AzureOps::Unsupported),
+        DynOp::new(AzureOps::Unsupported),
     ))?;
 
     Ok(builder.build())

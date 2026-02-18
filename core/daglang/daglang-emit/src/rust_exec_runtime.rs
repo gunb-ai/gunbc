@@ -7,7 +7,7 @@
 //! The generated crate contains:
 //! - An `Op` enum with one variant per handler kind used in the DAG
 //! - `impl Executable for Op` with match dispatch
-//! - Handler bodies ported from `daglang-exec-bridge`
+//! - Handler bodies for each `HandlerKind`
 //! - `fn build_dag() -> Dag<Op>` with hardcoded graph construction
 //! - `fn main()` with CLI arg parsing + `execute_with_mode_and_inputs`
 //! - `Cargo.toml` with `gunbc-ir`/`gunbc-exec`/`gunbc-lib-transport` deps
@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use daglang_lower::{classify_runtime_op, LoweredOp, RuntimeOpId};
+use daglang_lower::LoweredOp;
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::Dag;
 use gunbc_ir::{Cardinality, WorkspaceLayout};
@@ -31,7 +31,7 @@ use crate::EmittedFile;
 ///
 /// Returns `src/main.rs` and `Cargo.toml` as [`EmittedFile`] entries.
 /// The generated crate, when compiled and run, produces the same behavior
-/// as running through `daglang-exec-bridge`.
+/// as the domain-specific hand-built Rust binary.
 ///
 /// Builds a [`SourceFile`] IR and renders it via [`render_rust_source`],
 /// routing through the AbstractIR → SystemsIR → Rust text pipeline.
@@ -107,8 +107,8 @@ impl std::fmt::Display for ExecRuntimeError {
 
 /// Which executor body to generate for an Op variant.
 ///
-/// Each handler kind maps to a concrete function body ported from
-/// `daglang-exec-bridge`. Multiple DAG nodes can share the same handler
+/// Each handler kind maps to a concrete function body. Multiple DAG
+/// nodes can share the same handler
 /// kind (e.g., two different "prepare_read" nodes both use `PrepareReadContent`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum HandlerKind {
@@ -130,21 +130,6 @@ enum HandlerKind {
 }
 
 impl HandlerKind {
-    fn from_runtime_id(id: RuntimeOpId) -> Self {
-        match id {
-            RuntimeOpId::MakegenLoadRegistry => Self::LoadRegistry,
-            RuntimeOpId::MakegenFsEnv => Self::FsEnv,
-            RuntimeOpId::MakegenRenderMakefile => Self::RenderMakefile,
-            RuntimeOpId::MakegenEntrypoint => Self::Entrypoint,
-            RuntimeOpId::MakegenPrepareReadContent => Self::PrepareReadContent,
-            RuntimeOpId::MakegenExecuteReadContent => Self::ExecuteReadContent,
-            RuntimeOpId::MakegenPrepareWriteContent => Self::PrepareWriteContent,
-            RuntimeOpId::MakegenCompareContent => Self::CompareContent,
-            RuntimeOpId::MakegenExecuteTransport => Self::ExecuteTransport,
-            RuntimeOpId::Collection(_) => Self::Collection,
-        }
-    }
-
     fn variant_name(self) -> &'static str {
         match self {
             Self::LoadRegistry => "LoadRegistry",
@@ -221,8 +206,24 @@ fn collect_handler_kinds(classified: &[ClassifiedNode]) -> BTreeSet<HandlerKind>
 }
 
 fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
-    if let Some(runtime_id) = classify_runtime_op(op) {
-        return Some(HandlerKind::from_runtime_id(runtime_id));
+    match op {
+        LoweredOp::Collection { .. } => return Some(HandlerKind::Collection),
+        LoweredOp::Pipeline { .. } => {}
+        LoweredOp::Callable { module, name, .. } if module == "tools.makegen" => {
+            return match name.as_str() {
+                "load_registry" => Some(HandlerKind::LoadRegistry),
+                "fs_env" => Some(HandlerKind::FsEnv),
+                "render_makefile" => Some(HandlerKind::RenderMakefile),
+                "makegen" => Some(HandlerKind::Entrypoint),
+                "content_upsert::prepare_read_makegen" => Some(HandlerKind::PrepareReadContent),
+                "content_upsert::execute_read_makegen" => Some(HandlerKind::ExecuteReadContent),
+                "content_upsert::prepare_write_makegen" => Some(HandlerKind::PrepareWriteContent),
+                "content_upsert::compare_makegen_content" => Some(HandlerKind::CompareContent),
+                "content_upsert::execute_makegen_transport" => Some(HandlerKind::ExecuteTransport),
+                _ => None,
+            };
+        }
+        LoweredOp::Callable { .. } => {}
     }
 
     let (module, name) = match op {

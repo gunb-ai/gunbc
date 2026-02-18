@@ -2,31 +2,10 @@
 //!
 //! Wraps the gist tool as a SubDag node using WorkspaceOp.
 
-use crate::workspace::convert::convert_dag;
 use crate::workspace::WorkspaceOp;
-use gunbc_gist::{build_gist_graph_with_config, GistGraphOp, GistMode};
+use gunbc_gist::{build_gist_graph_with_config, GistMode};
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::Node;
-use gunbc_lib_gist_ops::GistOps;
-
-/// Convert a GistGraphOp to WorkspaceOp.
-///
-/// Internal gist ops (Git, FsEnv, Cloud, Pattern, Markdown, etc.) don't have
-/// direct WorkspaceOp equivalents. They live inside SubDag nodes and are never
-/// dispatched directly by the workspace executor — the SubDag executor handles
-/// them using the original GistGraphOp type. The placeholder here is only used
-/// for structural traversal (e.g., Mermaid rendering, node counting).
-fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
-    match op {
-        GistGraphOp::GistUpload(gunbc_lib_gist_ops::GistUploadOp::Gist(gist_op)) => {
-            WorkspaceOp::Gist(gist_op)
-        }
-        GistGraphOp::Transport(t) => WorkspaceOp::Transport(t),
-        // Internal ops — structurally present but never directly executed
-        // in workspace context (SubDag executor dispatches them).
-        _ => WorkspaceOp::Gist(GistOps::ParseGistResponse),
-    }
-}
 
 /// Build the gist SubDag node.
 ///
@@ -67,11 +46,10 @@ pub fn build_gist_subdag_with_config(
     cloud_config: Option<CloudSecretConfig>,
 ) -> Node<WorkspaceOp> {
     let config = cloud_config.unwrap_or_else(gunbc_lib_cloud_ops::graph_cloud_config);
-    let original = build_gist_graph_with_config(mode, extensions, create_gist, config)
+    let dag = build_gist_graph_with_config(mode, extensions, create_gist, config)
         .expect("Gist graph should build");
-    let converted_dag = convert_dag(original, &convert_gist_op);
 
-    Node::subdag("gist", converted_dag)
+    Node::subdag("gist", dag)
 }
 
 /// Build a default gist SubDag for Rust files (snapshot mode).

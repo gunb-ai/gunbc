@@ -1,12 +1,11 @@
 //! gunbc-dag Workspace module.
 //!
-//! Unified WorkspaceOp and fractal DAG composition.
+//! Workspace composition built on `DynOp` subdags.
 
 pub(crate) mod convert;
-pub mod ops;
 pub mod subdags;
 
-pub use ops::WorkspaceOp;
+pub type WorkspaceOp = gunbc_exec::DynOp;
 pub use subdags::bootstrap::build_bootstrap_subdag;
 pub use subdags::build::build_build_subdag;
 pub use subdags::build_workspace_dag;

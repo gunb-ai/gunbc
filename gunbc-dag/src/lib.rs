@@ -29,9 +29,9 @@ pub mod dag_viz;
 pub mod docgen;
 pub mod dry_run;
 pub mod dsl_builder;
-pub mod file_ops_graph;
 pub mod fs_env;
 pub mod makegen;
+pub mod mock_defaults;
 pub mod policy;
 pub mod pragma;
 pub mod resolve;
@@ -47,7 +47,7 @@ pub use binaries::WorkspaceBinary;
 pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp, BootstrapOp};
 pub use build::{build_build_graph, build_signature, BuildGraphOp, BuildOp};
 pub use ci::{
-    build_ci_graph, build_ci_graph_with_mode, ci_signature, ci_workflow_config, CIGraphOp, CIOp,
+    build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp, CIOp,
 };
 pub use cloud_env::{
     aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
@@ -64,7 +64,6 @@ pub use dsl_builder::{
     build_bootstrap_graph_dsl, build_build_graph_dsl, build_ci_graph_dsl, build_codegen_graph_dsl,
     build_docgen_graph_dsl, build_makegen_graph_dsl, build_pragma_graph_dsl,
 };
-pub use file_ops_graph::FileOpsGraph;
 pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
 pub use makegen::{

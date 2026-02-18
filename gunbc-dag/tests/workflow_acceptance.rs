@@ -3,9 +3,8 @@
 //! These tests pin the intended CI workflow command contracts so refactors do
 //! not silently reintroduce duplicate compile paths or drift from verify mode.
 
-use gunbc_dag::build_ci_graph_with_mode;
+use gunbc_dag::build_ci_graph;
 use gunbc_exec::{execute_single_node, lower, ExecutionMode};
-use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{ShellRequest, TransportRequest};
 use gunbc_ir::Value;
 use std::collections::HashMap;
@@ -21,7 +20,7 @@ fn prepare_shell_request(
     node: &str,
     inputs: HashMap<String, Value>,
 ) -> Result<ShellRequest, Box<dyn std::error::Error>> {
-    let dag = build_ci_graph_with_mode(ExecMode::Ensure)?;
+    let dag = build_ci_graph()?;
     let lowered = lower(&dag)?;
     let outputs = execute_single_node(&lowered.dag, node, inputs, ExecutionMode::Real)?;
     let request = outputs
@@ -39,7 +38,7 @@ fn prepare_outputs(
     node: &str,
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, Box<dyn std::error::Error>> {
-    let dag = build_ci_graph_with_mode(ExecMode::Ensure)?;
+    let dag = build_ci_graph()?;
     let lowered = lower(&dag)?;
     Ok(execute_single_node(
         &lowered.dag,
