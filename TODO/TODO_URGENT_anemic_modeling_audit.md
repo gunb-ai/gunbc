@@ -328,11 +328,13 @@ executors. Lower priority since transport types don't change often.
    - Generates match-and-delegate for enum variants wrapping `Executable` types
    - Eliminates ~200 lines across 15+ files
    - Every new tool automatically works without manual match arms
+   - **Status:** ✅ Implemented via `gunbc-delegate-macros`; rolled out to delegatable graph-op enums.
 
 2. **Extract FsEnv auto-wiring**
    - Post-processing step that scans for `res:file` input ports and wires FsEnv
    - Eliminates ~50 manual edge-wiring calls
    - New transport nodes automatically get filesystem access
+   - **Status:** ✅ Implemented via shared `add_fs_env_root_node` + `wire_fs_env_write_edges` helpers and shared dry-run `wire_fs_env_write_mock`.
 
 ### Phase 2: Reduce Per-Binary Ceremony
 

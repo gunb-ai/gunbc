@@ -463,7 +463,7 @@ Reduce O(tools x concerns) boilerplate to O(concerns).
 - [x] C3.1a — Create `#[derive(DelegateExecutable)]` proc macro
 - [x] C3.1b — Create `#[derive(DelegateMockable)]` proc macro
 - [x] C3.1c — Migrate 2-3 graph op enums to validate macro
-- [ ] C3.1d — Roll out to all remaining graph op enums
+- [x] C3.1d — Roll out to all remaining graph op enums *(rolled out across gunbc-dag + shared graph-op crates where variants are pure wrappers; custom-execution enums remain intentionally manual)* 
 
 ##### C3.1b — FsEnv auto-wiring extraction [M]
 **Deps**: None
