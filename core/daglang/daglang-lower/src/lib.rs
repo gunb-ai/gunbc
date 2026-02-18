@@ -235,17 +235,12 @@ struct ResourceLifecycleEndpoint {
     release_node: Option<String>,
 }
 
-/// Best-effort cloud provider classification for Phase 0 resource/interface resolution.
+/// Cloud provider classification for resource/interface resolution.
 ///
-/// These heuristics match type names, module paths, and resource names to infer
-/// cloud provider intent when resolving interface-backed resources. The hint can
-/// affect which concrete resource lifecycle endpoint is selected in ambiguous
-/// multi-provider graphs.
-///
-/// Known limitation: string matching is intentionally approximate. Renamed types
-/// or unconventional naming will misclassify. The planned replacement (Phase 2+)
-/// derives provider from resolved service/interface contracts, making these
-/// heuristics obsolete.
+/// Provider hints come from explicit DSL structure:
+/// - `uses ... (cloud: GcpConfig|AwsConfig|AzureConfig)`
+/// - optional resource properties (`provider: Gcp|Aws|Azure`)
+/// - exact module path segments (`.gcp.`, `.aws.`, `.azure.`)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProviderHint {
     Gcp,
@@ -253,28 +248,21 @@ enum ProviderHint {
     Azure,
 }
 
-fn provider_hint_from_resource_type(resource_type: &str) -> Option<ProviderHint> {
-    provider_hint_from_name(resource_type)
-}
-
-fn provider_hint_from_name(name: &str) -> Option<ProviderHint> {
-    if name.contains("GcpConfig") {
-        return Some(ProviderHint::Gcp);
+fn provider_hint_from_symbol(name: &str) -> Option<ProviderHint> {
+    let tail = name.rsplit('.').next().unwrap_or(name);
+    match tail {
+        "Gcp" | "GcpConfig" => Some(ProviderHint::Gcp),
+        "Aws" | "AwsConfig" => Some(ProviderHint::Aws),
+        "Azure" | "AzureConfig" => Some(ProviderHint::Azure),
+        _ => None,
     }
-    if name.contains("AwsConfig") {
-        return Some(ProviderHint::Aws);
-    }
-    if name.contains("AzureConfig") {
-        return Some(ProviderHint::Azure);
-    }
-    None
 }
 
 fn provider_hint_from_expr(expr: &Expr) -> Option<ProviderHint> {
     match expr {
-        Expr::Ident(name) | Expr::Call(name, _) => provider_hint_from_name(name),
-        Expr::Record(name, _) => name.as_deref().and_then(provider_hint_from_name),
-        Expr::FieldAccess(_, field) => provider_hint_from_name(field),
+        Expr::Ident(name) | Expr::Call(name, _) => provider_hint_from_symbol(name),
+        Expr::Record(name, _) => name.as_deref().and_then(provider_hint_from_symbol),
+        Expr::FieldAccess(_, field) => provider_hint_from_symbol(field),
         _ => None,
     }
 }
@@ -292,29 +280,31 @@ fn provider_hint_from_uses_config(config: Option<&[(String, Expr)]>) -> Option<P
 }
 
 fn provider_hint_from_module_name(module_name: &str) -> Option<ProviderHint> {
-    let normalized = format!(".{}.", module_name);
-    if normalized.contains(".gcp.") {
-        return Some(ProviderHint::Gcp);
+    let mut found = None;
+    for segment in module_name.split('.') {
+        let hint = match segment {
+            "gcp" => Some(ProviderHint::Gcp),
+            "aws" => Some(ProviderHint::Aws),
+            "azure" => Some(ProviderHint::Azure),
+            _ => None,
+        };
+        if let Some(hint) = hint {
+            if found.is_some_and(|existing| existing != hint) {
+                return None;
+            }
+            found = Some(hint);
+        }
     }
-    if normalized.contains(".aws.") {
-        return Some(ProviderHint::Aws);
-    }
-    if normalized.contains(".azure.") {
-        return Some(ProviderHint::Azure);
-    }
-    None
+    found
 }
 
-fn provider_hint_from_resource_name(resource_name: &str) -> Option<ProviderHint> {
-    let lower = resource_name.to_ascii_lowercase();
-    if lower.contains("gcs") || lower.contains("gcp") {
-        return Some(ProviderHint::Gcp);
-    }
-    if lower.contains("s3") || lower.contains("aws") {
-        return Some(ProviderHint::Aws);
-    }
-    if lower.contains("blob") || lower.contains("azure") {
-        return Some(ProviderHint::Azure);
+fn provider_hint_from_resource_properties(properties: &[(String, Expr)]) -> Option<ProviderHint> {
+    for (name, value) in properties {
+        if name == "provider" || name == "cloud" {
+            if let Some(provider) = provider_hint_from_expr(value) {
+                return Some(provider);
+            }
+        }
     }
     None
 }
@@ -402,8 +392,20 @@ pub enum LowerError {
         binding: String,
         resource_type: String,
     },
+    /// `uses` clause resolves to multiple resource/interface lifecycle sources.
+    AmbiguousUsedResource {
+        caller: String,
+        binding: String,
+        resource_type: String,
+    },
     /// `provides` clause references an unknown resource/interface source.
     UnresolvedProvidedResource {
+        caller: String,
+        binding: String,
+        resource_type: String,
+    },
+    /// `provides` clause resolves to multiple resource/interface lifecycle sources.
+    AmbiguousProvidedResource {
         caller: String,
         binding: String,
         resource_type: String,
@@ -440,6 +442,14 @@ impl std::fmt::Display for LowerError {
                 f,
                 "unresolved used resource `{binding}: {resource_type}` in `{caller}`"
             ),
+            Self::AmbiguousUsedResource {
+                caller,
+                binding,
+                resource_type,
+            } => write!(
+                f,
+                "ambiguous used resource `{binding}: {resource_type}` in `{caller}`; add explicit `cloud: GcpConfig|AwsConfig|AzureConfig`"
+            ),
             Self::UnresolvedProvidedResource {
                 caller,
                 binding,
@@ -447,6 +457,14 @@ impl std::fmt::Display for LowerError {
             } => write!(
                 f,
                 "unresolved provided resource `{binding}: {resource_type}` in `{caller}`"
+            ),
+            Self::AmbiguousProvidedResource {
+                caller,
+                binding,
+                resource_type,
+            } => write!(
+                f,
+                "ambiguous provided resource `{binding}: {resource_type}` in `{caller}`; use a concrete resource type"
             ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
         }
@@ -3273,24 +3291,32 @@ fn add_used_resource_edges(
             };
             for usage in uses {
                 let resource_type = resource_type_name(&usage.resource_type);
-                let resource_type_with_config = type_expr_to_string(&usage.resource_type);
                 let provider_hint = provider_hint_from_uses_config(usage.config.as_deref());
-                let Some(endpoint) = resolve_resource_endpoint(
+                let endpoint = match resolve_resource_endpoint(
                     module_name.as_str(),
                     resource_type.as_str(),
-                    resource_type_with_config.as_str(),
                     provider_hint,
                     project,
                     resource_registry,
-                ) else {
-                    if is_known_uses_type(known_uses_types, &resource_type) {
-                        continue;
+                ) {
+                    ResourceEndpointResolution::Resolved(endpoint) => endpoint,
+                    ResourceEndpointResolution::Ambiguous => {
+                        return Err(LowerError::AmbiguousUsedResource {
+                            caller: format!("{module_name}::{item_name}"),
+                            binding: usage.binding.clone(),
+                            resource_type,
+                        });
                     }
-                    return Err(LowerError::UnresolvedUsedResource {
-                        caller: format!("{module_name}::{item_name}"),
-                        binding: usage.binding.clone(),
-                        resource_type,
-                    });
+                    ResourceEndpointResolution::Missing => {
+                        if is_known_uses_type(known_uses_types, &resource_type) {
+                            continue;
+                        }
+                        return Err(LowerError::UnresolvedUsedResource {
+                            caller: format!("{module_name}::{item_name}"),
+                            binding: usage.binding.clone(),
+                            resource_type,
+                        });
+                    }
                 };
                 if let Some(acquire_node) = endpoint.acquire_node {
                     builder.add_edge(
@@ -3333,22 +3359,32 @@ fn add_provided_resource_nodes(
             };
             for provided in provides {
                 let resource_type = resource_type_name(&provided.resource_type);
-                let resource_type_with_config = type_expr_to_string(&provided.resource_type);
-                let endpoint = resolve_resource_endpoint(
+                let endpoint = match resolve_resource_endpoint(
                     module_name.as_str(),
                     resource_type.as_str(),
-                    resource_type_with_config.as_str(),
                     None,
                     project,
                     resource_registry,
-                );
-                if endpoint.is_none() && !is_known_uses_type(known_uses_types, &resource_type) {
-                    return Err(LowerError::UnresolvedProvidedResource {
-                        caller: format!("{module_name}::{item_name}"),
-                        binding: provided.binding.clone(),
-                        resource_type,
-                    });
-                }
+                ) {
+                    ResourceEndpointResolution::Resolved(endpoint) => Some(endpoint),
+                    ResourceEndpointResolution::Ambiguous => {
+                        return Err(LowerError::AmbiguousProvidedResource {
+                            caller: format!("{module_name}::{item_name}"),
+                            binding: provided.binding.clone(),
+                            resource_type,
+                        });
+                    }
+                    ResourceEndpointResolution::Missing => {
+                        if !is_known_uses_type(known_uses_types, &resource_type) {
+                            return Err(LowerError::UnresolvedProvidedResource {
+                                caller: format!("{module_name}::{item_name}"),
+                                binding: provided.binding.clone(),
+                                resource_type,
+                            });
+                        }
+                        None
+                    }
+                };
 
                 let provider_node_id = format!(
                     "provide_resource_{}",
@@ -3395,22 +3431,15 @@ fn add_provided_resource_nodes(
 fn resolve_resource_endpoint(
     module_name: &str,
     resource_type: &str,
-    resource_type_with_config: &str,
     provider_hint: Option<ProviderHint>,
     project: &TypedProject,
     registry: &ResourceLifecycleRegistry,
-) -> Option<ResourceLifecycleEndpoint> {
+) -> ResourceEndpointResolution {
     if let Some(endpoint) = resolve_concrete_resource_endpoint(module_name, resource_type, registry)
     {
-        return Some(endpoint);
+        return ResourceEndpointResolution::Resolved(endpoint);
     }
-    resolve_interface_resource_endpoint(
-        resource_type,
-        resource_type_with_config,
-        provider_hint,
-        project,
-        registry,
-    )
+    resolve_interface_resource_endpoint(resource_type, provider_hint, project, registry)
 }
 
 fn resolve_concrete_resource_endpoint(
@@ -3432,18 +3461,15 @@ fn resolve_concrete_resource_endpoint(
 
 fn resolve_interface_resource_endpoint(
     resource_type: &str,
-    resource_type_with_config: &str,
     provider_hint: Option<ProviderHint>,
     project: &TypedProject,
     registry: &ResourceLifecycleRegistry,
-) -> Option<ResourceLifecycleEndpoint> {
+) -> ResourceEndpointResolution {
     let target_canonical = canonical_type_name(resource_type);
     let target_short = target_canonical
         .rsplit('.')
         .next()
         .unwrap_or(target_canonical.as_str());
-    let provider_hint =
-        provider_hint.or_else(|| provider_hint_from_resource_type(resource_type_with_config));
     let mut candidates = Vec::<(Option<ProviderHint>, ResourceLifecycleEndpoint)>::new();
 
     for module in &project.modules {
@@ -3470,11 +3496,10 @@ fn resolve_interface_resource_endpoint(
             ) else {
                 continue;
             };
-            candidates.push((
-                provider_hint_from_module_name(candidate_module_name.as_str())
-                    .or_else(|| provider_hint_from_resource_name(resource.name.as_str())),
-                endpoint,
-            ));
+            let candidate_provider =
+                provider_hint_from_resource_properties(resource.properties.as_slice())
+                    .or_else(|| provider_hint_from_module_name(candidate_module_name.as_str()));
+            candidates.push((candidate_provider, endpoint));
         }
     }
 
@@ -3484,10 +3509,24 @@ fn resolve_interface_resource_endpoint(
         });
     }
 
-    if candidates.len() == 1 {
-        return candidates.into_iter().next().map(|(_, endpoint)| endpoint);
+    match candidates.len() {
+        0 => ResourceEndpointResolution::Missing,
+        1 => ResourceEndpointResolution::Resolved(
+            candidates
+                .into_iter()
+                .next()
+                .map(|(_, endpoint)| endpoint)
+                .expect("expected one candidate"),
+        ),
+        _ => ResourceEndpointResolution::Ambiguous,
     }
-    None
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ResourceEndpointResolution {
+    Resolved(ResourceLifecycleEndpoint),
+    Missing,
+    Ambiguous,
 }
 
 fn collect_known_uses_types(project: &TypedProject) -> HashSet<String> {
