@@ -301,7 +301,7 @@ Validate that the DAG-based coercion handles real-world type relationships.
 
 - [x] C5.3a — Multi-step coercion: `NonEmptyUrl` → `Url` → `String` → `Json`
 - [x] C5.3b — Container coercion: `List<Url>` → `List<String>` (covariant)
-- [ ] C5.3c — Optional unwrap: `Optional<String>` → `String` (requires value present)
+- [x] C5.3c — Optional unwrap: `Optional<String>` → `String` (requires value present)
 - [x] C5.3d — Map coercion: `Map<String, Url>` → `Map<String, String>`
 - [ ] C5.3e — Cross-provider type alignment: `GcpSecretPayload` refines `String`,
       `AwsSecretValue` refines `String` — both coerce to `String` but not to each other

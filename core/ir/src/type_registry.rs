@@ -840,6 +840,24 @@ mod tests {
     }
 
     #[test]
+    fn test_coercion_path_optional_unwrap_requires_explicit_transform() {
+        let mut registry = TypeRegistry::with_primitives();
+        let optional_string = TypeId::from("Optional<String>");
+        let string = TypeId::from("String");
+
+        assert!(
+            registry.coercion_path(&optional_string, &string).is_none(),
+            "Optional<String> -> String is narrowing and must require explicit transform"
+        );
+
+        registry.register_coercion_edge("Optional<String>", "String");
+        let path = registry
+            .coercion_path(&optional_string, &string)
+            .expect("explicit optional unwrap transform should be discoverable");
+        assert_eq!(path, vec![optional_string, string]);
+    }
+
+    #[test]
     fn test_base_type_name() {
         let mut registry = TypeRegistry::with_primitives();
         registry.register("Url", type_lib::url());
