@@ -561,14 +561,10 @@ impl TypeRegistry {
             }));
         }
 
-        // Structural ancestry from base type DAG.
-        if let Some(dag) = self.get_by_name(&current.0) {
-            if let Some(parent) = crate::contract::base_type(dag) {
-                if parent != current.0 {
-                    has_structural_parent = true;
-                    neighbors.push(TypeId(parent));
-                }
-            }
+        // Structural ancestry from type DAGs / generic expressions.
+        if let Some(parent) = self.expression_parent_type_id(current) {
+            has_structural_parent = true;
+            neighbors.push(parent);
         }
 
         // Json is the widening top type once no stronger ancestry edge remains.
@@ -577,6 +573,34 @@ impl TypeRegistry {
         }
 
         neighbors
+    }
+
+    fn expression_parent_type_id(&self, type_id: &TypeId) -> Option<TypeId> {
+        let expr = parse_type_expr(&type_id.0).ok()?;
+        let parent_expr = self.expression_parent_expr(&expr)?;
+        Some(TypeId(render_type_expr(&parent_expr)))
+    }
+
+    fn expression_parent_expr(&self, expr: &TypeExpr) -> Option<TypeExpr> {
+        match expr {
+            TypeExpr::Named(name) => self.named_parent(name).map(TypeExpr::Named),
+            TypeExpr::Wrapper(kind, inner) => self
+                .expression_parent_expr(inner)
+                .map(|parent| TypeExpr::Wrapper(kind.clone(), Box::new(parent))),
+            TypeExpr::Map(key, value) => self
+                .expression_parent_expr(value)
+                .map(|parent| TypeExpr::Map(key.clone(), Box::new(parent))),
+        }
+    }
+
+    fn named_parent(&self, name: &str) -> Option<String> {
+        let dag = self.get_by_name(name)?;
+        let parent = crate::contract::base_type(dag)?;
+        if parent == name {
+            return None;
+        }
+        self.get_by_name(&parent)?;
+        Some(parent)
     }
 
     pub(crate) fn base_type_upcasts_to(&self, from: &str, to: &str) -> bool {
@@ -777,6 +801,40 @@ mod tests {
                 TypeId::from("Url"),
                 TypeId::from("String"),
                 TypeId::from("Json")
+            ]
+        );
+    }
+
+    #[test]
+    fn test_coercion_path_supports_list_covariance() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("Url", type_lib::url());
+
+        let path = registry
+            .coercion_path(&TypeId::from("List<Url>"), &TypeId::from("List<String>"))
+            .expect("List<Url> should widen to List<String>");
+        assert_eq!(
+            path,
+            vec![TypeId::from("List<Url>"), TypeId::from("List<String>")]
+        );
+    }
+
+    #[test]
+    fn test_coercion_path_supports_map_value_covariance() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("Url", type_lib::url());
+
+        let path = registry
+            .coercion_path(
+                &TypeId::from("Map<String,Url>"),
+                &TypeId::from("Map<String,String>"),
+            )
+            .expect("Map<String, Url> should widen to Map<String, String>");
+        assert_eq!(
+            path,
+            vec![
+                TypeId::from("Map<String,Url>"),
+                TypeId::from("Map<String,String>")
             ]
         );
     }
