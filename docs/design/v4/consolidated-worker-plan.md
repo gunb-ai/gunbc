@@ -816,9 +816,9 @@ canonical kind should derive from structural obligation metadata instead.
 
 Establish what works today and identify gaps.
 
-- [ ] E1.0a — Run `make gist-recent` with diagnostic tracing
-- [ ] E1.0b — Document current credential resolution path
-- [ ] E1.0c — Identify where hidden defaults exist
+- [x] E1.0a — Run `make gist-recent` with diagnostic tracing
+- [x] E1.0b — Document current credential resolution path
+- [x] E1.0c — Identify where hidden defaults exist
 
 #### Wave 2
 

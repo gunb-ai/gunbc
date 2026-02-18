@@ -48,6 +48,15 @@ Current flows can work when environment assumptions happen to match local setup,
 - Context/profile resolution now centralizes in `graph_cloud_config()` with deterministic source precedence, but compatibility fallback defaults still exist when no source is configured and strict mode is off.
 - Profile/config precedence is specified for JSON/TOML/env sources, but repo-file loading and policy-file binding are still pending.
 
+### E1.0 baseline diagnostics (completed)
+
+- `make gist-recent` was executed with strict diagnostic settings (`RUSTUP_TOOLCHAIN=nightly`, `GUNBC_FRESHNESS_ACTIVE=1`) and traced through the credential chain.
+- Baseline execution path and failure point were documented in `docs/design/v4/gist-recent-credential-diagnostics.md`.
+- Hidden defaults identified and recorded:
+  - implicit `default_local_dev_config()` fallback when config is not required,
+  - implicit ADC file path fallback (`GOOGLE_APPLICATION_CREDENTIALS` → `$HOME/.config/gcloud/...` → `/root/...`),
+  - legacy audience default to `"local-dev"` when `GCP_WIF_PROVIDER` is absent.
+
 ## Target Architecture
 
 Credential lifecycle is modeled as five strict layers.

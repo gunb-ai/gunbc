@@ -21,6 +21,7 @@ Read these to understand *why* the DSL looks the way it does.
 - **[`v2-worked-examples.md`](./v2-worked-examples.md)** — Before/after comparisons showing what typed contracts replace.
 - **[`dag-systems-overview.md`](./dag-systems-overview.md)** — The Go-era DAG system (gunb.ai). Historical reference for the `Contractor`/`NodeContract` pattern that started all of this.
 - **[`sandbox-replay-rfc.md`](./sandbox-replay-rfc.md)** — Runtime policy proposal for sandbox deny/allow/replay semantics and durable boundary event replay.
+- **[`gist-recent-credential-diagnostics.md`](./gist-recent-credential-diagnostics.md)** — Baseline trace + fallback/default analysis for `make gist-recent` credential resolution.
 
 ## The arc
 
