@@ -13,6 +13,10 @@ gunbc-exec = { path = "../core/exec" }
 gunbc-codegen = { path = "../core/codegen" }
 gunbc-test = { path = "../core/test" }
 
+# DSL compilation
+daglang-driver = { path = "../core/daglang/daglang-driver" }
+daglang-lower = { path = "../core/daglang/daglang-lower" }
+
 # Libraries
 gunbc-primitives = { path = "../lib/primitives" }
 gunbc-lib-transport = { path = "../lib/transport" }

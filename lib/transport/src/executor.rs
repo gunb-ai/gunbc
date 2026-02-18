@@ -292,7 +292,7 @@ fn execute_file(request: &FileRequest) -> Result<FileResponse, TransportError> {
                 match entry {
                     Ok(path) => {
                         if path.is_file() {
-                            paths.push(path.to_string_lossy().to_string());
+                            paths.push(path.to_string_lossy().into_owned());
                         }
                     }
                     Err(e) => {
@@ -1476,7 +1476,7 @@ mod tests {
         }
 
         /// Helper: cleanup temp git repo.
-        fn cleanup_repo(path: &PathBuf) {
+        fn cleanup_repo(path: &Path) {
             fs::remove_dir_all(path).ok();
         }
 

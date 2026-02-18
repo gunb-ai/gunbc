@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
 
@@ -348,7 +349,7 @@ fn format_module_report(graph: &ModuleGraph, diagnostics: &[Diagnostic]) -> Stri
     if !diagnostics.is_empty() {
         report.push_str("\nDiagnostics:\n");
         for diagnostic in diagnostics {
-            report.push_str(&format!("  {}\n", diagnostic.render()));
+            let _ = writeln!(&mut report, "  {}", diagnostic.render());
         }
     }
     report

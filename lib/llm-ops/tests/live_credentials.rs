@@ -37,7 +37,7 @@ fn run_live_chat(name: &str, provider: &str, model: &str) {
         return;
     }
 
-    let dag = build_chat_completion_graph();
+    let dag = build_chat_completion_graph().unwrap();
     let inputs = input_mocks(provider, model);
 
     let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&inputs))

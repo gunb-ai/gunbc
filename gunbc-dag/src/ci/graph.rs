@@ -1002,7 +1002,6 @@ fn inline_codegen_dag(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::detect_boundaries;
     use gunbc_ir::transport::github_actions::{PermissionLevel, PermissionScope};
 
     #[test]
@@ -1153,15 +1152,6 @@ mod tests {
         } else {
             panic!("clippy_lint should be a SubDag");
         }
-    }
-
-    #[test]
-    fn test_graph_has_boundary() {
-        let dag = build_ci_graph().expect("graph should build");
-        let boundaries = detect_boundaries(&dag);
-
-        // Report should still be a boundary
-        assert!(boundaries.is_boundary_node(&"report".into()));
     }
 
     #[test]

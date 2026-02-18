@@ -12,8 +12,12 @@ fn convert_docgen_op(op: DocgenGraphOp) -> WorkspaceOp {
     match op {
         DocgenGraphOp::Docgen(docgen_op) => WorkspaceOp::Docgen(docgen_op),
         DocgenGraphOp::FsEnv(env) => WorkspaceOp::FsEnv(env),
-        DocgenGraphOp::PrepareFileRead(read_op) => WorkspaceOp::Primitive(PrimitiveOp::PrepareFileRead(read_op)),
-        DocgenGraphOp::PrepareFileWrite(write_op) => WorkspaceOp::Primitive(PrimitiveOp::PrepareFileWrite(write_op)),
+        DocgenGraphOp::PrepareFileRead(read_op) => {
+            WorkspaceOp::Primitive(PrimitiveOp::PrepareFileRead(read_op))
+        }
+        DocgenGraphOp::PrepareFileWrite(write_op) => {
+            WorkspaceOp::Primitive(PrimitiveOp::PrepareFileWrite(write_op))
+        }
         DocgenGraphOp::Blob(blob_op) => WorkspaceOp::Blob(blob_op),
         DocgenGraphOp::Transport(transport) => WorkspaceOp::Transport(transport),
     }

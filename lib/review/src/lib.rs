@@ -1272,7 +1272,8 @@ Please fix these issues."#;
     builder = "build_diff_review_graph",
     import = "use gunbc_lib_review::graph::build_diff_review_graph;",
     mock_spec = "gunbc_lib_review::graph_mock::diff_review_mock_spec()",
-    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","help":"Repository path to diff","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff (default: main)"}]"#
+    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","help":"Repository path to diff","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff (default: main)"}]"#,
+    returns_result
 )]
 pub fn review_tool() {}
 

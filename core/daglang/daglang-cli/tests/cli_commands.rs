@@ -12990,7 +12990,7 @@ fn compile_family_commands_execute_real_pipeline_paths() {
 #[test]
 fn compile_family_commands_execute_real_pipeline_paths_with_absolute_target() {
     let absolute_target = workspace_root().join("dsl/tools/makegen.dag");
-    let absolute_target = absolute_target.to_string_lossy().into_owned();
+    let absolute_target = absolute_target.display().to_string();
     run_compile_family_smoke_for_target("absolute", &absolute_target);
 }
 
@@ -13315,7 +13315,7 @@ fn compile_layer_one_makegen_generated_binary_matches_run_output() {
     std::fs::create_dir_all(&output_dir).expect("failed to create makegen runtime output dir");
     let generated_path = output_dir.join("Makefile.generated");
     let reference_path = output_dir.join("Makefile.reference");
-    let generated_path_arg = generated_path.to_string_lossy().into_owned();
+    let generated_path_arg = generated_path.display().to_string();
 
     let mut generated_run_cmd = Command::new("cargo");
     std::fs::copy(
@@ -13424,11 +13424,11 @@ fn compile_layer_one_pragma_generated_binary_writes_expected_files() {
             "directives" => directives_json.clone(),
             "path" => {
                 if node_id.contains("_3") {
-                    policy_path.to_string_lossy().into_owned()
+                    policy_path.display().to_string()
                 } else if node_id.contains("_2") {
-                    allowlist_path.to_string_lossy().into_owned()
+                    allowlist_path.display().to_string()
                 } else {
-                    clippy_path.to_string_lossy().into_owned()
+                    clippy_path.display().to_string()
                 }
             }
             _ => panic!("unexpected generated pragma binding: ({node_id}, {port_name})"),

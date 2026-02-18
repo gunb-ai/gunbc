@@ -898,6 +898,55 @@ mod tests {
     }
 
     #[test]
+    fn test_coercion_dag_walk_cross_provider_secret_payloads_are_isolated() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register(
+            "GcpSecretPayload",
+            type_lib::refined(
+                "String",
+                vec![crate::type_op::Predicate::Matches("^gcp:.*$".to_string())],
+            ),
+        );
+        registry.register(
+            "AwsSecretValue",
+            type_lib::refined(
+                "String",
+                vec![crate::type_op::Predicate::Matches("^aws:.*$".to_string())],
+            ),
+        );
+
+        // DAG-walk widening paths should each terminate at String.
+        let gcp_walk = registry
+            .coercion_path(&TypeId::from("GcpSecretPayload"), &TypeId::from("String"))
+            .expect("gcp payload should widen to String");
+        assert_eq!(
+            gcp_walk,
+            vec![TypeId::from("GcpSecretPayload"), TypeId::from("String")]
+        );
+        let aws_walk = registry
+            .coercion_path(&TypeId::from("AwsSecretValue"), &TypeId::from("String"))
+            .expect("aws value should widen to String");
+        assert_eq!(
+            aws_walk,
+            vec![TypeId::from("AwsSecretValue"), TypeId::from("String")]
+        );
+
+        // Cross-provider coercion must remain impossible in both directions.
+        assert!(registry
+            .coercion_path(
+                &TypeId::from("GcpSecretPayload"),
+                &TypeId::from("AwsSecretValue")
+            )
+            .is_none());
+        assert!(registry
+            .coercion_path(
+                &TypeId::from("AwsSecretValue"),
+                &TypeId::from("GcpSecretPayload")
+            )
+            .is_none());
+    }
+
+    #[test]
     fn test_coercion_path_cross_provider_tokens_widen_to_credential_base_only() {
         let mut registry = TypeRegistry::with_primitives();
         registry.register(

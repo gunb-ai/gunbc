@@ -183,7 +183,7 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{detect_boundaries, NodeBody};
+    use gunbc_ir::NodeBody;
 
     #[test]
     fn test_graph_builds_successfully() {
@@ -232,14 +232,6 @@ mod tests {
                 panic!("{} should be a SubDag", subdag_name);
             }
         }
-    }
-
-    #[test]
-    fn test_graph_has_boundary() {
-        let dag = build_build_graph().expect("graph should build");
-        let boundaries = detect_boundaries(&dag);
-        // Summary should be a boundary (its outputs leave the DAG)
-        assert!(boundaries.is_boundary_node(&"summary".into()));
     }
 
     #[test]

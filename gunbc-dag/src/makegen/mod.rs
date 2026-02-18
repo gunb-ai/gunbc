@@ -10,6 +10,7 @@ pub mod render;
 
 pub mod graph_mock;
 
+pub use crate::dsl_builder::build_makegen_graph_dsl;
 pub use gitignore::{derive_categories, render_gitignore, GitignoreRenderer};
 pub use graph::{build_makegen_graph, makegen_signature, MakegenGraphOp};
 pub use ops::MakegenOp;

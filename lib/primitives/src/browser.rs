@@ -17,7 +17,7 @@ pub fn browser_open_request(file_path: &str, runtime: &RuntimePlatform) -> Optio
 
     if runtime.env == ExecutionEnv::Wsl {
         let abs_path = absolutize(file_path);
-        return Some(ShellRequest::new("wslview").arg(abs_path.to_string_lossy().into_owned()));
+        return Some(ShellRequest::new("wslview").arg(abs_path.display().to_string()));
     }
 
     let request = match runtime.host.os {

@@ -12,8 +12,12 @@ fn convert_pragma_op(op: PragmaGraphOp) -> WorkspaceOp {
     match op {
         PragmaGraphOp::Domain(pragma_op) => WorkspaceOp::Pragma(pragma_op),
         PragmaGraphOp::FsEnv(env) => WorkspaceOp::FsEnv(env),
-        PragmaGraphOp::PrepareFileRead(read_op) => WorkspaceOp::Primitive(PrimitiveOp::PrepareFileRead(read_op)),
-        PragmaGraphOp::PrepareFileWrite(write_op) => WorkspaceOp::Primitive(PrimitiveOp::PrepareFileWrite(write_op)),
+        PragmaGraphOp::PrepareFileRead(read_op) => {
+            WorkspaceOp::Primitive(PrimitiveOp::PrepareFileRead(read_op))
+        }
+        PragmaGraphOp::PrepareFileWrite(write_op) => {
+            WorkspaceOp::Primitive(PrimitiveOp::PrepareFileWrite(write_op))
+        }
         PragmaGraphOp::Blob(blob_op) => WorkspaceOp::Blob(blob_op),
         PragmaGraphOp::Transport(transport) => WorkspaceOp::Transport(transport),
     }

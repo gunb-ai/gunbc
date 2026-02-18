@@ -82,10 +82,10 @@ fn main() {
         .map(|t| {
             let config = t.to_def();
             let path = output_dir
-                .join(&config.output_path)
+                .join(config.output_path.as_ref())
                 .to_string_lossy()
                 .to_string();
-            (config.name.clone(), path)
+            (config.name.to_string(), path)
         })
         .collect();
 

@@ -367,11 +367,10 @@ pub fn execute_cli_tool_op_with_handle(
 // ============================================================================
 
 fn execute_check(tool: &'static CliToolDef) -> Result<HashMap<String, Value>, CliToolError> {
-    if tool.check_cmd.is_empty() {
-        return Err(CliToolError::new(tool, "check", "No check command defined"));
-    }
-
-    let (cmd, args) = tool.check_cmd.split_first().unwrap();
+    let (cmd, args) = tool
+        .check_cmd
+        .split_first()
+        .ok_or_else(|| CliToolError::new(tool, "check", "No check command defined"))?;
 
     let output = Command::new(cmd)
         .args(args)
@@ -399,13 +398,11 @@ fn execute_install(tool: &'static CliToolDef) -> Result<HashMap<String, Value>, 
         )
     })?;
 
-    if install_cmd.is_empty() {
-        return Err(CliToolError::new(tool, "install", "Empty install command"));
-    }
+    let (cmd, args) = install_cmd
+        .split_first()
+        .ok_or_else(|| CliToolError::new(tool, "install", "Empty install command"))?;
 
     println!("Installing {}...", tool.id);
-
-    let (cmd, args) = install_cmd.split_first().unwrap();
 
     let output = Command::new(cmd)
         .args(args)

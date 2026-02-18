@@ -1,4 +1,5 @@
 use daglang_syntax::lexer::Lexer;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
@@ -52,9 +53,9 @@ fn lex_all_golden_dag_files_without_diagnostics() {
     if !failures.is_empty() {
         let mut message = String::from("failed to lex golden .dag files:\n");
         for (path, diagnostics) in failures {
-            message.push_str(&format!("- {}\n", path.display()));
+            let _ = writeln!(&mut message, "- {}", path.display());
             for diagnostic in diagnostics {
-                message.push_str(&format!("    {diagnostic}\n"));
+                let _ = writeln!(&mut message, "    {diagnostic}");
             }
         }
         panic!("{message}");

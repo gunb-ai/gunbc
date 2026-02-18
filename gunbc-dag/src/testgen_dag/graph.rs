@@ -42,7 +42,7 @@ pub fn build_testgen_graph(
             &fs_env,
             &name,
             TestgenGraphOp::Domain(TestgenOp::Generate {
-                name: name.clone(),
+                name: name.to_string(),
                 target_def: config,
                 generate_fn: target.generate,
             }),
@@ -82,7 +82,7 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
     let fs_env = add_fs_env_root_node(&mut builder, TestgenGraphOp::FsEnv)?;
 
     for (name, output_path, module_name) in &targets {
-        let def = TestgenTargetDef::new(name, output_path, module_name);
+        let def = TestgenTargetDef::new(*name, *output_path, *module_name);
 
         add_upsert_chain(
             &mut builder,

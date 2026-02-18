@@ -7,6 +7,7 @@ pub mod ops;
 
 pub mod graph_mock;
 
+pub use crate::dsl_builder::build_bootstrap_graph_dsl;
 pub use graph::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp};
 pub use ops::BootstrapOp;
 

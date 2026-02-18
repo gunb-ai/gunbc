@@ -167,7 +167,7 @@ impl BridgeModule {
                 .iter()
                 .map(|f| {
                     let ty = if f.optional {
-                        format!("Option<{}>", f.type_name)
+                        format!("Optional<{}>", f.type_name)
                     } else {
                         f.type_name.clone()
                     };
@@ -179,7 +179,11 @@ impl BridgeModule {
                 is_pub: true,
                 derives: s.derives.clone(),
                 fields,
-                doc: s.doc.as_deref().map(|d| vec![d.to_string()]).unwrap_or_default(),
+                doc: s
+                    .doc
+                    .as_deref()
+                    .map(|d| vec![d.to_string()])
+                    .unwrap_or_default(),
             }));
         }
 
@@ -190,7 +194,11 @@ impl BridgeModule {
                 is_pub: true,
                 derives: e.derives.clone(),
                 variants: e.variants.clone(),
-                doc: e.doc.as_deref().map(|d| vec![d.to_string()]).unwrap_or_default(),
+                doc: e
+                    .doc
+                    .as_deref()
+                    .map(|d| vec![d.to_string()])
+                    .unwrap_or_default(),
             }));
         }
 
@@ -212,13 +220,21 @@ impl BridgeModule {
                 params,
                 return_type: f.return_type.clone(),
                 body,
-                doc: f.doc.as_deref().map(|d| vec![d.to_string()]).unwrap_or_default(),
+                doc: f
+                    .doc
+                    .as_deref()
+                    .map(|d| vec![d.to_string()])
+                    .unwrap_or_default(),
                 attributes: vec![],
             }));
         }
 
         SourceFile {
-            doc: self.doc.as_deref().map(|d| vec![d.to_string()]).unwrap_or_default(),
+            doc: self
+                .doc
+                .as_deref()
+                .map(|d| vec![d.to_string()])
+                .unwrap_or_default(),
             items,
         }
     }
@@ -243,6 +259,80 @@ impl BridgeModule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::code_ir::{Assert, Expr, Import, Item, SourceFile, Stmt, TestFile};
+    use crate::language::NamingCase;
+    use crate::render_ir::{CodeRenderer, PlainText};
+    use crate::symbols::{Tier, STANDARD};
+
+    struct NamingCaseRenderer {
+        medium: PlainText,
+        type_case: NamingCase,
+        field_case: NamingCase,
+    }
+
+    impl NamingCaseRenderer {
+        fn new(type_case: NamingCase, field_case: NamingCase) -> Self {
+            Self {
+                medium: PlainText {
+                    tier: Tier::Ascii,
+                    symbol_set: &STANDARD,
+                },
+                type_case,
+                field_case,
+            }
+        }
+    }
+
+    impl CodeRenderer<PlainText> for NamingCaseRenderer {
+        fn medium(&self) -> &PlainText {
+            &self.medium
+        }
+
+        fn render_value(&self, _expr: &crate::ValueExpr) -> String {
+            String::new()
+        }
+
+        fn render_file(&self, _file: &TestFile) -> String {
+            String::new()
+        }
+
+        fn render_source_file(&self, file: &SourceFile) -> String {
+            let mut rendered = Vec::new();
+            for item in &file.items {
+                if let Item::Struct(def) = item {
+                    let type_name = self.type_case.apply(&def.name);
+                    let fields = def
+                        .fields
+                        .iter()
+                        .map(|(name, _, _)| self.field_case.apply(name))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    rendered.push(format!("struct {type_name} {{{fields}}}"));
+                }
+            }
+            rendered.join("\n")
+        }
+
+        fn render_expr(&self, _expr: &Expr) -> String {
+            String::new()
+        }
+
+        fn render_stmt(&self, _stmt: &Stmt, _indent: usize) -> String {
+            String::new()
+        }
+
+        fn render_assert(&self, _assert: &Assert, _indent: usize) -> String {
+            String::new()
+        }
+
+        fn render_import(&self, _import: &Import) -> String {
+            String::new()
+        }
+
+        fn render_item(&self, _item: &Item, _indent: usize) -> String {
+            String::new()
+        }
+    }
 
     #[test]
     fn empty_module() {
@@ -277,7 +367,10 @@ mod tests {
                 assert_eq!(s.name, "GitSpec");
                 assert_eq!(s.fields.len(), 2);
                 assert_eq!(s.fields[0], ("repo_url".into(), "String".into(), true));
-                assert_eq!(s.fields[1], ("branch".into(), "Option<String>".into(), true));
+                assert_eq!(
+                    s.fields[1],
+                    ("branch".into(), "Optional<String>".into(), true)
+                );
                 assert_eq!(s.derives, vec!["Debug", "Clone"]);
             }
             _ => panic!("expected struct"),
@@ -331,5 +424,39 @@ mod tests {
 
         let opt_field = BridgeField::optional("tag", "String");
         assert!(opt_field.optional);
+    }
+
+    #[test]
+    fn bridge_preserves_names_and_renderer_applies_casing() {
+        let module = BridgeModule {
+            name: "git_io_module".into(),
+            structs: vec![BridgeStruct {
+                name: "git_repo_spec".into(),
+                doc: None,
+                fields: vec![
+                    BridgeField::new("repo_url", "String"),
+                    BridgeField::new("created_at_unix", "Int"),
+                ],
+                derives: vec![],
+            }],
+            ..Default::default()
+        };
+
+        let sf = module.to_source_file();
+        let Item::Struct(def) = &sf.items[0] else {
+            panic!("expected struct");
+        };
+        assert_eq!(def.name, "git_repo_spec");
+        assert_eq!(def.fields[0].0, "repo_url");
+        assert_eq!(def.fields[1].0, "created_at_unix");
+
+        let rust_renderer = NamingCaseRenderer::new(NamingCase::PascalCase, NamingCase::SnakeCase);
+        let ts_renderer = NamingCaseRenderer::new(NamingCase::PascalCase, NamingCase::CamelCase);
+
+        let rust_rendered = module.render_with(&rust_renderer);
+        let ts_rendered = module.render_with(&ts_renderer);
+
+        assert!(rust_rendered.contains("struct GitRepoSpec {repo_url, created_at_unix}"));
+        assert!(ts_rendered.contains("struct GitRepoSpec {repoUrl, createdAtUnix}"));
     }
 }

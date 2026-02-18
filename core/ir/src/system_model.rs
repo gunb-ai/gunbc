@@ -3,8 +3,12 @@
 //! This module models external systems/services as typed behavioral catalogs
 //! that map directly onto `TypeId` / `Dag<TypeOp>` contracts.
 
+use crate::dag::{Edge, Port};
+use crate::node::Node;
 use crate::port_type::PortType;
-use crate::{Dag, TypeId, TypeOp, TypeRegistry};
+use crate::type_registry::TypeExprError;
+use crate::Predicate;
+use crate::{Dag, TypeId, TypeOp, TypeRegistry, WrapperKind};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -407,10 +411,22 @@ pub fn validate_dependency_graph_acyclic(models: &[SystemModel]) -> Result<(), S
 
 /// Derive contract-test specs from system models and behavior properties.
 pub fn derive_contract_test_specs(models: &[SystemModel]) -> Vec<ContractTestSpec> {
+    let mut behavior_type_registry = TypeRegistry::with_core_types();
+    let registry_ready =
+        register_system_behavior_type_dags(&mut behavior_type_registry, models).is_ok();
+
     let mut specs = Vec::new();
     for model in models {
         for behavior in &model.behaviors {
-            let has = |property: Property| behavior.properties.contains(&property);
+            let property_markers = if registry_ready {
+                let type_id = system_behavior_type_id(&model.id, &behavior.id);
+                behavior_properties_from_type_dag(&behavior_type_registry, &type_id)
+                    .unwrap_or_else(|| behavior.properties.clone())
+            } else {
+                behavior.properties.clone()
+            };
+
+            let has = |property: Property| property_markers.contains(&property);
 
             if has(Property::ReadOnly) && has(Property::Deterministic) {
                 specs.push(ContractTestSpec {
@@ -454,9 +470,240 @@ pub fn derive_contract_test_specs(models: &[SystemModel]) -> Vec<ContractTestSpe
     specs
 }
 
-fn rust_type_for_type_id(type_id: &TypeId) -> String {
-    let port_type = PortType::from(type_id);
-    rust_type_for_port_type(&port_type, type_id)
+fn behavior_properties_from_type_dag(
+    registry: &TypeRegistry,
+    type_id: &TypeId,
+) -> Option<Vec<Property>> {
+    let dag = registry.get(type_id)?;
+    let mut properties = Vec::new();
+    for node in &dag.nodes {
+        if let crate::node::NodeBody::Opaque(TypeOp::Validate(Predicate::Custom(marker))) =
+            &node.body
+        {
+            if let Some(raw) = marker.strip_prefix("property:") {
+                if let Some(property) = parse_property_marker(raw) {
+                    if !properties.contains(&property) {
+                        properties.push(property);
+                    }
+                }
+            }
+        }
+    }
+    Some(properties)
+}
+
+fn parse_property_marker(raw: &str) -> Option<Property> {
+    match raw {
+        "ReadOnly" => Some(Property::ReadOnly),
+        "WritesWorld" => Some(Property::WritesWorld),
+        "Deterministic" => Some(Property::Deterministic),
+        "Idempotent" => Some(Property::Idempotent),
+        "IdempotentWithKey" => Some(Property::IdempotentWithKey),
+        "FailsWhen" => Some(Property::FailsWhen),
+        "EdgeCase" => Some(Property::EdgeCase),
+        "Retryable" => Some(Property::Retryable),
+        "SecretScoped" => Some(Property::SecretScoped),
+        "PermissionScoped" => Some(Property::PermissionScoped),
+        _ => None,
+    }
+}
+
+/// Canonical type id used to register a behavior contract DAG.
+///
+/// Format: `System::<system_id>::Behavior::<behavior_id>`.
+pub fn system_behavior_type_id(system_id: &str, behavior_id: &str) -> TypeId {
+    TypeId::new(format!(
+        "System::{}::Behavior::{}",
+        sanitize_ident(system_id),
+        sanitize_ident(behavior_id)
+    ))
+}
+
+/// Register per-behavior contract DAGs for all provided system models.
+///
+/// Each behavior is materialized as a deterministic `Dag<TypeOp>` descriptor
+/// and registered into `TypeRegistry` under [`system_behavior_type_id`].
+///
+/// The descriptor encodes:
+/// - system + behavior metadata as `Validate(Custom(...))` nodes
+/// - behavior properties as `Validate(Custom("property:<...>"))` nodes
+/// - input/output contracts as `Validate(Custom(...))` nodes
+/// - optional inputs as explicit `TypeOp::Wrap(WrapperKind::Optional)` nodes
+///
+/// All referenced input/output `TypeId`s are validated against the current
+/// registry before registration.
+pub fn register_system_behavior_type_dags(
+    registry: &mut TypeRegistry,
+    models: &[SystemModel],
+) -> Result<Vec<TypeId>, String> {
+    let mut planned = Vec::new();
+    for model in models {
+        for behavior in &model.behaviors {
+            let type_id = system_behavior_type_id(&model.id, &behavior.id);
+            let dag = build_behavior_contract_dag(model, behavior, registry)?;
+            planned.push((type_id, dag));
+        }
+    }
+
+    let mut registered = Vec::with_capacity(planned.len());
+    for (type_id, dag) in planned {
+        registry.register(type_id.clone(), dag);
+        registered.push(type_id);
+    }
+    Ok(registered)
+}
+
+fn build_behavior_contract_dag(
+    model: &SystemModel,
+    behavior: &Behavior,
+    registry: &TypeRegistry,
+) -> Result<Dag<TypeOp>, String> {
+    let mut dag = Dag::new();
+    dag.add_node(Node::opaque(
+        "behavior_input",
+        vec![Port::scalar("in", "Json")],
+        vec![Port::scalar("out", "Json")],
+        TypeOp::Identity,
+    ));
+
+    let mut prev = "behavior_input".to_string();
+    let mut idx = 0usize;
+
+    append_validate_step(
+        &mut dag,
+        &mut prev,
+        &mut idx,
+        format!("meta:system_id={}", model.id),
+    );
+    append_validate_step(
+        &mut dag,
+        &mut prev,
+        &mut idx,
+        format!("meta:system_kind={:?}", model.kind),
+    );
+    append_validate_step(
+        &mut dag,
+        &mut prev,
+        &mut idx,
+        format!("meta:behavior_id={}", behavior.id),
+    );
+    append_validate_step(
+        &mut dag,
+        &mut prev,
+        &mut idx,
+        format!("meta:invocation={}", invocation_tag(&behavior.invocation)),
+    );
+
+    for property in &behavior.properties {
+        append_validate_step(
+            &mut dag,
+            &mut prev,
+            &mut idx,
+            format!("property:{property:?}"),
+        );
+    }
+
+    for input in &behavior.inputs {
+        validate_type_ref("input", &input.name, input.input_type.type_id(), registry)?;
+        append_validate_step(
+            &mut dag,
+            &mut prev,
+            &mut idx,
+            format!(
+                "input:{}:{}:required={}",
+                sanitize_ident(&input.name),
+                input.input_type.type_id().0,
+                input.required
+            ),
+        );
+        if !input.required {
+            let wrap_node_id = format!("step_{idx}_optional_wrap");
+            dag.add_node(Node::opaque(
+                wrap_node_id.as_str(),
+                vec![Port::scalar("in", "Json")],
+                vec![Port::scalar("out", "Json")],
+                TypeOp::Wrap(WrapperKind::Optional),
+            ));
+            dag.add_edge(Edge::new(prev.as_str(), "out", wrap_node_id.as_str(), "in"));
+            prev = wrap_node_id;
+            idx += 1;
+        }
+    }
+
+    for output in &behavior.outputs {
+        validate_type_ref(
+            "output",
+            &output.name,
+            output.output_type.type_id(),
+            registry,
+        )?;
+        append_validate_step(
+            &mut dag,
+            &mut prev,
+            &mut idx,
+            format!(
+                "output:{}:{}",
+                sanitize_ident(&output.name),
+                output.output_type.type_id().0
+            ),
+        );
+    }
+
+    dag.add_node(Node::opaque(
+        "behavior_output",
+        vec![Port::scalar("in", "Json")],
+        vec![Port::scalar("out", "Json")],
+        TypeOp::Identity,
+    ));
+    dag.add_edge(Edge::new(prev.as_str(), "out", "behavior_output", "in"));
+    Ok(dag)
+}
+
+fn append_validate_step(dag: &mut Dag<TypeOp>, prev: &mut String, idx: &mut usize, marker: String) {
+    let node_id = format!("step_{}_{}", idx, sanitize_ident(&marker));
+    dag.add_node(Node::opaque(
+        node_id.as_str(),
+        vec![Port::scalar("in", "Json")],
+        vec![Port::scalar("out", "Json")],
+        TypeOp::Validate(Predicate::Custom(marker)),
+    ));
+    dag.add_edge(Edge::new(prev.as_str(), "out", node_id.as_str(), "in"));
+    *prev = node_id;
+    *idx += 1;
+}
+
+fn validate_type_ref(
+    role: &str,
+    field_name: &str,
+    type_id: &TypeId,
+    registry: &TypeRegistry,
+) -> Result<(), String> {
+    match registry.resolve_type_checked(type_id) {
+        Ok(Some(_)) => Ok(()),
+        Ok(None) => Err(format!(
+            "unregistered {role} type `{}` for `{}`",
+            type_id.0, field_name
+        )),
+        Err(err) => Err(format!(
+            "invalid {role} type expression `{}` for `{}`: {}",
+            type_id.0,
+            field_name,
+            render_type_expr_error(&err)
+        )),
+    }
+}
+
+fn render_type_expr_error(error: &TypeExprError) -> String {
+    error.to_string()
+}
+
+fn invocation_tag(invocation: &Invocation) -> String {
+    match invocation {
+        Invocation::Cli { command, .. } => format!("cli:{command}"),
+        Invocation::Rest { method, path, .. } => format!("rest:{method}:{path}"),
+        Invocation::Sdk { function, .. } => format!("sdk:{function}"),
+        Invocation::Protocol { protocol, .. } => format!("protocol:{protocol}"),
+    }
 }
 
 fn rust_type_for_port_type(port_type: &PortType, original_type_id: &TypeId) -> String {
@@ -514,23 +761,31 @@ pub fn render_contract_test_harness(spec: &ContractTestSpec) -> String {
         .inputs
         .iter()
         .map(|input| {
+            let type_id = input.input_type.type_id();
+            let port_type = PortType::from(type_id);
             format!(
                 "{}: {}",
                 sanitize_ident(&input.name),
-                rust_type_for_type_id(input.input_type.type_id())
+                rust_type_for_port_type(&port_type, type_id)
             )
         })
         .collect::<Vec<_>>()
         .join(", ");
 
     let return_type = if spec.outputs.len() == 1 {
-        rust_type_for_type_id(spec.outputs[0].output_type.type_id()).to_string()
+        let type_id = spec.outputs[0].output_type.type_id();
+        let port_type = PortType::from(type_id);
+        rust_type_for_port_type(&port_type, type_id).to_string()
     } else {
         format!(
             "({})",
             spec.outputs
                 .iter()
-                .map(|out| rust_type_for_type_id(out.output_type.type_id()))
+                .map(|out| {
+                    let type_id = out.output_type.type_id();
+                    let port_type = PortType::from(type_id);
+                    rust_type_for_port_type(&port_type, type_id)
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         )
@@ -548,21 +803,130 @@ pub fn generate_contract_test_harnesses(specs: &[ContractTestSpec]) -> Vec<Strin
 pub fn validate_store_behavior_mapping(models: &[SystemModel]) -> Result<(), String> {
     let required: BTreeSet<&str> =
         BTreeSet::from(["get_object", "put_object", "list_objects", "delete_object"]);
-    for provider in ["gcp.gcs", "aws.s3"] {
-        let model = models
-            .iter()
-            .find(|m| m.id == provider)
-            .ok_or_else(|| format!("missing storage provider model '{provider}'"))?;
-        let ops: BTreeSet<&str> = model.behaviors.iter().map(|b| b.id.as_str()).collect();
-        if !required.is_subset(&ops) {
+    let gcp = models
+        .iter()
+        .find(|m| m.id == "gcp.gcs")
+        .ok_or_else(|| "missing storage provider model 'gcp.gcs'".to_string())?;
+    let aws = models
+        .iter()
+        .find(|m| m.id == "aws.s3")
+        .ok_or_else(|| "missing storage provider model 'aws.s3'".to_string())?;
+
+    let gcp_ops: BTreeSet<&str> = gcp.behaviors.iter().map(|b| b.id.as_str()).collect();
+    let aws_ops: BTreeSet<&str> = aws.behaviors.iter().map(|b| b.id.as_str()).collect();
+    if !required.is_subset(&gcp_ops) {
+        return Err(format!(
+            "storage provider '{}' missing required store operations: {:?}",
+            gcp.id,
+            required.difference(&gcp_ops).copied().collect::<Vec<_>>()
+        ));
+    }
+    if !required.is_subset(&aws_ops) {
+        return Err(format!(
+            "storage provider '{}' missing required store operations: {:?}",
+            aws.id,
+            required.difference(&aws_ops).copied().collect::<Vec<_>>()
+        ));
+    }
+
+    let mut registry = TypeRegistry::with_core_types();
+    register_system_behavior_type_dags(&mut registry, &[gcp.clone(), aws.clone()])?;
+
+    for behavior_id in &required {
+        let gcp_type = system_behavior_type_id(&gcp.id, behavior_id);
+        let aws_type = system_behavior_type_id(&aws.id, behavior_id);
+        let gcp_shape = behavior_contract_shape(&registry, &gcp_type).ok_or_else(|| {
+            format!(
+                "missing behavior DAG for '{}.{}' in registry",
+                gcp.id, behavior_id
+            )
+        })?;
+        let aws_shape = behavior_contract_shape(&registry, &aws_type).ok_or_else(|| {
+            format!(
+                "missing behavior DAG for '{}.{}' in registry",
+                aws.id, behavior_id
+            )
+        })?;
+        if gcp_shape != aws_shape {
             return Err(format!(
-                "storage provider '{}' missing required store operations: {:?}",
-                provider,
-                required.difference(&ops).copied().collect::<Vec<_>>()
+                "storage behavior contract mismatch for '{}': gcp={:?} aws={:?}",
+                behavior_id, gcp_shape, aws_shape
             ));
         }
     }
+
     Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BehaviorContractShape {
+    properties: Vec<String>,
+    inputs: Vec<(String, String, bool)>,
+    outputs: Vec<(String, String)>,
+    optional_wrap_count: usize,
+}
+
+fn behavior_contract_shape(
+    registry: &TypeRegistry,
+    type_id: &TypeId,
+) -> Option<BehaviorContractShape> {
+    let dag = registry.get(type_id)?;
+    let mut properties = Vec::new();
+    let mut inputs = Vec::new();
+    let mut outputs = Vec::new();
+    let mut optional_wrap_count = 0usize;
+
+    for node in &dag.nodes {
+        if let crate::node::NodeBody::Opaque(op) = &node.body {
+            match op {
+                TypeOp::Validate(Predicate::Custom(marker)) => {
+                    if let Some(raw) = marker.strip_prefix("property:") {
+                        properties.push(raw.to_string());
+                    } else if let Some(parsed) = parse_input_marker(marker) {
+                        inputs.push(parsed);
+                    } else if let Some(parsed) = parse_output_marker(marker) {
+                        outputs.push(parsed);
+                    }
+                }
+                TypeOp::Wrap(WrapperKind::Optional) => {
+                    optional_wrap_count += 1;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    properties.sort();
+    properties.dedup();
+    inputs.sort();
+    inputs.dedup();
+    outputs.sort();
+    outputs.dedup();
+
+    Some(BehaviorContractShape {
+        properties,
+        inputs,
+        outputs,
+        optional_wrap_count,
+    })
+}
+
+fn parse_input_marker(marker: &str) -> Option<(String, String, bool)> {
+    let marker = marker.strip_prefix("input:")?;
+    let (left, required_raw) = marker.rsplit_once(":required=")?;
+    let required = match required_raw {
+        "true" => true,
+        "false" => false,
+        _ => return None,
+    };
+    let (name, type_id) = left.split_once(':')?;
+    Some((name.to_string(), type_id.to_string(), required))
+}
+
+fn parse_output_marker(marker: &str) -> Option<(String, String)> {
+    let marker = marker.strip_prefix("output:")?;
+    let (name, type_id) = marker.split_once(':')?;
+    Some((name.to_string(), type_id.to_string()))
 }
 
 /// Built-in system models discovered via inventory registration.
@@ -631,6 +995,217 @@ mod tests {
         }
         validate_dependency_graph_acyclic(&models)
             .expect("default system model dependencies must be acyclic");
+    }
+
+    #[test]
+    fn register_behavior_type_dags_adds_registry_entries() {
+        let model = SystemModel::new(
+            "provider.alpha",
+            "Provider Alpha",
+            SystemKind::Sdk,
+            "v1",
+            "test provider",
+        )
+        .with_behaviors(vec![Behavior::new(
+            "fetch_item",
+            "Fetch one item",
+            Invocation::Sdk {
+                function: "fetch_item".to_string(),
+                docs: "fetches item".to_string(),
+            },
+        )
+        .with_inputs(vec![
+            BehaviorInput::required("id", InputType::TypeId(TypeId::from("String"))),
+            BehaviorInput::optional("limit", InputType::TypeId(TypeId::from("Int"))),
+        ])
+        .with_outputs(vec![BehaviorOutput::new(
+            "value",
+            OutputType::TypeId(TypeId::from("Json")),
+        )])
+        .with_properties(&[Property::ReadOnly, Property::Deterministic])]);
+
+        let mut registry = TypeRegistry::with_core_types();
+        let registered = register_system_behavior_type_dags(&mut registry, &[model])
+            .expect("behavior type DAG registration should succeed");
+
+        assert_eq!(registered.len(), 1);
+        let behavior_type = system_behavior_type_id("provider.alpha", "fetch_item");
+        assert_eq!(registered[0], behavior_type);
+
+        let dag = registry
+            .get(&behavior_type)
+            .expect("registered behavior type should be present");
+        assert!(
+            dag.nodes.iter().any(|node| matches!(
+                node.body,
+                crate::node::NodeBody::Opaque(TypeOp::Wrap(WrapperKind::Optional))
+            )),
+            "optional input should produce a WrapperKind::Optional node"
+        );
+    }
+
+    #[test]
+    fn register_behavior_type_dags_rejects_unknown_input_type() {
+        let model = SystemModel::new(
+            "provider.beta",
+            "Provider Beta",
+            SystemKind::Sdk,
+            "v1",
+            "test provider",
+        )
+        .with_behaviors(vec![Behavior::new(
+            "compute",
+            "Compute result",
+            Invocation::Sdk {
+                function: "compute".to_string(),
+                docs: "computes value".to_string(),
+            },
+        )
+        .with_inputs(vec![BehaviorInput::required(
+            "payload",
+            InputType::TypeId(TypeId::from("NotRegisteredType")),
+        )])
+        .with_outputs(vec![BehaviorOutput::new(
+            "ok",
+            OutputType::TypeId(TypeId::from("Bool")),
+        )])]);
+
+        let mut registry = TypeRegistry::with_core_types();
+        let err = register_system_behavior_type_dags(&mut registry, &[model])
+            .expect_err("unregistered input types should fail");
+        assert!(err.contains("NotRegisteredType"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn derive_contract_specs_uses_property_markers_from_behavior_type_dag() {
+        let model = SystemModel::new(
+            "provider.gamma",
+            "Provider Gamma",
+            SystemKind::Sdk,
+            "v1",
+            "test provider",
+        )
+        .with_behaviors(vec![Behavior::new(
+            "lookup",
+            "Lookup item",
+            Invocation::Sdk {
+                function: "lookup".to_string(),
+                docs: "lookup docs".to_string(),
+            },
+        )
+        .with_inputs(vec![BehaviorInput::required(
+            "id",
+            InputType::TypeId(TypeId::from("String")),
+        )])
+        .with_outputs(vec![BehaviorOutput::new(
+            "value",
+            OutputType::TypeId(TypeId::from("Json")),
+        )])
+        .with_properties(&[Property::ReadOnly, Property::Deterministic])]);
+
+        let mut registry = TypeRegistry::with_core_types();
+        register_system_behavior_type_dags(&mut registry, std::slice::from_ref(&model))
+            .expect("registration should succeed");
+
+        let type_id = system_behavior_type_id("provider.gamma", "lookup");
+        let properties = behavior_properties_from_type_dag(&registry, &type_id)
+            .expect("type DAG should be present");
+        assert!(properties.contains(&Property::ReadOnly));
+        assert!(properties.contains(&Property::Deterministic));
+
+        let specs = derive_contract_test_specs(&[model]);
+        assert!(specs.iter().any(|spec| {
+            spec.behavior_id == "lookup"
+                && spec.phase == UpsertPhase::Check
+                && spec.required_all.contains(&Property::ReadOnly)
+                && spec.required_all.contains(&Property::Deterministic)
+        }));
+    }
+
+    #[test]
+    fn validate_store_behavior_mapping_accepts_structurally_equivalent_models() {
+        let mk_behavior = |id: &str| {
+            Behavior::new(
+                id,
+                format!("{id} behavior"),
+                Invocation::Sdk {
+                    function: id.to_string(),
+                    docs: "docs".to_string(),
+                },
+            )
+            .with_inputs(vec![BehaviorInput::required(
+                "key",
+                InputType::TypeId(TypeId::from("String")),
+            )])
+            .with_outputs(vec![BehaviorOutput::new(
+                "ok",
+                OutputType::TypeId(TypeId::from("Bool")),
+            )])
+            .with_properties(&[Property::ReadOnly, Property::Deterministic])
+        };
+
+        let gcp = SystemModel::new("gcp.gcs", "GCS", SystemKind::StorageProvider, "v1", "gcp")
+            .with_behaviors(vec![
+                mk_behavior("get_object"),
+                mk_behavior("put_object"),
+                mk_behavior("list_objects"),
+                mk_behavior("delete_object"),
+            ]);
+        let aws = SystemModel::new("aws.s3", "S3", SystemKind::StorageProvider, "v1", "aws")
+            .with_behaviors(vec![
+                mk_behavior("get_object"),
+                mk_behavior("put_object"),
+                mk_behavior("list_objects"),
+                mk_behavior("delete_object"),
+            ]);
+
+        validate_store_behavior_mapping(&[gcp, aws])
+            .expect("equivalent provider contracts should validate");
+    }
+
+    #[test]
+    fn validate_store_behavior_mapping_rejects_structural_mismatch() {
+        let mk_behavior = |id: &str, output_type: &str| {
+            Behavior::new(
+                id,
+                format!("{id} behavior"),
+                Invocation::Sdk {
+                    function: id.to_string(),
+                    docs: "docs".to_string(),
+                },
+            )
+            .with_inputs(vec![BehaviorInput::required(
+                "key",
+                InputType::TypeId(TypeId::from("String")),
+            )])
+            .with_outputs(vec![BehaviorOutput::new(
+                "ok",
+                OutputType::TypeId(TypeId::from(output_type)),
+            )])
+            .with_properties(&[Property::ReadOnly, Property::Deterministic])
+        };
+
+        let gcp = SystemModel::new("gcp.gcs", "GCS", SystemKind::StorageProvider, "v1", "gcp")
+            .with_behaviors(vec![
+                mk_behavior("get_object", "Bool"),
+                mk_behavior("put_object", "Bool"),
+                mk_behavior("list_objects", "Bool"),
+                mk_behavior("delete_object", "Bool"),
+            ]);
+        let aws = SystemModel::new("aws.s3", "S3", SystemKind::StorageProvider, "v1", "aws")
+            .with_behaviors(vec![
+                mk_behavior("get_object", "Json"), // mismatch on purpose
+                mk_behavior("put_object", "Bool"),
+                mk_behavior("list_objects", "Bool"),
+                mk_behavior("delete_object", "Bool"),
+            ]);
+
+        let err = validate_store_behavior_mapping(&[gcp, aws])
+            .expect_err("mismatched contracts should fail validation");
+        assert!(
+            err.contains("mismatch for 'get_object'"),
+            "unexpected error: {err}"
+        );
     }
 
     // Model-specific behavior tests (GCP, AWS, transport) moved to owning crates:

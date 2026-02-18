@@ -131,18 +131,20 @@ pub fn default_criteria() -> Criteria {
 /// are extracted from its structure, and mocks are type-checked at construction.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "review-inline",
-    builder = "crate::graph::build_inline_review_graph()"
+    builder = "crate::graph::build_inline_review_graph()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "review-inline",
     output = "lib/review/src/generated_tests_inline.rs",
     module = "review_inline_generated_tests",
     builder = "crate::graph::build_inline_review_graph()",
+    returns_result,
     no_boundary_tests
 )]
 pub fn inline_review_mock_spec() -> MockSpec {
     // Build the actual DAG to extract requirements
-    let dag = build_inline_review_graph();
+    let dag = build_inline_review_graph().unwrap();
 
     let review_json = serde_json::json!({
         "findings": [
@@ -305,19 +307,21 @@ pub fn inline_review_mock_spec() -> MockSpec {
 /// are extracted from its structure, and mocks are type-checked at construction.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "review-diff",
-    builder = "crate::graph::build_diff_review_graph()"
+    builder = "crate::graph::build_diff_review_graph()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "review-diff",
     output = "lib/review/src/generated_tests_diff.rs",
     module = "review_diff_generated_tests",
     builder = "crate::graph::build_diff_review_graph()",
+    returns_result,
     tool = "review",
     no_boundary_tests
 )]
 pub fn diff_review_mock_spec() -> MockSpec {
     // Build the actual DAG to extract requirements
-    let dag = build_diff_review_graph();
+    let dag = build_diff_review_graph().unwrap();
 
     let diff_output = "\
 diff --git a/src/main.rs b/src/main.rs

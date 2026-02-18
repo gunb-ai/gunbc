@@ -32,7 +32,10 @@ pub fn build_transport_file_model() -> SystemModel {
             },
         )
         .with_inputs(vec![BehaviorInput::required("path", ty("String"))])
-        .with_outputs(vec![BehaviorOutput::new("response", out_ty("FileResponse"))])
+        .with_outputs(vec![BehaviorOutput::new(
+            "response",
+            out_ty("FileResponse"),
+        )])
         .with_properties(&[Property::ReadOnly, Property::Deterministic]),
         Behavior::new(
             "write",
@@ -46,7 +49,10 @@ pub fn build_transport_file_model() -> SystemModel {
             BehaviorInput::required("path", ty("String")),
             BehaviorInput::required("content", ty("String")),
         ])
-        .with_outputs(vec![BehaviorOutput::new("response", out_ty("FileResponse"))])
+        .with_outputs(vec![BehaviorOutput::new(
+            "response",
+            out_ty("FileResponse"),
+        )])
         .with_properties(&[Property::WritesWorld, Property::Idempotent]),
         Behavior::new(
             "exists",
@@ -57,7 +63,10 @@ pub fn build_transport_file_model() -> SystemModel {
             },
         )
         .with_inputs(vec![BehaviorInput::required("path", ty("String"))])
-        .with_outputs(vec![BehaviorOutput::new("response", out_ty("FileResponse"))])
+        .with_outputs(vec![BehaviorOutput::new(
+            "response",
+            out_ty("FileResponse"),
+        )])
         .with_properties(&[Property::ReadOnly, Property::Deterministic]),
         Behavior::new(
             "delete",
@@ -68,7 +77,10 @@ pub fn build_transport_file_model() -> SystemModel {
             },
         )
         .with_inputs(vec![BehaviorInput::required("path", ty("String"))])
-        .with_outputs(vec![BehaviorOutput::new("response", out_ty("FileResponse"))])
+        .with_outputs(vec![BehaviorOutput::new(
+            "response",
+            out_ty("FileResponse"),
+        )])
         .with_properties(&[Property::WritesWorld, Property::Idempotent]),
     ])
 }

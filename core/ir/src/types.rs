@@ -732,8 +732,8 @@ pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
             // Domain-specific types that PortType doesn't know about
             match type_id {
                 // Map-backed types (structured data stored as Value::Map)
-                "ToolHandle" | "Credential" | "FilesystemHandle"
-                | "NetworkHandle" | "CliResult" => ValueBacking::Map,
+                "ToolHandle" | "Credential" | "FilesystemHandle" | "NetworkHandle"
+                | "CliResult" => ValueBacking::Map,
                 // Int-backed types
                 "Timestamp" => ValueBacking::Int,
                 // String-backed types
@@ -743,9 +743,7 @@ pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
                 // Legacy set aliases
                 s if s.ends_with("Set") => ValueBacking::Set,
                 // Optional wrappers inherit inner type's backing
-                s if s.starts_with("Optional") => {
-                    value_backing_for_type_id(&s["Optional".len()..])
-                }
+                s if s.starts_with("Optional") => value_backing_for_type_id(&s["Optional".len()..]),
                 // Default: Json accepts anything
                 _ => ValueBacking::Json,
             }

@@ -635,7 +635,7 @@ fn build_snapshot_graph(
     )?;
 
     // Gist upload SubDag (replaces gh gist create shell approach)
-    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false));
+    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false)?);
     let gist_upload =
         builder.add_node_after(Node::subdag("gist_upload", gist_dag), &render_snapshot)?;
 
@@ -781,7 +781,7 @@ fn build_diff_graph(
     )?;
 
     // Gist upload SubDag
-    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false));
+    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false)?);
     let gist_upload =
         builder.add_node_after(Node::subdag("gist_upload", gist_dag), &diff_and_render)?;
 
@@ -908,7 +908,7 @@ fn build_recent_graph(
     )?;
 
     // Gist upload SubDag
-    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false));
+    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(graph_cloud_config(), false)?);
     let gist_upload =
         builder.add_node_after(Node::subdag("gist_upload", gist_dag), &diff_and_render)?;
 

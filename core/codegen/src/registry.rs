@@ -6,6 +6,7 @@
 use crate::cli_gen::{CliEntrypoint, ToolMeta};
 use gunbc_ir::cargo;
 use gunbc_test::{FermiCost, TestClass};
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 // ============================================================================
@@ -30,17 +31,17 @@ pub struct ToolDef {
 #[derive(Debug, Clone)]
 pub struct TestgenTargetDef {
     /// Short identifier (e.g., "bootstrap", "llm-openai")
-    pub name: String,
+    pub name: Cow<'static, str>,
     /// Output path for generated tests (relative to workspace)
-    pub output_path: String,
+    pub output_path: Cow<'static, str>,
     /// Module name for the generated test module
-    pub module_name: String,
+    pub module_name: Cow<'static, str>,
     /// MockSpec function path (e.g., "crate::graph_mock::my_mock_spec")
-    pub mock_spec_path: String,
+    pub mock_spec_path: Cow<'static, str>,
     /// DAG builder call expression (e.g., "crate::build_graph().unwrap()")
-    pub dag_builder_call: String,
+    pub dag_builder_call: Cow<'static, str>,
     /// Signature function path (e.g., "crate::makegen_signature()")
-    pub signature_path: Option<String>,
+    pub signature_path: Option<Cow<'static, str>>,
     /// Enable boundary tests
     pub boundary_tests: bool,
     /// Enable chain tests
@@ -72,18 +73,22 @@ pub struct TestgenTargetDef {
     /// Tool name for CLI contract test generation. When set, entrypoints
     /// are looked up from `derive_tool_defs()` and a CLI contract test is emitted
     /// alongside the DAG tests.
-    pub tool_name: Option<String>,
+    pub tool_name: Option<Cow<'static, str>>,
 }
 
 impl TestgenTargetDef {
     /// Create a new testgen target definition.
-    pub fn new(name: &str, output_path: &str, module_name: &str) -> Self {
+    pub fn new(
+        name: impl Into<Cow<'static, str>>,
+        output_path: impl Into<Cow<'static, str>>,
+        module_name: impl Into<Cow<'static, str>>,
+    ) -> Self {
         Self {
-            name: name.to_string(),
-            output_path: output_path.to_string(),
-            module_name: module_name.to_string(),
-            mock_spec_path: String::new(),
-            dag_builder_call: String::new(),
+            name: name.into(),
+            output_path: output_path.into(),
+            module_name: module_name.into(),
+            mock_spec_path: Cow::Borrowed(""),
+            dag_builder_call: Cow::Borrowed(""),
             signature_path: None,
             boundary_tests: true,
             chain_tests: true,
@@ -104,20 +109,20 @@ impl TestgenTargetDef {
     }
 
     /// Set the MockSpec function path.
-    pub fn mock_spec(mut self, path: &str) -> Self {
-        self.mock_spec_path = path.to_string();
+    pub fn mock_spec(mut self, path: impl Into<Cow<'static, str>>) -> Self {
+        self.mock_spec_path = path.into();
         self
     }
 
     /// Set the DAG builder call expression.
-    pub fn dag_builder(mut self, call: &str) -> Self {
-        self.dag_builder_call = call.to_string();
+    pub fn dag_builder(mut self, call: impl Into<Cow<'static, str>>) -> Self {
+        self.dag_builder_call = call.into();
         self
     }
 
     /// Set the signature function path.
-    pub fn signature(mut self, path: &str) -> Self {
-        self.signature_path = Some(path.to_string());
+    pub fn signature(mut self, path: impl Into<Cow<'static, str>>) -> Self {
+        self.signature_path = Some(path.into());
         self
     }
 
@@ -144,19 +149,19 @@ impl TestgenTargetDef {
 
 impl ToolDef {
     pub fn new(
-        crate_name: &str,
-        tool_name: &str,
-        description: &str,
-        graph_builder_call: &str,
-        graph_builder_args: &str,
+        crate_name: impl Into<Cow<'static, str>>,
+        tool_name: impl Into<Cow<'static, str>>,
+        description: impl Into<Cow<'static, str>>,
+        graph_builder_call: impl Into<Cow<'static, str>>,
+        graph_builder_args: impl Into<Cow<'static, str>>,
     ) -> Self {
         Self {
             meta: ToolMeta {
-                crate_name: crate_name.to_string(),
-                tool_name: tool_name.to_string(),
-                description: description.to_string(),
-                graph_builder_call: graph_builder_call.to_string(),
-                graph_builder_args: graph_builder_args.to_string(),
+                crate_name: crate_name.into(),
+                tool_name: tool_name.into(),
+                description: description.into(),
+                graph_builder_call: graph_builder_call.into(),
+                graph_builder_args: graph_builder_args.into(),
                 returns_result: false,
                 success_port: None,
                 enable_step_mode: false,
@@ -177,8 +182,8 @@ impl ToolDef {
 
     /// Set the output port to check for success.
     /// If this port is false, the CLI exits with code 1.
-    pub fn check_success(mut self, port_name: &str) -> Self {
-        self.meta.success_port = Some(port_name.to_string());
+    pub fn check_success(mut self, port_name: impl Into<Cow<'static, str>>) -> Self {
+        self.meta.success_port = Some(port_name.into());
         self
     }
 
@@ -195,14 +200,14 @@ impl ToolDef {
     }
 
     /// Set a custom import line.
-    pub fn import(mut self, import_line: &str) -> Self {
-        self.custom_import = Some(import_line.to_string());
+    pub fn import(mut self, import_line: impl Into<String>) -> Self {
+        self.custom_import = Some(import_line.into());
         self
     }
 
     /// Add an output artifact (file or directory produced by this tool).
-    pub fn output(mut self, path: &str) -> Self {
-        self.outputs.push(path.to_string());
+    pub fn output(mut self, path: impl Into<String>) -> Self {
+        self.outputs.push(path.into());
         self
     }
 
@@ -218,8 +223,8 @@ impl ToolDef {
     }
 
     /// Set the mock_spec_call expression for dry-run boundary mocking.
-    pub fn mock_spec_call(mut self, call: &str) -> Self {
-        self.meta.mock_spec_call = Some(call.to_string());
+    pub fn mock_spec_call(mut self, call: impl Into<Cow<'static, str>>) -> Self {
+        self.meta.mock_spec_call = Some(call.into());
         self
     }
 }

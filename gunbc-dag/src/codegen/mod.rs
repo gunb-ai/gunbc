@@ -5,6 +5,7 @@
 pub mod graph;
 pub mod ops;
 
+pub use crate::dsl_builder::build_codegen_graph_dsl;
 pub use graph::{
     build_codegen_graph, build_codegen_graph_with_mode, codegen_signature, CodegenGraphOp,
 };

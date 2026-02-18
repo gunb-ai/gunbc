@@ -126,6 +126,7 @@ enum HandlerKind {
     CompareContent,
     ExecuteTransport,
     Collection,
+    DeferredCallable,
 }
 
 impl HandlerKind {
@@ -160,6 +161,7 @@ impl HandlerKind {
             Self::CompareContent => "CompareContent",
             Self::ExecuteTransport => "ExecuteTransport",
             Self::Collection => "Collection",
+            Self::DeferredCallable => "DeferredCallable",
         }
     }
 }
@@ -223,11 +225,13 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
         return Some(HandlerKind::from_runtime_id(runtime_id));
     }
 
-    let LoweredOp::Callable { module, name, .. } = op else {
-        return None;
+    let (module, name) = match op {
+        LoweredOp::Callable { module, name, .. } => (module.as_str(), name.as_str()),
+        LoweredOp::Pipeline { module, name, .. } => (module.as_str(), name.as_str()),
+        _ => return None,
     };
 
-    match (module.as_str(), name.as_str()) {
+    match (module, name) {
         ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
             Some(HandlerKind::RenderPragmaAllowlist)
@@ -249,8 +253,30 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
         _ if name.starts_with("content_upsert::execute_") && name.ends_with("_transport") => {
             Some(HandlerKind::ExecuteTransport)
         }
+        _ if is_deferred_callable_module(module) => Some(HandlerKind::DeferredCallable),
         _ => None,
     }
+}
+
+fn is_deferred_callable_module(module: &str) -> bool {
+    matches!(
+        module,
+        "tools.build"
+            | "tools.codegen"
+            | "tools.bootstrap"
+            | "tools.docgen"
+            | "tools.testgen"
+            | "tools.clippy"
+            | "tools.deps"
+            | "pipelines.ci"
+            | "shared.dag_util"
+            | "std.patterns"
+            | "std.resources"
+            | "services.shell"
+            | "services.cargo"
+            | "services.gcp.secret_manager"
+            | "services.gcp.sts"
+    )
 }
 
 // ===========================================================================
@@ -545,6 +571,12 @@ fn handler_body(kind: HandlerKind) -> &'static str {
     OutputMap::new().value("items", items).ok()
 "##
         }
+        HandlerKind::DeferredCallable => {
+            r##"    Err(ExecError::new(
+        "deferred callable is not runtime-mapped yet for exec-runtime generation",
+    ))
+"##
+        }
     }
 }
 
@@ -590,24 +622,27 @@ fn emit_cargo_toml(
         .ok();
 
     let mut deps = String::new();
-    deps.push_str(&format!(
-        "gunbc-ir = {{ path = \"{}\" }}\n",
+    let _ = writeln!(
+        deps,
+        "gunbc-ir = {{ path = \"{}\" }}",
         dependency_path(layout.as_ref(), output_dir, "gunbc-ir", "../../core/ir")
-    ));
-    deps.push_str(&format!(
-        "gunbc-exec = {{ path = \"{}\" }}\n",
+    );
+    let _ = writeln!(
+        deps,
+        "gunbc-exec = {{ path = \"{}\" }}",
         dependency_path(layout.as_ref(), output_dir, "gunbc-exec", "../../core/exec")
-    ));
+    );
     if needs_helper {
-        deps.push_str(&format!(
-            "gunbc-lib-transport = {{ path = \"{}\" }}\n",
+        let _ = writeln!(
+            deps,
+            "gunbc-lib-transport = {{ path = \"{}\" }}",
             dependency_path(
                 layout.as_ref(),
                 output_dir,
                 "gunbc-lib-transport",
                 "../../lib/transport"
             )
-        ));
+        );
     }
     if needs_serde_json {
         deps.push_str("serde_json = \"1\"\n");
@@ -772,6 +807,7 @@ fn build_exec_runtime_source(
         let mut pragma_text = String::new();
         emit_pragma_helpers(&mut pragma_text);
         let trimmed = pragma_text.trim().to_string();
+        // Raw because pragma helpers are emitted as a preformatted Rust text block.
         items.push(Item::Raw(trimmed));
     }
 
@@ -822,19 +858,16 @@ fn build_executable_impl_raw(kinds: &BTreeSet<HandlerKind>) -> gunbc_ir::code_ir
     writeln!(text, "        }}").unwrap();
     writeln!(text, "    }}").unwrap();
     write!(text, "}}").unwrap();
+    // Raw because Code IR lacks direct nodes for this generated impl/match layout.
     gunbc_ir::code_ir::Item::Raw(text)
 }
 
 fn build_handler_fn_raw(kind: HandlerKind) -> gunbc_ir::code_ir::Item {
     let fn_name = format!("execute_{}", to_snake(kind.variant_name()));
     let body = handler_body(kind);
-    let params = if body.contains("inputs.get(") {
-        "inputs: HashMap<String, Value>"
-    } else {
-        "_inputs: HashMap<String, Value>"
-    };
+    // Raw because handler bodies are authored as raw Rust snippets for exact control flow.
     gunbc_ir::code_ir::Item::Raw(format!(
-        "fn {fn_name}({params}) -> Result<HashMap<String, Value>, ExecError> {{\n{body}}}"
+        "fn {fn_name}(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {{\n    let _ = &inputs;\n{body}}}"
     ))
 }
 
@@ -870,6 +903,7 @@ fn build_file_request_helper_raw() -> gunbc_ir::code_ir::Item {
     .unwrap();
     writeln!(text, "    }}").unwrap();
     write!(text, "}}").unwrap();
+    // Raw because this helper requires a handwritten nested match shape.
     gunbc_ir::code_ir::Item::Raw(text)
 }
 
@@ -1010,6 +1044,7 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
     writeln!(text, "    }}").unwrap();
     write!(text, "}}").unwrap();
 
+    // Raw because main() is emitted as a single procedural text template.
     gunbc_ir::code_ir::Item::Raw(text)
 }
 
@@ -1216,6 +1251,34 @@ mod tests {
         assert!(
             matches!(err, ExecRuntimeError::UnresolvableNode { .. }),
             "should be UnresolvableNode error"
+        );
+    }
+
+    #[test]
+    fn emit_exec_runtime_defers_supported_unmapped_modules() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "tools.build::build_all",
+            vec![Port::scalar("__deps", "Any")],
+            vec![Port::scalar("return", "Json")],
+            LoweredOp::Callable {
+                module: "tools.build".to_string(),
+                kind: CallableKind::Func,
+                name: "build_all".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+            },
+        ));
+
+        let files = emit_exec_runtime(&dag, "tools.build").expect("deferred emit should succeed");
+        let main_rs = &files[0].content;
+        assert!(
+            main_rs.contains("DeferredCallable"),
+            "generated runtime should include DeferredCallable handler"
+        );
+        assert!(
+            main_rs.contains("deferred callable is not runtime-mapped yet"),
+            "deferred handler should emit explicit runtime error message"
         );
     }
 

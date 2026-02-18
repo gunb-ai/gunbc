@@ -82,7 +82,8 @@ pub fn build_secrets_provision_dag_from_spec_with_filter(
         .filter(|s| s.status == SecretStatus::Active && filter.includes(s.secret_id))
     {
         base_config.secret.name = secret.secret_id.to_string();
-        let secret_subdag = build_cloud_secret_manager_upsert_graph_from_config(&base_config);
+        let secret_subdag = build_cloud_secret_manager_upsert_graph_from_config(&base_config)
+            .map_err(|e| format!("failed to build upsert graph: {}", e))?;
         let node_id = format!("provision_{}", secret.secret_id.replace('-', "_"));
         builder
             .add_root_node(Node::subdag(node_id.as_str(), secret_subdag))

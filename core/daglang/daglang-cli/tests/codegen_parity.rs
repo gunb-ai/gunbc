@@ -154,7 +154,7 @@ fn run_makegen_generated_rust_layer1(crate_out_dir: &Path) -> RuntimeOutcome {
         };
     }
     let generated_path = output_dir.join("Makefile.generated");
-    let generated_path_arg = generated_path.to_string_lossy().into_owned();
+    let generated_path_arg = generated_path.display().to_string();
 
     let mut run_cmd = Command::new("cargo");
     if let Err(error) = std::fs::copy(

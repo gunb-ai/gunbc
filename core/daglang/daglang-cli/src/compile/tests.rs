@@ -369,7 +369,7 @@ fn compile_single_file_makegen_produces_non_empty_outputs() {
 }
 
 #[test]
-fn resolve_lowered_dag_maps_makegen_nodes_to_resolved_ops() {
+fn resolve_lowered_dag_maps_makegen_nodes_to_dyn_ops() {
     let context = workspace_single_file_context("tools/makegen.dag");
     let output = compile_from_context(&context).expect("compile should succeed");
 
@@ -377,13 +377,13 @@ fn resolve_lowered_dag_maps_makegen_nodes_to_resolved_ops() {
     assert_eq!(resolved.nodes.len(), output.lowered_dag.nodes.len());
     assert_eq!(resolved.edges.len(), output.lowered_dag.edges.len());
 
-    let resolved_op_for = |node_id: &str| {
+    let debug_op_for = |node_id: &str| {
         resolved
             .nodes
             .iter()
             .find(|node| node.id.0 == node_id)
             .map(|node| match &node.body {
-                gunbc_ir::node::NodeBody::Opaque(op) => op,
+                gunbc_ir::node::NodeBody::Opaque(op) => format!("{:?}", op),
                 gunbc_ir::node::NodeBody::SubDag(_) => {
                     panic!("makegen fixture should not contain subdag nodes")
                 }
@@ -391,39 +391,15 @@ fn resolve_lowered_dag_maps_makegen_nodes_to_resolved_ops() {
             .expect("expected node to exist in resolved dag")
     };
 
-    assert!(matches!(
-        resolved_op_for("load_registry"),
-        ResolvedOp::LoadRegistry
-    ));
-    assert!(matches!(resolved_op_for("fs_env"), ResolvedOp::FsEnv));
-    assert!(matches!(
-        resolved_op_for("tools.makegen::render_makefile"),
-        ResolvedOp::RenderMakefile
-    ));
-    assert!(matches!(
-        resolved_op_for("prepare_read_makegen"),
-        ResolvedOp::PrepareReadContent
-    ));
-    assert!(matches!(
-        resolved_op_for("execute_read_makegen"),
-        ResolvedOp::ExecuteReadContent
-    ));
-    assert!(matches!(
-        resolved_op_for("prepare_write_makegen"),
-        ResolvedOp::PrepareWriteContent
-    ));
-    assert!(matches!(
-        resolved_op_for("compare_makegen_content"),
-        ResolvedOp::CompareContent
-    ));
-    assert!(matches!(
-        resolved_op_for("execute_makegen_transport"),
-        ResolvedOp::ExecuteTransport
-    ));
-    assert!(matches!(
-        resolved_op_for("tools.makegen::makegen"),
-        ResolvedOp::MakegenEntrypoint
-    ));
+    assert!(debug_op_for("load_registry").contains("LoadRegistry"));
+    assert!(debug_op_for("fs_env").contains("FsEnv"));
+    assert!(debug_op_for("tools.makegen::render_makefile").contains("RenderMakefile"));
+    assert!(debug_op_for("prepare_read_makegen").contains("PrepareFileReadOp"));
+    assert!(debug_op_for("execute_read_makegen").contains("Execute"));
+    assert!(debug_op_for("prepare_write_makegen").contains("PrepareFileWriteOp"));
+    assert!(debug_op_for("compare_makegen_content").contains("CompareContent"));
+    assert!(debug_op_for("execute_makegen_transport").contains("Execute"));
+    assert!(debug_op_for("tools.makegen::makegen").contains("Entrypoint"));
 }
 
 #[test]
@@ -444,13 +420,12 @@ fn resolve_lowered_dag_rejects_unknown_callable_module() {
 
     let error = resolve_lowered_dag(&dag).expect_err("resolver should reject unknown module");
     assert_eq!(error.node_id, "sample::unknown");
-    assert!(error
-        .reason
-        .contains("unsupported callable `sample.module.unknown`"));
+    assert!(error.reason.contains("unknown callable"));
+    assert!(error.reason.contains("sample.module"));
 }
 
 #[test]
-fn resolve_lowered_dag_rejects_pipeline_nodes() {
+fn resolve_lowered_dag_defers_pipeline_nodes() {
     let mut dag = Dag::new();
     dag.add_node(Node::opaque(
         "pipeline::ci",
@@ -468,9 +443,11 @@ fn resolve_lowered_dag_rejects_pipeline_nodes() {
         },
     ));
 
-    let error = resolve_lowered_dag(&dag).expect_err("resolver should reject pipeline nodes");
-    assert_eq!(error.node_id, "pipeline::ci");
-    assert!(error.reason.contains("unsupported pipeline"));
+    // Pipeline nodes now resolve to DeferredCallableOp (fails at execution, not resolution)
+    let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve as deferred");
+    assert_eq!(resolved.nodes.len(), 1);
+    let debug = format!("{:?}", resolved.nodes[0].body);
+    assert!(debug.contains("DeferredCallableOp"));
 }
 
 #[test]

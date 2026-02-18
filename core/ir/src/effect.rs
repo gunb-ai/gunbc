@@ -128,7 +128,10 @@ mod tests {
         assert_eq!(Effect::PURE.to_string(), "Pure");
         assert_eq!(Effect::READ.to_string(), "Read");
         assert_eq!(Effect::WRITE.to_string(), "Write");
-        assert_eq!(Effect::WRITE_DETERMINISTIC.to_string(), "WriteDeterministic");
+        assert_eq!(
+            Effect::WRITE_DETERMINISTIC.to_string(),
+            "WriteDeterministic"
+        );
     }
 
     #[test]

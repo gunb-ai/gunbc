@@ -838,6 +838,10 @@ mod tests {
             "test should depend on build and verify-fix (testgen is included in build)"
         );
         assert!(makefile.contains("cargo test"));
+        assert!(makefile.contains("test-integration: build verify-fix"));
+        assert!(makefile.contains("cargo test integration"));
+        assert!(makefile.contains("test-external: build verify-fix"));
+        assert!(makefile.contains("cargo test live_flow"));
 
         assert!(makefile.contains("check: ensure-codegen"));
         assert!(makefile.contains("cargo check --all-targets"));

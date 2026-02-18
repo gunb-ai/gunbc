@@ -20,7 +20,7 @@
 use crate::transport::{TransportRequest, TransportResponse};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
-use std::fmt;
+use std::fmt::{self, Write as _};
 
 /// Shared maximum line count for human-readable text truncation.
 pub const HUMAN_TEXT_MAX_LINES: usize = 40;
@@ -556,7 +556,7 @@ impl Value {
                     }
                     out.push('\n');
                 }
-                out.push_str(&format!("    ... ({omitted} lines omitted) ..."));
+                let _ = write!(&mut out, "    ... ({omitted} lines omitted) ...");
                 out.push('\n');
                 for (i, line) in lines[lines.len() - tail..].iter().enumerate() {
                     if line.len() > max_line_width {

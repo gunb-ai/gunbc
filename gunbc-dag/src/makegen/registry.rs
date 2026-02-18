@@ -24,7 +24,7 @@ use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::ShellRequest;
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // ============================================================================
 // Build Configuration - Single source of truth for build commands
@@ -637,8 +637,8 @@ impl ToolInfo {
         let invocation = def.invocation.as_ref()?;
         let mut info = Self {
             invocation: invocation.clone(),
-            short_name: def.meta.tool_name.clone(),
-            description: def.meta.description.clone(),
+            short_name: def.meta.tool_name.to_string(),
+            description: def.meta.description.to_string(),
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
             has_declarative_dag: def.meta.tool_name == "makegen",
@@ -898,6 +898,10 @@ impl FixAlias {
 pub enum ConfigField {
     /// Use test_command
     Test,
+    /// Use test_command filtered to integration-oriented tests.
+    TestIntegration,
+    /// Use test_command filtered to external/live-flow tests.
+    TestExternal,
     /// Use lint_command
     Lint,
     /// Use fmt_command
@@ -911,10 +915,19 @@ pub enum ConfigField {
 }
 
 impl ConfigField {
+    fn with_test_filter(cmd: String, filter: &str) -> String {
+        let base = cmd.strip_prefix('@').unwrap_or(&cmd);
+        format!("@{} {}", base, filter)
+    }
+
     /// Get the command from BuildConfig for this field.
     pub fn get_command(&self, config: &BuildConfig) -> String {
         match self {
             ConfigField::Test => config.test_shell(),
+            ConfigField::TestIntegration => {
+                Self::with_test_filter(config.test_shell(), "integration")
+            }
+            ConfigField::TestExternal => Self::with_test_filter(config.test_shell(), "live_flow"),
             ConfigField::Lint => config.lint_shell(),
             ConfigField::Fmt => config.fmt_shell(),
             ConfigField::Check => config.check_shell(),
@@ -1110,6 +1123,24 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
             .with_command_prefix("GUNBC_TEST_MAX_COST=XL")
             .needs(compiled_code_resource_id(), ExecMode::Ensure)
             .needs(verified_artifacts_resource_id(), ExecMode::Ensure),
+        // test-integration - run integration-oriented test subset.
+        MetaTarget::new(
+            "test-integration",
+            "Run integration-focused tests",
+            ConfigField::TestIntegration,
+        )
+        .with_command_prefix("GUNBC_TEST_MAX_COST=XL")
+        .needs(compiled_code_resource_id(), ExecMode::Ensure)
+        .needs(verified_artifacts_resource_id(), ExecMode::Ensure),
+        // test-external - run external/live-flow test subset.
+        MetaTarget::new(
+            "test-external",
+            "Run external/live-flow tests",
+            ConfigField::TestExternal,
+        )
+        .with_command_prefix("GUNBC_TEST_MAX_COST=XL")
+        .needs(compiled_code_resource_id(), ExecMode::Ensure)
+        .needs(verified_artifacts_resource_id(), ExecMode::Ensure),
         // check - type check without building (requires codegen + pragma)
         // check-fix: fmt-fix first, then check
         MetaTarget::new("check", "Type check all targets", ConfigField::Check)
@@ -1263,7 +1294,7 @@ fn dsl_pipelines_root() -> PathBuf {
 }
 
 #[allow(clippy::disallowed_methods)] // Build-time DSL module discovery (not runtime I/O)
-fn discover_dsl_modules(root: &PathBuf, module_kind: &str) -> BTreeSet<String> {
+fn discover_dsl_modules(root: &Path, module_kind: &str) -> BTreeSet<String> {
     let entries = fs::read_dir(root).unwrap_or_else(|error| {
         panic!(
             "failed to read DSL {module_kind} discovery root for makegen registry ({}): {error}",
@@ -1489,9 +1520,11 @@ mod tests {
     fn test_default_meta_targets() {
         let targets = default_meta_targets();
 
-        // Should have test, test-all, check, clippy, fmt
+        // Should have test, test-all, integration/external slices, check, clippy, fmt
         assert!(targets.iter().any(|t| t.name == "test"));
         assert!(targets.iter().any(|t| t.name == "test-all"));
+        assert!(targets.iter().any(|t| t.name == "test-integration"));
+        assert!(targets.iter().any(|t| t.name == "test-external"));
         assert!(targets.iter().any(|t| t.name == "check"));
         assert!(targets.iter().any(|t| t.name == "clippy"));
         assert!(targets.iter().any(|t| t.name == "fmt"));
@@ -1509,10 +1542,45 @@ mod tests {
         let fmt = targets.iter().find(|t| t.name == "fmt").unwrap();
         assert!(fmt.resources.is_empty());
 
+        let integration = targets
+            .iter()
+            .find(|t| t.name == "test-integration")
+            .unwrap();
+        assert_eq!(integration.resources.len(), 2);
+        assert_eq!(integration.resources[0].id, compiled_code_resource_id());
+        assert_eq!(
+            integration.resources[1].id,
+            verified_artifacts_resource_id()
+        );
+
+        let external = targets.iter().find(|t| t.name == "test-external").unwrap();
+        assert_eq!(external.resources.len(), 2);
+        assert_eq!(external.resources[0].id, compiled_code_resource_id());
+        assert_eq!(external.resources[1].id, verified_artifacts_resource_id());
+
         let clippy = targets.iter().find(|t| t.name == "clippy").unwrap();
         assert_eq!(clippy.resources.len(), 2);
         assert_eq!(clippy.resources[0].id, generated_cli_resource_id());
         assert_eq!(clippy.resources[1].base_mode, ExecMode::Verify);
+    }
+
+    #[test]
+    fn test_filtered_test_targets_use_expected_filters() {
+        let targets = default_meta_targets();
+        let config = BuildConfig::cargo();
+
+        let integration = targets
+            .iter()
+            .find(|t| t.name == "test-integration")
+            .unwrap();
+        let integration_cmd = integration.get_command(&config);
+        assert!(integration_cmd.contains("GUNBC_TEST_MAX_COST=XL"));
+        assert!(integration_cmd.contains("cargo test integration"));
+
+        let external = targets.iter().find(|t| t.name == "test-external").unwrap();
+        let external_cmd = external.get_command(&config);
+        assert!(external_cmd.contains("GUNBC_TEST_MAX_COST=XL"));
+        assert!(external_cmd.contains("cargo test live_flow"));
     }
 
     #[test]

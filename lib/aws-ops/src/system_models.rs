@@ -29,8 +29,7 @@ pub fn build_aws_secrets_manager_model() -> SystemModel {
             Invocation::Rest {
                 method: "POST".to_string(),
                 path: "/".to_string(),
-                docs: "https://docs.aws.amazon.com/secretsmanager/latest/apireference/"
-                    .to_string(),
+                docs: "https://docs.aws.amazon.com/secretsmanager/latest/apireference/".to_string(),
             },
         )
         .with_inputs(vec![BehaviorInput::required("secret_id", ty("String"))])
@@ -42,8 +41,7 @@ pub fn build_aws_secrets_manager_model() -> SystemModel {
             Invocation::Rest {
                 method: "POST".to_string(),
                 path: "/".to_string(),
-                docs: "https://docs.aws.amazon.com/secretsmanager/latest/apireference/"
-                    .to_string(),
+                docs: "https://docs.aws.amazon.com/secretsmanager/latest/apireference/".to_string(),
             },
         )
         .with_inputs(vec![
@@ -58,8 +56,7 @@ pub fn build_aws_secrets_manager_model() -> SystemModel {
             Invocation::Rest {
                 method: "POST".to_string(),
                 path: "/".to_string(),
-                docs: "https://docs.aws.amazon.com/secretsmanager/latest/apireference/"
-                    .to_string(),
+                docs: "https://docs.aws.amazon.com/secretsmanager/latest/apireference/".to_string(),
             },
         )
         .with_inputs(vec![
@@ -74,8 +71,7 @@ pub fn build_aws_secrets_manager_model() -> SystemModel {
             Invocation::Rest {
                 method: "POST".to_string(),
                 path: "/".to_string(),
-                docs: "https://docs.aws.amazon.com/secretsmanager/latest/apireference/"
-                    .to_string(),
+                docs: "https://docs.aws.amazon.com/secretsmanager/latest/apireference/".to_string(),
             },
         )
         .with_inputs(vec![BehaviorInput::required("secret_id", ty("String"))])
@@ -87,8 +83,7 @@ pub fn build_aws_secrets_manager_model() -> SystemModel {
             Invocation::Rest {
                 method: "POST".to_string(),
                 path: "/".to_string(),
-                docs: "https://docs.aws.amazon.com/secretsmanager/latest/apireference/"
-                    .to_string(),
+                docs: "https://docs.aws.amazon.com/secretsmanager/latest/apireference/".to_string(),
             },
         )
         .with_inputs(vec![

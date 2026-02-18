@@ -21,7 +21,7 @@ fn test_github_live_rate_limit() {
         return;
     }
 
-    let dag = build_github_credential_graph();
+    let dag = build_github_credential_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::Real).expect("live GitHub request should run");
 
     let parse = log

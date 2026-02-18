@@ -215,7 +215,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             });
             let normalized_output_path =
                 path_utils::normalize_cli_path(cwd, &PathBuf::from(&parsed.output_path));
-            let output_path_str = normalized_output_path.to_string_lossy().to_string();
+            let output_path_str = normalized_output_path.to_string_lossy().into_owned();
             let input_mocks = makegen_entrypoint_mocks(&output_path_str);
             let mode = match parsed.mode {
                 RunMode::Real => ExecutionMode::Real,

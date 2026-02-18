@@ -18,6 +18,7 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut no_boundary_tests = false;
     let mut no_chain_tests = false;
     let mut skip = false;
+    let mut returns_result = false;
     let mut window_max_nodes: Option<usize> = None;
     let mut test_class: Option<syn::LitStr> = None;
     let mut fermi_cost: Option<syn::LitStr> = None;
@@ -279,6 +280,7 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                         "no_boundary_tests" => no_boundary_tests = true,
                         "no_chain_tests" => no_chain_tests = true,
                         "skip" => skip = true,
+                        "returns_result" => returns_result = true,
                         _ => {
                             return syn::Error::new_spanned(path, "unknown testgen_target flag")
                                 .to_compile_error()
@@ -515,17 +517,24 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
         quote!(None)
     };
 
+    let builder_unwrap = if returns_result {
+        let expect_msg = format!("testgen_target builder `{}` failed", fn_ident);
+        quote! { (#builder).expect(#expect_msg) }
+    } else {
+        quote! { #builder }
+    };
+
     let expanded = quote! {
         #input_fn
 
         fn #gen_ident(config: &gunbc_testgen_registry::TestgenTargetDef) -> String {
-            let dag = #builder;
+            let dag = #builder_unwrap;
             let spec = #fn_ident();
             gunbc_testgen_registry::generate_target(config, dag, spec)
         }
 
         fn #resource_gen_ident() -> gunbc_ir::Dag<()> {
-            let dag = #builder;
+            let dag = #builder_unwrap;
             let mut mapper = |_| ();
             dag.map_ops(&mut mapper)
         }
@@ -534,7 +543,7 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
             gunbc_testgen_registry::DagSpecDef {
                 origin_crate: env!("CARGO_CRATE_NAME"),
                 name: #name,
-                dag_builder_call: stringify!(#builder),
+                dag_builder_call: stringify!(#builder_unwrap),
                 mock_spec_path: concat!(module_path!(), "::", stringify!(#fn_ident), "()"),
                 signature_path: #signature_tokens,
                 meta: gunbc_testgen_registry::DagSpecMeta {
@@ -582,6 +591,7 @@ pub fn resource_test_target(args: TokenStream, input: TokenStream) -> TokenStrea
     let mut name: Option<syn::LitStr> = None;
     let mut builder: Option<Expr> = None;
     let mut skip = false;
+    let mut returns_result = false;
 
     for arg in args {
         match arg {
@@ -643,6 +653,7 @@ pub fn resource_test_target(args: TokenStream, input: TokenStream) -> TokenStrea
                 if let Some(ident) = path.get_ident() {
                     match ident.to_string().as_str() {
                         "skip" => skip = true,
+                        "returns_result" => returns_result = true,
                         _ => {
                             return syn::Error::new_spanned(
                                 path,
@@ -692,11 +703,18 @@ pub fn resource_test_target(args: TokenStream, input: TokenStream) -> TokenStrea
     let fn_ident = input_fn.sig.ident.clone();
     let gen_ident = format_ident!("__resource_test_build_{}", fn_ident);
 
+    let builder_call = if returns_result {
+        let expect_msg = format!("resource_test_target builder `{}` failed", fn_ident);
+        quote! { (#builder).expect(#expect_msg) }
+    } else {
+        quote! { #builder }
+    };
+
     let expanded = quote! {
         #input_fn
 
         fn #gen_ident() -> gunbc_ir::Dag<()> {
-            let dag = #builder;
+            let dag = #builder_call;
             let mut mapper = |_| ();
             dag.map_ops(&mut mapper)
         }

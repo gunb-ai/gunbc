@@ -30,7 +30,7 @@ fn derive_tool_defs_matches_inventory() {
     let _: fn() = bootstrap_tool;
 
     let tools = derive_tool_defs();
-    let tool_names: HashSet<&str> = tools.iter().map(|t| t.meta.tool_name.as_str()).collect();
+    let tool_names: HashSet<&str> = tools.iter().map(|t| t.meta.tool_name.as_ref()).collect();
     let reg_names: HashSet<&str> = iter_tool_targets().map(|r| r.tool_name).collect();
 
     // derive_tool_defs and inventory must agree

@@ -15,7 +15,8 @@ use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
 use gunbc_ir::transport::github::api::github_rest_request;
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::{
-    add_transport_triplet_named_with_passthrough, AccessMode, Dag, DagBuilder, Node, Value,
+    add_transport_triplet_named_with_passthrough, AccessMode, BuilderError, Dag, DagBuilder, Node,
+    Value,
 };
 use gunbc_lib_transport::TransportOps;
 use std::collections::HashMap;
@@ -75,156 +76,124 @@ pub enum GitHubCredentialGraphOp {
 /// Build a minimal GitHub credential lifecycle graph.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "github-credential-graph",
-    builder = "build_github_credential_graph()"
+    builder = "build_github_credential_graph()",
+    returns_result
 )]
-pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
+pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, BuilderError> {
     let config = graph_cloud_config();
     let mut builder: DagBuilder<GitHubCredentialGraphOp> = DagBuilder::new();
 
     // Cloud environment — pre-resolved config (no env var reads).
-    let cloud_env = builder
-        .add_root_node(Node::opaque(
-            "cloud_env",
-            vec![],
-            vec![
-                port("config", "CloudSecretConfig"),
-                optional("request_url", "OptionalString"),
-                optional("request_token", "OptionalString"),
-            ],
-            GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-                CloudOps::ConstCloudConfig {
-                    config: config.clone(),
-                },
-            )),
-        ))
-        .expect("cloud_env node");
+    let cloud_env = builder.add_root_node(Node::opaque(
+        "cloud_env",
+        vec![],
+        vec![
+            port("config", "CloudSecretConfig"),
+            optional("request_url", "OptionalString"),
+            optional("request_token", "OptionalString"),
+        ],
+        GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
+            CloudOps::ConstCloudConfig {
+                config: config.clone(),
+            },
+        )),
+    ))?;
 
     // Resolve auth (pure).
-    let resolve_auth = builder
-        .add_root_node(Node::opaque(
-            "resolve_auth",
-            vec![],
-            vec![
-                port("service", "String"),
-                port("secret_name", "String"),
-                port("scheme", "String"),
-                port("header_name", "String"),
-                list("required_scopes", "String"),
-                port("interactive_allowed", "Bool"),
-            ],
-            GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::ResolveAuth),
-        ))
-        .expect("resolve_auth node");
+    let resolve_auth = builder.add_root_node(Node::opaque(
+        "resolve_auth",
+        vec![],
+        vec![
+            port("service", "String"),
+            port("secret_name", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+            list("required_scopes", "String"),
+            port("interactive_allowed", "Bool"),
+        ],
+        GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::ResolveAuth),
+    ))?;
 
     // Bind secret name into the cloud config.
-    let bind_secret = builder
-        .add_node_after_all(
-            Node::opaque(
-                "bind_secret",
-                vec![
-                    port("config", "CloudSecretConfig"),
-                    port("service", "String"),
-                    optional("secret_name", "OptionalString"),
-                ],
-                vec![port("config", "CloudSecretConfig")],
-                GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-                    CloudOps::BindSecretName,
-                )),
-            ),
-            &[&cloud_env, &resolve_auth],
-        )
-        .expect("bind_secret node");
+    let bind_secret = builder.add_node_after_all(
+        Node::opaque(
+            "bind_secret",
+            vec![
+                port("config", "CloudSecretConfig"),
+                port("service", "String"),
+                optional("secret_name", "OptionalString"),
+            ],
+            vec![port("config", "CloudSecretConfig")],
+            GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
+                CloudOps::BindSecretName,
+            )),
+        ),
+        &[&cloud_env, &resolve_auth],
+    )?;
 
-    builder
-        .add_edge(cloud_env.out("config"), bind_secret.in_port("config"))
-        .expect("cloud_env.config -> bind_secret.config");
-    builder
-        .add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))
-        .expect("resolve_auth.service -> bind_secret.service");
-    builder
-        .add_edge(
-            resolve_auth.out("secret_name"),
-            bind_secret.in_port("secret_name"),
-        )
-        .expect("resolve_auth.secret_name -> bind_secret.secret_name");
+    builder.add_edge(cloud_env.out("config"), bind_secret.in_port("config"))?;
+    builder.add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))?;
+    builder.add_edge(
+        resolve_auth.out("secret_name"),
+        bind_secret.in_port("secret_name"),
+    )?;
 
     // Cloud credential acquisition graph — dispatched from config.
     let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(
         &config,
-    ));
-    let cloud_credential = builder
-        .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)
-        .expect("cloud_credential node");
+    )?);
+    let cloud_credential =
+        builder.add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)?;
 
-    builder
-        .add_edge(
-            bind_secret.out("config"),
-            cloud_credential.in_port("config"),
-        )
-        .expect("bind_secret.config -> cloud_credential.config");
-    builder
-        .add_edge(
-            resolve_auth.out("service"),
-            cloud_credential.in_port("source_id"),
-        )
-        .expect("resolve_auth.service -> cloud_credential.source_id");
-    builder
-        .add_edge(
-            resolve_auth.out("scheme"),
-            cloud_credential.in_port("scheme"),
-        )
-        .expect("resolve_auth.scheme -> cloud_credential.scheme");
-    builder
-        .add_edge(
-            resolve_auth.out("header_name"),
-            cloud_credential.in_port("header_name"),
-        )
-        .expect("resolve_auth.header_name -> cloud_credential.header_name");
-    builder
-        .add_edge(
-            resolve_auth.out("interactive_allowed"),
-            cloud_credential.in_port("interactive_allowed"),
-        )
-        .expect("resolve_auth.interactive_allowed -> cloud_credential.interactive_allowed");
-    builder
-        .add_edge(
-            resolve_auth.out("required_scopes"),
-            cloud_credential.in_port("required_scopes"),
-        )
-        .expect("resolve_auth.required_scopes -> cloud_credential.required_scopes");
-    builder
-        .add_edge(
-            cloud_env.out("request_url"),
-            cloud_credential.in_port("request_url"),
-        )
-        .expect("cloud_env.request_url -> cloud_credential.request_url");
-    builder
-        .add_edge(
-            cloud_env.out("request_token"),
-            cloud_credential.in_port("request_token"),
-        )
-        .expect("cloud_env.request_token -> cloud_credential.request_token");
+    builder.add_edge(
+        bind_secret.out("config"),
+        cloud_credential.in_port("config"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("service"),
+        cloud_credential.in_port("source_id"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("scheme"),
+        cloud_credential.in_port("scheme"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("header_name"),
+        cloud_credential.in_port("header_name"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("interactive_allowed"),
+        cloud_credential.in_port("interactive_allowed"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("required_scopes"),
+        cloud_credential.in_port("required_scopes"),
+    )?;
+    builder.add_edge(
+        cloud_env.out("request_url"),
+        cloud_credential.in_port("request_url"),
+    )?;
+    builder.add_edge(
+        cloud_env.out("request_token"),
+        cloud_credential.in_port("request_token"),
+    )?;
 
     // Scope preflight: fail fast on invalid/missing required scope declarations.
-    let scope_preflight = builder
-        .add_node_after(
-            Node::opaque(
-                "scope_preflight",
-                vec![list("required_scopes", "String")],
-                vec![port("scope_verified", "Bool")],
-                GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-                    CloudOps::ScopePreflight,
-                )),
-            ),
-            &resolve_auth,
-        )
-        .expect("scope_preflight node");
-    builder
-        .add_edge(
-            resolve_auth.out("required_scopes"),
-            scope_preflight.in_port("required_scopes"),
-        )
-        .expect("resolve_auth.required_scopes -> scope_preflight.required_scopes");
+    let scope_preflight = builder.add_node_after(
+        Node::opaque(
+            "scope_preflight",
+            vec![list("required_scopes", "String")],
+            vec![port("scope_verified", "Bool")],
+            GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
+                CloudOps::ScopePreflight,
+            )),
+        ),
+        &resolve_auth,
+    )?;
+    builder.add_edge(
+        resolve_auth.out("required_scopes"),
+        scope_preflight.in_port("required_scopes"),
+    )?;
 
     // GitHub rate limit transport triplet.
     let triplet = add_transport_triplet_named_with_passthrough(
@@ -244,23 +213,18 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
         GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::ParseStatus),
         GitHubCredentialGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
-    )
-    .expect("transport triplet");
-    builder
-        .add_edge(
-            scope_preflight.out("scope_verified"),
-            triplet.in_port("scope_verified"),
-        )
-        .expect("scope_preflight.scope_verified -> execute.scope_verified");
+    )?;
+    builder.add_edge(
+        scope_preflight.out("scope_verified"),
+        triplet.in_port("scope_verified"),
+    )?;
 
-    builder
-        .add_edge(
-            cloud_credential.out("credential"),
-            triplet.in_port("res:credential"),
-        )
-        .expect("cloud_credential -> execute.res:credential");
+    builder.add_edge(
+        cloud_credential.out("credential"),
+        triplet.in_port("res:credential"),
+    )?;
 
-    builder.build()
+    Ok(builder.build())
 }
 
 fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<GitHubCredentialGraphOp> {

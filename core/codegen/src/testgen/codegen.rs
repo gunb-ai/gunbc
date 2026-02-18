@@ -50,7 +50,38 @@ type SeedClass = SemanticCarrierClass;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SeedContext {
-    RealSingleNodeRequiredInput,
+    RealSingleNode,
+    Scenario,
+    LiveFlow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SeedMatrix {
+    structural_policy: SeedPolicy,
+    semantic_policy: SeedPolicy,
+}
+
+const STRICT_REAL_SINGLE_NODE_SEED_MATRIX: SeedMatrix = SeedMatrix {
+    structural_policy: SeedPolicy::Generated,
+    semantic_policy: SeedPolicy::ExplicitSeedRequired,
+};
+
+const STRICT_SCENARIO_SEED_MATRIX: SeedMatrix = SeedMatrix {
+    structural_policy: SeedPolicy::Generated,
+    semantic_policy: SeedPolicy::ExplicitSeedRequired,
+};
+
+const STRICT_LIVE_FLOW_SEED_MATRIX: SeedMatrix = SeedMatrix {
+    structural_policy: SeedPolicy::Generated,
+    semantic_policy: SeedPolicy::ExplicitSeedRequired,
+};
+
+fn seed_matrix_for_context(context: SeedContext) -> SeedMatrix {
+    match context {
+        SeedContext::RealSingleNode => STRICT_REAL_SINGLE_NODE_SEED_MATRIX,
+        SeedContext::Scenario => STRICT_SCENARIO_SEED_MATRIX,
+        SeedContext::LiveFlow => STRICT_LIVE_FLOW_SEED_MATRIX,
+    }
 }
 
 fn seed_class_for_type(type_id: &str) -> SeedClass {
@@ -64,12 +95,16 @@ fn seed_policy_for_type(type_id: &str) -> SeedPolicy {
     }
 }
 
-fn requires_explicit_seed(type_id: &str, context: SeedContext) -> bool {
-    match context {
-        SeedContext::RealSingleNodeRequiredInput => {
-            seed_policy_for_type(type_id) == SeedPolicy::ExplicitSeedRequired
-        }
+fn seed_policy_for_context(type_id: &str, context: SeedContext) -> SeedPolicy {
+    let matrix = seed_matrix_for_context(context);
+    match seed_policy_for_type(type_id) {
+        SeedPolicy::Generated => matrix.structural_policy,
+        SeedPolicy::ExplicitSeedRequired => matrix.semantic_policy,
     }
+}
+
+fn requires_explicit_seed(type_id: &str, context: SeedContext) -> bool {
+    seed_policy_for_context(type_id, context) == SeedPolicy::ExplicitSeedRequired
 }
 
 fn mock_value_type_name(value: &Value) -> &'static str {
@@ -2390,10 +2425,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if port.name.0 == "skip" && port.type_id.0 == "Bool" {
                 continue;
             }
-            if !requires_explicit_seed(
-                port.type_id.0.as_str(),
-                SeedContext::RealSingleNodeRequiredInput,
-            ) {
+            if !requires_explicit_seed(port.type_id.0.as_str(), SeedContext::RealSingleNode) {
                 continue;
             }
             if !base_inputs.contains_key(&port.name.0)
@@ -2428,6 +2460,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         obligations: &ObligationSet,
         graph_builder_fn: &str,
     ) -> Option<TestSection> {
+        let _seed_matrix = seed_matrix_for_context(SeedContext::Scenario);
         let bucket = obligations.bucket_c();
         if bucket.is_empty() {
             return None;
@@ -3604,6 +3637,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         if !self.config.live_flow_tests {
             return None;
         }
+        let _seed_matrix = seed_matrix_for_context(SeedContext::LiveFlow);
 
         let has_satisfies = spec
             .live_expected_outputs
@@ -6632,12 +6666,70 @@ mod tests {
 
         assert!(requires_explicit_seed(
             "TransportResponse",
-            SeedContext::RealSingleNodeRequiredInput
+            SeedContext::RealSingleNode
         ));
         assert!(!requires_explicit_seed(
             "String",
-            SeedContext::RealSingleNodeRequiredInput
+            SeedContext::RealSingleNode
         ));
+    }
+
+    #[test]
+    fn test_seed_matrix_scenario_context() {
+        assert_eq!(
+            seed_policy_for_context("TransportResponse", SeedContext::Scenario),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(
+            seed_policy_for_context("String", SeedContext::Scenario),
+            SeedPolicy::Generated
+        );
+        assert!(requires_explicit_seed("Credential", SeedContext::Scenario));
+        assert!(!requires_explicit_seed(
+            "OptionalString",
+            SeedContext::Scenario
+        ));
+    }
+
+    #[test]
+    fn test_seed_matrix_live_flow_context() {
+        assert_eq!(
+            seed_policy_for_context("TransportRequest", SeedContext::LiveFlow),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(
+            seed_policy_for_context("Map<String,String>", SeedContext::LiveFlow),
+            SeedPolicy::Generated
+        );
+        assert!(requires_explicit_seed("Secret", SeedContext::LiveFlow));
+        assert!(!requires_explicit_seed("StringList", SeedContext::LiveFlow));
+    }
+
+    #[test]
+    fn test_seed_matrix_enforcement_consistent_across_contexts() {
+        let contexts = [
+            SeedContext::RealSingleNode,
+            SeedContext::Scenario,
+            SeedContext::LiveFlow,
+        ];
+
+        for context in contexts {
+            assert!(
+                requires_explicit_seed("TransportResponse", context),
+                "semantic carrier must require explicit seed in {:?}",
+                context
+            );
+            assert!(
+                !requires_explicit_seed("String", context),
+                "structural type should not require explicit seed in {:?}",
+                context
+            );
+            assert!(
+                requires_explicit_seed("SomeNewCarrierType", context),
+                "unknown types must fail closed in {:?}",
+                context
+            );
+        }
     }
 
     #[test]

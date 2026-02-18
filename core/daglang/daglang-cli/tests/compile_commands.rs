@@ -1153,7 +1153,7 @@ fn assert_compile_dag_extension_symlink_directory_variants() {
 /// Test absolute path variants for a single-target command using makegen.dag.
 fn assert_single_target_absolute_variants(command_name: &str, extra_args: &[&str]) {
     let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
+    let canonical_target = makegen_file().display().to_string();
 
     let variants: Vec<(&str, String)> = vec![
         (
@@ -1204,7 +1204,7 @@ fn assert_single_target_absolute_variants(command_name: &str, extra_args: &[&str
 fn assert_single_target_curdir_and_equiv_variants(command_name: &str, extra_args: &[&str]) {
     let root = workspace_root();
     let relative_target = "dsl/tools/makegen.dag";
-    let absolute_target = makegen_file().to_string_lossy().into_owned();
+    let absolute_target = makegen_file().display().to_string();
 
     // curdir_suffix
     assert_single_target_command_outputs_match_for_targets(
@@ -1303,7 +1303,7 @@ fn assert_single_target_dag_ext_directory_variants(command_name: &str, extra_arg
             );
 
             // Absolute
-            let abs_input = dag_dir.to_string_lossy().into_owned();
+            let abs_input = dag_dir.display().to_string();
             assert_single_target_command_treats_dag_directory_as_invalid_single_file_target_with_args(
                 command_name, &root, &abs_input, &dag_dir, None, extra_args,
             );
@@ -1380,7 +1380,7 @@ fn assert_single_target_dag_ext_symlink_fail_variants(command_name: &str, extra_
         assert!(!link_output.status.success(), "symlink variant should fail");
 
         // Relative and absolute equivalence for directory alias
-        let abs_dir = real_dir.to_string_lossy().into_owned();
+        let abs_dir = real_dir.display().to_string();
         let abs_dir_output = run_single_target_command(command_name, &root, &abs_dir, extra_args)
             .expect("failed to run abs directory variant");
         assert_eq!(
@@ -1393,7 +1393,7 @@ fn assert_single_target_dag_ext_symlink_fail_variants(command_name: &str, extra_
         );
 
         // Relative and absolute equivalence for symlink alias
-        let abs_link = link.to_string_lossy().into_owned();
+        let abs_link = link.display().to_string();
         let abs_link_output = run_single_target_command(command_name, &root, &abs_link, extra_args)
             .expect("failed to run abs symlink variant");
         assert_eq!(

@@ -31,13 +31,14 @@ fn mock_credential() -> Value {
 /// Mock spec for Azure Key Vault stub graph.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "azure-keyvault-stub",
-    builder = "crate::graph::build_azure_key_vault_credential_graph()"
+    builder = "crate::graph::build_azure_key_vault_credential_graph()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "azure-keyvault-stub",
     output = "lib/azure-ops/src/generated_tests.rs",
     module = "azure_keyvault_generated_tests",
-    builder = "crate::graph::build_azure_key_vault_credential_graph()",
+    builder = "crate::graph::build_azure_key_vault_credential_graph().expect(\"azure stub graph should build\")",
     no_boundary_tests
 )]
 pub fn azure_stub_mock_spec() -> MockSpec {

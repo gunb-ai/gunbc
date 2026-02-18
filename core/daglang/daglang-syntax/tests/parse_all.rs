@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
@@ -50,9 +51,9 @@ fn parse_all_golden_dag_files() {
     if !failures.is_empty() {
         let mut message = String::from("failed to parse golden .dag files:\n");
         for (file, errors) in failures {
-            message.push_str(&format!("- {file}\n"));
+            let _ = writeln!(&mut message, "- {file}");
             for error in errors {
-                message.push_str(&format!("    {error}\n"));
+                let _ = writeln!(&mut message, "    {error}");
             }
         }
         panic!("{message}");

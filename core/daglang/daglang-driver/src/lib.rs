@@ -569,7 +569,7 @@ fn validate_module_path_consistency(
             for component in relative.components() {
                 use std::path::Component;
                 if let Component::Normal(part) = component {
-                    inferred_segments.push(part.to_string_lossy().to_string());
+                    inferred_segments.push(part.to_string_lossy().into_owned());
                 }
             }
             if let Some(last) = inferred_segments.last_mut() {

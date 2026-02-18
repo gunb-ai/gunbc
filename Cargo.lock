@@ -140,11 +140,11 @@ dependencies = [
  "daglang-derive",
  "daglang-driver",
  "daglang-emit",
- "daglang-exec-bridge",
  "daglang-lower",
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
+ "gunbc-dag",
  "gunbc-exec",
  "gunbc-ir",
  "serde",
@@ -370,6 +370,8 @@ name = "gunbc-dag"
 version = "0.1.0"
 dependencies = [
  "cargo_metadata",
+ "daglang-driver",
+ "daglang-lower",
  "glob",
  "gunbc-cli",
  "gunbc-clippy",

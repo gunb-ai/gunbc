@@ -6,6 +6,7 @@
 //! - `TransportOps::Execute` (boundary) performs actual I/O
 
 use gunbc_exec::{ExecError, Executable, OutputMap};
+use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_testgen_registry::iter_dag_specs;
 use std::collections::HashMap;
@@ -23,6 +24,8 @@ pub enum MakegenOp {
     LoadRegistry,
     /// Render Makefile content (pure - string generation)
     RenderMakefile,
+    /// Entrypoint: check if makegen wrote output (inspects __deps)
+    Entrypoint,
 }
 
 impl Executable for MakegenOp {
@@ -30,6 +33,7 @@ impl Executable for MakegenOp {
         match self {
             MakegenOp::LoadRegistry => execute_load_registry(inputs),
             MakegenOp::RenderMakefile => execute_render_makefile(inputs),
+            MakegenOp::Entrypoint => execute_entrypoint(inputs),
         }
     }
 }
@@ -98,7 +102,25 @@ fn execute_render_makefile(
     let registry = ToolRegistry::default_registry();
     let content = render_makefile(&registry);
 
-    OutputMap::new().str("makefile_content", content).ok()
+    OutputMap::new().str("return", content).ok()
+}
+
+/// Check if the makegen transport wrote successfully.
+fn execute_entrypoint(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    let written = inputs
+        .get("__deps")
+        .and_then(Value::as_list)
+        .map(|deps| {
+            deps.iter().any(|value| {
+                matches!(
+                    value,
+                    Value::Response(TransportResponse::File(response))
+                        if response.operation == FileOp::Write && response.success
+                )
+            })
+        })
+        .unwrap_or(false);
+    OutputMap::new().bool("written", written).ok()
 }
 
 // ============================================================================
@@ -111,6 +133,7 @@ use gunbc_test::{CardinalityTestInput, ErrorTestCase, Mockable};
 impl Mockable for MakegenOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
+            MakegenOp::Entrypoint => OutputMap::new().bool("written", true).build(),
             MakegenOp::LoadRegistry => {
                 let testgen_targets: Vec<serde_json::Value> = iter_dag_specs()
                     .map(|spec| {
@@ -150,7 +173,7 @@ impl Mockable for MakegenOp {
                 let buck2 = CargoInvocation::standalone("buck2").command();
                 OutputMap::new()
                     .str(
-                        "makefile_content",
+                        "return",
                         format!(
                             "# Generated Makefile\n\
                             .PHONY: gist deps buck2\n\
@@ -177,12 +200,9 @@ impl Mockable for MakegenOp {
 
     fn error_cases(&self) -> Vec<ErrorTestCase> {
         match self {
-            MakegenOp::LoadRegistry => vec![
-                // LoadRegistry doesn't require inputs, so no error cases
-            ],
-            MakegenOp::RenderMakefile => vec![
-                // RenderMakefile doesn't require inputs currently
-            ],
+            MakegenOp::LoadRegistry => vec![],
+            MakegenOp::RenderMakefile => vec![],
+            MakegenOp::Entrypoint => vec![],
         }
     }
 }
@@ -213,7 +233,7 @@ mod tests {
     fn test_render_makefile() {
         let result = execute_render_makefile(HashMap::new()).unwrap();
 
-        match result.get("makefile_content") {
+        match result.get("return") {
             Some(Value::Str(content)) => {
                 assert!(content.contains("gist:"));
                 assert!(content.contains("deps:"));

@@ -215,8 +215,8 @@ fn setup_bin_link(
 ) -> Result<(), ResourceError> {
     let args = vec![
         "-s".to_string(),
-        target_path.to_string_lossy().into_owned(),
-        bin_path.to_string_lossy().into_owned(),
+        target_path.display().to_string(),
+        bin_path.display().to_string(),
     ];
     io.command_output("ln", &args)?;
     Ok(())
@@ -250,7 +250,7 @@ fn remove_path(io: &dyn ResourceIo, path: &Path) -> Result<(), ResourceError> {
 
     #[cfg(windows)]
     {
-        let path_str = path.to_string_lossy().into_owned();
+        let path_str = path.display().to_string();
         let _ = io.command_output(
             "cmd",
             &[
@@ -276,7 +276,7 @@ fn remove_path(io: &dyn ResourceIo, path: &Path) -> Result<(), ResourceError> {
 
     #[cfg(not(windows))]
     {
-        let args = vec!["-rf".to_string(), path.to_string_lossy().into_owned()];
+        let args = vec!["-rf".to_string(), path.display().to_string()];
         io.command_output("rm", &args)?;
         Ok(())
     }
@@ -729,27 +729,27 @@ fn parse_tool_target_block(
     })?;
 
     let mut tool = ToolDef::new(
-        &crate_name,
-        &name,
-        &description,
-        &builder,
-        parsed.builder_args.as_deref().unwrap_or(""),
+        crate_name.clone(),
+        name.clone(),
+        description.clone(),
+        builder.clone(),
+        parsed.builder_args.clone().unwrap_or_default(),
     );
 
     if parsed.returns_result {
         tool = tool.returns_result();
     }
     if let Some(port) = parsed.success_port {
-        tool = tool.check_success(&port);
+        tool = tool.check_success(port);
     }
     if parsed.enable_step_mode {
         tool = tool.enable_step_mode();
     }
     if let Some(import) = parsed.custom_import {
-        tool = tool.import(&import);
+        tool = tool.import(import);
     }
     if let Some(mock_spec) = parsed.mock_spec {
-        tool = tool.mock_spec_call(&mock_spec);
+        tool = tool.mock_spec_call(mock_spec);
     }
     if let Some(entrypoints) = parsed.entrypoints_json {
         if !entrypoints.is_empty() {
@@ -849,7 +849,7 @@ fn discover_tool_defs_from_workspace_sources(
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         for tool in parse_tool_defs_from_file(&path, &content)? {
-            let name = tool.meta.tool_name.clone();
+            let name = tool.meta.tool_name.to_string();
             if let Some(prev) = by_name.insert(name.clone(), tool) {
                 return Err(format!(
                     "duplicate tool_target name `{}` discovered (existing crate `{}`, new file `{}`)",
@@ -971,7 +971,7 @@ fn validate_codegen_dsl_coverage(
 
     let tool_name_set: BTreeSet<&str> = tools
         .iter()
-        .map(|tool| tool.meta.tool_name.as_str())
+        .map(|tool| tool.meta.tool_name.as_ref())
         .collect();
 
     let mut unknown_tool_modules = Vec::new();
@@ -1121,11 +1121,13 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
             }
         };
 
-        let bin_abs_path = output_dir.join(&tool.meta.tool_name).join("main.rs");
+        let bin_abs_path = output_dir
+            .join(tool.meta.tool_name.as_ref())
+            .join("main.rs");
         let rel_path = normalize_path(&relative_path(crate_dir, &bin_abs_path));
 
         registrations.push(BinRegistration {
-            tool_name: tool.meta.tool_name.clone(),
+            tool_name: tool.meta.tool_name.to_string(),
             bin_name: inv.binary.clone(),
             cargo_toml_path,
             doc,
@@ -1143,7 +1145,7 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     for tool in &tools {
         let code =
             generate_cli_with_import(&tool.meta, &tool.entrypoints, tool.custom_import.as_deref());
-        let tool_dir = output_dir.join(&tool.meta.tool_name);
+        let tool_dir = output_dir.join(tool.meta.tool_name.as_ref());
         let main_path = tool_dir.join("main.rs");
 
         match writer.write_if_changed(&main_path, &code) {
@@ -1346,7 +1348,11 @@ fn codegen_outputs_exist(io: &dyn ResourceIo) -> bool {
         if tool.invocation.is_none() {
             continue;
         }
-        paths.push(codegen_bin_dir().join(&tool.meta.tool_name).join("main.rs"));
+        paths.push(
+            codegen_bin_dir()
+                .join(tool.meta.tool_name.as_ref())
+                .join("main.rs"),
+        );
     }
 
     if paths.is_empty() {
@@ -1528,7 +1534,7 @@ pub fn sample_tool() {}
             .to_path_buf();
         let tools = discover_codegen_tools(&workspace_root)
             .expect("source discovery should return tool defs");
-        let names: BTreeSet<String> = tools.iter().map(|t| t.meta.tool_name.clone()).collect();
+        let names: BTreeSet<String> = tools.iter().map(|t| t.meta.tool_name.to_string()).collect();
 
         for required in [
             "bootstrap",

@@ -194,6 +194,24 @@ pub fn classify_obligation(op: &LoweredOp) -> ObligationCategory {
     op.obligation_category()
 }
 
+/// Map lowered obligation categories to canonical parity-kind strings.
+///
+/// Returns `None` for unconstrained callables; callers can fall back to
+/// shape/name-derived classification in those cases.
+pub fn canonical_kind_for_obligation(obligation: ObligationCategory) -> Option<&'static str> {
+    match obligation {
+        ObligationCategory::None => None,
+        ObligationCategory::ServiceTransportExecute => Some("transport"),
+        ObligationCategory::ServiceTransportPrepare
+        | ObligationCategory::ServiceTransportParse
+        | ObligationCategory::ServiceParamSource
+        | ObligationCategory::ResourceProvide
+        | ObligationCategory::ResourceAcquire
+        | ObligationCategory::ResourceRelease
+        | ObligationCategory::InterfaceContractVerification => Some("pattern-expanded"),
+    }
+}
+
 pub fn classify_service_transport(op: &LoweredOp) -> Option<ServiceTransportClass> {
     op.service_call_metadata()
         .map(|metadata| metadata.transport)
@@ -1074,13 +1092,19 @@ mod parity {
         match &node.body {
             gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { .. }) => {
-                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, true)
+                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, true, None)
             }
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => {
                 collection_kind_node_label(*kind).to_string()
             }
-            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { .. }) => {
-                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { obligation, .. }) => {
+                canonical_kind_from_shape(
+                    &node.id.0,
+                    &node.inputs,
+                    &node.outputs,
+                    false,
+                    Some(*obligation),
+                )
             }
         }
     }
@@ -1093,7 +1117,7 @@ mod parity {
         match &node.body {
             gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
             gunbc_ir::node::NodeBody::Opaque(_) => {
-                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
+                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false, None)
             }
         }
     }
@@ -1114,6 +1138,7 @@ mod parity {
         inputs: &[Port],
         outputs: &[Port],
         pipeline_hint: bool,
+        obligation: Option<ObligationCategory>,
     ) -> String {
         if pipeline_hint
             || outputs
@@ -1127,6 +1152,9 @@ mod parity {
             .any(|port| port.type_id.0 == "TransportRequest")
         {
             return "transport".to_string();
+        }
+        if let Some(kind) = obligation.and_then(canonical_kind_for_obligation) {
+            return kind.to_string();
         }
         let looks_expanded = node_id.starts_with("prepare_")
             || node_id.starts_with("compare_")
@@ -2803,7 +2831,10 @@ fn expand_single_content_upsert(
             Port::scalar("path", "String"),
             Port::scalar("res:file:Makefile", "FilesystemHandle"),
         ],
-        vec![Port::scalar("request", "TransportRequest")],
+        vec![
+            Port::scalar("request", "TransportRequest"),
+            Port::scalar("skip", "Bool"),
+        ],
         LoweredOp::Callable {
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
@@ -2814,7 +2845,10 @@ fn expand_single_content_upsert(
     ));
     builder.add_node(Node::opaque(
         execute_read_id.clone(),
-        vec![Port::scalar("request", "TransportRequest")],
+        vec![
+            Port::scalar("request", "TransportRequest"),
+            Port::scalar("skip", "Bool"),
+        ],
         vec![Port::scalar("response", "TransportResponse")],
         LoweredOp::Callable {
             module: module_name.to_string(),
@@ -2868,7 +2902,7 @@ fn expand_single_content_upsert(
     builder.add_node(Node::opaque(
         execute_transport_id.clone(),
         execute_transport_inputs,
-        vec![Port::scalar("makegen_response", "TransportResponse")],
+        vec![Port::scalar("response", "TransportResponse")],
         LoweredOp::Callable {
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
@@ -2879,6 +2913,7 @@ fn expand_single_content_upsert(
     ));
 
     builder.add_edge(&prepare_read_id, "request", &execute_read_id, "request");
+    builder.add_edge(&prepare_read_id, "skip", &execute_read_id, "skip");
     builder.add_edge(&execute_read_id, "response", &compare_id, "response");
     builder.add_edge(
         &prepare_write_id,
@@ -2889,7 +2924,7 @@ fn expand_single_content_upsert(
     builder.add_edge(&compare_id, "skip", &execute_transport_id, "skip");
     builder.add_edge(
         &execute_transport_id,
-        "makegen_response",
+        "response",
         &target.node_id,
         "__deps",
     );
@@ -4672,7 +4707,8 @@ fn run(values: List<String>) -> String {
     fn aws_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.aws.credential");
         let dag = lower_target_module_with_dependency_scope(&typed, "cloud.aws.credential");
-        let reference = build_aws_secrets_manager_credential_graph();
+        let reference = build_aws_secrets_manager_credential_graph()
+            .expect("aws credential graph should build");
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);
@@ -4685,7 +4721,8 @@ fn run(values: List<String>) -> String {
     fn azure_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.azure.credential");
         let dag = lower_target_module_with_dependency_scope(&typed, "cloud.azure.credential");
-        let reference = build_azure_key_vault_credential_graph();
+        let reference =
+            build_azure_key_vault_credential_graph().expect("azure credential graph should build");
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);
@@ -4822,6 +4859,12 @@ fn run(values: List<String>) -> String {
                 "request",
                 "execute_read_makegen",
                 "request",
+            ),
+            (
+                "prepare_read_makegen",
+                "skip",
+                "execute_read_makegen",
+                "skip",
             ),
             (
                 "execute_read_makegen",
@@ -5941,6 +5984,33 @@ func run() -> { ok: Bool } provides auth: AuthContext {
             ],
         };
         assert_eq!(classify_obligation(&pipeline), ObligationCategory::None);
+    }
+
+    #[test]
+    fn canonical_kind_for_obligation_maps_categories() {
+        assert_eq!(
+            canonical_kind_for_obligation(ObligationCategory::None),
+            None
+        );
+        assert_eq!(
+            canonical_kind_for_obligation(ObligationCategory::ServiceTransportExecute),
+            Some("transport")
+        );
+
+        for obligation in [
+            ObligationCategory::ServiceTransportPrepare,
+            ObligationCategory::ServiceTransportParse,
+            ObligationCategory::ServiceParamSource,
+            ObligationCategory::ResourceProvide,
+            ObligationCategory::ResourceAcquire,
+            ObligationCategory::ResourceRelease,
+            ObligationCategory::InterfaceContractVerification,
+        ] {
+            assert_eq!(
+                canonical_kind_for_obligation(obligation),
+                Some("pattern-expanded")
+            );
+        }
     }
 
     // Test infrastructure: filesystem access for test fixtures

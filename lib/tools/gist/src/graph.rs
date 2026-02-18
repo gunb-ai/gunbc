@@ -472,7 +472,7 @@ pub fn build_gist_graph_with_config(
     // Gist upload SubDag (self-contained credential chain + upload)
     // ========================================================================
 
-    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(cloud_config, public));
+    let gist_dag = lift_gist_upload_dag(build_gist_upload_subdag(cloud_config, public)?);
     let gist_upload =
         builder.add_node_after(Node::subdag("gist_upload", gist_dag), &render_markdown)?;
 

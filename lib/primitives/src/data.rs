@@ -5,11 +5,12 @@
 
 use gunbc_exec::{
     optional_map_str_str_strict, optional_str_list_strict, optional_str_strict, require_json,
-    require_map_str_str, require_str, ExecError, Executable, IntoExecResult, OutputMap,
+    require_map_str_str, require_str, require_value, ExecError, Executable, IntoExecResult,
+    OutputMap,
 };
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Parse a string into structured data (JSON, TOML, YAML).
 ///
@@ -233,6 +234,51 @@ impl Executable for StableHashOp {
         let hash = Self::hash_parts(&refs);
 
         OutputMap::new().str("hash", hash).ok()
+    }
+}
+
+/// Deduplicate a collection while preserving first-occurrence order.
+///
+/// Inputs:
+/// - `input`: List or Set
+///
+/// Outputs:
+/// - `output`: List containing unique values in first-seen order
+/// - `count`: Int count of unique elements
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DeduplicateOp;
+
+impl DeduplicateOp {
+    fn deduplicate(values: &[Value]) -> Result<Vec<Value>, ExecError> {
+        let mut seen = HashSet::with_capacity(values.len());
+        let mut deduped = Vec::with_capacity(values.len());
+
+        for value in values {
+            let key = serde_json::to_string(value)
+                .exec_context("failed to serialize value while deduplicating collection input")?;
+            if seen.insert(key) {
+                deduped.push(value.clone());
+            }
+        }
+
+        Ok(deduped)
+    }
+}
+
+impl Executable for DeduplicateOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let input = require_value(&inputs, "input")?;
+        let values = match input {
+            Value::List(values) | Value::Set(values) => values,
+            _ => return Err(ExecError::new("expected List or Set for 'input'")),
+        };
+
+        let output = Self::deduplicate(values)?;
+
+        OutputMap::new()
+            .value("output", Value::List(output.clone()))
+            .int("count", output.len() as i64)
+            .ok()
     }
 }
 
@@ -474,6 +520,66 @@ mod tests {
         let hash3 = StableHashOp::hash_parts(&["a", "b", "c"]);
         assert_ne!(hash1, hash3);
         assert_ne!(hash2, hash3);
+    }
+
+    #[test]
+    fn test_deduplicate_op_list_preserves_first_occurrence_order() {
+        let op = DeduplicateOp;
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "input".to_string(),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Int(1),
+                Value::Str("a".to_string()),
+                Value::Int(2),
+                Value::Int(1),
+            ]),
+        );
+
+        let result = op.execute(inputs).unwrap();
+        assert_eq!(
+            result.get("output"),
+            Some(&Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Int(1),
+                Value::Int(2),
+            ]))
+        );
+        assert_eq!(result.get("count"), Some(&Value::Int(3)));
+    }
+
+    #[test]
+    fn test_deduplicate_op_accepts_set_input() {
+        let op = DeduplicateOp;
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "input".to_string(),
+            Value::Set(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
+        );
+
+        let result = op.execute(inputs).unwrap();
+        assert_eq!(
+            result.get("output"),
+            Some(&Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]))
+        );
+        assert_eq!(result.get("count"), Some(&Value::Int(2)));
+    }
+
+    #[test]
+    fn test_deduplicate_op_rejects_non_collection_input() {
+        let op = DeduplicateOp;
+        let mut inputs = HashMap::new();
+        inputs.insert("input".to_string(), Value::Str("not-a-list".to_string()));
+
+        let err = op.execute(inputs).unwrap_err();
+        assert!(err.to_string().contains("expected List or Set"));
     }
 
     #[test]

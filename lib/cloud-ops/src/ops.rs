@@ -304,8 +304,7 @@ fn validate_scope_id(scope: &str) -> Result<(), ExecError> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn map_to_gcp_inputs_allows_empty_service_account() {
+    fn base_gcp_inputs() -> HashMap<String, Value> {
         let mut inputs = HashMap::new();
         inputs.insert("provider".to_string(), Value::Str("gcp".to_string()));
         inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
@@ -320,32 +319,26 @@ mod tests {
         );
         inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
         inputs.insert("source_id".to_string(), Value::Str("github".to_string()));
+        inputs
+    }
 
-        let out = CloudOps::MapToGcpInputs {
+    fn run_map_to_gcp(inputs: HashMap<String, Value>) -> HashMap<String, Value> {
+        CloudOps::MapToGcpInputs {
             runtime: CloudRuntimeKind::LocalDev,
         }
         .execute(inputs)
-        .expect("missing SA should not fail mapping");
+        .expect("MapToGcpInputs should succeed")
+    }
 
+    #[test]
+    fn map_to_gcp_inputs_allows_empty_service_account() {
+        let out = run_map_to_gcp(base_gcp_inputs());
         assert_eq!(out.get("service_account").and_then(Value::as_str), Some(""));
     }
 
     #[test]
     fn map_to_gcp_inputs_prefers_impersonate_account() {
-        let mut inputs = HashMap::new();
-        inputs.insert("provider".to_string(), Value::Str("gcp".to_string()));
-        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
-        inputs.insert("audience".to_string(), Value::Str("local-dev".to_string()));
-        inputs.insert(
-            "project_or_account".to_string(),
-            Value::Str("gunbai-secrets".to_string()),
-        );
-        inputs.insert(
-            "secret".to_string(),
-            Value::Str("dev-github-token".to_string()),
-        );
-        inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
-        inputs.insert("source_id".to_string(), Value::Str("github".to_string()));
+        let mut inputs = base_gcp_inputs();
         inputs.insert(
             "service_account_or_role".to_string(),
             Value::Str("base@p.iam.gserviceaccount.com".to_string()),
@@ -355,12 +348,7 @@ mod tests {
             Value::Str("imp@p.iam.gserviceaccount.com".to_string()),
         );
 
-        let out = CloudOps::MapToGcpInputs {
-            runtime: CloudRuntimeKind::LocalDev,
-        }
-        .execute(inputs)
-        .expect("mapping should succeed");
-
+        let out = run_map_to_gcp(inputs);
         assert_eq!(
             out.get("service_account").and_then(Value::as_str),
             Some("imp@p.iam.gserviceaccount.com")
@@ -369,20 +357,7 @@ mod tests {
 
     #[test]
     fn map_to_gcp_inputs_passes_required_scopes() {
-        let mut inputs = HashMap::new();
-        inputs.insert("provider".to_string(), Value::Str("gcp".to_string()));
-        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
-        inputs.insert("audience".to_string(), Value::Str("local-dev".to_string()));
-        inputs.insert(
-            "project_or_account".to_string(),
-            Value::Str("gunbai-secrets".to_string()),
-        );
-        inputs.insert(
-            "secret".to_string(),
-            Value::Str("dev-github-token".to_string()),
-        );
-        inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
-        inputs.insert("source_id".to_string(), Value::Str("github".to_string()));
+        let mut inputs = base_gcp_inputs();
         inputs.insert(
             "required_scopes".to_string(),
             Value::str_list(vec![
@@ -391,12 +366,7 @@ mod tests {
             ]),
         );
 
-        let out = CloudOps::MapToGcpInputs {
-            runtime: CloudRuntimeKind::LocalDev,
-        }
-        .execute(inputs)
-        .expect("mapping should pass required scopes through");
-
+        let out = run_map_to_gcp(inputs);
         assert_eq!(
             out.get("required_scopes").and_then(Value::as_str_list),
             Some(vec![
@@ -408,28 +378,10 @@ mod tests {
 
     #[test]
     fn map_to_gcp_inputs_passes_allow_impersonation() {
-        let mut inputs = HashMap::new();
-        inputs.insert("provider".to_string(), Value::Str("gcp".to_string()));
-        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
-        inputs.insert("audience".to_string(), Value::Str("local-dev".to_string()));
-        inputs.insert(
-            "project_or_account".to_string(),
-            Value::Str("gunbai-secrets".to_string()),
-        );
-        inputs.insert(
-            "secret".to_string(),
-            Value::Str("dev-github-token".to_string()),
-        );
-        inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
-        inputs.insert("source_id".to_string(), Value::Str("github".to_string()));
+        let mut inputs = base_gcp_inputs();
         inputs.insert("allow_impersonation".to_string(), Value::Bool(false));
 
-        let out = CloudOps::MapToGcpInputs {
-            runtime: CloudRuntimeKind::LocalDev,
-        }
-        .execute(inputs)
-        .expect("mapping should pass allow_impersonation through");
-
+        let out = run_map_to_gcp(inputs);
         assert_eq!(out.get("allow_impersonation"), Some(&Value::Bool(false)));
     }
 

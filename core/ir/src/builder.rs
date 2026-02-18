@@ -412,23 +412,21 @@ impl<T> DagBuilder<T> {
     ///
     /// The new node's generation will be `max(deps.generation) + 1`.
     ///
-    /// # Panics
-    ///
-    /// Panics if `deps` is empty. Use `add_root_node` for nodes with no dependencies.
-    ///
     /// # Errors
     ///
-    /// Returns `BuilderError::DuplicateNodeId` if a node with the same ID already exists.
+    /// - `BuilderError::InternalInvariant` if `deps` is empty (use `add_root_node` instead).
+    /// - `BuilderError::DuplicateNodeId` if a node with the same ID already exists.
     pub fn add_node_after_all(
         &mut self,
         node: Node<T>,
         deps: &[&NodeRef<T>],
     ) -> Result<NodeRef<T>, BuilderError> {
-        assert!(
-            !deps.is_empty(),
-            "deps must not be empty; use add_root_node for nodes with no dependencies"
-        );
-        let max_gen = deps.iter().map(|d| d.generation).max().unwrap();
+        let max_gen = deps.iter().map(|d| d.generation).max().ok_or_else(|| {
+            BuilderError::InternalInvariant(
+                "deps must not be empty; use add_root_node for nodes with no dependencies"
+                    .to_string(),
+            )
+        })?;
         let generation = max_gen + 1;
         self.add_node_with_generation(node, generation)
     }

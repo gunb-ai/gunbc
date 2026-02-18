@@ -111,7 +111,7 @@ fn upsert_lint_manifest_entry(
         .map_err(|e| format!("preflight: failed to compute lint key: {}", e))?;
     let file_list: Vec<String> = files
         .iter()
-        .map(|p| p.to_string_lossy().to_string())
+        .map(|p| p.to_string_lossy().into_owned())
         .collect();
     manifest.insert(
         resource.resource_id().clone(),
@@ -136,7 +136,7 @@ fn should_skip_preflight() -> bool {
 fn current_binary_name() -> Option<String> {
     let from_exe = std::env::current_exe()
         .ok()
-        .and_then(|path| path.file_stem().map(|s| s.to_string_lossy().to_string()));
+        .and_then(|path| path.file_stem().map(|s| s.to_string_lossy().into_owned()));
     if from_exe.is_some() {
         return from_exe;
     }
@@ -144,7 +144,7 @@ fn current_binary_name() -> Option<String> {
     std::env::args().next().and_then(|arg0| {
         Path::new(&arg0)
             .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
+            .map(|s| s.to_string_lossy().into_owned())
     })
 }
 
@@ -216,7 +216,7 @@ impl ManagedResource for LintResource {
         if let Some(prev_files) = &entry.input_files {
             let curr_files: Vec<String> = files
                 .iter()
-                .map(|p| p.to_string_lossy().to_string())
+                .map(|p| p.to_string_lossy().into_owned())
                 .collect();
             if &curr_files != prev_files {
                 return ResourceState::stale(
@@ -278,7 +278,7 @@ impl ManagedResource for LintResource {
         let key = compute_lint_key(io, &files)?;
         let file_list: Vec<String> = files
             .iter()
-            .map(|p| p.to_string_lossy().to_string())
+            .map(|p| p.to_string_lossy().into_owned())
             .collect();
         Ok(ManifestEntry::new(key, file_list.len()).with_input_files(file_list))
     }
@@ -286,7 +286,7 @@ impl ManagedResource for LintResource {
 
 fn list_tracked_files(io: &dyn ResourceIo) -> Result<Vec<PathBuf>, ResourceError> {
     let root = repo_root(io)?;
-    let root_str = root.to_string_lossy().to_string();
+    let root_str = root.to_string_lossy().into_owned();
 
     let args = vec![
         "-C".to_string(),
@@ -349,7 +349,7 @@ fn lint_fast_path_cache_path(io: &dyn ResourceIo) -> Result<PathBuf, ResourceErr
 
 fn git_freshness_signal(io: &dyn ResourceIo) -> Result<GitFreshnessSignal, ResourceError> {
     let root = repo_root(io)?;
-    let root_str = root.to_string_lossy().to_string();
+    let root_str = root.to_string_lossy().into_owned();
 
     let head = io.command_output(
         "git",
@@ -1010,7 +1010,7 @@ mod tests {
         let key = compute_lint_key(&io, &files).expect("compute key");
         let file_list: Vec<String> = files
             .iter()
-            .map(|path| path.to_string_lossy().to_string())
+            .map(|path| path.to_string_lossy().into_owned())
             .collect();
 
         let mut manifest = ResourceManifest::new();

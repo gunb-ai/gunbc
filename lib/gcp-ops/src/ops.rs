@@ -14,6 +14,7 @@ use crate::services::local_auth::{GcloudCli, GcloudLoginOptions, LocalAuthServic
 use crate::services::resource_manager::{ResourceManagerRest, ResourceManagerService};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Runtime environment used to acquire OIDC tokens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1362,15 +1363,20 @@ pub(crate) fn adc_file_path() -> String {
     if let Ok(path) = std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
         return path;
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| {
-        // Fallback for minimal container environments (e.g., distroless, scratch)
-        // where $HOME is unset. Only safe when running as root.
-        "/root".to_string()
-    });
-    format!(
-        "{}/.config/gcloud/application_default_credentials.json",
-        home
-    )
+    let home = std::env::var("HOME")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var("USERPROFILE")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+        })
+        .unwrap_or_else(|| PathBuf::from("."));
+    home.join(".config/gcloud/application_default_credentials.json")
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn url_encode_component(input: &str) -> String {

@@ -19,6 +19,7 @@ use gunbc_exec::{
     require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
 };
 use gunbc_ir::build::{list, optional, port, resource, scalar, AccessMode};
+use gunbc_ir::builder::BuilderError;
 use gunbc_ir::dag::{Dag, Edge};
 use gunbc_ir::node::Node;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
@@ -464,7 +465,10 @@ fn execute_gist_resolve_auth(
 /// The credential chain is fully self-contained — consumers don't need to
 /// understand cloud credentials at all. They just wire `markdown` in and get
 /// `url` out.
-pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<GistUploadOp> {
+pub fn build_gist_upload_subdag(
+    config: CloudSecretConfig,
+    public: bool,
+) -> Result<Dag<GistUploadOp>, BuilderError> {
     validate_authenticate_bindings(&gist_authenticate_bindings())
         .expect("gist credential flow must follow canonical authenticate pattern");
 
@@ -534,7 +538,7 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
         GistUploadOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
     ));
 
-    let cloud_subdag = build_cloud_secret_manager_credential_graph_from_config(&config)
+    let cloud_subdag = build_cloud_secret_manager_credential_graph_from_config(&config)?
         .map_ops(&mut GistUploadOp::Cloud);
     dag.add_node(Node::subdag("cloud_credential", cloud_subdag));
 
@@ -735,7 +739,7 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
         "response",
     ));
 
-    dag
+    Ok(dag)
 }
 
 fn gist_authenticate_bindings() -> Vec<AuthenticatePhaseBinding> {

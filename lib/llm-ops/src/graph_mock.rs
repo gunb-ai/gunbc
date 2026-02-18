@@ -95,13 +95,15 @@ fn with_cloud_env(spec: MockSpec) -> MockSpec {
 /// - `messages`: JSON array of {role, content}
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-openai",
-    builder = "crate::graph::build_chat_completion_graph()"
+    builder = "crate::graph::build_chat_completion_graph()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-openai",
     output = "lib/llm-ops/src/generated_tests.rs",
     module = "llm_openai_generated_tests",
     builder = "crate::graph::build_chat_completion_graph()",
+    returns_result,
     no_boundary_tests
 )]
 pub fn openai_mock_spec() -> MockSpec {
@@ -234,13 +236,15 @@ pub fn openai_mock_spec() -> MockSpec {
 /// Same structure as OpenAI but with Anthropic-format responses.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-anthropic",
-    builder = "crate::graph::build_chat_completion_graph()"
+    builder = "crate::graph::build_chat_completion_graph()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-anthropic",
     output = "lib/llm-ops/src/generated_tests_anthropic.rs",
     module = "llm_anthropic_generated_tests",
     builder = "crate::graph::build_chat_completion_graph()",
+    returns_result,
     no_boundary_tests
 )]
 pub fn anthropic_mock_spec() -> MockSpec {
@@ -381,13 +385,15 @@ pub fn anthropic_mock_spec() -> MockSpec {
 /// Simulates a code review request with a detailed response.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-code-review",
-    builder = "crate::graph::build_chat_completion_graph()"
+    builder = "crate::graph::build_chat_completion_graph()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-code-review",
     output = "lib/llm-ops/src/generated_tests_code_review.rs",
     module = "llm_code_review_generated_tests",
     builder = "crate::graph::build_chat_completion_graph()",
+    returns_result,
     no_boundary_tests
 )]
 pub fn code_review_mock_spec() -> MockSpec {
@@ -492,13 +498,15 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
 /// `Value::Secret` and gets resolved at the transport boundary.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-secrets",
-    builder = "crate::graph::build_chat_completion_graph()"
+    builder = "crate::graph::build_chat_completion_graph()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-secrets",
     output = "lib/llm-ops/src/generated_tests_secrets.rs",
     module = "llm_secrets_generated_tests",
     builder = "crate::graph::build_chat_completion_graph()",
+    returns_result,
     no_boundary_tests
 )]
 pub fn secret_api_key_mock_spec() -> MockSpec {
@@ -679,13 +687,15 @@ pub fn rate_limited_mock_spec() -> MockSpec {
 /// Generates `generated_tests_credential.rs` with lifecycle-specific tests.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-credential-lifecycle",
-    builder = "crate::graph::build_chat_completion_graph()"
+    builder = "crate::graph::build_chat_completion_graph()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-credential-lifecycle",
     output = "lib/llm-ops/src/generated_tests_credential.rs",
     module = "llm_credential_lifecycle_generated_tests",
     builder = "crate::graph::build_chat_completion_graph()",
+    returns_result,
     no_boundary_tests,
     live_flow_tests,
     live_class = "integration",
@@ -839,13 +849,15 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
 /// Tests credential acquire/timeout/refresh/revoke behavior via resource simulation.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-credential-lifecycle-anthropic",
-    builder = "crate::graph::build_chat_completion_graph()"
+    builder = "crate::graph::build_chat_completion_graph()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-credential-lifecycle-anthropic",
     output = "lib/llm-ops/src/generated_tests_credential_anthropic.rs",
     module = "llm_credential_lifecycle_anthropic_generated_tests",
     builder = "crate::graph::build_chat_completion_graph()",
+    returns_result,
     no_boundary_tests,
     live_flow_tests,
     live_class = "integration",

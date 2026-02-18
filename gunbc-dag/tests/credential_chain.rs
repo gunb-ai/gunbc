@@ -103,7 +103,7 @@ fn no_legacy_credential_env_in_gist_graphs() {
 
 #[test]
 fn no_legacy_credential_env_in_llm_graph() {
-    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph();
+    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph().unwrap();
     assert!(
         dag.get_node(&"credential_env".into()).is_none(),
         "llm: contains legacy credential_env node"
@@ -112,13 +112,13 @@ fn no_legacy_credential_env_in_llm_graph() {
 
 #[test]
 fn no_legacy_credential_env_in_review_graphs() {
-    let dag = gunbc_lib_review::graph::build_inline_review_graph();
+    let dag = gunbc_lib_review::graph::build_inline_review_graph().unwrap();
     assert!(
         dag.get_node(&"credential_env".into()).is_none(),
         "review-inline: contains legacy credential_env node"
     );
 
-    let dag = gunbc_lib_review::graph::build_diff_review_graph();
+    let dag = gunbc_lib_review::graph::build_diff_review_graph().unwrap();
     assert!(
         dag.get_node(&"credential_env".into()).is_none(),
         "review-diff: contains legacy credential_env node"
@@ -127,7 +127,7 @@ fn no_legacy_credential_env_in_review_graphs() {
 
 #[test]
 fn no_legacy_credential_env_in_github_credential_graph() {
-    let dag = gunbc_lib_cloud_ops::build_github_credential_graph();
+    let dag = gunbc_lib_cloud_ops::build_github_credential_graph().unwrap();
     assert!(
         dag.get_node(&"credential_env".into()).is_none(),
         "github-credential: contains legacy credential_env node"
@@ -232,28 +232,28 @@ fn gist_has_canonical_credential_chain() {
 
 #[test]
 fn llm_has_canonical_credential_chain() {
-    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph();
+    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph().unwrap();
     assert_canonical_chain(&dag, "llm");
     assert_chain_edges(&dag, "llm");
 }
 
 #[test]
 fn review_inline_has_canonical_credential_chain() {
-    let dag = gunbc_lib_review::graph::build_inline_review_graph();
+    let dag = gunbc_lib_review::graph::build_inline_review_graph().unwrap();
     assert_canonical_chain(&dag, "review-inline");
     assert_chain_edges(&dag, "review-inline");
 }
 
 #[test]
 fn review_diff_has_canonical_credential_chain() {
-    let dag = gunbc_lib_review::graph::build_diff_review_graph();
+    let dag = gunbc_lib_review::graph::build_diff_review_graph().unwrap();
     assert_canonical_chain(&dag, "review-diff");
     assert_chain_edges(&dag, "review-diff");
 }
 
 #[test]
 fn github_credential_has_canonical_chain() {
-    let dag = gunbc_lib_cloud_ops::build_github_credential_graph();
+    let dag = gunbc_lib_cloud_ops::build_github_credential_graph().unwrap();
     assert_canonical_chain(&dag, "github-credential");
     assert_chain_edges(&dag, "github-credential");
 }

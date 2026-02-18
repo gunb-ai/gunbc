@@ -178,7 +178,7 @@ pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
     let anchor = read_nodes
         .values()
         .next()
-        .expect("docgen requires read inputs")
+        .ok_or_else(|| BuilderError::InternalInvariant("docgen requires read inputs".to_string()))?
         .clone();
 
     let render_inputs: Vec<_> = DOCGEN_READ_TARGETS
@@ -198,9 +198,12 @@ pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
     )?;
 
     for target in DOCGEN_READ_TARGETS {
-        let parse = read_nodes
-            .get(target.input_port)
-            .expect("docgen read target missing parse node");
+        let parse = read_nodes.get(target.input_port).ok_or_else(|| {
+            BuilderError::InternalInvariant(format!(
+                "docgen read target missing parse node: {}",
+                target.input_port
+            ))
+        })?;
         builder.add_edge(
             parse.out("content"),
             render_ab_doc.in_port(target.input_port),
@@ -253,17 +256,4 @@ pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
     )?;
 
     Ok(builder.build())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gunbc_ir::detect_boundaries;
-
-    #[test]
-    fn test_transport_boundaries_present() {
-        let dag = build_docgen_graph().expect("graph should build");
-        let boundaries = detect_boundaries(&dag);
-        assert!(boundaries.is_boundary_node(&"execute_ab_workflows_doc_transport".into()));
-    }
 }

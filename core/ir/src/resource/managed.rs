@@ -284,7 +284,7 @@ pub fn compute_key_with_files(
                 for path in paths {
                     let contents = io.read_file(&path)?;
                     builder = builder.update_file_content(&path, &contents);
-                    file_paths.push(path.to_string_lossy().to_string());
+                    file_paths.push(path.to_string_lossy().into_owned());
                     file_count += 1;
                 }
             }
@@ -293,7 +293,7 @@ pub fn compute_key_with_files(
                 let contents = io.read_file(path)?;
                 builder = builder.update_file_content(path, &contents);
                 file_count += 1;
-                file_paths.push(path.to_string_lossy().to_string());
+                file_paths.push(path.to_string_lossy().into_owned());
             }
             InputPattern::Env(var) => {
                 let value = std::env::var(var).unwrap_or_default();

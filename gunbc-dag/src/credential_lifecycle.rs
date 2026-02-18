@@ -47,13 +47,15 @@ fn mock_cloud_config_with_secret(name: &str) -> Value {
 /// Mock specification for GitHub credential lifecycle testing.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "github-credential-lifecycle",
-    builder = "gunbc_lib_cloud_ops::build_github_credential_graph()"
+    builder = "gunbc_lib_cloud_ops::build_github_credential_graph()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "github-credential-lifecycle",
     output = "gunbc-dag/src/generated_tests_credential_github.rs",
     module = "github_credential_lifecycle_generated_tests",
     builder = "gunbc_lib_cloud_ops::build_github_credential_graph()",
+    returns_result,
     no_boundary_tests,
     live_flow_tests,
     live_class = "integration",

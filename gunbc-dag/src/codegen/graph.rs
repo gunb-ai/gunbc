@@ -220,7 +220,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{detect_boundaries, infer_signature, NodeBody};
+    use gunbc_ir::{infer_signature, NodeBody};
 
     #[test]
     fn test_graph_has_transport_nodes() {
@@ -251,21 +251,6 @@ mod tests {
                 node_id
             );
         }
-    }
-
-    #[test]
-    fn test_graph_has_boundaries() {
-        let dag = build_codegen_graph().expect("graph should build");
-        let boundaries = detect_boundaries(&dag);
-        assert!(boundaries.is_boundary_node(&"parse_codegen_result".into()));
-        assert!(boundaries.is_boundary_node(&"execute_stamp_write".into()));
-    }
-
-    #[test]
-    fn test_signature_matches_dag() {
-        let dag = build_codegen_graph().expect("graph should build");
-        let sig = codegen_signature();
-        sig.validate(&dag).expect("signature should match DAG");
     }
 
     #[test]

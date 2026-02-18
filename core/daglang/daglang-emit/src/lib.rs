@@ -54,6 +54,7 @@ pub mod test_gen;
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
 use daglang_lower::{CallableKind, LoweredOp};
 use gunbc_ir::Dag;
+use std::fmt::Write as _;
 
 /// The codegen backend trait. Each target language implements this.
 pub trait CodegenBackend {
@@ -520,60 +521,66 @@ fn escape_string_literal(input: &str) -> String {
 
 fn render_manifest(manifest: &ProgressManifest) -> String {
     let mut out = String::new();
-    out.push_str(&format!("total_nodes={}\n", manifest.total_nodes));
-    out.push_str(&format!("total_edges={}\n", manifest.total_edges));
+    let _ = writeln!(&mut out, "total_nodes={}", manifest.total_nodes);
+    let _ = writeln!(&mut out, "total_edges={}", manifest.total_edges);
     out.push_str("waves=\n");
     for (idx, wave) in manifest.waves.iter().enumerate() {
-        out.push_str(&format!("  [{idx}] {}\n", wave.join(", ")));
+        let _ = writeln!(&mut out, "  [{idx}] {}", wave.join(", "));
     }
-    out.push_str(&format!(
-        "entrypoint_nodes={}\n",
+    let _ = writeln!(
+        &mut out,
+        "entrypoint_nodes={}",
         manifest.entrypoint_nodes.join(", ")
-    ));
-    out.push_str(&format!(
-        "boundary_nodes={}\n",
+    );
+    let _ = writeln!(
+        &mut out,
+        "boundary_nodes={}",
         manifest.boundary_nodes.join(", ")
-    ));
+    );
     out.push_str("topology=\n");
     for node in &manifest.topology {
-        out.push_str(&format!("  {}@{}\n", node.id, node.depth));
+        let _ = writeln!(&mut out, "  {}@{}", node.id, node.depth);
     }
     out.push_str("labels=\n");
     for (node_id, label) in &manifest.labels {
-        out.push_str(&format!("  {}={}\n", node_id, label));
+        let _ = writeln!(&mut out, "  {}={}", node_id, label);
     }
     out.push_str("subdag_boundaries=\n");
     for boundary in &manifest.subdag_boundaries {
-        out.push_str(&format!(
-            "  {} label={} inner=[{}]\n",
+        let _ = writeln!(
+            &mut out,
+            "  {} label={} inner=[{}]",
             boundary.node_id,
             boundary.label,
             boundary.inner_nodes.join(",")
-        ));
+        );
     }
     out.push_str("parallel_groups=\n");
     for group in &manifest.parallel_groups {
-        out.push_str(&format!(
-            "  depth:{} nodes={}\n",
+        let _ = writeln!(
+            &mut out,
+            "  depth:{} nodes={}",
             group.depth,
             group.nodes.join(",")
-        ));
+        );
     }
-    out.push_str(&format!(
-        "scatter_points={}\n",
+    let _ = writeln!(
+        &mut out,
+        "scatter_points={}",
         manifest.scatter_points.join(", ")
-    ));
-    out.push_str(&format!(
-        "interactive_nodes={}\n",
+    );
+    let _ = writeln!(
+        &mut out,
+        "interactive_nodes={}",
         manifest.interactive_nodes.join(", ")
-    ));
+    );
     out.push_str("capture_modes=\n");
     for (node_id, mode) in &manifest.capture_modes {
-        out.push_str(&format!("  {}={:?}\n", node_id, mode));
+        let _ = writeln!(&mut out, "  {}={:?}", node_id, mode);
     }
     out.push_str("stage_groups=\n");
     for group in &manifest.stage_groups {
-        out.push_str(&format!("  {}={}\n", group.stage_id, group.nodes.join(",")));
+        let _ = writeln!(&mut out, "  {}={}", group.stage_id, group.nodes.join(","));
     }
     out.push_str("resources=\n");
     for (node_id, usages) in &manifest.resources {
@@ -582,7 +589,7 @@ fn render_manifest(manifest: &ProgressManifest) -> String {
             .map(|usage| format!("{}:{}", usage.resource, usage.usage))
             .collect::<Vec<_>>()
             .join(",");
-        out.push_str(&format!("  {}={}\n", node_id, usages_rendered));
+        let _ = writeln!(&mut out, "  {}={}", node_id, usages_rendered);
     }
     out
 }
