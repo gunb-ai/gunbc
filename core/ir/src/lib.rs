@@ -83,6 +83,7 @@ pub mod validate;
 pub mod value;
 pub mod value_bridge;
 pub mod value_expr;
+pub mod workspace_layout;
 
 // ── DSL codegen IR tiers (dsl-codegen-tasks.md) ────────────────────
 pub mod c_ir; // Task 5: C-level AST types (CStyleIR)
@@ -177,6 +178,7 @@ pub use validate::{
 pub use value::{SecretString, Value};
 pub use value_bridge::{classify_value, from_bridge_json, to_bridge_json, ValueCategory};
 pub use value_expr::ValueExpr;
+pub use workspace_layout::{WorkspaceLayout, WorkspaceLayoutError};
 
 // Re-exports from language module for common use
 pub use language::{

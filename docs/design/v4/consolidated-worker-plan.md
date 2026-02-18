@@ -582,13 +582,13 @@ calls `current_dir()` once), `resolve_workspace_packages()` (uses `cargo metadat
 Define a `WorkspaceLayout` struct that knows where things are, derived from `cargo metadata`
 or a workspace manifest — not hardcoded strings.
 
-- [ ] C7.1a — Define `WorkspaceLayout` type: workspace root, crate locations (name → path),
+- [x] C7.1a — Define `WorkspaceLayout` type: workspace root, crate locations (name → path),
   source roots, output directories
-- [ ] C7.1b — Constructor from `cargo metadata` (runtime) and from `env!("CARGO_MANIFEST_DIR")`
+- [x] C7.1b — Constructor from `cargo metadata` (runtime) and from `env!("CARGO_MANIFEST_DIR")`
   (compile-time, with depth parameter)
-- [ ] C7.1c — `relative_path(&self, from: &Path, to: &Path) -> PathBuf` — compute relative
+- [x] C7.1c — `relative_path(&self, from: &Path, to: &Path) -> PathBuf` — compute relative
   path between any two workspace locations
-- [ ] C7.1d — `source_globs(&self, crates: &[&str]) -> Vec<String>` — derive glob patterns
+- [x] C7.1d — `source_globs(&self, crates: &[&str]) -> Vec<String>` — derive glob patterns
   from crate locations instead of hardcoding them
 
 ##### C7.2 — Fix generated Cargo.toml path deps [S]
