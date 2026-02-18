@@ -1068,18 +1068,17 @@ pub fn build_local_auth_upsert_dag_pub() -> Dag<GcpSecretManagerGraphOp> {
     build_local_auth_upsert_dag()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EnsureIamBindingMode {
+    ProjectPolicy,
+    ServiceAccountPolicy,
+}
+
 /// Add IAM ensure nodes to a graph builder (local dev only).
 ///
 /// Uses REST API (getIamPolicy + setIamPolicy) to ensure the SA has
 /// `roles/secretmanager.secretAccessor` on the secrets project.
 /// Fast in the common case (binding exists = single REST call, ~1s).
-///
-/// Flow:
-/// 1. `prepare_ensure_iam` — builds getIamPolicy REST request
-/// 2. `execute_get_iam` — executes getIamPolicy
-/// 3. `check_iam_binding` — checks policy, outputs setIamPolicy request if missing
-/// 4. `execute_set_iam` — executes setIamPolicy (skipped if binding exists)
-/// 5. `parse_set_iam` — validates result
 ///
 /// Tolerates PERMISSION_DENIED gracefully.
 fn add_ensure_iam_nodes(
@@ -1088,37 +1087,119 @@ fn add_ensure_iam_nodes(
     access_token_node: &NodeRef<GcpSecretManagerGraphOp>,
     runtime: GcpRuntimeKind,
 ) {
+    add_ensure_iam_nodes_with_mode(
+        builder,
+        net_env,
+        access_token_node,
+        runtime,
+        EnsureIamBindingMode::ProjectPolicy,
+    );
+}
+
+/// Add SA-level IAM binding ensure nodes to a graph builder (local dev only).
+///
+/// This path uses `roles/iam.workloadIdentityUser` policy checks against the
+/// service-account IAM policy and expects an additional `member` input.
+pub fn add_ensure_sa_iam_nodes(
+    builder: &mut DagBuilder<GcpSecretManagerGraphOp>,
+    net_env: &NodeRef<GcpSecretManagerGraphOp>,
+    access_token_node: &NodeRef<GcpSecretManagerGraphOp>,
+    runtime: GcpRuntimeKind,
+) {
+    add_ensure_iam_nodes_with_mode(
+        builder,
+        net_env,
+        access_token_node,
+        runtime,
+        EnsureIamBindingMode::ServiceAccountPolicy,
+    );
+}
+
+fn add_ensure_iam_nodes_with_mode(
+    builder: &mut DagBuilder<GcpSecretManagerGraphOp>,
+    net_env: &NodeRef<GcpSecretManagerGraphOp>,
+    access_token_node: &NodeRef<GcpSecretManagerGraphOp>,
+    runtime: GcpRuntimeKind,
+    mode: EnsureIamBindingMode,
+) {
     if !matches!(runtime, GcpRuntimeKind::LocalDev) {
         return;
     }
 
-    // Step 1: Prepare getIamPolicy request
+    let (
+        prepare_node_id,
+        execute_get_node_id,
+        check_node_id,
+        execute_set_node_id,
+        parse_node_id,
+        prepare_op,
+        check_op,
+        parse_op,
+        include_member_port,
+    ) = match mode {
+        EnsureIamBindingMode::ProjectPolicy => (
+            "prepare_ensure_iam",
+            "execute_get_iam",
+            "check_iam_binding",
+            "execute_set_iam",
+            "parse_set_iam",
+            GcpOps::PrepareEnsureIamBinding,
+            GcpOps::CheckAndPrepareIamBinding,
+            GcpOps::ParseSetIamBinding,
+            false,
+        ),
+        EnsureIamBindingMode::ServiceAccountPolicy => (
+            "prepare_ensure_sa_iam",
+            "execute_get_sa_iam",
+            "check_sa_iam_binding",
+            "execute_set_sa_iam",
+            "parse_set_sa_iam",
+            GcpOps::PrepareEnsureSaIamBinding,
+            GcpOps::CheckAndPrepareSaIamBinding,
+            GcpOps::ParseSetSaIamBinding,
+            true,
+        ),
+    };
+
+    let mut prepare_inputs = vec![
+        port("access_token", "String"),
+        port("project", "String"),
+        port("service_account", "String"),
+    ];
+    let mut prepare_outputs = vec![
+        port("request", "TransportRequest"),
+        port("skip", "Bool"),
+        port("service_account", "String"),
+        port("project", "String"),
+    ];
+    let mut check_inputs = vec![
+        port("response", "TransportResponse"),
+        port("access_token", "String"),
+        port("project", "String"),
+        port("service_account", "String"),
+    ];
+    if include_member_port {
+        prepare_inputs.push(port("member", "String"));
+        prepare_outputs.push(port("member", "String"));
+        check_inputs.push(port("member", "String"));
+    }
+
     let prepare_ensure_iam = builder
         .add_node_after(
             Node::opaque(
-                "prepare_ensure_iam",
-                vec![
-                    port("access_token", "String"),
-                    port("project", "String"),
-                    port("service_account", "String"),
-                ],
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    port("service_account", "String"),
-                    port("project", "String"),
-                ],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareEnsureIamBinding),
+                prepare_node_id,
+                prepare_inputs,
+                prepare_outputs,
+                GcpSecretManagerGraphOp::Gcp(prepare_op),
             ),
             access_token_node,
         )
         .expect("prepare_ensure_iam");
 
-    // Step 2: Execute getIamPolicy
     let execute_get_iam = builder
         .add_node_after(
             Node::opaque(
-                "execute_get_iam",
+                execute_get_node_id,
                 vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
@@ -1131,29 +1212,22 @@ fn add_ensure_iam_nodes(
         )
         .expect("execute_get_iam");
 
-    // Step 3: Check binding and prepare setIamPolicy if needed
     let check_iam = builder
         .add_node_after(
             Node::opaque(
-                "check_iam_binding",
-                vec![
-                    port("response", "TransportResponse"),
-                    port("access_token", "String"),
-                    port("project", "String"),
-                    port("service_account", "String"),
-                ],
+                check_node_id,
+                check_inputs,
                 vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::CheckAndPrepareIamBinding),
+                GcpSecretManagerGraphOp::Gcp(check_op),
             ),
             &execute_get_iam,
         )
         .expect("check_iam_binding");
 
-    // Step 4: Execute setIamPolicy (skipped if binding already exists)
     let execute_set_iam = builder
         .add_node_after(
             Node::opaque(
-                "execute_set_iam",
+                execute_set_node_id,
                 vec![
                     port("request", "TransportRequest"),
                     port("skip", "Bool"),
@@ -1166,20 +1240,18 @@ fn add_ensure_iam_nodes(
         )
         .expect("execute_set_iam");
 
-    // Step 5: Parse setIamPolicy result
     let parse_set_iam = builder
         .add_node_after(
             Node::opaque(
-                "parse_set_iam",
+                parse_node_id,
                 vec![port("response", "TransportResponse")],
                 vec![port("ok", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseSetIamBinding),
+                GcpSecretManagerGraphOp::Gcp(parse_op),
             ),
             &execute_set_iam,
         )
         .expect("parse_set_iam");
 
-    // Wire: prepare -> execute_get_iam
     builder
         .add_edge(
             prepare_ensure_iam.out("request"),
@@ -1199,14 +1271,12 @@ fn add_ensure_iam_nodes(
         )
         .expect("net_env -> execute_get_iam.res:api:network");
 
-    // Wire: execute_get_iam -> check_iam_binding
     builder
         .add_edge(
             execute_get_iam.out("response"),
             check_iam.in_port("response"),
         )
         .expect("execute_get_iam.response -> check_iam_binding.response");
-    // Pass through access_token, project, service_account
     builder
         .add_edge(
             prepare_ensure_iam.out("service_account"),
@@ -1219,8 +1289,15 @@ fn add_ensure_iam_nodes(
             check_iam.in_port("project"),
         )
         .expect("prepare_ensure_iam.project -> check_iam_binding.project");
+    if include_member_port {
+        builder
+            .add_edge(
+                prepare_ensure_iam.out("member"),
+                check_iam.in_port("member"),
+            )
+            .expect("prepare_ensure_iam.member -> check_iam_binding.member");
+    }
 
-    // Wire: check_iam_binding -> execute_set_iam
     builder
         .add_edge(check_iam.out("request"), execute_set_iam.in_port("request"))
         .expect("check_iam_binding.request -> execute_set_iam.request");
@@ -1234,7 +1311,6 @@ fn add_ensure_iam_nodes(
         )
         .expect("net_env -> execute_set_iam.res:api:network");
 
-    // Wire: execute_set_iam -> parse_set_iam
     builder
         .add_edge(
             execute_set_iam.out("response"),
@@ -1242,7 +1318,6 @@ fn add_ensure_iam_nodes(
         )
         .expect("execute_set_iam.response -> parse_set_iam.response");
 
-    // Wire access_token from the auth step to the IAM ensure nodes
     builder
         .add_edge(
             access_token_node.out("access_token"),
@@ -1735,4 +1810,92 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     ));
 
     dag
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_builder_with_net_and_access_token() -> (
+        DagBuilder<GcpSecretManagerGraphOp>,
+        NodeRef<GcpSecretManagerGraphOp>,
+        NodeRef<GcpSecretManagerGraphOp>,
+    ) {
+        let mut builder: DagBuilder<GcpSecretManagerGraphOp> = DagBuilder::new();
+        let net_env = builder
+            .add_root_node(Node::opaque(
+                "net_env",
+                vec![],
+                vec![port(NetEnv::PORT, "NetworkHandle")],
+                GcpSecretManagerGraphOp::NetEnv(NetEnv),
+            ))
+            .expect("net_env");
+        let access_token = builder
+            .add_root_node(Node::opaque(
+                "access_token_source",
+                vec![],
+                vec![port("access_token", "String")],
+                GcpSecretManagerGraphOp::Gcp(GcpOps::ResolveRuntime),
+            ))
+            .expect("access_token_source");
+        (builder, net_env, access_token)
+    }
+
+    #[test]
+    fn add_ensure_sa_iam_nodes_wires_member_port_chain() {
+        let (mut builder, net_env, access_token) = test_builder_with_net_and_access_token();
+        add_ensure_sa_iam_nodes(
+            &mut builder,
+            &net_env,
+            &access_token,
+            GcpRuntimeKind::LocalDev,
+        );
+        let dag = builder.build();
+
+        let prepare = dag
+            .nodes
+            .iter()
+            .find(|n| n.id.0 == "prepare_ensure_sa_iam")
+            .expect("prepare_ensure_sa_iam node should be present");
+        assert!(
+            prepare.inputs.iter().any(|p| p.name.0 == "member"),
+            "prepare_ensure_sa_iam should expose member input"
+        );
+        let check = dag
+            .nodes
+            .iter()
+            .find(|n| n.id.0 == "check_sa_iam_binding")
+            .expect("check_sa_iam_binding node should be present");
+        assert!(
+            check.inputs.iter().any(|p| p.name.0 == "member"),
+            "check_sa_iam_binding should consume member input"
+        );
+        assert!(
+            dag.edges.iter().any(|edge| {
+                edge.from_node.0 == "prepare_ensure_sa_iam"
+                    && edge.from_port.0 == "member"
+                    && edge.to_node.0 == "check_sa_iam_binding"
+                    && edge.to_port.0 == "member"
+            }),
+            "member passthrough edge should exist for SA IAM ensure chain"
+        );
+    }
+
+    #[test]
+    fn add_ensure_sa_iam_nodes_is_noop_for_non_local_runtime() {
+        let (mut builder, net_env, access_token) = test_builder_with_net_and_access_token();
+        add_ensure_sa_iam_nodes(
+            &mut builder,
+            &net_env,
+            &access_token,
+            GcpRuntimeKind::GitHubActions,
+        );
+        let dag = builder.build();
+        assert!(
+            dag.nodes
+                .iter()
+                .all(|node| !node.id.0.starts_with("prepare_ensure_sa_iam")),
+            "non-local runtimes should not add ensure_sa_iam nodes"
+        );
+    }
 }
