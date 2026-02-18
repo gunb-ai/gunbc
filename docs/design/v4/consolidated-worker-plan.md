@@ -276,12 +276,12 @@ currently uses hardcoded rules, not DAG comparison. This must work before we bui
 Given source type DAG and target type DAG, find a valid transform path by walking both
 DAGs, not by checking hardcoded rules.
 
-- [ ] C5.1a — Replace `base_type_upcasts_to()` with registry-driven DAG ancestry check
-- [ ] C5.1b — Coercion discovery: given `Dag<TypeOp>` for source and target, find the
+- [x] C5.1a — Replace `base_type_upcasts_to()` with registry-driven DAG ancestry check
+- [x] C5.1b — Coercion discovery: given `Dag<TypeOp>` for source and target, find the
       transform chain (e.g., Url→String = unwrap NonEmpty + unwrap Matches)
 - [ ] C5.1c — `TypeOp::Transform(Coercion)` used as explicit coercion edges in registry
-- [ ] C5.1d — Tests: Url→String, Int→Json, String→Json coercion found via DAG walk
-- [ ] C5.1e — Tests: String→Url coercion correctly rejected (narrowing = unsafe)
+- [x] C5.1d — Tests: Url→String, Int→Json, String→Json coercion found via DAG walk
+- [x] C5.1e — Tests: String→Url coercion correctly rejected (narrowing = unsafe)
 
 ##### C5.2 — Eliminate cardinality dual encoding [M]
 **Deps**: None

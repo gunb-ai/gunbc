@@ -491,33 +491,47 @@ impl TypeRegistry {
         None
     }
 
-    pub(crate) fn base_type_upcasts_to(&self, from: &str, to: &str) -> bool {
+    /// Discover a widening coercion path between two named types.
+    ///
+    /// Returns the shortest known upcast chain as type IDs, including source
+    /// and target, when `from` can safely widen into `to`.
+    pub fn coercion_path(&self, from: &TypeId, to: &TypeId) -> Option<Vec<TypeId>> {
         if from == to {
-            return true;
+            return Some(vec![from.clone()]);
         }
 
-        // Everything upcasts to Json (top of lattice)
-        if to == "Json" {
-            return true;
+        // Json is treated as the top type for widening coercions.
+        if to.0 == "Json" {
+            return Some(vec![from.clone(), TypeId::from("Json")]);
         }
 
-        let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut current = from.to_string();
+        let mut visited = std::collections::HashSet::new();
+        let mut current = from.0.clone();
+        let mut path = vec![TypeId(current.clone())];
 
         while visited.insert(current.clone()) {
             let Some(dag) = self.get_by_name(&current) else {
                 break;
             };
-            let Some(base) = crate::contract::base_type(dag) else {
+            let Some(parent) = crate::contract::base_type(dag) else {
                 break;
             };
-            if base == to {
-                return true;
+            if parent == current {
+                break;
             }
-            current = base;
+            path.push(TypeId(parent.clone()));
+            if parent == to.0 {
+                return Some(path);
+            }
+            current = parent;
         }
 
-        false
+        None
+    }
+
+    pub(crate) fn base_type_upcasts_to(&self, from: &str, to: &str) -> bool {
+        self.coercion_path(&TypeId::from(from), &TypeId::from(to))
+            .is_some()
     }
 }
 
@@ -634,6 +648,45 @@ mod tests {
         // Safe upcast returns no strategy.
         let strategy = registry.coercion_strategy(&TypeId::from("Url"), &TypeId::from("String"));
         assert!(strategy.is_none());
+    }
+
+    #[test]
+    fn test_coercion_path_finds_refinement_upcast_chain() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("Url", type_lib::url());
+        let path = registry
+            .coercion_path(&TypeId::from("Url"), &TypeId::from("String"))
+            .expect("Url should widen to String");
+        assert_eq!(path, vec![TypeId::from("Url"), TypeId::from("String")]);
+    }
+
+    #[test]
+    fn test_coercion_path_finds_json_top_widening() {
+        let registry = TypeRegistry::with_primitives();
+        let int_path = registry
+            .coercion_path(&TypeId::from("Int"), &TypeId::from("Json"))
+            .expect("Int should widen to Json");
+        assert_eq!(int_path, vec![TypeId::from("Int"), TypeId::from("Json")]);
+
+        let string_path = registry
+            .coercion_path(&TypeId::from("String"), &TypeId::from("Json"))
+            .expect("String should widen to Json");
+        assert_eq!(
+            string_path,
+            vec![TypeId::from("String"), TypeId::from("Json")]
+        );
+    }
+
+    #[test]
+    fn test_coercion_path_rejects_narrowing_chain() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("Url", type_lib::url());
+        assert!(
+            registry
+                .coercion_path(&TypeId::from("String"), &TypeId::from("Url"))
+                .is_none(),
+            "String -> Url is narrowing and must not be discovered as safe path"
+        );
     }
 
     #[test]
