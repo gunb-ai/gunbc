@@ -9,6 +9,21 @@
 
 Hand-rolled patterns that should migrate to daglang as the compiler matures.
 
+## Prerequisite: Type-Dispatch Boilerplate Elimination
+
+> **See**: `TODO/TODO_URGENT_type_dispatch_boilerplate.md` for full audit and implementation plan.
+
+The "Ready Now" migrations are blocked by **~1,350 lines of type-dispatch boilerplate**
+(15 union enums, 16 `From` impls, 10 converter functions) that exist solely to satisfy
+`Dag<T: Executable + Clone + Send + 'static>`. Deleting manual `graph.rs` files requires
+replacing them with DSL-compiled `Dag<DynOp>`, which first requires introducing `DynOp` —
+a type-erased `Arc<dyn Executable + Send + Sync>` wrapper in `core/exec`.
+
+Without `DynOp`, each migrated module would still need its own `GraphOp` union enum and
+converter functions, preserving the boilerplate the DSL was meant to eliminate.
+
+**Fix**: `DynOp` + central resolver (~300 lines added) → delete ~5,650 lines of boilerplate.
+
 ## Ready Now (DSL has the primitives)
 
 - [ ] **Pragma graphs** (`gunbc-dag/src/pragma/graph.rs`) — 3 parallel content

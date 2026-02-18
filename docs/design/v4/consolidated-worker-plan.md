@@ -21,7 +21,7 @@ gated on having these foundations in place.
 |-------|--------|---------|
 | **A — DSL Core** | DONE | Compiler pipeline complete: parse → resolve → typecheck → lower → derive → emit. 4 targets (Rust/Go/C/MIPS), exec-runtime fast path, cross-language parity tests. |
 | **B — Migration** | ~30% | Workflow audit Phases A-C done (~85%); Phase D pending. DSL migration backlog created but 0% implemented. |
-| **C — Modeling** | ~15% | Type DAG infrastructure exists (`Dag<TypeOp>`, contract tower L1-L3, `can_safely_coerce_to`). Coercion Phases 1-2 done, Phases 3-4 deferred. No understanding layer. Platform/browser/anemic/transport at 0%. |
+| **C — Modeling** | ~10% | Type DAG infrastructure exists (`Dag<TypeOp>`, contract tower L1-L3, `can_safely_coerce_to`). Coercion Phases 1-2 done, Phases 3-4 deferred. No understanding layer. No workspace model (45+ hardcoded path assumptions). Platform/browser/anemic/transport at 0%. |
 | **D — Runtime/Test** | ~40% | Logging consolidation ~44% (basics done, quality/safety/tests remain). Testgen seed policy ~50% (core fix done). Codegen quality ongoing. |
 | **E — Domain Parity** | ~5% | Credential lifecycle has some wiring. GCP infra at 0%. LLM review V0 complete. **Gated on C5+C6 foundations.** |
 | **F — Debt Ledger** | ~55% | Hacks: 20/35 resolved. Consolidation: ongoing. |
@@ -49,6 +49,10 @@ C1.1 platform types ──────▶ C1.2 toolchain migrate ──▶ C1.3 
                      └────▶ (C3.2 partial)
 C3.1 delegate macro ──────▶ C3.2 run_tool() ──────────▶ C3.3 list elimination
 C4.1 transport tests ─────▶ C4.2 typed ports ─────────▶ C4.3 behavioral specs
+
+C7.1 WorkspaceLayout ────▶ C7.2 fix gen Cargo.toml
+                     ├───▶ C7.3 replace glob consts ──▶ C7.5 pragma policy paths
+                     └───▶ C7.4 replace parent() chains ▶ C7.5
 
 D1.1 DisplayConfig ───────▶ D1.4 failure-first ───────▶ D1.6-D1.9
 D1.2 secret redaction      D1.5 grouped progress
@@ -81,6 +85,8 @@ E1.0 cred diagnostics ────▶ E1.1 context/profile ─────▶ E1
 | B1.1-B1.4 | B2.1 | Migration experience informs workflow registry design |
 | **D3.1** | **D3.2** | Unified triplet data in derive enables obligation-based canonical kind |
 | **C5.1** | **D3.2** | DAG-based coercion matures obligation metadata used for canonical kind |
+| **C7.1** | **C7.2, C7.3, C7.4** | WorkspaceLayout enables all downstream path fixes |
+| **C7.4** | **C7.5** | parent() chain elimination enables pragma policy derivation |
 | DSL core (ext) | B1.5-B1.8 | Reactive/metaprog primitives not yet in DSL |
 
 ---
@@ -89,9 +95,9 @@ E1.0 cred diagnostics ────▶ E1.1 context/profile ─────▶ E1
 
 | Wave | Tasks | Parallel Swimlanes | Theme |
 |------|-------|--------------------|-------|
-| **0** | ~6 | 2 | **Type foundations**: DAG-based coercion + understanding layer. Validates modeling approach before building on it. |
-| **1** | ~23 | 5 | Model + migrate: GCP understandings, DSL migrations, platform types, runtime basics, unify triplet analysis |
-| **2** | ~18 | 4 | Build-on: contract tests, platform migrations, logging quality, credential context, obligation-based canonical kind |
+| **0** | ~10 | 3 | **Type + workspace foundations**: DAG-based coercion, understanding layer, workspace model. Validates modeling approach before building on it. |
+| **1** | ~28 | 6 | Model + migrate: GCP understandings, DSL migrations, platform types, runtime basics, unify triplet analysis, replace glob constants + parent() chains |
+| **2** | ~20 | 4 | Build-on: contract tests, platform migrations, logging quality, credential context, obligation-based canonical kind, pragma policy derivation |
 | **3** | ~15 | 4 | Completion: multi-cloud stress tests, logging finish, auth policy |
 | **4** | ~12 | 3 | Horizon: credential hardening, GCP compute, sandbox RFC |
 
@@ -545,6 +551,93 @@ Only pursue if Phase 3 evaluation shows behavioral specs are insufficient.
 
 ---
 
+### C7 — Workspace Model (Wave 0-1)
+**Source**: Code audit (2026-02-17) — 30+ sites hardcode repo-structure assumptions
+
+No workspace abstraction exists today. Every site that needs a crate location, a source glob,
+or a relative path between two points independently hardcodes string constants and
+`parent().parent()` chains. This makes the repo structure a hidden, implicit dependency —
+exactly the kind of stringly-typed modeling we're eliminating everywhere else.
+
+**Current debt** (full inventory):
+
+| Category | Sites | Example |
+|----------|-------|---------|
+| Generated Cargo.toml path deps | 3 | `../../core/ir` in `emit_cargo_toml()` |
+| Glob constants with baked-in paths | 6 | `CODEGEN_INPUT_GLOBS`, `REPO_SOURCE_INPUT_GLOBS`, `TESTGEN_INPUT_GLOBS` |
+| `CARGO_MANIFEST_DIR` + hardcoded `.join()` | 24 | `join("../../../dsl")`, `join("dsl/tools")` |
+| `parent().parent()` repo root discovery | 3 | `lib/transport/src/pragma_lint.rs` |
+| Pragma allowlist path prefixes | 5 | `"core/daglang/"`, `"core/exec/src/freshness.rs"` |
+| Hardcoded output dir constants | 4 | `CODEGEN_OUT_DIR = "target/codegen"` |
+| Hardcoded source root lists | 2 | `["core", "gunbc-dag", "lib"]` |
+
+**Already clean** (for reference): `path_utils.rs` (pure, takes `cwd`), `main.rs` (boundary
+calls `current_dir()` once), `resolve_workspace_packages()` (uses `cargo metadata`).
+
+#### Wave 0
+
+##### C7.1 — WorkspaceLayout type [M]
+**Deps**: None
+
+Define a `WorkspaceLayout` struct that knows where things are, derived from `cargo metadata`
+or a workspace manifest — not hardcoded strings.
+
+- [ ] C7.1a — Define `WorkspaceLayout` type: workspace root, crate locations (name → path),
+  source roots, output directories
+- [ ] C7.1b — Constructor from `cargo metadata` (runtime) and from `env!("CARGO_MANIFEST_DIR")`
+  (compile-time, with depth parameter)
+- [ ] C7.1c — `relative_path(&self, from: &Path, to: &Path) -> PathBuf` — compute relative
+  path between any two workspace locations
+- [ ] C7.1d — `source_globs(&self, crates: &[&str]) -> Vec<String>` — derive glob patterns
+  from crate locations instead of hardcoding them
+
+##### C7.2 — Fix generated Cargo.toml path deps [S]
+**Deps**: C7.1
+
+The immediate bug: `emit_cargo_toml()` in `rust_exec_runtime.rs` hardcodes `../../core/ir`.
+
+- [ ] C7.2a — `emit_cargo_toml()` takes output directory + workspace layout, computes
+  relative deps from actual locations
+- [ ] C7.2b — Test: generate into arbitrary depth directory, `cargo check` succeeds
+- [ ] C7.2c — Remove the depth-2 assumption documented in `cli_commands.rs` e2e test
+
+#### Wave 1
+
+##### C7.3 — Replace glob constants with derived patterns [M]
+**Deps**: C7.1
+
+Eliminate `CODEGEN_INPUT_GLOBS`, `REPO_SOURCE_INPUT_GLOBS`, `TESTGEN_INPUT_GLOBS` etc.
+Derive them from `WorkspaceLayout` crate locations.
+
+- [ ] C7.3a — Replace `CODEGEN_INPUT_GLOBS` / `CODEGEN_INPUT_FILES` in `resource/defs.rs`
+- [ ] C7.3b — Replace `REPO_SOURCE_INPUT_GLOBS` / `REPO_CONFIG_INPUT_FILES` in `resources.rs`
+- [ ] C7.3c — Replace `TESTGEN_INPUT_GLOBS` / `TESTGEN_EXTRA_FILES` in `resources.rs`
+- [ ] C7.3d — Verify freshness hashing unchanged (same files discovered, different derivation)
+
+##### C7.4 — Replace parent() chains and hardcoded joins [M]
+**Deps**: C7.1
+
+Eliminate `CARGO_MANIFEST_DIR` + `join("../../..")` patterns and `parent().parent()` chains.
+
+- [ ] C7.4a — Replace `dsl_tools_root()` / `dsl_pipelines_root()` in `subdags/mod.rs`
+- [ ] C7.4b — Replace `workspace_root()` helpers in daglang-cli tests (7+ sites)
+- [ ] C7.4c — Replace `repo_root()` in `lib/transport/src/pragma_lint.rs`
+- [ ] C7.4d — Replace hardcoded `CODEGEN_OUT_DIR` / `CODEGEN_BIN_DIR` constants
+
+#### Wave 2
+
+##### C7.5 — Replace pragma policy path prefixes [S]
+**Deps**: C7.4
+
+Pragma allowlist paths (`"core/daglang/"`, `"core/exec/src/freshness.rs"`) should derive from
+crate names, not path strings.
+
+- [ ] C7.5a — Allowlist entries keyed by crate name, resolved to paths via `WorkspaceLayout`
+- [ ] C7.5b — `PRAGMA_LINT_POLICY.allow_dead_code` paths derived from crate locations
+- [ ] C7.5c — If a crate moves, policy updates automatically (no manual path editing)
+
+---
+
 ## Track D — Runtime/Test Hardening
 
 ### D1 — Logging Consolidation
@@ -917,18 +1010,20 @@ V0 complete (Tracks 2-6). Track 1 (Resource abstraction trait) still in design.
 
 ## Parallel Swimlane Guide
 
-### Wave 0 — 2 independent swimlanes (START HERE)
+### Wave 0 — 3 independent swimlanes (START HERE)
 
 | Swimlane | Tasks | Focus |
 |----------|-------|-------|
 | **Type System** | C5.1, C5.2 | DAG-based coercion + eliminate dual encoding |
 | **Understanding** | C6.1 | Understanding type definitions + registration |
+| **Workspace** | C7.1, C7.2 | WorkspaceLayout type + fix generated Cargo.toml path deps |
 
-These two swimlanes are independent and can run concurrently. **Wave 0 must complete
+These three swimlanes are independent and can run concurrently. **Wave 0 must complete
 before Wave 1 domain work (E2) begins**, because GCP services must be modeled as
-understandings.
+understandings. C7.1+C7.2 are unblocked now and fix a concrete bug (generated binaries
+only work at depth-2).
 
-### Wave 1 — 5 independent swimlanes
+### Wave 1 — 6 independent swimlanes
 
 | Swimlane | Tasks | Focus |
 |----------|-------|-------|
@@ -937,14 +1032,16 @@ understandings.
 | **C** | D1.1, D1.2, D1.3, D2.1, D3.1 | Runtime hardening + unify triplet analysis |
 | **D** | C5.3, C6.2 | Type stress tests + first understandings (GCP, transport) |
 | **E** | E1.0, E2.1, F1.x | Domain baselines (E2.1 requires C6.1+C6.2b), debt cleanup |
+| **F** | C7.3, C7.4 | Replace glob constants + parent() chains (requires C7.1) |
 
 ### Highest-ROI Starting Points
 
 1. **C5.1+C5.2** (Type DAG coercion) — validates the core modeling approach before everything else
 2. **C6.1** (Understanding types) — creates the foundation for all external system modeling
-3. **C6.2** (GCP + transport understandings) — first real systems modeled properly, unblocks E2
-4. **C5.3** (Stress tests) — multi-step coercion, cross-provider types, container covariance
-5. **B1.1** (Pragma DSL migration) — highest-ROI migration, proves DSL production readiness
+3. **C7.1+C7.2** (Workspace model) — fixes concrete bug, eliminates 45+ hardcoded path assumptions
+4. **C6.2** (GCP + transport understandings) — first real systems modeled properly, unblocks E2
+5. **C5.3** (Stress tests) — multi-step coercion, cross-provider types, container covariance
+6. **B1.1** (Pragma DSL migration) — highest-ROI migration, proves DSL production readiness
 
 ---
 
