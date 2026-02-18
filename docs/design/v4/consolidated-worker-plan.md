@@ -236,8 +236,8 @@ is safe.
 
 Git HEAD + dirty state as fast-path freshness signal before full content hashing.
 
-- [ ] B2.3a — Design freshness signal (HEAD SHA + dirty files)
-- [ ] B2.3b — Integrate into workflow registry execution path
+- [x] B2.3a — Design freshness signal (HEAD SHA + dirty files)
+- [ ] B2.3b — Integrate into workflow registry execution path *(preflight path now uses signal cache; full workflow-registry integration pending B2.1)*
 
 #### Wave 4
 

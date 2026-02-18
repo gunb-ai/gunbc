@@ -34,6 +34,21 @@ const PREFLIGHT_SKIP_BINARIES: &[&str] = &[
     "gunbc-makegen",
 ];
 
+/// Fast-path freshness cache persisted between preflight runs.
+const LINT_FAST_PATH_CACHE: &str = "target/.lint-preflight-signal.json";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GitFreshnessSignal {
+    head_sha: String,
+    dirty: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LintFastPathState {
+    signal: GitFreshnessSignal,
+    manifest_key: String,
+}
+
 /// Ensure lint is fresh (run lint-upsert if stale/missing).
 pub fn ensure_lint_upsert() -> Result<(), String> {
     if should_skip_preflight() {
@@ -100,6 +115,11 @@ fn upsert_lint_manifest_entry(
         resource.resource_id().clone(),
         ManifestEntry::new(key, file_list.len()).with_input_files(file_list),
     );
+    if let Some(entry) = manifest.get(resource.resource_id()) {
+        // Best-effort cache write for fast-path freshness. Failure here should not
+        // fail preflight; fallback checks remain available.
+        let _ = persist_lint_fast_path_state(io, entry);
+    }
     Ok(())
 }
 
@@ -163,6 +183,23 @@ impl ManagedResource for LintResource {
             Some(e) => e,
             None => return ResourceState::Missing,
         };
+
+        if let Ok(signal) = git_freshness_signal(io) {
+            if signal.dirty {
+                return ResourceState::stale(
+                    "git working tree dirty",
+                    entry.key.clone(),
+                    ContentHash::empty(),
+                );
+            }
+
+            if let Ok(Some(cached)) = load_lint_fast_path_state(io) {
+                let manifest_key = String::from(&entry.key);
+                if cached.signal == signal && cached.manifest_key == manifest_key {
+                    return ResourceState::Fresh;
+                }
+            }
+        }
 
         let files = match list_tracked_files(io) {
             Ok(f) if !f.is_empty() => f,
@@ -302,6 +339,113 @@ fn repo_root(io: &dyn ResourceIo) -> Result<PathBuf, ResourceError> {
         )));
     }
     Ok(PathBuf::from(root))
+}
+
+fn lint_fast_path_cache_path(io: &dyn ResourceIo) -> Result<PathBuf, ResourceError> {
+    Ok(repo_root(io)?.join(LINT_FAST_PATH_CACHE))
+}
+
+fn git_freshness_signal(io: &dyn ResourceIo) -> Result<GitFreshnessSignal, ResourceError> {
+    let root = repo_root(io)?;
+    let root_str = root.to_string_lossy().to_string();
+
+    let head = io.command_output(
+        "git",
+        &[
+            "-C".to_string(),
+            root_str.clone(),
+            "rev-parse".to_string(),
+            "HEAD".to_string(),
+        ],
+    )?;
+    let head_sha = String::from_utf8(head)
+        .map_err(|e| ResourceError::Io(std::io::Error::other(e.to_string())))?
+        .trim()
+        .to_string();
+
+    let dirty = io.command_output(
+        "git",
+        &[
+            "-C".to_string(),
+            root_str,
+            "status".to_string(),
+            "--porcelain".to_string(),
+            "--untracked-files=no".to_string(),
+        ],
+    )?;
+
+    Ok(GitFreshnessSignal {
+        head_sha,
+        dirty: !dirty.is_empty(),
+    })
+}
+
+fn load_lint_fast_path_state(
+    io: &dyn ResourceIo,
+) -> Result<Option<LintFastPathState>, ResourceError> {
+    let path = lint_fast_path_cache_path(io)?;
+    if !io.file_exists(&path)? {
+        return Ok(None);
+    }
+
+    let bytes = io.read_file(&path)?;
+    let state = parse_lint_fast_path_state(&bytes)?;
+    Ok(Some(state))
+}
+
+fn persist_lint_fast_path_state(
+    io: &dyn ResourceIo,
+    entry: &ManifestEntry,
+) -> Result<(), ResourceError> {
+    let signal = git_freshness_signal(io)?;
+    if signal.dirty {
+        return Ok(());
+    }
+
+    let path = lint_fast_path_cache_path(io)?;
+    let state = LintFastPathState {
+        signal,
+        manifest_key: String::from(&entry.key),
+    };
+    let payload = lint_fast_path_state_to_bytes(&state)?;
+    io.write_file(&path, &payload)
+}
+
+fn parse_lint_fast_path_state(bytes: &[u8]) -> Result<LintFastPathState, ResourceError> {
+    let value: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|e| ResourceError::Io(std::io::Error::other(e.to_string())))?;
+    let signal = value
+        .get("signal")
+        .ok_or_else(|| ResourceError::Io(std::io::Error::other("missing signal field")))?;
+    let head_sha = signal
+        .get("head_sha")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ResourceError::Io(std::io::Error::other("missing signal.head_sha")))?
+        .to_string();
+    let dirty = signal
+        .get("dirty")
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| ResourceError::Io(std::io::Error::other("missing signal.dirty")))?;
+    let manifest_key = value
+        .get("manifest_key")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ResourceError::Io(std::io::Error::other("missing manifest_key")))?
+        .to_string();
+    Ok(LintFastPathState {
+        signal: GitFreshnessSignal { head_sha, dirty },
+        manifest_key,
+    })
+}
+
+fn lint_fast_path_state_to_bytes(state: &LintFastPathState) -> Result<Vec<u8>, ResourceError> {
+    serde_json::to_vec_pretty(&serde_json::json!({
+        "signal": {
+            "head_sha": state.signal.head_sha,
+            "dirty": state.signal.dirty,
+        },
+        "manifest_key": state.manifest_key,
+    }))
+    .map_err(|e| ResourceError::Io(std::io::Error::other(e.to_string())))
 }
 
 fn compute_lint_key(io: &dyn ResourceIo, files: &[PathBuf]) -> Result<ContentHash, ResourceError> {
@@ -646,6 +790,25 @@ mod tests {
         ]
     }
 
+    fn git_head_args(repo_root: &str) -> Vec<String> {
+        vec![
+            "-C".to_string(),
+            repo_root.to_string(),
+            "rev-parse".to_string(),
+            "HEAD".to_string(),
+        ]
+    }
+
+    fn git_dirty_args(repo_root: &str) -> Vec<String> {
+        vec![
+            "-C".to_string(),
+            repo_root.to_string(),
+            "status".to_string(),
+            "--porcelain".to_string(),
+            "--untracked-files=no".to_string(),
+        ]
+    }
+
     fn configured_fake_io() -> FakeIo {
         let mut io = FakeIo::default();
         io.insert_command_output(
@@ -796,6 +959,78 @@ mod tests {
         assert_eq!(
             cmd.env(),
             vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())]
+        );
+    }
+
+    #[test]
+    fn check_state_uses_fast_path_when_signal_and_manifest_key_match() {
+        let mut io = FakeIo::default();
+        let resource = LintResource::new();
+        let key = ContentHash::from_bytes(b"fast-path-key");
+        let manifest_key = String::from(&key);
+
+        io.insert_command_output(
+            "git",
+            &string_args(&["rev-parse", "--show-toplevel"]),
+            b"/repo\n",
+        );
+        io.insert_command_output("git", &git_head_args("/repo"), b"deadbeef\n");
+        io.insert_command_output("git", &git_dirty_args("/repo"), b"");
+
+        let cache = LintFastPathState {
+            signal: GitFreshnessSignal {
+                head_sha: "deadbeef".to_string(),
+                dirty: false,
+            },
+            manifest_key,
+        };
+        let cache_bytes = lint_fast_path_state_to_bytes(&cache).expect("serialize cache state");
+        io.insert_file(
+            "/repo/target/.lint-preflight-signal.json",
+            &cache_bytes,
+            UNIX_EPOCH + Duration::from_millis(10_000),
+        );
+
+        let mut manifest = ResourceManifest::new();
+        manifest.insert(
+            resource.resource_id().clone(),
+            ManifestEntry::new(key, 0).with_timestamp(10_000),
+        );
+
+        let state = resource.check_state(&manifest, &io);
+        assert!(
+            state.is_fresh(),
+            "fast-path signal should mark state fresh, got: {}",
+            state
+        );
+    }
+
+    #[test]
+    fn check_state_marks_stale_when_git_tree_is_dirty() {
+        let mut io = FakeIo::default();
+        let resource = LintResource::new();
+        let key = ContentHash::from_bytes(b"dirty-key");
+
+        io.insert_command_output(
+            "git",
+            &string_args(&["rev-parse", "--show-toplevel"]),
+            b"/repo\n",
+        );
+        io.insert_command_output("git", &git_head_args("/repo"), b"deadbeef\n");
+        io.insert_command_output("git", &git_dirty_args("/repo"), b" M src/main.rs\n");
+
+        let mut manifest = ResourceManifest::new();
+        manifest.insert(
+            resource.resource_id().clone(),
+            ManifestEntry::new(key, 0).with_timestamp(10_000),
+        );
+
+        let state = resource.check_state(&manifest, &io);
+        assert!(!state.is_fresh(), "dirty git tree should force stale state");
+        assert!(
+            state.to_string().contains("git working tree dirty"),
+            "expected dirty-tree stale reason, got: {}",
+            state
         );
     }
 }

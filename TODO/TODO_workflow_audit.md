@@ -824,7 +824,7 @@ Cache tuple:
 **Phase D: Workflow consolidation + parallelism (next)**
 - [ ] Consolidate Makefile + CI + CLI to a single canonical workflow registry.
 - [x] Add resource-conflict admission control to the existing ready-queue executor. _(2026-02-18: executor now derives per-node `res:*` requirements and gates dispatch with read/write/exclusive admission locks; includes unit tests for Write/Write serialization and Read/Read parallelism in `core/exec/src/execute.rs`.)_
-- [ ] Add fast-path freshness check to skip full scans on clean repos.
+- [x] Add fast-path freshness check to skip full scans on clean repos. _(2026-02-18: preflight now stores git HEAD+dirty freshness signal in `target/.lint-preflight-signal.json` and short-circuits to Fresh when signal + manifest key match.)_
 
 ## Acceptance Criteria (Current Workflow)
 
