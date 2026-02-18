@@ -10,13 +10,14 @@
 
 use crate::file_ops_graph::FileOpsGraph;
 use crate::makegen::ops::MakegenOp;
+use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
 use gunbc_ir::{
     add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node,
     WorkflowSignature,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{filename, FsEnv, PrepareFileReadOp, PrepareFileWriteOp};
+use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
 
 /// The operation type for makegen graphs - a union of makegen ops, primitives, and transport.
 pub type MakegenGraphOp = FileOpsGraph<MakegenOp>;
@@ -72,12 +73,7 @@ pub fn makegen_signature() -> WorkflowSignature {
 pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    let fs_env = builder.add_root_node(Node::opaque(
-        "fs_env",
-        vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        MakegenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
-    ))?;
+    let fs_env = add_fs_env_root_node(&mut builder, MakegenGraphOp::FsEnv)?;
 
     // Node: LoadRegistry (makegen-specific) - generation 0
     let load_registry = builder.add_root_node(Node::opaque(
@@ -124,13 +120,13 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
         MakegenGraphOp::Transport(TransportOps::Execute),
     )?;
 
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        makegen_chain.execute_read.in_port("res:file:Makefile"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        makegen_chain.execute_write.in_port("res:file:Makefile"),
+    wire_fs_env_write_edges(
+        &mut builder,
+        &fs_env,
+        vec![
+            makegen_chain.execute_read.in_port("res:file:Makefile"),
+            makegen_chain.execute_write.in_port("res:file:Makefile"),
+        ],
     )?;
 
     Ok(builder.build())

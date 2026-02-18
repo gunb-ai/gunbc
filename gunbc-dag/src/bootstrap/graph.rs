@@ -12,13 +12,14 @@
 
 use crate::bootstrap::ops::BootstrapOp;
 use crate::file_ops_graph::FileOpsGraph;
+use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
 use gunbc_ir::{
     add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node,
     WorkflowSignature,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{filename, FsEnv, PrepareFileReadOp, PrepareFileWriteOp};
+use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
 
 /// The operation type for bootstrap graphs - a union of bootstrap ops, primitives, and transport.
 pub type BootstrapGraphOp = FileOpsGraph<BootstrapOp>;
@@ -82,12 +83,7 @@ pub fn bootstrap_signature() -> WorkflowSignature {
 pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    let fs_env = builder.add_root_node(Node::opaque(
-        "fs_env",
-        vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        BootstrapGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
-    ))?;
+    let fs_env = add_fs_env_root_node(&mut builder, BootstrapGraphOp::FsEnv)?;
 
     // ========================================================================
     // ScanWorkspace chain: PrepareScanWorkspace -> Execute -> ParseScanResult
@@ -206,25 +202,16 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     )?;
 
     // Resource wiring
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        execute_scan.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        makefile_chain.execute_read.in_port("res:file:Makefile"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        makefile_chain.execute_write.in_port("res:file:Makefile"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        gitignore_chain.execute_read.in_port("res:file:.gitignore"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        gitignore_chain.execute_write.in_port("res:file:.gitignore"),
+    wire_fs_env_write_edges(
+        &mut builder,
+        &fs_env,
+        vec![
+            execute_scan.in_port("res:file"),
+            makefile_chain.execute_read.in_port("res:file:Makefile"),
+            makefile_chain.execute_write.in_port("res:file:Makefile"),
+            gitignore_chain.execute_read.in_port("res:file:.gitignore"),
+            gitignore_chain.execute_write.in_port("res:file:.gitignore"),
+        ],
     )?;
 
     Ok(builder.build())

@@ -6,14 +6,13 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::codegen::build_codegen_graph_with_mode;
-use gunbc_dag::CODEGEN_STAMP_PATH;
+use gunbc_dag::{wire_fs_env_write_mock, CODEGEN_STAMP_PATH};
 use gunbc_exec::{
     execute_and_display, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_primitives::{filename, FsEnv};
 use std::io::IsTerminal;
 use std::process;
 
@@ -46,8 +45,7 @@ fn main() {
         };
 
         // Resource environment: filesystem handle used by write transports.
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
+        wire_fs_env_write_mock(&dag, &mut mocks);
 
         // Simulate missing codegen outputs so the codegen step runs.
         mocks.set_value("execute_codegen_exists", "response", missing_shell());

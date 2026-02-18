@@ -27,7 +27,9 @@ pub mod credential_lifecycle;
 pub mod dag_viz;
 #[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
 pub mod docgen;
+pub mod dry_run;
 pub mod file_ops_graph;
+pub mod fs_env;
 pub mod makegen;
 pub mod policy;
 pub mod pragma;
@@ -57,7 +59,9 @@ pub use dag_viz::{build_dag_viz_graph, dag_viz_signature, DagVizGraphOp, DagVizM
 pub use docgen::{
     build_docgen_graph, DocgenGraphOp, DocgenOp, DocgenReadTarget, DOCGEN_READ_TARGETS,
 };
+pub use dry_run::wire_fs_env_write_mock;
 pub use file_ops_graph::FileOpsGraph;
+pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
 pub use makegen::{
     build_makegen_graph, default_build_config, makegen_signature, render_gitignore,

@@ -471,9 +471,9 @@ Reduce O(tools x concerns) boilerplate to O(concerns).
 10+ graph builders duplicate identical FsEnv root node setup with ~20 manual
 edge-wiring calls each.
 
-- [ ] C3.1b-1 — Extract FsEnv auto-wiring as post-processing DAG builder step
-- [ ] C3.1b-2 — Migrate graph builders to use auto-wiring
-- [ ] C3.1b-3 — Remove duplicated FsEnv setup code
+- [x] C3.1b-1 — Extract FsEnv auto-wiring as post-processing DAG builder step
+- [x] C3.1b-2 — Migrate graph builders to use auto-wiring
+- [x] C3.1b-3 — Remove duplicated FsEnv setup code
 
 #### Wave 2
 

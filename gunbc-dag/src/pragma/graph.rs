@@ -9,13 +9,14 @@
 
 use crate::file_ops_graph::FileOpsGraph;
 use crate::pragma::ops::PragmaOp;
+use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
 use gunbc_ir::{
     add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node,
     WorkflowSignature,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{filename, FsEnv, PrepareFileReadOp, PrepareFileWriteOp};
+use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
 
 /// The operation type for pragma graphs - a union of pragma ops, primitives, and transport.
 pub type PragmaGraphOp = FileOpsGraph<PragmaOp>;
@@ -89,12 +90,7 @@ pub fn pragma_signature() -> WorkflowSignature {
 pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    let fs_env = builder.add_root_node(Node::opaque(
-        "fs_env",
-        vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        PragmaGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
-    ))?;
+    let fs_env = add_fs_env_root_node(&mut builder, PragmaGraphOp::FsEnv)?;
 
     // Clippy upsert chain
     let render_clippy = builder.add_root_node(Node::opaque(
@@ -182,37 +178,25 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
     )?;
 
     // Resource wiring
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        clippy_chain.execute_read.in_port("res:file:clippy.toml"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        clippy_chain.execute_write.in_port("res:file:clippy.toml"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        allowlist_chain
-            .execute_read
-            .in_port("res:file:tools/disallowed-methods-allowlist.txt"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        allowlist_chain
-            .execute_write
-            .in_port("res:file:tools/disallowed-methods-allowlist.txt"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        policy_chain
-            .execute_read
-            .in_port("res:file:tools/pragma-lint-policy.txt"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        policy_chain
-            .execute_write
-            .in_port("res:file:tools/pragma-lint-policy.txt"),
+    wire_fs_env_write_edges(
+        &mut builder,
+        &fs_env,
+        vec![
+            clippy_chain.execute_read.in_port("res:file:clippy.toml"),
+            clippy_chain.execute_write.in_port("res:file:clippy.toml"),
+            allowlist_chain
+                .execute_read
+                .in_port("res:file:tools/disallowed-methods-allowlist.txt"),
+            allowlist_chain
+                .execute_write
+                .in_port("res:file:tools/disallowed-methods-allowlist.txt"),
+            policy_chain
+                .execute_read
+                .in_port("res:file:tools/pragma-lint-policy.txt"),
+            policy_chain
+                .execute_write
+                .in_port("res:file:tools/pragma-lint-policy.txt"),
+        ],
     )?;
 
     Ok(builder.build())

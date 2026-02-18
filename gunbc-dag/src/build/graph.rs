@@ -16,13 +16,14 @@
 //! ```
 
 use crate::build::ops::BuildOp;
+use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
     add_skippable_transport_triplet, add_transport_triplet, build::*, BuilderError, Cardinality,
     Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{filename, FsEnv};
+use gunbc_primitives::FsEnv;
 use std::collections::HashMap;
 
 /// Union type for build graph operations.
@@ -65,12 +66,7 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
     // Environment: filesystem handle
     // ========================================================================
 
-    let fs_env = builder.add_root_node(Node::opaque(
-        "fs_env",
-        vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        BuildGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
-    ))?;
+    let fs_env = add_fs_env_root_node(&mut builder, BuildGraphOp::FsEnv)?;
 
     let fs_resource = resource("file", "FilesystemHandle", AccessMode::Write);
 
@@ -182,9 +178,15 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
     )?;
 
     // Resource wiring
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), build.in_port("res:file"))?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), test.in_port("res:file"))?;
-    builder.add_edge(fs_env.out(FsEnv::WRITE_PORT), clippy.in_port("res:file"))?;
+    wire_fs_env_write_edges(
+        &mut builder,
+        &fs_env,
+        vec![
+            build.in_port("res:file"),
+            test.in_port("res:file"),
+            clippy.in_port("res:file"),
+        ],
+    )?;
 
     Ok(builder.build())
 }

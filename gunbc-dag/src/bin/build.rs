@@ -5,14 +5,13 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::build::build_build_graph;
+use gunbc_dag::{build::build_build_graph, wire_fs_env_write_mock};
 use gunbc_exec::{
     compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
     ExecutionMode,
 };
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_primitives::{filename, FsEnv};
 use std::io::IsTerminal;
 use std::process;
 
@@ -37,8 +36,7 @@ fn main() {
     let mode = if dry_run {
         let mut mocks = BoundaryMocks::new();
         let ok_shell = || Value::Response(TransportResponse::Shell(ShellResponse::ok("")));
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
+        wire_fs_env_write_mock(&dag, &mut mocks);
 
         // Build transport
         mocks.set_value("execute_build", "response", ok_shell());

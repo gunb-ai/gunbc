@@ -6,7 +6,7 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
-use gunbc_dag::{build_makegen_graph, makefile_resource_def};
+use gunbc_dag::{build_makegen_graph, makefile_resource_def, wire_fs_env_write_mock};
 use gunbc_exec::{
     compose_with_freshness, execute_and_display, execute_and_display_with_result, print_attention,
     AttentionLevel, BoundaryMocks, ExecutionMode,
@@ -18,7 +18,6 @@ use gunbc_ir::resource::{
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::TransportIo;
-use gunbc_primitives::{filename, FsEnv};
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process;
@@ -74,8 +73,7 @@ fn main() {
     // In --dry-run mode (without verify), mock all transports.
     let mode = if dry_run && resource_mode != ExecMode::Verify {
         let mut mocks = BoundaryMocks::new();
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
+        wire_fs_env_write_mock(&dag, &mut mocks);
         mocks.set_value(
             "execute_read_makegen",
             "response",

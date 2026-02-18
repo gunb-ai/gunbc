@@ -4,7 +4,7 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::build_pragma_graph;
+use gunbc_dag::{build_pragma_graph, wire_fs_env_write_mock};
 use gunbc_exec::{
     execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
     BoundaryMocks, ExecutionMode,
@@ -12,7 +12,6 @@ use gunbc_exec::{
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
-use gunbc_primitives::{filename, FsEnv};
 use std::fmt::Write;
 use std::io::IsTerminal;
 use std::process;
@@ -80,8 +79,7 @@ fn main() {
         let mut mocks = BoundaryMocks::new();
 
         // Resource environment: filesystem handle used by file transports.
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
+        wire_fs_env_write_mock(&dag, &mut mocks);
 
         for (key, path) in file_paths {
             let read_node = format!("execute_read_{}", key);

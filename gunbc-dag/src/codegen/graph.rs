@@ -12,6 +12,7 @@
 //! ```
 
 use crate::codegen::ops::CodegenOp;
+use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::{
@@ -19,7 +20,7 @@ use gunbc_ir::{
     WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{filename, FsEnv};
+use gunbc_primitives::FsEnv;
 use std::collections::HashMap;
 
 /// Union type for codegen graph operations.
@@ -67,12 +68,7 @@ pub fn build_codegen_graph() -> Result<Dag<CodegenGraphOp>, BuilderError> {
 pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    let fs_env = builder.add_root_node(Node::opaque(
-        "fs_env",
-        vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        CodegenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
-    ))?;
+    let fs_env = add_fs_env_root_node(&mut builder, CodegenGraphOp::FsEnv)?;
 
     let fs_resource = resource("file", "FilesystemHandle", AccessMode::Write);
 
@@ -219,17 +215,14 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
     )?;
 
     // Resource wiring
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        codegen_exists.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        execute_codegen.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        execute_stamp_write.in_port("res:file"),
+    wire_fs_env_write_edges(
+        &mut builder,
+        &fs_env,
+        vec![
+            codegen_exists.in_port("res:file"),
+            execute_codegen.in_port("res:file"),
+            execute_stamp_write.in_port("res:file"),
+        ],
     )?;
 
     Ok(builder.build())

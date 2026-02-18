@@ -5,10 +5,11 @@
 
 use crate::file_ops_graph::FileOpsGraph;
 use crate::testgen_dag::ops::TestgenOp;
+use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
 use gunbc_ir::{add_content_upsert_chain, build::*, BuilderError, Dag, DagBuilder, Node};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{filename, FsEnv, PrepareFileReadOp, PrepareFileWriteOp};
+use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
 use gunbc_testgen_registry::DagSpecDef;
 use std::path::Path;
 
@@ -30,12 +31,7 @@ pub fn build_testgen_graph(
 ) -> Result<Dag<TestgenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    let fs_env = builder.add_root_node(Node::opaque(
-        "fs_env",
-        vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        TestgenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
-    ))?;
+    let fs_env = add_fs_env_root_node(&mut builder, TestgenGraphOp::FsEnv)?;
 
     for target in targets {
         let config = target.to_def();
@@ -83,12 +79,7 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
     ];
 
     let mut builder = DagBuilder::new();
-    let fs_env = builder.add_root_node(Node::opaque(
-        "fs_env",
-        vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        TestgenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
-    ))?;
+    let fs_env = add_fs_env_root_node(&mut builder, TestgenGraphOp::FsEnv)?;
 
     for (name, output_path, module_name) in &targets {
         let def = TestgenTargetDef::new(name, output_path, module_name);
@@ -140,13 +131,13 @@ fn add_upsert_chain(
         TestgenGraphOp::Transport(TransportOps::Execute),
     )?;
 
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        chain.execute_read.in_port("res:file"),
-    )?;
-    builder.add_edge(
-        fs_env.out(FsEnv::WRITE_PORT),
-        chain.execute_write.in_port("res:file"),
+    wire_fs_env_write_edges(
+        builder,
+        fs_env,
+        vec![
+            chain.execute_read.in_port("res:file"),
+            chain.execute_write.in_port("res:file"),
+        ],
     )?;
 
     Ok(())

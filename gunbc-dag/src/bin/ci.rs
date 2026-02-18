@@ -22,7 +22,7 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::build_ci_graph_with_mode;
+use gunbc_dag::{build_ci_graph_with_mode, wire_fs_env_write_mock};
 use gunbc_exec::{
     compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
     CiContext, ExecutionMode,
@@ -31,7 +31,6 @@ use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use gunbc_ir::CODEGEN_STAMP_PATH;
-use gunbc_primitives::{filename, FsEnv};
 use std::io::IsTerminal;
 use std::process;
 
@@ -68,8 +67,7 @@ fn main() {
         let mut mocks = BoundaryMocks::new();
 
         // Resource environment: filesystem handle used by transport executors.
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
+        wire_fs_env_write_mock(&dag, &mut mocks);
 
         // Transport execution nodes need properly-typed Response mocks.
         // The default mock is Value::Str("<DRY-RUN>"), but downstream parse

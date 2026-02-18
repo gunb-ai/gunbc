@@ -12,7 +12,7 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::testgen_dag::graph::build_testgen_graph;
-use gunbc_dag::testgen_resource_def;
+use gunbc_dag::{testgen_resource_def, wire_fs_env_write_mock};
 use gunbc_exec::{
     execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
     BoundaryMocks, ExecutionMode,
@@ -24,7 +24,6 @@ use gunbc_ir::resource::{
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::TransportIo;
-use gunbc_primitives::{filename, FsEnv};
 use std::io::IsTerminal;
 // Force-link crates that register testgen targets.
 use gunbc_deps as _;
@@ -125,8 +124,7 @@ fn main() {
         let mut mocks = BoundaryMocks::new();
 
         // Resource environment: filesystem handle used by file transports.
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
+        wire_fs_env_write_mock(&dag, &mut mocks);
 
         for (name, path) in &target_info {
             let read_node = format!("execute_read_{}", name);
