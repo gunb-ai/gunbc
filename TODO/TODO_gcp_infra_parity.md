@@ -52,7 +52,7 @@ impersonate) is missing.
 
 - [x] Add `get_service_account_iam_policy(project, email)` to `IamService`
 - [x] Add `set_service_account_iam_policy(project, email, policy)` to `IamService`
-- [ ] Add ops: `PrepareEnsureSaIamBinding` / `CheckAndPrepareSaIamBinding` / `ParseSetSaIamBinding`
+- [x] Add ops: `PrepareEnsureSaIamBinding` / `CheckAndPrepareSaIamBinding` / `ParseSetSaIamBinding`
 - [ ] Generalize `add_ensure_iam_nodes()` to work for both project-level and SA-level bindings
 
 **Ref**: `gunb.ai/tools/infra/dag/builder.go:258-300` — SA IAM binding ops
