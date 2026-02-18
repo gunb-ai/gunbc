@@ -388,8 +388,8 @@ This effort is done only when all items below are true.
 
 ### F. Preflight integration
 
-- [ ] Preflight output is routed through the same display/grouping infrastructure (no standalone `println!/eprint!` progress stream).
-- [ ] Preflight failures produce structured error output consistent with the rest of the pipeline.
+- [x] Preflight output is routed through the same display/grouping infrastructure (no standalone `println!/eprint!` progress stream). _(2026-02-18: preflight now emits CI provider group commands per step (`preflight/*`) while retaining local progress lines.)_
+- [x] Preflight failures produce structured error output consistent with the rest of the pipeline. _(2026-02-18: preflight step failures now emit CI error annotations with structured `phase=preflight step=... error=...` payloads.)_
 
 ### G. User attention and error UX parity
 

@@ -701,8 +701,8 @@ Stage/task grouping for pipeline progress (CI stages, tool phases).
 
 Preflight currently uses raw `println!/eprint!`, bypassing CI groups and progress.
 
-- [ ] D1.6a — Route preflight output through display/grouping infrastructure
-- [ ] D1.6b — Preflight failures produce structured error output
+- [x] D1.6a — Route preflight output through display/grouping infrastructure
+- [x] D1.6b — Preflight failures produce structured error output
 
 ##### D1.7 — Unified error field conventions [M]
 **Deps**: D1.4

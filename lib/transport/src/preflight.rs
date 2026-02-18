@@ -15,8 +15,10 @@ use gunbc_ir::resource::{
     load_manifest_default, save_manifest_default, ContentHash, ManagedResource, ManifestEntry,
     ResourceDef, ResourceError, ResourceIo, ResourceManifest, ResourceState,
 };
+use gunbc_ir::transport::ci::{detect_provider_strict, is_ci, CiProvider, WorkflowCommand};
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::ResourceId;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -485,7 +487,84 @@ fn compute_lint_key(io: &dyn ResourceIo, files: &[PathBuf]) -> Result<ContentHas
     Ok(hash_builder.finalize())
 }
 
+struct PreflightCi {
+    provider: Box<dyn CiProvider>,
+    group_stack: Vec<String>,
+}
+
+impl PreflightCi {
+    fn detect() -> Option<Self> {
+        let env: HashMap<String, String> = std::env::vars().collect();
+        if !is_ci(&env) {
+            return None;
+        }
+        let provider = detect_provider_strict(&env).ok()?;
+        if provider.id() == "plain" {
+            return None;
+        }
+        Some(Self {
+            provider,
+            group_stack: Vec::new(),
+        })
+    }
+
+    fn start_group(&mut self, name: impl Into<String>, collapsed: bool) {
+        let name = name.into();
+        let cmd = if collapsed {
+            WorkflowCommand::group_start_collapsed(name.clone())
+        } else {
+            WorkflowCommand::group_start(name.clone())
+        };
+        println!("{}", self.provider.format(&cmd));
+        self.group_stack.push(name);
+    }
+
+    fn end_group(&mut self) {
+        if let Some(name) = self.group_stack.pop() {
+            println!(
+                "{}",
+                self.provider.format(&WorkflowCommand::group_end(name))
+            );
+        }
+    }
+
+    fn error(&self, title: &str, message: &str) {
+        let cmd = WorkflowCommand::Annotation {
+            level: gunbc_ir::transport::ci::AnnotationLevel::Error,
+            message: message.to_string(),
+            title: Some(title.to_string()),
+            location: None,
+        };
+        println!("{}", self.provider.format(&cmd));
+    }
+
+    fn close_all_groups(&mut self) {
+        while !self.group_stack.is_empty() {
+            self.end_group();
+        }
+    }
+}
+
+impl Drop for PreflightCi {
+    fn drop(&mut self) {
+        self.close_all_groups();
+    }
+}
+
+fn structured_preflight_error(step: &str, error: &ResourceError) -> String {
+    format!(
+        "phase=preflight step={} error={}",
+        step,
+        error.to_string().replace('\n', " | ")
+    )
+}
+
 fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
+    let mut ci = PreflightCi::detect();
+    if let Some(ci) = ci.as_mut() {
+        ci.start_group("preflight/lint-upsert", true);
+    }
+
     let steps: &[(&str, CargoCommand)] = &[
         (
             "codegen-dag",
@@ -506,13 +585,27 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
 
     let total = steps.len() + 2; // +1 for clippy, +1 for test gate
     for (i, (label, cmd)) in steps.iter().enumerate() {
+        if let Some(ci) = ci.as_mut() {
+            ci.start_group(format!("preflight/{}", label), true);
+        }
         eprint!("  [{}/{}] {}...", i + 1, total, label);
         let _ = std::io::Write::flush(&mut std::io::stderr());
         let start = std::time::Instant::now();
         let result = run_cargo_command(resource_id, cmd);
         let elapsed = start.elapsed();
         eprintln!(" {:.1}s", elapsed.as_secs_f64());
-        result?;
+        if let Some(ci) = ci.as_mut() {
+            ci.end_group();
+        }
+        if let Err(error) = result {
+            if let Some(ci) = ci.as_ref() {
+                ci.error(
+                    "Preflight step failed",
+                    &structured_preflight_error(label, &error),
+                );
+            }
+            return Err(error);
+        }
     }
 
     // clippy check: cargo clippy -- -D warnings
@@ -520,6 +613,9 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     let clippy_step = total - 1;
     eprint!("  [{}/{}] clippy...", clippy_step, total);
     let _ = std::io::Write::flush(&mut std::io::stderr());
+    if let Some(ci) = ci.as_mut() {
+        ci.start_group("preflight/clippy", true);
+    }
     let clippy_outcome: Result<(), ResourceError> = (|| {
         let clippy_start = std::time::Instant::now();
         let clippy_check = CargoCommand::new(Subcommand::Clippy).warnings(Warnings::Deny);
@@ -558,7 +654,18 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
         }
         Ok(())
     })();
-    clippy_outcome?;
+    if let Some(ci) = ci.as_mut() {
+        ci.end_group();
+    }
+    if let Err(error) = clippy_outcome {
+        if let Some(ci) = ci.as_ref() {
+            ci.error(
+                "Preflight step failed",
+                &structured_preflight_error("clippy", &error),
+            );
+        }
+        return Err(error);
+    }
 
     // Test gate: compile all workspace lib test targets without executing
     // them. This catches contract/compile mismatches (including stale
@@ -568,7 +675,23 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     let _ = std::io::Write::flush(&mut std::io::stderr());
     let test_start = std::time::Instant::now();
     let test_cmd = preflight_test_gate_command();
-    run_cargo_command_with_env(resource_id, &test_cmd, &[("GUNBC_TEST_MAX_COST", "S")])?;
+    if let Some(ci) = ci.as_mut() {
+        ci.start_group("preflight/test-gate", true);
+    }
+    let test_result =
+        run_cargo_command_with_env(resource_id, &test_cmd, &[("GUNBC_TEST_MAX_COST", "S")]);
+    if let Some(ci) = ci.as_mut() {
+        ci.end_group();
+    }
+    if let Err(error) = test_result {
+        if let Some(ci) = ci.as_ref() {
+            ci.error(
+                "Preflight step failed",
+                &structured_preflight_error("test-gate", &error),
+            );
+        }
+        return Err(error);
+    }
     let elapsed = test_start.elapsed();
     eprintln!(" {:.1}s", elapsed.as_secs_f64());
 
