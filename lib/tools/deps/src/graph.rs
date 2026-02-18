@@ -14,7 +14,8 @@
 use crate::env::PlatformEnv;
 use crate::manifest::DEFAULT_MANIFEST_FILENAME;
 use crate::ops::DepsOp;
-use gunbc_exec::{ExecError, Executable, OutputMap};
+use gunbc_delegate_macros::DelegateExecutable;
+use gunbc_exec::OutputMap;
 use gunbc_ir::{
     add_transport_triplet_named_with_passthrough, build::*, BuilderError, Cardinality, Dag,
     DagBuilder, Node, Value, WorkflowSignature,
@@ -26,7 +27,7 @@ use std::collections::HashMap;
 /// Union type for deps graph operations.
 ///
 /// Following the gist pattern: all I/O through Transport(TransportOps::Execute) nodes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum DepsGraphOp {
     /// Deps-specific operations (all PURE)
     Deps(DepsOp),
@@ -38,18 +39,6 @@ pub enum DepsGraphOp {
     PrepareFileWrite(PrepareFileWriteOp),
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
-}
-
-impl Executable for DepsGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            DepsGraphOp::Deps(op) => op.execute(inputs),
-            DepsGraphOp::Env(op) => op.execute(inputs),
-            DepsGraphOp::FsEnv(op) => op.execute(inputs),
-            DepsGraphOp::PrepareFileWrite(op) => op.execute(inputs),
-            DepsGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
 }
 
 /// Get the declared signature for the deps workflow.

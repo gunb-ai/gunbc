@@ -416,6 +416,7 @@ name = "gunbc-deps"
 version = "0.1.0"
 dependencies = [
  "gunbc-cli",
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-transport",
@@ -490,6 +491,7 @@ dependencies = [
 name = "gunbc-lib-aws-ops"
 version = "0.1.0"
 dependencies = [
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-test",
@@ -503,6 +505,7 @@ dependencies = [
 name = "gunbc-lib-azure-ops"
 version = "0.1.0"
 dependencies = [
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-test",
@@ -529,6 +532,7 @@ dependencies = [
 name = "gunbc-lib-cloud-ops"
 version = "0.1.0"
 dependencies = [
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-aws-ops",
@@ -546,6 +550,7 @@ dependencies = [
 name = "gunbc-lib-gcp-ops"
 version = "0.1.0"
 dependencies = [
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-transport",
@@ -583,6 +588,7 @@ dependencies = [
 name = "gunbc-lib-llm-ops"
 version = "0.1.0"
 dependencies = [
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-cloud-ops",
@@ -608,6 +614,7 @@ name = "gunbc-lib-review"
 version = "0.1.0"
 dependencies = [
  "gunbc-cli",
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-blob",

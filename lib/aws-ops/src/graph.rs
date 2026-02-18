@@ -1,22 +1,13 @@
 //! Stub graph for AWS Secrets Manager.
 
 use crate::ops::AwsOps;
-use gunbc_exec::{ExecError, Executable};
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_ir::build::{list, optional, port};
-use gunbc_ir::{Dag, DagBuilder, Node, Value};
-use std::collections::HashMap;
+use gunbc_ir::{Dag, DagBuilder, Node};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum AwsSecretManagerGraphOp {
     Aws(AwsOps),
-}
-
-impl Executable for AwsSecretManagerGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            AwsSecretManagerGraphOp::Aws(op) => op.execute(inputs),
-        }
-    }
 }
 
 /// Placeholder DAG for AWS Secrets Manager credentials.

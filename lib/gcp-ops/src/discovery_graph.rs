@@ -15,15 +15,14 @@
 
 use crate::discovery_ops::GcpDiscoveryOps;
 use crate::graph::GcpSecretManagerGraphOp;
-use gunbc_exec::{ExecError, Executable};
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_ir::build::{port, resource, AccessMode};
-use gunbc_ir::{Dag, Edge, Node, Value, RESOURCE_API_NETWORK};
+use gunbc_ir::{Dag, Edge, Node, RESOURCE_API_NETWORK};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::NetEnv;
-use std::collections::HashMap;
 
 /// Union op type for the discovery DAG.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum GcpDiscoveryGraphOp {
     /// Discovery-specific ops (list/parse/assemble).
     Discovery(GcpDiscoveryOps),
@@ -33,17 +32,6 @@ pub enum GcpDiscoveryGraphOp {
     Transport(TransportOps),
     /// Network environment.
     NetEnv(NetEnv),
-}
-
-impl Executable for GcpDiscoveryGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            GcpDiscoveryGraphOp::Discovery(op) => op.execute(inputs),
-            GcpDiscoveryGraphOp::Gcp(op) => op.execute(inputs),
-            GcpDiscoveryGraphOp::Transport(op) => op.execute(inputs),
-            GcpDiscoveryGraphOp::NetEnv(op) => op.execute(inputs),
-        }
-    }
 }
 
 /// Build the infra discovery DAG.

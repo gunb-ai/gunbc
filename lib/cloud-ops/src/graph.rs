@@ -1,10 +1,10 @@
 //! Provider-neutral cloud credential DAGs.
 
 use crate::ops::CloudOps;
-use gunbc_exec::{ExecError, Executable};
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_ir::build::{list, optional, port};
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig};
-use gunbc_ir::{Dag, DagBuilder, Node, Value};
+use gunbc_ir::{Dag, DagBuilder, Node};
 use gunbc_lib_aws_ops::{
     build_aws_secrets_manager_credential_graph, build_aws_secrets_manager_upsert_graph,
     AwsSecretManagerGraphOp,
@@ -20,25 +20,13 @@ use gunbc_lib_gcp_ops::{
     build_gcp_secret_manager_upsert_graph_github, build_gcp_secret_manager_upsert_graph_local,
     build_gcp_secret_manager_upsert_graph_metadata, GcpSecretManagerGraphOp,
 };
-use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum CloudSecretManagerGraphOp {
     Cloud(CloudOps),
     Gcp(GcpSecretManagerGraphOp),
     Aws(AwsSecretManagerGraphOp),
     Azure(AzureKeyVaultGraphOp),
-}
-
-impl Executable for CloudSecretManagerGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            CloudSecretManagerGraphOp::Cloud(op) => op.execute(inputs),
-            CloudSecretManagerGraphOp::Gcp(op) => op.execute(inputs),
-            CloudSecretManagerGraphOp::Aws(op) => op.execute(inputs),
-            CloudSecretManagerGraphOp::Azure(op) => op.execute(inputs),
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

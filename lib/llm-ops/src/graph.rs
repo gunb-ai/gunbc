@@ -11,24 +11,21 @@
 //! This graph can be embedded as a sub-DAG in larger workflows that need
 //! LLM capabilities (code review, code generation, etc.).
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
-use gunbc_ir::{
-    add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, Value,
-};
+use gunbc_ir::{add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node};
 use gunbc_lib_cloud_ops::{
     build_cloud_secret_manager_credential_graph_from_config, graph_cloud_config, CloudOps,
     CloudSecretManagerGraphOp,
 };
 use gunbc_lib_transport::TransportOps;
-use std::collections::HashMap;
 
 use crate::LlmOps;
 
 /// Operation type for LLM chat completion graphs.
 ///
 /// Union of pure LLM ops and the transport boundary.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum LlmGraphOp {
     /// Prepare a chat completion request (PURE - no I/O)
     Llm(LlmOps),
@@ -36,16 +33,6 @@ pub enum LlmGraphOp {
     Transport(TransportOps),
     /// Cloud credential flow (GCP/AWS/Azure graph)
     Cloud(CloudSecretManagerGraphOp),
-}
-
-impl Executable for LlmGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            LlmGraphOp::Llm(op) => op.execute(inputs),
-            LlmGraphOp::Transport(op) => op.execute(inputs),
-            LlmGraphOp::Cloud(op) => op.execute(inputs),
-        }
-    }
 }
 
 /// Build a chat completion DAG.

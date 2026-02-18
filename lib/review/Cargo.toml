@@ -8,6 +8,7 @@ description = "Code review types and operations for gunbc DAGs"
 [dependencies]
 gunbc-ir = { path = "../../core/ir" }
 gunbc-exec = { path = "../../core/exec" }
+gunbc-delegate-macros = { path = "../../core/delegate-macros" }
 gunbc-primitives = { path = "../primitives" }
 gunbc-lib-blob = { path = "../blob" }
 gunbc-lib-git-ops = { path = "../git-ops" }

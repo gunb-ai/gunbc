@@ -10,10 +10,10 @@
 //! 1. Blob fetch (for non-inline sources)
 //! 2. LLM call
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
-    add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, NodeRef, Value,
+    add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, NodeRef,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_cloud_ops::{
@@ -24,7 +24,6 @@ use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_llm_ops::LlmOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
-use std::collections::HashMap;
 
 use crate::{ReviewOps, ReviewPipelineConfig};
 
@@ -35,7 +34,7 @@ use crate::{ReviewOps, ReviewPipelineConfig};
 /// Operation type for review phase graphs.
 ///
 /// Union of all ops needed for a complete review workflow.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum ReviewGraphOp {
     /// Blob acquisition operations (PURE)
     Blob(BlobOps),
@@ -51,20 +50,6 @@ pub enum ReviewGraphOp {
     Cloud(CloudSecretManagerGraphOp),
     /// Transport execution (BOUNDARY - actual I/O)
     Transport(TransportOps),
-}
-
-impl Executable for ReviewGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            ReviewGraphOp::Blob(op) => op.execute(inputs),
-            ReviewGraphOp::Git(op) => op.execute(inputs),
-            ReviewGraphOp::Review(op) => op.execute(inputs),
-            ReviewGraphOp::Llm(op) => op.execute(inputs),
-            ReviewGraphOp::FsEnv(op) => op.execute(inputs),
-            ReviewGraphOp::Cloud(op) => op.execute(inputs),
-            ReviewGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1172,7 +1157,9 @@ pub fn build_multi_source_review_graph_with_cloud_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_exec::Executable;
     use gunbc_ir::{detect_boundaries, detect_entrypoints};
+    use std::collections::HashMap;
 
     #[test]
     fn test_review_phase_graph_boundaries() {

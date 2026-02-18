@@ -8,6 +8,7 @@ use crate::graph::{
     build_cloud_secret_manager_credential_graph_from_config, CloudSecretManagerGraphOp,
 };
 use crate::ops::CloudOps;
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_exec::{require_response, ExecError, Executable, OutputMap};
 use gunbc_ir::build::{list, optional, port, resource};
 use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
@@ -64,21 +65,11 @@ impl Executable for GitHubCredentialOps {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum GitHubCredentialGraphOp {
     Cloud(CloudSecretManagerGraphOp),
     GitHub(GitHubCredentialOps),
     Transport(TransportOps),
-}
-
-impl Executable for GitHubCredentialGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            GitHubCredentialGraphOp::Cloud(op) => op.execute(inputs),
-            GitHubCredentialGraphOp::GitHub(op) => op.execute(inputs),
-            GitHubCredentialGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
 }
 
 /// Build a minimal GitHub credential lifecycle graph.

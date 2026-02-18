@@ -1,22 +1,13 @@
 //! Stub graph for Azure Key Vault.
 
 use crate::ops::AzureOps;
-use gunbc_exec::{ExecError, Executable};
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_ir::build::{list, optional, port};
-use gunbc_ir::{Dag, DagBuilder, Node, Value};
-use std::collections::HashMap;
+use gunbc_ir::{Dag, DagBuilder, Node};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum AzureKeyVaultGraphOp {
     Azure(AzureOps),
-}
-
-impl Executable for AzureKeyVaultGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            AzureKeyVaultGraphOp::Azure(op) => op.execute(inputs),
-        }
-    }
 }
 
 /// Placeholder DAG for Azure Key Vault credentials.

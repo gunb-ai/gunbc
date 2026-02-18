@@ -1,28 +1,17 @@
 //! DAGs for GCP WIF + Secret Manager.
 
 use crate::ops::{GcpOps, GcpRuntimeKind};
-use gunbc_exec::{ExecError, Executable};
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_ir::build::{list, optional, port, resource, AccessMode};
-use gunbc_ir::{Dag, DagBuilder, Edge, Node, NodeRef, Value, RESOURCE_API_NETWORK};
+use gunbc_ir::{Dag, DagBuilder, Edge, Node, NodeRef, RESOURCE_API_NETWORK};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::NetEnv;
-use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum GcpSecretManagerGraphOp {
     Gcp(GcpOps),
     NetEnv(NetEnv),
     Transport(TransportOps),
-}
-
-impl Executable for GcpSecretManagerGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            GcpSecretManagerGraphOp::Gcp(op) => op.execute(inputs),
-            GcpSecretManagerGraphOp::NetEnv(op) => op.execute(inputs),
-            GcpSecretManagerGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
 }
 
 /// Build a GCP Secret Manager credential acquisition graph for the given runtime.

@@ -8,6 +8,7 @@ description = "Tool dependency management with upsert pattern"
 [dependencies]
 gunbc-ir = { path = "../../../core/ir" }
 gunbc-exec = { path = "../../../core/exec" }
+gunbc-delegate-macros = { path = "../../../core/delegate-macros" }
 gunbc-primitives = { path = "../../primitives" }
 gunbc-lib-transport = { path = "../../transport" }
 gunbc-test = { path = "../../../core/test" }
