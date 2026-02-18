@@ -53,6 +53,7 @@ C4.1 transport tests ─────▶ C4.2 typed ports ───────�
 D1.1 DisplayConfig ───────▶ D1.4 failure-first ───────▶ D1.6-D1.9
 D1.2 secret redaction      D1.5 grouped progress
 D1.3 stderr capture ──────▶ D1.4
+D3.1 unify triplets ─────▶ D3.2 obligation-based kind ─▶ D3.3 idiom audit
 
 E1.0 cred diagnostics ────▶ E1.1 context/profile ─────▶ E1.2 policy binding ───▶ E1.3-E1.5
 
@@ -78,6 +79,8 @@ E1.0 cred diagnostics ────▶ E1.1 context/profile ─────▶ E1
 | E2.1 | E2.2 | SA/IAM lifecycle enables WIF bootstrap |
 | E2.2 | E1.2+ | GCP WIF needed for credential policy binding |
 | B1.1-B1.4 | B2.1 | Migration experience informs workflow registry design |
+| **D3.1** | **D3.2** | Unified triplet data in derive enables obligation-based canonical kind |
+| **C5.1** | **D3.2** | DAG-based coercion matures obligation metadata used for canonical kind |
 | DSL core (ext) | B1.5-B1.8 | Reactive/metaprog primitives not yet in DSL |
 
 ---
@@ -87,8 +90,8 @@ E1.0 cred diagnostics ────▶ E1.1 context/profile ─────▶ E1
 | Wave | Tasks | Parallel Swimlanes | Theme |
 |------|-------|--------------------|-------|
 | **0** | ~6 | 2 | **Type foundations**: DAG-based coercion + understanding layer. Validates modeling approach before building on it. |
-| **1** | ~20 | 5 | Model + migrate: GCP understandings, DSL migrations, platform types, runtime basics |
-| **2** | ~15 | 4 | Build-on: contract tests, platform migrations, logging quality, credential context |
+| **1** | ~23 | 5 | Model + migrate: GCP understandings, DSL migrations, platform types, runtime basics, unify triplet analysis |
+| **2** | ~18 | 4 | Build-on: contract tests, platform migrations, logging quality, credential context, obligation-based canonical kind |
 | **3** | ~15 | 4 | Completion: multi-cloud stress tests, logging finish, auth policy |
 | **4** | ~12 | 3 | Horizon: credential hardening, GCP compute, sandbox RFC |
 
@@ -676,12 +679,33 @@ Unrecognized semantic carrier types should fail rather than fallback to structur
 Ongoing concern: generated code must pass linters without `#[allow(...)]`. Driven by
 case studies as they arise during DSL migration work.
 
-##### D3.1 — Cross-language idiom audit [M] (Wave 3+)
+##### D3.1 — Unify triplet analysis in derive [S] (Wave 1)
+**Deps**: None
+
+Transport triplet detection currently lives in `daglang-cli` (`compile/triplets.rs`), duplicating
+analysis that should be part of `DerivedArtifacts` in `daglang-derive`. CLI should be a pure renderer.
+
+- [ ] D3.1a — Add `transport_triplets: Vec<TransportTriplet>` to `DerivedArtifacts`
+- [ ] D3.1b — Move `collect_transport_triplets` logic into `daglang-derive`
+- [ ] D3.1c — Update `daglang-cli` `show-triplets` to render from derived data
+
+##### D3.2 — Obligation-based canonical kind classification [M] (Wave 2)
+**Deps**: C5.1 (coercion via DAG walk), D3.1
+
+`canonical_kind_from_shape` in `daglang-lower` uses node-ID prefix heuristics (`prepare_*`,
+`execute_transport_*`, etc.) to classify canonical kinds. As `ObligationCategory` coverage grows,
+canonical kind should derive from structural obligation metadata instead.
+
+- [ ] D3.2a — Map `ObligationCategory` variants to canonical kind strings
+- [ ] D3.2b — Replace prefix-heuristic branches in `canonical_kind_from_shape` with obligation lookups
+- [ ] D3.2c — Verify parity snapshots unchanged (same classification, different derivation)
+
+##### D3.3 — Cross-language idiom audit [M] (Wave 3+)
 **Deps**: Active DSL backends
 
-- [ ] D3.1a — Audit generated Rust for remaining clippy issues
-- [ ] D3.1b — Audit generated Go for golint/govet issues
-- [ ] D3.1c — Document IR modeling gaps discovered and fix
+- [ ] D3.3a — Audit generated Rust for remaining clippy issues
+- [ ] D3.3b — Audit generated Go for golint/govet issues
+- [ ] D3.3c — Document IR modeling gaps discovered and fix
 
 ---
 
@@ -910,7 +934,7 @@ understandings.
 |----------|-------|-------|
 | **A** | B1.1, B1.2, B1.3, B1.4 | DSL migration (Ready Now) |
 | **B** | C1.1, C3.1, C3.1b, C4.1 | Modeling foundations |
-| **C** | D1.1, D1.2, D1.3, D2.1 | Runtime hardening |
+| **C** | D1.1, D1.2, D1.3, D2.1, D3.1 | Runtime hardening + unify triplet analysis |
 | **D** | C5.3, C6.2 | Type stress tests + first understandings (GCP, transport) |
 | **E** | E1.0, E2.1, F1.x | Domain baselines (E2.1 requires C6.1+C6.2b), debt cleanup |
 
