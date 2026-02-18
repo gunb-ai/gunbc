@@ -21,7 +21,9 @@
 
 use crate::mock_spec::{BoundaryMock, MockSpec, NodeExample, TransportMock};
 use gunbc_ir::transport::TransportResponse;
-use gunbc_ir::{parse_map_type_id, Cardinality, NodeId, PortName, TypeId, Value};
+use gunbc_ir::{
+    parse_map_type_id, value_backing_for_type_id, Cardinality, NodeId, PortName, TypeId, Value,
+};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
@@ -281,16 +283,7 @@ impl MockRequirements {
             return true;
         }
 
-        // List-backed types (StringList, NonEmptyStringList, etc.)
-        if actual == "List" && expected.ends_with("List") {
-            return true;
-        }
-
-        // Set-backed types (StringSet, etc.)
-        if actual == "Set" && expected.ends_with("Set") {
-            return true;
-        }
-
+        // Parametric map types: Map<String, T>
         if let Some((key_type, value_type)) = parse_map_type_id(expected) {
             if key_type != "String" {
                 return false;
@@ -303,37 +296,14 @@ impl MockRequirements {
             return false;
         }
 
-        // Map-backed types (ToolHandle, Credential, FilesystemHandle, NetworkHandle, CliResult)
-        // NOTE: This must match types_compatible in codegen/testgen/codegen.rs
-        if actual == "Map" {
-            let map_backed = [
-                "ToolHandle",
-                "Credential",
-                "FilesystemHandle",
-                "NetworkHandle",
-                "CliResult",
-            ];
-            if map_backed.contains(&expected) {
-                return true;
-            }
-        }
-
-        // Map can also represent Platform (for structured platform info)
-        if actual == "Map" && expected == "Platform" {
+        // Platform has dual backing (String or Map)
+        if expected == "Platform" && (actual == "String" || actual == "Map") {
             return true;
         }
 
-        // Int-backed types (Timestamp stores millis as Int)
-        if actual == "Int" && expected == "Timestamp" {
-            return true;
-        }
-
-        // String-backed types (Platform serializes as String)
-        if actual == "String" && expected == "Platform" {
-            return true;
-        }
-
-        false
+        // Delegate to centralized ValueBacking for all other type→value compatibility
+        let backing = value_backing_for_type_id(expected);
+        backing.accepts_value_type(actual)
     }
 
     /// Validate a value against a slot's type.
