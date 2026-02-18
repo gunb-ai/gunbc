@@ -28,7 +28,8 @@ use gunbc_ir::{
     validate_authenticate_bindings, AuthenticatePhase, AuthenticatePhaseBinding, Timestamp, Value,
 };
 use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_from_config, CloudOps, CloudSecretManagerGraphOp,
+    bind_credential_intent_policy, build_cloud_secret_manager_credential_graph_from_config,
+    CloudOps, CloudSecretManagerGraphOp,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::filename;
@@ -410,10 +411,13 @@ impl Executable for GistUploadOp {
 fn execute_gist_resolve_auth(
     _inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let intent = GistRequest::new().credential_intent();
-    intent
+    let fallback_intent = GistRequest::new().credential_intent();
+    fallback_intent
         .validate()
         .map_err(|e| ExecError::new(format!("invalid gist credential contract: {e}")))?;
+    let bound = bind_credential_intent_policy("github.gist.create", &fallback_intent)
+        .map_err(|e| ExecError::new(format!("credential policy binding failed: {e}")))?;
+    let intent = bound.intent;
 
     let mut out = OutputMap::new()
         .str("service", intent.service)
@@ -743,10 +747,47 @@ fn gist_authenticate_bindings() -> Vec<AuthenticatePhaseBinding> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_lib_cloud_ops::{ENV_CREDENTIAL_POLICY_JSON, ENV_CREDENTIAL_POLICY_PROFILE};
+    use std::sync::{Mutex, OnceLock};
 
     #[test]
     fn gist_authenticate_bindings_follow_canonical_chain() {
         assert!(validate_authenticate_bindings(&gist_authenticate_bindings()).is_ok());
+    }
+
+    #[test]
+    fn gist_resolve_auth_applies_policy_secret_binding() {
+        with_env_lock(|| {
+            std::env::set_var(
+                ENV_CREDENTIAL_POLICY_JSON,
+                r#"{
+                    "version": 0,
+                    "profiles": [{
+                        "name": "prod",
+                        "defaults": {
+                            "provider": "Gcp",
+                            "runtime": "GitHubActions"
+                        },
+                        "intents": [{
+                            "intent": "github.gist.create",
+                            "secret": { "name": "prod-github-token" },
+                            "required_scopes": ["gist:write"]
+                        }]
+                    }]
+                }"#,
+            );
+            std::env::set_var(ENV_CREDENTIAL_POLICY_PROFILE, "prod");
+
+            let outputs = execute_gist_resolve_auth(HashMap::new()).expect("resolve auth");
+            assert_eq!(
+                outputs.get("secret_name"),
+                Some(&Value::Str("prod-github-token".to_string()))
+            );
+            assert_eq!(
+                outputs.get("required_scopes"),
+                Some(&Value::str_list(vec!["gist:write".to_string()]))
+            );
+        });
     }
 
     fn request_filename(req: &gunbc_ir::transport::rest::RestRequest) -> String {
@@ -769,6 +810,28 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string()
+    }
+
+    fn with_env_lock<F>(f: F)
+    where
+        F: FnOnce() + std::panic::UnwindSafe,
+    {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        clear_policy_env();
+        let result = std::panic::catch_unwind(f);
+        clear_policy_env();
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    fn clear_policy_env() {
+        std::env::remove_var(ENV_CREDENTIAL_POLICY_JSON);
+        std::env::remove_var(ENV_CREDENTIAL_POLICY_PROFILE);
     }
 
     #[test]

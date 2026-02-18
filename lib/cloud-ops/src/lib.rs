@@ -5,6 +5,7 @@
 
 pub mod config_loader;
 pub mod config_resource;
+pub mod credential_policy;
 pub mod env_requirements;
 mod env_status;
 mod github_credential_graph;
@@ -15,6 +16,10 @@ pub mod project_spec;
 pub use config_loader::{
     default_local_dev_config, graph_cloud_config, resolve_graph_cloud_config,
     resolve_graph_cloud_config_with_context, ConfigError, ResolveContext,
+};
+pub use credential_policy::{
+    bind_credential_intent_policy, BoundCredentialIntent, ENV_CREDENTIAL_POLICY_JSON,
+    ENV_CREDENTIAL_POLICY_PATH, ENV_CREDENTIAL_POLICY_PROFILE,
 };
 pub use env_requirements::{
     aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,

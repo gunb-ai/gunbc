@@ -845,9 +845,9 @@ Central authentication pattern in `core/ir` that all credentialed flows consume.
 ##### E1.2 — Credential policy binding [M]
 **Deps**: E1.1.5, E2.2 (GCP WIF)
 
-- [ ] E1.2a — Define credential-policy schema
-- [ ] E1.2b — Implement policy loader + binding logic
-- [ ] E1.2c — Tests: policy correctly selects provider strategy
+- [x] E1.2a — Define credential-policy schema
+- [x] E1.2b — Implement policy loader + binding logic
+- [x] E1.2c — Tests: policy correctly selects provider strategy
 
 #### Wave 4
 

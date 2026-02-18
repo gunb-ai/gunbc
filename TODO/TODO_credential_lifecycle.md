@@ -240,7 +240,15 @@ This section maps the target architecture to the DAGs already in the repo so mig
   - Added file-backed profile loading from `.gunbc/config-<profile>.toml`
     (resolved when `GUNBC_CLOUD_PROFILE` / `GUNBC_CLOUD_NAMESPACE` is set).
   - Added precedence regression tests in `config_loader`.
-- Remaining gap: policy binding is not integrated yet (E1.2).
+- Update (2026-02-18):
+  - Added policy loader + binding helper:
+    `lib/cloud-ops/src/credential_policy.rs`
+    (`bind_credential_intent_policy`).
+  - Supports env-backed policy sources:
+    - `GUNBC_CREDENTIAL_POLICY_JSON`
+    - `GUNBC_CREDENTIAL_POLICY_PATH`
+    - `GUNBC_CREDENTIAL_POLICY_PROFILE`
+  - Gist + LLM resolve-auth paths now apply policy-bound secret/scopes.
 
 2. `SelectFlow`
 - Current implementation:
@@ -421,9 +429,10 @@ Update (2026-02-18):
 
 Phase 2: Policy binding
 
-- Introduce `credential-policy` schema and loader.
-- Move intent->secret/scopes mapping from callsites into policy.
-- Evolve `bind_secret` semantics to bind policy output.
+- ✅ Introduced `credential-policy` schema + loader/binder path.
+- ✅ Gist/LLM intent->secret/scopes mapping now supports policy overrides.
+- ⏳ Remaining: expand `bind_secret` semantics beyond current
+  resolve-auth policy application (next lifecycle phases).
 
 Phase 3: Strategy execution
 

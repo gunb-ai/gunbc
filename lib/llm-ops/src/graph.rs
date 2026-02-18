@@ -91,6 +91,7 @@ pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) 
             vec![port("provider", "String")],
             vec![
                 port("service", "String"),
+                optional("secret_name", "OptionalString"),
                 port("scheme", "String"),
                 port("header_name", "String"),
                 list("required_scopes", "String"),
@@ -191,6 +192,12 @@ pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) 
     builder
         .add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))
         .expect("resolve_auth.service -> bind_secret.service");
+    builder
+        .add_edge(
+            resolve_auth.out("secret_name"),
+            bind_secret.in_port("secret_name"),
+        )
+        .expect("resolve_auth.secret_name -> bind_secret.secret_name");
     builder
         .add_edge(
             bind_secret.out("config"),
