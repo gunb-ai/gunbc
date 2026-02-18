@@ -865,7 +865,7 @@ Conditional impersonation, provider selection.
 Reconcile/rotate/prune loops for secrets.
 
 - [x] E1.4a — Implement secret rotation handlers (Manual, GitHubPat, None)
-- [ ] E1.4b — Secret provisioning DAG (provision all from spec)
+- [x] E1.4b — Secret provisioning DAG (provision all from spec)
 
 ##### E1.5 — Credential hardening + cutover [M]
 **Deps**: E1.4
@@ -909,7 +909,7 @@ Implementation of SA/IAM operations against the typed understanding spec from C6
 **Deps**: E2.2
 
 - [x] E2.3a — Secret rotation handlers
-- [ ] E2.3b — Secret provisioning DAG
+- [x] E2.3b — Secret provisioning DAG
 - [ ] E2.3c — Secret fetch + direnv export integration
 
 ##### E2.4 — Environment modeling [M]

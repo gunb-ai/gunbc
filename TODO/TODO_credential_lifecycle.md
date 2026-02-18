@@ -460,6 +460,9 @@ Update (2026-02-18):
   - `rotate_secret(...)` handlers (`Manual`, `GitHubPat`, `None` + SA key fallback)
   - `check_secret_age(...)` with `max_age_days` evaluation.
 - `SecretSpec` now carries `max_age_days` for rotation recommendations.
+- Added `build_secrets_provision_dag(...)` in
+  `lib/cloud-ops/src/secret_provision_graph.rs` to provision all active
+  secrets from spec via composed upsert sub-DAGs.
 
 Phase 5: Hardening and cutover
 

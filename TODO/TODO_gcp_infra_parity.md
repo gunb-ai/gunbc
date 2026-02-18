@@ -161,12 +161,17 @@ rotation logic.
 **Gap**: gunbc can upsert individual secrets but has no DAG that
 provisions ALL secrets from the spec.
 
-- [ ] Create `build_secrets_provision_dag()` that iterates `KNOWN_SECRETS`:
+- [x] Create `build_secrets_provision_dag()` that iterates `KNOWN_SECRETS`:
   1. For each secret: check existence → create if missing
   2. Grant IAM access to appropriate SAs
   3. Report status (created, exists, missing value)
 - [ ] Add CLI entrypoint: `make ensure-secrets`
 - [ ] Integrate into `make bootstrap` flow
+
+Update (2026-02-18):
+- Added `build_secrets_provision_dag(...)` in
+  `lib/cloud-ops/src/secret_provision_graph.rs`, composing one upsert sub-DAG
+  per active secret from the canonical project spec.
 
 **Ref**: `gunb.ai/tools/infra/dag/builder.go:1630-1680` — secret provisioning
 
