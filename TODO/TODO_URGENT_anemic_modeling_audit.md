@@ -347,6 +347,7 @@ executors. Lower priority since transport types don't change often.
 4. **Derive WorkspaceBinary from tool registry**
    - Extend `#[tool_target]` to register binary metadata
    - Auto-generate `WorkspaceOp` variants and `From` impls
+   - **Status:** ✅ `WorkspaceBinary::invocation()` now resolves from `iter_tool_targets()` metadata when available, with explicit fallback for internal binaries without tool-target registrations.
 
 ### Phase 3: Structural Derivation
 
