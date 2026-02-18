@@ -219,6 +219,14 @@ Removed `upsert_and_run` and unused imports (`CliToolError`, `Value`,
 5. Keep transport/world effects as runtime checks; push everything else to
    DAG build-time or generated type wrappers.
 
+**Update (2026-02-18)**:
+- Testgen validation now checks `MockSpec::input_mocks` for:
+  - unknown node/input-port references (`Unknown mock slots` panic path)
+  - value/port type mismatches (`Mock value type mismatch` panic path)
+- Added regression tests in `core/codegen/src/testgen/codegen.rs`:
+  - `test_input_mock_type_mismatch_detected`
+  - `test_input_mock_unknown_port_detected`
+
 **Boundary of guarantee (explicit)**:
 - Compile/build time can guarantee: DAG structure, port compatibility,
   cardinality, typed wrappers, and mock shape/type correctness.

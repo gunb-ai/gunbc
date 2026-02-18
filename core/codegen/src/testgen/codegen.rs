@@ -783,6 +783,28 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
+        // Check input mocks against input port type definitions
+        for im in &spec.input_mocks {
+            let node = self
+                .dag
+                .get_node(&NodeId(im.node.clone()))
+                .or_else(|| lowered_dag.and_then(|dag| dag.get_node(&NodeId(im.node.clone()))));
+            if let Some(node) = node {
+                if let Some(port) = node.inputs.iter().find(|p| p.name.0 == im.port) {
+                    let expected = &port.type_id.0;
+                    let actual = value_type_name(&im.value);
+                    if !types_compatible(expected, actual) {
+                        mismatches.push((
+                            im.node.clone(),
+                            im.port.clone(),
+                            expected.clone(),
+                            actual.to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+
         mismatches
     }
 
@@ -851,6 +873,39 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                             format!(
                                 "port does not exist on node (available: {})",
                                 node.outputs
+                                    .iter()
+                                    .map(|p| p.name.0.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check input mocks (must reference existing input ports)
+        for im in &spec.input_mocks {
+            let node = self
+                .dag
+                .get_node(&NodeId(im.node.clone()))
+                .or_else(|| lowered_dag.and_then(|dag| dag.get_node(&NodeId(im.node.clone()))));
+            match node {
+                None => {
+                    unknown.push((
+                        im.node.clone(),
+                        im.port.clone(),
+                        "node does not exist".to_string(),
+                    ));
+                }
+                Some(node) => {
+                    if !node.inputs.iter().any(|p| p.name.0 == im.port) {
+                        unknown.push((
+                            im.node.clone(),
+                            im.port.clone(),
+                            format!(
+                                "input port does not exist on node (available: {})",
+                                node.inputs
                                     .iter()
                                     .map(|p| p.name.0.as_str())
                                     .collect::<Vec<_>>()
@@ -6173,6 +6228,51 @@ mod tests {
         // MockSpec provides a String for an Int port
         let spec = MockSpec::new("test")
             .boundary("transform", "output", Value::Str("wrong type".into())) // <-- String, not Int
+            .skip_node_example("transform");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let _ = generator.generate_test_module("test", "build_test_graph()");
+    }
+
+    #[test]
+    #[should_panic(expected = "Mock value type mismatch")]
+    fn test_input_mock_type_mismatch_detected() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "transform",
+            vec![port("count", "Int")],
+            vec![port("output", "String")],
+            (),
+        ));
+
+        // Input mock provides String for Int input port.
+        let spec = MockSpec::new("test")
+            .input_mock("transform", "count", Value::Str("wrong type".into()))
+            .boundary("transform", "output", Value::Str("ok".into()))
+            .skip_node_example("transform");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let _ = generator.generate_test_module("test", "build_test_graph()");
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown mock slots")]
+    fn test_input_mock_unknown_port_detected() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "transform",
+            vec![port("count", "Int")],
+            vec![port("output", "String")],
+            (),
+        ));
+
+        let spec = MockSpec::new("test")
+            .input_mock("transform", "unknown_input", Value::Int(1))
+            .boundary("transform", "output", Value::Str("ok".into()))
             .skip_node_example("transform");
 
         let generator = TestGenerator::new(&dag)
