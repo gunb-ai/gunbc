@@ -447,6 +447,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         vec![
             port("verify_makegen_success", "Bool"),
             port("verify_makegen_stderr", "String"),
+            port("verify_makegen_stdout", "String"),
         ],
         CIGraphOp::CI(CIOp::PrepareVerifyMakegenCheck),
         CIGraphOp::CI(CIOp::ParseVerifyMakegenResult),
@@ -466,6 +467,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         vec![
             port("verify_deps_config_success", "Bool"),
             port("verify_deps_config_stderr", "String"),
+            port("verify_deps_config_stdout", "String"),
         ],
         CIGraphOp::CI(CIOp::PrepareVerifyDepsConfigCheck),
         CIGraphOp::CI(CIOp::ParseVerifyDepsConfigResult),
@@ -485,6 +487,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         vec![
             port("verify_bootstrap_success", "Bool"),
             port("verify_bootstrap_stderr", "String"),
+            port("verify_bootstrap_stdout", "String"),
         ],
         CIGraphOp::CI(CIOp::PrepareVerifyBootstrapCheck),
         CIGraphOp::CI(CIOp::ParseVerifyBootstrapResult),
@@ -504,6 +507,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         vec![
             port("verify_testgen_success", "Bool"),
             port("verify_testgen_stderr", "String"),
+            port("verify_testgen_stdout", "String"),
         ],
         CIGraphOp::CI(CIOp::PrepareVerifyTestgenCheck),
         CIGraphOp::CI(CIOp::ParseVerifyTestgenResult),
@@ -523,6 +527,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         vec![
             port("verify_pragma_success", "Bool"),
             port("verify_pragma_stderr", "String"),
+            port("verify_pragma_stdout", "String"),
         ],
         CIGraphOp::CI(CIOp::PrepareVerifyPragmaCheck),
         CIGraphOp::CI(CIOp::ParseVerifyPragmaResult),
@@ -535,17 +540,23 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
             vec![
                 port("verify_makegen_success", "Bool"),
                 port("verify_makegen_stderr", "String"),
+                port("verify_makegen_stdout", "String"),
                 port("verify_deps_config_success", "Bool"),
                 port("verify_deps_config_stderr", "String"),
+                port("verify_deps_config_stdout", "String"),
                 port("verify_bootstrap_success", "Bool"),
                 port("verify_bootstrap_stderr", "String"),
+                port("verify_bootstrap_stdout", "String"),
                 port("verify_testgen_success", "Bool"),
                 port("verify_testgen_stderr", "String"),
+                port("verify_testgen_stdout", "String"),
                 port("verify_pragma_success", "Bool"),
                 port("verify_pragma_stderr", "String"),
+                port("verify_pragma_stdout", "String"),
             ],
             vec![
                 port("verify_success", "Bool"),
+                port("verify_stdout", "String"),
                 port("verify_stderr", "String"),
             ],
             CIGraphOp::CI(CIOp::AggregateVerifyResults),
@@ -589,6 +600,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
                 optional("lint_stdout", "OptionalString"),
                 optional("guardrail_stderr", "OptionalString"),
                 optional("guardrail_stdout", "OptionalString"),
+                optional("verify_stdout", "OptionalString"),
                 optional("verify_stderr", "OptionalString"),
                 optional("cloud_env_status", "OptionalString"),
             ],
@@ -740,12 +752,20 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         verify.in_port("verify_makegen_stderr"),
     )?;
     builder.add_edge(
+        verify_makegen.out("verify_makegen_stdout"),
+        verify.in_port("verify_makegen_stdout"),
+    )?;
+    builder.add_edge(
         verify_deps_config.out("verify_deps_config_success"),
         verify.in_port("verify_deps_config_success"),
     )?;
     builder.add_edge(
         verify_deps_config.out("verify_deps_config_stderr"),
         verify.in_port("verify_deps_config_stderr"),
+    )?;
+    builder.add_edge(
+        verify_deps_config.out("verify_deps_config_stdout"),
+        verify.in_port("verify_deps_config_stdout"),
     )?;
     builder.add_edge(
         verify_bootstrap.out("verify_bootstrap_success"),
@@ -756,12 +776,20 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         verify.in_port("verify_bootstrap_stderr"),
     )?;
     builder.add_edge(
+        verify_bootstrap.out("verify_bootstrap_stdout"),
+        verify.in_port("verify_bootstrap_stdout"),
+    )?;
+    builder.add_edge(
         verify_testgen.out("verify_testgen_success"),
         verify.in_port("verify_testgen_success"),
     )?;
     builder.add_edge(
         verify_testgen.out("verify_testgen_stderr"),
         verify.in_port("verify_testgen_stderr"),
+    )?;
+    builder.add_edge(
+        verify_testgen.out("verify_testgen_stdout"),
+        verify.in_port("verify_testgen_stdout"),
     )?;
     builder.add_edge(
         verify_pragma.out("verify_pragma_success"),
@@ -771,8 +799,12 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         verify_pragma.out("verify_pragma_stderr"),
         verify.in_port("verify_pragma_stderr"),
     )?;
+    builder.add_edge(
+        verify_pragma.out("verify_pragma_stdout"),
+        verify.in_port("verify_pragma_stdout"),
+    )?;
 
-    // Report — success flags and stderr for failure details
+    // Report — success flags and captured stage output for failure details
     builder.add_edge(build.out("build_success"), report.in_port("build_success"))?;
     builder.add_edge(test.out("test_success"), report.in_port("test_success"))?;
     builder.add_edge(lint.out("lint_success"), report.in_port("lint_success"))?;
@@ -828,6 +860,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         verify.out("verify_success"),
         report.in_port("verify_success"),
     )?;
+    builder.add_edge(verify.out("verify_stdout"), report.in_port("verify_stdout"))?;
     builder.add_edge(verify.out("verify_stderr"), report.in_port("verify_stderr"))?;
     builder.add_edge(
         cloud_env_status.out("status"),

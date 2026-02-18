@@ -668,10 +668,10 @@ separate logic. Remaining: formalize `DisplayConfig` struct, verbosity control.
 ##### D1.3 — Capture stdout+stderr all CI stages [S]
 **Deps**: None
 
-Build/Test/Lint capture both; Testgen/Bootstrap/Pragma/Guardrail/Verify missing stdout.
+All CI parse stages now capture both stdout and stderr, including Verify sub-checks.
 
-- [ ] D1.3a — Audit parse ops for missing stdout capture
-- [ ] D1.3b — Add stdout capture to Testgen, Bootstrap, Pragma, Guardrail, Verify stages
+- [x] D1.3a — Audit parse ops for missing stdout capture
+- [x] D1.3b — Add stdout capture to Testgen, Bootstrap, Pragma, Guardrail, Verify stages
 
 #### Wave 2
 

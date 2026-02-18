@@ -834,8 +834,11 @@ fn execute_parse_verify_result(
     inputs: HashMap<String, Value>,
     success_key: &str,
     stderr_key: &str,
+    stdout_key: &str,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) = propagate_skipped(&inputs, "response", &[success_key, stderr_key]) {
+    if let Some(result) =
+        propagate_skipped(&inputs, "response", &[success_key, stderr_key, stdout_key])
+    {
         return result;
     }
 
@@ -848,6 +851,7 @@ fn execute_parse_verify_result(
         return OutputMap::new()
             .bool(success_key, false)
             .str(stderr_key, reason)
+            .str(stdout_key, "")
             .ok();
     }
 
@@ -857,6 +861,7 @@ fn execute_parse_verify_result(
             return OutputMap::new()
                 .bool(success_key, false)
                 .str(stderr_key, "missing response")
+                .str(stdout_key, "")
                 .ok();
         }
     };
@@ -864,6 +869,7 @@ fn execute_parse_verify_result(
     OutputMap::new()
         .bool(success_key, shell.success())
         .str(stderr_key, shell.stderr.clone())
+        .str(stdout_key, shell.stdout.clone())
         .ok()
 }
 
@@ -871,7 +877,12 @@ fn execute_parse_verify_result(
 fn execute_parse_verify_makegen_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    execute_parse_verify_result(inputs, "verify_makegen_success", "verify_makegen_stderr")
+    execute_parse_verify_result(
+        inputs,
+        "verify_makegen_success",
+        "verify_makegen_stderr",
+        "verify_makegen_stdout",
+    )
 }
 
 /// Parse the deps-config verify shell response (pure).
@@ -882,6 +893,7 @@ fn execute_parse_verify_deps_config_result(
         inputs,
         "verify_deps_config_success",
         "verify_deps_config_stderr",
+        "verify_deps_config_stdout",
     )
 }
 
@@ -893,6 +905,7 @@ fn execute_parse_verify_bootstrap_result(
         inputs,
         "verify_bootstrap_success",
         "verify_bootstrap_stderr",
+        "verify_bootstrap_stdout",
     )
 }
 
@@ -900,14 +913,24 @@ fn execute_parse_verify_bootstrap_result(
 fn execute_parse_verify_testgen_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    execute_parse_verify_result(inputs, "verify_testgen_success", "verify_testgen_stderr")
+    execute_parse_verify_result(
+        inputs,
+        "verify_testgen_success",
+        "verify_testgen_stderr",
+        "verify_testgen_stdout",
+    )
 }
 
 /// Parse the pragma verify shell response (pure).
 fn execute_parse_verify_pragma_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    execute_parse_verify_result(inputs, "verify_pragma_success", "verify_pragma_stderr")
+    execute_parse_verify_result(
+        inputs,
+        "verify_pragma_success",
+        "verify_pragma_stderr",
+        "verify_pragma_stdout",
+    )
 }
 
 /// Aggregate per-check verify results into report-friendly outputs.
@@ -915,34 +938,59 @@ fn execute_aggregate_verify_results(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let checks = [
-        ("makegen", "verify_makegen_success", "verify_makegen_stderr"),
+        (
+            "makegen",
+            "verify_makegen_success",
+            "verify_makegen_stderr",
+            "verify_makegen_stdout",
+        ),
         (
             "deps-config",
             "verify_deps_config_success",
             "verify_deps_config_stderr",
+            "verify_deps_config_stdout",
         ),
         (
             "bootstrap",
             "verify_bootstrap_success",
             "verify_bootstrap_stderr",
+            "verify_bootstrap_stdout",
         ),
-        ("testgen", "verify_testgen_success", "verify_testgen_stderr"),
-        ("pragma", "verify_pragma_success", "verify_pragma_stderr"),
+        (
+            "testgen",
+            "verify_testgen_success",
+            "verify_testgen_stderr",
+            "verify_testgen_stdout",
+        ),
+        (
+            "pragma",
+            "verify_pragma_success",
+            "verify_pragma_stderr",
+            "verify_pragma_stdout",
+        ),
     ];
 
     let mut verify_success = true;
     let mut failure_messages: Vec<String> = Vec::new();
+    let mut verify_stdout_parts: Vec<String> = Vec::new();
 
-    for (name, success_key, stderr_key) in checks {
+    for (name, success_key, stderr_key, stdout_key) in checks {
         let success = require_bool_or_skipped(&inputs, success_key, true)?;
+        if let Some(stdout) = optional_str_strict(&inputs, stdout_key)? {
+            if !stdout.trim().is_empty() {
+                verify_stdout_parts.push(format!("{name}:\n{stdout}"));
+            }
+        }
         if success {
             continue;
         }
 
         verify_success = false;
         let stderr = optional_str_strict(&inputs, stderr_key)?;
-        let message = match stderr {
-            Some(stderr) if !stderr.trim().is_empty() => format!("{name}: {stderr}"),
+        let stdout = optional_str_strict(&inputs, stdout_key)?;
+        let message = match (stderr, stdout) {
+            (Some(stderr), _) if !stderr.trim().is_empty() => format!("{name}: {stderr}"),
+            (_, Some(stdout)) if !stdout.trim().is_empty() => format!("{name}: {stdout}"),
             _ => format!("{name}: verify check failed"),
         };
         failure_messages.push(message);
@@ -954,8 +1002,11 @@ fn execute_aggregate_verify_results(
         failure_messages.join("\n\n")
     };
 
+    let verify_stdout = verify_stdout_parts.join("\n\n");
+
     OutputMap::new()
         .bool("verify_success", verify_success)
+        .str("verify_stdout", verify_stdout)
         .str("verify_stderr", verify_stderr)
         .ok()
 }
@@ -1082,6 +1133,7 @@ fn build_report_blocks(
     let bootstrap_stdout = optional_str_strict(inputs, "bootstrap_stdout")?.unwrap_or("");
     let pragma_stdout = optional_str_strict(inputs, "pragma_stdout")?.unwrap_or("");
     let guardrail_stdout = optional_str_strict(inputs, "guardrail_stdout")?.unwrap_or("");
+    let verify_stdout = optional_str_strict(inputs, "verify_stdout")?.unwrap_or("");
 
     let stages = [
         StageResult::new("Build", build_success, build_stdout, build_stderr)
@@ -1103,7 +1155,7 @@ fn build_report_blocks(
             guardrail_stdout,
             guardrail_stderr,
         ),
-        StageResult::new("Verify", verify_success, "", verify_stderr),
+        StageResult::new("Verify", verify_success, verify_stdout, verify_stderr),
     ];
 
     for stage in &stages {
@@ -1459,6 +1511,7 @@ impl Mockable for CIOp {
             CIOp::ParseVerifyMakegenResult => OutputMap::new()
                 .bool("verify_makegen_success", true)
                 .str("verify_makegen_stderr", "")
+                .str("verify_makegen_stdout", "")
                 .build(),
             CIOp::PrepareVerifyDepsConfigCheck => {
                 let config = BuildConfig::cargo();
@@ -1471,6 +1524,7 @@ impl Mockable for CIOp {
             CIOp::ParseVerifyDepsConfigResult => OutputMap::new()
                 .bool("verify_deps_config_success", true)
                 .str("verify_deps_config_stderr", "")
+                .str("verify_deps_config_stdout", "")
                 .build(),
             CIOp::PrepareVerifyBootstrapCheck => {
                 let config = BuildConfig::cargo();
@@ -1483,6 +1537,7 @@ impl Mockable for CIOp {
             CIOp::ParseVerifyBootstrapResult => OutputMap::new()
                 .bool("verify_bootstrap_success", true)
                 .str("verify_bootstrap_stderr", "")
+                .str("verify_bootstrap_stdout", "")
                 .build(),
             CIOp::PrepareVerifyTestgenCheck => {
                 let config = BuildConfig::cargo();
@@ -1495,6 +1550,7 @@ impl Mockable for CIOp {
             CIOp::ParseVerifyTestgenResult => OutputMap::new()
                 .bool("verify_testgen_success", true)
                 .str("verify_testgen_stderr", "")
+                .str("verify_testgen_stdout", "")
                 .build(),
             CIOp::PrepareVerifyPragmaCheck => {
                 let config = BuildConfig::cargo();
@@ -1507,9 +1563,11 @@ impl Mockable for CIOp {
             CIOp::ParseVerifyPragmaResult => OutputMap::new()
                 .bool("verify_pragma_success", true)
                 .str("verify_pragma_stderr", "")
+                .str("verify_pragma_stdout", "")
                 .build(),
             CIOp::AggregateVerifyResults => OutputMap::new()
                 .bool("verify_success", true)
+                .str("verify_stdout", "")
                 .str("verify_stderr", "")
                 .build(),
             CIOp::Report => OutputMap::new()
@@ -1631,6 +1689,107 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_verify_result_captures_stdout_and_stderr() {
+        let mut inputs = HashMap::new();
+        inputs.insert("skip".to_string(), Value::Bool(false));
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(
+                ShellResponse {
+                    exit_code: 1,
+                    stdout: "verify details".to_string(),
+                    stderr: "verify error".to_string(),
+                }
+                .into(),
+            ),
+        );
+
+        let result = execute_parse_verify_makegen_result(inputs).expect("parse should succeed");
+        assert_eq!(
+            result
+                .get("verify_makegen_success")
+                .and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            result.get("verify_makegen_stdout").and_then(|v| v.as_str()),
+            Some("verify details")
+        );
+        assert_eq!(
+            result.get("verify_makegen_stderr").and_then(|v| v.as_str()),
+            Some("verify error")
+        );
+    }
+
+    #[test]
+    fn test_aggregate_verify_results_uses_stdout_fallback_for_failure_message() {
+        let mut inputs = HashMap::new();
+        inputs.insert("verify_makegen_success".to_string(), Value::Bool(false));
+        inputs.insert(
+            "verify_makegen_stderr".to_string(),
+            Value::Str(String::new()),
+        );
+        inputs.insert(
+            "verify_makegen_stdout".to_string(),
+            Value::Str("stdout-only failure".to_string()),
+        );
+
+        inputs.insert("verify_deps_config_success".to_string(), Value::Bool(true));
+        inputs.insert(
+            "verify_deps_config_stderr".to_string(),
+            Value::Str(String::new()),
+        );
+        inputs.insert(
+            "verify_deps_config_stdout".to_string(),
+            Value::Str(String::new()),
+        );
+
+        inputs.insert("verify_bootstrap_success".to_string(), Value::Bool(true));
+        inputs.insert(
+            "verify_bootstrap_stderr".to_string(),
+            Value::Str(String::new()),
+        );
+        inputs.insert(
+            "verify_bootstrap_stdout".to_string(),
+            Value::Str(String::new()),
+        );
+
+        inputs.insert("verify_testgen_success".to_string(), Value::Bool(true));
+        inputs.insert(
+            "verify_testgen_stderr".to_string(),
+            Value::Str(String::new()),
+        );
+        inputs.insert(
+            "verify_testgen_stdout".to_string(),
+            Value::Str(String::new()),
+        );
+
+        inputs.insert("verify_pragma_success".to_string(), Value::Bool(true));
+        inputs.insert(
+            "verify_pragma_stderr".to_string(),
+            Value::Str(String::new()),
+        );
+        inputs.insert(
+            "verify_pragma_stdout".to_string(),
+            Value::Str(String::new()),
+        );
+
+        let result = execute_aggregate_verify_results(inputs).expect("aggregation should succeed");
+        assert_eq!(
+            result.get("verify_success").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            result.get("verify_stderr").and_then(|v| v.as_str()),
+            Some("makegen: stdout-only failure")
+        );
+        assert_eq!(
+            result.get("verify_stdout").and_then(|v| v.as_str()),
+            Some("makegen:\nstdout-only failure")
+        );
+    }
+
+    #[test]
     fn test_report_all_pass() {
         let mut inputs = HashMap::new();
         inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -1674,6 +1833,32 @@ mod tests {
             result.get("overall_success").and_then(|v| v.as_bool()),
             Some(false)
         );
+    }
+
+    #[test]
+    fn test_report_verify_failure_includes_verify_stdout() {
+        let mut inputs = HashMap::new();
+        inputs.insert("build_success".to_string(), Value::Bool(true));
+        inputs.insert("test_success".to_string(), Value::Bool(true));
+        inputs.insert("lint_success".to_string(), Value::Bool(true));
+        inputs.insert("testgen_success".to_string(), Value::Bool(true));
+        inputs.insert("bootstrap_success".to_string(), Value::Bool(true));
+        inputs.insert("pragma_success".to_string(), Value::Bool(true));
+        inputs.insert("guardrail_success".to_string(), Value::Bool(true));
+        inputs.insert("verify_success".to_string(), Value::Bool(false));
+        inputs.insert(
+            "verify_stdout".to_string(),
+            Value::Str("verify output details".to_string()),
+        );
+        inputs.insert("verify_stderr".to_string(), Value::Str(String::new()));
+
+        let result = execute_report(inputs).expect("report should succeed");
+        let report = result
+            .get("report")
+            .and_then(|v| v.as_str())
+            .expect("report text");
+        assert!(report.contains("Verify stdout"));
+        assert!(report.contains("verify output details"));
     }
 
     #[test]

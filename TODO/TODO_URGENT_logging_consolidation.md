@@ -122,11 +122,11 @@ the type system) is tracked in §8 below.
 | Build | stdout + stderr | stderr | `build_stdout` exists but report ignores it |
 | Test | stdout + stderr | stderr | `extract_test_failures` uses stdout |
 | Lint | stdout + stderr | stderr | `lint_stdout` exists but report ignores it |
-| Testgen | **missing** | stderr | stdout silently discarded |
-| Bootstrap | **missing** | stderr | stdout silently discarded |
-| Pragma | **missing** | stderr | stdout silently discarded |
-| Guardrail | **missing** | stderr | stdout silently discarded |
-| Verify | **missing** | stderr | stdout silently discarded |
+| Testgen | stdout + stderr | stderr | captured in parse op outputs |
+| Bootstrap | stdout + stderr | stderr | captured in parse op outputs |
+| Pragma | stdout + stderr | stderr | captured in parse op outputs |
+| Guardrail | stdout + stderr | stderr | captured in parse op outputs |
+| Verify | stdout + stderr | stderr | captured in parse op + aggregated for report |
 
 **Why this is a problem**: If testgen/bootstrap/pragma/guardrail/verify write
 diagnostic info to stdout (e.g., test names, progress, warnings), it's lost.
@@ -377,7 +377,7 @@ This effort is done only when all items below are true.
 
 ### D. Data capture completeness
 
-- [ ] Parse ops for testgen/bootstrap/pragma/guardrail/verify capture both stdout and stderr.
+- [x] Parse ops for testgen/bootstrap/pragma/guardrail/verify capture both stdout and stderr. _(2026-02-18: verify parse path now emits stdout alongside stderr/success and aggregate/report wiring consumes it.)_
 - [ ] Report formatting can render failing stage output generically from structured stage fields.
 
 ### E. Secret safety
