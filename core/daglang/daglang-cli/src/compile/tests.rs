@@ -1,5 +1,6 @@
 use super::*;
 use crate::pipeline::PipelineContext;
+use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
@@ -600,7 +601,7 @@ fn render_triplets_json_includes_makegen_transport_nodes() {
     let context = workspace_single_file_context("tools/makegen.dag");
     let output = compile_from_context(&context).expect("compile should succeed");
 
-    let rendered = render_triplets(&output.lowered_dag, OutputFormat::Json);
+    let rendered = render_triplets(&output.derived, OutputFormat::Json);
     let parsed: Value = serde_json::from_str(&rendered).expect("triplets json should parse");
     let triplets = parsed
         .get("triplets")
@@ -699,7 +700,8 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
         "response",
     ));
 
-    let rendered = render_triplets(&dag, OutputFormat::Json);
+    let derived = derive_artifacts(&dag).expect("triplet derivation should succeed");
+    let rendered = render_triplets(&derived, OutputFormat::Json);
     let parsed: Value = serde_json::from_str(&rendered).expect("triplets json should parse");
     let triplets = parsed
         .get("triplets")
@@ -728,8 +730,8 @@ fn render_triplets_text_is_deterministic() {
     let context = workspace_single_file_context("tools/makegen.dag");
     let output = compile_from_context(&context).expect("compile should succeed");
 
-    let first = render_triplets(&output.lowered_dag, OutputFormat::Text);
-    let second = render_triplets(&output.lowered_dag, OutputFormat::Text);
+    let first = render_triplets(&output.derived, OutputFormat::Text);
+    let second = render_triplets(&output.derived, OutputFormat::Text);
     assert_eq!(first, second, "triplet rendering should be deterministic");
 }
 

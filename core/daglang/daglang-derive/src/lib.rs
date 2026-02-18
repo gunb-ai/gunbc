@@ -1,4 +1,5 @@
-//! daglang-derive: Derives ProgressManifest, TestObligations, and ToolMetadata.
+//! daglang-derive: Derives ProgressManifest, TestObligations, TransportTriplets,
+//! and ToolMetadata.
 //!
 //! After lowering to GraphIR, the derive phase extracts higher-level
 //! information needed by renderers, test generation, and tooling:
@@ -7,6 +8,7 @@
 //!   groups, scatter points, stage groups — used by all progress renderers
 //! - **TestObligations**: 4-bucket test obligations derived from DAG structure
 //!   and `@mock_response` / `@contract` annotations
+//! - **TransportTriplets**: prepare→execute→parse transport chains with metadata
 //! - **ToolMetadata**: CLI entrypoints, Makefile targets, tool descriptions
 //!
 //! # Pipeline position
@@ -17,7 +19,7 @@
 //!                                      → ToolMetadata
 //! ```
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 pub use daglang_contract::{
     CaptureMode, ParallelGroup, ProgressManifest, ResourceUsage, StageGroup, SubDagBoundary,
@@ -25,7 +27,7 @@ pub use daglang_contract::{
 };
 use daglang_lower::{
     classify_obligation, classify_service_transport, CollectionOpKind, LoweredOp,
-    ObligationCategory, ServiceTransportClass,
+    ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node};
 
@@ -34,7 +36,17 @@ use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node};
 pub struct DerivedArtifacts {
     pub manifest: ProgressManifest,
     pub obligations: TestObligations,
+    pub transport_triplets: Vec<TransportTriplet>,
     pub tool_metadata: ToolMetadata,
+}
+
+/// A discovered prepare→execute→parse transport triplet.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+pub struct TransportTriplet {
+    pub prepare_node: String,
+    pub execute_node: String,
+    pub parse_nodes: Vec<String>,
+    pub service_metadata: Option<ServiceCallMetadata>,
 }
 
 /// Metadata summary for lowered modules.
@@ -138,12 +150,83 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
     let tool_metadata = ToolMetadata {
         modules: derive_module_metadata(&dag.nodes),
     };
+    let transport_triplets = derive_transport_triplets(dag);
 
     Ok(DerivedArtifacts {
         manifest,
         obligations,
+        transport_triplets,
         tool_metadata,
     })
+}
+
+/// Derive transport triplets by following TransportRequest/TransportResponse edges.
+pub fn derive_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> {
+    let node_by_id = dag
+        .nodes
+        .iter()
+        .map(|node| (node.id.0.as_str(), node))
+        .collect::<HashMap<_, _>>();
+    let mut unique = BTreeSet::<TransportTriplet>::new();
+
+    for edge in &dag.edges {
+        let Some(prepare_node) = node_by_id.get(edge.from_node.0.as_str()).copied() else {
+            continue;
+        };
+        let Some(execute_node) = node_by_id.get(edge.to_node.0.as_str()).copied() else {
+            continue;
+        };
+        if node_output_port_type(prepare_node, edge.from_port.0.as_str())
+            != Some("TransportRequest")
+            || node_input_port_type(execute_node, edge.to_port.0.as_str())
+                != Some("TransportRequest")
+        {
+            continue;
+        }
+
+        let mut parse_nodes = dag
+            .edges
+            .iter()
+            .filter(|next_edge| next_edge.from_node.0 == edge.to_node.0)
+            .filter_map(|next_edge| {
+                let parse_node = node_by_id.get(next_edge.to_node.0.as_str()).copied()?;
+                (node_output_port_type(execute_node, next_edge.from_port.0.as_str())
+                    == Some("TransportResponse")
+                    && node_input_port_type(parse_node, next_edge.to_port.0.as_str())
+                        == Some("TransportResponse"))
+                .then_some(next_edge.to_node.0.clone())
+            })
+            .collect::<Vec<_>>();
+        parse_nodes.sort();
+        parse_nodes.dedup();
+        let service_metadata = match &execute_node.body {
+            gunbc_ir::node::NodeBody::Opaque(op) => op.service_call_metadata().cloned(),
+            gunbc_ir::node::NodeBody::SubDag(_) => None,
+        };
+
+        unique.insert(TransportTriplet {
+            prepare_node: edge.from_node.0.clone(),
+            execute_node: edge.to_node.0.clone(),
+            parse_nodes,
+            service_metadata,
+        });
+    }
+
+    unique.into_iter().collect()
+}
+
+fn node_input_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Option<&'a str> {
+    node.inputs
+        .iter()
+        .find(|port| port.name.0 == port_name)
+        .map(|port| port.type_id.0.as_str())
+}
+
+fn node_output_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Option<&'a str> {
+    node.outputs
+        .iter()
+        .find(|port| port.name.0 == port_name)
+        .map(|port| port.type_id.0.as_str())
 }
 
 fn compute_waves(dag: &Dag<LoweredOp>) -> Result<Vec<Vec<String>>, DeriveError> {
@@ -919,6 +1002,16 @@ mod tests {
                 .obligations
                 .interface_contract_verification_targets,
             0
+        );
+        assert_eq!(artifacts.transport_triplets.len(), 1);
+        assert_eq!(
+            artifacts.transport_triplets[0],
+            TransportTriplet {
+                prepare_node: "prepare_transport".to_string(),
+                execute_node: "execute_transport".to_string(),
+                parse_nodes: vec!["parse_transport".to_string()],
+                service_metadata: None,
+            }
         );
         assert_eq!(
             artifacts

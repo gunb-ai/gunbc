@@ -778,9 +778,9 @@ case studies as they arise during DSL migration work.
 Transport triplet detection currently lives in `daglang-cli` (`compile/triplets.rs`), duplicating
 analysis that should be part of `DerivedArtifacts` in `daglang-derive`. CLI should be a pure renderer.
 
-- [ ] D3.1a — Add `transport_triplets: Vec<TransportTriplet>` to `DerivedArtifacts`
-- [ ] D3.1b — Move `collect_transport_triplets` logic into `daglang-derive`
-- [ ] D3.1c — Update `daglang-cli` `show-triplets` to render from derived data
+- [x] D3.1a — Add `transport_triplets: Vec<TransportTriplet>` to `DerivedArtifacts`
+- [x] D3.1b — Move `collect_transport_triplets` logic into `daglang-derive`
+- [x] D3.1c — Update `daglang-cli` `show-triplets` to render from derived data
 
 ##### D3.2 — Obligation-based canonical kind classification [M] (Wave 2)
 **Deps**: C5.1 (coercion via DAG walk), D3.1

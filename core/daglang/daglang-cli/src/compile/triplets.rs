@@ -1,14 +1,18 @@
-use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 
-use daglang_lower::{LoweredOp, ServiceCallMetadata};
-use gunbc_ir::{Dag, Node};
+use daglang_derive::DerivedArtifacts;
+#[cfg(test)]
+use daglang_derive::TransportTriplet;
+#[cfg(test)]
+use daglang_lower::LoweredOp;
+#[cfg(test)]
+use gunbc_ir::Dag;
 use serde_json::json;
 
 use super::OutputFormat;
 
-pub fn render_triplets(dag: &Dag<LoweredOp>, format: OutputFormat) -> String {
-    let triplets = collect_transport_triplets(dag);
+pub fn render_triplets(derived: &DerivedArtifacts, format: OutputFormat) -> String {
+    let triplets = &derived.transport_triplets;
     match format {
         OutputFormat::Text => {
             let mut out = String::new();
@@ -58,78 +62,7 @@ pub fn render_triplets(dag: &Dag<LoweredOp>, format: OutputFormat) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) struct TransportTriplet {
-    pub(super) prepare_node: String,
-    pub(super) execute_node: String,
-    pub(super) parse_nodes: Vec<String>,
-    pub(super) service_metadata: Option<ServiceCallMetadata>,
-}
-
+#[cfg(test)]
 pub(super) fn collect_transport_triplets(dag: &Dag<LoweredOp>) -> Vec<TransportTriplet> {
-    let node_by_id = dag
-        .nodes
-        .iter()
-        .map(|node| (node.id.0.as_str(), node))
-        .collect::<HashMap<_, _>>();
-    let mut unique = BTreeSet::<TransportTriplet>::new();
-
-    for edge in &dag.edges {
-        let Some(prepare_node) = node_by_id.get(edge.from_node.0.as_str()).copied() else {
-            continue;
-        };
-        let Some(execute_node) = node_by_id.get(edge.to_node.0.as_str()).copied() else {
-            continue;
-        };
-        if node_output_port_type(prepare_node, edge.from_port.0.as_str())
-            != Some("TransportRequest")
-            || node_input_port_type(execute_node, edge.to_port.0.as_str())
-                != Some("TransportRequest")
-        {
-            continue;
-        }
-
-        let mut parse_nodes = dag
-            .edges
-            .iter()
-            .filter(|next_edge| next_edge.from_node.0 == edge.to_node.0)
-            .filter_map(|next_edge| {
-                let parse_node = node_by_id.get(next_edge.to_node.0.as_str()).copied()?;
-                (node_output_port_type(execute_node, next_edge.from_port.0.as_str())
-                    == Some("TransportResponse")
-                    && node_input_port_type(parse_node, next_edge.to_port.0.as_str())
-                        == Some("TransportResponse"))
-                .then_some(next_edge.to_node.0.clone())
-            })
-            .collect::<Vec<_>>();
-        parse_nodes.sort();
-        parse_nodes.dedup();
-        let service_metadata = match &execute_node.body {
-            gunbc_ir::node::NodeBody::Opaque(op) => op.service_call_metadata().cloned(),
-            gunbc_ir::node::NodeBody::SubDag(_) => None,
-        };
-
-        unique.insert(TransportTriplet {
-            prepare_node: edge.from_node.0.clone(),
-            execute_node: edge.to_node.0.clone(),
-            parse_nodes,
-            service_metadata,
-        });
-    }
-
-    unique.into_iter().collect()
-}
-
-fn node_input_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Option<&'a str> {
-    node.inputs
-        .iter()
-        .find(|port| port.name.0 == port_name)
-        .map(|port| port.type_id.0.as_str())
-}
-
-fn node_output_port_type<'a>(node: &'a Node<LoweredOp>, port_name: &str) -> Option<&'a str> {
-    node.outputs
-        .iter()
-        .find(|port| port.name.0 == port_name)
-        .map(|port| port.type_id.0.as_str())
+    daglang_derive::derive_transport_triplets(dag)
 }

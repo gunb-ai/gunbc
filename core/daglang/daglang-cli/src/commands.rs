@@ -70,7 +70,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let format = parse_output_format("show-triplets", args)
                 .unwrap_or_else(|usage| exit_usage(&usage));
             let output = compile_target_or_exit(cwd, args.get(2));
-            println!("{}", render_triplets(&output.lowered_dag, format));
+            println!("{}", render_triplets(&output.derived, format));
         }
         "modules" => {
             let (root_arg, format) =
