@@ -1069,6 +1069,7 @@ pub fn build_local_auth_upsert_dag_pub() -> Dag<GcpSecretManagerGraphOp> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum EnsureIamBindingMode {
     ProjectPolicy,
     ServiceAccountPolicy,
@@ -1100,6 +1101,7 @@ fn add_ensure_iam_nodes(
 ///
 /// This path uses `roles/iam.workloadIdentityUser` policy checks against the
 /// service-account IAM policy and expects an additional `member` input.
+#[allow(dead_code)]
 pub fn add_ensure_sa_iam_nodes(
     builder: &mut DagBuilder<GcpSecretManagerGraphOp>,
     net_env: &NodeRef<GcpSecretManagerGraphOp>,

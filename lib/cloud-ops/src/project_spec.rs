@@ -58,6 +58,12 @@ pub struct WifConfig {
     pub pool_id: &'static str,
     /// Provider ID (e.g., "github").
     pub provider_id: &'static str,
+    /// OIDC issuer URI for tokens accepted by this provider.
+    pub oidc_issuer_uri: &'static str,
+    /// Attribute mapping from Google fields to OIDC token assertions.
+    pub attribute_mapping: &'static [(&'static str, &'static str)],
+    /// Optional CEL condition restricting accepted tokens.
+    pub attribute_condition: Option<&'static str>,
 }
 
 impl WifConfig {
@@ -68,6 +74,16 @@ impl WifConfig {
         format!(
             "projects/{}/locations/global/workloadIdentityPools/{}/providers/{}",
             self.project_number, self.pool_id, self.provider_id
+        )
+    }
+
+    /// WIF provider parent resource path.
+    ///
+    /// Format: `projects/{number}/locations/global/workloadIdentityPools/{pool}`
+    pub fn pool_resource_name(&self) -> String {
+        format!(
+            "projects/{}/locations/global/workloadIdentityPools/{}",
+            self.project_number, self.pool_id
         )
     }
 }
@@ -313,6 +329,13 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
         project_number: 314501921854, // gunbai-auto (WIF pool host)
         pool_id: "github-pool",
         provider_id: "github",
+        oidc_issuer_uri: "https://token.actions.githubusercontent.com",
+        attribute_mapping: &[
+            ("google.subject", "assertion.sub"),
+            ("attribute.repository", "assertion.repository"),
+            ("attribute.repository_owner", "assertion.repository_owner"),
+        ],
+        attribute_condition: Some("assertion.repository_owner == 'gunb-ai'"),
     },
     namespaces: &[
         NamespaceSpec {
@@ -490,6 +513,33 @@ mod tests {
         assert_eq!(
             GUNBAI_SECRETS.wif_provider_resource_name(),
             "projects/314501921854/locations/global/workloadIdentityPools/github-pool/providers/github"
+        );
+    }
+
+    #[test]
+    fn wif_pool_resource_name_is_derived() {
+        assert_eq!(
+            GUNBAI_SECRETS.wif.pool_resource_name(),
+            "projects/314501921854/locations/global/workloadIdentityPools/github-pool"
+        );
+    }
+
+    #[test]
+    fn wif_config_carries_oidc_mapping_and_condition() {
+        let wif = &GUNBAI_SECRETS.wif;
+        assert_eq!(
+            wif.oidc_issuer_uri,
+            "https://token.actions.githubusercontent.com"
+        );
+        assert!(
+            wif.attribute_mapping
+                .iter()
+                .any(|(k, v)| *k == "google.subject" && *v == "assertion.sub"),
+            "wif attribute mapping should include google.subject projection"
+        );
+        assert_eq!(
+            wif.attribute_condition,
+            Some("assertion.repository_owner == 'gunb-ai'")
         );
     }
 

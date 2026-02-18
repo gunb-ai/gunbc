@@ -127,10 +127,10 @@ be done manually.
 
 **Gap**: `WifConfig` in project_spec.rs only has pool_id and provider_id.
 
-- [ ] Add OIDC issuer URI (e.g., `https://token.actions.githubusercontent.com`)
-- [ ] Add attribute mapping: `google.subject = assertion.sub`, `attribute.repository = assertion.repository`
-- [ ] Add attribute condition (e.g., `assertion.repository_owner == 'org-name'`)
-- [ ] Derive full resource names from project number + pool + provider
+- [x] Add OIDC issuer URI (e.g., `https://token.actions.githubusercontent.com`)
+- [x] Add attribute mapping: `google.subject = assertion.sub`, `attribute.repository = assertion.repository`
+- [x] Add attribute condition (e.g., `assertion.repository_owner == 'org-name'`)
+- [x] Derive full resource names from project number + pool + provider
 
 **Ref**: `gunb.ai/tools/infra/spec/spec.go:59-64, 122-130`
 

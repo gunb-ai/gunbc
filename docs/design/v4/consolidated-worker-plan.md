@@ -901,7 +901,7 @@ Implementation of SA/IAM operations against the typed understanding spec from C6
 
 - [x] E2.2a — WIF Pool/Provider CRUD
 - [ ] E2.2b — Bootstrap DAG (idempotent setup flow)
-- [ ] E2.2c — WIF Spec (OIDC issuer, attribute mapping, conditions)
+- [x] E2.2c — WIF Spec (OIDC issuer, attribute mapping, conditions)
 
 #### Wave 3
 
