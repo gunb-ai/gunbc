@@ -31,6 +31,7 @@
 //! 4. All primitives are pure - no direct I/O
 
 #![deny(dead_code)]
+pub mod browser;
 pub mod collection;
 pub mod control;
 pub mod data;
@@ -39,6 +40,7 @@ pub mod filename;
 pub mod io;
 pub mod network;
 
+pub use browser::browser_open_request;
 pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, SetOp, SortOp};
 pub use control::{BranchOp, LoopOp};
 pub use data::{ConcatOp, ExtractOp, FormatMapOp, FormatOp, ParseOp, SplitOp, StableHashOp};

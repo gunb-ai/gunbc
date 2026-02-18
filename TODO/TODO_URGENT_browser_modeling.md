@@ -1,6 +1,6 @@
 # URGENT: Cross-Platform Browser Open Modeling
 
-**Status**: Active
+**Status**: Mostly Complete (follow-on DSL surfacing pending)
 **Date**: 2026-02-18
 **Priority**: High
 **DSL Alignment**: DSL foundation via environment-aware platform modeling
@@ -53,3 +53,16 @@ fn execute_open_browser(inputs: HashMap<String, Value>) -> Result<HashMap<String
 - the-gunbai environment detection
 - Current `Platform` enum: `lib/tools/deps/src/platform.rs`
 - Current inline implementation: `gunbc-dag/src/dag_viz/graph.rs:451`
+
+## Progress (2026-02-18)
+
+- Added shared resolver utility: `lib/primitives/src/browser.rs`
+  - `browser_open_request(file_path, runtime)` using canonical `RuntimePlatform`.
+- Added resolution table behavior:
+  - `(Linux, WSL) -> wslview` (absolute-path conversion)
+  - `(macOS, Native) -> open`
+  - `(Windows, Native) -> cmd /C start`
+  - default Linux/Unix path -> `xdg-open`
+  - `(CI|Container|Emulator) -> None` (no-browser/no-op path)
+- Migrated `dag_viz` prepare step to call shared resolver (`gunbc-dag/src/dag_viz/graph.rs`).
+- Added resolver tests in `lib/primitives` (`browser::tests::*`).

@@ -441,10 +441,10 @@ Replace the worst fragmentation points with canonical types.
 
 Extract inline `execute_open_browser` from `dag_viz/graph.rs` into shared utility.
 
-- [ ] C2.1a — Create browser-open utility in `lib/primitives` using `RuntimePlatform`
-- [ ] C2.1b — Resolution table: (Platform, Env) → command (`wslview`, `xdg-open`, `open`, etc.)
-- [ ] C2.1c — Migrate `dag_viz/graph.rs:451` to use shared utility
-- [ ] C2.1d — Handle no-browser environments (Docker, headless CI) gracefully
+- [x] C2.1a — Create browser-open utility in `lib/primitives` using `RuntimePlatform`
+- [x] C2.1b — Resolution table: (Platform, Env) → command (`wslview`, `xdg-open`, `open`, etc.)
+- [x] C2.1c — Migrate `dag_viz/graph.rs:451` to use shared utility
+- [x] C2.1d — Handle no-browser environments (Docker, headless CI) gracefully
 
 ---
 

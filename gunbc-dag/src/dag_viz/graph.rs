@@ -45,14 +45,14 @@ use gunbc_ir::transport::{
     TransportResponse,
 };
 use gunbc_ir::{
-    add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
-    WorkflowSignature,
+    add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node,
+    RuntimePlatform, Value, WorkflowSignature,
 };
 use gunbc_lib_cloud_ops::graph_cloud_config;
 use gunbc_lib_gist_ops::{build_gist_upload_subdag, GistUploadOp};
 use gunbc_lib_git_ops::{build_branch_resolution_subdag, BranchResolutionOp};
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{filename, FsEnv};
+use gunbc_primitives::{browser_open_request, filename, FsEnv};
 use gunbc_test::Mockable;
 use std::collections::HashMap;
 
@@ -452,49 +452,26 @@ fn execute_open_browser(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let file_path = gunbc_exec::require_str(&inputs, "file_path")?;
+    let runtime = RuntimePlatform::detect_current();
 
-    // Detect WSL via the WSL_DISTRO_NAME env var (always set on WSL2).
-    let is_wsl = std::env::var("WSL_DISTRO_NAME").is_ok();
-
-    let request = if is_wsl {
-        // On WSL, convert to absolute path and use wslview to open in Windows browser
-        let abs_path = std::path::Path::new(file_path);
-        let abs_path = if abs_path.is_relative() {
-            std::env::current_dir()
-                .map(|cwd| cwd.join(abs_path))
-                .unwrap_or_else(|_| abs_path.to_path_buf())
-        } else {
-            abs_path.to_path_buf()
-        };
-        ShellRequest::new("wslview")
-            .arg(abs_path.to_string_lossy().into_owned())
-            .into_transport_request()
-    } else if cfg!(target_os = "macos") {
-        ShellRequest::new("open")
-            .arg(file_path)
-            .into_transport_request()
+    let mut out = OutputMap::new();
+    if let Some(request) = browser_open_request(file_path, &runtime) {
+        out = out
+            .request("request", request.into_transport_request())
+            .bool("skip", false);
     } else {
-        ShellRequest::new("xdg-open")
-            .arg(file_path)
-            .into_transport_request()
-    };
-
-    OutputMap::new()
-        .request("request", request)
-        .bool("skip", false)
-        .ok()
+        out = out.bool("skip", true);
+    }
+    out.ok()
 }
 
 /// Parse browser open result (best-effort — browser open may fail silently).
 fn execute_parse_browser_open(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let response = gunbc_exec::require_response(&inputs, "response")?;
+    let response = gunbc_exec::optional_response_strict(&inputs, "response")?;
 
-    let opened = matches!(
-        response,
-        TransportResponse::Shell(ref s) if s.success()
-    );
+    let opened = matches!(response, Some(TransportResponse::Shell(ref s)) if s.success());
 
     OutputMap::new().bool("opened", opened).ok()
 }
