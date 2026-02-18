@@ -14,6 +14,7 @@ pub mod infra_graph;
 pub mod infra_spec;
 mod ops;
 pub mod project_spec;
+pub mod secret_exports;
 pub mod secret_rotation;
 
 pub use config_loader::{
@@ -49,6 +50,7 @@ pub use graph::{
 pub use infra_graph::render_infra_spec_dot;
 pub use infra_spec::{EnvironmentConfig, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC};
 pub use ops::CloudOps;
+pub use secret_exports::{render_direnv_exports, SecretExportResult};
 pub use secret_rotation::{check_secret_age, rotate_secret, SecretAgeCheck, SecretRotationAction};
 
 // ---------------------------------------------------------------------------

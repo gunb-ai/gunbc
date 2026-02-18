@@ -179,6 +179,11 @@ provisions ALL secrets from the spec.
 - [ ] Add TTL-based caching to avoid re-fetching on every shell prompt
 - [ ] Support partial fetch (only missing env vars)
 
+Update (2026-02-18):
+- Added `render_direnv_exports(...)` in `lib/cloud-ops/src/secret_exports.rs`
+  to render shell export lines from fetched prefixed secret values with
+  namespace-aware env-name mapping and shell escaping.
+
 **Ref**: `gunb.ai/scripts/secrets/direnv_lib.sh`, `gunb.ai/tools/secrets/cmd/secrets/fetch.go`
 
 ---
