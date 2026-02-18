@@ -1,6 +1,6 @@
 # Transport-as-DAG Migration
 
-**Status**: In Progress (C4.1-C4.4a completed; handle-model extension not required)
+**Status**: DONE (moved to TODONE 2026-02-18; C4.1-C4.4 complete, no Value extension needed)
 **Date**: 2026-02-14
 **DSL Alignment**: Transport execution model alignment with DSL testability guarantees
 **Track**: C — Modeling Foundation

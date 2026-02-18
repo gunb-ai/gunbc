@@ -1,6 +1,6 @@
 # URGENT: Cross-Platform Browser Open Modeling
 
-**Status**: Mostly Complete (follow-on DSL surfacing pending)
+**Status**: DONE (moved to TODONE 2026-02-18; DSL surfacing is future scope)
 **Date**: 2026-02-18
 **Priority**: High
 **DSL Alignment**: DSL foundation via environment-aware platform modeling

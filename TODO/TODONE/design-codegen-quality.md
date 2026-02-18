@@ -1,6 +1,6 @@
 # Codegen Quality: IR Completeness & Language Idioms
 
-**Status**: Active (ongoing concern)
+**Status**: DONE (moved to TODONE 2026-02-18; Rust IR complete, cross-language is future scope)
 **Date**: 2026-02-05
 **DSL Alignment**: Backend/codegen quality required for confident DSL emission parity
 **Track**: D — Runtime/Test Hardening

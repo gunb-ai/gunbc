@@ -30,20 +30,26 @@ Last reconciled: 2026-02-18
 
 | Doc | Track | DSL Alignment | Status |
 |-----|-------|---------------|--------|
-| `TODO/TODO_URGENT_dsl_migration.md` | B | Primary migration backlog | Active |
-| `TODO/TODO_workflow_audit.md` | B | Migration inventory + sequencing input | Draft |
-| `TODO/TODO_URGENT_anemic_modeling_audit.md` | C | Cross-cutting model consolidation | Active |
-| `TODO/TODO_URGENT_browser_modeling.md` | C | Platform/environment modeling prerequisite | Active |
-| `TODO/TODO_URGENT_platform_toolchain_modeling.md` | C | Target/platform/toolchain canonicalization | Active |
-| `TODO/TODO_transport_dag_migration.md` | C | Bring transport executor behavior into DAG/testing model | Draft |
-| `TODO/TODO_URGENT_logging_consolidation.md` | D | Execution observability hardening for generated workflows | Active |
-| `TODO/TODO_testgen_seed_policy_postmortem.md` | D | Testgen semantic input correctness | Partially complete |
-| `TODO/design-codegen-quality.md` | D | Generated code idiom/IR quality | Active |
-| `TODO/TODO_credential_lifecycle.md` | E | Credential/service modeling for DSL consumers | Draft |
-| `TODO/TODO_gcp_infra_parity.md` | E | Domain parity backlog (DSL consumer target) | In Progress |
-| `TODO/llm-code-review-pipeline.md` | E | Adjacent DAG pipeline architecture | V0 complete, follow-up open |
-| `TODO/consolidation.md` | F | Generic consolidation backlog | Ongoing |
-| `TODO/TODO_hacks.md` | F | Fallback/debt register | Active |
+| `TODO_URGENT_type_dispatch_boilerplate.md` | B | Critical prerequisite — blocks DSL migration | Active (BLOCKER) |
+| `TODO_URGENT_dsl_migration.md` | B | Primary migration backlog | Active |
+| `TODO_workflow_audit.md` | B | Migration inventory + sequencing input | Draft |
+| `TODO_URGENT_anemic_modeling_audit.md` | C | Cross-cutting model consolidation | Active |
+| `TODO_URGENT_platform_toolchain_modeling.md` | C | Target/platform/toolchain canonicalization | Partial (Phase 1 done) |
+| `TODO_URGENT_logging_consolidation.md` | D | Execution observability hardening | Partial (5 fixed, 4 remain) |
+| `TODO_testgen_seed_policy_postmortem.md` | D | Testgen semantic input correctness | Partial (core fix + 1/4 follow-ups) |
+| `TODO_credential_lifecycle.md` | E | Credential/service modeling for DSL consumers | Draft |
+| `TODO_gcp_infra_parity.md` | E | Domain parity backlog (DSL consumer target) | Partial (Phase 1 mostly done) |
+| `consolidation.md` | F | Generic consolidation backlog | Ongoing (~12 done, ~30 remain) |
+| `TODO_hacks.md` | F | Fallback/debt register | Partial (25 resolved, 7 open) |
+
+## Recently Moved to TODONE (2026-02-18)
+
+| Doc | Track | Reason |
+|-----|-------|--------|
+| `TODO_URGENT_browser_modeling.md` | C | Implementation complete; DSL surfacing is future scope |
+| `TODO_transport_dag_migration.md` | C | C4.1-C4.4 complete; no Value extension needed |
+| `design-codegen-quality.md` | D | Rust IR complete; cross-language is future scope |
+| `llm-code-review-pipeline.md` | E | V0 complete; Tracks 2-6 done; Track 1 is future scope |
 
 ## Conventions
 

@@ -2,7 +2,7 @@
 
 **Status**: Active
 **Date**: 2026-02-07
-**Last reconciled**: 2026-02-13 (external review cross-checked against codebase)
+**Last reconciled**: 2026-02-18 (items 26-27 headers updated; 4 files moved to TODONE)
 **DSL Alignment**: Debt ledger; prioritize items that block DSL migration tracks
 **Track**: F — Debt Ledger
 
@@ -527,7 +527,7 @@ maintain separate overlapping probe-observer analysis paths.
 
 ---
 
-## 26. Seed policy classification is still testgen-local string matching
+## ~~26. Seed policy classification is still testgen-local string matching~~ RESOLVED (2026-02-14)
 
 **Where**: `core/codegen/src/testgen/codegen.rs`
 
@@ -540,7 +540,7 @@ maintain separate overlapping probe-observer analysis paths.
 
 ---
 
-## 27. CI secret requirements are not modeled from one source of truth
+## ~~27. CI secret requirements are not modeled from one source of truth~~ RESOLVED (2026-02-14)
 
 **Where**: workflow env wiring + testgen metadata (`live_required*`)
 

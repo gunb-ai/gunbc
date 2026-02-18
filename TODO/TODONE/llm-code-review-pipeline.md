@@ -1,6 +1,6 @@
 # LLM Code Review Pipeline
 
-**Status**: V0 complete. Tracks 2-6 implemented. Track 1 (Resource trait) still design.
+**Status**: DONE (moved to TODONE 2026-02-18; V0 complete, Tracks 2-6 done, Track 1 is future scope)
 **Date**: 2026-02-01
 **Updated**: 2026-02-03
 **DSL Alignment**: Adjacent DAG architecture; useful reference, not current DSL migration blocker
