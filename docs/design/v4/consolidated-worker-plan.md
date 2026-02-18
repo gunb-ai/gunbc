@@ -725,7 +725,7 @@ Different ops use `"report"`, `"message"`, `"stderr"`, `"error"`, `"success"`, e
 
 - [x] D1.9a — Unit tests for DisplayConfig modes + secret redaction
 - [ ] D1.9b — Golden/snapshot tests for TTY/non-TTY/CI text modes
-- [ ] D1.9c — Regression test for 2026-02-13 large-log failure
+- [x] D1.9c — Regression test for 2026-02-13 large-log failure
 - [ ] D1.9d — End-to-end smoke coverage for workflow UX parity
 
 ---
