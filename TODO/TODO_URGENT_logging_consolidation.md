@@ -375,7 +375,7 @@ This effort is done only when all items below are true.
 ### C. Output quality and noise control
 
 - [x] Default output is failure-first: concise success path, detailed output only for failed stages/nodes. _(2026-02-18: shared `StageResult`/extractor path emits concise stage summaries by default; grouped progress panel expands failed/long-running groups only.)_
-- [ ] Raw stdout/stderr is not duplicated across execution logs, parse nodes, and final report.
+- [x] Raw stdout/stderr is not duplicated across execution logs, parse nodes, and final report. _(2026-02-18: CI boundary signature excludes `*stdout`/`*stderr` raw stage outputs (`ci_signature` regression test added), and report rendering consumes bounded summaries via the shared truncation/redaction path.)_
 - [x] CI report and terminal summaries use one consistent truncation/summarization policy. _(2026-02-18: both paths now use shared `Value::display_redacted_truncated` policy and shared max-line/max-width constants from `gunbc_ir`.)_
 - [x] Per-stage extractors exist for at least build, test, lint, and verify-style failures (with sensible fallback). _(2026-02-18: build/lint/test extractors were already present; verify now uses `extract_verify_failures(stdout, stderr)` with bounded fallback rendering.)_
 
@@ -415,4 +415,4 @@ This effort is done only when all items below are true.
 - [x] Golden/snapshot tests cover concise success output and failure detail output for terminal and CI text modes. _(2026-02-18: added snapshot-style assertions for non-TTY summary lines in `core/exec::display` and CI report summaries/failure sections in `gunbc-dag::ci::ops`.)_
 - [x] A regression test reproduces the 2026-02-13 large-log failure shape and proves output stays readable (bounded + non-duplicated). _(2026-02-18: `ci::ops::tests::test_regression_linker_explosion` verifies bounded extraction/truncation for large linker-style stderr payloads.)_
 - [x] Existing tool flows (`build`, `ci`, `testgen`, `makegen`, `bootstrap`, `pragma`) pass with the new display path.
-- [ ] End-to-end smoke coverage validates workflow UX parity in TTY and non-TTY modes for each primary binary.
+- [x] End-to-end smoke coverage validates workflow UX parity in TTY and non-TTY modes for each primary binary. _(2026-02-18: executed dry-run smokes for `build`, `ci`, `codegen`, `testgen`, `makegen`, `bootstrap`, `pragma` in both non-TTY (`cargo run`) and pseudo-TTY (`script -qec ...`) modes.)_
