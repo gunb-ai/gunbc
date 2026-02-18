@@ -858,6 +858,100 @@ mod tests {
     }
 
     #[test]
+    fn test_coercion_path_cross_provider_secret_payloads_widen_to_string_only() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register(
+            "GcpSecretPayload",
+            type_lib::refined(
+                "String",
+                vec![crate::type_op::Predicate::Matches("^gcp:.*$".to_string())],
+            ),
+        );
+        registry.register(
+            "AwsSecretValue",
+            type_lib::refined(
+                "String",
+                vec![crate::type_op::Predicate::Matches("^aws:.*$".to_string())],
+            ),
+        );
+
+        assert_eq!(
+            registry.coercion_path(&TypeId::from("GcpSecretPayload"), &TypeId::from("String")),
+            Some(vec![
+                TypeId::from("GcpSecretPayload"),
+                TypeId::from("String")
+            ])
+        );
+        assert_eq!(
+            registry.coercion_path(&TypeId::from("AwsSecretValue"), &TypeId::from("String")),
+            Some(vec![TypeId::from("AwsSecretValue"), TypeId::from("String")])
+        );
+        assert!(
+            registry
+                .coercion_path(
+                    &TypeId::from("GcpSecretPayload"),
+                    &TypeId::from("AwsSecretValue")
+                )
+                .is_none(),
+            "provider payload types should not coerce directly to each other"
+        );
+    }
+
+    #[test]
+    fn test_coercion_path_cross_provider_tokens_widen_to_credential_base_only() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register(
+            "Credential",
+            type_lib::refined("String", vec![crate::type_op::Predicate::NonEmpty]),
+        );
+        registry.register(
+            "GcpAccessToken",
+            type_lib::refined(
+                "Credential",
+                vec![crate::type_op::Predicate::Matches(
+                    "^ya29\\..+$".to_string(),
+                )],
+            ),
+        );
+        registry.register(
+            "AwsSessionToken",
+            type_lib::refined(
+                "Credential",
+                vec![crate::type_op::Predicate::Matches(
+                    "^ASIA[0-9A-Z]+$".to_string(),
+                )],
+            ),
+        );
+
+        assert_eq!(
+            registry.coercion_path(&TypeId::from("GcpAccessToken"), &TypeId::from("Credential")),
+            Some(vec![
+                TypeId::from("GcpAccessToken"),
+                TypeId::from("Credential")
+            ])
+        );
+        assert_eq!(
+            registry.coercion_path(
+                &TypeId::from("AwsSessionToken"),
+                &TypeId::from("Credential")
+            ),
+            Some(vec![
+                TypeId::from("AwsSessionToken"),
+                TypeId::from("Credential")
+            ])
+        );
+        assert!(
+            registry
+                .coercion_path(
+                    &TypeId::from("AwsSessionToken"),
+                    &TypeId::from("GcpAccessToken")
+                )
+                .is_none(),
+            "provider token types should not coerce directly to each other"
+        );
+    }
+
+    #[test]
     fn test_base_type_name() {
         let mut registry = TypeRegistry::with_primitives();
         registry.register("Url", type_lib::url());

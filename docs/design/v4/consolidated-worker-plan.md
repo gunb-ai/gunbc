@@ -303,9 +303,9 @@ Validate that the DAG-based coercion handles real-world type relationships.
 - [x] C5.3b — Container coercion: `List<Url>` → `List<String>` (covariant)
 - [x] C5.3c — Optional unwrap: `Optional<String>` → `String` (requires value present)
 - [x] C5.3d — Map coercion: `Map<String, Url>` → `Map<String, String>`
-- [ ] C5.3e — Cross-provider type alignment: `GcpSecretPayload` refines `String`,
+- [x] C5.3e — Cross-provider type alignment: `GcpSecretPayload` refines `String`,
       `AwsSecretValue` refines `String` — both coerce to `String` but not to each other
-- [ ] C5.3f — Credential coercion: `GcpAccessToken` and `AwsSessionToken` both refine
+- [x] C5.3f — Credential coercion: `GcpAccessToken` and `AwsSessionToken` both refine
       `Credential` but are not interchangeable
 
 ---
