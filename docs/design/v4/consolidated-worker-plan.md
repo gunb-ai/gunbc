@@ -683,7 +683,7 @@ Report node currently gets raw unstructured text. Need per-stage error extractor
 - [x] D1.4a — Implement `extract_build_errors` extractor
 - [x] D1.4b — Implement `extract_test_failures` extractor
 - [x] D1.4c — Implement `extract_lint_warnings` extractor
-- [ ] D1.4d — Default rendering shows failures first, detail on expand
+- [x] D1.4d — Default rendering shows failures first, detail on expand
 
 ##### D1.5 — Grouped progress model [M]
 **Deps**: D1.1
@@ -989,7 +989,7 @@ V0 complete (Tracks 2-6). Track 1 (Resource abstraction trait) still in design.
 
 #### Code Quality (Wave 1-2)
 
-- [ ] F1.18 — Report node structured output: stage-specific extractors (= D1.4) [M]
+- [x] F1.18 — Report node structured output: stage-specific extractors (= D1.4) [M]
 - [ ] F1.35 — Remove legacy batch shell helpers in gist [S] (~50%)
 
 ---
