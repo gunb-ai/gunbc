@@ -135,6 +135,9 @@ fn testgen_input_globs() -> Vec<String> {
 fn derive_repo_source_input_globs() -> Vec<String> {
     let layout = workspace_layout_or_none();
     let Some(layout) = layout else {
+        // Keep build tooling operational even when workspace metadata is
+        // unavailable (for example, isolated generator runs). Guarded by tests
+        // that pin these constants against normal workspace discovery output.
         return REPO_SOURCE_INPUT_GLOBS
             .iter()
             .map(|s| s.to_string())
@@ -182,6 +185,9 @@ fn derive_repo_source_input_globs() -> Vec<String> {
 fn derive_repo_config_input_files() -> Vec<String> {
     let layout = workspace_layout_or_none();
     let Some(layout) = layout else {
+        // Keep build tooling operational even when workspace metadata is
+        // unavailable (for example, isolated generator runs). Guarded by tests
+        // that pin these constants against normal workspace discovery output.
         return REPO_CONFIG_INPUT_FILES
             .iter()
             .map(|s| s.to_string())
@@ -204,6 +210,9 @@ fn derive_repo_config_input_files() -> Vec<String> {
 fn derive_testgen_input_globs() -> Vec<String> {
     let layout = workspace_layout_or_none();
     let Some(layout) = layout else {
+        // Keep build tooling operational even when workspace metadata is
+        // unavailable (for example, isolated generator runs). Guarded by tests
+        // that pin these constants against normal workspace discovery output.
         return TESTGEN_INPUT_GLOBS.iter().map(|s| s.to_string()).collect();
     };
 
@@ -251,6 +260,12 @@ fn workspace_layout_or_none() -> Option<WorkspaceLayout> {
 mod tests {
     use super::*;
 
+    fn sorted(mut values: Vec<String>) -> Vec<String> {
+        values.sort();
+        values.dedup();
+        values
+    }
+
     #[test]
     fn derived_repo_source_globs_match_expected_patterns() {
         let globs = repo_source_input_globs();
@@ -272,5 +287,42 @@ mod tests {
         assert!(globs.iter().any(|g| g == "gunbc-dag/src/**/*.rs"));
         assert!(globs.iter().any(|g| g == "core/ir/src/**/*.rs"));
         assert!(globs.iter().any(|g| g == "lib/**/*.rs"));
+    }
+
+    #[test]
+    fn derived_patterns_match_fallback_constants_when_layout_is_available() {
+        let _layout = workspace_layout_or_none()
+            .expect("workspace layout discovery should succeed in normal test environment");
+
+        let expected_repo_globs = sorted(
+            REPO_SOURCE_INPUT_GLOBS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
+        let expected_repo_files = sorted(
+            REPO_CONFIG_INPUT_FILES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        );
+        let expected_testgen_globs =
+            sorted(TESTGEN_INPUT_GLOBS.iter().map(|s| s.to_string()).collect());
+
+        assert_eq!(
+            sorted(derive_repo_source_input_globs()),
+            expected_repo_globs,
+            "repo source fallback constants should stay aligned with discovery output"
+        );
+        assert_eq!(
+            sorted(derive_repo_config_input_files()),
+            expected_repo_files,
+            "repo config fallback constants should stay aligned with discovery output"
+        );
+        assert_eq!(
+            sorted(derive_testgen_input_globs()),
+            expected_testgen_globs,
+            "testgen fallback constants should stay aligned with discovery output"
+        );
     }
 }

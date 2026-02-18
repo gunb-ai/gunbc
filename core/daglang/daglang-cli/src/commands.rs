@@ -144,6 +144,10 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 }
                 std::process::exit(1);
             }
+            // TODO: `check_from_context` re-discovers, re-parses, and re-type-checks
+            // all files — work already done by the pipeline Build stage above.
+            // Consider extracting the file count from PipelineResult::Build to
+            // avoid the redundant second pass.
             match check_from_context(&context) {
                 Ok(output) => {
                     println!("OK: checked {} file(s)", output.parsed_files);

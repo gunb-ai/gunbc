@@ -4,9 +4,10 @@ use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
-use gunbc_exec::ExecutionMode;
-use gunbc_ir::{Dag, Edge, Node, Port};
+use gunbc_exec::{Executable, ExecutionMode};
+use gunbc_ir::{node::NodeBody, Dag, Edge, Node, Port};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -425,6 +426,16 @@ fn resolve_lowered_dag_defers_unknown_callable_module() {
         debug.contains("DeferredCallableOp"),
         "expected deferred callable fallback, got {debug}"
     );
+    let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
+        panic!("unknown callable fixture should not contain subdag nodes")
+    };
+    let err = op
+        .execute(HashMap::new())
+        .expect_err("deferred unknown callable should fail at execution");
+    assert!(
+        err.to_string().contains("not runtime-mapped yet"),
+        "deferred execution failure should be explicit, got {err}"
+    );
 }
 
 #[test]
@@ -446,11 +457,21 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
         },
     ));
 
-    // Pipeline nodes now resolve to DeferredCallableOp (fails at execution, not resolution)
+    // Pipeline nodes resolve to DeferredCallableOp (resolution succeeds, execution fails loudly).
     let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve as deferred");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
     assert!(debug.contains("DeferredCallableOp"));
+    let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
+        panic!("pipeline fixture should not contain subdag nodes")
+    };
+    let err = op
+        .execute(HashMap::new())
+        .expect_err("deferred pipeline callable should fail at execution");
+    assert!(
+        err.to_string().contains("not runtime-mapped yet"),
+        "deferred execution failure should be explicit, got {err}"
+    );
 }
 
 #[test]

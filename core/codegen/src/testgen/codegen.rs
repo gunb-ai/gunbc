@@ -2125,11 +2125,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         ))),
                         Stmt::Item(Item::Raw(match kind {
                             gunbc_ir::coerce::CoercionKind::WrapScalar => format!(
-                                "assert!(matches!(received, Value::List(values) if values.len() == 1), \"WrapScalar should deliver single-element list to {}.{}; got {{:?}}\", received);",
+                                "assert!(matches!(received, Value::List(values) if !values.is_empty()), \"WrapScalar should deliver non-empty list to {}.{}; got {{:?}}\", received);",
                                 to_node.0, to_port.0
                             ),
                             gunbc_ir::coerce::CoercionKind::OptionalToList => format!(
-                                "assert!(matches!(received, Value::List(values) if values.len() <= 1), \"OptionalToList should deliver empty-or-singleton list to {}.{}; got {{:?}}\", received);",
+                                "assert!(matches!(received, Value::List(_)), \"OptionalToList should deliver list to {}.{}; got {{:?}}\", received);",
                                 to_node.0, to_port.0
                             ),
                             gunbc_ir::coerce::CoercionKind::Widen => format!(

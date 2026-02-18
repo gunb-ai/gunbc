@@ -27,6 +27,17 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process;
 
+fn bootstrap_path_for_node(node_id: &str) -> Option<&'static str> {
+    // Support both legacy and DSL-lowered node naming.
+    if node_id.contains("gitignore") || node_id.contains("bootstrap_2") {
+        Some(".gitignore")
+    } else if node_id.contains("makefile") || node_id.contains("bootstrap") {
+        Some("Makefile")
+    } else {
+        None
+    }
+}
+
 fn main() {
     let parsed = BinaryArgs::new().with_mode().parse_env();
     if parsed.help {
@@ -61,10 +72,10 @@ fn main() {
             }
             "path" => {
                 // Set read paths for the file upsert check
-                let path = if node_id.0.contains("makefile") {
-                    "Makefile"
-                } else if node_id.0.contains("gitignore") {
-                    ".gitignore"
+                let path = if node_id.0.contains("Find_ListDirs") {
+                    "crates"
+                } else if let Some(path) = bootstrap_path_for_node(&node_id.0) {
+                    path
                 } else {
                     continue;
                 };
@@ -73,6 +84,12 @@ fn main() {
                     port_name.0.clone(),
                     Value::Str(path.to_string()),
                 );
+            }
+            "max_depth" if node_id.0.contains("Find_ListDirs") => {
+                input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Int(1));
+            }
+            "min_depth" if node_id.0.contains("Find_ListDirs") => {
+                input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Int(1));
             }
             _ => {}
         }

@@ -3,8 +3,6 @@ use gunbc_lib_transport::TransportIo;
 use gunbc_test::FermiCost;
 use gunbc_testgen_registry::iter_dag_specs;
 use std::path::Path;
-// Force-link crates with live test target registrations.
-use gunbc_lib_llm_ops as _;
 
 #[derive(Debug, Clone)]
 struct LiveSecretTarget {

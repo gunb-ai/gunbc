@@ -7,7 +7,8 @@ use gunbc_ir::transport::{
     TransportResponse,
 };
 use gunbc_ir::{
-    detect_boundaries, value_backing_for_type_id, Dag, NodeId, PortName, Value, ValueBacking,
+    detect_boundaries, detect_entrypoints, value_backing_for_type_id, Dag, NodeId, PortName, Value,
+    ValueBacking,
 };
 use gunbc_primitives::filename;
 use gunbc_test::extract_mock_requirements;
@@ -247,6 +248,14 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             ),
         );
     }
+    // Auto-fill entrypoint input ports (input ports with no upstream edge).
+    // These are DAG entry points that need values injected at runtime.
+    let entrypoints = detect_entrypoints(&lowered.dag);
+    for (node_id, port_name, type_id) in &entrypoints.entrypoint_ports {
+        let value = default_value_for_type(type_id.0.as_str());
+        spec = spec.input_mock(node_id.0.as_str(), port_name.0.as_str(), value);
+    }
+
     dedupe_boundary_mocks_keep_last(&mut spec);
     spec
 }
