@@ -412,7 +412,7 @@ This effort is done only when all items below are true.
 ### I. Verification and regression tests
 
 - [x] Unit tests cover display configuration modes (TTY/non-TTY/CI) and secret redaction behavior. _(2026-02-18: added `display::tests::test_display_config_mode_resolution` and `test_render_value_for_port_redacts_secrets`.)_
-- [ ] Golden/snapshot tests cover concise success output and failure detail output for terminal and CI text modes.
+- [x] Golden/snapshot tests cover concise success output and failure detail output for terminal and CI text modes. _(2026-02-18: added snapshot-style assertions for non-TTY summary lines in `core/exec::display` and CI report summaries/failure sections in `gunbc-dag::ci::ops`.)_
 - [x] A regression test reproduces the 2026-02-13 large-log failure shape and proves output stays readable (bounded + non-duplicated). _(2026-02-18: `ci::ops::tests::test_regression_linker_explosion` verifies bounded extraction/truncation for large linker-style stderr payloads.)_
 - [x] Existing tool flows (`build`, `ci`, `testgen`, `makegen`, `bootstrap`, `pragma`) pass with the new display path.
 - [ ] End-to-end smoke coverage validates workflow UX parity in TTY and non-TTY modes for each primary binary.

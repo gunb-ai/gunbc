@@ -1646,6 +1646,14 @@ mod tests {
     use super::*;
     use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportRequest};
 
+    fn normalize_report(report: &str) -> String {
+        report
+            .lines()
+            .map(str::trim_start)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     #[test]
     fn test_parse_deps_exists_true() {
         let mut inputs = HashMap::new();
@@ -1889,6 +1897,14 @@ mod tests {
             result.get("error_summary").and_then(|v| v.as_str()),
             Some("")
         );
+        let normalized = normalize_report(
+            result
+                .get("report")
+                .and_then(|v| v.as_str())
+                .expect("report text"),
+        );
+        let expected = "\nCI Report\n=========\nBuild: PASS\nTest:  PASS\nLint:  PASS\nTestgen: PASS\nBootstrap: PASS\nPragma: PASS\nVerify: PASS\nGuardrails: PASS\n---------\nOverall: SUCCESS";
+        assert_eq!(normalized.trim_end(), expected);
     }
 
     #[test]
@@ -1920,6 +1936,16 @@ mod tests {
         assert_eq!(
             result.get("error_summary").and_then(|v| v.as_str()),
             Some("One or more CI stages failed")
+        );
+        let normalized = normalize_report(
+            result
+                .get("report")
+                .and_then(|v| v.as_str())
+                .expect("report text"),
+        );
+        assert!(
+            normalized.contains("\n--- Build errors ---\nerror: compilation failed"),
+            "expected build failure section in report, got:\n{normalized}"
         );
     }
 

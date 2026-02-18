@@ -1080,6 +1080,34 @@ mod tests {
         assert!(line.contains("[850ms]"));
     }
 
+    #[test]
+    fn test_non_tty_summary_snapshot_success() {
+        let line = format_non_tty_summary_line(
+            NonTtyProgressCounts {
+                total: 3,
+                completed: 3,
+                ..Default::default()
+            },
+            Duration::from_millis(250),
+        );
+        assert_eq!(line, "✓ progress: 3/3 done, 0 skipped [250ms]");
+    }
+
+    #[test]
+    fn test_non_tty_summary_snapshot_failure() {
+        let line = format_non_tty_summary_line(
+            NonTtyProgressCounts {
+                total: 4,
+                completed: 2,
+                failed: 1,
+                skipped: 1,
+                ..Default::default()
+            },
+            Duration::from_secs(2),
+        );
+        assert_eq!(line, "✗ progress: 2/4 done, 1 failed, 1 skipped [2.0s]");
+    }
+
     // -------------------------------------------------------------------
     // Phase 6: NonTty group-aware rendering tests
     // -------------------------------------------------------------------
