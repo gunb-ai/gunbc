@@ -106,6 +106,6 @@ This creates repeated logic and makes it hard to add a new variant without touch
 
 ### Phase 3: DSL + Testgen Alignment
 
-- [ ] Align DSL `Platform`/`CodegenTarget` vocabulary with canonical types
+- [x] Align DSL `Platform`/`CodegenTarget` vocabulary with canonical types. _(2026-02-18: `dsl/std/types.dag` now includes canonical `Arch`/`Vendor`/`Os`/`AbiEnv`/`ExecutionEnv` + `TargetTriple`/`RuntimePlatform`, and extends `CodegenTarget` with canonical target/runtime fields + `CodegenBackend`.)_
 - [x] Remove linux-hardcoded mock defaults in testgen and generate per-platform variants. _(2026-02-18: replaced fixed `"linux"` platform mock with host-aware canonical variant cycling.)_
 - [x] Add conformance tests for `linux-gnu` vs other env/ABI variants and qemu executor selection. _(2026-02-18: added `TargetTriple` conformance tests for linux-gnu vs linux-musl and windows-msvc; qemu selection is covered by modeled `ToolchainCommands::mips_linux_gnu()` test.)_

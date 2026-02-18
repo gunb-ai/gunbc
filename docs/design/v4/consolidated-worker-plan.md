@@ -425,7 +425,7 @@ Replace the worst fragmentation points with canonical types.
 ##### C1.3 — DSL + testgen alignment [M]
 **Deps**: C1.1, C1.2
 
-- [ ] C1.3a — Align DSL `Platform`/`CodegenTarget` vocabulary with canonical types
+- [x] C1.3a — Align DSL `Platform`/`CodegenTarget` vocabulary with canonical types
 - [x] C1.3b — Remove linux-hardcoded mock defaults in testgen
 - [x] C1.3c — Add conformance tests for linux-gnu vs other env/ABI variants
 
