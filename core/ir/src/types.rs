@@ -605,6 +605,35 @@ impl TypeId {
     }
 }
 
+/// Parse a parametric map type-id of the form `Map<K,V>`.
+///
+/// Returns `(K, V)` when the type-id is syntactically valid.
+/// Supports nested generic values by splitting on the top-level comma.
+pub fn parse_map_type_id(type_id: &str) -> Option<(String, String)> {
+    let inner = type_id.strip_prefix("Map<")?.strip_suffix('>')?;
+    let mut depth = 0usize;
+    let mut split_idx: Option<usize> = None;
+    for (idx, ch) in inner.char_indices() {
+        match ch {
+            '<' => depth = depth.saturating_add(1),
+            '>' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                split_idx = Some(idx);
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    let comma = split_idx?;
+    let key = inner[..comma].trim();
+    let value = inner[comma + 1..].trim();
+    if key.is_empty() || value.is_empty() {
+        return None;
+    }
+    Some((key.to_string(), value.to_string()))
+}
+
 /// Classify placeholder seed policy for a raw type ID.
 pub fn seed_placeholder_policy_for_type_id(type_id: &str) -> SeedPlaceholderPolicy {
     match semantic_carrier_class_for_type_id(type_id) {
@@ -615,6 +644,15 @@ pub fn seed_placeholder_policy_for_type_id(type_id: &str) -> SeedPlaceholderPoli
 
 /// Classify semantic-carrier class for a raw type ID.
 pub fn semantic_carrier_class_for_type_id(type_id: &str) -> SemanticCarrierClass {
+    if let Some((key_type, value_type)) = parse_map_type_id(type_id) {
+        if key_type == "String"
+            && semantic_carrier_class_for_type_id(&value_type)
+                == SemanticCarrierClass::StructuralGeneratable
+        {
+            return SemanticCarrierClass::StructuralGeneratable;
+        }
+    }
+
     match type_id {
         // Primitives.
         "String" | "Bool" | "Int" | "Unit" | "Json" | "Void"
@@ -821,6 +859,27 @@ mod tests {
             TypeId::from("ToolHandle").semantic_carrier_class(),
             SemanticCarrierClass::SemanticCarrier
         );
+        assert_eq!(
+            TypeId::from("Map<String,String>").semantic_carrier_class(),
+            SemanticCarrierClass::StructuralGeneratable
+        );
+        assert_eq!(
+            TypeId::from("Map<String,Credential>").semantic_carrier_class(),
+            SemanticCarrierClass::SemanticCarrier
+        );
+    }
+
+    #[test]
+    fn test_parse_map_type_id() {
+        assert_eq!(
+            parse_map_type_id("Map<String,String>"),
+            Some(("String".to_string(), "String".to_string()))
+        );
+        assert_eq!(
+            parse_map_type_id("Map<String, Map<String,Int>>"),
+            Some(("String".to_string(), "Map<String,Int>".to_string()))
+        );
+        assert_eq!(parse_map_type_id("Map<String>"), None);
     }
 
     #[test]

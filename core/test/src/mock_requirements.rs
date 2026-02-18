@@ -21,7 +21,7 @@
 
 use crate::mock_spec::{BoundaryMock, MockSpec, NodeExample, TransportMock};
 use gunbc_ir::transport::TransportResponse;
-use gunbc_ir::{Cardinality, NodeId, PortName, TypeId, Value};
+use gunbc_ir::{parse_map_type_id, Cardinality, NodeId, PortName, TypeId, Value};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
@@ -289,6 +289,18 @@ impl MockRequirements {
         // Set-backed types (StringSet, etc.)
         if actual == "Set" && expected.ends_with("Set") {
             return true;
+        }
+
+        if let Some((key_type, value_type)) = parse_map_type_id(expected) {
+            if key_type != "String" {
+                return false;
+            }
+            if let Value::Map(entries) = value {
+                return entries
+                    .values()
+                    .all(|entry| Self::types_compatible(&value_type, entry));
+            }
+            return false;
         }
 
         // Map-backed types (ToolHandle, Credential, FilesystemHandle, NetworkHandle, CliResult)
@@ -870,6 +882,38 @@ mod tests {
         let result = reqs.boundary("env", "handle", Value::Map(map));
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parametric_map_types_compatible() {
+        let reqs = MockRequirements::new("test").add_slot(test_slot(
+            "render",
+            "meta",
+            "Map<String,String>",
+        ));
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("name".to_string(), Value::Str("gunbc".to_string()));
+
+        let result = reqs.boundary("render", "meta", Value::Map(map));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parametric_map_types_reject_wrong_value_type() {
+        let reqs = MockRequirements::new("test").add_slot(test_slot(
+            "render",
+            "meta",
+            "Map<String,String>",
+        ));
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("count".to_string(), Value::Int(7));
+
+        let result = reqs.boundary("render", "meta", Value::Map(map));
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            MockTypeError::TypeMismatch { .. }
+        ));
     }
 
     #[test]

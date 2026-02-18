@@ -36,9 +36,9 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, semantic_carrier_class_for_type_id, Cardinality, Dag, NodeId, Os, PortName,
-    RuntimePlatform, SecretString, SeedPlaceholderPolicy, SemanticCarrierClass, TypeRegistry,
-    Value, ValueExpr,
+    contract, parse_map_type_id, semantic_carrier_class_for_type_id, Cardinality, Dag, NodeId, Os,
+    PortName, RuntimePlatform, SecretString, SeedPlaceholderPolicy, SemanticCarrierClass,
+    TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -70,6 +70,96 @@ fn requires_explicit_seed(type_id: &str, context: SeedContext) -> bool {
             seed_policy_for_type(type_id) == SeedPolicy::ExplicitSeedRequired
         }
     }
+}
+
+fn mock_value_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Unit => "Unit",
+        Value::Bool(_) => "Bool",
+        Value::Str(_) => "String",
+        Value::Int(_) => "Int",
+        Value::List(_) => "List",
+        Value::Set(_) => "Set",
+        Value::Map(_) => "Map",
+        Value::Json(_) => "Json",
+        Value::Request(_) => "TransportRequest",
+        Value::Response(_) => "TransportResponse",
+        Value::Secret(_) => "Secret",
+        Value::Skipped => "Skipped",
+    }
+}
+
+fn mock_types_compatible(port_type: &str, value: &Value) -> bool {
+    let value_type = mock_value_type_name(value);
+
+    // Exact match
+    if port_type == value_type {
+        return true;
+    }
+    // Any matches anything
+    if port_type == "Any" {
+        return true;
+    }
+    // Optional types accept the inner type or Unit (none)
+    if let Some(inner) = port_type.strip_prefix("Optional") {
+        if value_type == inner || value_type == "Unit" {
+            return true;
+        }
+    }
+    // Skipped is a control flow value, compatible with any type
+    if value_type == "Skipped" {
+        return true;
+    }
+    // Json is flexible - can hold structured data that might be typed differently
+    if port_type == "Json" || value_type == "Json" {
+        return true;
+    }
+    // List-backed types (StringList, NonEmptyStringList, etc.)
+    if value_type == "List" && port_type.ends_with("List") {
+        return true;
+    }
+    // Set-backed types (StringSet, etc.)
+    if value_type == "Set" && port_type.ends_with("Set") {
+        return true;
+    }
+    if let Some((key_type, value_param_type)) = parse_map_type_id(port_type) {
+        if key_type != "String" {
+            return false;
+        }
+        if let Value::Map(entries) = value {
+            return entries
+                .values()
+                .all(|entry| mock_types_compatible(&value_param_type, entry));
+        }
+        return false;
+    }
+    // Map-backed types: ToolHandle, Credential, FilesystemHandle, NetworkHandle, CliResult
+    // These types serialize to/from Map when stored as Value
+    if value_type == "Map" {
+        let map_backed_types = [
+            "ToolHandle",
+            "Credential",
+            "FilesystemHandle",
+            "NetworkHandle",
+            "CliResult",
+        ];
+        if map_backed_types.contains(&port_type) {
+            return true;
+        }
+    }
+    // Int-backed types: Timestamp stores milliseconds as Int
+    if value_type == "Int" && port_type == "Timestamp" {
+        return true;
+    }
+    // String-backed types: Platform serializes as String
+    if value_type == "String" && port_type == "Platform" {
+        return true;
+    }
+    // Map can also represent Platform (for structured platform info)
+    if value_type == "Map" && port_type == "Platform" {
+        return true;
+    }
+    false
 }
 
 /// Configuration for test generation.
@@ -654,90 +744,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         spec: &MockSpec,
         lowered_dag: Option<&Dag<T>>,
     ) -> Vec<(String, String, String, String)> {
-        use gunbc_ir::Value;
-
         let mut mismatches = Vec::new();
-
-        // Helper to get type name from a Value
-        let value_type_name = |v: &Value| -> &'static str {
-            match v {
-                Value::Unit => "Unit",
-                Value::Bool(_) => "Bool",
-                Value::Str(_) => "String",
-                Value::Int(_) => "Int",
-                Value::List(_) => "List",
-                Value::Set(_) => "Set",
-                Value::Map(_) => "Map",
-                Value::Json(_) => "Json",
-                Value::Request(_) => "TransportRequest",
-                Value::Response(_) => "TransportResponse",
-                Value::Secret(_) => "Secret",
-                Value::Skipped => "Skipped", // Skipped is compatible with anything
-            }
-        };
-
-        // Helper to check type compatibility
-        // NOTE: This must match MockRequirements::types_compatible in gunbc-test
-        let types_compatible = |port_type: &str, value_type: &str| -> bool {
-            // Exact match
-            if port_type == value_type {
-                return true;
-            }
-            // Any matches anything
-            if port_type == "Any" || value_type == "Any" {
-                return true;
-            }
-            // Optional types accept the inner type or Unit (none)
-            if let Some(inner) = port_type.strip_prefix("Optional") {
-                if value_type == inner || value_type == "Unit" {
-                    return true;
-                }
-            }
-            // Skipped is a control flow value, compatible with any type
-            if value_type == "Skipped" {
-                return true;
-            }
-            // Json is flexible - can hold structured data that might be typed differently
-            // NOTE: This is intentionally permissive; consider tightening if type drift is a concern
-            if port_type == "Json" || value_type == "Json" {
-                return true;
-            }
-            // List-backed types (StringList, NonEmptyStringList, etc.)
-            if value_type == "List" && port_type.ends_with("List") {
-                return true;
-            }
-            // Set-backed types (StringSet, etc.)
-            if value_type == "Set" && port_type.ends_with("Set") {
-                return true;
-            }
-            // Map-backed types: ToolHandle, Credential, FilesystemHandle, NetworkHandle, CliResult
-            // These types serialize to/from Map when stored as Value
-            if value_type == "Map" {
-                let map_backed_types = [
-                    "ToolHandle",
-                    "Credential",
-                    "FilesystemHandle",
-                    "NetworkHandle",
-                    "CliResult",
-                ];
-                if map_backed_types.contains(&port_type) {
-                    return true;
-                }
-            }
-            // Int-backed types: Timestamp stores milliseconds as Int
-            if value_type == "Int" && port_type == "Timestamp" {
-                return true;
-            }
-            // String-backed types: Platform serializes as String
-            if value_type == "String" && port_type == "Platform" {
-                return true;
-            }
-            // Map can also represent Platform (for structured platform info)
-            if value_type == "Map" && port_type == "Platform" {
-                return true;
-            }
-            false
-        };
 
         // Check transport mocks
         for tm in &spec.transport_mocks {
@@ -748,8 +755,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if let Some(node) = node {
                 if let Some(port) = node.outputs.iter().find(|p| p.name.0 == tm.port) {
                     let expected = &port.type_id.0;
-                    let actual = value_type_name(&tm.value);
-                    if !types_compatible(expected, actual) {
+                    let actual = mock_value_type_name(&tm.value);
+                    if !mock_types_compatible(expected, &tm.value) {
                         mismatches.push((
                             tm.node.clone(),
                             tm.port.clone(),
@@ -770,8 +777,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if let Some(node) = node {
                 if let Some(port) = node.outputs.iter().find(|p| p.name.0 == bm.port) {
                     let expected = &port.type_id.0;
-                    let actual = value_type_name(&bm.value);
-                    if !types_compatible(expected, actual) {
+                    let actual = mock_value_type_name(&bm.value);
+                    if !mock_types_compatible(expected, &bm.value) {
                         mismatches.push((
                             bm.node.clone(),
                             bm.port.clone(),
@@ -792,8 +799,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if let Some(node) = node {
                 if let Some(port) = node.inputs.iter().find(|p| p.name.0 == im.port) {
                     let expected = &port.type_id.0;
-                    let actual = value_type_name(&im.value);
-                    if !types_compatible(expected, actual) {
+                    let actual = mock_value_type_name(&im.value);
+                    if !mock_types_compatible(expected, &im.value) {
                         mismatches.push((
                             im.node.clone(),
                             im.port.clone(),
@@ -5082,6 +5089,16 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Vec<S
 }
 
 fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
+    if let Some((key_type, value_type)) = parse_map_type_id(type_id) {
+        if key_type != "String" {
+            return None;
+        }
+        let value = try_mock_element_value(&value_type, index)?;
+        let mut map = BTreeMap::new();
+        map.insert("mock_key".to_string(), value);
+        return Some(Value::Map(map));
+    }
+
     let value = match type_id {
         "String" => match index {
             Some(1) | None => Value::Str("<MOCK>".to_string()),
@@ -5372,6 +5389,16 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         "Unit" => ValueExpr::Unit,
         "Json" | "OptionalJson" | "JsonList" => ValueExpr::Json(JsonValue::Null),
         "CloudSecretConfig" => ValueExpr::Json(mock_cloud_secret_config_json()),
+        ty if parse_map_type_id(ty).is_some() => {
+            let (key_type, value_type) = parse_map_type_id(ty).expect("already checked");
+            if key_type != "String" {
+                panic!("unsupported map key type '{}'; only String keys are supported", key_type);
+            }
+            ValueExpr::Map(vec![(
+                "mock_key".to_string(),
+                mock_element_expr(&value_type, index),
+            )])
+        }
         "Map" => ValueExpr::Map(vec![]),
         "Secret" => ValueExpr::Secret("<MOCK_SECRET>".to_string()),
         "Any" => ValueExpr::Json(JsonValue::Null),
@@ -6535,10 +6562,18 @@ mod tests {
         assert_eq!(seed_policy_for_type("Int"), SeedPolicy::Generated);
         assert_eq!(seed_policy_for_type("Bool"), SeedPolicy::Generated);
         assert_eq!(
+            seed_policy_for_type("Map<String,String>"),
+            SeedPolicy::Generated
+        );
+        assert_eq!(
             seed_policy_for_type("OptionalString"),
             SeedPolicy::Generated
         );
         assert_eq!(seed_policy_for_type("StringList"), SeedPolicy::Generated);
+        assert_eq!(
+            seed_policy_for_type("Map<String,Credential>"),
+            SeedPolicy::ExplicitSeedRequired
+        );
 
         // Fail-closed: unknown/new types default to ExplicitSeedRequired.
         assert_eq!(
@@ -6560,6 +6595,19 @@ mod tests {
             "String",
             SeedContext::RealSingleNodeRequiredInput
         ));
+    }
+
+    #[test]
+    fn test_try_mock_element_value_supports_parametric_string_map() {
+        let value = try_mock_element_value("Map<String,String>", Some(1))
+            .expect("parametric map mock should generate");
+        match value {
+            Value::Map(entries) => {
+                assert_eq!(entries.len(), 1);
+                assert!(matches!(entries.get("mock_key"), Some(Value::Str(_))));
+            }
+            other => panic!("expected Value::Map, got {other:?}"),
+        }
     }
 
     #[test]

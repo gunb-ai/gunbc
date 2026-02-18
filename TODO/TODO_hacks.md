@@ -639,20 +639,22 @@ Mock generation now hard-fails on unknown type_ids and on `List`/`Set`.
 
 ---
 
-## 32. `Map` type_id is under-specified for proofs/testgen
+## ~~32. `Map` type_id is under-specified for proofs/testgen~~ RESOLVED (2026-02-18)
 
 **Where**: `core/ir/src/value.rs`, `core/ir/src/types.rs`, `core/codegen/src/testgen/codegen.rs`
 
-**What happens**: Value::Map(BTreeMap<String, Value>) lost type parameter info when
-MapStrStr was replaced with generic Map. Codegen can't serialize
-Value::Map in general, and there's no way to express "map of string
-to string" vs "map of string to json" at the port type level.
-
-**Note**: Item 3 resolved Map *resolution* in the type registry. This item is about
-Map *proof generation* — testgen still can't produce typed map witnesses.
-
-**Suggested fix**: Either parametric type IDs (Map<String,String>) or a type DAG /
-type expression structure instead of flat String type_id.
+**What changed**:
+- Added parametric map type-id parsing in IR:
+  - `parse_map_type_id("Map<K,V>") -> (K, V)` with top-level generic splitting.
+- Added semantic classification support:
+  - `Map<String,StructuralType>` is now treated as structural for seed policy.
+- Added typed-map compatibility checks in both mock validation paths:
+  - `core/test::MockRequirements::types_compatible`
+  - `core/codegen::TestGenerator` mock type mismatch checks
+- Added typed-map mock witness generation in testgen:
+  - `try_mock_element_value("Map<String,String>", ...)`
+  - `mock_element_expr("Map<String,String>", ...)`
+- Added regression tests across IR/testgen/mock-requirements for map typing behavior.
 
 **Added**: 2026-02-14 (consolidated from root TODO_hacks)
 
