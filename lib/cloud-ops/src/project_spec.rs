@@ -160,21 +160,34 @@ pub struct ServiceAccountBinding {
 pub struct NamespaceSpec {
     /// Namespace name (e.g., "dev", "ci").
     pub name: &'static str,
+    /// Primary project ID for environment resources.
+    pub project: &'static str,
+    /// Primary project number for environment resources.
+    pub project_number: &'static str,
+    /// Default region for regional resources.
+    pub region: &'static str,
+    /// Default zone for zonal resources.
+    pub zone: &'static str,
+    /// Optional DNS domain for environment endpoints.
+    pub domain: Option<&'static str>,
+    /// Prefix for resource names in this environment.
+    pub name_prefix: &'static str,
+    /// Project that stores secrets for this environment.
+    pub secrets_project: &'static str,
+    /// Prefix for secret IDs in this environment.
+    pub secrets_prefix: &'static str,
     /// The secrets service account for this namespace.
     pub secrets_service_account: ServiceAccountSpec,
 }
 
 impl NamespaceSpec {
-    /// Secret prefix derived from namespace name: `"{name}-"`.
-    ///
-    /// Convention from `CloudNamespace::secret_prefix()`.
     pub fn secret_prefix(&self) -> String {
-        format!("{}-", self.name)
+        self.secrets_prefix.to_string()
     }
 
     /// Full service account email for secrets access.
-    pub fn service_account_email(&self, project_id: &str) -> String {
-        self.secrets_service_account.email(project_id)
+    pub fn service_account_email(&self) -> String {
+        self.secrets_service_account.email(self.secrets_project)
     }
 }
 
@@ -285,16 +298,14 @@ impl ProjectSpec {
             provider: CloudProviderKind::Gcp,
             runtime,
             audience: self.wif_provider_resource_name(),
-            project_or_account: self.secrets_project.project_id.to_string(),
+            project_or_account: ns.secrets_project.to_string(),
             secret: CloudSecretRef {
                 prefix: ns.secret_prefix(),
                 name: String::new(),
                 delimiter: String::new(),
                 version: None,
             },
-            service_account_or_role: Some(
-                ns.service_account_email(self.secrets_project.project_id),
-            ),
+            service_account_or_role: Some(ns.service_account_email()),
             impersonate_account_or_role: None,
         })
     }
@@ -342,6 +353,14 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
     namespaces: &[
         NamespaceSpec {
             name: "dev",
+            project: "gunbai-secrets",
+            project_number: "582015116396",
+            region: "us-central1",
+            zone: "us-central1-a",
+            domain: Some("dev.gunb.ai"),
+            name_prefix: "dev",
+            secrets_project: "gunbai-secrets",
+            secrets_prefix: "dev-",
             secrets_service_account: ServiceAccountSpec {
                 name: "gunbai-dev-secrets",
                 display_name: "Gunbai Dev Secrets",
@@ -354,6 +373,14 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
         },
         NamespaceSpec {
             name: "ci",
+            project: "gunbai-secrets",
+            project_number: "582015116396",
+            region: "us-central1",
+            zone: "us-central1-a",
+            domain: None,
+            name_prefix: "ci",
+            secrets_project: "gunbai-secrets",
+            secrets_prefix: "ci-",
             secrets_service_account: ServiceAccountSpec {
                 name: "gunbai-ci-secrets",
                 display_name: "Gunbai CI Secrets",
@@ -365,7 +392,35 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
             },
         },
         NamespaceSpec {
+            name: "test",
+            project: "gunbai-secrets",
+            project_number: "582015116396",
+            region: "us-central1",
+            zone: "us-central1-a",
+            domain: Some("test.gunb.ai"),
+            name_prefix: "test",
+            secrets_project: "gunbai-secrets",
+            secrets_prefix: "test-",
+            secrets_service_account: ServiceAccountSpec {
+                name: "gunbai-test-secrets",
+                display_name: "Gunbai Test Secrets",
+                description: "Test environment secrets access",
+                self_roles: &["roles/secretmanager.secretAccessor"],
+                wif_bindings: &[
+                    "principalSet://iam.googleapis.com/projects/314501921854/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc",
+                ],
+            },
+        },
+        NamespaceSpec {
             name: "staging",
+            project: "gunbai-secrets",
+            project_number: "582015116396",
+            region: "us-central1",
+            zone: "us-central1-a",
+            domain: Some("staging.gunb.ai"),
+            name_prefix: "staging",
+            secrets_project: "gunbai-secrets",
+            secrets_prefix: "staging-",
             secrets_service_account: ServiceAccountSpec {
                 name: "gunbai-staging-secrets",
                 display_name: "Gunbai Staging Secrets",
@@ -378,6 +433,14 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
         },
         NamespaceSpec {
             name: "prod",
+            project: "gunbai-secrets",
+            project_number: "582015116396",
+            region: "us-central1",
+            zone: "us-central1-a",
+            domain: Some("gunb.ai"),
+            name_prefix: "prod",
+            secrets_project: "gunbai-secrets",
+            secrets_prefix: "",
             secrets_service_account: ServiceAccountSpec {
                 name: "gunbai-prod-secrets",
                 display_name: "Gunbai Prod Secrets",
@@ -390,6 +453,14 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
         },
         NamespaceSpec {
             name: "review",
+            project: "gunbai-secrets",
+            project_number: "582015116396",
+            region: "us-central1",
+            zone: "us-central1-a",
+            domain: None,
+            name_prefix: "review",
+            secrets_project: "gunbai-secrets",
+            secrets_prefix: "review-",
             secrets_service_account: ServiceAccountSpec {
                 name: "gunbai-review-secrets",
                 display_name: "Gunbai Review Secrets",
@@ -402,6 +473,14 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
         },
         NamespaceSpec {
             name: "llm",
+            project: "gunbai-secrets",
+            project_number: "582015116396",
+            region: "us-central1",
+            zone: "us-central1-a",
+            domain: None,
+            name_prefix: "llm",
+            secrets_project: "gunbai-secrets",
+            secrets_prefix: "llm-",
             secrets_service_account: ServiceAccountSpec {
                 name: "gunbai-llm-secrets",
                 display_name: "Gunbai LLM Secrets",
@@ -414,6 +493,14 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
         },
         NamespaceSpec {
             name: "ops",
+            project: "gunbai-secrets",
+            project_number: "582015116396",
+            region: "us-central1",
+            zone: "us-central1-a",
+            domain: None,
+            name_prefix: "ops",
+            secrets_project: "gunbai-secrets",
+            secrets_prefix: "ops-",
             secrets_service_account: ServiceAccountSpec {
                 name: "gunbai-ops-secrets",
                 display_name: "Gunbai Ops Secrets",
@@ -426,6 +513,14 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
         },
         NamespaceSpec {
             name: "sandbox",
+            project: "gunbai-secrets",
+            project_number: "582015116396",
+            region: "us-central1",
+            zone: "us-central1-a",
+            domain: Some("sandbox.gunb.ai"),
+            name_prefix: "sandbox",
+            secrets_project: "gunbai-secrets",
+            secrets_prefix: "sandbox-",
             secrets_service_account: ServiceAccountSpec {
                 name: "gunbai-sandbox-secrets",
                 display_name: "Gunbai Sandbox Secrets",
@@ -497,7 +592,7 @@ mod tests {
     fn dev_service_account_email_is_derived() {
         let ns = GUNBAI_SECRETS.namespace("dev").unwrap();
         assert_eq!(
-            ns.service_account_email(GUNBAI_SECRETS.secrets_project.project_id),
+            ns.service_account_email(),
             "gunbai-dev-secrets@gunbai-secrets.iam.gserviceaccount.com"
         );
     }
@@ -506,7 +601,7 @@ mod tests {
     fn ci_service_account_email_is_derived() {
         let ns = GUNBAI_SECRETS.namespace("ci").unwrap();
         assert_eq!(
-            ns.service_account_email(GUNBAI_SECRETS.secrets_project.project_id),
+            ns.service_account_email(),
             "gunbai-ci-secrets@gunbai-secrets.iam.gserviceaccount.com"
         );
     }
@@ -582,6 +677,50 @@ mod tests {
     }
 
     #[test]
+    fn to_cloud_secret_config_prod_uses_empty_secret_prefix() {
+        let config = GUNBAI_SECRETS
+            .to_cloud_secret_config("prod", CloudRuntimeKind::LocalDev)
+            .expect("prod config should resolve");
+        assert_eq!(config.secret.prefix, "");
+    }
+
+    #[test]
+    fn namespace_environment_fields_are_populated() {
+        for ns in GUNBAI_SECRETS.namespaces {
+            assert!(
+                !ns.project.trim().is_empty(),
+                "namespace {} missing project",
+                ns.name
+            );
+            assert!(
+                !ns.project_number.trim().is_empty(),
+                "namespace {} missing project_number",
+                ns.name
+            );
+            assert!(
+                !ns.region.trim().is_empty(),
+                "namespace {} missing region",
+                ns.name
+            );
+            assert!(
+                !ns.zone.trim().is_empty(),
+                "namespace {} missing zone",
+                ns.name
+            );
+            assert!(
+                !ns.name_prefix.trim().is_empty(),
+                "namespace {} missing name_prefix",
+                ns.name
+            );
+            assert!(
+                !ns.secrets_project.trim().is_empty(),
+                "namespace {} missing secrets_project",
+                ns.name
+            );
+        }
+    }
+
+    #[test]
     fn unknown_namespace_returns_none() {
         assert!(GUNBAI_SECRETS
             .to_cloud_secret_config("nonexistent", CloudRuntimeKind::LocalDev)
@@ -591,7 +730,7 @@ mod tests {
     #[test]
     fn sa_email_format_is_valid() {
         for ns in GUNBAI_SECRETS.namespaces {
-            let email = ns.service_account_email(GUNBAI_SECRETS.secrets_project.project_id);
+            let email = ns.service_account_email();
             assert!(
                 email.contains('@') && email.ends_with(".iam.gserviceaccount.com"),
                 "SA email must be valid format: {email}"
@@ -623,7 +762,7 @@ mod tests {
     #[test]
     fn service_account_catalog_expanded_beyond_dev_and_ci() {
         assert!(
-            GUNBAI_SECRETS.namespaces.len() >= 8,
+            GUNBAI_SECRETS.namespaces.len() >= 9,
             "expected expanded namespace/service-account catalog"
         );
     }

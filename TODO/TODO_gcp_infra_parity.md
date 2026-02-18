@@ -191,7 +191,7 @@ gunb.ai has 6 environments with distinct configs. gunbc only has dev and ci.
 
 **Gap**: `NamespaceSpec` is minimal — no region, zone, domain, contact email.
 
-- [ ] Expand `NamespaceSpec` or create `EnvironmentConfig`:
+- [x] Expand `NamespaceSpec` or create `EnvironmentConfig`:
   - `project: &str` — GCP project ID (may differ from secrets project)
   - `project_number: &str`
   - `region: &str` — e.g., `us-central1`
@@ -200,8 +200,8 @@ gunb.ai has 6 environments with distinct configs. gunbc only has dev and ci.
   - `name_prefix: &str` — resource name prefix
   - `secrets_project: &str` — may be separate project
   - `secrets_prefix: &str` — e.g., `dev-`
-- [ ] Derive all resource names from config (SA emails, secret IDs, etc.)
-- [ ] Add tests for name derivation across environments
+- [x] Derive all resource names from config (SA emails, secret IDs, etc.)
+- [x] Add tests for name derivation across environments
 
 **Ref**: `gunb.ai/tools/infra/spec/spec.go:66-92` — `EnvironmentConfig`
 
@@ -209,11 +209,16 @@ gunb.ai has 6 environments with distinct configs. gunbc only has dev and ci.
 
 **Gap**: gunbc only has dev and ci.
 
-- [ ] Add `test` namespace/environment (separate from dev)
-- [ ] Add `prod` namespace/environment (no prefix)
-- [ ] Design strategy: same project or multi-project?
-- [ ] Update `GUNBAI_SECRETS` spec with new namespaces
-- [ ] Ensure `to_cloud_secret_config()` works for all environments
+- [x] Add `test` namespace/environment (separate from dev)
+- [x] Add `prod` namespace/environment (no prefix)
+- [x] Design strategy: same project or multi-project?
+- [x] Update `GUNBAI_SECRETS` spec with new namespaces
+- [x] Ensure `to_cloud_secret_config()` works for all environments
+
+Update (2026-02-18):
+- Current strategy remains **same-project-by-default** (`gunbai-secrets`) but
+  per-namespace fields now model explicit environment project/secrets project
+  values so future multi-project splits are data-only changes.
 
 **Ref**: `gunb.ai/tools/infra/spec/spec.go:624-670` — environment definitions
 

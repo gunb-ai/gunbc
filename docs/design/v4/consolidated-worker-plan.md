@@ -915,8 +915,8 @@ Implementation of SA/IAM operations against the typed understanding spec from C6
 ##### E2.4 — Environment modeling [M]
 **Deps**: E2.2
 
-- [ ] E2.4a — Environment config struct (project, region, zone, domain)
-- [ ] E2.4b — Additional environments (test, prod)
+- [x] E2.4a — Environment config struct (project, region, zone, domain)
+- [x] E2.4b — Additional environments (test, prod)
 
 #### Wave 4
 
