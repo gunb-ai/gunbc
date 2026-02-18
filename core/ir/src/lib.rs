@@ -142,9 +142,9 @@ pub use patterns::{
         add_transport_triplet_named_with_passthrough_typed, add_transport_triplet_typed,
         TransportPortTypes,
     },
-    validate_authenticate_chain, AtomicBuilder, AuthenticatePhase, BackoffStrategy,
-    FailureClassifier, PatternOp, PollBuilder, RepeatPolicy, ResourceInput, RetryBuilder,
-    TransactionBuilder, UpsertBuilder, WhileBuilder,
+    validate_authenticate_bindings, validate_authenticate_chain, AtomicBuilder, AuthenticatePhase,
+    AuthenticatePhaseBinding, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder,
+    RepeatPolicy, ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
 };
 pub use plain_render::PlainStructuredRenderer;
 pub use platform::{

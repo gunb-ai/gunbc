@@ -13,7 +13,10 @@
 
 use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
-use gunbc_ir::{add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node};
+use gunbc_ir::{
+    add_transport_triplet_named_with_passthrough, build::*, validate_authenticate_bindings,
+    AuthenticatePhase, AuthenticatePhaseBinding, Dag, DagBuilder, Node,
+};
 use gunbc_lib_cloud_ops::{
     build_cloud_secret_manager_credential_graph_from_config, graph_cloud_config, CloudOps,
     CloudSecretManagerGraphOp,
@@ -58,6 +61,9 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
 
 /// Build a chat completion DAG with explicit cloud config.
 pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) -> Dag<LlmGraphOp> {
+    validate_authenticate_bindings(&llm_authenticate_bindings())
+        .expect("llm credential flow must follow canonical authenticate pattern");
+
     let mut builder: DagBuilder<LlmGraphOp> = DagBuilder::new();
 
     // Node 0: Cloud environment (config + OIDC request inputs)
@@ -243,6 +249,17 @@ pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) 
     builder.build()
 }
 
+fn llm_authenticate_bindings() -> Vec<AuthenticatePhaseBinding> {
+    vec![
+        AuthenticatePhaseBinding::new(AuthenticatePhase::ResolveContext, "cloud_env"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::SelectFlow, "resolve_auth"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::AcquireBaseIdentity, "cloud_credential"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::ExchangeOrDerive, "cloud_credential"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::MaybeImpersonate, "cloud_credential"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::FinalizeCredential, "scope_preflight"),
+    ]
+}
+
 fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<LlmGraphOp> {
     dag.map_ops(&mut LlmGraphOp::Cloud)
 }
@@ -251,6 +268,11 @@ fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<LlmGraphOp> {
 mod tests {
     use super::*;
     use gunbc_ir::{detect_boundaries, detect_entrypoints};
+
+    #[test]
+    fn llm_authenticate_bindings_follow_canonical_chain() {
+        assert!(validate_authenticate_bindings(&llm_authenticate_bindings()).is_ok());
+    }
 
     #[test]
     fn test_chat_completion_graph_boundaries() {

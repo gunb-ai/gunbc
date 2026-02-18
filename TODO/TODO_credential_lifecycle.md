@@ -413,8 +413,11 @@ Update (2026-02-18):
   - `AuthenticatePhase`
   - `canonical_authenticate_chain(...)`
   - `validate_authenticate_chain(...)`
-- This closes the contract-definition milestone; flow migrations remain in
-  follow-on steps (gist/llm rewiring).
+- Gist and LLM credential flows now consume the pattern contract via canonical
+  binding validation:
+  - `lib/gist-ops::build_gist_upload_subdag(...)`
+  - `lib/llm-ops::build_chat_completion_graph_with_config(...)`
+  both validate phase bindings with `validate_authenticate_bindings(...)`.
 
 Phase 2: Policy binding
 

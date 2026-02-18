@@ -24,7 +24,9 @@ use gunbc_ir::node::Node;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
-use gunbc_ir::{Timestamp, Value};
+use gunbc_ir::{
+    validate_authenticate_bindings, AuthenticatePhase, AuthenticatePhaseBinding, Timestamp, Value,
+};
 use gunbc_lib_cloud_ops::{
     build_cloud_secret_manager_credential_graph_from_config, CloudOps, CloudSecretManagerGraphOp,
 };
@@ -457,6 +459,9 @@ fn execute_gist_resolve_auth(
 /// understand cloud credentials at all. They just wire `markdown` in and get
 /// `url` out.
 pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<GistUploadOp> {
+    validate_authenticate_bindings(&gist_authenticate_bindings())
+        .expect("gist credential flow must follow canonical authenticate pattern");
+
     let mut dag = Dag::new();
 
     // ========================================================================
@@ -720,6 +725,17 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
     dag
 }
 
+fn gist_authenticate_bindings() -> Vec<AuthenticatePhaseBinding> {
+    vec![
+        AuthenticatePhaseBinding::new(AuthenticatePhase::ResolveContext, "cloud_env"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::SelectFlow, "resolve_auth"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::AcquireBaseIdentity, "cloud_credential"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::ExchangeOrDerive, "cloud_credential"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::MaybeImpersonate, "cloud_credential"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::FinalizeCredential, "scope_preflight"),
+    ]
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -727,6 +743,11 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gist_authenticate_bindings_follow_canonical_chain() {
+        assert!(validate_authenticate_bindings(&gist_authenticate_bindings()).is_ok());
+    }
 
     fn request_filename(req: &gunbc_ir::transport::rest::RestRequest) -> String {
         let body = req.body.as_ref().expect("request body should exist");

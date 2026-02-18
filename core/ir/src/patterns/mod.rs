@@ -40,7 +40,8 @@ pub mod upsert;
 
 pub use atomic::AtomicBuilder;
 pub use authenticate::{
-    canonical_authenticate_chain, validate_authenticate_chain, AuthenticatePhase,
+    canonical_authenticate_chain, validate_authenticate_bindings, validate_authenticate_chain,
+    AuthenticatePhase, AuthenticatePhaseBinding,
 };
 pub use branch::BranchBuilder;
 pub use emit::EmitBuilder;

@@ -17,6 +17,22 @@ pub enum AuthenticatePhase {
     FinalizeCredential,
 }
 
+/// A concrete node binding for a canonical authenticate phase.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AuthenticatePhaseBinding {
+    pub phase: AuthenticatePhase,
+    pub node_id: String,
+}
+
+impl AuthenticatePhaseBinding {
+    pub fn new(phase: AuthenticatePhase, node_id: impl Into<String>) -> Self {
+        Self {
+            phase,
+            node_id: node_id.into(),
+        }
+    }
+}
+
 /// Return the canonical authenticate phase chain.
 ///
 /// When `include_impersonation` is false, the `MaybeImpersonate` phase is
@@ -47,6 +63,27 @@ pub fn validate_authenticate_chain(phases: &[AuthenticatePhase]) -> Result<(), S
         "invalid authenticate phase chain: expected {:?}, got {:?}",
         expected, phases
     ))
+}
+
+/// Validate canonical authenticate phase bindings.
+///
+/// Ensures:
+/// - phase order matches the canonical authenticate chain
+/// - all bound node IDs are non-empty
+pub fn validate_authenticate_bindings(bindings: &[AuthenticatePhaseBinding]) -> Result<(), String> {
+    let phases = bindings.iter().map(|b| b.phase).collect::<Vec<_>>();
+    validate_authenticate_chain(&phases)?;
+
+    for binding in bindings {
+        if binding.node_id.trim().is_empty() {
+            return Err(format!(
+                "authenticate binding for phase {:?} has empty node_id",
+                binding.phase
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -98,5 +135,36 @@ mod tests {
             AuthenticatePhase::FinalizeCredential,
         ];
         assert!(validate_authenticate_chain(&invalid).is_err());
+    }
+
+    #[test]
+    fn validate_authenticate_bindings_accepts_canonical_bindings() {
+        let bindings = vec![
+            AuthenticatePhaseBinding::new(AuthenticatePhase::ResolveContext, "cloud_env"),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::SelectFlow, "resolve_auth"),
+            AuthenticatePhaseBinding::new(
+                AuthenticatePhase::AcquireBaseIdentity,
+                "cloud_credential",
+            ),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::ExchangeOrDerive, "cloud_credential"),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::MaybeImpersonate, "cloud_credential"),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::FinalizeCredential, "scope_preflight"),
+        ];
+        assert!(validate_authenticate_bindings(&bindings).is_ok());
+    }
+
+    #[test]
+    fn validate_authenticate_bindings_rejects_empty_node_id() {
+        let bindings = vec![
+            AuthenticatePhaseBinding::new(AuthenticatePhase::ResolveContext, "cloud_env"),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::SelectFlow, "resolve_auth"),
+            AuthenticatePhaseBinding::new(
+                AuthenticatePhase::AcquireBaseIdentity,
+                "cloud_credential",
+            ),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::ExchangeOrDerive, "exchange"),
+            AuthenticatePhaseBinding::new(AuthenticatePhase::FinalizeCredential, ""),
+        ];
+        assert!(validate_authenticate_bindings(&bindings).is_err());
     }
 }
