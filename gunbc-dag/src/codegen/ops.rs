@@ -24,7 +24,8 @@ pub enum CodegenOp {
     /// Prepare a file glob request that checks for generated CLI files.
     PrepareCodegenExists,
     /// Parse the exists check response (file-glob response, with shell fallback).
-    ParseCodegenExists(ExecMode),
+    /// Reads `check_mode` input to determine verify vs ensure behavior.
+    ParseCodegenExists,
     /// Prepare the codegen shell command.
     PrepareCodegenCommand,
     /// Parse the codegen command response.
@@ -37,7 +38,7 @@ impl Executable for CodegenOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             CodegenOp::PrepareCodegenExists => execute_prepare_codegen_exists(inputs),
-            CodegenOp::ParseCodegenExists(mode) => execute_parse_codegen_exists(*mode, inputs),
+            CodegenOp::ParseCodegenExists => execute_parse_codegen_exists(inputs),
             CodegenOp::PrepareCodegenCommand => execute_prepare_codegen_command(inputs),
             CodegenOp::ParseCodegenResult => execute_parse_codegen_result(inputs),
             CodegenOp::PrepareStampWrite => execute_prepare_stamp_write(inputs),
@@ -58,12 +59,21 @@ fn execute_prepare_codegen_exists(
 }
 
 fn execute_parse_codegen_exists(
-    mode: ExecMode,
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     if let Some(result) = propagate_skipped(&inputs, "response", &["codegen_needed"]) {
         return result;
     }
+
+    let check_mode = inputs
+        .get("check_mode")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let mode = if check_mode {
+        ExecMode::Verify
+    } else {
+        ExecMode::Ensure
+    };
 
     let response = require_response(&inputs, "response")?;
     let output_exists = codegen_outputs_exist(response)?;

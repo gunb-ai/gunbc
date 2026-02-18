@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_chat_completion_graph_boundaries() {
-        let dag = build_chat_completion_graph();
+        let dag = build_chat_completion_graph().unwrap();
         let boundaries = detect_boundaries(&dag);
 
         // The chat_completion SubDag's outputs are boundaries (no downstream)
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_chat_completion_graph_entrypoints() {
-        let dag = build_chat_completion_graph();
+        let dag = build_chat_completion_graph().unwrap();
         let entrypoints = detect_entrypoints(&dag);
 
         // chat_completion SubDag's inputs are entrypoints

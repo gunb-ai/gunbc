@@ -5,7 +5,7 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::{
-    build_pragma_graph, print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions,
+    build_pragma_graph_dsl, print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions,
 };
 use gunbc_exec::{
     execute_and_display_with_result, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
@@ -27,7 +27,7 @@ fn main() {
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
 
     // Build the graph
-    let dag = match build_pragma_graph() {
+    let dag = match build_pragma_graph_dsl() {
         Ok(d) => d,
         Err(e) => {
             print_attention(AttentionLevel::Error, "Graph build failed", &e.to_string());

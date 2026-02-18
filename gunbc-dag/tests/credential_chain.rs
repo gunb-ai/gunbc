@@ -103,7 +103,7 @@ fn no_legacy_credential_env_in_gist_graphs() {
 
 #[test]
 fn no_legacy_credential_env_in_llm_graph() {
-    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph().unwrap();
+    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph();
     assert!(
         dag.get_node(&"credential_env".into()).is_none(),
         "llm: contains legacy credential_env node"
@@ -232,7 +232,7 @@ fn gist_has_canonical_credential_chain() {
 
 #[test]
 fn llm_has_canonical_credential_chain() {
-    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph().unwrap();
+    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph();
     assert_canonical_chain(&dag, "llm");
     assert_chain_edges(&dag, "llm");
 }

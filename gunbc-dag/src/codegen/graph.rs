@@ -50,11 +50,23 @@ pub fn codegen_signature() -> WorkflowSignature {
     builder = "build_codegen_graph().unwrap()"
 )]
 pub fn build_codegen_graph() -> Result<Dag<CodegenGraphOp>, BuilderError> {
-    build_codegen_graph_with_mode(ExecMode::Ensure)
+    build_codegen_graph_inner()
 }
 
-/// Build the codegen prep graph with a specific resource mode.
+/// Build the codegen prep graph with a compatibility mode parameter.
+///
+/// Mode-specific behavior now comes from the runtime `check_mode` input
+/// consumed by `ParseCodegenExists`, but callers still pass `ExecMode`.
 pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphOp>, BuilderError> {
+    let _ = mode;
+    build_codegen_graph_inner()
+}
+
+/// Build the codegen prep graph.
+///
+/// The `check_mode` input is read at runtime by `ParseCodegenExists`;
+/// set it via an entrypoint input to enable verify-mode behavior.
+fn build_codegen_graph_inner() -> Result<Dag<CodegenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
     let fs_env = add_fs_env_root_node(&mut builder, CodegenGraphOp::FsEnv)?;
@@ -72,7 +84,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
         vec![fs_resource.clone()],
         vec![port("codegen_needed", "Bool")],
         CodegenGraphOp::Codegen(CodegenOp::PrepareCodegenExists),
-        CodegenGraphOp::Codegen(CodegenOp::ParseCodegenExists(mode)),
+        CodegenGraphOp::Codegen(CodegenOp::ParseCodegenExists),
         CodegenGraphOp::Transport(TransportOps::Execute),
         Some(&fs_env),
     )?;

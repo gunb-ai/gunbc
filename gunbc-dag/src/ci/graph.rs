@@ -36,7 +36,7 @@
 //! ```
 
 use crate::ci::ops::CIOp;
-use crate::codegen::{build_codegen_graph_with_mode, CodegenGraphOp, CodegenOp};
+use crate::codegen::{build_codegen_graph, CodegenGraphOp, CodegenOp};
 use crate::WorkspaceBinary;
 use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
@@ -228,7 +228,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     // Prep Stage: Inline Codegen DAG (needed for fs_env)
     // ========================================================================
 
-    let codegen_nodes = inline_codegen_dag(&mut builder, mode)?;
+    let codegen_nodes = inline_codegen_dag(&mut builder)?;
     let parse_codegen_result = codegen_nodes
         .get(&NodeId::from("parse_codegen_result"))
         .ok_or_else(|| {
@@ -926,9 +926,8 @@ fn map_codegen_node(node: &Node<CodegenGraphOp>) -> Node<CIGraphOp> {
 
 fn inline_codegen_dag(
     builder: &mut DagBuilder<CIGraphOp>,
-    mode: ExecMode,
 ) -> Result<HashMap<NodeId, NodeRef<CIGraphOp>>, BuilderError> {
-    let dag = build_codegen_graph_with_mode(mode)?;
+    let dag = build_codegen_graph()?;
     let mut incoming: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
     for edge in &dag.edges {

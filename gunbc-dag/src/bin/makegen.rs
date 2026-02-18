@@ -7,7 +7,7 @@ use gunbc_cli::BinaryArgs;
 use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
 use gunbc_dag::{
-    build_makegen_graph, makefile_resource_def, print_tool_header, run_tool,
+    build_makegen_graph_dsl, makefile_resource_def, print_tool_header, run_tool,
     wire_fs_env_write_mock, RunToolOptions,
 };
 use gunbc_exec::{
@@ -39,7 +39,7 @@ fn main() {
     let path = parsed.get_string("path").unwrap_or("Makefile").to_string();
 
     // Build the graph
-    let dag = match build_makegen_graph() {
+    let dag = match build_makegen_graph_dsl() {
         Ok(d) => d,
         Err(e) => {
             print_attention(AttentionLevel::Error, "Graph build failed", &e.to_string());

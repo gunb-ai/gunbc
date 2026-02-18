@@ -130,7 +130,7 @@ These can start immediately, in parallel with the DynOp work above.
 
 | ID | Task | Deps | Size | Started | Done |
 |----|------|------|------|---------|------|
-| **E1** | Provider-granted scope verification (E1.3b) | — | M | | |
+| **E1** | Provider-granted scope verification (E1.3b) | — | M | 2026-02-18 | 2026-02-18 |
 | **E2** | `make gist-recent` works without hidden hardcoded defaults (E1.5a) | E1 | M | | |
 | **E3** | WIF Bootstrap DAG — idempotent setup flow (E2.2b) | — | L | | |
 | **E4** | Unified infra CLI: bootstrap, plan, apply, spec, graph (E2.7a) | E3 | M | | |
@@ -150,12 +150,12 @@ These can start immediately, in parallel with the DynOp work above.
 | ID | Task | Deps | Size | Started | Done |
 |----|------|------|------|---------|------|
 | **CO1** | `ToolGraphOp<D>` generic wrapper or GraphOp wrapper enum unification | SD3 | M | | |
-| **CO2** | Split `MergeOutputs` dedup from cardinality handling | — | M | | |
-| **CO3** | Probe-observer analysis single-source bundle (consolidation §17.A) | — | M | | |
-| **CO4** | Seed policy ownership in IR types, not testgen whitelist (consolidation §17.B) | — | M | | |
-| **CO5** | Live-secret requirements as generated workflow metadata (consolidation §17.C) | — | M | | |
-| **CO6** | Execution trace inputs for coercion/assertion observability (consolidation §17.D) | — | M | | |
-| **CO7** | Add `ValueKind` enum on `Value` so `types_compatible` becomes `TypeId backing accepts ValueKind` without manufacturing type-name strings (eliminates `mock_value_type_name` smell) | — | M | 2026-02-18 | |
+| **CO2** | Split `MergeOutputs` dedup from cardinality handling | — | M | 2026-02-18 | 2026-02-18 |
+| **CO3** | Probe-observer analysis single-source bundle (consolidation §17.A) | — | M | 2026-02-18 | 2026-02-18 |
+| **CO4** | Seed policy ownership in IR types, not testgen whitelist (consolidation §17.B) | — | M | 2026-02-18 | 2026-02-18 |
+| **CO5** | Live-secret requirements as generated workflow metadata (consolidation §17.C) | — | M | 2026-02-18 | 2026-02-18 |
+| **CO6** | Execution trace inputs for coercion/assertion observability (consolidation §17.D) | — | M | 2026-02-18 | 2026-02-18 |
+| **CO7** | Add `ValueKind` enum on `Value` so `types_compatible` becomes `TypeId backing accepts ValueKind` without manufacturing type-name strings (eliminates `mock_value_type_name` smell) | — | M | 2026-02-18 | 2026-02-18 |
 
 ---
 
