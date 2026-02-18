@@ -251,8 +251,10 @@ fn render_manifest(manifest: &ProgressManifest) -> String {
     out.push_str("subdag_boundaries=\n");
     for boundary in &manifest.subdag_boundaries {
         out.push_str(&format!(
-            "  {} label={}\n",
-            boundary.node_id, boundary.label
+            "  {} label={} inner=[{}]\n",
+            boundary.node_id,
+            boundary.label,
+            boundary.inner_nodes.join(",")
         ));
     }
     out.push_str("parallel_groups=\n");

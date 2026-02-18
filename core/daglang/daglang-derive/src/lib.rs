@@ -19,12 +19,15 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+pub use daglang_contract::{
+    CaptureMode, ParallelGroup, ProgressManifest, ResourceUsage, StageGroup, SubDagBoundary,
+    TestObligations, TopologyNode,
+};
 use daglang_lower::{
     classify_obligation, classify_service_transport, CollectionOpKind, LoweredOp,
     ObligationCategory, ServiceTransportClass,
 };
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node};
-use serde::Serialize;
 
 /// Derived artifacts produced from lowered GraphIR.
 #[derive(Debug, Clone)]
@@ -32,86 +35,6 @@ pub struct DerivedArtifacts {
     pub manifest: ProgressManifest,
     pub obligations: TestObligations,
     pub tool_metadata: ToolMetadata,
-}
-
-/// Progress-manifest contract derived from lowered DAG topology.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ProgressManifest {
-    pub total_nodes: usize,
-    pub total_edges: usize,
-    pub waves: Vec<Vec<String>>,
-    pub entrypoint_nodes: Vec<String>,
-    pub boundary_nodes: Vec<String>,
-    pub topology: Vec<TopologyNode>,
-    pub labels: BTreeMap<String, String>,
-    pub subdag_boundaries: Vec<SubDagBoundary>,
-    pub parallel_groups: Vec<ParallelGroup>,
-    pub scatter_points: Vec<String>,
-    pub interactive_nodes: Vec<String>,
-    pub capture_modes: BTreeMap<String, CaptureMode>,
-    pub stage_groups: Vec<StageGroup>,
-    pub resources: BTreeMap<String, Vec<ResourceUsage>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct TopologyNode {
-    pub id: String,
-    pub depth: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SubDagBoundary {
-    pub node_id: String,
-    pub label: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ParallelGroup {
-    pub nodes: Vec<String>,
-    pub depth: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum CaptureMode {
-    #[default]
-    Captured,
-    Passthrough,
-    Streamed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct StageGroup {
-    pub stage_id: String,
-    pub nodes: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ResourceUsage {
-    pub resource: String,
-    pub usage: String,
-}
-
-/// Minimal obligation summary derived from graph structure.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct TestObligations {
-    pub dry_run_completion_required: bool,
-    pub total_obligations: usize,
-    pub transport_execution_targets: usize,
-    pub pure_node_determinism_targets: usize,
-    pub service_transport_prepare_targets: usize,
-    pub service_transport_execute_targets: usize,
-    pub service_transport_parse_targets: usize,
-    pub service_transport_hermetic_targets: usize,
-    pub service_transport_external_targets: usize,
-    pub service_transport_idempotent_targets: usize,
-    pub service_transport_readonly_targets: usize,
-    pub service_transport_permission_scoped_targets: usize,
-    pub service_param_source_targets: usize,
-    pub resource_provide_targets: usize,
-    pub resource_acquire_targets: usize,
-    pub resource_release_targets: usize,
-    pub interface_contract_verification_targets: usize,
 }
 
 /// Metadata summary for lowered modules.
@@ -318,6 +241,7 @@ fn derive_parallel_groups(waves: &[Vec<String>]) -> Vec<ParallelGroup> {
         .map(|(depth, wave)| ParallelGroup {
             nodes: wave.clone(),
             depth,
+            parent_subdag: None, // nesting support arrives in Phase 3
         })
         .collect()
 }
@@ -326,10 +250,17 @@ fn derive_subdag_boundaries(nodes: &[Node<LoweredOp>]) -> Vec<SubDagBoundary> {
     let mut boundaries = nodes
         .iter()
         .filter_map(|node| match &node.body {
-            gunbc_ir::node::NodeBody::SubDag(_subdag) => Some(SubDagBoundary {
-                node_id: node.id.0.clone(),
-                label: node.id.0.clone(),
-            }),
+            gunbc_ir::node::NodeBody::SubDag(subdag) => {
+                let mut inner_nodes: Vec<String> =
+                    subdag.nodes.iter().map(|n| n.id.0.clone()).collect();
+                inner_nodes.sort();
+                Some(SubDagBoundary {
+                    node_id: node.id.0.clone(),
+                    label: node.id.0.clone(),
+                    inner_nodes,
+                    parent: None, // nesting support arrives in Phase 3
+                })
+            }
             gunbc_ir::node::NodeBody::Opaque(_) => None,
         })
         .collect::<Vec<_>>();
@@ -467,6 +398,9 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
         .collect()
 }
 
+// TODO(Phase 3): Derive capture mode from node kind (transport → Captured,
+// @interactive → Passthrough, streaming → Streamed) via structural classification
+// in daglang-lower, matching the pattern used for obligations.
 fn derive_capture_modes(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, CaptureMode> {
     nodes
         .iter()
@@ -474,6 +408,9 @@ fn derive_capture_modes(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, CaptureMo
         .collect()
 }
 
+// TODO(Phase 3): Replace substring matching with a structural `is_interactive`
+// field on LoweredOp (parsed from a DSL attribute, propagated through lowering),
+// matching the pattern used for obligation classification.
 fn derive_interactive_nodes(nodes: &[Node<LoweredOp>]) -> Vec<String> {
     let mut interactive = nodes
         .iter()
@@ -488,6 +425,9 @@ fn derive_interactive_nodes(nodes: &[Node<LoweredOp>]) -> Vec<String> {
     interactive
 }
 
+// TODO(Phase 3): Replace string-prefix matching with a structural classification
+// function in daglang-lower (e.g. LoweredOpKind::ResourceAcquire { resource }),
+// matching the pattern used for obligation classification.
 fn derive_resources(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, Vec<ResourceUsage>> {
     let mut resources = BTreeMap::<String, Vec<ResourceUsage>>::new();
     for node in nodes {
@@ -738,10 +678,12 @@ mod tests {
                 ParallelGroup {
                     nodes: vec!["a".to_string(), "b".to_string()],
                     depth: 0,
+                    parent_subdag: None,
                 },
                 ParallelGroup {
                     nodes: vec!["c".to_string()],
                     depth: 1,
+                    parent_subdag: None,
                 },
             ]
         );

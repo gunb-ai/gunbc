@@ -2036,6 +2036,10 @@ func store_artifact(key: NonEmptyStr, content: Bytes) -> { ok: Bool }
 //   gunbc build --env=aws-prod -> ObjectStorage = S3Bucket
 ```
 
+If an interface-typed `uses`/`provides` clause matches multiple provider resources and no
+provider hint is present (for example `cloud: GcpConfig|AwsConfig|AzureConfig`),
+lowering fails fast with an explicit ambiguity error instead of picking one implicitly.
+
 #### 7.6.4 Cross-Provider Composition
 
 Funcs can compose resources from different providers:
@@ -3874,6 +3878,9 @@ dag obligations <file.dag>     # show derived TestObligations by bucket
 dag manifest <file.dag>        # show ProgressManifest (waves, groups, scatter points)
 dag viz <file.dag>             # ASCII DAG visualization (pre-execution)
 ```
+
+CLI target parsing treats paths ending in `.dag` as single-file inputs. If such a path
+is a directory, commands fail fast with an explicit diagnostic and disambiguation hint.
 
 **Timeline:** Phase 1 (essential for trust and debugging from day one).
 

@@ -286,6 +286,13 @@ fn parse_target_module_file(
     roots: &[PathBuf],
     canonical_roots: &[PathBuf],
 ) -> Result<(ResolvedModule, Vec<Vec<String>>), CompileError> {
+    if path.is_dir() {
+        return Err(format!(
+            "failed to read {}: target is a directory; `.dag` paths are treated as single-file targets. Use `daglang check <dir>` or `daglang modules <dir>`, or pass the directory path without the `.dag` suffix.",
+            path.display()
+        )
+        .into());
+    }
     let source = {
         #[allow(clippy::disallowed_methods)]
         std::fs::read_to_string(path)

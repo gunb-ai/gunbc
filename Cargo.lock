@@ -136,6 +136,7 @@ dependencies = [
 name = "daglang-cli"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "daglang-derive",
  "daglang-driver",
  "daglang-emit",
@@ -152,9 +153,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "daglang-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "daglang-derive"
 version = "0.1.0"
 dependencies = [
+ "daglang-contract",
  "daglang-lower",
  "gunbc-ir",
  "serde",

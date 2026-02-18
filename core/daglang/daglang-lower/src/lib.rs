@@ -158,6 +158,20 @@ pub struct ServiceCallMetadata {
     pub permissions: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeOpId {
+    MakegenLoadRegistry,
+    MakegenFsEnv,
+    MakegenRenderMakefile,
+    MakegenEntrypoint,
+    MakegenPrepareReadContent,
+    MakegenExecuteReadContent,
+    MakegenPrepareWriteContent,
+    MakegenCompareContent,
+    MakegenExecuteTransport,
+    Collection(CollectionOpKind),
+}
+
 impl LoweredOp {
     pub fn obligation_category(&self) -> ObligationCategory {
         match self {
@@ -183,6 +197,40 @@ pub fn classify_obligation(op: &LoweredOp) -> ObligationCategory {
 pub fn classify_service_transport(op: &LoweredOp) -> Option<ServiceTransportClass> {
     op.service_call_metadata()
         .map(|metadata| metadata.transport)
+}
+
+pub fn classify_runtime_op(op: &LoweredOp) -> Option<RuntimeOpId> {
+    match op {
+        LoweredOp::Collection { kind, .. } => Some(RuntimeOpId::Collection(*kind)),
+        LoweredOp::Pipeline { .. } => None,
+        LoweredOp::Callable { module, name, .. } => {
+            if module != "tools.makegen" {
+                return None;
+            }
+            match name.as_str() {
+                "load_registry" => Some(RuntimeOpId::MakegenLoadRegistry),
+                "fs_env" => Some(RuntimeOpId::MakegenFsEnv),
+                "render_makefile" => Some(RuntimeOpId::MakegenRenderMakefile),
+                "makegen" => Some(RuntimeOpId::MakegenEntrypoint),
+                "content_upsert::prepare_read_makegen" => {
+                    Some(RuntimeOpId::MakegenPrepareReadContent)
+                }
+                "content_upsert::execute_read_makegen" => {
+                    Some(RuntimeOpId::MakegenExecuteReadContent)
+                }
+                "content_upsert::prepare_write_makegen" => {
+                    Some(RuntimeOpId::MakegenPrepareWriteContent)
+                }
+                "content_upsert::compare_makegen_content" => {
+                    Some(RuntimeOpId::MakegenCompareContent)
+                }
+                "content_upsert::execute_makegen_transport" => {
+                    Some(RuntimeOpId::MakegenExecuteTransport)
+                }
+                _ => None,
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -265,6 +313,72 @@ fn provider_hint_from_expr(expr: &Expr) -> Option<ProviderHint> {
         Expr::FieldAccess(_, field) => provider_hint_from_symbol(field),
         _ => None,
     }
+}
+
+fn provider_hint_from_resource_type_config(resource_type: &str) -> Option<ProviderHint> {
+    let open = resource_type.find('(')?;
+    let close = resource_type.rfind(')')?;
+    if close <= open {
+        return None;
+    }
+    let config = &resource_type[open + 1..close];
+    for entry in split_top_level_csv(config) {
+        let Some((name, value)) = entry.split_once(':') else {
+            continue;
+        };
+        if name.trim() != "cloud" {
+            continue;
+        }
+        if let Some(provider) = provider_hint_from_symbol(parse_leading_symbol(value.trim())) {
+            return Some(provider);
+        }
+    }
+    None
+}
+
+fn split_top_level_csv(input: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut paren_depth = 0usize;
+    let mut bracket_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut angle_depth = 0usize;
+    for (index, ch) in input.char_indices() {
+        match ch {
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '[' => bracket_depth += 1,
+            ']' => bracket_depth = bracket_depth.saturating_sub(1),
+            '{' => brace_depth += 1,
+            '}' => brace_depth = brace_depth.saturating_sub(1),
+            '<' => angle_depth += 1,
+            '>' => angle_depth = angle_depth.saturating_sub(1),
+            ',' if paren_depth == 0
+                && bracket_depth == 0
+                && brace_depth == 0
+                && angle_depth == 0 =>
+            {
+                parts.push(input[start..index].trim());
+                start = index + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    if start <= input.len() {
+        parts.push(input[start..].trim());
+    }
+    parts
+}
+
+fn parse_leading_symbol(text: &str) -> &str {
+    let end = text
+        .char_indices()
+        .find_map(|(index, ch)| {
+            (ch.is_whitespace() || ch == '(' || ch == '{' || ch == '[' || ch == ',')
+                .then_some(index)
+        })
+        .unwrap_or(text.len());
+    &text[..end]
 }
 
 fn provider_hint_from_uses_config(config: Option<&[(String, Expr)]>) -> Option<ProviderHint> {
@@ -3291,7 +3405,11 @@ fn add_used_resource_edges(
             };
             for usage in uses {
                 let resource_type = resource_type_name(&usage.resource_type);
-                let provider_hint = provider_hint_from_uses_config(usage.config.as_deref());
+                let resource_type_with_config = type_expr_to_string(&usage.resource_type);
+                let provider_hint = provider_hint_from_uses_config(usage.config.as_deref())
+                    .or_else(|| {
+                        provider_hint_from_resource_type_config(resource_type_with_config.as_str())
+                    });
                 let endpoint = match resolve_resource_endpoint(
                     module_name.as_str(),
                     resource_type.as_str(),
@@ -3655,8 +3773,7 @@ fn add_interface_contract_verification_nodes(
             let Some(interface_name) = &resource.implements else {
                 continue;
             };
-            let contract_count =
-                resolve_interface_contract_count(project, interface_name);
+            let contract_count = resolve_interface_contract_count(project, interface_name);
             if contract_count == 0 {
                 continue;
             }
@@ -3708,10 +3825,7 @@ fn add_interface_contract_verification_nodes(
     }
 }
 
-fn resolve_interface_contract_count(
-    project: &TypedProject,
-    interface_name: &str,
-) -> usize {
+fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str) -> usize {
     let target = canonical_type_name(interface_name);
     let target_short = target.rsplit('.').next().unwrap_or(target.as_str());
     let mut counts = Vec::new();
@@ -5151,6 +5265,7 @@ interface ObjectStorage {
   }
 }
 resource GcsBucket implements ObjectStorage {
+  provider: Gcp
   acquire { let ready = true }
   capability read {
     input { path: String }
@@ -5158,6 +5273,7 @@ resource GcsBucket implements ObjectStorage {
   }
 }
 resource S3Bucket implements ObjectStorage {
+  provider: Aws
   acquire { let ready = true }
   capability read {
     input { path: String }
@@ -5186,7 +5302,7 @@ func run() -> { ok: Bool } uses store: ObjectStorage(cloud: GcpConfig) {
     }
 
     #[test]
-    fn uses_interface_without_provider_hint_stays_unwired_when_multiple_providers_exist() {
+    fn uses_interface_without_provider_hint_fails_when_multiple_providers_exist() {
         let typed = typed_project_from_sources(&[(
             "dsl/infra/providers_ambiguous.dag",
             r#"module infra.providers
@@ -5197,6 +5313,7 @@ interface ObjectStorage {
   }
 }
 resource GcsBucket implements ObjectStorage {
+  provider: Gcp
   acquire { let ready = true }
   capability read {
     input { path: String }
@@ -5204,6 +5321,7 @@ resource GcsBucket implements ObjectStorage {
   }
 }
 resource S3Bucket implements ObjectStorage {
+  provider: Aws
   acquire { let ready = true }
   capability read {
     input { path: String }
@@ -5214,13 +5332,17 @@ func run() -> { ok: Bool } uses store: ObjectStorage {
   return { ok: true }
 }"#,
         )]);
-        let dag = lower_typed_project(&typed).expect("lowering should succeed");
-        assert!(
-            !dag.edges.iter().any(|edge| {
-                edge.to_node.0 == "infra.providers::run" && edge.to_port.0 == "__deps"
-            }),
-            "ambiguous interface uses should not arbitrarily wire lifecycle edges"
-        );
+        let error = lower_typed_project(&typed).expect_err("lowering should fail");
+        assert!(matches!(
+            error,
+            LowerError::AmbiguousUsedResource {
+                caller,
+                binding,
+                resource_type,
+            } if caller == "infra.providers::run"
+                && binding == "store"
+                && resource_type == "ObjectStorage"
+        ));
     }
 
     #[test]
@@ -5235,6 +5357,7 @@ interface ObjectStorage {
   }
 }
 resource GcsBucket implements ObjectStorage {
+  provider: Gcp
   acquire { let ready = true }
   capability read {
     input { path: String }
@@ -5242,6 +5365,7 @@ resource GcsBucket implements ObjectStorage {
   }
 }
 resource S3Bucket implements ObjectStorage {
+  provider: Aws
   acquire { let ready = true }
   capability read {
     input { path: String }
@@ -5249,6 +5373,7 @@ resource S3Bucket implements ObjectStorage {
   }
 }
 resource BlobContainer implements ObjectStorage {
+  provider: Azure
   acquire { let ready = true }
   capability read {
     input { path: String }
@@ -5299,6 +5424,7 @@ interface ObjectStorage {
   }
 }
 resource GcsBucket implements ObjectStorage {
+  provider: Gcp
   acquire { let ready = true }
   capability write {
     input { key: String, content: String }
@@ -5306,6 +5432,7 @@ resource GcsBucket implements ObjectStorage {
   }
 }
 resource S3Bucket implements ObjectStorage {
+  provider: Aws
   acquire { let ready = true }
   capability write {
     input { key: String, content: String }
@@ -5313,6 +5440,7 @@ resource S3Bucket implements ObjectStorage {
   }
 }
 resource BlobContainer implements ObjectStorage {
+  provider: Azure
   acquire { let ready = true }
   capability write {
     input { key: String, content: String }
@@ -5609,6 +5737,46 @@ func run() -> { ok: Bool } provides out: MissingResource {
             } if caller == "sample.resources::run"
                 && binding == "out"
                 && resource_type == "MissingResource"
+        ));
+    }
+
+    #[test]
+    fn ambiguous_provides_clause_reports_lower_error() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/resources/ambiguous_provides.dag",
+            r#"module sample.resources
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource LocalStore implements Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource BackupStore implements Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } provides out: Storage {
+  return { ok: true }
+}"#,
+        )]);
+        let error = lower_typed_project(&typed).expect_err("lowering should fail");
+        assert!(matches!(
+            error,
+            LowerError::AmbiguousProvidedResource {
+                caller,
+                binding,
+                resource_type,
+            } if caller == "sample.resources::run"
+                && binding == "out"
+                && resource_type == "Storage"
         ));
     }
 

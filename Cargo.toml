@@ -15,6 +15,7 @@ members = [
     
     # DSL compiler (daglang)
     "core/daglang/daglang-syntax",
+    "core/daglang/daglang-contract",
     "core/daglang/daglang-resolve",
     "core/daglang/daglang-typecheck",
     "core/daglang/daglang-lower",

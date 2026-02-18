@@ -283,6 +283,14 @@ fn assert_dag_suffixed_directory_is_invalid_single_file_target(
         stderr.contains(&format!("failed to read {}", expected_target.display())),
         "{input} compile should fail with normalized single-file target path: {stderr}"
     );
+    assert!(
+        stderr.contains("target is a directory"),
+        "{input} compile should explain the .dag directory/single-file ambiguity: {stderr}"
+    );
+    assert!(
+        stderr.contains("`.dag` paths are treated as single-file targets"),
+        "{input} compile should include a disambiguation hint for .dag directories: {stderr}"
+    );
     if let Some(snippet) = nested_diagnostic_snippet {
         assert!(
             !stderr.contains(snippet),
@@ -328,6 +336,14 @@ fn assert_single_target_command_treats_dag_directory_as_invalid_single_file_targ
     assert!(
         stderr.contains(&format!("failed to read {}", expected_target.display())),
         "{command_name} should fail with normalized single-file target path: {stderr}"
+    );
+    assert!(
+        stderr.contains("target is a directory"),
+        "{command_name} should explain the .dag directory/single-file ambiguity: {stderr}"
+    );
+    assert!(
+        stderr.contains("`.dag` paths are treated as single-file targets"),
+        "{command_name} should include a disambiguation hint for .dag directories: {stderr}"
     );
     if let Some(snippet) = nested_diagnostic_snippet {
         assert!(
@@ -5365,6 +5381,114 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
 }
 
 #[test]
+fn compile_command_single_file_interface_uses_without_provider_hint_reports_lower_ambiguity() {
+    let fixture = unique_temp_file("compile_single_file_interface_uses_lower_ambiguity");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+interface ObjectStorage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource GcsBucket implements ObjectStorage {
+  provider: Gcp
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource S3Bucket implements ObjectStorage {
+  provider: Aws
+  acquire { let ready = true }
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } uses store: ObjectStorage {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for interface-uses ambiguity fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on provider-ambiguous interface uses"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_lower_stage_failure(&stderr);
+    assert!(
+        stderr.contains("ambiguous used resource `store: ObjectStorage`"),
+        "single-file compile should surface lower-stage resource ambiguity details: {stderr}"
+    );
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn compile_command_single_file_interface_provides_without_hint_reports_lower_ambiguity() {
+    let fixture = unique_temp_file("compile_single_file_interface_provides_lower_ambiguity");
+    std::fs::write(
+        &fixture,
+        r#"module sample.single
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource LocalStore implements Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+resource BackupStore implements Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+func run() -> { ok: Bool } provides out: Storage {
+  return { ok: true }
+}
+"#,
+    )
+    .expect("failed to write fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for interface-provides ambiguity fixture");
+
+    assert!(
+        !output.status.success(),
+        "single-file compile should fail on ambiguous interface provides"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_lower_stage_failure(&stderr);
+    assert!(
+        stderr.contains("ambiguous provided resource `out: Storage`"),
+        "single-file compile should surface lower-stage provides ambiguity details: {stderr}"
+    );
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
 fn compile_command_single_file_fails_on_use_provide_binding_conflict() {
     let fixture = unique_temp_file("compile_single_file_use_provide_binding_conflict");
     std::fs::write(
@@ -6355,14 +6479,16 @@ fn manifest_command_json_format_emits_valid_json_object() {
         .get("test_obligations")
         .expect("manifest json should include test_obligations object");
     assert!(manifest.get("total_nodes").is_some());
-    assert!(manifest.get("waves").is_some());
     assert!(manifest.get("topology").is_some());
     assert!(manifest.get("labels").is_some());
     assert!(manifest.get("subdag_boundaries").is_some());
     assert!(manifest.get("parallel_groups").is_some());
     assert!(manifest.get("capture_modes").is_some());
     assert!(manifest.get("resources").is_some());
-    assert!(manifest.get("entrypoint_nodes").is_some());
+    // Debug-only fields (waves, entrypoint_nodes, boundary_nodes, total_edges)
+    // are excluded from the stable JSON contract via #[serde(skip_serializing)].
+    assert!(manifest.get("waves").is_none());
+    assert!(manifest.get("entrypoint_nodes").is_none());
     assert!(obligations.get("transport_execution_targets").is_some());
     assert!(obligations.get("resource_release_targets").is_some());
 }

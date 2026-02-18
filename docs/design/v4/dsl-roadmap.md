@@ -244,7 +244,7 @@ For each workflow being targeted in Phases 1-2:
 
 | Workflow | `.dag` file to write | Visualization comparison |
 |---|---|---|
-| makegen | `tools/makegen.dag` | 8 nodes, 10 edges — simplest; validates `content_upsert` pattern expansion |
+| makegen | `tools/makegen.dag` | 9 nodes, 12 edges raw (8 after wrapper normalization) — simplest; validates `content_upsert` pattern expansion |
 | clippy | `tools/clippy.dag` | `upsert` pattern; validates guard/skip nodes |
 | credential | `cloud/gcp/credential.dag` | 8 transport triplets; validates service → triplet expansion |
 | gist | `tools/gist.dag` | Loop nodes, SubDag composition; validates nested manifest |
@@ -268,7 +268,7 @@ For each workflow being targeted in Phases 1-2:
 
 **Context (February 2026 reconciliation)**: The compiler pipeline spine (discover → typecheck → lower → derive → emit) is functional and the CLI commands exist. However, several Phase 0 acceptance gates are only partially met, and the Phase 1 acceptance gates (makegen IR parity, manifest contract, test parity) depend on closing these gaps first.
 
-The main structural mismatch is the **ProgressManifest**: the roadmap contract specifies `topology`, `labels`, `subdag_boundaries`, `parallel_groups`, `scatter_points`, `capture_modes`, `stage_groups`, and `resources`, but the current implementation has `{total_nodes, total_edges, waves, entrypoint_nodes, boundary_nodes}`. This must be resolved before Phase 1 gates can be evaluated.
+The **ProgressManifest** contract is now aligned: the stable JSON contract includes `total_nodes`, `topology`, `labels`, `subdag_boundaries` (with `inner_nodes`, `parent`), `parallel_groups` (with `parent_subdag`), `scatter_points`, `interactive_nodes`, `capture_modes`, `stage_groups`, and `resources`. Debug-only fields (`total_edges`, `waves`, `entrypoint_nodes`, `boundary_nodes`) are excluded from JSON via `#[serde(skip_serializing)]` but remain available for text renderers. Nesting fields (`parent`, `parent_subdag`) are `None` until Phase 3. Contract types live in `daglang-contract`.
 
 #### Workstream A — Manifest Contract + Derive Correctness
 
@@ -406,7 +406,7 @@ Meanwhile, the compiler codebase itself has structural debt — impure helpers, 
 
 ##### Step 1: Manifest Contract (Workstream A)
 
-Expand `daglang_derive::ProgressManifest` to match the roadmap contract. The current struct has `{total_nodes, total_edges, waves, entrypoint_nodes, boundary_nodes}`. The contract requires:
+**DONE.** `ProgressManifest` (now in `daglang-contract`) matches the roadmap contract. Debug-only fields excluded from JSON. The contract requires:
 
 | Field | Type | Derived from |
 |---|---|---|
@@ -425,7 +425,7 @@ Add `dag manifest --format json` for stable, machine-readable output. Keep the e
 **Acceptance criteria**:
 - [x] `ProgressManifest` struct has all contract fields (Phase 3/4 fields can be empty `Vec`s)
 - [x] `derive_artifacts()` populates `topology`, `labels`, `parallel_groups` correctly for makegen
-- [x] `dag manifest tools/makegen.dag` produces the expected 8-node, 4-wave manifest
+- [x] `dag manifest tools/makegen.dag` produces the expected 9-node, 6-wave manifest
 - [x] `dag manifest --format json tools/makegen.dag` produces stable, parseable JSON
 - [x] All existing tests pass (the struct expansion must be backward-compatible)
 
@@ -581,7 +581,7 @@ While touching the CLI, add two standalone commands that are cheap to implement 
 - [x] `dag show-triplets tools/makegen.dag` shows the content_upsert triplet expansion
 - [x] `dag obligations tools/makegen.dag` shows the 4-bucket obligation summary
 - [x] Both new commands support `--format json`
-- [x] New command path handling is hardened with regression coverage (relative/absolute targets, normalized absolute path spellings including parent/curdir/double-separator variants and combined parent+curdir+double-separator forms, case-variant `.dag` files, and `.dag`-suffixed directory/symlink aliases—including absolute alias paths across text/json and directory/symlink permutations, plus canonical-vs-normalized and relative-vs-absolute failing-output parity checks for invalid alias spellings, including normalized relative variants)
+- [x] New command path handling is hardened with regression coverage (relative/absolute targets, normalized absolute path spellings including parent/curdir/double-separator variants and combined parent+curdir+double-separator forms, case-variant `.dag` files, and `.dag`-suffixed directory/symlink aliases—including explicit fail-fast diagnostics for directory targets treated as single-file `.dag` inputs, absolute alias paths across text/json and directory/symlink permutations, plus canonical-vs-normalized and relative-vs-absolute failing-output parity checks for invalid alias spellings, including normalized relative variants)
 
 ##### Worker 2 Definition of Done
 
@@ -841,7 +841,7 @@ All renderers read the same manifest. The manifest describes **what exists** (to
 
 ```
 type ProgressManifest {
-  // Topology
+  // Topology (stable JSON contract)
   total_nodes: Int
   topology: List<TopologyNode>
 
@@ -862,19 +862,25 @@ type ProgressManifest {
 
   // Resource context
   resources: Map<NodeId, List<ResourceUsage>>
+
+  // Internal-only (used by text renderers and emit, excluded from JSON contract)
+  // total_edges: Int
+  // waves: List<List<NodeId>>
+  // entrypoint_nodes: List<NodeId>
+  // boundary_nodes: List<NodeId>
 }
 
 type SubDagBoundary {
   node_id: NodeId
   label: String                              // "Authentication", "Fetching Secrets"
-  inner_nodes: List<NodeId>                  // nodes inside — for expansion/collapse
-  parent: NodeId?                            // for nesting: SubDag inside SubDag
+  inner_nodes: List<NodeId>                  // nodes inside — for expansion/collapse (populated; empty until Phase 3 nesting)
+  parent: NodeId?                            // for nesting: SubDag inside SubDag (None until Phase 3)
 }
 
 type ParallelGroup {
   nodes: List<NodeId>
   depth: Int
-  parent_subdag: NodeId?                     // which section this group belongs to
+  parent_subdag: NodeId?                     // which section this group belongs to (None until Phase 3)
 }
 ```
 

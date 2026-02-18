@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use daglang_lower::{CollectionOpKind, LoweredOp};
+use daglang_lower::{classify_runtime_op, CollectionOpKind, LoweredOp, RuntimeOpId};
 use gunbc_exec::{
     execute_with_mode_and_inputs, BoundaryMocks, ExecError, Executable, ExecutionLog,
     ExecutionMode, OutputMap,
@@ -24,46 +24,18 @@ pub enum ResolvedOp {
     CollectionNode(CollectionOpKind),
 }
 
-#[derive(Debug, Clone)]
-struct MakegenOpRegistry {
-    makegen_callables: HashMap<&'static str, ResolvedOp>,
-}
-
-impl MakegenOpRegistry {
-    fn makegen() -> Self {
-        let mut makegen_callables = HashMap::new();
-        makegen_callables.insert("load_registry", ResolvedOp::LoadRegistry);
-        makegen_callables.insert("fs_env", ResolvedOp::FsEnv);
-        makegen_callables.insert("render_makefile", ResolvedOp::RenderMakefile);
-        makegen_callables.insert("makegen", ResolvedOp::MakegenEntrypoint);
-        makegen_callables.insert(
-            "content_upsert::prepare_read_makegen",
-            ResolvedOp::PrepareReadContent,
-        );
-        makegen_callables.insert(
-            "content_upsert::execute_read_makegen",
-            ResolvedOp::ExecuteReadContent,
-        );
-        makegen_callables.insert(
-            "content_upsert::prepare_write_makegen",
-            ResolvedOp::PrepareWriteContent,
-        );
-        makegen_callables.insert(
-            "content_upsert::compare_makegen_content",
-            ResolvedOp::CompareContent,
-        );
-        makegen_callables.insert(
-            "content_upsert::execute_makegen_transport",
-            ResolvedOp::ExecuteTransport,
-        );
-        Self { makegen_callables }
-    }
-
-    fn resolve_callable(&self, module: &str, name: &str) -> Option<ResolvedOp> {
-        if module != "tools.makegen" {
-            return None;
-        }
-        self.makegen_callables.get(name).cloned()
+fn resolved_op_from_runtime_id(op_id: RuntimeOpId) -> ResolvedOp {
+    match op_id {
+        RuntimeOpId::MakegenLoadRegistry => ResolvedOp::LoadRegistry,
+        RuntimeOpId::MakegenFsEnv => ResolvedOp::FsEnv,
+        RuntimeOpId::MakegenRenderMakefile => ResolvedOp::RenderMakefile,
+        RuntimeOpId::MakegenEntrypoint => ResolvedOp::MakegenEntrypoint,
+        RuntimeOpId::MakegenPrepareReadContent => ResolvedOp::PrepareReadContent,
+        RuntimeOpId::MakegenExecuteReadContent => ResolvedOp::ExecuteReadContent,
+        RuntimeOpId::MakegenPrepareWriteContent => ResolvedOp::PrepareWriteContent,
+        RuntimeOpId::MakegenCompareContent => ResolvedOp::CompareContent,
+        RuntimeOpId::MakegenExecuteTransport => ResolvedOp::ExecuteTransport,
+        RuntimeOpId::Collection(kind) => ResolvedOp::CollectionNode(kind),
     }
 }
 
@@ -97,10 +69,9 @@ impl std::fmt::Display for ResolveDagError {
 }
 
 pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<ResolvedOp>, ResolveDagError> {
-    let registry = MakegenOpRegistry::makegen();
     let mut resolved = Dag::new();
     for node in &dag.nodes {
-        let resolved_op = resolve_lowered_node(node, &registry)?;
+        let resolved_op = resolve_lowered_node(node)?;
         resolved.add_node(node.clone().map_ops(&mut |_| resolved_op.clone()));
     }
     resolved.edges = dag.edges.clone();
@@ -396,13 +367,10 @@ fn execute_finalize_makegen(
     OutputMap::new().bool("written", written).ok()
 }
 
-fn resolve_lowered_node(
-    node: &Node<LoweredOp>,
-    registry: &MakegenOpRegistry,
-) -> Result<ResolvedOp, ResolveDagError> {
+fn resolve_lowered_node(node: &Node<LoweredOp>) -> Result<ResolvedOp, ResolveDagError> {
     let node_id = node.id.0.clone();
     match &node.body {
-        gunbc_ir::node::NodeBody::Opaque(op) => resolve_lowered_op(&node_id, op, registry),
+        gunbc_ir::node::NodeBody::Opaque(op) => resolve_lowered_op(&node_id, op),
         gunbc_ir::node::NodeBody::SubDag(_) => Err(ResolveDagError {
             node_id,
             reason: "subdag nodes are not supported by daglang-cli resolver".to_string(),
@@ -410,32 +378,27 @@ fn resolve_lowered_node(
     }
 }
 
-fn resolve_lowered_op(
-    node_id: &str,
-    op: &LoweredOp,
-    registry: &MakegenOpRegistry,
-) -> Result<ResolvedOp, ResolveDagError> {
-    match op {
-        LoweredOp::Pipeline { module, name, .. } => Err(ResolveDagError {
-            node_id: node_id.to_string(),
-            reason: format!("unsupported pipeline `{module}.{name}` in execution resolver"),
-        }),
-        LoweredOp::Collection { kind, .. } => Ok(ResolvedOp::CollectionNode(*kind)),
-        LoweredOp::Callable { module, name, .. } => {
-            if module != "tools.makegen" {
-                return Err(ResolveDagError {
-                    node_id: node_id.to_string(),
-                    reason: format!("unsupported callable module `{module}`"),
-                });
-            }
-            registry
-                .resolve_callable(module, name)
-                .ok_or_else(|| ResolveDagError {
-                    node_id: node_id.to_string(),
-                    reason: format!("unsupported callable `tools.makegen.{name}`"),
-                })
-        }
-    }
+fn resolve_lowered_op(node_id: &str, op: &LoweredOp) -> Result<ResolvedOp, ResolveDagError> {
+    classify_runtime_op(op)
+        .map(resolved_op_from_runtime_id)
+        .ok_or_else(|| match op {
+            LoweredOp::Pipeline { module, name, .. } => ResolveDagError {
+                node_id: node_id.to_string(),
+                reason: format!("unsupported pipeline `{module}.{name}` in execution resolver"),
+            },
+            LoweredOp::Collection { module, callable, kind } => ResolveDagError {
+                node_id: node_id.to_string(),
+                reason: format!(
+                    "unsupported collection node `{module}.{callable}` kind={kind:?} in execution resolver"
+                ),
+            },
+            LoweredOp::Callable { module, name, .. } => ResolveDagError {
+                node_id: node_id.to_string(),
+                reason: format!(
+                    "unsupported callable `{module}.{name}` (missing runtime op classification)"
+                ),
+            },
+        })
 }
 
 #[cfg(test)]
@@ -484,7 +447,9 @@ mod tests {
             },
         ));
         let error = resolve_lowered_dag(&dag).expect_err("unsupported module should fail");
-        assert!(error.reason.contains("unsupported callable module"));
+        assert!(error
+            .reason
+            .contains("unsupported callable `tools.external.run`"));
     }
 
     #[test]
