@@ -632,9 +632,9 @@ Eliminate `CARGO_MANIFEST_DIR` + `join("../../..")` patterns and `parent().paren
 Pragma allowlist paths (`"core/daglang/"`, `"core/exec/src/freshness.rs"`) should derive from
 crate names, not path strings.
 
-- [ ] C7.5a — Allowlist entries keyed by crate name, resolved to paths via `WorkspaceLayout`
-- [ ] C7.5b — `PRAGMA_LINT_POLICY.allow_dead_code` paths derived from crate locations
-- [ ] C7.5c — If a crate moves, policy updates automatically (no manual path editing)
+- [x] C7.5a — Allowlist entries keyed by crate name, resolved to paths via `WorkspaceLayout`
+- [x] C7.5b — `PRAGMA_LINT_POLICY.allow_dead_code` paths derived from crate locations
+- [x] C7.5c — If a crate moves, policy updates automatically (no manual path editing)
 
 ---
 
