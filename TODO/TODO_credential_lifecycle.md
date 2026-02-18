@@ -287,9 +287,12 @@ This section maps the target architecture to the DAGs already in the repo so mig
   - Gist/LLM/review/GitHub resolve auth nodes emit `required_scopes`.
   - `required_scopes` now threads through `cloud_credential` inputs across credentialed tool flows.
 - Dedicated `scope_preflight` nodes now gate business transport execute paths.
-- Coverage: partial.
-- Gaps:
-  - Scope preflight currently validates declaration presence/shape, not provider-granted effective scope sets.
+- Coverage: medium.
+- Update (2026-02-18):
+  - Scope preflight now fails fast when scope declarations are missing or empty
+    (before outbound business transport calls).
+- Remaining gap:
+  - Scope preflight still does not verify provider-granted effective scope sets.
 
 7. `MaterializeLease`
 - Current implementation:

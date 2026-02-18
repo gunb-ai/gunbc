@@ -871,7 +871,7 @@ Reconcile/rotate/prune loops for secrets.
 **Deps**: E1.4
 
 - [ ] E1.5a — `make gist-recent` works without hidden hardcoded defaults
-- [ ] E1.5b — Missing scope declarations fail before outbound calls
+- [x] E1.5b — Missing scope declarations fail before outbound calls
 
 ---
 
