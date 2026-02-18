@@ -551,6 +551,7 @@ impl TypeRegistry {
 
     fn coercion_neighbors(&self, current: &TypeId) -> Vec<TypeId> {
         let mut neighbors = Vec::new();
+        let mut has_structural_parent = false;
 
         // Explicit registry edges via TypeOp::Transform(Coercion).
         if let Some(edges) = self.coercion_edges.get(current) {
@@ -560,18 +561,19 @@ impl TypeRegistry {
             }));
         }
 
-        // Json is the widening top type.
-        if current.0 != "Json" {
-            neighbors.push(TypeId::from("Json"));
-        }
-
         // Structural ancestry from base type DAG.
         if let Some(dag) = self.get_by_name(&current.0) {
             if let Some(parent) = crate::contract::base_type(dag) {
                 if parent != current.0 {
+                    has_structural_parent = true;
                     neighbors.push(TypeId(parent));
                 }
             }
+        }
+
+        // Json is the widening top type once no stronger ancestry edge remains.
+        if current.0 != "Json" && !has_structural_parent {
+            neighbors.push(TypeId::from("Json"));
         }
 
         neighbors
@@ -754,6 +756,29 @@ mod tests {
         assert!(edges.iter().any(|edge| {
             edge.to == TypeId::from("Url") && matches!(edge.transform, TypeOp::Transform(_))
         }));
+    }
+
+    #[test]
+    fn test_coercion_path_supports_multi_step_widening_chain() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("Url", type_lib::url());
+        registry.register(
+            "NonEmptyUrl",
+            type_lib::refined("Url", vec![crate::type_op::Predicate::NonEmpty]),
+        );
+
+        let path = registry
+            .coercion_path(&TypeId::from("NonEmptyUrl"), &TypeId::from("Json"))
+            .expect("multi-step widening path should be discoverable");
+        assert_eq!(
+            path,
+            vec![
+                TypeId::from("NonEmptyUrl"),
+                TypeId::from("Url"),
+                TypeId::from("String"),
+                TypeId::from("Json")
+            ]
+        );
     }
 
     #[test]
