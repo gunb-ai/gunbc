@@ -535,8 +535,8 @@ Make field routing explicit with transport-specific Prepare/Parse ops.
 
 Declarative specification for transport behavior.
 
-- [ ] C4.3a — Define `TransportBehavior` spec type
-- [ ] C4.3b — Write specs for TCP, HTTP, REST, File, Shell
+- [x] C4.3a — Define `TransportBehavior` spec type
+- [x] C4.3b — Write specs for TCP, HTTP, REST, File, Shell
 - [ ] C4.3c — Integrate with testgen for behavioral test generation
 
 #### Wave 4

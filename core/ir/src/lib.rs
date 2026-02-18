@@ -164,8 +164,9 @@ pub use resource::{
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};
 pub use transport::{
-    AuthScheme, Credential, CredentialError, CredentialIntent, ScopeContract, ScopeContractError,
-    Secret, SecretSource, TransportRequest, TransportResponse,
+    default_transport_behaviors, AuthScheme, Credential, CredentialError, CredentialIntent,
+    FieldRouteSpec, ScopeContract, ScopeContractError, Secret, SecretSource, TransportBehavior,
+    TransportKind, TransportRequest, TransportResponse,
 };
 pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};

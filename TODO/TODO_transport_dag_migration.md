@@ -12,6 +12,8 @@
 - `C4.2a` added typed transport ops for TCP decomposition (`PrepareTcp`, `ParseTcpResponse`).
 - `C4.2b` renamed TCP timeout field to `write_timeout_ms` (with compatibility alias) and aligned executor mapping.
 - `C4.2c` added typed request/response support in transport triplet helpers via `TransportPortTypes`.
+- `C4.3a` added a typed `TransportBehavior` spec model (`TransportKind`, `FieldRouteSpec`) in `core/ir`.
+- `C4.3b` added canonical behavior specs for TCP/HTTP/REST/File/Shell, including explicit TCP timeout routing invariants.
 - Remaining work in this doc is focused on `C4.3+` behavioral specs integration.
 
 Feasibility analysis and migration plan for modeling transport executor
