@@ -38,8 +38,8 @@
 use crate::ci::ops::CIOp;
 use crate::codegen::{build_codegen_graph_with_mode, CodegenGraphOp, CodegenOp};
 use crate::WorkspaceBinary;
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
-use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::{
     add_skippable_transport_triplet, add_transport_triplet,
@@ -48,8 +48,7 @@ use gunbc_ir::{
         checkout, gcp_workload_identity, rust_toolchain, ubuntu_latest, Integration, Permissions,
         WorkflowConfig,
     },
-    BuilderError, Cardinality, Dag, DagBuilder, Node, NodeBody, NodeId, NodeRef, Value,
-    WorkflowSignature,
+    BuilderError, Cardinality, Dag, DagBuilder, Node, NodeBody, NodeId, NodeRef, WorkflowSignature,
 };
 use gunbc_lib_cloud_ops::CloudEnvStatus;
 use gunbc_lib_transport::TransportOps;
@@ -68,7 +67,7 @@ use std::collections::{BTreeSet, HashMap};
 /// - `Codegen(CodegenOp)` - inlined codegen DAG operations
 /// - `PrepareFileExists` - embedded primitive for file existence checks (from gunbc-primitives)
 /// - `Transport` - boundary for actual I/O (including clippy lint)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum CIGraphOp {
     /// CI-specific pure operations
     CI(CIOp),
@@ -82,19 +81,6 @@ pub enum CIGraphOp {
     PrepareFileExists(EmbeddedFileExistsOp),
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
-}
-
-impl Executable for CIGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            CIGraphOp::CI(op) => op.execute(inputs),
-            CIGraphOp::Codegen(op) => op.execute(inputs),
-            CIGraphOp::CloudEnv(op) => op.execute(inputs),
-            CIGraphOp::FsEnv(op) => op.execute(inputs),
-            CIGraphOp::PrepareFileExists(op) => op.execute(inputs),
-            CIGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
 }
 
 // ============================================================================

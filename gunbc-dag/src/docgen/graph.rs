@@ -8,10 +8,9 @@ use crate::docgen::ops::{
     GIST_CODEGEN_CLI_PATH, GIST_GENERATED_INTEGRATION_TESTS_PATH,
     GIST_GENERATED_TESTS_SNAPSHOT_PATH, GIST_GRAPH_MOCK_PATH,
 };
-use gunbc_exec::{ExecError, Executable};
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_ir::{
     add_content_upsert_chain, add_transport_triplet, build::*, BuilderError, Dag, DagBuilder, Node,
-    Value,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
@@ -19,7 +18,7 @@ use gunbc_primitives::{filename, FsEnv, PrepareFileReadOp, PrepareFileWriteOp};
 use std::collections::HashMap;
 
 /// Union type for docgen graph operations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum DocgenGraphOp {
     /// Docgen-specific pure operations.
     Docgen(DocgenOp),
@@ -33,19 +32,6 @@ pub enum DocgenGraphOp {
     Blob(BlobOps),
     /// Transport operations (boundary - actual I/O).
     Transport(TransportOps),
-}
-
-impl Executable for DocgenGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            DocgenGraphOp::Docgen(op) => op.execute(inputs),
-            DocgenGraphOp::FsEnv(op) => op.execute(inputs),
-            DocgenGraphOp::PrepareFileRead(op) => op.execute(inputs),
-            DocgenGraphOp::PrepareFileWrite(op) => op.execute(inputs),
-            DocgenGraphOp::Blob(op) => op.execute(inputs),
-            DocgenGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

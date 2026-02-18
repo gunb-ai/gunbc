@@ -17,17 +17,16 @@
 
 use crate::build::ops::BuildOp;
 use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
-use gunbc_exec::{ExecError, Executable};
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_ir::{
     add_skippable_transport_triplet, add_transport_triplet, build::*, BuilderError, Cardinality,
-    Dag, DagBuilder, Node, Value, WorkflowSignature,
+    Dag, DagBuilder, Node, WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::FsEnv;
-use std::collections::HashMap;
 
 /// Union type for build graph operations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum BuildGraphOp {
     /// Build-specific pure operations.
     Build(BuildOp),
@@ -35,16 +34,6 @@ pub enum BuildGraphOp {
     FsEnv(FsEnv),
     /// Transport operations (boundary - actual I/O).
     Transport(TransportOps),
-}
-
-impl Executable for BuildGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            BuildGraphOp::Build(op) => op.execute(inputs),
-            BuildGraphOp::FsEnv(op) => op.execute(inputs),
-            BuildGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
 }
 
 /// Get the declared signature for the build workflow.

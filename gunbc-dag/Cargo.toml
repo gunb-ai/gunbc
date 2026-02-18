@@ -32,6 +32,7 @@ gunbc-testgen-registry = { path = "../core/testgen-registry" }
 gunbc-testgen-registry-macros = { path = "../core/testgen-registry-macros" }
 gunbc-tool-registry = { path = "../core/tool-registry" }
 gunbc-tool-registry-macros = { path = "../core/tool-registry-macros" }
+gunbc-delegate-macros = { path = "../core/delegate-macros" }
 gunbc-lib-review = { path = "../lib/review" }
 gunbc-cli = { path = "../core/cli" }
 

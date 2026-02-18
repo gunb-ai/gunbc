@@ -460,9 +460,9 @@ Reduce O(tools x concerns) boilerplate to O(concerns).
 
 15+ graph files × ~200 lines of Executable/Mockable delegation boilerplate.
 
-- [ ] C3.1a — Create `#[derive(DelegateExecutable)]` proc macro
-- [ ] C3.1b — Create `#[derive(DelegateMockable)]` proc macro
-- [ ] C3.1c — Migrate 2-3 graph op enums to validate macro
+- [x] C3.1a — Create `#[derive(DelegateExecutable)]` proc macro
+- [x] C3.1b — Create `#[derive(DelegateMockable)]` proc macro
+- [x] C3.1c — Migrate 2-3 graph op enums to validate macro
 - [ ] C3.1d — Roll out to all remaining graph op enums
 
 ##### C3.1b — FsEnv auto-wiring extraction [M]

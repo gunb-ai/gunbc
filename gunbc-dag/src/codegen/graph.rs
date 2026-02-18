@@ -13,18 +13,17 @@
 
 use crate::codegen::ops::CodegenOp;
 use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
-use gunbc_exec::{ExecError, Executable};
+use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::{
-    add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
+    add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node,
     WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::FsEnv;
-use std::collections::HashMap;
 
 /// Union type for codegen graph operations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DelegateExecutable)]
 pub enum CodegenGraphOp {
     /// Codegen-specific pure operations.
     Codegen(CodegenOp),
@@ -32,16 +31,6 @@ pub enum CodegenGraphOp {
     FsEnv(FsEnv),
     /// Transport operations (boundary - actual I/O).
     Transport(TransportOps),
-}
-
-impl Executable for CodegenGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            CodegenGraphOp::Codegen(op) => op.execute(inputs),
-            CodegenGraphOp::FsEnv(op) => op.execute(inputs),
-            CodegenGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
 }
 
 /// Get the declared signature for the codegen workflow.

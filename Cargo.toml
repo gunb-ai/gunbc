@@ -10,6 +10,7 @@ members = [
     "core/test",
     "core/testgen-registry",
     "core/testgen-registry-macros",
+    "core/delegate-macros",
     "core/tool-registry",
     "core/tool-registry-macros",
     

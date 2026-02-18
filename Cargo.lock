@@ -374,6 +374,7 @@ dependencies = [
  "gunbc-cli",
  "gunbc-clippy",
  "gunbc-codegen",
+ "gunbc-delegate-macros",
  "gunbc-deps",
  "gunbc-exec",
  "gunbc-gist",
@@ -396,6 +397,18 @@ dependencies = [
  "gunbc-tool-registry-macros",
  "serde_json",
  "toml_edit",
+]
+
+[[package]]
+name = "gunbc-delegate-macros"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-test",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
