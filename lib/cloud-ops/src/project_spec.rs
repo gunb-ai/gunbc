@@ -227,6 +227,8 @@ pub struct SecretSpec {
     pub scopes: &'static [&'static str],
     /// How this secret can be rotated.
     pub rotation: RotationHandler,
+    /// Optional max age (in days) before rotation should be recommended.
+    pub max_age_days: Option<u32>,
 }
 
 impl SecretSpec {
@@ -451,6 +453,7 @@ static KNOWN_SECRETS: [SecretSpec; 1] = [
         status: SecretStatus::Active,
         scopes: &["repo", "read:org", "gist"],
         rotation: RotationHandler::GitHubPat,
+        max_age_days: Some(90),
     },
 ];
 

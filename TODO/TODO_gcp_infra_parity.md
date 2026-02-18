@@ -146,12 +146,12 @@ direnv caching, and multi-project secret management.
 **Gap**: `SecretSpec` has `rotation: RotationHandler` enum but no runtime
 rotation logic.
 
-- [ ] Implement `rotate_secret()` logic per handler type:
+- [x] Implement `rotate_secret()` logic per handler type:
   - `Manual` — prompt / instructions only
   - `GitHubPat` — generate new PAT via GitHub API
   - `None` — skip
-- [ ] Add `max_age: Option<Duration>` to `SecretSpec` for rotation warnings
-- [ ] Add `check_secret_age()` op that compares version create time against max_age
+- [x] Add `max_age: Option<Duration>` to `SecretSpec` for rotation warnings
+- [x] Add `check_secret_age()` op that compares version create time against max_age
 - [ ] Add CLI entrypoint: `make rotate-secrets` or integrate into preflight
 
 **Ref**: `gunb.ai/tools/secrets/cmd/secrets/rotate.go`

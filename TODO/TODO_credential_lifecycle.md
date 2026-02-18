@@ -455,6 +455,12 @@ Phase 4: Secret lifecycle apply loops
 - Add rotation DAG: age check -> rotate handler -> version add -> verify.
 - Add prune path for policy entries marked `deleted`.
 
+Update (2026-02-18):
+- Added foundational rotation primitives in `lib/cloud-ops/src/secret_rotation.rs`:
+  - `rotate_secret(...)` handlers (`Manual`, `GitHubPat`, `None` + SA key fallback)
+  - `check_secret_age(...)` with `max_age_days` evaluation.
+- `SecretSpec` now carries `max_age_days` for rotation recommendations.
+
 Phase 5: Hardening and cutover
 
 - Fail preflight before transport I/O if required scopes are absent/invalid.

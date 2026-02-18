@@ -12,6 +12,7 @@ mod github_credential_graph;
 mod graph;
 mod ops;
 pub mod project_spec;
+pub mod secret_rotation;
 
 pub use config_loader::{
     default_local_dev_config, graph_cloud_config, resolve_graph_cloud_config,
@@ -44,6 +45,7 @@ pub use graph::{
     build_cloud_secret_manager_upsert_graph_gcp_metadata, CloudSecretManagerGraphOp,
 };
 pub use ops::CloudOps;
+pub use secret_rotation::{check_secret_age, rotate_secret, SecretAgeCheck, SecretRotationAction};
 
 // ---------------------------------------------------------------------------
 // ConstCloudConfig: drop-in replacement for CloudEnv in tool graphs
