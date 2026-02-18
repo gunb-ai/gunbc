@@ -72,7 +72,7 @@ fn execute_parse_codegen_exists(
 
     if mode == ExecMode::Verify {
         match &manifest_result {
-            ManifestFreshness::Fresh => {}
+            ManifestFreshness::Fresh | ManifestFreshness::FreshWithDiagnostic(_) => {}
             ManifestFreshness::Stale(reason) => {
                 return Err(ExecError::new(format!(
                     "Generated code is stale: {} (run with --mode=ensure to fix)",
@@ -95,7 +95,7 @@ fn execute_parse_codegen_exists(
     }
 
     let codegen_needed = match manifest_result {
-        ManifestFreshness::Fresh => false,
+        ManifestFreshness::Fresh | ManifestFreshness::FreshWithDiagnostic(_) => false,
         ManifestFreshness::Stale(_) => true,
         ManifestFreshness::Missing => !output_exists,
         ManifestFreshness::Error(_) => !output_exists,

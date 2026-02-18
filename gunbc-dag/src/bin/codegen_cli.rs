@@ -1305,6 +1305,13 @@ fn should_skip_codegen(io: &dyn ResourceIo) -> bool {
             println!("  Codegen outputs are fresh (manifest + outputs). Skipping.");
             true
         }
+        ManifestFreshness::FreshWithDiagnostic(note) => {
+            println!(
+                "  Codegen outputs are fresh (manifest + outputs). Skipping. [{}]",
+                note
+            );
+            true
+        }
         ManifestFreshness::Stale(reason) => {
             println!("  Codegen outputs are stale: {}", reason);
             false

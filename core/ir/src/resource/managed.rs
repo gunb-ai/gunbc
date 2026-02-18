@@ -362,6 +362,7 @@ fn mtime_inputs_from_def(def: &ResourceDef) -> MtimeInputs {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManifestFreshness {
     Fresh,
+    FreshWithDiagnostic(String),
     Stale(String),
     Missing,
     Error(String),
@@ -412,6 +413,7 @@ pub fn check_manifest_freshness<R: ManagedResource>(
         if !mtime_inputs.has_non_file_inputs {
             let mut files: Vec<FileMtime> = Vec::new();
             let mut mtime_fallback_reason: Option<String> = None;
+            let mtime_note: Option<String>;
 
             for pattern in &mtime_inputs.glob_patterns {
                 let mut paths = match io.glob_paths(pattern) {
@@ -458,19 +460,34 @@ pub fn check_manifest_freshness<R: ManagedResource>(
                 None => match check_freshness_mtime(entry, &files) {
                     MtimeResult::Fresh => return ManifestFreshness::Fresh,
                     MtimeResult::MaybeStale(reason) => {
-                        eprintln!(
-                            "  freshness: mtime indicates stale ({:?}), verifying with full hash",
-                            reason
-                        );
+                        mtime_note = Some(format!(
+                            "mtime indicates stale ({reason:?}); verified with full hash"
+                        ));
                     }
                 },
                 Some(reason) => {
-                    eprintln!(
-                        "  freshness: mtime fast path unavailable ({}), falling back to full hash",
-                        reason
-                    );
+                    mtime_note = Some(format!(
+                        "mtime fast path unavailable ({reason}); verified with full hash"
+                    ));
                 }
             }
+
+            let current_key = match resource.compute_key(manifest, io) {
+                Ok(k) => k,
+                Err(e) => return ManifestFreshness::Error(e.to_string()),
+            };
+
+            if entry.key == current_key {
+                return match mtime_note {
+                    Some(note) => ManifestFreshness::FreshWithDiagnostic(note),
+                    None => ManifestFreshness::Fresh,
+                };
+            }
+            let stale_reason = match mtime_note {
+                Some(note) => format!("inputs changed since last update ({note})"),
+                None => "inputs changed since last update".to_string(),
+            };
+            return ManifestFreshness::Stale(stale_reason);
         }
     }
 
@@ -890,6 +907,79 @@ mod tests {
         assert_eq!(handle.key(), &entry.key);
 
         restore_env(&env_key, old);
+    }
+
+    #[test]
+    fn check_manifest_freshness_surfaces_mtime_fallback_on_fresh_hash() {
+        let io = TestIo::default();
+        let input = PathBuf::from("mtime_fallback_fresh.txt");
+        io.write_text(&input, "alpha");
+
+        let def = ResourceDef::new(ResourceId::new("test:mtime_fallback_fresh"))
+            .with_input(InputPattern::file(&input));
+        let resource = SimpleResource::new(def.clone());
+        let mut manifest = ResourceManifest::new();
+        let (key, file_count) = compute_key_from_def(&def, &manifest, &io).unwrap();
+        manifest.insert(def.id.clone(), ManifestEntry::new(key, file_count));
+
+        // Force mtime fast-path failure.
+        io.mtimes.borrow_mut().remove(&input);
+
+        let freshness = check_manifest_freshness(
+            &resource,
+            &manifest,
+            FreshnessOptions {
+                output_exists: Some(true),
+                use_mtime: true,
+            },
+            &io,
+        );
+        match freshness {
+            ManifestFreshness::FreshWithDiagnostic(note) => {
+                assert!(
+                    note.contains("mtime fast path unavailable"),
+                    "diagnostic should include fallback reason: {note}"
+                );
+            }
+            other => panic!("expected FreshWithDiagnostic, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_manifest_freshness_includes_fallback_reason_when_stale() {
+        let io = TestIo::default();
+        let input = PathBuf::from("mtime_fallback_stale.txt");
+        io.write_text(&input, "alpha");
+
+        let def = ResourceDef::new(ResourceId::new("test:mtime_fallback_stale"))
+            .with_input(InputPattern::file(&input));
+        let resource = SimpleResource::new(def.clone());
+        let mut manifest = ResourceManifest::new();
+        let (key, file_count) = compute_key_from_def(&def, &manifest, &io).unwrap();
+        manifest.insert(def.id.clone(), ManifestEntry::new(key, file_count));
+
+        // Change input and force mtime failure.
+        io.write_text(&input, "beta");
+        io.mtimes.borrow_mut().remove(&input);
+
+        let freshness = check_manifest_freshness(
+            &resource,
+            &manifest,
+            FreshnessOptions {
+                output_exists: Some(true),
+                use_mtime: true,
+            },
+            &io,
+        );
+        match freshness {
+            ManifestFreshness::Stale(reason) => {
+                assert!(
+                    reason.contains("mtime fast path unavailable"),
+                    "stale reason should carry fallback diagnostic: {reason}"
+                );
+            }
+            other => panic!("expected Stale with diagnostic, got {other:?}"),
+        }
     }
 
     fn unique_env_key(prefix: &str) -> String {

@@ -130,10 +130,14 @@ slowdowns without any diagnostic signal.
 captures the reason for the fallback. Consider making fallback behavior
 configurable.
 
-**Update (2026-02-13)**: IO error reasons are now captured and emitted via
-`eprintln!` at the fallback site (`glob failed for ...`, `mtime failed for ...`).
-The `MtimeResult::MaybeStale` reason is also surfaced before falling through to
-full hash. Fallback is no longer silent.
+**Update (2026-02-18)**: Fallback diagnostics are now structured through
+`ManifestFreshness` rather than raw `eprintln!`:
+- `ManifestFreshness::FreshWithDiagnostic(note)` when full-hash verification is
+  still fresh after mtime fallback.
+- `ManifestFreshness::Stale(reason)` now includes the fallback reason context
+  when hash verifies stale.
+Callers (e.g., codegen freshness checks) can render the diagnostic in their
+normal status/error output path.
 
 ---
 
