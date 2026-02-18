@@ -1,6 +1,7 @@
 // Test infrastructure: filesystem access for generated artifacts.
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
+use gunbc_ir::ToolchainCommands;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -369,12 +370,20 @@ fn run_makegen_generated_c(native_out_dir: &Path) -> RuntimeOutcome {
 }
 
 fn run_makegen_generated_mips(native_out_dir: &Path) -> RuntimeOutcome {
-    if !(command_exists("mips-linux-gnu-as")
-        && command_exists("mips-linux-gnu-ld")
-        && command_exists("qemu-mips"))
+    let toolchain = ToolchainCommands::mips_linux_gnu();
+    let emulator = toolchain
+        .emulator
+        .clone()
+        .unwrap_or_else(|| "qemu-mips".to_string());
+    if !(command_exists(&toolchain.assembler)
+        && command_exists(&toolchain.linker)
+        && command_exists(&emulator))
     {
         return RuntimeOutcome::Skipped {
-            reason: "MIPS assembler/linker/runtime not available (need mips-linux-gnu-as, mips-linux-gnu-ld, qemu-mips)".to_string(),
+            reason: format!(
+                "MIPS assembler/linker/runtime not available (need {}, {}, {})",
+                toolchain.assembler, toolchain.linker, emulator
+            ),
         };
     }
 
@@ -389,7 +398,7 @@ fn run_makegen_generated_mips(native_out_dir: &Path) -> RuntimeOutcome {
     let obj_path = mips_dir.join("main.o");
     let bin_path = mips_dir.join("main.bin");
 
-    let assemble = match Command::new("mips-linux-gnu-as")
+    let assemble = match Command::new(&toolchain.assembler)
         .arg("-o")
         .arg(&obj_path)
         .arg(&main_s)
@@ -411,7 +420,7 @@ fn run_makegen_generated_mips(native_out_dir: &Path) -> RuntimeOutcome {
         };
     }
 
-    let link = match Command::new("mips-linux-gnu-ld")
+    let link = match Command::new(&toolchain.linker)
         .arg("-e")
         .arg("main")
         .arg("-o")
@@ -435,7 +444,7 @@ fn run_makegen_generated_mips(native_out_dir: &Path) -> RuntimeOutcome {
         };
     }
 
-    let run = match Command::new("qemu-mips").arg(&bin_path).output() {
+    let run = match Command::new(&emulator).arg(&bin_path).output() {
         Ok(output) => output,
         Err(error) => {
             return RuntimeOutcome::Skipped {
@@ -446,7 +455,7 @@ fn run_makegen_generated_mips(native_out_dir: &Path) -> RuntimeOutcome {
     if !run.status.success() {
         return RuntimeOutcome::Skipped {
             reason: format!(
-                "qemu-mips execution failed: {}",
+                "{emulator} execution failed: {}",
                 String::from_utf8_lossy(&run.stderr)
             ),
         };

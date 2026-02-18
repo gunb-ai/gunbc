@@ -397,6 +397,25 @@ impl RuntimePlatform {
     }
 }
 
+/// Toolchain command surface for platform-specific build/run workflows.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ToolchainCommands {
+    pub assembler: String,
+    pub linker: String,
+    pub emulator: Option<String>,
+}
+
+impl ToolchainCommands {
+    /// Canonical MIPS Linux GNU toolchain command names.
+    pub fn mips_linux_gnu() -> Self {
+        Self {
+            assembler: "mips-linux-gnu-as".to_string(),
+            linker: "mips-linux-gnu-ld".to_string(),
+            emulator: Some("qemu-mips".to_string()),
+        }
+    }
+}
+
 fn detect_execution_env() -> ExecutionEnv {
     if std::env::var("GUNBC_EXEC_ENV").is_ok() {
         return ExecutionEnv::parse(&std::env::var("GUNBC_EXEC_ENV").unwrap_or_default());
@@ -474,5 +493,13 @@ mod tests {
 
         let runtime = RuntimePlatform::detect_current();
         assert!(!runtime.host.to_string().is_empty());
+    }
+
+    #[test]
+    fn mips_toolchain_commands_are_defined() {
+        let toolchain = ToolchainCommands::mips_linux_gnu();
+        assert_eq!(toolchain.assembler, "mips-linux-gnu-as");
+        assert_eq!(toolchain.linker, "mips-linux-gnu-ld");
+        assert_eq!(toolchain.emulator.as_deref(), Some("qemu-mips"));
     }
 }

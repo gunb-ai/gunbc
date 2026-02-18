@@ -99,7 +99,7 @@ This creates repeated logic and makes it hard to add a new variant without touch
 
 ### Phase 2: Highest-ROI Migrations
 
-- [ ] Replace hardcoded MIPS assembler/linker/qemu strings with modeled toolchain resources
+- [x] Replace hardcoded MIPS assembler/linker/qemu strings with modeled toolchain resources. _(2026-02-18: introduced `ToolchainCommands::mips_linux_gnu()` in `core/ir/src/platform.rs`; daglang parity test now consumes modeled commands instead of string literals.)_
 - [x] Replace inline browser open branching with environment-aware resolver utility. _(2026-02-18: moved to shared `browser_open_request(..)` in `lib/primitives/src/browser.rs` and migrated dag-viz prepare node to use it.)_
 - [x] Switch deps install and GH install platform keys to typed platform IDs. _(2026-02-18: `tool_upsert` PM→platform mapping now emits typed OS tokens via canonical `Os`; `transport/github/cli.rs` now models install methods as `(Os, InstallMethod)`.)_
 

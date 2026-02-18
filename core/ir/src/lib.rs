@@ -141,7 +141,9 @@ pub use patterns::{
     ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
 };
 pub use plain_render::PlainStructuredRenderer;
-pub use platform::{AbiEnv, Arch, ExecutionEnv, Os, RuntimePlatform, TargetTriple, Vendor};
+pub use platform::{
+    AbiEnv, Arch, ExecutionEnv, Os, RuntimePlatform, TargetTriple, ToolchainCommands, Vendor,
+};
 pub use port_type::PortType;
 pub use render_ir::{
     AnsiText, Block, Category, CodeRenderer, CursorAction, DataNode, DataValue, Document,
