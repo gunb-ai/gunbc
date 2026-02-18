@@ -405,9 +405,17 @@ impl Port {
     /// Create a new port.
     /// Defaults to `Cardinality::ONE` (scalar, required).
     pub fn new(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
+        let name = name.into();
+        let type_id = type_id.into();
+        assert!(
+            !matches!(type_id.0.as_str(), "List" | "Set"),
+            "invalid type_id '{}' for port '{}': use element type + cardinality instead of container aliases",
+            type_id.0,
+            name.0
+        );
         Self {
-            name: name.into(),
-            type_id: type_id.into(),
+            name,
+            type_id,
             cardinality: Cardinality::ONE,
             guard: None,
             resource_access: None,
@@ -421,9 +429,17 @@ impl Port {
         type_id: impl Into<TypeId>,
         cardinality: Cardinality,
     ) -> Self {
+        let name = name.into();
+        let type_id = type_id.into();
+        assert!(
+            !matches!(type_id.0.as_str(), "List" | "Set"),
+            "invalid type_id '{}' for port '{}': use element type + cardinality instead of container aliases",
+            type_id.0,
+            name.0
+        );
         Self {
-            name: name.into(),
-            type_id: type_id.into(),
+            name,
+            type_id,
             cardinality,
             guard: None,
             resource_access: None,
@@ -445,9 +461,16 @@ impl Port {
         let raw = name.into();
         let stripped = raw.strip_prefix("res:").unwrap_or(&raw);
         let full_name = format!("res:{stripped}");
+        let type_id = type_id.into();
+        assert!(
+            !matches!(type_id.0.as_str(), "List" | "Set"),
+            "invalid resource port type_id '{}' for '{}': use element type + cardinality instead of container aliases",
+            type_id.0,
+            full_name
+        );
         Self {
             name: full_name.into(),
-            type_id: type_id.into(),
+            type_id,
             cardinality: Cardinality::ONE,
             guard: None,
             resource_access: Some(mode),
@@ -808,6 +831,18 @@ mod tests {
         let port = Port::resource("platform", "Platform", AccessMode::Write);
         assert_eq!(port.name.0, "res:platform");
         assert_eq!(port.resource_access, Some(AccessMode::Write));
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid type_id 'List'")]
+    fn test_port_rejects_list_type_alias() {
+        let _ = Port::new("items", "List");
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid type_id 'Set'")]
+    fn test_port_rejects_set_type_alias() {
+        let _ = Port::with_cardinality("items", "Set", Cardinality::ONE_OR_MORE);
     }
 
     #[test]

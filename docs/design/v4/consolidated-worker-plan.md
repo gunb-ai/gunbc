@@ -970,7 +970,7 @@ V0 complete (Tracks 2-6). Track 1 (Resource abstraction trait) still in design.
 #### Type System / Modeling (Wave 1-2)
 
 - [x] F1.10 — DAG typing dynamic escape hatch: add `input_mocks` type validation [M]
-- [ ] F1.30 — List dual-encoding cleanup: finish removing `"List"` as type_id [S] (~70%)
+- [x] F1.30 — List dual-encoding cleanup: finish removing `"List"` as type_id [S]
 - [x] F1.31 — Cardinality test-case sampling strategy (replace hardcoded cap=64) [M]
 - [x] F1.32 — Map type_id parametric specification [M]
 - [ ] F1.33 — Cardinality compositional modeling [L] (Wave 4)

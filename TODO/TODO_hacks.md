@@ -589,7 +589,7 @@ of a single global runtime toggle.
 
 ---
 
-## 30. "List" used as type_id AND cardinality shape (dual encoding) — PARTIAL FIXES
+## ~~30. "List" used as type_id AND cardinality shape (dual encoding)~~ RESOLVED (2026-02-18)
 
 **Where**: CLI arg parsing, mock generation, loop patterns, makegen repeatable detection
 
@@ -606,9 +606,15 @@ deeply embedded as a type_id across 28 files.
 - registry entrypoints now use type_id "String" + cardinality for extensions.
 - CliEntrypoint::new no longer infers cardinality from "List"/"Set".
 
-**Remaining work**: finish removing type_id-encoded cardinality
-(e.g., StringList/OptionalString) once the type registry refactor lands.
-Mock generation now hard-fails on unknown type_ids and on `List`/`Set`.
+**Final closure (2026-02-18)**:
+- `Port::new`, `Port::with_cardinality`, and `Port::resource` now reject
+  bare container aliases (`"List"`, `"Set"`) with explicit panic messages.
+- Added IR regression tests:
+  - `test_port_rejects_list_type_alias`
+  - `test_port_rejects_set_type_alias`
+- Remaining `List` mentions are now either:
+  - runtime `Value::List` value-shape tags, or
+  - type-system wrapper infrastructure (not port `type_id` cardinality encoding).
 
 **Files**:
 - core/ir/src/types.rs
