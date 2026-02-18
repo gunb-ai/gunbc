@@ -1,7 +1,8 @@
 # TODO — DSL Program Index
 
-This folder is now organized around the DSL adoption program.  
+This folder is now organized around the DSL adoption program.
 Primary roadmap reference: `docs/design/v4/dsl-roadmap.md`.
+**Consolidated execution plan**: [`docs/design/v4/consolidated-worker-plan.md`](../docs/design/v4/consolidated-worker-plan.md) — unified dependency DAG, wave decomposition, and task assignments across all tracks.
 
 Last reconciled: 2026-02-18
 
