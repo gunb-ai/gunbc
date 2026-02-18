@@ -290,8 +290,8 @@ Port cardinality and type DAG `Wrap` nodes encode the same information independe
 Derive port cardinality from the type DAG so there's one source of truth.
 
 - [x] C5.2a — `infer_cardinality()` from type DAG `Wrap`/`Unwrap` nodes
-- [ ] C5.2b — Audit ports that set cardinality independently of type DAG
-- [ ] C5.2c — Migrate to single source: type DAG drives cardinality, port just references type
+- [x] C5.2b — Audit ports that set cardinality independently of type DAG
+- [x] C5.2c — Migrate to single source: type DAG drives cardinality, port just references type
 - [x] C5.2d — Tests: `Optional<String>` type DAG → port cardinality [0,1] automatically
 
 ##### C5.3 — Type system stress tests [M]

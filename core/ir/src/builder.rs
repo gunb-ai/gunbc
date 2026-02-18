@@ -436,12 +436,25 @@ impl<T> DagBuilder<T> {
     /// Internal: add a node with a specific generation.
     fn add_node_with_generation(
         &mut self,
-        node: Node<T>,
+        mut node: Node<T>,
         generation: usize,
     ) -> Result<NodeRef<T>, BuilderError> {
         // Check for duplicate ID
         if self.generations.contains_key(&node.id) {
             return Err(BuilderError::DuplicateNodeId(node.id.clone()));
+        }
+
+        if let Some(registry) = &self.type_registry {
+            for port in &mut node.inputs {
+                if let Some(inferred) = registry.infer_cardinality(&port.type_id) {
+                    port.cardinality = inferred;
+                }
+            }
+            for port in &mut node.outputs {
+                if let Some(inferred) = registry.infer_cardinality(&port.type_id) {
+                    port.cardinality = inferred;
+                }
+            }
         }
 
         // Enforce resource port naming convention: `res:*` reserved for inputs.
@@ -1201,6 +1214,25 @@ mod tests {
             }
             _ => panic!("Expected CardinalityMismatch error"),
         }
+    }
+
+    #[test]
+    fn test_builder_normalizes_port_cardinality_from_type_registry() {
+        let mut builder: DagBuilder<String> = DagBuilder::new();
+        let node = Node::opaque(
+            "typed_node",
+            vec![Port::scalar("in", "OptionalString")],
+            vec![Port::scalar("out", "OptionalString")],
+            "op".to_string(),
+        );
+
+        builder.add_root_node(node).expect("node added");
+        let dag = builder.build();
+        let typed_node = dag
+            .get_node(&"typed_node".into())
+            .expect("typed node should exist");
+        assert_eq!(typed_node.inputs[0].cardinality, Cardinality::ZERO_OR_ONE);
+        assert_eq!(typed_node.outputs[0].cardinality, Cardinality::ZERO_OR_ONE);
     }
 
     // ==================== Integration Tests ====================

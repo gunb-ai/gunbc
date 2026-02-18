@@ -112,8 +112,8 @@ pub use code_ir::{
 };
 pub use codegen_bridge::{BridgeEnum, BridgeField, BridgeFunction, BridgeModule, BridgeStruct};
 pub use coerce::{
-    classify_coercion, detect_coercions, validate_coercions, CardinalityCoercion, CoercionError,
-    CoercionKind, CoercionReport,
+    audit_cardinality_drift, classify_coercion, detect_coercions, validate_coercions,
+    CardinalityCoercion, CardinalityDrift, CoercionError, CoercionKind, CoercionReport,
 };
 pub use contract::{BoundaryWitness, TypeContract};
 pub use dag::{build, canonical_edge_order, edges_to_port, Dag, Edge, EdgeKind, Port};
