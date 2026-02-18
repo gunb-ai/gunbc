@@ -4,14 +4,12 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::{build_docgen_graph, DOCGEN_READ_TARGETS};
-use gunbc_exec::{
-    compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
-    ExecutionMode,
+use gunbc_dag::{
+    build_docgen_graph, print_tool_header, run_tool, RunToolOptions, DOCGEN_READ_TARGETS,
 };
+use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::Value;
-use std::io::IsTerminal;
 use std::process;
 
 const AB_DOC_PATH: &str = "docs/ab-writing-workflows.md";
@@ -38,10 +36,18 @@ fn main() {
         ExecutionMode::Real
     };
 
-    let animated = std::io::stdout().is_terminal();
-    let steps = gunbc_lib_transport::check_and_plan_freshness();
-    let dag = compose_with_freshness(dag, steps);
-    execute_and_display(&dag, mode, animated, None, None);
+    print_tool_header(
+        "docgen",
+        &[("mode", if dry_run { "dry-run" } else { "real" }.to_string())],
+    );
+    run_tool(
+        dag,
+        mode,
+        RunToolOptions {
+            with_freshness: true,
+            ..RunToolOptions::default()
+        },
+    );
 }
 
 fn build_dry_run_mocks() -> BoundaryMocks {

@@ -35,6 +35,7 @@ pub mod policy;
 pub mod pragma;
 pub mod resources;
 pub mod testgen_dag;
+pub mod tool_runner;
 pub mod tool_testgen;
 pub mod viewer;
 pub mod workspace;
@@ -72,6 +73,7 @@ pub use resources::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
+pub use tool_runner::{print_tool_header, run_tool, RunToolOptions};
 pub use workspace::{
     build_bootstrap_subdag, build_build_subdag, build_ci_subdag, build_clippy_lint_all_subdag,
     build_clippy_subdag, build_codegen_subdag, build_dag_viz_subdag, build_deps_generate_subdag,

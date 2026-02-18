@@ -22,16 +22,14 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::{build_ci_graph_with_mode, wire_fs_env_write_mock};
-use gunbc_exec::{
-    compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
-    CiContext, ExecutionMode,
+use gunbc_dag::{
+    build_ci_graph_with_mode, print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions,
 };
+use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, CiContext, ExecutionMode};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use gunbc_ir::CODEGEN_STAMP_PATH;
-use std::io::IsTerminal;
 use std::process;
 
 fn main() {
@@ -166,27 +164,32 @@ fn main() {
     let ci = CiContext::detect();
     let is_ci = ci.provider_id() != "plain";
 
-    // Print header
-    println!("{}", gunbc_ir::cargo::name("ci"));
-    println!("  exec: {}", if dry_run { "dry-run" } else { "real" });
-    println!(
-        "  resource_mode: {}",
-        match resource_mode {
-            ExecMode::Verify => "verify (fail on stale)",
-            ExecMode::Ensure => "ensure (fix stale)",
-        }
-    );
+    let mut metadata = vec![
+        ("exec", if dry_run { "dry-run" } else { "real" }.to_string()),
+        (
+            "resource_mode",
+            match resource_mode {
+                ExecMode::Verify => "verify (fail on stale)",
+                ExecMode::Ensure => "ensure (fix stale)",
+            }
+            .to_string(),
+        ),
+    ];
     if is_ci {
-        println!("  ci: {}", ci.provider_name());
+        metadata.push(("ci", ci.provider_name().to_string()));
     }
-    println!();
+    let tool_name = gunbc_ir::cargo::name("ci");
+    print_tool_header(&tool_name, &metadata);
 
-    // Shared execution/display path: CI grouping, local progress, and classic mode
-    // are selected internally based on the animated flag and CI environment.
-    let animated = std::io::stdout().is_terminal();
-    let steps = gunbc_lib_transport::check_and_plan_freshness();
-    let dag = compose_with_freshness(dag, steps);
-    execute_and_display(&dag, mode, animated, Some("overall_success"), None);
+    run_tool(
+        dag,
+        mode,
+        RunToolOptions {
+            success_port: Some("overall_success"),
+            with_freshness: true,
+            ..RunToolOptions::default()
+        },
+    );
 }
 
 fn print_help() {

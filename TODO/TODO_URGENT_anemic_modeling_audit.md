@@ -342,6 +342,7 @@ executors. Lower priority since transport types don't change often.
    - Takes graph builder + mock spec
    - Handles freshness, terminal detection, error handling
    - Converge handwritten binaries with generated ones
+   - **Status:** 🟡 Partially implemented (`gunbc-dag::tool_runner::run_tool` + `print_tool_header`), migrated core binaries (`build`, `ci`, `codegen-dag`, `docgen`).
 
 4. **Derive WorkspaceBinary from tool registry**
    - Extend `#[tool_target]` to register binary metadata
