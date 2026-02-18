@@ -234,7 +234,13 @@ This section maps the target architecture to the DAGs already in the repo so mig
   - Tool graphs use `cloud_env` via `CloudOps::ConstCloudConfig`.
   - Cloud DAG normalizes config via `resolve_config` + `map_gcp_inputs`.
 - Coverage: medium.
-- Gap: precedence is centralized, but file-backed profile resolution and policy binding are not integrated yet.
+- Update (2026-02-18):
+  - `ResolveContext` now implements deterministic precedence:
+    `explicit > env > profile file > default`.
+  - Added file-backed profile loading from `.gunbc/config-<profile>.toml`
+    (resolved when `GUNBC_CLOUD_PROFILE` / `GUNBC_CLOUD_NAMESPACE` is set).
+  - Added precedence regression tests in `config_loader`.
+- Remaining gap: policy binding is not integrated yet (E1.2).
 
 2. `SelectFlow`
 - Current implementation:

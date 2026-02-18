@@ -827,9 +827,9 @@ Establish what works today and identify gaps.
 
 Deterministic precedence rules for credential context resolution.
 
-- [ ] E1.1a — Define precedence: explicit > env > profile > default
-- [ ] E1.1b — Implement `ResolveContext` with file-backed profile
-- [ ] E1.1c — Tests: precedence correctly applied
+- [x] E1.1a — Define precedence: explicit > env > profile > default
+- [x] E1.1b — Implement `ResolveContext` with file-backed profile
+- [x] E1.1c — Tests: precedence correctly applied
 
 #### Wave 3
 

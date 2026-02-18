@@ -13,7 +13,8 @@ mod ops;
 pub mod project_spec;
 
 pub use config_loader::{
-    default_local_dev_config, graph_cloud_config, resolve_graph_cloud_config, ConfigError,
+    default_local_dev_config, graph_cloud_config, resolve_graph_cloud_config,
+    resolve_graph_cloud_config_with_context, ConfigError, ResolveContext,
 };
 pub use env_requirements::{
     aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
