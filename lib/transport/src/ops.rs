@@ -15,8 +15,12 @@
 //! This structural enforcement ensures all I/O goes through visible DAG nodes.
 
 use crate::backend::execute_transport_with_backend;
-use gunbc_exec::{require_bool, require_request, ExecError, Executable, IntoExecResult, OutputMap};
-use gunbc_ir::transport::{TransportRequest, TransportResponse};
+use gunbc_exec::{
+    optional_int_strict, optional_str_strict, require_bool, require_int, require_request,
+    require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
+    TransportResponseExt,
+};
+use gunbc_ir::transport::{TcpRequest, TransportRequest, TransportResponse};
 use gunbc_ir::{Credential, Value};
 use std::collections::HashMap;
 
@@ -25,11 +29,17 @@ use std::collections::HashMap;
 pub enum TransportOps {
     /// Execute any transport request (BOUNDARY - world I/O)
     Execute,
+    /// Prepare typed TCP request fields into a transport request.
+    PrepareTcp,
+    /// Parse a TCP transport response into typed fields.
+    ParseTcpResponse,
 }
 
 impl Executable for TransportOps {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
+            TransportOps::PrepareTcp => execute_prepare_tcp(inputs),
+            TransportOps::ParseTcpResponse => execute_parse_tcp_response(inputs),
             TransportOps::Execute => {
                 let skip = require_bool(&inputs, "skip")?;
 
@@ -84,6 +94,89 @@ impl Executable for TransportOps {
     }
 }
 
+fn execute_prepare_tcp(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let host = require_str(&inputs, "host")?.to_string();
+    let port_value = require_int(&inputs, "port")?;
+    let port = u16::try_from(port_value).map_err(|_| {
+        ExecError::new(format!(
+            "invalid 'port' input: expected 0..65535, got {port_value}"
+        ))
+    })?;
+    let mut request = TcpRequest::new(host, port);
+
+    if let Some(data) = optional_str_strict(&inputs, "data")? {
+        request = request.data(data);
+    }
+    if let Some(timeout) = optional_int_strict(&inputs, "read_timeout_ms")? {
+        let timeout = u64::try_from(timeout).map_err(|_| {
+            ExecError::new(format!(
+                "invalid 'read_timeout_ms' input: expected >= 0, got {timeout}"
+            ))
+        })?;
+        request = request.read_timeout(timeout);
+    }
+    if let Some(timeout) = optional_int_strict(&inputs, "write_timeout_ms")? {
+        let timeout = u64::try_from(timeout).map_err(|_| {
+            ExecError::new(format!(
+                "invalid 'write_timeout_ms' input: expected >= 0, got {timeout}"
+            ))
+        })?;
+        request = request.write_timeout(timeout);
+    }
+
+    OutputMap::new()
+        .request("request", TransportRequest::Tcp(request))
+        .bool("skip", false)
+        .ok()
+}
+
+fn execute_parse_tcp_response(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = gunbc_exec::propagate_skipped(
+        &inputs,
+        "response",
+        &[
+            "connected",
+            "bytes_sent",
+            "bytes_received",
+            "data",
+            "error",
+            "success",
+            "error_summary",
+            "detail",
+        ],
+    ) {
+        return result;
+    }
+
+    let response = require_response(&inputs, "response")?;
+    let tcp = response.require_tcp()?;
+    let detail = if let Some(error) = tcp.error.as_deref() {
+        error.to_string()
+    } else {
+        format!(
+            "connected={} bytes_sent={} bytes_received={}",
+            tcp.connected, tcp.bytes_sent, tcp.bytes_received
+        )
+    };
+
+    let mut out = OutputMap::new()
+        .bool("connected", tcp.connected)
+        .int("bytes_sent", tcp.bytes_sent as i64)
+        .int("bytes_received", tcp.bytes_received as i64)
+        .status(tcp.is_ok(), tcp.error.clone().unwrap_or_default(), detail);
+    if let Some(data) = &tcp.data {
+        out = out.str("data", data.clone());
+    }
+    if let Some(error) = &tcp.error {
+        out = out.str("error", error.clone());
+    }
+    out.ok()
+}
+
 // ============================================================================
 // Standalone helper functions
 // ============================================================================
@@ -102,7 +195,7 @@ mod tests {
     use crate::executor::TransportError;
     use crate::{TransportBackend, TransportBackendGuard};
     use gunbc_ir::transport::{
-        FileRequest, RestResponse, ShellRequest, TransportRequest, TransportResponse,
+        FileRequest, RestResponse, ShellRequest, TcpResponse, TransportRequest, TransportResponse,
     };
     use gunbc_ir::{AuthScheme, Secret, Value};
     use std::collections::HashMap;
@@ -262,5 +355,61 @@ mod tests {
         assert_eq!(result.get("skip"), Some(&Value::Bool(false)));
         let stdout = result.get("stdout").and_then(|v| v.as_str()).unwrap_or("");
         assert!(stdout.contains("hello"));
+    }
+
+    #[test]
+    fn test_prepare_tcp_builds_typed_transport_request() {
+        let mut inputs = HashMap::new();
+        inputs.insert("host".to_string(), Value::Str("127.0.0.1".to_string()));
+        inputs.insert("port".to_string(), Value::Int(9000));
+        inputs.insert("data".to_string(), Value::Str("PING\n".to_string()));
+        inputs.insert("read_timeout_ms".to_string(), Value::Int(250));
+        inputs.insert("write_timeout_ms".to_string(), Value::Int(400));
+
+        let result = TransportOps::PrepareTcp
+            .execute(inputs)
+            .expect("prepare tcp should succeed");
+        assert_eq!(result.get("skip"), Some(&Value::Bool(false)));
+        let request = result
+            .get("request")
+            .and_then(Value::as_request)
+            .expect("request output");
+        match request {
+            TransportRequest::Tcp(tcp) => {
+                assert_eq!(tcp.host, "127.0.0.1");
+                assert_eq!(tcp.port, 9000);
+                assert_eq!(tcp.data.as_deref(), Some("PING\n"));
+                assert_eq!(tcp.read_timeout_ms, Some(250));
+                assert_eq!(tcp.write_timeout_ms, Some(400));
+            }
+            other => panic!("expected tcp request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tcp_response_extracts_typed_outputs() {
+        let mut inputs = HashMap::new();
+        inputs.insert("skip".to_string(), Value::Bool(false));
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Tcp(TcpResponse::ok(
+                Some("PONG\n".to_string()),
+                5,
+                5,
+            ))),
+        );
+
+        let result = TransportOps::ParseTcpResponse
+            .execute(inputs)
+            .expect("parse tcp should succeed");
+        assert_eq!(result.get("connected"), Some(&Value::Bool(true)));
+        assert_eq!(result.get("bytes_sent"), Some(&Value::Int(5)));
+        assert_eq!(result.get("bytes_received"), Some(&Value::Int(5)));
+        assert_eq!(result.get("success"), Some(&Value::Bool(true)));
+        assert_eq!(
+            result.get("error_summary").and_then(Value::as_str),
+            Some("")
+        );
+        assert_eq!(result.get("data").and_then(Value::as_str), Some("PONG\n"));
     }
 }

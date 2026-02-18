@@ -228,11 +228,12 @@ Removed `upsert_and_run` and unused imports (`CliToolError`, `Value`,
 **Where**: `lib/transport/src/executor.rs` (`execute_tcp`)
 
 **What changed**:
-- `connect_timeout_ms` now controls `TcpStream::connect_timeout(...)`.
-- `read_timeout_ms` now maps to both `set_read_timeout(...)` and
-  `set_write_timeout(...)` for socket I/O timing.
+- `write_timeout_ms` now maps to `set_write_timeout(...)`.
+- `read_timeout_ms` maps to `set_read_timeout(...)`.
+- Legacy `connect_timeout(...)` builder calls are kept as compatibility aliases
+  to `write_timeout(...)` during migration.
 
-**Result**: connect timeout and I/O timeout semantics are no longer swapped.
+**Result**: read/write timeout routing is explicit and no longer ambiguous.
 
 ---
 

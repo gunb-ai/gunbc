@@ -135,8 +135,10 @@ pub use node::{Node, NodeBody, NodeIoExample};
 pub use patterns::{
     content_upsert::{add_content_upsert_chain, ContentUpsertChain},
     transport_triplet::{
-        add_skippable_transport_triplet, add_transport_triplet,
-        add_transport_triplet_named_with_passthrough,
+        add_skippable_transport_triplet, add_skippable_transport_triplet_typed,
+        add_transport_triplet, add_transport_triplet_named_with_passthrough,
+        add_transport_triplet_named_with_passthrough_typed, add_transport_triplet_typed,
+        TransportPortTypes,
     },
     AtomicBuilder, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder, RepeatPolicy,
     ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,

@@ -524,9 +524,9 @@ behavioral tests.
 
 Make field routing explicit with transport-specific Prepare/Parse ops.
 
-- [ ] C4.2a — Define `PrepareTcp`, `ParseTcpResponse`, etc. ops
-- [ ] C4.2b — Rename `TcpRequest.connect_timeout_ms` → `write_timeout_ms`
-- [ ] C4.2c — Update triplet helpers to use typed ports
+- [x] C4.2a — Define `PrepareTcp`, `ParseTcpResponse`, etc. ops
+- [x] C4.2b — Rename `TcpRequest.connect_timeout_ms` → `write_timeout_ms`
+- [x] C4.2c — Update triplet helpers to use typed ports
 
 #### Wave 3
 

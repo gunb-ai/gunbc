@@ -1,6 +1,6 @@
 # Transport-as-DAG Migration
 
-**Status**: In Progress (C4.1 behavioral coverage completed; decomposition/spec phases pending)
+**Status**: In Progress (C4.1+C4.2 completed; behavioral spec phases pending)
 **Date**: 2026-02-14
 **DSL Alignment**: Transport execution model alignment with DSL testability guarantees
 **Track**: C — Modeling Foundation
@@ -9,7 +9,10 @@
 - `C4.1a` TCP coverage now includes connect-refused + read-timeout + roundtrip tests.
 - `C4.1b` shell behavioral coverage is present (nonexistent command, exit code, env, cwd, stdin, timeout/passthrough).
 - `C4.1c` file edge-case coverage is present (read/write/append/delete/exists/create-dir variants).
-- Remaining work in this doc is focused on `C4.2+` typed decomposition and behavioral specs integration.
+- `C4.2a` added typed transport ops for TCP decomposition (`PrepareTcp`, `ParseTcpResponse`).
+- `C4.2b` renamed TCP timeout field to `write_timeout_ms` (with compatibility alias) and aligned executor mapping.
+- `C4.2c` added typed request/response support in transport triplet helpers via `TransportPortTypes`.
+- Remaining work in this doc is focused on `C4.3+` behavioral specs integration.
 
 Feasibility analysis and migration plan for modeling transport executor
 behavior as DAG nodes, bringing the executor under the testgen umbrella.

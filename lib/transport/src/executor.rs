@@ -7,7 +7,7 @@ use gunbc_ir::transport::{
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::TcpStream;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -337,24 +337,15 @@ fn execute_file(request: &FileRequest) -> Result<FileResponse, TransportError> {
 fn execute_tcp(request: &TcpRequest) -> Result<TcpResponse, TransportError> {
     let addr = format!("{}:{}", request.host, request.port);
 
-    let mut stream = if let Some(timeout) = request.connect_timeout_ms {
-        let mut addrs = addr
-            .to_socket_addrs()
-            .map_err(|e| TransportError::new(format!("address resolution failed: {}", e)))?;
-        let socket_addr = addrs
-            .next()
-            .ok_or_else(|| TransportError::new(format!("no socket address for {}", addr)))?;
-        TcpStream::connect_timeout(&socket_addr, Duration::from_millis(timeout))
-            .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?
-    } else {
-        TcpStream::connect(&addr)
-            .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?
-    };
+    let mut stream = TcpStream::connect(&addr)
+        .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?;
 
     if let Some(timeout) = request.read_timeout_ms {
         stream
             .set_read_timeout(Some(Duration::from_millis(timeout)))
             .ok();
+    }
+    if let Some(timeout) = request.write_timeout_ms {
         stream
             .set_write_timeout(Some(Duration::from_millis(timeout)))
             .ok();
@@ -1217,7 +1208,7 @@ mod tests {
         let request = TransportRequest::Tcp(
             TcpRequest::new("127.0.0.1", port)
                 .data("PING\n")
-                .connect_timeout(1000)
+                .write_timeout(1000)
                 .read_timeout(1000),
         );
         let response = execute_transport(&request).expect("tcp dispatch should succeed");
@@ -1250,8 +1241,7 @@ mod tests {
         let port = listener.local_addr().expect("listener local addr").port();
         drop(listener);
 
-        let request =
-            TransportRequest::Tcp(TcpRequest::new("127.0.0.1", port).connect_timeout(200));
+        let request = TransportRequest::Tcp(TcpRequest::new("127.0.0.1", port).write_timeout(200));
         let err = execute_transport(&request).expect_err("tcp connect should fail");
         assert!(
             err.to_string().contains("connection failed"),
@@ -1289,7 +1279,7 @@ mod tests {
         let request = TransportRequest::Tcp(
             TcpRequest::new("127.0.0.1", port)
                 .data("PING\n")
-                .connect_timeout(500)
+                .write_timeout(500)
                 .read_timeout(100),
         );
         let response = execute_transport(&request).expect("tcp request should not hard-fail");
