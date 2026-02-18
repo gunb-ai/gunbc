@@ -18,8 +18,8 @@ pub use config_loader::{
     resolve_graph_cloud_config_with_context, ConfigError, ResolveContext,
 };
 pub use credential_policy::{
-    bind_credential_intent_policy, BoundCredentialIntent, ENV_CREDENTIAL_POLICY_JSON,
-    ENV_CREDENTIAL_POLICY_PATH, ENV_CREDENTIAL_POLICY_PROFILE,
+    bind_credential_intent_policy, policy_allows_impersonation, BoundCredentialIntent,
+    ENV_CREDENTIAL_POLICY_JSON, ENV_CREDENTIAL_POLICY_PATH, ENV_CREDENTIAL_POLICY_PROFILE,
 };
 pub use env_requirements::{
     aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,

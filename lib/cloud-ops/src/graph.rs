@@ -193,6 +193,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         optional("header_name", "OptionalString"),
         port("source_id", "String"),
         list("required_scopes", "String"),
+        optional("allow_impersonation", "OptionalBool"),
         optional("lifetime_seconds", "OptionalInt"),
     ];
     // interactive_allowed is only needed for non-local runtimes where
@@ -226,6 +227,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
                     optional("header_name", "OptionalString"),
                     port("source_id", "String"),
                     list("required_scopes", "String"),
+                    optional("allow_impersonation", "OptionalBool"),
                     optional("lifetime_seconds", "OptionalInt"),
                     // interactive_allowed is accepted as input for all runtimes
                     // (parent graphs always wire it), but only OUTPUT for
@@ -328,6 +330,12 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         .expect("map_gcp_inputs.required_scopes -> gcp_wif_secret.required_scopes");
     builder
         .add_edge(
+            map_inputs.out("allow_impersonation"),
+            gcp_node.in_port("allow_impersonation"),
+        )
+        .expect("map_gcp_inputs.allow_impersonation -> gcp_wif_secret.allow_impersonation");
+    builder
+        .add_edge(
             map_inputs.out("lifetime_seconds"),
             gcp_node.in_port("lifetime_seconds"),
         )
@@ -388,6 +396,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         port("secret", "String"),
         port("service_account", "String"),
         optional("version", "OptionalString"),
+        optional("allow_impersonation", "OptionalBool"),
         optional("lifetime_seconds", "OptionalInt"),
     ];
     // interactive_allowed only needed for non-local runtimes (see credential graph).
@@ -413,6 +422,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
                     optional("version", "OptionalString"),
                     optional("service_account_or_role", "OptionalString"),
                     optional("impersonate_account_or_role", "OptionalString"),
+                    optional("allow_impersonation", "OptionalBool"),
                     optional("lifetime_seconds", "OptionalInt"),
                     optional("interactive_allowed", "OptionalBool"),
                     optional("request_url", "OptionalString"),
@@ -491,6 +501,14 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
             gcp_node.in_port("service_account"),
         )
         .expect("map_gcp_secret_inputs.service_account -> gcp_wif_secret_upsert.service_account");
+    builder
+        .add_edge(
+            map_inputs.out("allow_impersonation"),
+            gcp_node.in_port("allow_impersonation"),
+        )
+        .expect(
+            "map_gcp_secret_inputs.allow_impersonation -> gcp_wif_secret_upsert.allow_impersonation",
+        );
     builder
         .add_edge(
             map_inputs.out("lifetime_seconds"),

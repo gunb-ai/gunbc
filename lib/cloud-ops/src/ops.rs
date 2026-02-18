@@ -142,6 +142,14 @@ impl Executable for CloudOps {
                         Value::Str(header_name.to_string()),
                     );
                 }
+                if let Some(allow_impersonation) =
+                    inputs.get("allow_impersonation").and_then(Value::as_bool)
+                {
+                    out.insert(
+                        "allow_impersonation".to_string(),
+                        Value::Bool(allow_impersonation),
+                    );
+                }
 
                 Ok(out)
             }
@@ -229,6 +237,14 @@ impl Executable for CloudOps {
                     out.insert(
                         "interactive_allowed".to_string(),
                         Value::Bool(interactive_allowed),
+                    );
+                }
+                if let Some(allow_impersonation) =
+                    inputs.get("allow_impersonation").and_then(Value::as_bool)
+                {
+                    out.insert(
+                        "allow_impersonation".to_string(),
+                        Value::Bool(allow_impersonation),
                     );
                 }
 
@@ -388,6 +404,33 @@ mod tests {
                 "review:code_review".to_string(),
             ])
         );
+    }
+
+    #[test]
+    fn map_to_gcp_inputs_passes_allow_impersonation() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("gcp".to_string()));
+        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
+        inputs.insert("audience".to_string(), Value::Str("local-dev".to_string()));
+        inputs.insert(
+            "project_or_account".to_string(),
+            Value::Str("gunbai-secrets".to_string()),
+        );
+        inputs.insert(
+            "secret".to_string(),
+            Value::Str("dev-github-token".to_string()),
+        );
+        inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
+        inputs.insert("source_id".to_string(), Value::Str("github".to_string()));
+        inputs.insert("allow_impersonation".to_string(), Value::Bool(false));
+
+        let out = CloudOps::MapToGcpInputs {
+            runtime: CloudRuntimeKind::LocalDev,
+        }
+        .execute(inputs)
+        .expect("mapping should pass allow_impersonation through");
+
+        assert_eq!(out.get("allow_impersonation"), Some(&Value::Bool(false)));
     }
 
     #[test]

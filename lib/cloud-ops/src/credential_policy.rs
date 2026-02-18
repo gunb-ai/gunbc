@@ -35,6 +35,11 @@ impl BoundCredentialIntent {
     }
 }
 
+/// Map credential policy impersonation mode to an allow/deny decision.
+pub fn policy_allows_impersonation(policy: Option<&ImpersonationPolicy>) -> bool {
+    !matches!(policy, Some(ImpersonationPolicy::Never))
+}
+
 /// Bind a fallback credential intent through configured credential policy.
 ///
 /// When no policy source is configured, returns the fallback intent unchanged.
@@ -171,6 +176,24 @@ mod tests {
                 .expect_err("profile selection should be required");
             assert!(err.contains("no profile selected"));
         });
+    }
+
+    #[test]
+    fn policy_allows_impersonation_maps_modes() {
+        assert!(policy_allows_impersonation(None));
+        assert!(!policy_allows_impersonation(Some(
+            &ImpersonationPolicy::Never
+        )));
+        assert!(policy_allows_impersonation(Some(
+            &ImpersonationPolicy::IfConfigured {
+                service_account: None
+            }
+        )));
+        assert!(policy_allows_impersonation(Some(
+            &ImpersonationPolicy::Always {
+                service_account: "svc@p.iam.gserviceaccount.com".to_string()
+            }
+        )));
     }
 
     fn sample_policy_json(secret_name: &str) -> String {

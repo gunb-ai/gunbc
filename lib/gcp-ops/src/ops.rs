@@ -814,11 +814,14 @@ impl Executable for GcpOps {
                 OutputMap::new().value("credential", cred.into()).ok()
             }
             GcpOps::ShouldImpersonate => {
-                let should = inputs
+                let allow_impersonation =
+                    optional_bool_strict(&inputs, "allow_impersonation")?.unwrap_or(true);
+                let has_service_account = inputs
                     .get("service_account")
                     .and_then(Value::as_str)
                     .map(|s| !s.trim().is_empty())
                     .unwrap_or(false);
+                let should = allow_impersonation && has_service_account;
                 OutputMap::new().bool("should", should).ok()
             }
             GcpOps::ComposeSecretName => {
@@ -1775,6 +1778,32 @@ mod tests {
             outputs.get("access_token").and_then(|v| v.as_str()),
             Some("ya29.impersonated")
         );
+    }
+
+    #[test]
+    fn should_impersonate_requires_service_account_by_default() {
+        let mut inputs = HashMap::new();
+        inputs.insert("service_account".to_string(), Value::Str(String::new()));
+
+        let outputs = GcpOps::ShouldImpersonate
+            .execute(inputs)
+            .expect("should_impersonate should evaluate");
+        assert_eq!(outputs.get("should"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn should_impersonate_respects_allow_impersonation_flag() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "service_account".to_string(),
+            Value::Str("svc@p.iam.gserviceaccount.com".to_string()),
+        );
+        inputs.insert("allow_impersonation".to_string(), Value::Bool(false));
+
+        let outputs = GcpOps::ShouldImpersonate
+            .execute(inputs)
+            .expect("should_impersonate should evaluate");
+        assert_eq!(outputs.get("should"), Some(&Value::Bool(false)));
     }
 
     #[test]

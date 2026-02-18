@@ -856,7 +856,7 @@ Central authentication pattern in `core/ir` that all credentialed flows consume.
 
 Conditional impersonation, provider selection.
 
-- [ ] E1.3a — Wire `ShouldImpersonate` decision point
+- [x] E1.3a — Wire `ShouldImpersonate` decision point
 - [ ] E1.3b — Implement provider-granted scope verification
 
 ##### E1.4 — Secret lifecycle [L]

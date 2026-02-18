@@ -29,7 +29,7 @@ use gunbc_ir::{
 };
 use gunbc_lib_cloud_ops::{
     bind_credential_intent_policy, build_cloud_secret_manager_credential_graph_from_config,
-    CloudOps, CloudSecretManagerGraphOp,
+    policy_allows_impersonation, CloudOps, CloudSecretManagerGraphOp,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::filename;
@@ -417,6 +417,7 @@ fn execute_gist_resolve_auth(
         .map_err(|e| ExecError::new(format!("invalid gist credential contract: {e}")))?;
     let bound = bind_credential_intent_policy("github.gist.create", &fallback_intent)
         .map_err(|e| ExecError::new(format!("credential policy binding failed: {e}")))?;
+    let allow_impersonation = policy_allows_impersonation(bound.impersonation.as_ref());
     let intent = bound.intent;
 
     let mut out = OutputMap::new()
@@ -425,6 +426,7 @@ fn execute_gist_resolve_auth(
         .str("header_name", intent.header_name)
         .str_list("required_scopes", intent.required_scopes)
         .bool("interactive_allowed", intent.interactive_allowed)
+        .bool("allow_impersonation", allow_impersonation)
         .int("lifetime_seconds", 3600);
 
     if let Some(secret_name) = intent.secret_name {
@@ -507,6 +509,7 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
         vec![
             port("service", "String"),
             optional("secret_name", "OptionalString"),
+            optional("allow_impersonation", "OptionalBool"),
             port("scheme", "String"),
             port("header_name", "String"),
             list("required_scopes", "String"),
@@ -612,6 +615,12 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
         "service",
         "cloud_credential",
         "source_id",
+    ));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "allow_impersonation",
+        "cloud_credential",
+        "allow_impersonation",
     ));
     dag.add_edge(Edge::new(
         "resolve_auth",
@@ -787,6 +796,7 @@ mod tests {
                 outputs.get("required_scopes"),
                 Some(&Value::str_list(vec!["gist:write".to_string()]))
             );
+            assert_eq!(outputs.get("allow_impersonation"), Some(&Value::Bool(true)));
         });
     }
 

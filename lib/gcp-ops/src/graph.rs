@@ -262,7 +262,10 @@ pub fn build_gcp_secret_manager_credential_graph(
         .add_node_after(
             Node::opaque(
                 "should_impersonate",
-                vec![port("service_account", "String")],
+                vec![
+                    port("service_account", "String"),
+                    optional("allow_impersonation", "OptionalBool"),
+                ],
                 vec![port("should", "Bool")],
                 GcpSecretManagerGraphOp::Gcp(GcpOps::ShouldImpersonate),
             ),
@@ -735,7 +738,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_node_after(
             Node::opaque(
                 "should_impersonate",
-                vec![port("service_account", "String")],
+                vec![
+                    port("service_account", "String"),
+                    optional("allow_impersonation", "OptionalBool"),
+                ],
                 vec![port("should", "Bool")],
                 GcpSecretManagerGraphOp::Gcp(GcpOps::ShouldImpersonate),
             ),

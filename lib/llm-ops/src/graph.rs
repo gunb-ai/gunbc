@@ -92,6 +92,7 @@ pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) 
             vec![
                 port("service", "String"),
                 optional("secret_name", "OptionalString"),
+                optional("allow_impersonation", "OptionalBool"),
                 port("scheme", "String"),
                 port("header_name", "String"),
                 list("required_scopes", "String"),
@@ -198,6 +199,12 @@ pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) 
             bind_secret.in_port("secret_name"),
         )
         .expect("resolve_auth.secret_name -> bind_secret.secret_name");
+    builder
+        .add_edge(
+            resolve_auth.out("allow_impersonation"),
+            cloud_credential.in_port("allow_impersonation"),
+        )
+        .expect("resolve_auth.allow_impersonation -> cloud_credential.allow_impersonation");
     builder
         .add_edge(
             bind_secret.out("config"),

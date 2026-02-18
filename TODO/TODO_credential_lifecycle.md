@@ -272,8 +272,14 @@ This section maps the target architecture to the DAGs already in the repo so mig
 5. `Impersonate` (conditional)
 - Current implementation:
   - `prepare_impersonate -> execute_impersonate -> parse_impersonate`.
-- Coverage: partial.
-- Gap: currently unconditional in graph shape; `ShouldImpersonate` op exists but is not wired.
+- Coverage: medium.
+- Update (2026-02-18):
+  - `ShouldImpersonate` is now explicitly policy-gated via
+    `allow_impersonation` (derived from credential policy `impersonation`
+    mode and threaded through gist/llm/cloud/gcp flows).
+- Remaining gap:
+  - policy-driven service-account selection + provider-side scope checks
+    still pending.
 
 6. `VerifyScopes`
 - Current implementation:
