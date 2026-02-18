@@ -31,27 +31,28 @@ This creates repeated logic and makes it hard to add a new variant without touch
 
 ## Critical Gaps
 
-- [ ] **No first-class target-triple model (`arch-vendor-os-env`)**
-  - Evidence: `CodegenTarget` only captures backend language in `core/daglang/daglang-driver/src/lib.rs`.
-  - Impact: cannot represent `x86_64-unknown-linux-gnu` vs `x86_64-unknown-linux-musl` without string conventions.
+- [x] **No first-class target-triple model (`arch-vendor-os-env`)**
+  - Update (2026-02-18): added canonical `TargetTriple` + `Arch`/`Vendor`/`Os`/`AbiEnv` in `core/ir/src/platform.rs`.
+  - Impact reduction: target/ABI variants are now representable in shared typed model.
 
-- [ ] **`gnu` / ABI layer is missing**
-  - Evidence: no shared enum/type for `gnu`, `musl`, `msvc`; platform enums stop at OS.
-  - Impact: ABI-sensitive install/build/runtime logic stays ad-hoc.
+- [x] **`gnu` / ABI layer is missing**
+  - Update (2026-02-18): shared `AbiEnv` enum added (`gnu`, `musl`, `msvc`, etc.).
+  - Impact reduction: ABI-sensitive behavior now has a common typed vocabulary.
 
-- [ ] **`qemu`/emulator is not modeled as execution environment**
-  - Evidence: MIPS parity path hardcodes `mips-linux-gnu-as`, `mips-linux-gnu-ld`, `qemu-mips` in `core/daglang/daglang-cli/tests/codegen_parity.rs`.
-  - Impact: emulator support cannot be reused or reasoned about by tool/resource planning.
+- [x] **`qemu`/emulator is not modeled as execution environment**
+  - Update (2026-02-18): `ExecutionEnv::Emulator` and `ToolchainCommands::mips_linux_gnu()` added; parity path now consumes modeled toolchain commands.
+  - Impact reduction: emulator-related behavior is now modeled centrally instead of string literals.
 
-- [ ] **Environment layer is missing (Native vs WSL vs Container vs CI vs Emulator)**
-  - Evidence: WSL/macOS/Linux branching is inline in `gunbc-dag/src/dag_viz/graph.rs` (`execute_open_browser`).
-  - Impact: every feature needing environment-aware behavior repeats custom detection/branching.
+- [x] **Environment layer is missing (Native vs WSL vs Container vs CI vs Emulator)**
+  - Update (2026-02-18): shared `ExecutionEnv` + `RuntimePlatform` detection path added and used by browser-open resolver.
+  - Impact reduction: environment-aware resolution is now centralized and reusable.
 
 - [ ] **Platform IDs are stringly-typed in install modeling**
   - Evidence:
     - `lib/tools/deps/src/manifest.rs` uses `HashMap<String, PlatformInstall>`
-    - `core/ir/src/transport/github/cli.rs` returns `Vec<(&str, InstallMethod)>`
-    - `lib/tools/deps/src/tool_upsert.rs` has a hardcoded PM→platform mapping marked as simplified
+    - `core/ir/src/transport/github/cli.rs` now uses `Vec<(Os, InstallMethod)>` *(improved)*
+    - `lib/tools/deps/src/tool_upsert.rs` now maps PM→canonical `Os` tokens *(improved)*
+    - `core/ir/src/transport/tool.rs` now uses typed `PlatformId` keys *(improved)*
   - Impact: no compile-time guarantees around supported platform keys.
 
 - [ ] **Path resolution bypasses shared platform model**

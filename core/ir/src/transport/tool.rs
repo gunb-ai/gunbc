@@ -142,12 +142,31 @@ impl InstallInputs {
 /// Platform definition with available package managers.
 ///
 /// Platforms can inherit from a parent (e.g., ubuntu → linux).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PlatformId(&'static str);
+
+impl PlatformId {
+    pub const fn new(id: &'static str) -> Self {
+        Self(id)
+    }
+
+    pub const fn as_str(&self) -> &'static str {
+        self.0
+    }
+}
+
+impl std::fmt::Display for PlatformId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlatformDef {
     /// Platform identifier (e.g., "ubuntu", "macos", "alpine")
-    pub id: &'static str,
+    pub id: PlatformId,
     /// Parent platform for inheritance (e.g., "linux" for "ubuntu")
-    pub parent: Option<&'static str>,
+    pub parent: Option<PlatformId>,
     /// Package managers available on this platform
     pub available_pms: &'static [&'static str],
 }
@@ -208,7 +227,7 @@ impl ToolRegistry {
 /// Registry of all known platforms.
 #[derive(Debug, Default)]
 pub struct PlatformRegistry {
-    platforms: HashMap<&'static str, &'static PlatformDef>,
+    platforms: HashMap<PlatformId, &'static PlatformDef>,
 }
 
 impl PlatformRegistry {
@@ -225,12 +244,12 @@ impl PlatformRegistry {
     }
 
     /// Get a platform by ID.
-    pub fn get(&self, id: &str) -> Option<&'static PlatformDef> {
-        self.platforms.get(id).copied()
+    pub fn get(&self, id: PlatformId) -> Option<&'static PlatformDef> {
+        self.platforms.get(&id).copied()
     }
 
     /// Get all available package managers for a platform, including inherited ones.
-    pub fn available_pms(&self, platform_id: &str) -> HashSet<&'static str> {
+    pub fn available_pms(&self, platform_id: PlatformId) -> HashSet<&'static str> {
         let mut pms = HashSet::new();
         let mut current = platform_id;
 
@@ -618,36 +637,43 @@ pub static RUSTFMT: ToolDef = ToolDef {
 // ============================================================================
 
 /// Linux base platform.
+pub const PLATFORM_LINUX: PlatformId = PlatformId::new("linux");
+pub const PLATFORM_UBUNTU: PlatformId = PlatformId::new("ubuntu");
+pub const PLATFORM_DEBIAN: PlatformId = PlatformId::new("debian");
+pub const PLATFORM_ALPINE: PlatformId = PlatformId::new("alpine");
+pub const PLATFORM_MACOS: PlatformId = PlatformId::new("macos");
+
+/// Linux base platform.
 pub static LINUX: PlatformDef = PlatformDef {
-    id: "linux",
+    id: PLATFORM_LINUX,
     parent: None,
     available_pms: &[],
 };
 
 /// Ubuntu platform (Debian-based Linux).
 pub static UBUNTU: PlatformDef = PlatformDef {
-    id: "ubuntu",
-    parent: Some("linux"),
+    id: PLATFORM_UBUNTU,
+    parent: Some(PLATFORM_LINUX),
     available_pms: &["apt"],
 };
 
 /// Debian platform.
 pub static DEBIAN: PlatformDef = PlatformDef {
-    id: "debian",
-    parent: Some("linux"),
+    id: PLATFORM_DEBIAN,
+    parent: Some(PLATFORM_LINUX),
     available_pms: &["apt"],
 };
 
 /// Alpine Linux platform.
 pub static ALPINE: PlatformDef = PlatformDef {
-    id: "alpine",
-    parent: Some("linux"),
+    id: PLATFORM_ALPINE,
+    parent: Some(PLATFORM_LINUX),
     available_pms: &["apk"],
 };
 
 /// macOS platform.
 pub static MACOS: PlatformDef = PlatformDef {
-    id: "macos",
+    id: PLATFORM_MACOS,
     parent: None,
     available_pms: &["brew"],
 };
@@ -900,15 +926,17 @@ mod tests {
 
     #[test]
     fn test_platform_registry_inheritance() {
+        const TEST_PLATFORM_LINUX: PlatformId = PlatformId::new("linux");
+        const TEST_PLATFORM_UBUNTU: PlatformId = PlatformId::new("ubuntu");
         static TEST_LINUX: PlatformDef = PlatformDef {
-            id: "linux",
+            id: TEST_PLATFORM_LINUX,
             parent: None,
             available_pms: &[],
         };
 
         static TEST_UBUNTU: PlatformDef = PlatformDef {
-            id: "ubuntu",
-            parent: Some("linux"),
+            id: TEST_PLATFORM_UBUNTU,
+            parent: Some(TEST_PLATFORM_LINUX),
             available_pms: &["apt"],
         };
 
@@ -916,7 +944,7 @@ mod tests {
         registry.register(&TEST_LINUX);
         registry.register(&TEST_UBUNTU);
 
-        let ubuntu_pms = registry.available_pms("ubuntu");
+        let ubuntu_pms = registry.available_pms(TEST_PLATFORM_UBUNTU);
         assert!(ubuntu_pms.contains("apt"));
     }
 
