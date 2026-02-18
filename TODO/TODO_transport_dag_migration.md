@@ -17,15 +17,15 @@ blind spot**. It contains 5 monolithic dispatch functions:
 
 | Function         | Lines | Tests | Coverage |
 |------------------|-------|-------|----------|
-| `execute_rest`   | ~45   | 0     | Via tool integration tests only |
-| `execute_http`   | ~55   | 0     | Via REST (rest wraps http) |
-| `execute_file`   | ~180  | 30+   | Good: unit tests for each FileOp |
-| `execute_tcp`    | ~35   | 0     | **Zero coverage** |
-| `execute_shell`  | ~40   | 2     | Basic happy-path only |
+| `execute_rest`   | ~45   | Some  | Dispatch/smoke coverage; limited contract-depth checks |
+| `execute_http`   | ~55   | Some  | Dispatch/smoke coverage plus URL helper tests |
+| `execute_file`   | ~180  | 30+   | Strong unit coverage across FileOp variants |
+| `execute_tcp`    | ~35   | Some  | Dispatch smoke coverage; weak field-routing regression coverage |
+| `execute_shell`  | ~40   | Many  | Good unit coverage (args/stdin/env/cwd/timeout/passthrough) |
 
 The swapped-timeout bug in `execute_tcp` (consolidation.md 17.1) survived
-because TCP is the **only transport type with zero test coverage**, and
-the executor sits outside the DAG system where testgen operates.
+because timeout field routing had no explicit regression contract, and the
+executor sits outside the DAG system where testgen operates.
 
 ### Why the current architecture misses this
 
@@ -40,13 +40,13 @@ This verifies that:
 
 But it **never tests what happens inside `execute_transport()`** -- the
 actual I/O boundary. The `TransportBackend` trait allows mock backends in
-tests, but nobody writes those tests because the executor is a leaf
-function, not a DAG.
+tests, but coverage still skews toward dispatch/happy paths because the
+executor is a leaf function, not a DAG.
 
 ### The gap in one sentence
 
-**The DAG system tests everything above the transport boundary; nothing
-tests the boundary itself.**
+**The DAG system tests everything above the transport boundary; boundary
+behavior is still weakly covered compared to pure prepare/parse logic.**
 
 ---
 

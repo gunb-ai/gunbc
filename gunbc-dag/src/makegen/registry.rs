@@ -22,6 +22,9 @@ use gunbc_infra::ResourceId;
 use gunbc_ir::cargo::{BinaryArgs, CargoCommand, CodegenSubcommand, Subcommand, Warnings};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::ShellRequest;
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::PathBuf;
 
 // ============================================================================
 // Build Configuration - Single source of truth for build commands
@@ -1163,6 +1166,18 @@ impl ToolRegistry {
         self.tools.push(tool);
     }
 
+    /// Add a tool only when its short name is not already present.
+    pub fn register_if_missing(&mut self, tool: ToolInfo) {
+        if self
+            .tools
+            .iter()
+            .any(|existing| existing.short_name == tool.short_name)
+        {
+            return;
+        }
+        self.tools.push(tool);
+    }
+
     /// Add a meta target to the registry.
     pub fn register_meta(&mut self, target: MetaTarget) {
         self.meta_targets.push(target);
@@ -1228,22 +1243,122 @@ impl ToolRegistry {
             }
         }
 
-        // Manual additions: tools not in the codegen registry.
-        // ci has a handwritten main.rs — it's the bootstrap tool that runs
-        // codegen for other tools, so it can't depend on generated code.
-        registry.register(ToolInfo::workspace(WorkspaceBinary::Ci, "Run CI pipeline").manual());
-        registry.register(
+        let tool_modules = discover_dsl_tool_modules();
+        let pipeline_modules = discover_dsl_pipeline_modules();
+        validate_required_manual_tool_modules(&tool_modules, &pipeline_modules);
+        for tool in manual_workspace_tools_from_dsl_modules(&tool_modules, &pipeline_modules) {
+            registry.register_if_missing(tool);
+        }
+
+        registry
+    }
+}
+
+fn dsl_tools_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl/tools")
+}
+
+fn dsl_pipelines_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl/pipelines")
+}
+
+#[allow(clippy::disallowed_methods)] // Build-time DSL module discovery (not runtime I/O)
+fn discover_dsl_modules(root: &PathBuf, module_kind: &str) -> BTreeSet<String> {
+    let entries = fs::read_dir(root).unwrap_or_else(|error| {
+        panic!(
+            "failed to read DSL {module_kind} discovery root for makegen registry ({}): {error}",
+            root.display()
+        )
+    });
+    let mut modules = BTreeSet::new();
+    for entry in entries {
+        let entry = entry.unwrap_or_else(|error| {
+            panic!(
+                "failed to read DSL {module_kind} discovery entry for makegen registry ({}): {error}",
+                root.display()
+            )
+        });
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("dag") {
+            continue;
+        }
+        let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap_or_else(|| {
+            panic!(
+                "failed to parse UTF-8 {module_kind} module stem for makegen registry discovery: {}",
+                path.display()
+            )
+        });
+        modules.insert(stem.to_string());
+    }
+    modules
+}
+
+fn discover_dsl_tool_modules() -> BTreeSet<String> {
+    discover_dsl_modules(&dsl_tools_root(), "tool")
+}
+
+fn discover_dsl_pipeline_modules() -> BTreeSet<String> {
+    discover_dsl_modules(&dsl_pipelines_root(), "pipeline")
+}
+
+fn validate_required_manual_tool_modules(
+    tool_modules: &BTreeSet<String>,
+    pipeline_modules: &BTreeSet<String>,
+) {
+    const REQUIRED_TOOL_MODULES: &[&str] = &["build", "pragma"];
+    const REQUIRED_PIPELINE_MODULES: &[&str] = &["ci"];
+    let missing_tools: Vec<&str> = REQUIRED_TOOL_MODULES
+        .iter()
+        .copied()
+        .filter(|module| !tool_modules.contains(*module))
+        .collect();
+    let missing_pipelines: Vec<&str> = REQUIRED_PIPELINE_MODULES
+        .iter()
+        .copied()
+        .filter(|module| !pipeline_modules.contains(*module))
+        .collect();
+    if missing_tools.is_empty() && missing_pipelines.is_empty() {
+        return;
+    }
+
+    let mut parts = Vec::new();
+    if !missing_tools.is_empty() {
+        parts.push(format!("tools: {}", missing_tools.join(", ")));
+    }
+    if !missing_pipelines.is_empty() {
+        parts.push(format!("pipelines: {}", missing_pipelines.join(", ")));
+    }
+    panic!(
+        "missing required DSL modules for makegen manual targets: {}",
+        parts.join("; ")
+    );
+}
+
+fn manual_workspace_tools_from_dsl_modules(
+    tool_modules: &BTreeSet<String>,
+    pipeline_modules: &BTreeSet<String>,
+) -> Vec<ToolInfo> {
+    let mut tools = Vec::new();
+    if pipeline_modules.contains("ci") {
+        tools.push(ToolInfo::workspace(WorkspaceBinary::Ci, "Run CI pipeline").manual());
+    }
+    if tool_modules.contains("pragma") {
+        tools.push(
             ToolInfo::workspace(
                 WorkspaceBinary::Pragma,
                 "Generate clippy.toml and pragma allowlists",
             )
             .manual(),
         );
-
-        // build-all has a handwritten main.rs with DAG progress display.
-        // This is the explicit pipeline entrypoint; core build/test/clippy
-        // targets use BuildConfig commands (cargo by default).
-        registry.register(ToolInfo {
+    }
+    if tool_modules.contains("build") {
+        // Keep the historical Makefile target name (`build-all`) to avoid
+        // churn for existing local workflows while sourcing availability
+        // from DSL module discovery.
+        tools.push(ToolInfo {
             invocation: WorkspaceBinary::Build.invocation(),
             short_name: "build-all".to_string(),
             description: "Build, test, and lint with progress display".to_string(),
@@ -1252,9 +1367,8 @@ impl ToolRegistry {
             has_declarative_dag: false,
             needs_generated_cli: false,
         });
-
-        registry
     }
+    tools
 }
 
 #[cfg(test)]
@@ -1312,6 +1426,27 @@ mod tests {
 
         let deps = registry.tools.iter().find(|t| t.short_name == "deps");
         assert!(deps.is_some());
+    }
+
+    #[test]
+    fn test_default_registry_manual_tools_follow_dsl_discovery() {
+        let registry = ToolRegistry::default_registry();
+        assert!(registry.tools.iter().any(|t| t.short_name == "ci"));
+        assert!(registry.tools.iter().any(|t| t.short_name == "pragma"));
+        assert!(registry.tools.iter().any(|t| t.short_name == "build-all"));
+    }
+
+    #[test]
+    fn test_default_registry_has_unique_short_names() {
+        let registry = ToolRegistry::default_registry();
+        let mut seen = std::collections::BTreeSet::new();
+        for tool in &registry.tools {
+            assert!(
+                seen.insert(tool.short_name.clone()),
+                "duplicate tool short_name in makegen registry: {}",
+                tool.short_name
+            );
+        }
     }
 
     #[test]

@@ -2,6 +2,7 @@
 
 **Status**: Draft
 **Date**: 2026-02-07
+**Last reconciled**: 2026-02-18
 **DSL Alignment**: Migration inventory and sequencing input for DSL adoption
 **Track**: B — Migration Targets
 
@@ -46,7 +47,10 @@ Static analysis only. No timing measurements or runtime profiling in this pass. 
 
 ## Execution Model (Critical Bottleneck)
 
-The executor runs **strict topological order, single-threaded**. DAG structure encodes parallelism but the runtime does not exploit it. `core/exec/src/execute.rs`
+The executor now runs a **parallel ready-queue scheduler by default** and falls
+back to sequential mode only when an observer requires ordered output (notably CI/group rendering).  
+Main remaining bottlenecks are orchestration layers that are still sequential
+and missing resource-conflict admission control in the scheduler. `core/exec/src/execute.rs`
 
 ## Workflow Maps (Static)
 
@@ -118,7 +122,7 @@ testgen + pragma ─> guardrails ─┘
 **Parallelization misses**
 - Bootstrap, pragma, testgen can run in parallel after codegen.
 - Test, lint, guardrails, verify can run in parallel after their deps.
-- Executor serializes all nodes.
+- CI/display flows may force sequential execution for ordered group output.
 
 ### gunbc-build DAG
 
@@ -139,7 +143,7 @@ build ─┬─> test ─┐
 - Build + max(test, clippy) + summary.
 
 **Parallelization misses**
-- Test and clippy are independent but serialized by executor.
+- Test and clippy are independent; make sure observers/mode do not force sequential execution.
 
 ### gunbc-codegen (commit/rollback/codegen/cigen)
 
@@ -202,7 +206,7 @@ generate_{t} -> prepare_read_{t} -> execute_read_{t} -> compare_{t} -> execute_w
 - O(N) target generation + O(M) file read/compare/write.
 
 **Parallelization misses**
-- Each target chain is independent but executor is serial.
+- Each target chain is independent; realized parallelism depends on runtime mode and concurrency settings.
 
 ### gunbc-makegen
 
@@ -241,7 +245,7 @@ render_policy   -> upsert policy
 - O(1) renders + 3 file read/compare/write chains.
 
 **Parallelization misses**
-- Three chains can run in parallel but are serialized by executor.
+- Three chains can run in parallel; verify they are not forced sequential by observer mode.
 
 ### gunbc-bootstrap
 
@@ -281,7 +285,7 @@ read_inputs (many in parallel) -> render_doc -> upsert doc
 - O(R) file reads + one render + one upsert chain.
 
 **Parallelization misses**
-- All reads are independent but serialized by executor.
+- All reads are independent; verify execution mode/concurrency settings preserve parallel fan-out.
 
 ### gunbc-gist (tool)
 
@@ -321,7 +325,7 @@ rev-list -> git diff -> render diff -> create gist
 - Snapshot is O(F) file reads and content size. Diff is O(D) where D is diff size.
 
 **Parallelization misses**
-- File reads are independent but serialized by executor.
+- File reads are independent; check for accidental sequential mode in the calling path.
 
 ### gunbc-deps (tool)
 
@@ -399,7 +403,7 @@ prepare -> resolve_auth -> bind_secret -> cloud_credential -> execute -> parse
 
 **Parallelization misses**
 - Cloud credential acquisition and request preparation could overlap if inputs allow.
-- Executor serializes all nodes.
+- CI/display execution mode may force sequential ordering.
 
 ### lib/review (review workflows)
 
@@ -421,7 +425,7 @@ prepare_prompt -> llm_execute (transport) -> parse_review
 
 **Parallelization misses**
 - Multi-source review can parallelize blob fetches.
-- Executor serializes all nodes.
+- Ensure these runs are not pinned to sequential observer mode.
 
 ### lib/cloud-ops / provider DAGs
 
@@ -443,8 +447,8 @@ oidc_exchange -> access_token -> secret_fetch -> parse -> credential
 
 ## Complexity + Bottlenecks (Cross-Cutting)
 
-1. **Executor is serial**
-- All DAG parallelism is theoretical only.
+1. **Parallel execution is partial**
+- Non-CI runs can execute ready nodes in parallel; CI/grouped output and sequential orchestrators still reduce realized concurrency.
 
 2. **Repeated `cargo` invocations**
 - Many workflows run `cargo run` or `cargo clippy` in separate processes.
@@ -639,9 +643,9 @@ oidc_exchange -> access_token -> secret_fetch -> parse -> credential
 - **Reduce `cargo` invocations**
   - Use one orchestrator binary per workflow, or `cargo build --bins` once then run binaries directly.
 
-- **Add executor parallelism**
-  - Ready-queue + worker pool with resource conflict detection.
-  - Reuse existing resource access modeling to prevent races.
+- **Harden executor parallelism**
+  - Keep ready-queue + worker pool as the default path.
+  - Add resource conflict detection/admission control to prevent races.
 
 - **Fast-path freshness**
   - Use `git status --porcelain` + `HEAD` hash to skip per-file scans when clean.
@@ -774,9 +778,9 @@ Cache tuple:
 
 ### Phase 3: Parallel Runtime
 
-1. Implement ready-queue + worker pool executor.
+1. Ready-queue + worker pool executor is implemented as the default non-sequential path.
 2. Enable resource lock gating from declared accesses.
-3. Roll out behind feature flag, then make default after determinism/conflict tests pass.
+3. Validate determinism/conflict behavior under CI + local modes and tune defaults.
 
 ## Tasks
 
@@ -819,7 +823,7 @@ Cache tuple:
 
 **Phase D: Workflow consolidation + parallelism (next)**
 - [ ] Consolidate Makefile + CI + CLI to a single canonical workflow registry.
-- [ ] Add ready-queue executor with resource conflict gating (parallelism).
+- [ ] Add resource-conflict admission control to the existing ready-queue executor.
 - [ ] Add fast-path freshness check to skip full scans on clean repos.
 
 ## Acceptance Criteria (Current Workflow)

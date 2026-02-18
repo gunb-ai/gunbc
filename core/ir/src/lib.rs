@@ -50,6 +50,7 @@ pub mod boundary;
 pub mod builder;
 pub mod cargo;
 pub mod code_ir;
+pub mod codegen_bridge;
 pub mod coerce;
 pub mod compose;
 pub mod contract;
@@ -107,6 +108,7 @@ pub use code_ir::{
     Assert, EnumDef, Expr, FnDef, HelperFn, ImplBlock, Import, Item, MatchArm, SourceFile, Stmt,
     StructDef, TestFile, TestFn, TestSection,
 };
+pub use codegen_bridge::{BridgeEnum, BridgeField, BridgeFunction, BridgeModule, BridgeStruct};
 pub use coerce::{
     classify_coercion, detect_coercions, validate_coercions, CardinalityCoercion, CoercionError,
     CoercionKind, CoercionReport,

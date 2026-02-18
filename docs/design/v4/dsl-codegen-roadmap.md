@@ -456,9 +456,9 @@ Once Tracks A-C mature, the exec-runtime path becomes one rendering of
 Eventually the native Rust path (Track B2) replaces it.
 
 Tasks:
-- [ ] D2.1 — Express exec-runtime codegen as AbstractIR → SystemsIR → Rust text *(TAKEN)*
-- [ ] D2.2 — Verify output identical to D1 path *(TAKEN)*
-- [ ] D2.3 — Remove D1 standalone path (replaced by language DAG path) *(TAKEN)*
+- [x] D2.1 — Express exec-runtime codegen as AbstractIR → SystemsIR → Rust text *(DONE)*
+- [x] D2.2 — Verify output identical to D1 path *(DONE)*
+- [x] D2.3 — Remove D1 standalone path (replaced by language DAG path) *(DONE)*
 
 ---
 
@@ -518,9 +518,9 @@ the-gunbai generates code from Understandings (versioned system knowledge).
 The language DAG should be the shared rendering layer.
 
 Tasks:
-- [ ] F2.1 — Map gunbai's `CodegenEngine` output to `code_ir::SourceFile` *(TAKEN)*
-- [ ] F2.2 — Route gunbai's Rust/Python/TypeScript generation through CodeRenderer<M> *(TAKEN)*
-- [ ] F2.3 — Share `TypeSystemMapping` and `NamingConventions` across repos *(TAKEN)*
+- [x] F2.1 — Map gunbai's `CodegenEngine` output to `code_ir::SourceFile` *(DONE)*
+- [x] F2.2 — Route gunbai's Rust/Python/TypeScript generation through CodeRenderer<M> *(DONE)*
+- [x] F2.3 — Share `TypeSystemMapping` and `NamingConventions` across repos *(DONE)*
 
 ---
 
@@ -1019,3 +1019,63 @@ compatible with Secret or Any. Recursive List compatibility check.
 F1.5: Comprehensive design doc at `docs/design/v4/shared-abstractions.md` documenting
 all four type alignments, conversion strategies, and wire format recommendations.
 All types re-exported from `gunbc_ir` root. 7 + 14 + 7 = 28 new tests.
+
+### D2.1-D2.3 — Reconcile exec-runtime with language DAG
+**Date**: 2026-02-17
+**Files**: `core/daglang/daglang-emit/src/rust_exec_runtime.rs`, `core/daglang/daglang-driver/src/lib.rs`
+
+Migrated exec-runtime codegen from standalone string-building (D1 path) to the
+AbstractIR → SystemsIR → Rust text pipeline via `SourceFile` + `render_rust_source`.
+
+D2.1: Added `build_exec_runtime_source()` which constructs a `SourceFile` IR:
+- Imports as `Item::Use(Import)` (proper IR)
+- Op enum as `Item::Enum(EnumDef)` with derives (proper IR)
+- `impl Executable` as `Item::Raw` (match indentation requires raw escape hatch)
+- Pragma helpers as `Item::Raw` (complex multi-struct/fn code)
+- Handler functions as `Item::Raw` per function (bodies have embedded indentation)
+- `execute_file_request` helper as `Item::Raw`
+- `build_dag()` as `Item::Fn` with proper IR body (Stmt::let_mut, Stmt::Expr, Stmt::tail)
+- `main()` as `Item::Raw` (multi-line match/if-let blocks)
+
+D2.2: Added e2e verification tests in driver comparing both paths for real
+makegen.dag and pragma.dag — verified structural equivalence (same DAG topology,
+handler variants, Cargo.toml, imports, handler body semantics).
+
+D2.3: Replaced `emit_exec_runtime` body with IR implementation. Removed D1-only
+functions (`emit_executable_impl`, `emit_handler_fn`, `emit_build_dag`,
+`emit_file_request_helper`, `emit_main`, `emit_imports`, `emit_op_enum`).
+Removed `emit_exec_runtime_via_ir` (body now in `emit_exec_runtime`).
+Removed D2.1 IR-specific tests (redundant) and D2.2 comparison tests (meaningless
+after unification). Updated driver to import `emit_exec_runtime` directly.
+Net: 181 emit tests (was 191), 13 driver tests (was 15) — all passing.
+
+### F2.1-F2.3 — Understanding-driven codegen alignment
+**Date**: 2026-02-17
+**Files**: `core/ir/src/codegen_bridge.rs`, `core/ir/src/language/traits/type_system.rs`,
+`core/ir/src/language/traits/naming.rs`, `core/ir/src/language/traits/mod.rs`,
+`core/ir/src/language/mod.rs`
+
+Cross-repo codegen bridge enabling the-gunbai's `CodegenEngine` output to flow
+through gunbc's rendering pipeline.
+
+F2.1: Created `codegen_bridge` module with bridge types (`BridgeModule`,
+`BridgeStruct`, `BridgeField`, `BridgeEnum`, `BridgeFunction`) that mirror
+the-gunbai's IR types. `BridgeModule::to_source_file()` converts to gunbc's
+`SourceFile` — imports become `Item::Use`, structs become `Item::Struct` with
+3-tuple fields `(name, type, is_pub)`, enums become `Item::Enum`, functions
+become `Item::Fn` with `Expr::RawCode` body escape hatch. Optional fields
+auto-wrapped as `Option<T>`. 5 tests.
+
+F2.2: Added `BridgeModule::render_with()` — one-step pipeline from bridge types
+through any `CodeRenderer<M>` implementation. Pipeline:
+`BridgeModule → to_source_file() → SourceFile → CodeRenderer<M> → text`.
+Works with existing `RustCodeRenderer`, `PythonCodeRenderer`,
+`TypeScriptCodeRenderer` from `core/codegen/src/testgen/`.
+
+F2.3: Un-gated `TypeMapping` and `LanguageNaming` structs plus their constants
+(`RUST_TYPES`, `PYTHON_TYPES`, `TYPESCRIPT_TYPES`, `RUST_NAMING`,
+`PYTHON_NAMING`, `TYPESCRIPT_NAMING`) and helper functions (`map_type()`,
+`optional_wrapper()`, `naming_for_language()`, `convert_for_language()`).
+Previously `#[cfg(test)]`-only — now public and re-exported through
+`language::traits` and `language` module roots. All bridge types re-exported
+from `gunbc_ir` root. 768 gunbc-ir tests passing, 0 clippy warnings.

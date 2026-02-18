@@ -98,7 +98,7 @@ fn workspace_subdag_discovery_avoids_tool_registry_inventory() {
 
     assert!(
         !content.contains("iter_tool_targets"),
-        "workspace DAG discovery must source from dsl/tools, not iter_tool_targets()"
+        "workspace DAG discovery must source from DSL module discovery, not iter_tool_targets()"
     );
     assert!(
         !content.contains("gunbc_tool_registry"),

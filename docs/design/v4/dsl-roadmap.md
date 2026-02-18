@@ -1385,7 +1385,7 @@ Replace registration islands with filesystem discovery + module graph.
 
 **Metric**: manual tool registrations → **0**, stringly ID references → **0**
 
-**Current cutover (2026-02-18):** `gunbc-dag` workspace composition now discovers tool modules from `dsl/tools/*.dag` directly. Registry metadata is no longer used for workspace DAG discovery, and unmapped discovered modules fail fast. The workspace now composes `build`, `makegen`, `clippy`, `deps`, `bootstrap`, `codegen`, `docgen`, `gist`, `pragma`, `testgen`, and `dag_viz` from discovered DSL modules.
+**Current cutover (2026-02-18):** `gunbc-dag` workspace composition now discovers modules directly from DSL files (`dsl/tools/*.dag` and `dsl/pipelines/*.dag`). Registry metadata and unconditional CI wiring are no longer used for workspace DAG composition; unmapped discovered modules fail fast. The workspace now composes `build`, `makegen`, `clippy`, `deps`, `bootstrap`, `codegen`, `docgen`, `gist`, `pragma`, `testgen`, `dag_viz`, and `ci` from discovered DSL modules. `makegen` manual workspace targets now also follow DSL discovery (`build`/`pragma` from tools, `ci` from pipelines) instead of manual list drift.
 
 #### C2: Emission Unification (collapse rendering systems)
 

@@ -8,7 +8,7 @@
 
 ## Problem
 
-Browser opening is currently implemented inline in `gunbc-dag/src/dag_viz/graph.rs` (`execute_open_browser`, lines 556-597). It handles WSL/macOS/Linux but:
+Browser opening is currently implemented inline in `gunbc-dag/src/dag_viz/graph.rs` (`execute_open_browser`, around lines 451-486). It handles WSL/macOS/Linux but:
 
 1. **Not shared** -- only usable by dag-viz, not by other tools
 2. **Platform enum is incomplete** -- `lib/tools/deps/src/platform.rs` has `Platform::Linux` but does not distinguish WSL from native Linux
@@ -52,4 +52,4 @@ fn execute_open_browser(inputs: HashMap<String, Value>) -> Result<HashMap<String
 - gunb.ai platform modeling
 - the-gunbai environment detection
 - Current `Platform` enum: `lib/tools/deps/src/platform.rs`
-- Current inline implementation: `gunbc-dag/src/dag_viz/graph.rs:556-597`
+- Current inline implementation: `gunbc-dag/src/dag_viz/graph.rs:451`

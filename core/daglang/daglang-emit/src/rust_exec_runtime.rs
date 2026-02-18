@@ -1,18 +1,16 @@
 //! Rust exec-runtime codegen (Layer 1 fast path).
 //!
 //! Generates a standalone Rust crate that builds `Dag<Op>` and calls
-//! `gunbc-exec` to run it. This is the bootstrap path — bypasses the
-//! language DAG (AbstractIR → target IR → render) for immediate results.
+//! `gunbc-exec` to run it. Routes through the AbstractIR → SystemsIR →
+//! Rust text pipeline via [`SourceFile`] + [`render_rust_source`].
 //!
 //! The generated crate contains:
-//! - An `Op` enum with one variant per handler kind used in the DAG (D1.1)
-//! - `impl Executable for Op` with match dispatch (D1.2)
-//! - Handler bodies ported from `daglang-exec-bridge` (D1.3)
-//! - `fn build_dag() -> Dag<Op>` with hardcoded graph construction (D1.4)
-//! - `fn main()` with CLI arg parsing + `execute_with_mode_and_inputs` (D1.5)
-//! - `Cargo.toml` with `gunbc-ir`/`gunbc-exec`/`gunbc-lib-transport` deps (D1.6)
-//!
-//! **Owned by**: Task 3 (dsl-codegen-tasks.md)
+//! - An `Op` enum with one variant per handler kind used in the DAG
+//! - `impl Executable for Op` with match dispatch
+//! - Handler bodies ported from `daglang-exec-bridge`
+//! - `fn build_dag() -> Dag<Op>` with hardcoded graph construction
+//! - `fn main()` with CLI arg parsing + `execute_with_mode_and_inputs`
+//! - `Cargo.toml` with `gunbc-ir`/`gunbc-exec`/`gunbc-lib-transport` deps
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -44,7 +42,7 @@ pub fn emit_exec_runtime(
     let handler_kinds = collect_handler_kinds(&classified);
     let source = build_exec_runtime_source(dag, module_name, &classified, &handler_kinds);
     let main_rs = crate::render_rust::render_rust_source(&source);
-    let cargo_toml = emit_cargo_toml(module_name);
+    let cargo_toml = emit_cargo_toml(module_name, &handler_kinds);
 
     Ok(vec![
         EmittedFile {
@@ -243,40 +241,8 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
 }
 
 // ===========================================================================
-// D1.2 + D1.3 — impl Executable + handler bodies (LEGACY — kept for handler_body)
+// Handler helpers (shared by IR path)
 // ===========================================================================
-
-fn _unused_emit_executable_impl(out: &mut String, kinds: &BTreeSet<HandlerKind>) {
-    writeln!(out, "impl Executable for Op {{").unwrap();
-    writeln!(
-        out,
-        "    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {{"
-    )
-    .unwrap();
-    writeln!(out, "        match self {{").unwrap();
-    for kind in kinds {
-        writeln!(
-            out,
-            "            Self::{} => execute_{}(inputs),",
-            kind.variant_name(),
-            to_snake(kind.variant_name())
-        )
-        .unwrap();
-    }
-    writeln!(out, "        }}").unwrap();
-    writeln!(out, "    }}").unwrap();
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
-
-    if requires_pragma_helpers(kinds) {
-        emit_pragma_helpers(out);
-    }
-
-    // Emit handler bodies for each used handler kind.
-    for kind in kinds {
-        emit_handler_fn(out, *kind);
-    }
-}
 
 fn requires_pragma_helpers(kinds: &BTreeSet<HandlerKind>) -> bool {
     kinds.contains(&HandlerKind::RenderPragmaClippyToml)
@@ -380,22 +346,6 @@ fn parse_pragma_directives_list(
 
 "#,
     );
-}
-
-fn emit_handler_fn(out: &mut String, kind: HandlerKind) {
-    let fn_name = format!("execute_{}", to_snake(kind.variant_name()));
-    let body = handler_body(kind);
-    writeln!(
-        out,
-        "fn {fn_name}({params}) -> Result<HashMap<String, Value>, ExecError> {{\n{body}}}",
-        params = if body.contains("inputs.get(") {
-            "inputs: HashMap<String, Value>"
-        } else {
-            "_inputs: HashMap<String, Value>"
-        }
-    )
-    .unwrap();
-    writeln!(out).unwrap();
 }
 
 /// Return the body (inside braces) for each handler kind.
@@ -585,52 +535,6 @@ fn handler_body(kind: HandlerKind) -> &'static str {
     }
 }
 
-// ===========================================================================
-// D1.4 — DAG construction
-// ===========================================================================
-
-fn emit_build_dag(out: &mut String, dag: &Dag<LoweredOp>, classified: &[ClassifiedNode]) {
-    writeln!(out, "fn build_dag() -> Dag<Op> {{").unwrap();
-    writeln!(out, "    let mut dag = Dag::new();").unwrap();
-
-    // Emit nodes.
-    for cn in classified {
-        let inputs_code = cn
-            .inputs
-            .iter()
-            .map(|(name, ty, cardinality)| render_port_literal(name, ty, *cardinality))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let outputs_code = cn
-            .outputs
-            .iter()
-            .map(|(name, ty, cardinality)| render_port_literal(name, ty, *cardinality))
-            .collect::<Vec<_>>()
-            .join(", ");
-        writeln!(
-            out,
-            r#"    dag.add_node(Node::opaque("{}", vec![{inputs_code}], vec![{outputs_code}], Op::{}));"#,
-            cn.node_id,
-            cn.handler.variant_name()
-        )
-        .unwrap();
-    }
-
-    // Emit edges.
-    for edge in &dag.edges {
-        writeln!(
-            out,
-            r#"    dag.add_edge(Edge::new("{}", "{}", "{}", "{}"));"#,
-            edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
-        )
-        .unwrap();
-    }
-
-    writeln!(out, "    dag").unwrap();
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
-}
-
 fn render_port_literal(name: &str, ty: &str, cardinality: Cardinality) -> String {
     if cardinality == Cardinality::ZERO {
         format!(r#"Port::void("{name}")"#)
@@ -655,144 +559,25 @@ fn render_port_literal(name: &str, ty: &str, cardinality: Cardinality) -> String
 }
 
 // ===========================================================================
-// Helper: execute_file_request (shared by read/write transport handlers)
+// Cargo.toml
 // ===========================================================================
 
-fn emit_file_request_helper(out: &mut String, kinds: &BTreeSet<HandlerKind>) {
-    let needs_helper = kinds.contains(&HandlerKind::ExecuteReadContent)
-        || kinds.contains(&HandlerKind::ExecuteTransport);
-    if !needs_helper {
-        return;
-    }
-    writeln!(
-        out,
-        "fn execute_file_request(request: &FileRequest) -> FileResponse {{"
-    )
-    .unwrap();
-    writeln!(
-        out,
-        "    match execute_transport(&TransportRequest::File(request.clone())) {{"
-    )
-    .unwrap();
-    writeln!(
-        out,
-        "        Ok(TransportResponse::File(response)) => response,"
-    )
-    .unwrap();
-    writeln!(out, "        Ok(_other) => FileResponse::error(").unwrap();
-    writeln!(out, "            request.path.clone(), request.operation,").unwrap();
-    writeln!(
-        out,
-        r#"            "transport executor returned non-file response for file request","#
-    )
-    .unwrap();
-    writeln!(out, "        ),").unwrap();
-    writeln!(out, "        Err(error) => FileResponse::error(request.path.clone(), request.operation, error.to_string()),").unwrap();
-    writeln!(out, "    }}").unwrap();
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
-}
-
-// ===========================================================================
-// D1.5 — main()
-// ===========================================================================
-
-fn emit_main(out: &mut String, dag: &Dag<LoweredOp>) {
-    // Collect entrypoint ports (input ports with no incoming edge).
-    let connected_inputs: std::collections::HashSet<(String, String)> = dag
-        .edges
-        .iter()
-        .map(|e| (e.to_node.0.clone(), e.to_port.0.clone()))
-        .collect();
-
-    let mut entrypoints: Vec<(String, String, String)> = Vec::new(); // (node_id, port_name, type_id)
-    for node in &dag.nodes {
-        for port in &node.inputs {
-            if port.name.0.starts_with("res:") || port.name.0.starts_with("__") {
-                continue;
-            }
-            let key = (node.id.0.clone(), port.name.0.clone());
-            if !connected_inputs.contains(&key) {
-                entrypoints.push((
-                    node.id.0.clone(),
-                    port.name.0.clone(),
-                    port.type_id.0.clone(),
-                ));
-            }
-        }
-    }
-
-    // Also emit the execute_file_request helper before main since handler bodies reference it.
-    // (Already called earlier in the generation sequence, but we need to place it here.)
-
-    writeln!(out, "fn main() {{").unwrap();
-    writeln!(
-        out,
-        "    let args: Vec<String> = std::env::args().collect();"
-    )
-    .unwrap();
-    writeln!(out).unwrap();
-
-    // Generate CLI arg parsing for entrypoint ports.
-    if !entrypoints.is_empty() {
-        writeln!(out, "    // Parse entrypoint values from CLI args.").unwrap();
-        writeln!(
-            out,
-            "    let mut input_mocks = gunbc_exec::BoundaryMocks::new();"
-        )
-        .unwrap();
-        for (i, (node_id, port_name, _type_id)) in entrypoints.iter().enumerate() {
-            let arg_idx = i + 1;
-            writeln!(out, r#"    if let Some(val) = args.get({arg_idx}) {{"#).unwrap();
-            writeln!(
-                out,
-                r#"        input_mocks.set_input("{node_id}", "{port_name}", Value::Str(val.clone()));"#
-            )
-            .unwrap();
-            writeln!(out, "    }}").unwrap();
-        }
-        writeln!(out).unwrap();
-    }
-
-    writeln!(out, "    let dag = build_dag();").unwrap();
-    if entrypoints.is_empty() {
-        writeln!(
-            out,
-            "    let result = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, None);"
-        )
-        .unwrap();
-    } else {
-        writeln!(out, "    let result = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks));").unwrap();
-    }
-    writeln!(out, "    match result {{").unwrap();
-    writeln!(out, "        Ok(log) => {{").unwrap();
-    writeln!(
-        out,
-        r#"            eprintln!("execution completed: {{}} nodes executed", log.entries.len());"#
-    )
-    .unwrap();
-    writeln!(out, "            for entry in &log.entries {{").unwrap();
-    writeln!(
-        out,
-        r#"                eprintln!("  [{{}}] intercepted={{}}", entry.node_id, entry.was_intercepted);"#
-    )
-    .unwrap();
-    writeln!(out, "            }}").unwrap();
-    writeln!(out, "        }}").unwrap();
-    writeln!(out, "        Err(e) => {{").unwrap();
-    writeln!(out, r#"            eprintln!("execution failed: {{e}}");"#).unwrap();
-    writeln!(out, "            std::process::exit(1);").unwrap();
-    writeln!(out, "        }}").unwrap();
-    writeln!(out, "    }}").unwrap();
-    writeln!(out, "}}").unwrap();
-}
-
-// ===========================================================================
-// D1.6 — Cargo.toml
-// ===========================================================================
-
-fn emit_cargo_toml(module_name: &str) -> String {
+fn emit_cargo_toml(module_name: &str, handler_kinds: &BTreeSet<HandlerKind>) -> String {
     let crate_name = module_name.replace('.', "-");
+    let needs_helper = handler_kinds.contains(&HandlerKind::ExecuteReadContent)
+        || handler_kinds.contains(&HandlerKind::ExecuteTransport);
+    let needs_serde_json = handler_kinds.contains(&HandlerKind::LoadRegistry);
+
+    let mut deps = String::new();
+    deps.push_str("gunbc-ir = { path = \"../../core/ir\" }\n");
+    deps.push_str("gunbc-exec = { path = \"../../core/exec\" }\n");
+    if needs_helper {
+        deps.push_str("gunbc-lib-transport = { path = \"../../lib/transport\" }\n");
+    }
+    if needs_serde_json {
+        deps.push_str("serde_json = \"1\"\n");
+    }
+
     format!(
         r#"# Generated by daglang-emit (exec-runtime fast path).
 # DO NOT EDIT — regenerate with `daglang compile`.
@@ -803,11 +588,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gunbc-ir = {{ path = "../../core/ir" }}
-gunbc-exec = {{ path = "../../core/exec" }}
-gunbc-lib-transport = {{ path = "../../lib/transport" }}
-serde_json = "1"
-
+{deps}
 [workspace]
 "#
     )
@@ -829,37 +610,8 @@ fn to_snake(s: &str) -> String {
 }
 
 // ===========================================================================
-// D2.1 — IR-based exec-runtime codegen
+// IR construction helpers
 // ===========================================================================
-
-/// Emit a standalone Rust crate from a lowered DAG, routing through the
-/// AbstractIR → SystemsIR → Rust text pipeline.
-///
-/// Produces the same structural output as [`emit_exec_runtime`] but
-/// expresses the generated code as a [`SourceFile`] rendered by
-/// [`render_rust_source`]. This is the replacement path that eliminates
-/// the standalone string-building codegen.
-pub fn emit_exec_runtime_via_ir(
-    dag: &Dag<LoweredOp>,
-    module_name: &str,
-) -> Result<Vec<EmittedFile>, ExecRuntimeError> {
-    let classified = classify_nodes(dag)?;
-    let handler_kinds = collect_handler_kinds(&classified);
-    let source = build_exec_runtime_source(dag, module_name, &classified, &handler_kinds);
-    let main_rs = crate::render_rust::render_rust_source(&source);
-    let cargo_toml = emit_cargo_toml(module_name);
-
-    Ok(vec![
-        EmittedFile {
-            path: "src/main.rs".to_string(),
-            content: main_rs,
-        },
-        EmittedFile {
-            path: "Cargo.toml".to_string(),
-            content: cargo_toml,
-        },
-    ])
-}
 
 /// Build the SourceFile IR for the exec-runtime crate.
 #[allow(clippy::vec_init_then_push)]
@@ -898,24 +650,45 @@ fn build_exec_runtime_source(
             "Value".into(),
         ],
     }));
-    items.push(Item::Use(Import {
-        path: vec!["gunbc_ir".into(), "transport".into()],
-        items: vec![
-            "FileOp".into(),
-            "FileRequest".into(),
-            "FileResponse".into(),
-            "TransportRequest".into(),
-            "TransportResponse".into(),
-        ],
-    }));
-    items.push(Item::Use(Import {
-        path: vec!["gunbc_lib_transport".into(), "executor".into()],
-        items: vec!["execute_transport".into()],
-    }));
-    items.push(Item::Use(Import {
-        path: vec!["serde_json".into()],
-        items: vec!["json".into()],
-    }));
+    let needs_transport = handler_kinds.iter().any(|k| {
+        matches!(
+            k,
+            HandlerKind::Entrypoint
+                | HandlerKind::PragmaEntrypoint
+                | HandlerKind::PrepareReadContent
+                | HandlerKind::ExecuteReadContent
+                | HandlerKind::PrepareWriteContent
+                | HandlerKind::CompareContent
+                | HandlerKind::ExecuteTransport
+        )
+    });
+    let needs_helper = handler_kinds.contains(&HandlerKind::ExecuteReadContent)
+        || handler_kinds.contains(&HandlerKind::ExecuteTransport);
+
+    if needs_transport {
+        items.push(Item::Use(Import {
+            path: vec!["gunbc_ir".into(), "transport".into()],
+            items: vec![
+                "FileOp".into(),
+                "FileRequest".into(),
+                "FileResponse".into(),
+                "TransportRequest".into(),
+                "TransportResponse".into(),
+            ],
+        }));
+    }
+    if needs_helper {
+        items.push(Item::Use(Import {
+            path: vec!["gunbc_lib_transport".into(), "executor".into()],
+            items: vec!["execute_transport".into()],
+        }));
+    }
+    if handler_kinds.contains(&HandlerKind::LoadRegistry) {
+        items.push(Item::Use(Import {
+            path: vec!["serde_json".into()],
+            items: vec!["json".into()],
+        }));
+    }
 
     // ── Op enum (proper IR) ──
     items.push(Item::Enum(EnumDef {
@@ -951,8 +724,6 @@ fn build_exec_runtime_source(
     }
 
     // ── execute_file_request helper (Raw) ──
-    let needs_helper = handler_kinds.contains(&HandlerKind::ExecuteReadContent)
-        || handler_kinds.contains(&HandlerKind::ExecuteTransport);
     if needs_helper {
         items.push(build_file_request_helper_raw());
     }
@@ -1329,9 +1100,15 @@ mod tests {
         );
         assert!(toml.contains("gunbc-ir"), "should depend on gunbc-ir");
         assert!(toml.contains("gunbc-exec"), "should depend on gunbc-exec");
+        // sample_makegen_dag has LoadRegistry → needs serde_json
         assert!(
-            toml.contains("gunbc-lib-transport"),
-            "should depend on gunbc-lib-transport"
+            toml.contains("serde_json"),
+            "should depend on serde_json (LoadRegistry uses json!)"
+        );
+        // sample_makegen_dag has no transport handlers → no gunbc-lib-transport
+        assert!(
+            !toml.contains("gunbc-lib-transport"),
+            "should not depend on gunbc-lib-transport (no transport handlers)"
         );
     }
 
@@ -1651,419 +1428,4 @@ mod tests {
         assert_eq!(to_snake("ExecuteTransport"), "execute_transport");
     }
 
-    // =======================================================================
-    // D2.1 — IR path tests
-    // =======================================================================
-
-    #[test]
-    fn ir_path_produces_two_files() {
-        let dag = sample_makegen_dag();
-        let files = emit_exec_runtime_via_ir(&dag, "tools.makegen").expect("should succeed");
-        assert_eq!(files.len(), 2);
-        assert_eq!(files[0].path, "src/main.rs");
-        assert_eq!(files[1].path, "Cargo.toml");
-    }
-
-    #[test]
-    fn ir_path_contains_op_enum() {
-        let dag = sample_makegen_dag();
-        let files = emit_exec_runtime_via_ir(&dag, "tools.makegen").expect("should succeed");
-        let main_rs = &files[0].content;
-        assert!(main_rs.contains("enum Op {"), "should contain Op enum");
-        assert!(
-            main_rs.contains("LoadRegistry"),
-            "should have LoadRegistry variant"
-        );
-        assert!(
-            main_rs.contains("RenderMakefile"),
-            "should have RenderMakefile variant"
-        );
-    }
-
-    #[test]
-    fn ir_path_contains_executable_impl() {
-        let dag = sample_makegen_dag();
-        let files = emit_exec_runtime_via_ir(&dag, "tools.makegen").expect("should succeed");
-        let main_rs = &files[0].content;
-        assert!(
-            main_rs.contains("impl Executable for Op"),
-            "should have Executable impl"
-        );
-        assert!(
-            main_rs.contains("fn execute("),
-            "should have execute method"
-        );
-    }
-
-    #[test]
-    fn ir_path_contains_handler_functions() {
-        let dag = sample_makegen_dag();
-        let files = emit_exec_runtime_via_ir(&dag, "tools.makegen").expect("should succeed");
-        let main_rs = &files[0].content;
-        assert!(
-            main_rs.contains("fn execute_load_registry"),
-            "should emit load_registry handler"
-        );
-        assert!(
-            main_rs.contains("fn execute_render_makefile"),
-            "should emit render_makefile handler"
-        );
-    }
-
-    #[test]
-    fn ir_path_contains_build_dag() {
-        let dag = sample_makegen_dag();
-        let files = emit_exec_runtime_via_ir(&dag, "tools.makegen").expect("should succeed");
-        let main_rs = &files[0].content;
-        assert!(
-            main_rs.contains("fn build_dag()"),
-            "should contain build_dag"
-        );
-        assert!(main_rs.contains("Dag::new()"), "should construct Dag");
-        assert!(main_rs.contains("dag.add_node"), "should add nodes");
-        assert!(main_rs.contains("dag.add_edge"), "should add edges");
-    }
-
-    #[test]
-    fn ir_path_contains_main_fn() {
-        let dag = sample_makegen_dag();
-        let files = emit_exec_runtime_via_ir(&dag, "tools.makegen").expect("should succeed");
-        let main_rs = &files[0].content;
-        assert!(
-            main_rs.contains("fn main()"),
-            "should contain main function"
-        );
-        assert!(
-            main_rs.contains("execute_with_mode_and_inputs"),
-            "should call executor"
-        );
-    }
-
-    #[test]
-    fn ir_path_cargo_toml_identical_to_d1() {
-        let dag = sample_makegen_dag();
-        let d1_files = emit_exec_runtime(&dag, "tools.makegen").expect("D1 should succeed");
-        let ir_files =
-            emit_exec_runtime_via_ir(&dag, "tools.makegen").expect("IR should succeed");
-        assert_eq!(
-            d1_files[1].content, ir_files[1].content,
-            "Cargo.toml should be identical"
-        );
-    }
-
-    #[test]
-    fn ir_path_structural_equivalence_with_d1() {
-        let dag = sample_makegen_dag();
-        let d1_files = emit_exec_runtime(&dag, "tools.makegen").expect("D1 should succeed");
-        let ir_files =
-            emit_exec_runtime_via_ir(&dag, "tools.makegen").expect("IR should succeed");
-
-        let d1_main = &d1_files[0].content;
-        let ir_main = &ir_files[0].content;
-
-        // Same number of add_node calls.
-        let d1_nodes = d1_main.matches("dag.add_node").count();
-        let ir_nodes = ir_main.matches("dag.add_node").count();
-        assert_eq!(d1_nodes, ir_nodes, "same number of add_node calls");
-
-        // Same number of add_edge calls.
-        let d1_edges = d1_main.matches("dag.add_edge").count();
-        let ir_edges = ir_main.matches("dag.add_edge").count();
-        assert_eq!(d1_edges, ir_edges, "same number of add_edge calls");
-
-        // Same handler variants.
-        assert!(ir_main.contains("LoadRegistry"));
-        assert!(ir_main.contains("RenderMakefile"));
-
-        // Same structural sections.
-        assert!(ir_main.contains("enum Op {"));
-        assert!(ir_main.contains("impl Executable for Op"));
-        assert!(ir_main.contains("fn build_dag()"));
-        assert!(ir_main.contains("fn main()"));
-    }
-
-    #[test]
-    fn ir_path_full_content_upsert_chain() {
-        let mut dag = Dag::new();
-        dag.add_node(Node::opaque(
-            "load_registry",
-            vec![],
-            vec![Port::scalar("registry", "ToolRegistry")],
-            LoweredOp::Callable {
-                module: "tools.makegen".into(),
-                kind: CallableKind::Fn,
-                name: "load_registry".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "render_makefile",
-            vec![Port::scalar("registry", "ToolRegistry")],
-            vec![Port::scalar("content", "String")],
-            LoweredOp::Callable {
-                module: "tools.makegen".into(),
-                kind: CallableKind::Fn,
-                name: "render_makefile".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "makegen",
-            vec![Port::scalar("path", "String")],
-            vec![
-                Port::scalar("path_out", "String"),
-                Port::scalar("written", "Bool"),
-            ],
-            LoweredOp::Callable {
-                module: "tools.makegen".into(),
-                kind: CallableKind::Func,
-                name: "makegen".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "prepare_read_makegen",
-            vec![Port::scalar("path", "String")],
-            vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
-                module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
-                name: "content_upsert::prepare_read_makegen".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "execute_read_makegen",
-            vec![Port::scalar("request", "TransportRequest")],
-            vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
-                module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
-                name: "content_upsert::execute_read_makegen".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "compare_makegen_content",
-            vec![
-                Port::scalar("expected_content", "String"),
-                Port::scalar("response", "TransportResponse"),
-            ],
-            vec![Port::scalar("fresh", "Bool"), Port::scalar("skip", "Bool")],
-            LoweredOp::Callable {
-                module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
-                name: "content_upsert::compare_makegen_content".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "prepare_write_makegen",
-            vec![
-                Port::scalar("content", "String"),
-                Port::scalar("path", "String"),
-            ],
-            vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
-                module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
-                name: "content_upsert::prepare_write_makegen".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "execute_makegen_transport",
-            vec![
-                Port::scalar("request", "TransportRequest"),
-                Port::scalar("skip", "Bool"),
-            ],
-            vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
-                module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
-                name: "content_upsert::execute_makegen_transport".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-            },
-        ));
-
-        dag.add_edge(Edge::new(
-            "load_registry",
-            "registry",
-            "render_makefile",
-            "registry",
-        ));
-        dag.add_edge(Edge::new(
-            "makegen",
-            "path_out",
-            "prepare_read_makegen",
-            "path",
-        ));
-        dag.add_edge(Edge::new(
-            "prepare_read_makegen",
-            "request",
-            "execute_read_makegen",
-            "request",
-        ));
-        dag.add_edge(Edge::new(
-            "render_makefile",
-            "content",
-            "compare_makegen_content",
-            "expected_content",
-        ));
-        dag.add_edge(Edge::new(
-            "execute_read_makegen",
-            "response",
-            "compare_makegen_content",
-            "response",
-        ));
-        dag.add_edge(Edge::new(
-            "render_makefile",
-            "content",
-            "prepare_write_makegen",
-            "content",
-        ));
-        dag.add_edge(Edge::new(
-            "makegen",
-            "path_out",
-            "prepare_write_makegen",
-            "path",
-        ));
-        dag.add_edge(Edge::new(
-            "prepare_write_makegen",
-            "request",
-            "execute_makegen_transport",
-            "request",
-        ));
-        dag.add_edge(Edge::new(
-            "compare_makegen_content",
-            "skip",
-            "execute_makegen_transport",
-            "skip",
-        ));
-
-        let files =
-            emit_exec_runtime_via_ir(&dag, "tools.makegen").expect("IR path should succeed");
-        let main_rs = &files[0].content;
-
-        // All handler kinds should be present.
-        assert!(main_rs.contains("LoadRegistry"), "missing LoadRegistry");
-        assert!(main_rs.contains("RenderMakefile"), "missing RenderMakefile");
-        assert!(main_rs.contains("Entrypoint"), "missing Entrypoint");
-        assert!(
-            main_rs.contains("PrepareReadContent"),
-            "missing PrepareReadContent"
-        );
-        assert!(
-            main_rs.contains("ExecuteReadContent"),
-            "missing ExecuteReadContent"
-        );
-        assert!(main_rs.contains("CompareContent"), "missing CompareContent");
-        assert!(
-            main_rs.contains("PrepareWriteContent"),
-            "missing PrepareWriteContent"
-        );
-        assert!(
-            main_rs.contains("ExecuteTransport"),
-            "missing ExecuteTransport"
-        );
-
-        // DAG topology.
-        let add_node_count = main_rs.matches("dag.add_node").count();
-        assert_eq!(
-            add_node_count, 8,
-            "expected 8 add_node calls, got {add_node_count}"
-        );
-        let add_edge_count = main_rs.matches("dag.add_edge").count();
-        assert_eq!(
-            add_edge_count, 9,
-            "expected 9 add_edge calls, got {add_edge_count}"
-        );
-
-        // Entrypoint parsing.
-        assert!(
-            main_rs.contains("input_mocks"),
-            "should set up input mocks for entrypoints"
-        );
-
-        // File request helper.
-        assert!(
-            main_rs.contains("fn execute_file_request"),
-            "should include file request helper"
-        );
-    }
-
-    #[test]
-    fn ir_path_supports_pragma_nodes() {
-        let mut dag = Dag::new();
-        dag.add_node(Node::opaque(
-            "tools.pragma::render_clippy_toml",
-            vec![
-                Port::scalar("directives", "List<PragmaDirective>"),
-                Port::scalar("__deps", "Any"),
-            ],
-            vec![Port::scalar("return", "String")],
-            LoweredOp::Callable {
-                module: "tools.pragma".into(),
-                kind: CallableKind::Fn,
-                name: "render_clippy_toml".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "prepare_read_pragma",
-            vec![Port::scalar("path", "String")],
-            vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
-                module: "tools.pragma".into(),
-                kind: CallableKind::Pattern,
-                name: "content_upsert::prepare_read_pragma".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "tools.pragma::pragma",
-            vec![
-                Port::scalar("directives", "List<PragmaDirective>"),
-                Port::scalar("__deps", "Any"),
-            ],
-            vec![
-                Port::scalar("clippy_written", "Bool"),
-                Port::scalar("allowlist_written", "Bool"),
-                Port::scalar("policy_written", "Bool"),
-            ],
-            LoweredOp::Callable {
-                module: "tools.pragma".into(),
-                kind: CallableKind::Func,
-                name: "pragma".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-            },
-        ));
-
-        let files =
-            emit_exec_runtime_via_ir(&dag, "tools.pragma").expect("pragma IR emit should succeed");
-        let main_rs = &files[0].content;
-        assert!(
-            main_rs.contains("RenderPragmaClippyToml"),
-            "should include pragma clippy render handler"
-        );
-        assert!(
-            main_rs.contains("PragmaEntrypoint"),
-            "should include pragma entrypoint handler"
-        );
-        assert!(
-            main_rs.contains("parse_pragma_directives"),
-            "should emit pragma directives parsing helper"
-        );
-    }
 }

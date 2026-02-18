@@ -16,15 +16,15 @@
 //!
 //! # Architecture Note
 //!
-//! This binary lives in gunbc-dag (not gunbc-codegen) so that inventory
-//! registrations from all tool crates are linked in. The codegen library
-//! remains in core/codegen as a leaf crate.
+//! This binary lives in gunbc-dag (not gunbc-codegen) and discovers
+//! `#[tool_target(...)]` registrations directly from workspace source files.
+//! The codegen library remains in core/codegen as a leaf crate.
 
 #![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
 use gunbc_cli::BinaryArgs;
 use gunbc_codegen::{
-    all_cleanable_outputs, derive_tool_defs, generate_cli_with_import, FileWriter,
+    core_outputs, derive_tool_defs, generate_cli_with_import, FileWriter, ToolDef,
 };
 use gunbc_dag::WorkspaceBinary;
 use gunbc_exec::run_freshness_steps;
@@ -41,32 +41,14 @@ use gunbc_lib_transport::TransportIo;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
-// Force-link crates that register tool targets via inventory.
-// Without these references, the linker may dead-strip the inventory symbols
-// and derive_tool_defs() would return an empty list.
-use gunbc_clippy::clippy_tool;
-use gunbc_dag::bootstrap::bootstrap_tool;
-use gunbc_dag::makegen::makegen_tool;
-use gunbc_deps::deps_tool;
-use gunbc_gist::{gist_diff_tool, gist_recent_tool, gist_snapshot_tool};
 // Force-link crates that register live test targets used by ci_live_test_secrets().
 use gunbc_lib_llm_ops as _;
-use gunbc_lib_review::review_tool;
 
 fn main() {
-    // Touch the functions to prevent the linker from stripping them.
-    let _: fn() = clippy_tool;
-    let _: fn() = gist_snapshot_tool;
-    let _: fn() = gist_diff_tool;
-    let _: fn() = gist_recent_tool;
-    let _: fn() = deps_tool;
-    let _: fn() = review_tool;
-    let _: fn() = makegen_tool;
-    let _: fn() = bootstrap_tool;
-
     let args: Vec<String> = env::args().collect();
     let parsed = match BinaryArgs::new().parse(&args) {
         Ok(parsed) => parsed,
@@ -277,7 +259,11 @@ fn cmd_rollback(dry_run: bool) {
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
 
-    let targets = all_cleanable_outputs();
+    let mut targets: Vec<String> = core_outputs().into_iter().map(|s| s.to_string()).collect();
+    targets.push(CODEGEN_BIN_DIR.to_string());
+    targets.push(CODEGEN_LIB_DIR.to_string());
+    targets.sort();
+    targets.dedup();
     let mut errors = Vec::new();
 
     for target in &targets {
@@ -584,10 +570,424 @@ fn ensure_bin_entry(doc: &mut DocumentMut, bin_name: &str, bin_path: &str) -> Re
     Ok(true)
 }
 
+#[derive(Default)]
+struct ParsedToolTarget {
+    name: Option<String>,
+    crate_name: Option<String>,
+    description: Option<String>,
+    builder: Option<String>,
+    builder_args: Option<String>,
+    custom_import: Option<String>,
+    success_port: Option<String>,
+    mock_spec: Option<String>,
+    entrypoints_json: Option<String>,
+    package: Option<String>,
+    binary: Option<String>,
+    has_invocation: bool,
+    returns_result: bool,
+    enable_step_mode: bool,
+    skip: bool,
+}
+
+fn extract_attr_value(line: &str, key: &str) -> Option<String> {
+    let needle = format!("{key} = \"");
+    if let Some(start) = line.find(&needle) {
+        let after = &line[start + needle.len()..];
+        let end = after.find('"')?;
+        return Some(after[..end].to_string());
+    }
+    let raw_needle = format!("{key} = r#\"");
+    if let Some(start) = line.find(&raw_needle) {
+        let after = &line[start + raw_needle.len()..];
+        let end = after.find("\"#")?;
+        return Some(after[..end].to_string());
+    }
+    None
+}
+
+fn parse_tool_target_block(
+    path: &Path,
+    start_line: usize,
+    lines: &[&str],
+) -> Result<Option<ToolDef>, String> {
+    let mut parsed = ParsedToolTarget::default();
+
+    for line in lines {
+        let trimmed = line.trim();
+
+        if let Some(v) = extract_attr_value(trimmed, "name") {
+            parsed.name = Some(v);
+        }
+        if let Some(v) = extract_attr_value(trimmed, "crate_name") {
+            parsed.crate_name = Some(v);
+        }
+        if let Some(v) = extract_attr_value(trimmed, "description") {
+            parsed.description = Some(v);
+        }
+        if let Some(v) = extract_attr_value(trimmed, "builder") {
+            parsed.builder = Some(v);
+        }
+        if let Some(v) = extract_attr_value(trimmed, "args") {
+            parsed.builder_args = Some(v);
+        }
+        if let Some(v) = extract_attr_value(trimmed, "import") {
+            parsed.custom_import = Some(v);
+        }
+        if let Some(v) = extract_attr_value(trimmed, "success_port") {
+            parsed.success_port = Some(v);
+        }
+        if let Some(v) = extract_attr_value(trimmed, "mock_spec") {
+            parsed.mock_spec = Some(v);
+        }
+        if let Some(v) = extract_attr_value(trimmed, "entrypoints") {
+            parsed.entrypoints_json = Some(v);
+        }
+        if let Some(v) = extract_attr_value(trimmed, "package") {
+            parsed.package = Some(v);
+        }
+        if let Some(v) = extract_attr_value(trimmed, "binary") {
+            parsed.binary = Some(v);
+        }
+        if trimmed.contains("has_invocation") && !trimmed.contains("has_invocation =") {
+            parsed.has_invocation = true;
+        }
+        if trimmed.contains("returns_result") && !trimmed.contains("returns_result =") {
+            parsed.returns_result = true;
+        }
+        if trimmed.contains("enable_step_mode") && !trimmed.contains("enable_step_mode =") {
+            parsed.enable_step_mode = true;
+        }
+        if trimmed.contains("skip") && !trimmed.contains("skip =") {
+            parsed.skip = true;
+        }
+    }
+
+    if parsed.skip {
+        return Ok(None);
+    }
+
+    let name = parsed.name.ok_or_else(|| {
+        format!(
+            "{}:{}: tool_target missing required field `name`",
+            path.display(),
+            start_line
+        )
+    })?;
+    let crate_name = parsed.crate_name.ok_or_else(|| {
+        format!(
+            "{}:{}: tool_target missing required field `crate_name`",
+            path.display(),
+            start_line
+        )
+    })?;
+    let description = parsed.description.ok_or_else(|| {
+        format!(
+            "{}:{}: tool_target missing required field `description`",
+            path.display(),
+            start_line
+        )
+    })?;
+    let builder = parsed.builder.ok_or_else(|| {
+        format!(
+            "{}:{}: tool_target missing required field `builder`",
+            path.display(),
+            start_line
+        )
+    })?;
+
+    let mut tool = ToolDef::new(
+        &crate_name,
+        &name,
+        &description,
+        &builder,
+        parsed.builder_args.as_deref().unwrap_or(""),
+    );
+
+    if parsed.returns_result {
+        tool = tool.returns_result();
+    }
+    if let Some(port) = parsed.success_port {
+        tool = tool.check_success(&port);
+    }
+    if parsed.enable_step_mode {
+        tool = tool.enable_step_mode();
+    }
+    if let Some(import) = parsed.custom_import {
+        tool = tool.import(&import);
+    }
+    if let Some(mock_spec) = parsed.mock_spec {
+        tool = tool.mock_spec_call(&mock_spec);
+    }
+    if let Some(entrypoints) = parsed.entrypoints_json {
+        if !entrypoints.is_empty() {
+            tool = tool.entrypoints_json(&entrypoints);
+        }
+    }
+    if parsed.has_invocation {
+        let binary_component = parsed.binary.as_deref().unwrap_or(name.as_str());
+        let invocation = match parsed.package.as_deref() {
+            Some(pkg) if parsed.binary.is_some() || pkg != name => {
+                gunbc_ir::cargo::CargoInvocation::composed(binary_component, pkg)
+            }
+            _ => gunbc_ir::cargo::CargoInvocation::standalone(binary_component),
+        };
+        tool = tool.invocation(invocation);
+    }
+
+    Ok(Some(tool))
+}
+
+fn parse_tool_defs_from_file(path: &Path, content: &str) -> Result<Vec<ToolDef>, String> {
+    let mut in_tool_target = false;
+    let mut attr_start_line = 0usize;
+    let mut block_lines: Vec<&str> = Vec::new();
+    let mut tool_defs = Vec::new();
+
+    for (idx, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+        if !in_tool_target && trimmed.starts_with("#[") && trimmed.contains("tool_target(") {
+            in_tool_target = true;
+            attr_start_line = idx + 1;
+            block_lines.clear();
+        }
+        if in_tool_target {
+            block_lines.push(line);
+            if trimmed.contains(")]") {
+                if let Some(tool) = parse_tool_target_block(path, attr_start_line, &block_lines)? {
+                    tool_defs.push(tool);
+                }
+                in_tool_target = false;
+                block_lines.clear();
+            }
+        }
+    }
+
+    if in_tool_target {
+        return Err(format!(
+            "{}:{}: unterminated tool_target attribute block",
+            path.display(),
+            attr_start_line
+        ));
+    }
+
+    Ok(tool_defs)
+}
+
+fn discover_tool_defs_from_workspace_sources(
+    workspace_root: &Path,
+    io: &dyn ResourceIo,
+) -> Result<Vec<ToolDef>, String> {
+    let pattern = format!("{}/**/*.rs", workspace_root.display());
+    let paths = io
+        .glob_paths(&pattern)
+        .map_err(|e| format!("failed to glob Rust files for tool discovery: {e}"))?;
+
+    let mut by_name: BTreeMap<String, ToolDef> = BTreeMap::new();
+
+    for path in paths {
+        let path_str = path.to_string_lossy();
+        if path_str.contains("/target/") || path_str.contains("/buck-out/") {
+            continue;
+        }
+
+        let bytes = io
+            .read_file(&path)
+            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+        let content = String::from_utf8(bytes)
+            .map_err(|e| format!("failed to parse {} as UTF-8: {e}", path.display()))?;
+
+        for tool in parse_tool_defs_from_file(&path, &content)? {
+            let name = tool.meta.tool_name.clone();
+            if let Some(prev) = by_name.insert(name.clone(), tool) {
+                return Err(format!(
+                    "duplicate tool_target name `{}` discovered (existing crate `{}`, new file `{}`)",
+                    name,
+                    prev.meta.crate_name,
+                    path.display()
+                ));
+            }
+        }
+    }
+
+    if by_name.is_empty() {
+        return Err("no #[tool_target] registrations discovered from source".to_string());
+    }
+
+    Ok(by_name.into_values().collect())
+}
+
+fn discover_dsl_module_names(root: &Path, module_kind: &str) -> Result<BTreeSet<String>, String> {
+    let entries = fs::read_dir(root).map_err(|e| {
+        format!(
+            "failed to read DSL {module_kind} discovery root {}: {e}",
+            root.display()
+        )
+    })?;
+    let mut modules = BTreeSet::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            format!(
+                "failed to read DSL {module_kind} entry in {}: {e}",
+                root.display()
+            )
+        })?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("dag") {
+            continue;
+        }
+        let stem = path.file_stem().and_then(|stem| stem.to_str()).ok_or_else(|| {
+            format!(
+                "failed to parse UTF-8 module stem for DSL {module_kind} file {}",
+                path.display()
+            )
+        })?;
+        modules.insert(stem.to_string());
+    }
+    Ok(modules)
+}
+
+fn validate_required_dsl_modules_for_codegen(
+    tool_modules: &BTreeSet<String>,
+    pipeline_modules: &BTreeSet<String>,
+) -> Result<(), String> {
+    const REQUIRED_TOOLS: &[&str] = &[
+        "build",
+        "bootstrap",
+        "clippy",
+        "codegen",
+        "dag_viz",
+        "deps",
+        "docgen",
+        "gist",
+        "makegen",
+        "pragma",
+        "testgen",
+    ];
+    const REQUIRED_PIPELINES: &[&str] = &["ci"];
+
+    let missing_tools: Vec<&str> = REQUIRED_TOOLS
+        .iter()
+        .copied()
+        .filter(|name| !tool_modules.contains(*name))
+        .collect();
+    let missing_pipelines: Vec<&str> = REQUIRED_PIPELINES
+        .iter()
+        .copied()
+        .filter(|name| !pipeline_modules.contains(*name))
+        .collect();
+
+    if missing_tools.is_empty() && missing_pipelines.is_empty() {
+        return Ok(());
+    }
+
+    let mut parts = Vec::new();
+    if !missing_tools.is_empty() {
+        parts.push(format!("tools: {}", missing_tools.join(", ")));
+    }
+    if !missing_pipelines.is_empty() {
+        parts.push(format!("pipelines: {}", missing_pipelines.join(", ")));
+    }
+    Err(format!(
+        "missing required DSL modules for codegen discovery: {}",
+        parts.join("; ")
+    ))
+}
+
+fn validate_codegen_dsl_coverage(
+    tools: &[ToolDef],
+    tool_modules: &BTreeSet<String>,
+    pipeline_modules: &BTreeSet<String>,
+) -> Result<(), String> {
+    const TOOL_MODULE_TO_TARGETS: &[(&str, &[&str])] = &[
+        ("bootstrap", &["bootstrap"]),
+        ("clippy", &["clippy"]),
+        ("dag_viz", &["dag-viz", "dag-viz-diff", "dag-viz-recent", "dag-snapshot"]),
+        ("deps", &["deps"]),
+        ("gist", &["gist", "gist-diff", "gist-recent"]),
+        ("makegen", &["makegen"]),
+    ];
+    const TOOL_MODULE_EXCLUDED: &[&str] = &["build", "codegen", "docgen", "pragma", "testgen"];
+    const PIPELINE_MODULE_EXCLUDED: &[&str] = &["ci"];
+
+    let tool_name_set: BTreeSet<&str> = tools.iter().map(|tool| tool.meta.tool_name.as_str()).collect();
+
+    let mut unknown_tool_modules = Vec::new();
+    let mut missing_targets = Vec::new();
+    for module in tool_modules {
+        if let Some((_, targets)) = TOOL_MODULE_TO_TARGETS
+            .iter()
+            .find(|(mapped_module, _)| mapped_module == &module.as_str())
+        {
+            for target in *targets {
+                if !tool_name_set.contains(target) {
+                    missing_targets.push(format!("{module}->{target}"));
+                }
+            }
+            continue;
+        }
+        if TOOL_MODULE_EXCLUDED.contains(&module.as_str()) {
+            continue;
+        }
+        unknown_tool_modules.push(module.clone());
+    }
+
+    let unknown_pipeline_modules: Vec<String> = pipeline_modules
+        .iter()
+        .filter(|module| !PIPELINE_MODULE_EXCLUDED.contains(&module.as_str()))
+        .cloned()
+        .collect();
+
+    if unknown_tool_modules.is_empty()
+        && missing_targets.is_empty()
+        && unknown_pipeline_modules.is_empty()
+    {
+        return Ok(());
+    }
+
+    let mut parts = Vec::new();
+    if !unknown_tool_modules.is_empty() {
+        parts.push(format!(
+            "unmapped DSL tool modules: {}",
+            unknown_tool_modules.join(", ")
+        ));
+    }
+    if !missing_targets.is_empty() {
+        parts.push(format!(
+            "missing generated targets for mapped DSL modules: {}",
+            missing_targets.join(", ")
+        ));
+    }
+    if !unknown_pipeline_modules.is_empty() {
+        parts.push(format!(
+            "unmapped DSL pipeline modules: {}",
+            unknown_pipeline_modules.join(", ")
+        ));
+    }
+    Err(format!(
+        "codegen DSL coverage validation failed: {}",
+        parts.join("; ")
+    ))
+}
+
+fn discover_codegen_tools(
+    workspace_root: &Path,
+    io: &dyn ResourceIo,
+) -> Result<Vec<ToolDef>, String> {
+    let tools = discover_tool_defs_from_workspace_sources(workspace_root, io)?;
+    let tool_modules = discover_dsl_module_names(&workspace_root.join("dsl/tools"), "tool")?;
+    let pipeline_modules =
+        discover_dsl_module_names(&workspace_root.join("dsl/pipelines"), "pipeline")?;
+    validate_required_dsl_modules_for_codegen(&tool_modules, &pipeline_modules)?;
+    validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)?;
+    Ok(tools)
+}
+
 /// Generate CLI main.rs files for all tools and register binary targets.
 fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     let writer = FileWriter::new(dry_run, io);
-    let tools = derive_tool_defs();
     let output_dir = CODEGEN_BIN_DIR;
 
     struct BinRegistration {
@@ -604,6 +1004,13 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     let Some((workspace_root, package_dirs)) = resolve_workspace_packages() else {
         eprintln!("  ERROR: could not resolve workspace packages via cargo metadata");
         return false;
+    };
+    let tools = match discover_codegen_tools(&workspace_root, io) {
+        Ok(tools) => tools,
+        Err(e) => {
+            eprintln!("  ERROR: {e}");
+            return false;
+        }
     };
 
     for tool in &tools {
@@ -858,7 +1265,18 @@ fn should_skip_codegen(io: &dyn ResourceIo) -> bool {
 fn codegen_outputs_exist(io: &dyn ResourceIo) -> bool {
     let mut paths: Vec<PathBuf> = Vec::new();
 
-    for tool in derive_tool_defs() {
+    let Some((workspace_root, _)) = resolve_workspace_packages() else {
+        return false;
+    };
+    let tools = match discover_codegen_tools(&workspace_root, io) {
+        Ok(tools) => tools,
+        Err(e) => {
+            eprintln!("  Warning: codegen tool discovery failed: {e}");
+            return false;
+        }
+    };
+
+    for tool in tools {
         if tool.invocation.is_none() {
             continue;
         }
