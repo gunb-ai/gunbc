@@ -13,6 +13,7 @@ use gunbc_exec::{
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_primitives::{filename, FsEnv};
 use std::io::IsTerminal;
 use std::process;
 
@@ -43,6 +44,10 @@ fn main() {
                 1, "missing",
             )))
         };
+
+        // Resource environment: filesystem handle used by write transports.
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
 
         // Simulate missing codegen outputs so the codegen step runs.
         mocks.set_value("execute_codegen_exists", "response", missing_shell());

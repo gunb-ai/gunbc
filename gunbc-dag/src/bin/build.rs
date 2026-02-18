@@ -12,6 +12,7 @@ use gunbc_exec::{
 };
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_primitives::{filename, FsEnv};
 use std::io::IsTerminal;
 use std::process;
 
@@ -36,6 +37,8 @@ fn main() {
     let mode = if dry_run {
         let mut mocks = BoundaryMocks::new();
         let ok_shell = || Value::Response(TransportResponse::Shell(ShellResponse::ok("")));
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
 
         // Build transport
         mocks.set_value("execute_build", "response", ok_shell());
@@ -43,10 +46,12 @@ fn main() {
         // Test transport
         mocks.set_value("execute_test", "response", ok_shell());
         mocks.set_value("execute_test", "skip", Value::Bool(false));
+        mocks.set_value("execute_test", "skip_reason", Value::Str(String::new()));
 
         // Clippy transport
         mocks.set_value("execute_clippy", "response", ok_shell());
         mocks.set_value("execute_clippy", "skip", Value::Bool(false));
+        mocks.set_value("execute_clippy", "skip_reason", Value::Str(String::new()));
 
         ExecutionMode::DryRun(mocks)
     } else {

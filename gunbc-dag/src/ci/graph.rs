@@ -1061,6 +1061,18 @@ mod tests {
     }
 
     #[test]
+    fn test_ci_signature_does_not_expose_raw_stage_stdout_stderr_outputs() {
+        let signature = ci_signature();
+        assert!(
+            signature
+                .outputs
+                .iter()
+                .all(|p| !p.name.0.ends_with("stdout") && !p.name.0.ends_with("stderr")),
+            "ci signature should not expose raw stage stdout/stderr boundary outputs"
+        );
+    }
+
+    #[test]
     fn test_graph_has_transport_nodes() {
         let dag = build_ci_graph().expect("graph should build");
 

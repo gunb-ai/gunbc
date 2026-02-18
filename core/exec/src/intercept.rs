@@ -162,7 +162,12 @@ impl BoundaryMocks {
     /// Get the mock for a boundary port, if defined.
     pub fn get_mock(&self, node_id: &NodeId, port_name: &PortName) -> Option<&BoundaryMock> {
         let key = (node_id.0.clone(), port_name.0.clone());
-        self.mocks.get(&key)
+        self.mocks.get(&key).or_else(|| {
+            node_id
+                .0
+                .rsplit_once('/')
+                .and_then(|(_, leaf)| self.mocks.get(&(leaf.to_string(), port_name.0.clone())))
+        })
     }
 
     /// Set a sequenced mock for a boundary port (output interception).
@@ -184,6 +189,10 @@ impl BoundaryMocks {
     pub fn has_mock(&self, node_id: &NodeId, port_name: &PortName) -> bool {
         let key = (node_id.0.clone(), port_name.0.clone());
         self.mocks.contains_key(&key)
+            || node_id.0.rsplit_once('/').is_some_and(|(_, leaf)| {
+                self.mocks
+                    .contains_key(&(leaf.to_string(), port_name.0.clone()))
+            })
     }
 
     /// Iterate over all input mocks as ((node_id, port_name), value).
@@ -207,6 +216,31 @@ mod tests {
             _ => panic!("expected string value"),
         }
         assert!(mocks.get_mock(&"other".into(), &"port".into()).is_none());
+    }
+
+    #[test]
+    fn test_mock_lookup_falls_back_to_leaf_node_id() {
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_value(
+            "execute_codegen_exists",
+            "response",
+            Value::Str("ok".to_string()),
+        );
+
+        let scoped = mocks
+            .get_mock(
+                &"codegen_exists/execute_codegen_exists".into(),
+                &"response".into(),
+            )
+            .expect("mock should resolve by leaf node id");
+        assert_eq!(scoped.value, Value::Str("ok".to_string()));
+    }
+
+    #[test]
+    fn test_has_mock_falls_back_to_leaf_node_id() {
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_value("execute_build", "response", Value::Str("ok".to_string()));
+        assert!(mocks.has_mock(&"build/execute_build".into(), &"response".into()));
     }
 
     #[test]

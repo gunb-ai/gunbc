@@ -12,6 +12,7 @@ use gunbc_exec::{
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
+use gunbc_primitives::{filename, FsEnv};
 use std::fmt::Write;
 use std::io::IsTerminal;
 use std::process;
@@ -77,6 +78,10 @@ fn main() {
     // In --dry-run mode (without verify), mock all transports.
     let mode = if dry_run && resource_mode != ExecMode::Verify {
         let mut mocks = BoundaryMocks::new();
+
+        // Resource environment: filesystem handle used by file transports.
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
 
         for (key, path) in file_paths {
             let read_node = format!("execute_read_{}", key);

@@ -24,6 +24,7 @@ use gunbc_ir::resource::{
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::TransportIo;
+use gunbc_primitives::{filename, FsEnv};
 use std::io::IsTerminal;
 // Force-link crates that register testgen targets.
 use gunbc_deps as _;
@@ -122,6 +123,10 @@ fn main() {
     // Set up execution mode
     let mode = if dry_run && resource_mode != ExecMode::Verify {
         let mut mocks = BoundaryMocks::new();
+
+        // Resource environment: filesystem handle used by file transports.
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
 
         for (name, path) in &target_info {
             let read_node = format!("execute_read_{}", name);
