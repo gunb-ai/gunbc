@@ -889,7 +889,7 @@ then implemented against those specs.
 
 Implementation of SA/IAM operations against the typed understanding spec from C6.2b.
 
-- [ ] E2.1a — Service Account CRUD (create, update, delete) — impl against IAM understanding
+- [x] E2.1a — Service Account CRUD (create, update, delete) — impl against IAM understanding
 - [ ] E2.1b — SA IAM Bindings (who can impersonate)
 - [x] E2.1c — Expand SA spec (display_name, self_roles, wif_bindings)
 - [x] E2.1d — Expand SA Catalog (from 2 to ~8 SAs)

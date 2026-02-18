@@ -37,11 +37,11 @@ WIF bindings. gunbc only has list/get/impersonate.
 
 **Gap**: gunbc cannot create, update, or delete service accounts.
 
-- [ ] Add `create_service_account(project, account_id, display_name)` to `IamService` trait
-- [ ] Add `update_service_account(project, email, display_name)` to `IamService` trait
-- [ ] Add `delete_service_account(project, email)` to `IamService` trait
-- [ ] Add `IamRest` implementations + tests
-- [ ] Add `MethodMeta` constants for each method
+- [x] Add `create_service_account(project, account_id, display_name)` to `IamService` trait
+- [x] Add `update_service_account(project, email, display_name)` to `IamService` trait
+- [x] Add `delete_service_account(project, email)` to `IamService` trait
+- [x] Add `IamRest` implementations + tests
+- [x] Add `MethodMeta` constants for each method
 
 **Ref**: `gunb.ai/tools/infra/gcloud/admin.go` — `CreateServiceAccount`, `EnsureServiceAccount`
 
@@ -50,8 +50,8 @@ WIF bindings. gunbc only has list/get/impersonate.
 **Gap**: gunbc can only manage project-level IAM. SA-level IAM (who can
 impersonate) is missing.
 
-- [ ] Add `get_service_account_iam_policy(project, email)` to `IamService`
-- [ ] Add `set_service_account_iam_policy(project, email, policy)` to `IamService`
+- [x] Add `get_service_account_iam_policy(project, email)` to `IamService`
+- [x] Add `set_service_account_iam_policy(project, email, policy)` to `IamService`
 - [ ] Add ops: `PrepareEnsureSaIamBinding` / `CheckAndPrepareSaIamBinding` / `ParseSetSaIamBinding`
 - [ ] Generalize `add_ensure_iam_nodes()` to work for both project-level and SA-level bindings
 
