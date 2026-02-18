@@ -2,6 +2,7 @@
 
 use gunbc_ir::resource::{AccessMode, Resource, ResourceId, ResourceKind};
 use gunbc_ir::Value;
+use gunbc_ir::{ExecutionEnv, Os, RuntimePlatform, TargetTriple};
 use serde::{Deserialize, Serialize};
 
 /// Target platform.
@@ -17,27 +18,13 @@ pub enum Platform {
 impl Platform {
     /// Detect the current host platform.
     pub fn detect() -> Self {
-        #[cfg(target_os = "linux")]
-        return Platform::Linux;
-
-        #[cfg(target_os = "macos")]
-        return Platform::Macos;
-
-        #[cfg(target_os = "windows")]
-        return Platform::Windows;
-
-        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-        return Platform::Unknown;
+        let runtime = RuntimePlatform::detect_current();
+        Self::from(runtime.host.os)
     }
 
     /// Parse a platform from a string.
     pub fn parse(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "linux" => Platform::Linux,
-            "macos" | "darwin" | "osx" => Platform::Macos,
-            "windows" | "win32" | "win" => Platform::Windows,
-            _ => Platform::Unknown,
-        }
+        Self::from(Os::parse(s))
     }
 
     /// Get the platform name as a string.
@@ -54,6 +41,36 @@ impl Platform {
 impl std::fmt::Display for Platform {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name())
+    }
+}
+
+impl From<Platform> for Os {
+    fn from(value: Platform) -> Self {
+        match value {
+            Platform::Linux => Os::Linux,
+            Platform::Macos => Os::Macos,
+            Platform::Windows => Os::Windows,
+            Platform::Unknown => Os::Other("unknown".to_string()),
+        }
+    }
+}
+
+impl From<Os> for Platform {
+    fn from(value: Os) -> Self {
+        match value {
+            Os::Linux => Platform::Linux,
+            Os::Macos => Platform::Macos,
+            Os::Windows => Platform::Windows,
+            Os::Other(_) | Os::Freebsd | Os::Android | Os::Ios | Os::Wasi => Platform::Unknown,
+        }
+    }
+}
+
+impl From<Platform> for RuntimePlatform {
+    fn from(value: Platform) -> Self {
+        let mut host = TargetTriple::detect_host();
+        host.os = value.into();
+        RuntimePlatform::new(host, ExecutionEnv::Native)
     }
 }
 
@@ -119,5 +136,28 @@ mod tests {
             platform,
             Platform::Linux | Platform::Macos | Platform::Windows
         ));
+    }
+
+    #[test]
+    fn test_platform_os_compat_adapters() {
+        assert_eq!(Platform::from(Os::Linux), Platform::Linux);
+        assert_eq!(Platform::from(Os::Macos), Platform::Macos);
+        assert_eq!(Platform::from(Os::Windows), Platform::Windows);
+        assert_eq!(Platform::from(Os::Freebsd), Platform::Unknown);
+
+        assert_eq!(Os::from(Platform::Linux), Os::Linux);
+        assert_eq!(Os::from(Platform::Macos), Os::Macos);
+        assert_eq!(Os::from(Platform::Windows), Os::Windows);
+        assert_eq!(
+            Os::from(Platform::Unknown),
+            Os::Other("unknown".to_string())
+        );
+    }
+
+    #[test]
+    fn test_platform_to_runtime_platform_adapter() {
+        let runtime = RuntimePlatform::from(Platform::Linux);
+        assert_eq!(runtime.host.os, Os::Linux);
+        assert_eq!(runtime.env, ExecutionEnv::Native);
     }
 }

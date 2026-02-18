@@ -401,12 +401,12 @@ handles cross-provider concerns correctly.
 
 Add canonical types in `core/ir` as single source of truth.
 
-- [ ] C1.1a — Add `Arch`, `Vendor`, `Os`, `AbiEnv` enums
-- [ ] C1.1b — Add `TargetTriple { arch, vendor, os, env }` struct
-- [ ] C1.1c — Add `ExecutionEnv` enum (Native, WSL, Container, CI, Emulator)
-- [ ] C1.1d — Add `RuntimePlatform { host: TargetTriple, env: ExecutionEnv }`
-- [ ] C1.1e — Add parsing/formatting helpers for target triple strings
-- [ ] C1.1f — Add compatibility adapters from `deps::Platform`, DSL `Platform`, etc.
+- [x] C1.1a — Add `Arch`, `Vendor`, `Os`, `AbiEnv` enums
+- [x] C1.1b — Add `TargetTriple { arch, vendor, os, env }` struct
+- [x] C1.1c — Add `ExecutionEnv` enum (Native, WSL, Container, CI, Emulator)
+- [x] C1.1d — Add `RuntimePlatform { host: TargetTriple, env: ExecutionEnv }`
+- [x] C1.1e — Add parsing/formatting helpers for target triple strings
+- [ ] C1.1f — Add compatibility adapters from `deps::Platform`, DSL `Platform`, etc. *(deps adapter landed; DSL adapter still pending)*
 
 #### Wave 2
 

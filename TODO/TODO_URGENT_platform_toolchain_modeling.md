@@ -77,7 +77,7 @@ This creates repeated logic and makes it hard to add a new variant without touch
 
 ## Canonical Model Direction
 
-- [ ] Introduce one shared platform model in `core/ir` and consume it everywhere:
+- [ ] Introduce one shared platform model in `core/ir` and consume it everywhere: _(2026-02-18: foundation types landed in `core/ir/src/platform.rs`; migration/consumption still in progress.)_
   - `Arch`, `Vendor`, `Os`, `AbiEnv` (`gnu|musl|msvc|...`)
   - `TargetTriple { arch, vendor, os, env }`
   - `ExecutionEnv` (`Native`, `Wsl`, `Container`, `Ci`, `Emulator`)
@@ -93,9 +93,9 @@ This creates repeated logic and makes it hard to add a new variant without touch
 
 ### Phase 1: Foundation Types
 
-- [ ] Add canonical platform/target/env types in `core/ir` (single source of truth)
-- [ ] Add parsing/formatting helpers for target triples and env variants
-- [ ] Add compatibility adapters from existing enums (`deps::Platform`, DSL platform type)
+- [x] Add canonical platform/target/env types in `core/ir` (single source of truth). _(2026-02-18: added `Arch`/`Vendor`/`Os`/`AbiEnv` + `TargetTriple` + `ExecutionEnv` + `RuntimePlatform`.)_
+- [x] Add parsing/formatting helpers for target triples and env variants. _(2026-02-18: `TargetTriple::parse`/`Display` + enum parse/format helpers + host/env detection.)_
+- [ ] Add compatibility adapters from existing enums (`deps::Platform`, DSL platform type). _(2026-02-18: `deps::Platform` adapter landed; DSL adapter pending.)_
 
 ### Phase 2: Highest-ROI Migrations
 
