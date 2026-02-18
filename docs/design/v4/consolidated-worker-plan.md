@@ -984,7 +984,7 @@ V0 complete (Tracks 2-6). Track 1 (Resource abstraction trait) still in design.
 #### Testing (Wave 1-2)
 
 - [ ] F1.14 — Fermi guard live tests: blocked on GCP WIF + codegen for secret requirements [M]
-- [ ] F1.22 — Coercion coverage test assertions: design decision needed [S]
+- [x] F1.22 — Coercion coverage test assertions: design decision needed [S]
 - [x] F1.21 — Transport executor test coverage (= C4.1) [S]
 
 #### Code Quality (Wave 1-2)

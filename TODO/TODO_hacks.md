@@ -437,23 +437,22 @@ transport DAG migration (`TODO/TODO_transport_dag_migration.md`).
 
 ---
 
-## 22. Coercion coverage tests don't verify actual coercion
+## ~~22. Coercion coverage tests don't verify actual coercion~~ RESOLVED (2026-02-18)
 
 **Where**: `core/codegen/src/testgen/codegen.rs` (`build_coercion_coverage_tests`),
 `core/exec/src/execute.rs` (fan-in logic)
 
-**What happens**: Generated coercion tests build a DAG, execute in DryRun, and
-assert it didn't crash. They don't verify that the coercion actually happened
-(e.g., scalar wrapped into list).
-
-**Why it's a hack**: Smoke tests won't catch shape bugs like nested-list vs
-flat-list coercion errors.
-
-**Suggested fix**: Either add `inputs` to `LogEntry` so tests can assert on
-what target nodes received, or inject shape-assert nodes into test graphs.
-
-**Blocked on**: Design decision — adding inputs to LogEntry doubles log memory;
-shape-assert nodes require more complex testgen logic.
+**What changed**:
+- Upgraded generated coercion coverage tests to assert **target input shape**
+  at the coercion edge, instead of only checking no-crash.
+- `build_coercion_coverage_tests` now inspects execution log entries and checks
+  coerced values delivered to `{to_node}.{to_port}`:
+  - `WrapScalar` ⇒ single-element `Value::List`
+  - `OptionalToList` ⇒ empty-or-singleton `Value::List`
+  - `Widen` ⇒ list-shaped value
+- Added regression:
+  - `test_coercion_coverage_asserts_target_input_shape`
+  in `core/codegen/src/testgen/codegen.rs`.
 
 **Added**: 2026-02-13 (reconciliation)
 

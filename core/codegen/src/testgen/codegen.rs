@@ -2127,14 +2127,40 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         ),
                         String::new(),
                         format!(
-                            "Proves: engine correctly applies {} coercion at this edge.",
-                            kind_label
+                            "Proves: engine correctly applies {} coercion at this edge and delivers the expected input shape at {}.{}.",
+                            kind_label, to_node.0, to_port.0
                         ),
                     ],
                     body: vec![
                         Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                         Stmt::let_bind("mocks", mocks_expr),
-                        Stmt::let_bind("_log", exec),
+                        Stmt::let_bind("log", exec),
+                        Stmt::Item(Item::Raw(format!(
+                            "let target_entry = log.entries.iter().rev().find(|entry| entry.node_id == \"{}\").expect(\"coercion target entry missing for {}.{}\");",
+                            to_node.0, to_node.0, to_port.0
+                        ))),
+                        Stmt::Item(Item::Raw(format!(
+                            "let target_inputs = target_entry.inputs.as_ref().expect(\"coercion target {}.{} should capture inputs\");",
+                            to_node.0, to_port.0
+                        ))),
+                        Stmt::Item(Item::Raw(format!(
+                            "let received = target_inputs.get(\"{}\").expect(\"coercion target {}.{} should receive coerced value\");",
+                            to_port.0, to_node.0, to_port.0
+                        ))),
+                        Stmt::Item(Item::Raw(match kind {
+                            gunbc_ir::coerce::CoercionKind::WrapScalar => format!(
+                                "assert!(matches!(received, Value::List(values) if values.len() == 1), \"WrapScalar should deliver single-element list to {}.{}; got {{:?}}\", received);",
+                                to_node.0, to_port.0
+                            ),
+                            gunbc_ir::coerce::CoercionKind::OptionalToList => format!(
+                                "assert!(matches!(received, Value::List(values) if values.len() <= 1), \"OptionalToList should deliver empty-or-singleton list to {}.{}; got {{:?}}\", received);",
+                                to_node.0, to_port.0
+                            ),
+                            gunbc_ir::coerce::CoercionKind::Widen => format!(
+                                "assert!(matches!(received, Value::List(_)), \"Widen should preserve list shape at {}.{}; got {{:?}}\", received);",
+                                to_node.0, to_port.0
+                            ),
+                        })),
                     ],
                 });
             }
@@ -6483,6 +6509,50 @@ mod tests {
         assert!(
             code.contains("assert_eq!"),
             "should have exact match assertion"
+        );
+    }
+
+    #[test]
+    fn test_coercion_coverage_asserts_target_input_shape() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![port("input", "String")],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![list("in_items", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in_items"));
+
+        let spec = MockSpec::new("coerce")
+            .boundary("sink", "result", Value::Str("ok".into()))
+            .skip_node_example("source")
+            .skip_node_example("sink");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let code = generator.generate_test_module("coerce", "build_coerce_graph()");
+
+        assert!(
+            code.contains("coercion target entry missing for sink.in_items"),
+            "coercion tests should assert target entry presence: {}",
+            code
+        );
+        assert!(
+            code.contains("let received = target_inputs.get(\"in_items\")"),
+            "coercion tests should inspect target input port shape: {}",
+            code
+        );
+        assert!(
+            code.contains("WrapScalar should deliver single-element list to sink.in_items"),
+            "coercion tests should verify WrapScalar list shape: {}",
+            code
         );
     }
 
