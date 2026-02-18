@@ -373,12 +373,12 @@ This effort is done only when all items below are true.
 - [ ] Default output is failure-first: concise success path, detailed output only for failed stages/nodes.
 - [ ] Raw stdout/stderr is not duplicated across execution logs, parse nodes, and final report.
 - [ ] CI report and terminal summaries use one consistent truncation/summarization policy.
-- [ ] Per-stage extractors exist for at least build, test, lint, and verify-style failures (with sensible fallback).
+- [x] Per-stage extractors exist for at least build, test, lint, and verify-style failures (with sensible fallback). _(2026-02-18: build/lint/test extractors were already present; verify now uses `extract_verify_failures(stdout, stderr)` with bounded fallback rendering.)_
 
 ### D. Data capture completeness
 
 - [x] Parse ops for testgen/bootstrap/pragma/guardrail/verify capture both stdout and stderr. _(2026-02-18: verify parse path now emits stdout alongside stderr/success and aggregate/report wiring consumes it.)_
-- [ ] Report formatting can render failing stage output generically from structured stage fields.
+- [x] Report formatting can render failing stage output generically from structured stage fields. _(2026-02-18: stage summaries now flow through shared `StageResult` + `format_stage_failure` path with stage-specific extractor hooks.)_
 
 ### E. Secret safety
 

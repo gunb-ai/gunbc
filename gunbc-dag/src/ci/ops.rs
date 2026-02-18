@@ -987,11 +987,9 @@ fn execute_aggregate_verify_results(
 
         verify_success = false;
         let stderr = optional_str_strict(&inputs, stderr_key)?;
-        let stdout = optional_str_strict(&inputs, stdout_key)?;
-        let message = match (stderr, stdout) {
-            (Some(stderr), _) if !stderr.trim().is_empty() => format!("{name}: {stderr}"),
-            (_, Some(stdout)) if !stdout.trim().is_empty() => format!("{name}: {stdout}"),
-            _ => format!("{name}: verify check failed"),
+        let message = match stderr {
+            Some(stderr) if !stderr.trim().is_empty() => format!("{name}: {stderr}"),
+            _ => format!("{name}: verify check failed (see stdout output)"),
         };
         failure_messages.push(message);
     }
@@ -1137,10 +1135,10 @@ fn build_report_blocks(
 
     let stages = [
         StageResult::new("Build", build_success, build_stdout, build_stderr)
-            .with_extractor(extract_build_errors),
+            .with_extractor(extract_build_stage),
         StageResult::new("Test", test_success, test_stdout, test_stderr),
         StageResult::new("Lint", lint_success, lint_stdout, lint_stderr)
-            .with_extractor(extract_lint_warnings),
+            .with_extractor(extract_lint_stage),
         StageResult::new("Testgen", testgen_success, testgen_stdout, testgen_stderr),
         StageResult::new(
             "Bootstrap",
@@ -1155,7 +1153,8 @@ fn build_report_blocks(
             guardrail_stdout,
             guardrail_stderr,
         ),
-        StageResult::new("Verify", verify_success, verify_stdout, verify_stderr),
+        StageResult::new("Verify", verify_success, verify_stdout, verify_stderr)
+            .with_extractor(extract_verify_failures),
     ];
 
     for stage in &stages {
@@ -1290,6 +1289,33 @@ fn extract_lint_warnings(stderr: &str) -> Option<String> {
     }
 }
 
+fn extract_verify_failures(stdout: &str, stderr: &str) -> Option<String> {
+    let mut sections = Vec::new();
+
+    let check_summary = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !check_summary.is_empty() {
+        sections.push(format!("failed checks:\n{check_summary}"));
+    }
+
+    if !stdout.trim().is_empty() {
+        let stdout_tail = extract_tail_summary(stdout, 40).unwrap_or_default();
+        if !stdout_tail.trim().is_empty() {
+            sections.push(format!("verify output:\n{stdout_tail}"));
+        }
+    }
+
+    if sections.is_empty() {
+        None
+    } else {
+        Some(sections.join("\n\n"))
+    }
+}
+
 /// Generic fallback: last N lines of text.
 fn extract_tail_summary(text: &str, max_lines: usize) -> Option<String> {
     let lines: Vec<&str> = text.lines().collect();
@@ -1306,7 +1332,7 @@ struct StageResult<'a> {
     success: bool,
     stdout: &'a str,
     stderr: &'a str,
-    extractor: Option<fn(&str) -> Option<String>>,
+    extractor: Option<fn(&str, &str) -> Option<String>>,
 }
 
 impl<'a> StageResult<'a> {
@@ -1320,10 +1346,18 @@ impl<'a> StageResult<'a> {
         }
     }
 
-    fn with_extractor(mut self, f: fn(&str) -> Option<String>) -> Self {
+    fn with_extractor(mut self, f: fn(&str, &str) -> Option<String>) -> Self {
         self.extractor = Some(f);
         self
     }
+}
+
+fn extract_build_stage(_stdout: &str, stderr: &str) -> Option<String> {
+    extract_build_errors(stderr)
+}
+
+fn extract_lint_stage(_stdout: &str, stderr: &str) -> Option<String> {
+    extract_lint_warnings(stderr)
 }
 
 /// Unified helper for formatting a stage failure section.
@@ -1334,11 +1368,11 @@ fn format_stage_failure(
     name: &str,
     stdout: &str,
     stderr: &str,
-    extractor: Option<fn(&str) -> Option<String>>,
+    extractor: Option<fn(&str, &str) -> Option<String>>,
 ) -> Option<String> {
-    // Try the specialized extractor on stderr first
+    // Try the specialized extractor first (stage-specific).
     if let Some(extract) = extractor {
-        if let Some(extracted) = extract(stderr) {
+        if let Some(extracted) = extract(stdout, stderr) {
             let summary = truncate_for_report(&extracted);
             return Some(format!("\n--- {name} errors ---\n{summary}\n"));
         }
@@ -1781,7 +1815,7 @@ mod tests {
         );
         assert_eq!(
             result.get("verify_stderr").and_then(|v| v.as_str()),
-            Some("makegen: stdout-only failure")
+            Some("makegen: verify check failed (see stdout output)")
         );
         assert_eq!(
             result.get("verify_stdout").and_then(|v| v.as_str()),
@@ -1857,7 +1891,8 @@ mod tests {
             .get("report")
             .and_then(|v| v.as_str())
             .expect("report text");
-        assert!(report.contains("Verify stdout"));
+        assert!(report.contains("Verify errors"));
+        assert!(report.contains("verify output:"));
         assert!(report.contains("verify output details"));
     }
 
@@ -1967,7 +2002,7 @@ mod tests {
     #[test]
     fn test_format_stage_failure_with_extractor() {
         let stderr = "error[E0308]: mismatched types\n  --> src/lib.rs:42:5";
-        let result = format_stage_failure("Build", "", stderr, Some(extract_build_errors));
+        let result = format_stage_failure("Build", "", stderr, Some(extract_build_stage));
         assert!(result.is_some());
         let section = result.unwrap();
         assert!(section.contains("Build errors"));
@@ -1984,8 +2019,19 @@ mod tests {
 
     #[test]
     fn test_format_stage_failure_empty() {
-        let result = format_stage_failure("Build", "", "", Some(extract_build_errors));
+        let result = format_stage_failure("Build", "", "", Some(extract_build_stage));
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_verify_failures_includes_stderr_and_stdout() {
+        let stdout = "makegen:\ncheck details\n\npragma:\nmore detail";
+        let stderr = "makegen: failed\npragma: failed";
+        let extracted = extract_verify_failures(stdout, stderr).expect("expected extraction");
+        assert!(extracted.contains("failed checks"));
+        assert!(extracted.contains("verify output"));
+        assert!(extracted.contains("makegen: failed"));
+        assert!(extracted.contains("check details"));
     }
 
     #[test]

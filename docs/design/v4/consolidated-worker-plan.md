@@ -680,9 +680,9 @@ All CI parse stages now capture both stdout and stderr, including Verify sub-che
 
 Report node currently gets raw unstructured text. Need per-stage error extractors.
 
-- [ ] D1.4a — Implement `extract_build_errors` extractor
-- [ ] D1.4b — Implement `extract_test_failures` extractor
-- [ ] D1.4c — Implement `extract_lint_warnings` extractor
+- [x] D1.4a — Implement `extract_build_errors` extractor
+- [x] D1.4b — Implement `extract_test_failures` extractor
+- [x] D1.4c — Implement `extract_lint_warnings` extractor
 - [ ] D1.4d — Default rendering shows failures first, detail on expand
 
 ##### D1.5 — Grouped progress model [M]
