@@ -6,10 +6,13 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
-use gunbc_dag::{build_makegen_graph, makefile_resource_def, wire_fs_env_write_mock};
+use gunbc_dag::{
+    build_makegen_graph, makefile_resource_def, print_tool_header, run_tool,
+    wire_fs_env_write_mock, RunToolOptions,
+};
 use gunbc_exec::{
-    compose_with_freshness, execute_and_display, execute_and_display_with_result, print_attention,
-    AttentionLevel, BoundaryMocks, ExecutionMode,
+    compose_with_freshness, execute_and_display_with_result, print_attention, AttentionLevel,
+    BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::{
     update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
@@ -198,15 +201,22 @@ fn main() {
             }
         }
     } else {
-        // Print header
-        println!("makegen");
-        println!("  path: {}", path);
-        println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
-        println!("  resource_mode: {}", resource_mode);
-        println!();
-
-        // Execute and display (progress or classic based on terminal)
-        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
+        print_tool_header(
+            "makegen",
+            &[
+                ("path", path.to_string()),
+                ("mode", if dry_run { "dry-run" } else { "real" }.to_string()),
+                ("resource_mode", resource_mode.to_string()),
+            ],
+        );
+        run_tool(
+            dag,
+            mode,
+            RunToolOptions {
+                input_mocks: Some(&input_mocks),
+                ..RunToolOptions::default()
+            },
+        );
 
         if !dry_run && resource_mode == ExecMode::Ensure {
             update_manifest_after_makegen(&path);

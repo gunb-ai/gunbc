@@ -484,7 +484,7 @@ edge-wiring calls each.
 
 - [x] C3.2a — Create `run_tool()` abstraction encapsulating binary entry ceremony
 - [ ] C3.2b — Derive `WorkspaceBinary` from tool registry metadata
-- [ ] C3.2c — Migrate binaries to use `run_tool()`
+- [x] C3.2c — Migrate binaries to use `run_tool()`
 
 #### Wave 3
 

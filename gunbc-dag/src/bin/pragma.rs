@@ -4,10 +4,11 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::{build_pragma_graph, wire_fs_env_write_mock};
+use gunbc_dag::{
+    build_pragma_graph, print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions,
+};
 use gunbc_exec::{
-    execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
-    BoundaryMocks, ExecutionMode,
+    execute_and_display_with_result, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
@@ -196,14 +197,21 @@ fn main() {
             }
         }
     } else {
-        // Print header
-        println!("pragma");
-        println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
-        println!("  resource_mode: {}", resource_mode);
-        println!();
-
-        // Execute and display (progress or classic based on terminal)
-        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
+        print_tool_header(
+            "pragma",
+            &[
+                ("mode", if dry_run { "dry-run" } else { "real" }.to_string()),
+                ("resource_mode", resource_mode.to_string()),
+            ],
+        );
+        run_tool(
+            dag,
+            mode,
+            RunToolOptions {
+                input_mocks: Some(&input_mocks),
+                ..RunToolOptions::default()
+            },
+        );
     }
 }
 

@@ -12,10 +12,11 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::testgen_dag::graph::build_testgen_graph;
-use gunbc_dag::{testgen_resource_def, wire_fs_env_write_mock};
+use gunbc_dag::{
+    print_tool_header, run_tool, testgen_resource_def, wire_fs_env_write_mock, RunToolOptions,
+};
 use gunbc_exec::{
-    execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
-    BoundaryMocks, ExecutionMode,
+    execute_and_display_with_result, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::{
     update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
@@ -232,16 +233,23 @@ fn main() {
             }
         }
     } else {
-        // Print header
-        println!("testgen");
-        println!("  output_dir: {}", output_dir.display());
-        println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
-        println!("  resource_mode: {}", resource_mode);
-        println!("  targets: {}", targets.len());
-        println!();
-
-        // Execute and display (progress or classic based on terminal)
-        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
+        print_tool_header(
+            "testgen",
+            &[
+                ("output_dir", output_dir.display().to_string()),
+                ("mode", if dry_run { "dry-run" } else { "real" }.to_string()),
+                ("resource_mode", resource_mode.to_string()),
+                ("targets", targets.len().to_string()),
+            ],
+        );
+        run_tool(
+            dag,
+            mode,
+            RunToolOptions {
+                input_mocks: Some(&input_mocks),
+                ..RunToolOptions::default()
+            },
+        );
 
         // Update manifest after successful generation (not in DAG - post-execution step)
         if !dry_run && resource_mode == ExecMode::Ensure {

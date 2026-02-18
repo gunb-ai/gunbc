@@ -7,11 +7,12 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::resources::{GITIGNORE_OUTPUT_PATH, MAKEFILE_OUTPUT_PATH};
 use gunbc_dag::{
-    build_bootstrap_graph, gitignore_resource_def, makefile_resource_def, wire_fs_env_write_mock,
+    build_bootstrap_graph, gitignore_resource_def, makefile_resource_def, print_tool_header,
+    run_tool, wire_fs_env_write_mock, RunToolOptions,
 };
 use gunbc_exec::{
-    compose_with_freshness, execute_and_display, execute_and_display_with_result, print_attention,
-    AttentionLevel, BoundaryMocks, ExecutionMode,
+    compose_with_freshness, execute_and_display_with_result, print_attention, AttentionLevel,
+    BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::{
     update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
@@ -249,21 +250,29 @@ fn main() {
             }
         }
     } else {
-        // Print header
-        println!("bootstrap");
-        println!(
-            "  mode: {}",
-            if dry_run && resource_mode != ExecMode::Verify {
-                "dry-run"
-            } else {
-                "real"
-            }
+        print_tool_header(
+            "bootstrap",
+            &[
+                (
+                    "mode",
+                    if dry_run && resource_mode != ExecMode::Verify {
+                        "dry-run"
+                    } else {
+                        "real"
+                    }
+                    .to_string(),
+                ),
+                ("resource_mode", resource_mode.to_string()),
+            ],
         );
-        println!("  resource_mode: {}", resource_mode);
-        println!();
-
-        // Execute and display (progress or classic based on terminal)
-        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
+        run_tool(
+            dag,
+            mode,
+            RunToolOptions {
+                input_mocks: Some(&input_mocks),
+                ..RunToolOptions::default()
+            },
+        );
 
         if !dry_run && resource_mode == ExecMode::Ensure {
             update_manifest_after_bootstrap();
