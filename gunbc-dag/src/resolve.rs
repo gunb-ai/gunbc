@@ -142,10 +142,8 @@ impl Executable for ResourceAcquireOp {
             "AuthContext" => Value::Str("auth:deferred".to_string()),
             other => Value::Str(format!("resource:{other}")),
         };
-        OutputMap::new()
-            .value("handle", handle.clone())
-            .value("resource", handle)
-            .ok()
+        // Output port name matches the lowered graph convention.
+        OutputMap::new().value("resource_handle", handle).ok()
     }
 }
 
@@ -310,6 +308,96 @@ impl Executable for ServiceShellCodegenRunParseOp {
                 .ok(),
             Some(other) => Err(ExecError::new(format!(
                 "expected Shell response for Codegen.Run parse, got {:?}",
+                std::mem::discriminant(other)
+            ))),
+        }
+    }
+}
+
+/// services.cargo.Build.Build prepare adapter.
+#[derive(Debug, Clone)]
+struct ServiceCargoBuildPrepareOp;
+
+impl Executable for ServiceCargoBuildPrepareOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let all_targets = inputs
+            .get("all_targets")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let mut args = vec!["build".to_string()];
+        if all_targets {
+            args.push("--all-targets".to_string());
+        }
+        OutputMap::new()
+            .request(
+                "request",
+                TransportRequest::Shell(ShellRequest::new("cargo").args(args)),
+            )
+            .ok()
+    }
+}
+
+/// services.cargo.Build.Test prepare adapter.
+#[derive(Debug, Clone)]
+struct ServiceCargoTestPrepareOp;
+
+impl Executable for ServiceCargoTestPrepareOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        OutputMap::new()
+            .request(
+                "request",
+                TransportRequest::Shell(ShellRequest::new("cargo").arg("test")),
+            )
+            .ok()
+    }
+}
+
+/// services.cargo.Build.Clippy prepare adapter.
+#[derive(Debug, Clone)]
+struct ServiceCargoClippyPrepareOp;
+
+impl Executable for ServiceCargoClippyPrepareOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let all_targets = inputs
+            .get("all_targets")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let mut args = vec!["clippy".to_string()];
+        if all_targets {
+            args.push("--all-targets".to_string());
+        }
+        args.extend(["--".to_string(), "-D".to_string(), "warnings".to_string()]);
+        OutputMap::new()
+            .request(
+                "request",
+                TransportRequest::Shell(ShellRequest::new("cargo").args(args)),
+            )
+            .ok()
+    }
+}
+
+/// services.cargo parse adapter for Build/Test/Clippy operations.
+#[derive(Debug, Clone)]
+struct ServiceCargoParseOp;
+
+impl Executable for ServiceCargoParseOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        match inputs.get("response") {
+            Some(Value::Response(TransportResponse::Shell(shell))) => OutputMap::new()
+                .bool("success", shell.success())
+                .str("stdout", shell.stdout.clone())
+                .str("stderr", shell.stderr.clone())
+                .ok(),
+            Some(Value::Skipped) | None => OutputMap::new()
+                .bool("success", false)
+                .str("stdout", String::new())
+                .str("stderr", String::new())
+                .ok(),
+            Some(other) => Err(ExecError::new(format!(
+                "expected Shell response for cargo parse, got {:?}",
                 std::mem::discriminant(other)
             ))),
         }
@@ -681,6 +769,26 @@ fn resolve_service_transport(
     name: &str,
     outputs: &[Port],
 ) -> Result<DynOp, ResolveError> {
+    if module == "services.cargo" {
+        match name {
+            "service_transport::prepare::cargo.Build::Build" => {
+                return Ok(DynOp::new(ServiceCargoBuildPrepareOp));
+            }
+            "service_transport::prepare::cargo.Build::Test" => {
+                return Ok(DynOp::new(ServiceCargoTestPrepareOp));
+            }
+            "service_transport::prepare::cargo.Build::Clippy" => {
+                return Ok(DynOp::new(ServiceCargoClippyPrepareOp));
+            }
+            "service_transport::parse::cargo.Build::Build"
+            | "service_transport::parse::cargo.Build::Test"
+            | "service_transport::parse::cargo.Build::Clippy" => {
+                return Ok(DynOp::new(ServiceCargoParseOp));
+            }
+            _ => {}
+        }
+    }
+
     if module == "services.shell" {
         match name {
             "service_transport::prepare::shell.Find::ListDirs" => {
@@ -707,7 +815,10 @@ fn resolve_service_transport(
     }
 
     if name.starts_with("service_transport::execute::") {
-        return Ok(DynOp::new(TransportOps::Execute));
+        if module == "services.shell" || module == "services.cargo" {
+            return Ok(DynOp::new(TransportOps::Execute));
+        }
+        return Ok(deferred_callable(module, name, outputs));
     }
     if name.starts_with("service_transport::prepare::")
         || name.starts_with("service_transport::parse::")

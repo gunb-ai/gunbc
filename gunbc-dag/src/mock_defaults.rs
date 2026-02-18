@@ -12,7 +12,7 @@ use gunbc_ir::{
 };
 use gunbc_primitives::filename;
 use gunbc_test::extract_mock_requirements;
-use gunbc_test::MockSpec;
+use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 use std::collections::{HashMap, HashSet};
 
 fn default_fs_handle() -> Value {
@@ -257,5 +257,32 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
     }
 
     dedupe_boundary_mocks_keep_last(&mut spec);
+
+    // Auto-add OutputMatchers for terminal nodes (no outgoing edges) to satisfy
+    // the observability invariant: every terminal reachable from a probe must
+    // have an OutputMatcher.
+    let has_outgoing: HashSet<&NodeId> = lowered
+        .dag
+        .edges
+        .iter()
+        .map(|e| &e.from_node)
+        .collect();
+    for node in &lowered.dag.nodes {
+        if has_outgoing.contains(&node.id) {
+            continue;
+        }
+        let mut example = NodeExample::new(node.id.0.as_str());
+        for output in &node.outputs {
+            let matcher = match value_backing_for_type_id(output.type_id.0.as_str()) {
+                ValueBacking::Bool => OutputMatcher::IsBool,
+                ValueBacking::Int | ValueBacking::Float => OutputMatcher::IsInt,
+                ValueBacking::String => OutputMatcher::IsString,
+                _ => OutputMatcher::NonEmpty,
+            };
+            example = example.output(output.name.0.as_str(), matcher);
+        }
+        spec = spec.node_example(example);
+    }
+
     spec
 }

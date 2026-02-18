@@ -22,15 +22,38 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
+use gunbc_dag::resources::{DEPS_CONFIG_OUTPUT_PATH, GITIGNORE_OUTPUT_PATH, MAKEFILE_OUTPUT_PATH};
 use gunbc_dag::{
     build_ci_graph_dsl, print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions,
 };
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, CiContext, ExecutionMode};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
-use gunbc_ir::Value;
+use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_ir::CODEGEN_STAMP_PATH;
 use std::process;
+
+fn ci_path_for_node(node_id: &str) -> Option<&'static str> {
+    if node_id.contains("Find_ListDirs") {
+        Some("crates")
+    } else if node_id.contains("bootstrap_2") || node_id.contains("gitignore") {
+        Some(GITIGNORE_OUTPUT_PATH)
+    } else if node_id.contains("bootstrap") || node_id.contains("makegen") {
+        Some(MAKEFILE_OUTPUT_PATH)
+    } else if node_id.contains("deps_generate") || node_id.contains("deps_config") {
+        Some(DEPS_CONFIG_OUTPUT_PATH)
+    } else if node_id.contains("pragma_3") {
+        Some("tools/pragma-lint-policy.txt")
+    } else if node_id.contains("pragma_2") {
+        Some("tools/disallowed-methods-allowlist.txt")
+    } else if node_id.contains("pragma") {
+        Some("clippy.toml")
+    } else if node_id.contains("render_and_upsert") {
+        Some("gunbc-dag/src/ci/generated_tests.rs")
+    } else {
+        None
+    }
+}
 
 fn main() {
     let parsed = BinaryArgs::new().with_mode().parse_env();
@@ -59,6 +82,38 @@ fn main() {
             process::exit(1);
         }
     };
+
+    // Set up entrypoint inputs for lower-time content_upsert/service args that
+    // are still injected by tool frontends.
+    let mut input_mocks = BoundaryMocks::new();
+    let entrypoints = detect_entrypoints(&dag);
+    for (node_id, port_name, _) in &entrypoints.entrypoint_ports {
+        match port_name.0.as_str() {
+            "check_mode" => {
+                input_mocks.set_input(
+                    node_id.0.clone(),
+                    port_name.0.clone(),
+                    Value::Bool(resource_mode == ExecMode::Verify),
+                );
+            }
+            "path" => {
+                if let Some(path) = ci_path_for_node(&node_id.0) {
+                    input_mocks.set_input(
+                        node_id.0.clone(),
+                        port_name.0.clone(),
+                        Value::Str(path.to_string()),
+                    );
+                }
+            }
+            "max_depth" if node_id.0.contains("Find_ListDirs") => {
+                input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Int(1));
+            }
+            "min_depth" if node_id.0.contains("Find_ListDirs") => {
+                input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Int(1));
+            }
+            _ => {}
+        }
+    }
 
     // Set up execution mode
     let mode = if dry_run {
@@ -187,7 +242,7 @@ fn main() {
         RunToolOptions {
             success_port: Some("overall_success"),
             with_freshness: true,
-            ..RunToolOptions::default()
+            input_mocks: Some(&input_mocks),
         },
     );
 }

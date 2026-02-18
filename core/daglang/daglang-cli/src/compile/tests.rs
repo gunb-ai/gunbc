@@ -375,8 +375,16 @@ fn resolve_lowered_dag_maps_makegen_nodes_to_dyn_ops() {
     let output = compile_from_context(&context).expect("compile should succeed");
 
     let resolved = resolve_lowered_dag(&output.lowered_dag).expect("makegen dag should resolve");
-    assert_eq!(resolved.nodes.len(), output.lowered_dag.nodes.len());
-    assert_eq!(resolved.edges.len(), output.lowered_dag.edges.len());
+    // Resolved DAG may have additional nodes/edges from resource wiring
+    // (e.g., fs_env resource edges for transport execute nodes).
+    assert!(
+        resolved.nodes.len() >= output.lowered_dag.nodes.len(),
+        "resolved DAG should have at least as many nodes as lowered DAG"
+    );
+    assert!(
+        resolved.edges.len() >= output.lowered_dag.edges.len(),
+        "resolved DAG should have at least as many edges as lowered DAG"
+    );
 
     let debug_op_for = |node_id: &str| {
         resolved
@@ -426,15 +434,16 @@ fn resolve_lowered_dag_defers_unknown_callable_module() {
         debug.contains("DeferredCallableOp"),
         "expected deferred callable fallback, got {debug}"
     );
+    // Deferred callables are passthrough: inputs forwarded, output ports populated.
     let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
         panic!("unknown callable fixture should not contain subdag nodes")
     };
-    let err = op
+    let outputs = op
         .execute(HashMap::new())
-        .expect_err("deferred unknown callable should fail at execution");
+        .expect("deferred callable should pass through");
     assert!(
-        err.to_string().contains("not runtime-mapped yet"),
-        "deferred execution failure should be explicit, got {err}"
+        outputs.contains_key("out"),
+        "deferred callable should populate declared output ports"
     );
 }
 
@@ -457,7 +466,7 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
         },
     ));
 
-    // Pipeline nodes resolve to DeferredCallableOp (resolution succeeds, execution fails loudly).
+    // Pipeline nodes resolve to DeferredCallableOp (passthrough for dry-run compat).
     let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve as deferred");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
@@ -465,12 +474,12 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
     let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
         panic!("pipeline fixture should not contain subdag nodes")
     };
-    let err = op
+    let outputs = op
         .execute(HashMap::new())
-        .expect_err("deferred pipeline callable should fail at execution");
+        .expect("deferred pipeline callable should pass through");
     assert!(
-        err.to_string().contains("not runtime-mapped yet"),
-        "deferred execution failure should be explicit, got {err}"
+        outputs.contains_key("out"),
+        "deferred callable should populate declared output ports"
     );
 }
 

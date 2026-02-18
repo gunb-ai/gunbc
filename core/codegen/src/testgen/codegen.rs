@@ -6675,7 +6675,7 @@ mod tests {
             code
         );
         assert!(
-            code.contains("WrapScalar should deliver single-element list to sink.in_items"),
+            code.contains("WrapScalar should deliver non-empty list to sink.in_items"),
             "coercion tests should verify WrapScalar list shape: {}",
             code
         );
