@@ -387,8 +387,8 @@ This effort is done only when all items below are true.
 ### E. Secret safety
 
 - [x] Human-visible rendering of values goes through a redaction chokepoint (`Value::display_redacted` or equivalent). _(2026-02-18: display path now funnels rendering through `render_value_for_port` + `Value::display_redacted(_truncated)` helpers.)_
-- [ ] No display path can accidentally emit `Value::Secret` plaintext.
-- [ ] CI masking still occurs for secret outputs.
+- [x] No display path can accidentally emit `Value::Secret` plaintext. _(2026-02-18: `render_value_for_port` + `Value::display_redacted(_truncated)` enforce redaction for display output; dedicated regression tests assert secret values render as `***`.)_
+- [x] CI masking still occurs for secret outputs. _(2026-02-18: `display::tests::test_mask_secrets_in_log_emits_mask_command_without_plaintext_secret` verifies mask commands emit without leaking plaintext secrets.)_
 
 ### F. Preflight integration
 

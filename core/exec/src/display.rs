@@ -1007,6 +1007,27 @@ const FAILURE_DETAIL_LINES: usize = 30;
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct SharedBufferWriter {
+        buf: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl Write for SharedBufferWriter {
+        fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+            self.buf
+                .lock()
+                .expect("shared buffer lock")
+                .extend_from_slice(data);
+            Ok(data.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_non_tty_observer_counts_track_states() {
@@ -1230,5 +1251,38 @@ mod tests {
         let value = Value::Secret(gunbc_ir::SecretString::new("top-secret-token"));
         let rendered = render_value_for_port("api_key", &value).expect("rendered secret");
         assert_eq!(rendered, "***");
+    }
+
+    #[test]
+    fn test_mask_secrets_in_log_emits_mask_command_without_plaintext_secret() {
+        let buf = Arc::new(Mutex::new(Vec::new()));
+        let writer = SharedBufferWriter { buf: buf.clone() };
+        let mut ci = crate::CiContext::new(Box::new(gunbc_ir::transport::ci::PlainTextProvider))
+            .with_writer(Box::new(writer));
+        let secret = "top-secret-token";
+        let log = crate::ExecutionLog {
+            entries: vec![crate::LogEntry {
+                node_id: "node".to_string(),
+                inputs: None,
+                outputs: HashMap::from([(
+                    "secret".to_string(),
+                    Value::Secret(gunbc_ir::SecretString::new(secret)),
+                )]),
+                was_intercepted: false,
+            }],
+        };
+
+        mask_secrets_in_log(&mut ci, &log);
+
+        let output = String::from_utf8(buf.lock().expect("shared buffer lock").clone())
+            .expect("utf8 output");
+        assert!(
+            output.contains("[masked value]"),
+            "expected mask command output, got: {output}"
+        );
+        assert!(
+            !output.contains(secret),
+            "secret plaintext must not be emitted in CI output"
+        );
     }
 }
