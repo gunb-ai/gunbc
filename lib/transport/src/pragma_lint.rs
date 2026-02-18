@@ -1,16 +1,22 @@
 #[cfg(test)]
 mod tests {
+    use gunbc_ir::WorkspaceLayout;
     use std::collections::HashSet;
     use std::fs;
     use std::path::{Path, PathBuf};
 
     fn repo_root() -> PathBuf {
-        let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        crate_dir
-            .parent()
-            .and_then(|p| p.parent())
-            .map(PathBuf::from)
-            .expect("expected repo root to be two levels up from lib/transport")
+        WorkspaceLayout::from_env_manifest_dir()
+            .expect("resolve workspace layout")
+            .workspace_root
+    }
+
+    #[test]
+    fn repo_root_resolves_workspace_layout_root() {
+        let root = repo_root();
+        assert!(root.join("Cargo.toml").is_file());
+        assert!(root.join("core").is_dir());
+        assert!(root.join("lib").is_dir());
     }
 
     fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {

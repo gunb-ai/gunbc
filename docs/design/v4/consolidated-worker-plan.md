@@ -621,7 +621,7 @@ Eliminate `CARGO_MANIFEST_DIR` + `join("../../..")` patterns and `parent().paren
 
 - [ ] C7.4a — Replace `dsl_tools_root()` / `dsl_pipelines_root()` in `subdags/mod.rs`
 - [ ] C7.4b — Replace `workspace_root()` helpers in daglang-cli tests (7+ sites)
-- [ ] C7.4c — Replace `repo_root()` in `lib/transport/src/pragma_lint.rs`
+- [x] C7.4c — Replace `repo_root()` in `lib/transport/src/pragma_lint.rs`
 - [ ] C7.4d — Replace hardcoded `CODEGEN_OUT_DIR` / `CODEGEN_BIN_DIR` constants
 
 #### Wave 2
