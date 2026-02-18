@@ -655,15 +655,15 @@ separate logic. Remaining: formalize `DisplayConfig` struct, verbosity control.
 
 - [x] D1.1a — Unify `print_value` + `print_log_entry` *(DONE)*
 - [x] D1.1b — Non-TTY observer summaries *(DONE)*
-- [ ] D1.1c — Formalize `DisplayConfig` struct with mode/verbosity settings
-- [ ] D1.1d — All execution paths use `DisplayConfig`
+- [x] D1.1c — Formalize `DisplayConfig` struct with mode/verbosity settings
+- [x] D1.1d — All execution paths use `DisplayConfig`
 
 ##### D1.2 — Secret redaction chokepoint [S]
 **Deps**: None
 
 - [x] D1.2a — Add `Secret` arm to `print_value` *(DONE)*
-- [ ] D1.2b — Add `Value::display_redacted(&self) -> String` method
-- [ ] D1.2c — Route all human-visible rendering through redaction chokepoint
+- [x] D1.2b — Add `Value::display_redacted(&self) -> String` method
+- [x] D1.2c — Route all human-visible rendering through redaction chokepoint
 
 ##### D1.3 — Capture stdout+stderr all CI stages [S]
 **Deps**: None
@@ -723,7 +723,7 @@ Different ops use `"report"`, `"message"`, `"stderr"`, `"error"`, `"success"`, e
 ##### D1.9 — Verification + regression tests [L]
 **Deps**: D1.6, D1.7
 
-- [ ] D1.9a — Unit tests for DisplayConfig modes + secret redaction
+- [x] D1.9a — Unit tests for DisplayConfig modes + secret redaction
 - [ ] D1.9b — Golden/snapshot tests for TTY/non-TTY/CI text modes
 - [ ] D1.9c — Regression test for 2026-02-13 large-log failure
 - [ ] D1.9d — End-to-end smoke coverage for workflow UX parity
