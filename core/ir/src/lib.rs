@@ -183,9 +183,9 @@ pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, Wrapper
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{
     boundary_label, parse_map_type_id, seed_placeholder_policy_for_type_id,
-    semantic_carrier_class_for_type_id, Cardinality, CardinalityMismatch,
-    CardinalitySamplingStrategy, NodeId, PortName, SeedPlaceholderPolicy, SemanticCarrierClass,
-    TypeId,
+    semantic_carrier_class_for_type_id, value_backing_for_type_id, Cardinality,
+    CardinalityMismatch, CardinalitySamplingStrategy, NodeId, PortName, SeedPlaceholderPolicy,
+    SemanticCarrierClass, TypeId, ValueBacking,
 };
 pub use validate::{
     validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,

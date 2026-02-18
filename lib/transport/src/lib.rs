@@ -51,5 +51,7 @@ pub use ops::TransportOps;
 
 pub use resource_io::TransportIo;
 
+pub mod system_models;
+
 #[cfg(test)]
 mod pragma_lint;

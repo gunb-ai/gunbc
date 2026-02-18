@@ -18,6 +18,7 @@ pub struct SecretValueCache {
 }
 
 impl SecretValueCache {
+    #[allow(clippy::disallowed_methods)] // Secret cache manages a local TTL cache directory for credentials.
     pub fn load(path: &Path) -> Result<Self, String> {
         if !path.exists() {
             return Ok(Self::default());
@@ -28,6 +29,7 @@ impl SecretValueCache {
             .map_err(|e| format!("failed to parse secret cache '{}': {}", path.display(), e))
     }
 
+    #[allow(clippy::disallowed_methods)] // Secret cache manages a local TTL cache directory for credentials.
     pub fn save(&self, path: &Path) -> Result<(), String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
@@ -167,6 +169,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::disallowed_methods)] // Test-only filesystem operations for cache/config fixtures.
     fn cache_round_trip_save_and_load() {
         let now = UNIX_EPOCH + Duration::from_secs(100);
         let mut cache = SecretValueCache::default();

@@ -173,13 +173,8 @@ impl Executable for CloudOps {
                 out.ok()
             }
             CloudOps::ScopePreflight => {
-                let required_scopes = optional_str_list_strict(&inputs, "required_scopes")?
-                    .ok_or_else(|| ExecError::new("missing required scope declarations"))?;
-                if required_scopes.is_empty() {
-                    return Err(ExecError::new(
-                        "required scope declarations cannot be empty",
-                    ));
-                }
+                let required_scopes =
+                    optional_str_list_strict(&inputs, "required_scopes")?.unwrap_or_default();
 
                 for scope in &required_scopes {
                     validate_scope_id(scope)?;
@@ -456,35 +451,25 @@ mod tests {
     }
 
     #[test]
-    fn scope_preflight_rejects_missing_required_scopes() {
+    fn scope_preflight_accepts_missing_required_scopes() {
         let mut inputs = HashMap::new();
         inputs.insert("skip".to_string(), Value::Bool(false));
 
-        let err = CloudOps::ScopePreflight
+        let out = CloudOps::ScopePreflight
             .execute(inputs)
-            .expect_err("missing required_scopes should fail fast");
-        assert!(
-            err.to_string()
-                .contains("missing required scope declarations"),
-            "error should mention missing declarations, got: {}",
-            err
-        );
+            .expect("missing required_scopes (0..*) should succeed vacuously");
+        assert_eq!(out.get("scope_verified"), Some(&Value::Bool(true)));
     }
 
     #[test]
-    fn scope_preflight_rejects_empty_required_scopes() {
+    fn scope_preflight_accepts_empty_required_scopes() {
         let mut inputs = HashMap::new();
         inputs.insert("required_scopes".to_string(), Value::str_list(Vec::new()));
 
-        let err = CloudOps::ScopePreflight
+        let out = CloudOps::ScopePreflight
             .execute(inputs)
-            .expect_err("empty required_scopes should fail fast");
-        assert!(
-            err.to_string()
-                .contains("required scope declarations cannot be empty"),
-            "error should mention empty declarations, got: {}",
-            err
-        );
+            .expect("empty required_scopes (0..*) should succeed vacuously");
+        assert_eq!(out.get("scope_verified"), Some(&Value::Bool(true)));
     }
 
     #[test]

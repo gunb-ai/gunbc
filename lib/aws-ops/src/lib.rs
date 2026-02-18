@@ -8,6 +8,7 @@
 mod graph;
 pub mod graph_mock;
 mod ops;
+pub mod system_models;
 
 pub use graph::{
     build_aws_secrets_manager_credential_graph, build_aws_secrets_manager_upsert_graph,

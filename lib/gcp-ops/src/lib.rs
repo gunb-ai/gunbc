@@ -14,6 +14,7 @@ mod graph;
 pub mod graph_mock;
 mod ops;
 pub mod services;
+pub mod system_models;
 
 pub use discovery_graph::{build_infra_discovery_dag, GcpDiscoveryGraphOp};
 pub use discovery_ops::GcpDiscoveryOps;

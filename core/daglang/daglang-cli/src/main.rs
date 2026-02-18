@@ -234,7 +234,7 @@ fn write_emitted_files(
     out_dir: &std::path::Path,
     files: &[daglang_emit::EmittedFile],
 ) -> Result<Vec<PathBuf>, String> {
-    let out_root = path_utils::normalize_cli_path(cwd, &out_dir.to_path_buf());
+    let out_root = path_utils::normalize_cli_path(cwd, out_dir);
     let mut written = Vec::with_capacity(files.len());
     for file in files {
         let destination = out_root.join(&file.path);

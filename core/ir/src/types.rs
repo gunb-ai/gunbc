@@ -670,6 +670,89 @@ pub fn semantic_carrier_class_for_type_id(type_id: &str) -> SemanticCarrierClass
     }
 }
 
+/// How a `TypeId` serializes into a `Value` variant at runtime.
+///
+/// Used by testgen to validate that mock values are compatible with port types
+/// without hardcoded lists of type names in codegen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueBacking {
+    String,
+    Bool,
+    Int,
+    Float,
+    Json,
+    Map,
+    List,
+    Set,
+    Unit,
+    Bytes,
+}
+
+impl ValueBacking {
+    /// Whether a `Value` variant name (from `mock_value_type_name`) is compatible.
+    pub fn accepts_value_type(&self, value_type: &str) -> bool {
+        match self {
+            ValueBacking::String => value_type == "String",
+            ValueBacking::Bool => value_type == "Bool",
+            ValueBacking::Int => value_type == "Int",
+            ValueBacking::Float => value_type == "Int", // Float can accept Int
+            ValueBacking::Json => true,                 // Json accepts anything
+            ValueBacking::Map => value_type == "Map",
+            ValueBacking::List => value_type == "List",
+            ValueBacking::Set => value_type == "Set",
+            ValueBacking::Unit => value_type == "Unit",
+            ValueBacking::Bytes => value_type == "List", // byte arrays are lists
+        }
+    }
+}
+
+/// Determine how a `TypeId` string serializes into a `Value` variant.
+///
+/// Uses `PortType` for structurally known types, then falls back to
+/// domain-specific knowledge for opaque types that map to `PortType::Any`.
+pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
+    use crate::port_type::PortType;
+
+    // Check for parametric Map<K,V> first
+    if parse_map_type_id(type_id).is_some() {
+        return ValueBacking::Map;
+    }
+
+    let port_type = PortType::from(type_id);
+    match port_type {
+        PortType::String => ValueBacking::String,
+        PortType::Bool => ValueBacking::Bool,
+        PortType::Int => ValueBacking::Int,
+        PortType::Float => ValueBacking::Float,
+        PortType::Json => ValueBacking::Json,
+        PortType::Bytes => ValueBacking::Bytes,
+        PortType::Secret => ValueBacking::String,
+        PortType::List(_) => ValueBacking::List,
+        PortType::Any => {
+            // Domain-specific types that PortType doesn't know about
+            match type_id {
+                // Map-backed types (structured data stored as Value::Map)
+                "ToolHandle" | "Credential" | "FilesystemHandle"
+                | "NetworkHandle" | "CliResult" => ValueBacking::Map,
+                // Int-backed types
+                "Timestamp" => ValueBacking::Int,
+                // String-backed types
+                "Platform" => ValueBacking::String,
+                // Legacy list aliases
+                s if s.ends_with("List") => ValueBacking::List,
+                // Legacy set aliases
+                s if s.ends_with("Set") => ValueBacking::Set,
+                // Optional wrappers inherit inner type's backing
+                s if s.starts_with("Optional") => {
+                    value_backing_for_type_id(&s["Optional".len()..])
+                }
+                // Default: Json accepts anything
+                _ => ValueBacking::Json,
+            }
+        }
+    }
+}
+
 impl From<&str> for TypeId {
     fn from(s: &str) -> Self {
         Self(s.to_string())

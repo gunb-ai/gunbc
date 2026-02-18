@@ -36,9 +36,9 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, parse_map_type_id, semantic_carrier_class_for_type_id, Cardinality, Dag, NodeId, Os,
-    PortName, RuntimePlatform, SecretString, SeedPlaceholderPolicy, SemanticCarrierClass,
-    TypeRegistry, Value, ValueExpr,
+    contract, parse_map_type_id, semantic_carrier_class_for_type_id, value_backing_for_type_id,
+    Cardinality, Dag, NodeId, Os, PortName, RuntimePlatform, SecretString, SeedPlaceholderPolicy,
+    SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -114,14 +114,7 @@ fn mock_types_compatible(port_type: &str, value: &Value) -> bool {
     if port_type == "Json" || value_type == "Json" {
         return true;
     }
-    // List-backed types (StringList, NonEmptyStringList, etc.)
-    if value_type == "List" && port_type.ends_with("List") {
-        return true;
-    }
-    // Set-backed types (StringSet, etc.)
-    if value_type == "Set" && port_type.ends_with("Set") {
-        return true;
-    }
+    // Parametric Map<K,V> — validate value entries against the value type parameter
     if let Some((key_type, value_param_type)) = parse_map_type_id(port_type) {
         if key_type != "String" {
             return false;
@@ -133,33 +126,13 @@ fn mock_types_compatible(port_type: &str, value: &Value) -> bool {
         }
         return false;
     }
-    // Map-backed types: ToolHandle, Credential, FilesystemHandle, NetworkHandle, CliResult
-    // These types serialize to/from Map when stored as Value
-    if value_type == "Map" {
-        let map_backed_types = [
-            "ToolHandle",
-            "Credential",
-            "FilesystemHandle",
-            "NetworkHandle",
-            "CliResult",
-        ];
-        if map_backed_types.contains(&port_type) {
-            return true;
-        }
-    }
-    // Int-backed types: Timestamp stores milliseconds as Int
-    if value_type == "Int" && port_type == "Timestamp" {
+    // Platform has dual backing: String or Map (structured platform info)
+    if port_type == "Platform" && (value_type == "String" || value_type == "Map") {
         return true;
     }
-    // String-backed types: Platform serializes as String
-    if value_type == "String" && port_type == "Platform" {
-        return true;
-    }
-    // Map can also represent Platform (for structured platform info)
-    if value_type == "Map" && port_type == "Platform" {
-        return true;
-    }
-    false
+    // Derive backing from the type system
+    let backing = value_backing_for_type_id(port_type);
+    backing.accepts_value_type(value_type)
 }
 
 /// Configuration for test generation.

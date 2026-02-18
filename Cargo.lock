@@ -408,7 +408,7 @@ dependencies = [
  "gunbc-test",
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.114",
 ]
 
 [[package]]

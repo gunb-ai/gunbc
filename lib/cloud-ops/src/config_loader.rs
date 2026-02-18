@@ -351,6 +351,7 @@ fn resolve_toml_source(
         })
 }
 
+#[allow(clippy::disallowed_methods)] // Config loading reads from well-known file paths at startup.
 fn resolve_explicit_context_config(
     context: &ResolveContext,
 ) -> Result<Option<CloudSecretConfig>, ConfigError> {
@@ -415,6 +416,7 @@ fn resolve_env_config() -> Result<Option<CloudSecretConfig>, ConfigError> {
     Ok(None)
 }
 
+#[allow(clippy::disallowed_methods)] // Config loading reads from well-known file paths at startup.
 fn resolve_profile_file_config(
     path: &Path,
     context: &ResolveContext,
@@ -664,6 +666,7 @@ service_account = "gunbai-prod-secrets@gunbai-secrets.iam.gserviceaccount.com"
     }
 
     #[test]
+    #[allow(clippy::disallowed_methods)] // Test-only filesystem operations for cache/config fixtures.
     fn resolve_graph_cloud_config_precedence_explicit_over_env_over_profile() {
         with_env_lock(|| {
             with_temp_workdir(|root| {
@@ -844,6 +847,7 @@ service_account = "gunbai-prod-secrets@gunbai-secrets.iam.gserviceaccount.com"
         }
     }
 
+    #[allow(clippy::disallowed_methods)] // Test-only filesystem operations for cache/config fixtures.
     fn with_temp_workdir<F>(f: F)
     where
         F: FnOnce(&Path) + std::panic::UnwindSafe,
@@ -869,6 +873,7 @@ service_account = "gunbai-prod-secrets@gunbai-secrets.iam.gserviceaccount.com"
         }
     }
 
+    #[allow(clippy::disallowed_methods)] // Test-only filesystem operations for cache/config fixtures.
     fn write_profile_config(root: &Path, profile: &str, project: &str) {
         let gunbc_dir = root.join(".gunbc");
         std::fs::create_dir_all(&gunbc_dir).expect("create .gunbc");

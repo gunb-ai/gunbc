@@ -58,6 +58,7 @@ impl WorkspaceLayout {
     }
 
     /// Resolve layout from `cargo metadata` starting in `cwd`.
+    #[allow(clippy::disallowed_methods)] // Build-time workspace discovery via cargo metadata.
     pub fn from_cargo_metadata_in(cwd: &Path) -> Result<Self, WorkspaceLayoutError> {
         let cwd = canonicalize_path(cwd)?;
         let output = Command::new("cargo")
@@ -120,6 +121,7 @@ impl WorkspaceLayout {
     ///
     /// Walks ancestors until a workspace `Cargo.toml` is found, then loads
     /// full package layout via `cargo metadata`.
+    #[allow(clippy::disallowed_methods)] // Build-time workspace root discovery reads Cargo.toml files.
     pub fn from_manifest_dir(manifest_dir: &Path) -> Result<Self, WorkspaceLayoutError> {
         let manifest_dir = canonicalize_path(manifest_dir)?;
         for ancestor in manifest_dir.ancestors() {

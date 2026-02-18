@@ -20,11 +20,11 @@ gated on having these foundations in place.
 | Track | Status | Summary |
 |-------|--------|---------|
 | **A — DSL Core** | DONE | Compiler pipeline complete: parse → resolve → typecheck → lower → derive → emit. 4 targets (Rust/Go/C/MIPS), exec-runtime fast path, cross-language parity tests. |
-| **B — Migration** | ~30% | Workflow audit Phases A-C done (~85%); Phase D pending. DSL migration backlog created but 0% implemented. |
-| **C — Modeling** | ~10% | Type DAG infrastructure exists (`Dag<TypeOp>`, contract tower L1-L3, `can_safely_coerce_to`). Coercion Phases 1-2 done, Phases 3-4 deferred. No understanding layer. No workspace model (45+ hardcoded path assumptions). Platform/browser/anemic/transport at 0%. |
-| **D — Runtime/Test** | ~40% | Logging consolidation ~44% (basics done, quality/safety/tests remain). Testgen seed policy ~50% (core fix done). Codegen quality ongoing. |
-| **E — Domain Parity** | ~5% | Credential lifecycle has some wiring. GCP infra at 0%. LLM review V0 complete. **Gated on C5+C6 foundations.** |
-| **F — Debt Ledger** | ~55% | Hacks: 20/35 resolved. Consolidation: ongoing. |
+| **B — Migration** | ~40% | Workflow audit Phases A-C done. DSL migration: pragma (B1.1a), transport triplets (B1.2), codegen (B1.3a), skip (B1.4) started. Phase D pending. |
+| **C — Modeling** | ~75% | Type DAG infra exists. WorkspaceLayout **DONE** (C7.1-C7.5). Coercion via DAG walk **DONE** (C5.1-C5.3). System model types + data exist (C6.1-C6.4), model data distributed to owning crates (C6.5f-g). Remaining: refactor to `Dag<TypeOp>` (C6.5a-e,h). Platform/toolchain done (C1). |
+| **D — Runtime/Test** | ~55% | Logging basics done, D1.1-D1.3 complete. Testgen seed policy core done, D2.1 done. D3.1 (triplet unification) done. Codegen quality ongoing. |
+| **E — Domain Parity** | ~45% | Credential lifecycle through E1.2 done. GCP IAM/WIF (E2.1-E2.2) done. Infra plan/apply, secret cache/rotation added. LLM review V0 complete. |
+| **F — Debt Ledger** | ~70% | F1.6 (mtime diagnostics), F1.10 (input mock validation), F1.23 (strict DryRun), F1.30 (List dual encoding), F1.31 (cardinality cap) done. |
 
 ---
 
@@ -35,9 +35,10 @@ WAVE 0 (type foundations)   WAVE 1 (model + migrate)   WAVE 2 (build-on)        
 ─────────────────────────   ────────────────────────   ──────────────────         ─────────────────
 C5.1 coerce via DAG walk ─▶ C5.3 stress tests ─────────────────────────────────▶ (validates all)
 C5.2 eliminate dual enc  ─▶ C5.3
-C6.1 understanding types ─▶ C6.2 GCP understandings ─▶ C6.3 contract tests ────▶ C6.4 multi-cloud
+C6.1 system model types ─▶ C6.2 GCP models ──────────▶ C6.3 contract tests ────▶ C6.4 multi-cloud
                      ├────▶ E2.1* SA/IAM (via C6)  ──▶ E2.2 WIF ──────────────▶ E2.3-E2.8
                      └────▶ C6.2b transport specs
+C5.1 + C6.4 ────────────▶ C6.5 refactor to Dag<TypeOp> (system models as typed DAGs)
 
 B1.1 pragma ──────────────────────────────────────────┐
 B1.2 transport triplets ──────────────────────────────┤
@@ -85,6 +86,7 @@ E1.0 cred diagnostics ────▶ E1.1 context/profile ─────▶ E1
 | B1.1-B1.4 | B2.1 | Migration experience informs workflow registry design |
 | **D3.1** | **D3.2** | Unified triplet data in derive enables obligation-based canonical kind |
 | **C5.1** | **D3.2** | DAG-based coercion matures obligation metadata used for canonical kind |
+| **C5.1 + C6.4** | **C6.5** | DAG coercion + all system model data must exist before refactoring to DAG types |
 | **C7.1** | **C7.2, C7.3, C7.4** | WorkspaceLayout enables all downstream path fixes |
 | **C7.4** | **C7.5** | parent() chain elimination enables pragma policy derivation |
 | DSL core (ext) | B1.5-B1.8 | Reactive/metaprog primitives not yet in DSL |
@@ -253,13 +255,13 @@ Design sandbox mode (no real I/O) and replay/durability for DAG execution.
 
 ## Track C — Modeling Foundation
 
-### C5 — Type DAG Coercion (Wave 0)
-**Source**: `TODO/TODONE/design-type-coercion.md` Phases 3-4 (deferred), `core/ir/src/type_op.rs`,
+### C5 — Type DAG Coercion (Wave 0) — DONE
+**Source**: `TODO/TODONE/design-type-coercion.md` Phases 1-4, `core/ir/src/type_op.rs`,
 `core/ir/src/contract.rs`, `core/ir/src/coerce.rs`
 
-Types are already DAGs (`Dag<TypeOp>`) with a contract tower (L1 cardinality, L2 base type,
-L3 predicates). Phases 1-2 done: contract extraction + `can_safely_coerce_to()`. But coercion
-currently uses hardcoded rules, not DAG comparison. This must work before we build on it.
+Types are DAGs (`Dag<TypeOp>`) with a contract tower (L1 cardinality, L2 base type,
+L3 predicates). All phases complete: contract extraction, `can_safely_coerce_to()`,
+DAG-walk coercion, dual encoding elimination, and stress tests.
 
 **Existing infrastructure**:
 - `TypeOp` enum: `Identity`, `Validate(Predicate)`, `Transform(Coercion)`, `Wrap(WrapperKind)`, `Unwrap`
@@ -310,11 +312,17 @@ Validate that the DAG-based coercion handles real-world type relationships.
 
 ---
 
-### C6 — Understanding / Modeling Layer (Wave 0-1)
-**Source**: the-gunbai `understanding/` pattern
+### C6 — System Modeling Layer (Wave 0-1)
+**Source**: the-gunbai `understanding/` pattern, reused through `Dag<TypeOp>` + `TypeRegistry`
 
-External systems must be modeled as typed, versioned understandings — not ad-hoc code.
-This is the foundation for all GCP infra, credential, and transport work.
+External systems must be modeled through the DAG type system — not as a parallel type hierarchy.
+System behaviors are typed DAGs: inputs/outputs are `TypeId`s in the registry, properties are
+`Validate(Predicate)` nodes, coercion between providers is DAG comparison (C5). This is the
+foundation for all GCP infra, credential, and transport work.
+
+**Architecture correction (2026-02-18)**: Overnight work built `SystemModel`/`Behavior`/`Property`
+as a parallel type system in `core/ir/src/system_model.rs` disconnected from `Dag<TypeOp>`.
+This must be refactored — see C6.5 below.
 
 #### Wave 0
 
@@ -386,6 +394,39 @@ handles cross-provider concerns correctly.
       both satisfy `Credential` interface but different provider strategies
 - [x] C6.4f — Storage abstraction test: `Store` trait behaviors map to both GCS and S3
       understandings with correct property preservation (CAS atomicity, TTL semantics)
+
+#### Correction — Refactor to DAG type system
+
+##### C6.5 — Express system models through Dag\<TypeOp\> + TypeRegistry [L]
+**Deps**: C5.1 (DAG-based coercion), C6.1-C6.4 (data exists)
+
+`system_model.rs` built a parallel type system (`SystemModel`, `Behavior`, `Property`) that
+is disconnected from `Dag<TypeOp>`, `TypeRegistry`, and `TypeContract`. This means:
+- Cross-provider coercion (GCP vs AWS) can't use DAG comparison
+- Contract tests are derived from ad-hoc `Property` enums, not type predicates
+- Parity validation (`validate_store_behavior_mapping`) uses string-matched behavior IDs
+  instead of structural type equivalence
+- `rust_type_for_type_id()` is a hardcoded parallel mapping that drifts from `PortType`
+
+**Target**: System behaviors are `Dag<TypeOp>` entries in `TypeRegistry`. Properties become
+`Validate(Predicate)` nodes. Coercion and parity are DAG operations.
+
+- [ ] C6.5a — Design: map `SystemModel` fields to `Dag<TypeOp>` nodes (behavior = typed
+      sub-DAG with input/output ports; properties = `Validate(Predicate)` nodes)
+- [ ] C6.5b — Register system behavior type DAGs in `TypeRegistry` (e.g.,
+      `TypeId("gcp.secret_manager.access_secret_version")` → `Dag<TypeOp>`)
+- [ ] C6.5c — Replace `derive_contract_test_specs()` with predicate-driven derivation from
+      type DAG `Validate` nodes (ReadOnly, Deterministic, etc. become predicates)
+- [ ] C6.5d — Replace `validate_store_behavior_mapping()` with structural DAG equivalence
+      check (GCS.get_object and S3.get_object type DAGs structurally equivalent)
+- [ ] C6.5e — Replace `rust_type_for_type_id()` with `PortType`-based derivation
+- [x] C6.5f — Distribute model data: GCP models registered via `submit_system_model!` in
+      `lib/gcp-ops`, AWS in `lib/aws-ops`, transport in `lib/transport` (not centralized
+      in one 700-line function in core/ir)
+- [x] C6.5g — `default_system_models()` now delegates to `iter_registered_system_models()`;
+      model-specific tests moved to owning crates, cross-crate tests to gunbc-dag
+- [ ] C6.5h — Cross-provider coercion test: `GcpSecretPayload` and `AwsSecretValue` type
+      DAGs both coerce to `String` via DAG walk (not hardcoded lattice)
 
 ---
 
@@ -551,7 +592,7 @@ Only pursue if Phase 3 evaluation shows behavioral specs are insufficient.
 
 ---
 
-### C7 — Workspace Model (Wave 0-1)
+### C7 — Workspace Model (Wave 0-1) — DONE
 **Source**: Code audit (2026-02-17) — 30+ sites hardcode repo-structure assumptions
 
 No workspace abstraction exists today. Every site that needs a crate location, a source glob,
@@ -974,6 +1015,8 @@ V0 complete (Tracks 2-6). Track 1 (Resource abstraction trait) still in design.
 - [x] F1.31 — Cardinality test-case sampling strategy (replace hardcoded cap=64) [M]
 - [x] F1.32 — Map type_id parametric specification [M]
 - [ ] F1.33 — Cardinality compositional modeling [L] (Wave 4)
+- [x] P3 — Replace hardcoded `map_backed_types` list in `mock_types_compatible()` with
+      `ValueBacking` enum + `value_backing_for_type_id()` in `core/ir/src/types.rs` [S]
 
 #### Runtime / Safety (Wave 1-2)
 

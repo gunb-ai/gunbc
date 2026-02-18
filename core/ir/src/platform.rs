@@ -466,8 +466,6 @@ fn detect_vendor() -> Vendor {
         Vendor::Apple
     } else if cfg!(target_vendor = "pc") {
         Vendor::Pc
-    } else if cfg!(target_vendor = "unknown") {
-        Vendor::Unknown
     } else {
         Vendor::Unknown
     }

@@ -87,13 +87,39 @@ const DISALLOWED_METHODS_ALLOWLIST_RULES: &[DisallowedMethodsAllowRule] = &[
         rationale: "build-time DSL module discovery and workspace graph construction",
         fallback_pattern: "gunbc-dag/src/",
     },
+    DisallowedMethodsAllowRule {
+        selector: CrateSelector::Exact("gunbc-ir"),
+        suffix: "src/workspace_layout.rs",
+        as_prefix: false,
+        rationale: "workspace layout discovery uses cargo metadata subprocess",
+        fallback_pattern: "core/ir/src/workspace_layout.rs",
+    },
+    DisallowedMethodsAllowRule {
+        selector: CrateSelector::Exact("gunbc-lib-cloud-ops"),
+        suffix: "",
+        as_prefix: true,
+        rationale: "cloud ops: file-backed config, credential policy, secret cache",
+        fallback_pattern: "lib/cloud-ops/",
+    },
 ];
 
-const DEAD_CODE_ALLOW_RULES: &[DeadCodeAllowRule] = &[DeadCodeAllowRule {
-    crate_name: "daglang-syntax",
-    relative_path: "src/parser.rs",
-    fallback_path: "core/daglang/daglang-syntax/src/parser.rs",
-}];
+const DEAD_CODE_ALLOW_RULES: &[DeadCodeAllowRule] = &[
+    DeadCodeAllowRule {
+        crate_name: "daglang-syntax",
+        relative_path: "src/parser.rs",
+        fallback_path: "core/daglang/daglang-syntax/src/parser.rs",
+    },
+    DeadCodeAllowRule {
+        crate_name: "daglang-emit",
+        relative_path: "src/lower_mips.rs",
+        fallback_path: "core/daglang/daglang-emit/src/lower_mips.rs",
+    },
+    DeadCodeAllowRule {
+        crate_name: "gunbc-lib-gcp-ops",
+        relative_path: "src/graph.rs",
+        fallback_path: "lib/gcp-ops/src/graph.rs",
+    },
+];
 
 const PRAGMA_ALLOW_LINTS: &[LintId] = &[
     LintId::clippy("too_many_arguments"),

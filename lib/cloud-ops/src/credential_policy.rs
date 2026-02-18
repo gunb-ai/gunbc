@@ -82,6 +82,7 @@ pub fn bind_credential_intent_policy(
     })
 }
 
+#[allow(clippy::disallowed_methods)] // Credential policy loader reads policy from file-backed profiles.
 fn load_policy_from_env() -> Result<Option<CredentialPolicySpec>, String> {
     if let Some(raw_json) = env_nonempty(ENV_CREDENTIAL_POLICY_JSON) {
         let spec = serde_json::from_str::<CredentialPolicySpec>(&raw_json)
