@@ -98,11 +98,11 @@ and initial SA bindings. gunbc only has WIF discovery (list/get).
 
 **Gap**: gunbc can discover WIF pools/providers but cannot create or update them.
 
-- [ ] Add `create_pool(project, pool_id, display_name)` to `WorkloadIdentityService`
-- [ ] Add `create_provider(project, pool_id, provider_id, config)` to `WorkloadIdentityService`
-- [ ] Add `update_provider(project, pool_id, provider_id, config)` to `WorkloadIdentityService`
-- [ ] Add `WifProviderConfig` struct with OIDC issuer URI, attribute mapping, attribute condition
-- [ ] Add REST implementations + tests
+- [x] Add `create_pool(project, pool_id, display_name)` to `WorkloadIdentityService`
+- [x] Add `create_provider(project, pool_id, provider_id, config)` to `WorkloadIdentityService`
+- [x] Add `update_provider(project, pool_id, provider_id, config)` to `WorkloadIdentityService`
+- [x] Add `WifProviderConfig` struct with OIDC issuer URI, attribute mapping, attribute condition
+- [x] Add REST implementations + tests
 
 **Ref**: `gunb.ai/tools/infra/gcloud/admin.go` — `CreateWorkloadIdentityPool`, `CreateWorkloadIdentityProvider`
 
