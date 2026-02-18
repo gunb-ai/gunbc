@@ -463,6 +463,10 @@ Update (2026-02-18):
 - Added `build_secrets_provision_dag(...)` in
   `lib/cloud-ops/src/secret_provision_graph.rs` to provision all active
   secrets from spec via composed upsert sub-DAGs.
+- Added secret fetch/export integration primitives:
+  - `render_direnv_exports(...)` (`secret_exports`)
+  - `SecretValueCache` + `plan_secret_fetch(...)` (`secret_cache`)
+  for TTL-aware cache reuse and partial fetch planning.
 
 Phase 5: Hardening and cutover
 

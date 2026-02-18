@@ -910,7 +910,7 @@ Implementation of SA/IAM operations against the typed understanding spec from C6
 
 - [x] E2.3a — Secret rotation handlers
 - [x] E2.3b — Secret provisioning DAG
-- [ ] E2.3c — Secret fetch + direnv export integration
+- [x] E2.3c — Secret fetch + direnv export integration
 
 ##### E2.4 — Environment modeling [M]
 **Deps**: E2.2
