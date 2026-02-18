@@ -44,7 +44,7 @@ pub mod upsert;
 
 pub mod graph_mock;
 
-pub use env::PlatformEnv;
+pub use env::{strict_dry_run_enabled, PlatformEnv, STRICT_DRY_RUN_ENV};
 pub use graph::{
     build_deps_generate_graph, build_deps_graph, deps_generate_signature, deps_signature,
 };

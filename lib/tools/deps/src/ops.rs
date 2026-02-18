@@ -6,6 +6,7 @@
 use crate::installer::Installer;
 use crate::manifest::DepsManifest;
 use crate::upsert::upsert_dry_run;
+use crate::{strict_dry_run_enabled, Platform};
 use gunbc_exec::{
     optional_str_strict, propagate_skipped, require_response, require_str, ExecError, Executable,
     IntoExecResult, OutputMap, TransportResponseExt,
@@ -258,7 +259,12 @@ fn execute_generate_scripts(
 
     // Use platform from DAG input (acquired at boundary)
     let platform_str = require_str(&inputs, "res:platform")?;
-    let platform = crate::platform::Platform::parse(platform_str);
+    let platform = Platform::parse(platform_str);
+    if strict_dry_run_enabled() && platform == Platform::Unknown {
+        return Err(ExecError::new(
+            "strict dry-run requires explicit platform wiring/mocks; refusing Platform::Unknown",
+        ));
+    }
     let installer = Installer::for_platform(platform);
     let mut scripts = Vec::new();
     let mut already_installed = Vec::new();
@@ -674,6 +680,8 @@ echo "Installing git..."
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::STRICT_DRY_RUN_ENV;
+    use std::sync::{Mutex, OnceLock};
 
     #[test]
     fn test_generate_scripts_with_manifest_content() {
@@ -722,5 +730,49 @@ script = "echo 'installing echo'"
         let result = execute_generate_scripts(inputs);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("manifest_content"));
+    }
+
+    #[test]
+    fn test_generate_scripts_strict_dry_run_rejects_unknown_platform() {
+        with_env_lock(|| {
+            std::env::set_var(STRICT_DRY_RUN_ENV, "true");
+
+            let manifest_content = r#"
+[[dependency]]
+name = "echo"
+verify = "echo test"
+"#;
+
+            let mut inputs = HashMap::new();
+            inputs.insert(
+                "manifest_content".to_string(),
+                Value::Str(manifest_content.to_string()),
+            );
+            inputs.insert(
+                "res:platform".to_string(),
+                Value::Str("unknown".to_string()),
+            );
+
+            let err = execute_generate_scripts(inputs).expect_err("strict mode should fail");
+            assert!(err
+                .to_string()
+                .contains("strict dry-run requires explicit platform"));
+        });
+    }
+
+    fn with_env_lock<F>(f: F)
+    where
+        F: FnOnce() + std::panic::UnwindSafe,
+    {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let result = std::panic::catch_unwind(f);
+        std::env::remove_var(STRICT_DRY_RUN_ENV);
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
     }
 }

@@ -459,19 +459,21 @@ shape-assert nodes require more complex testgen logic.
 
 ---
 
-## 23. DryRun defaults mask missing resource wiring
+## ~~23. DryRun defaults mask missing resource wiring~~ RESOLVED (2026-02-18)
 
 **Where**: `lib/tools/deps/src/graph_mock.rs`, `lib/tools/deps/src/env.rs`
 
-**What happens**: DryRun mocks use deterministic defaults (`Platform::Linux`,
-`Timestamp(0)`, empty `EnvVars`) so a DAG can appear to work even if it never
-properly acquired/wired those resources.
-
-**Why it's a hack**: Missing resource wiring is silently papered over by
-defaults instead of failing loudly.
-
-**Suggested fix**: Consider a "strict DryRun" mode where env-node outputs
-default to poison/UNSET unless explicitly mocked.
+**What changed**:
+- Added strict dry-run toggle for deps env/resource flows:
+  - env var: `GUNBC_STRICT_DRY_RUN`
+  - strict mock default for `PlatformEnv` becomes `Platform::Unknown`
+    instead of `Platform::Linux`.
+- Added strict failure in deps script generation:
+  - when strict mode is enabled and platform resolves to `unknown`,
+    `execute_generate_scripts` now errors with explicit wiring/mocks guidance.
+- Added regression tests:
+  - `env::tests::strict_dry_run_flag_controls_platform_mock_default`
+  - `ops::tests::test_generate_scripts_strict_dry_run_rejects_unknown_platform`
 
 **Added**: 2026-02-13 (reconciliation)
 
