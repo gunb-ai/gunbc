@@ -38,11 +38,7 @@ pub fn makegen_dry_run_transport_mocks(output_path: &str) -> BoundaryMocks {
             "<dry-run>",
         ))),
     );
-    dry_run_mocks.set_value(
-        "execute_makegen_transport",
-        "response",
-        Value::Skipped,
-    );
+    dry_run_mocks.set_value("execute_makegen_transport", "response", Value::Skipped);
     dry_run_mocks
 }
 
@@ -63,11 +59,7 @@ pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
             existing_content,
         ))),
     );
-    check_mode_mocks.set_value(
-        "execute_makegen_transport",
-        "response",
-        Value::Skipped,
-    );
+    check_mode_mocks.set_value("execute_makegen_transport", "response", Value::Skipped);
     check_mode_mocks
 }
 

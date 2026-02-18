@@ -732,6 +732,7 @@ impl Guard {
 pub mod build {
     use super::*;
     pub use crate::resource::AccessMode;
+    use crate::typed_io::{PortTypeTag, TypedInput, TypedOutput, TypedPort};
 
     /// Create a simple port (defaults to Cardinality::ONE).
     pub fn port(name: &str, type_id: &str) -> Port {
@@ -799,6 +800,21 @@ pub mod build {
     /// The port name is automatically prefixed with `res:`.
     pub fn resource(name: &str, type_id: &str, mode: AccessMode) -> Port {
         Port::resource(name, type_id, mode)
+    }
+
+    /// Create a typed port and lower it to a `Port`.
+    pub fn typed_port<T: PortTypeTag>(name: &str) -> Port {
+        TypedPort::<T>::new(name).into()
+    }
+
+    /// Create a typed input port and lower it to a `Port`.
+    pub fn typed_input<T: PortTypeTag>(name: &str) -> Port {
+        TypedInput::<T>::new(name).into()
+    }
+
+    /// Create a typed output port and lower it to a `Port`.
+    pub fn typed_output<T: PortTypeTag>(name: &str) -> Port {
+        TypedOutput::<T>::new(name).into()
     }
 }
 

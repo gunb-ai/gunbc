@@ -31,7 +31,7 @@
 use crate::dag::{Dag, Edge, EdgeKind};
 use crate::node::Node;
 use crate::type_registry::TypeRegistry;
-use crate::types::{Cardinality, NodeId, PortName, TypeId};
+use crate::types::{Cardinality, NodeId, PortName, SemanticCarrierKind, TypeId};
 use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
@@ -63,6 +63,17 @@ pub enum BuilderError {
         to_node: NodeId,
         to_port: PortName,
         to_type: TypeId,
+    },
+    /// Edge is structurally compatible but semantically unsafe in strict mode.
+    SemanticCarrierMismatch {
+        from_node: NodeId,
+        from_port: PortName,
+        from_type: TypeId,
+        from_kind: SemanticCarrierKind,
+        to_node: NodeId,
+        to_port: PortName,
+        to_type: TypeId,
+        to_kind: SemanticCarrierKind,
     },
     /// Port uses an invalid type expression.
     InvalidTypeExpression {
@@ -153,6 +164,22 @@ impl fmt::Display for BuilderError {
                     f,
                     "type mismatch: {}:{} has type '{}', but {}:{} expects type '{}'",
                     from_node, from_port, from_type, to_node, to_port, to_type
+                )
+            }
+            BuilderError::SemanticCarrierMismatch {
+                from_node,
+                from_port,
+                from_type,
+                from_kind,
+                to_node,
+                to_port,
+                to_type,
+                to_kind,
+            } => {
+                write!(
+                    f,
+                    "semantic carrier mismatch: {}:{} ({:?}, '{}') cannot connect to {}:{} ({:?}, '{}') in strict mode",
+                    from_node, from_port, from_kind, from_type, to_node, to_port, to_kind, to_type
                 )
             }
             BuilderError::InvalidTypeExpression {
@@ -371,6 +398,8 @@ pub struct DagBuilder<T> {
     next_edge_index: usize,
     /// Optional type registry for structural compatibility checks
     type_registry: Option<TypeRegistry>,
+    /// Enforce semantic carrier compatibility in addition to structural checks.
+    strict_semantic_carriers: bool,
 }
 
 impl<T> Default for DagBuilder<T> {
@@ -388,6 +417,7 @@ impl<T> DagBuilder<T> {
             generations: HashMap::new(),
             next_edge_index: 0,
             type_registry: Some(TypeRegistry::with_core_types()),
+            strict_semantic_carriers: false,
         }
     }
 
@@ -400,6 +430,16 @@ impl<T> DagBuilder<T> {
     /// Disable structural type checks (fall back to exact type_id equality).
     pub fn without_type_registry(mut self) -> Self {
         self.type_registry = None;
+        self
+    }
+
+    /// Enable/disable strict semantic carrier compatibility checks.
+    ///
+    /// When enabled, `add_edge` requires both structural compatibility and
+    /// semantic-carrier compatibility (`TypeRegistry::is_compatible_strict_semantic`).
+    /// Defaults to `false` for legacy compatibility.
+    pub fn with_strict_semantic_carriers(mut self, enabled: bool) -> Self {
+        self.strict_semantic_carriers = enabled;
         self
     }
 
@@ -583,6 +623,23 @@ impl<T> DagBuilder<T> {
                 to_port: to.port.clone(),
                 to_type: to_port.type_id.clone(),
             });
+        }
+
+        if self.strict_semantic_carriers {
+            if let Some(registry) = &self.type_registry {
+                if !registry.is_compatible_strict_semantic(&from_port.type_id, &to_port.type_id) {
+                    return Err(BuilderError::SemanticCarrierMismatch {
+                        from_node: from.node_id.clone(),
+                        from_port: from.port.clone(),
+                        from_type: from_port.type_id.clone(),
+                        from_kind: from_port.type_id.semantic_carrier_kind(),
+                        to_node: to.node_id.clone(),
+                        to_port: to.port.clone(),
+                        to_type: to_port.type_id.clone(),
+                        to_kind: to_port.type_id.semantic_carrier_kind(),
+                    });
+                }
+            }
         }
 
         let from_cardinality = match &self.type_registry {
@@ -1624,5 +1681,37 @@ mod tests {
 
         let key = (NodeId::from("a"), PortName::from("out"));
         assert_eq!(fan_outs.get(&key), Some(&3));
+    }
+
+    #[test]
+    fn test_strict_semantic_carriers_rejects_semantic_to_any() {
+        let mut builder: DagBuilder<String> = DagBuilder::new().with_strict_semantic_carriers(true);
+
+        let node_a = test_node("a", vec![], vec![("credential", "Credential")]);
+        let node_b = test_node("b", vec![("in", "Any")], vec![]);
+
+        let a = builder.add_root_node(node_a).unwrap();
+        let b = builder.add_node_after(node_b, &a).unwrap();
+
+        let result = builder.add_edge(a.out("credential"), b.in_port("in"));
+        assert!(matches!(
+            result,
+            Err(BuilderError::SemanticCarrierMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn test_legacy_mode_allows_semantic_to_any() {
+        let mut builder: DagBuilder<String> = DagBuilder::new();
+
+        let node_a = test_node("a", vec![], vec![("credential", "Credential")]);
+        let node_b = test_node("b", vec![("in", "Any")], vec![]);
+
+        let a = builder.add_root_node(node_a).unwrap();
+        let b = builder.add_node_after(node_b, &a).unwrap();
+
+        builder
+            .add_edge(a.out("credential"), b.in_port("in"))
+            .unwrap();
     }
 }

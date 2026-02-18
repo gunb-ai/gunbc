@@ -11,7 +11,7 @@ use crate::dag::{Dag, Port};
 use crate::entrypoint::detect_entrypoints;
 use crate::node::{Node, NodeBody};
 use crate::type_registry::TypeRegistry;
-use crate::types::{NodeId, PortName, TypeId};
+use crate::types::{NodeId, PortName, SemanticCarrierKind, TypeId};
 use std::fmt;
 
 /// Error from SubDag interface validation.
@@ -48,6 +48,16 @@ pub enum SubDagError {
         direction: PortDirection,
         parent_type: TypeId,
         inner_type: TypeId,
+    },
+    /// Semantic carrier mismatch between parent and inner ports.
+    SemanticCarrierMismatch {
+        node: NodeId,
+        port: PortName,
+        direction: PortDirection,
+        parent_type: TypeId,
+        inner_type: TypeId,
+        parent_kind: SemanticCarrierKind,
+        inner_kind: SemanticCarrierKind,
     },
     /// Port uses an invalid type expression.
     InvalidTypeExpression {
@@ -150,6 +160,21 @@ impl fmt::Display for SubDagError {
                     f,
                     "SubDag '{}': {} port '{}' type mismatch: parent declares '{}', inner has '{}'",
                     node, direction, port, parent_type, inner_type
+                )
+            }
+            SubDagError::SemanticCarrierMismatch {
+                node,
+                port,
+                direction,
+                parent_type,
+                inner_type,
+                parent_kind,
+                inner_kind,
+            } => {
+                write!(
+                    f,
+                    "SubDag '{}': {} port '{}' semantic carrier mismatch: parent '{}' ({:?}), inner '{}' ({:?})",
+                    node, direction, port, parent_type, parent_kind, inner_type, inner_kind
                 )
             }
             SubDagError::InvalidTypeExpression {
@@ -431,17 +456,31 @@ fn check_type_match(
         return;
     }
 
-    let compatible = match direction {
-        PortDirection::Input => registry.is_compatible(parent_type, inner_type),
-        PortDirection::Output => registry.is_compatible(inner_type, parent_type),
+    let (flow_from, flow_to) = match direction {
+        PortDirection::Input => (parent_type, inner_type),
+        PortDirection::Output => (inner_type, parent_type),
     };
-    if !compatible {
+
+    if !registry.is_compatible(flow_from, flow_to) {
         errors.push(SubDagError::TypeMismatch {
             node: node.clone(),
             port: port.clone(),
             direction,
             parent_type: parent_type.clone(),
             inner_type: inner_type.clone(),
+        });
+        return;
+    }
+
+    if !registry.is_compatible_strict_semantic(flow_from, flow_to) {
+        errors.push(SubDagError::SemanticCarrierMismatch {
+            node: node.clone(),
+            port: port.clone(),
+            direction,
+            parent_type: parent_type.clone(),
+            inner_type: inner_type.clone(),
+            parent_kind: parent_type.semantic_carrier_kind(),
+            inner_kind: inner_type.semantic_carrier_kind(),
         });
     }
 }
@@ -625,6 +664,41 @@ mod tests {
             &errors[0],
             SubDagError::TypeMismatch {
                 direction: PortDirection::Output,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_semantic_carrier_mismatch_on_input_manual_construction() {
+        let mut inner: Dag<()> = Dag::new();
+        inner.add_node(Node::opaque(
+            "worker",
+            vec![port("auth", "Any")],
+            vec![port("result", "String")],
+            (),
+        ));
+
+        // Parent -> inner is structurally compatible (Credential -> Any) but
+        // semantically unsafe in strict mode.
+        let bad_node = Node {
+            id: NodeId::new("wrapper"),
+            inputs: vec![port("auth", "Credential")],
+            outputs: vec![port("result", "String")],
+            body: NodeBody::SubDag(inner),
+            examples: Vec::new(),
+            log_detail: None,
+        };
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(bad_node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            SubDagError::SemanticCarrierMismatch {
+                direction: PortDirection::Input,
                 ..
             }
         ));

@@ -196,9 +196,10 @@ fn validate_dsl_pipeline_coverage(pipeline_names: &BTreeSet<String>) -> Result<(
 }
 
 fn required_dsl_tool_modules() -> BTreeSet<String> {
-    let dsl_module_map = gunbc_tool_registry::dsl_module_to_targets();
-    let mut required: BTreeSet<String> = dsl_module_map
-        .keys()
+    // Keep this list colocated with add_discovered_tool_subdags().
+    // External tool crates with workspace DSL modules live here.
+    let mut required: BTreeSet<String> = ["clippy", "dag_viz", "deps", "gist"]
+        .iter()
         .map(|name| (*name).to_string())
         .collect();
     required.extend(

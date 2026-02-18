@@ -7,6 +7,7 @@
 //! - [`AccessMode`]: How the resource is accessed (Read, Write, Exclusive)
 //! - [`ResourceKind`]: Capability vs Observation distinction
 //! - [`Resource`]: Trait for resources passed through DAG edges
+//! - [`DagResource`]: Trait for canonical `res:*` DAG port contracts
 //!
 //! ## Managed Resources (Upsert Pattern)
 //! - [`ManagedResource`]: Trait for resources with freshness checking
@@ -236,6 +237,36 @@ pub trait Resource: Into<Value> + TryFrom<Value> {
     fn kind(&self) -> ResourceKind;
 }
 
+/// DAG-native resource abstraction.
+///
+/// Extends [`Resource`] with the type metadata needed to generate canonical
+/// `res:*` input ports for dependency injection.
+pub trait DagResource: Resource {
+    /// TypeId used on DAG ports for this resource value.
+    const TYPE_ID: &'static str;
+
+    /// Canonical `res:*` input port name for this resource instance.
+    fn resource_input_port_name(&self) -> String {
+        resource_port(&self.resource_id().0)
+    }
+
+    /// Canonical typed input port declaration for this resource instance.
+    fn resource_input_port(&self) -> crate::dag::Port {
+        crate::dag::Port::resource(
+            self.resource_id().0.clone(),
+            Self::TYPE_ID,
+            self.access_mode(),
+        )
+    }
+
+    /// Whether a port declaration matches this resource's DAG contract.
+    fn matches_resource_input_port(&self, port: &crate::dag::Port) -> bool {
+        port.name.0 == self.resource_input_port_name()
+            && port.type_id.0 == Self::TYPE_ID
+            && port.resource_access == Some(self.access_mode())
+    }
+}
+
 /// Timestamp snapshot (milliseconds since Unix epoch).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Timestamp {
@@ -280,6 +311,10 @@ impl Resource for Timestamp {
     fn kind(&self) -> ResourceKind {
         ResourceKind::Observation
     }
+}
+
+impl DagResource for Timestamp {
+    const TYPE_ID: &'static str = "Timestamp";
 }
 
 impl From<Timestamp> for Value {
@@ -785,6 +820,16 @@ mod tests {
 
         assert_eq!(resource_target_port(""), "res:target");
         assert_eq!(resource_target_port("build"), "res:target:build");
+    }
+
+    #[test]
+    fn test_dag_resource_timestamp_input_port_contract() {
+        let ts = Timestamp::now();
+        let port = ts.resource_input_port();
+        assert_eq!(port.name.0, "res:clock");
+        assert_eq!(port.type_id.0, "Timestamp");
+        assert_eq!(port.resource_access, Some(AccessMode::Read));
+        assert!(ts.matches_resource_input_port(&port));
     }
 
     #[test]

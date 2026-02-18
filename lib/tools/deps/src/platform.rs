@@ -1,6 +1,6 @@
 //! Platform detection.
 
-use gunbc_ir::resource::{AccessMode, Resource, ResourceId, ResourceKind};
+use gunbc_ir::resource::{AccessMode, DagResource, Resource, ResourceId, ResourceKind};
 use gunbc_ir::Value;
 use gunbc_ir::{ExecutionEnv, Os, RuntimePlatform, TargetTriple};
 use serde::{Deserialize, Serialize};
@@ -86,6 +86,10 @@ impl Resource for Platform {
     fn kind(&self) -> ResourceKind {
         ResourceKind::Observation
     }
+}
+
+impl DagResource for Platform {
+    const TYPE_ID: &'static str = "Platform";
 }
 
 impl From<Platform> for Value {

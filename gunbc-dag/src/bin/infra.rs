@@ -19,8 +19,8 @@ use gunbc_lib_cloud_ops::project_spec::{
     RotationHandler, SecretRequirement, SecretStatus, GUNBAI_SECRETS,
 };
 use gunbc_lib_cloud_ops::{
-    build_infra_apply_dag, build_infra_plan_dag, build_wif_bootstrap_dag, render_infra_spec_dot,
-    evaluate_health, inspect_login_flow, InfraApplyFilter, InfraSpec, CI_SPEC, DEV_SPEC,
+    build_infra_apply_dag, build_infra_plan_dag, build_wif_bootstrap_dag, evaluate_health,
+    inspect_login_flow, render_infra_spec_dot, InfraApplyFilter, InfraSpec, CI_SPEC, DEV_SPEC,
     PROD_SPEC, TEST_SPEC,
 };
 use serde_json::json;
@@ -116,7 +116,11 @@ fn run_command(args: InfraCliArgs) -> Result<(), String> {
     }
 }
 
-fn run_plan(spec: &InfraSpec, runtime: CloudRuntimeKind, filter: &InfraApplyFilter) -> Result<(), String> {
+fn run_plan(
+    spec: &InfraSpec,
+    runtime: CloudRuntimeKind,
+    filter: &InfraApplyFilter,
+) -> Result<(), String> {
     let dag = build_infra_plan_dag(&GUNBAI_SECRETS, spec, runtime, filter)?;
     let log = execute(&dag).map_err(|e| format!("plan execution failed: {e}"))?;
     let plan = log
@@ -266,18 +270,15 @@ fn build_entrypoint_input_mocks<T>(
     let mut missing_ports = Vec::new();
 
     for (node_id, port_name, type_id) in entrypoints.entrypoint_ports {
-        let raw = provided_inputs
-            .get(&port_name.0)
-            .cloned()
-            .or_else(|| {
-                if allow_access_token_env_fallback && port_name.0 == "access_token" {
-                    std::env::var("GCP_ACCESS_TOKEN")
-                        .ok()
-                        .filter(|value| !value.trim().is_empty())
-                } else {
-                    None
-                }
-            });
+        let raw = provided_inputs.get(&port_name.0).cloned().or_else(|| {
+            if allow_access_token_env_fallback && port_name.0 == "access_token" {
+                std::env::var("GCP_ACCESS_TOKEN")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            } else {
+                None
+            }
+        });
 
         if let Some(raw) = raw {
             let parsed = parse_input_value(&type_id.0, &raw)?;
@@ -614,10 +615,7 @@ mod tests {
         assert_eq!(parsed.runtime, CloudRuntimeKind::GitHubActions);
         assert_eq!(parsed.target, vec!["secret:github-token".to_string()]);
         assert_eq!(parsed.skip, vec!["secret:aws-role".to_string()]);
-        assert_eq!(
-            parsed.inputs.get("secret_value"),
-            Some(&"abc".to_string())
-        );
+        assert_eq!(parsed.inputs.get("secret_value"), Some(&"abc".to_string()));
         assert!(parsed.execute);
     }
 
@@ -630,10 +628,7 @@ mod tests {
             "tok",
         ]))
         .expect("should parse");
-        assert_eq!(
-            parsed.inputs.get("access_token"),
-            Some(&"tok".to_string())
-        );
+        assert_eq!(parsed.inputs.get("access_token"), Some(&"tok".to_string()));
     }
 
     #[test]
@@ -647,13 +642,17 @@ mod tests {
         let login = parse_cli_args(&argv(&["gunbc-infra", "login"])).expect("login should parse");
         assert_eq!(login.command, InfraCommand::Login);
 
-        let status = parse_cli_args(&argv(&["gunbc-infra", "status"])).expect("status should parse");
+        let status =
+            parse_cli_args(&argv(&["gunbc-infra", "status"])).expect("status should parse");
         assert_eq!(status.command, InfraCommand::Status);
     }
 
     #[test]
     fn parse_input_value_handles_bool_and_int() {
-        assert_eq!(parse_input_value("Bool", "true").unwrap(), Value::Bool(true));
+        assert_eq!(
+            parse_input_value("Bool", "true").unwrap(),
+            Value::Bool(true)
+        );
         assert_eq!(parse_input_value("Int", "42").unwrap(), Value::Int(42));
     }
 

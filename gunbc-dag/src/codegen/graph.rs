@@ -3,18 +3,14 @@
 use crate::dsl_builder::build_codegen_graph_dsl;
 use gunbc_exec::DynOp;
 use gunbc_ir::resource::ExecMode;
-use gunbc_ir::{BuilderError, Cardinality, Dag, WorkflowSignature};
+use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 
 /// Runtime op type for codegen graphs.
 pub type CodegenGraphOp = DynOp;
 
-/// Get the declared signature for the codegen workflow.
+/// Get the declared signature for the codegen workflow (auto-derived from DAG).
 pub fn codegen_signature() -> WorkflowSignature {
-    WorkflowSignature::new()
-        .with_output("codegen_ran", "Bool", Cardinality::ONE)
-        .with_output("prep_message", "String", Cardinality::ONE)
-        .with_output("response", "TransportResponse", Cardinality::ZERO_OR_ONE)
-        .with_output("skip", "Bool", Cardinality::ONE)
+    infer_signature(&build_codegen_graph().expect("codegen DAG should build for signature"))
 }
 
 /// Build the codegen graph from the DSL source.

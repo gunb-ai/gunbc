@@ -240,29 +240,23 @@ fn lower_pure_step(
                 sanitize_identifier(&metadata.service),
                 sanitize_identifier(&metadata.method)
             );
-            let obligation = metadata
-                .config
-                .iter()
-                .find_map(|(key, value)| {
-                    if key != "phase" {
-                        return None;
-                    }
-                    match value.as_str() {
-                        "prepare" => Some(CallObligation::ServiceTransportPrepare),
-                        "parse" => Some(CallObligation::ServiceTransportParse),
-                        _ => None,
-                    }
-                });
+            let obligation = metadata.config.iter().find_map(|(key, value)| {
+                if key != "phase" {
+                    return None;
+                }
+                match value.as_str() {
+                    "prepare" => Some(CallObligation::ServiceTransportPrepare),
+                    "parse" => Some(CallObligation::ServiceTransportParse),
+                    _ => None,
+                }
+            });
             let expr = obligation.map_or_else(
                 || Expr::call(func.clone(), ordered_inputs.to_vec()),
-                |obligation| Expr::call_with_obligation(func.clone(), ordered_inputs.to_vec(), obligation),
+                |obligation| {
+                    Expr::call_with_obligation(func.clone(), ordered_inputs.to_vec(), obligation)
+                },
             );
-            assign_outputs(
-                step_index,
-                step,
-                expr,
-                output_vars,
-            )
+            assign_outputs(step_index, step, expr, output_vars)
         }
     }
 }

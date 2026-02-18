@@ -2,8 +2,10 @@
 //!
 //! Makefile generation from gunbc DAG entrypoints.
 
+pub mod ci_render;
 pub mod gitignore;
 pub mod graph;
+pub mod justfile;
 pub mod ops;
 pub mod registry;
 pub mod render;
@@ -11,8 +13,13 @@ pub mod render;
 pub mod graph_mock;
 
 pub use crate::dsl_builder::build_makegen_graph_dsl;
+pub use ci_render::{
+    render_github_actions_from_workflow_specs, render_gitlab_ci_from_workflow_specs,
+    workflow_specs_to_dag,
+};
 pub use gitignore::{derive_categories, render_gitignore, GitignoreRenderer};
 pub use graph::{build_makegen_graph, makegen_signature, MakegenGraphOp};
+pub use justfile::{render_justfile, render_justfile_with_config, JustfileRenderer};
 pub use ops::MakegenOp;
 pub use registry::{
     default_build_config, default_core_workflows, default_meta_targets, BuildConfig, BuildSystem,

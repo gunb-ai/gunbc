@@ -40,7 +40,8 @@
 //! ```
 
 use gunbc_ir::resource::{
-    capability_marker, ensure_capability_marker, AccessMode, Resource, ResourceId, ResourceKind,
+    capability_marker, ensure_capability_marker, AccessMode, DagResource, Resource, ResourceId,
+    ResourceKind,
 };
 use gunbc_ir::Value;
 use std::collections::BTreeMap;
@@ -661,6 +662,10 @@ impl Resource for FilesystemHandle {
     fn kind(&self) -> ResourceKind {
         ResourceKind::Capability
     }
+}
+
+impl DagResource for FilesystemHandle {
+    const TYPE_ID: &'static str = "FilesystemHandle";
 }
 
 /// Encode a FilesystemHandle for DAG edges.

@@ -281,11 +281,7 @@ pub fn generate_cli_with_import(
 // ============================================================================
 
 /// Build the import items for the generated CLI.
-fn build_cli_imports(
-    tool: &ToolMeta,
-    custom_import: Option<&str>,
-    step_mode: bool,
-) -> Vec<Item> {
+fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bool) -> Vec<Item> {
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
 
     // gunbc_exec imports

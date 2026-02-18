@@ -1355,7 +1355,16 @@ mod parity {
             .iter()
             .map(|node| node.id.0.clone())
             .collect::<HashSet<_>>();
-        build_ci_canonical_graph(&reference_ids, |_| ())
+        // When the reference comes from DSL compilation (build_ci_graph_dsl),
+        // its node IDs are lowered DSL IDs, not canonical IDs. Apply the same
+        // marker-based mapping used for the candidate.
+        let mut canonical_nodes = HashSet::<String>::new();
+        for (canonical, marker) in ci_candidate_markers() {
+            if reference_ids.contains(marker) || reference_ids.contains(canonical) {
+                canonical_nodes.insert((*canonical).to_string());
+            }
+        }
+        build_ci_canonical_graph(&canonical_nodes, |_| ())
     }
 
     fn build_ci_canonical_graph<T>(
@@ -2890,12 +2899,7 @@ fn expand_single_content_upsert(
         "request",
     );
     builder.add_edge(&compare_id, "skip", &execute_transport_id, "skip");
-    builder.add_edge(
-        &execute_transport_id,
-        "response",
-        &target.node_id,
-        "__deps",
-    );
+    builder.add_edge(&execute_transport_id, "response", &target.node_id, "__deps");
 
     if let Some(source) = resolve_content_source(args, bound_callables, endpoints_by_name) {
         builder.add_edge(

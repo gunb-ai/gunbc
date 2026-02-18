@@ -8,9 +8,9 @@ pub mod config_resource;
 pub mod credential_policy;
 pub mod env_requirements;
 mod env_status;
-pub mod health_status;
 mod github_credential_graph;
 mod graph;
+pub mod health_status;
 pub mod infra_bootstrap;
 pub mod infra_graph;
 pub mod infra_plan_apply;
@@ -39,7 +39,6 @@ pub use env_requirements::{
     requirements_for, CloudEnvRequirements, MissingCloudEnvRequirements, CLOUD_ENV_COMMON_OPTIONAL,
 };
 pub use env_status::CloudEnvStatus;
-pub use health_status::{evaluate_health, HealthCheckItem, HealthCheckReport};
 pub use github_credential_graph::{build_github_credential_graph, GitHubCredentialGraphOp};
 pub use graph::{
     build_cloud_secret_manager_credential_graph_aws_stub,
@@ -55,8 +54,9 @@ pub use graph::{
     build_cloud_secret_manager_upsert_graph_gcp_local,
     build_cloud_secret_manager_upsert_graph_gcp_metadata, CloudSecretManagerGraphOp,
 };
-pub use infra_graph::render_infra_spec_dot;
+pub use health_status::{evaluate_health, HealthCheckItem, HealthCheckReport};
 pub use infra_bootstrap::{build_wif_bootstrap_dag, InfraBootstrapGraphOp, InfraBootstrapOps};
+pub use infra_graph::render_infra_spec_dot;
 pub use infra_plan_apply::{
     build_infra_apply_dag, build_infra_plan_dag, InfraApplyFilter, InfraPlanApplyGraphOp,
     InfraPlanApplyOps,

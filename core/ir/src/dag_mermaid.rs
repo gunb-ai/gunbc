@@ -424,10 +424,18 @@ fn snapshot_node_class(node: &NodeTopology) -> &'static str {
     }
     // Fallback for DAGs without obligation metadata (hand-built tests, etc.)
     // Resource-consumer nodes are execute boundaries; resource producers are env nodes.
-    if node.inputs.iter().any(|port| port.name.0.starts_with("res:")) {
+    if node
+        .inputs
+        .iter()
+        .any(|port| port.name.0.starts_with("res:"))
+    {
         return "execute";
     }
-    if node.outputs.iter().any(|port| port.name.0.starts_with("res:")) {
+    if node
+        .outputs
+        .iter()
+        .any(|port| port.name.0.starts_with("res:"))
+    {
         return "env";
     }
     // Legacy ID-based fallback for provider-like nodes without explicit res:* ports.

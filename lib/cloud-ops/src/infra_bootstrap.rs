@@ -31,7 +31,10 @@ pub enum InfraBootstrapGraphOp {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InfraBootstrapOps {
     PassAccessToken,
-    EnableApis { project: String, services: Vec<String> },
+    EnableApis {
+        project: String,
+        services: Vec<String>,
+    },
     PrepareEnsureWifPool {
         project_number: String,
         pool_id: String,
@@ -95,7 +98,10 @@ pub enum InfraBootstrapOps {
         member: String,
     },
     ParseEnsureSaWifBinding,
-    SummarizeBootstrap { environment: String, project: String },
+    SummarizeBootstrap {
+        environment: String,
+        project: String,
+    },
 }
 
 impl Executable for InfraBootstrapOps {
@@ -255,7 +261,11 @@ impl InfraBootstrapOps {
                 attribute_mapping,
                 attribute_condition,
             ),
-            _ => return Err(ExecError::new("invalid op variant for prepare_get_provider")),
+            _ => {
+                return Err(ExecError::new(
+                    "invalid op variant for prepare_get_provider",
+                ))
+            }
         };
         let svc = workload_identity_service(access_token);
         let req = svc.get_provider(project_number, pool_id, provider_id);
@@ -293,7 +303,11 @@ impl InfraBootstrapOps {
                 attribute_mapping,
                 attribute_condition,
             ),
-            _ => return Err(ExecError::new("invalid op variant for check_prepare_provider")),
+            _ => {
+                return Err(ExecError::new(
+                    "invalid op variant for check_prepare_provider",
+                ))
+            }
         };
         let response = required_response(&inputs)?;
         let Some(response) = response else {
@@ -385,7 +399,10 @@ impl InfraBootstrapOps {
 
         match rest.status {
             200..=299 => {
-                let existing_display = rest.body.get("displayName").and_then(serde_json::Value::as_str);
+                let existing_display = rest
+                    .body
+                    .get("displayName")
+                    .and_then(serde_json::Value::as_str);
                 if existing_display == Some(display_name.as_str()) {
                     return skipped_stage(ACTION_NOOP);
                 }
@@ -641,7 +658,9 @@ fn required_response(
     }
 }
 
-fn as_rest_response(response: &TransportResponse) -> Result<&gunbc_ir::transport::rest::RestResponse, ExecError> {
+fn as_rest_response(
+    response: &TransportResponse,
+) -> Result<&gunbc_ir::transport::rest::RestResponse, ExecError> {
     match response {
         TransportResponse::Rest(rest) => Ok(rest),
         other => Err(ExecError::new(format!(
@@ -676,9 +695,7 @@ fn binding_exists(policy: &serde_json::Value, role: &str, member: &str) -> bool 
                         .get("members")
                         .and_then(serde_json::Value::as_array)
                         .is_some_and(|members| {
-                            members
-                                .iter()
-                                .any(|entry| entry.as_str() == Some(member))
+                            members.iter().any(|entry| entry.as_str() == Some(member))
                         })
             })
         })
@@ -700,7 +717,9 @@ fn policy_with_binding(
 
     for binding in &mut bindings {
         if binding.get("role").and_then(serde_json::Value::as_str) == Some(role) {
-            if let Some(members) = binding.get_mut("members").and_then(serde_json::Value::as_array_mut)
+            if let Some(members) = binding
+                .get_mut("members")
+                .and_then(serde_json::Value::as_array_mut)
             {
                 members.push(serde_json::Value::String(member.to_string()));
             }
@@ -757,7 +776,10 @@ fn add_idempotent_stage(
     let check = builder.add_node_after(
         Node::opaque(
             format!("check_{}", stage_name).as_str(),
-            vec![port("response", "TransportResponse"), port("access_token", "String")],
+            vec![
+                port("response", "TransportResponse"),
+                port("access_token", "String"),
+            ],
             vec![
                 port("request", "TransportRequest"),
                 port("skip", "Bool"),
@@ -785,7 +807,10 @@ fn add_idempotent_stage(
     let parse = builder.add_node_after(
         Node::opaque(
             format!("parse_{}", stage_name).as_str(),
-            vec![port("response", "TransportResponse"), port("action", "String")],
+            vec![
+                port("response", "TransportResponse"),
+                port("action", "String"),
+            ],
             vec![port("ok", "Bool"), port("action", "String")],
             InfraBootstrapGraphOp::Bootstrap(parse_op),
         ),
@@ -848,7 +873,10 @@ pub fn build_wif_bootstrap_dag(
         )
         .map_err(|err| format!("failed to add enable_apis node: {err}"))?;
     builder
-        .add_edge(context.out("access_token"), enable_apis.in_port("access_token"))
+        .add_edge(
+            context.out("access_token"),
+            enable_apis.in_port("access_token"),
+        )
         .map_err(|err| format!("failed to wire enable_apis: {err}"))?;
 
     let mut tail = add_idempotent_stage(
@@ -1065,13 +1093,19 @@ mod tests {
             oidc_issuer_uri: "https://token.actions.githubusercontent.com".to_string(),
             attribute_mapping: BTreeMap::from([
                 ("google.subject".to_string(), "assertion.sub".to_string()),
-                ("attribute.repository".to_string(), "assertion.repository".to_string()),
+                (
+                    "attribute.repository".to_string(),
+                    "assertion.repository".to_string(),
+                ),
             ]),
             attribute_condition: Some("assertion.repository == \"gunb-ai/gunbc\"".to_string()),
         };
         let mut inputs = HashMap::new();
         inputs.insert("access_token".to_string(), Value::Str("tok".to_string()));
-        inputs.insert("response".to_string(), rest_value(200, serde_json::json!({})));
+        inputs.insert(
+            "response".to_string(),
+            rest_value(200, serde_json::json!({})),
+        );
 
         let out = op.execute(inputs).expect("check provider should succeed");
         assert_eq!(

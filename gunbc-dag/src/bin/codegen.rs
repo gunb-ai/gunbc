@@ -6,8 +6,8 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::{
-    build_codegen_graph_dsl,
-    print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions, CODEGEN_STAMP_PATH,
+    build_codegen_graph_dsl, print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions,
+    CODEGEN_STAMP_PATH,
 };
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, ExecutionMode};
 use gunbc_ir::resource::ExecMode;

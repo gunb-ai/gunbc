@@ -116,8 +116,7 @@ impl Executable for DslFsEnvOp {
         &self,
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
-        let fs: Value =
-            filename::FilesystemHandle::cross_platform(filename::Scope::Write).into();
+        let fs: Value = filename::FilesystemHandle::cross_platform(filename::Scope::Write).into();
         OutputMap::new()
             .value(FsEnv::WRITE_PORT, fs.clone())
             .value("FilesystemHandle", fs)
@@ -134,10 +133,7 @@ impl Executable for DslFsEnvOp {
 struct PragmaEntrypointOp;
 
 impl Executable for PragmaEntrypointOp {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let mut clippy_written = false;
         let mut allowlist_written = false;
         let mut policy_written = false;
@@ -270,10 +266,11 @@ struct PrepareFileReadCompatOp;
 
 impl Executable for PrepareFileReadCompatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let path = inputs
-            .get("path")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("PrepareFileRead: missing required `path` input — check content-upsert wiring"))?;
+        let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
+            ExecError::new(
+                "PrepareFileRead: missing required `path` input — check content-upsert wiring",
+            )
+        })?;
         OutputMap::new()
             .request("request", TransportRequest::File(FileRequest::read(path)))
             .bool("skip", false)
@@ -291,10 +288,11 @@ struct PrepareFileWriteCompatOp;
 
 impl Executable for PrepareFileWriteCompatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let path = inputs
-            .get("path")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("PrepareFileWrite: missing required `path` input — check content-upsert wiring"))?;
+        let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
+            ExecError::new(
+                "PrepareFileWrite: missing required `path` input — check content-upsert wiring",
+            )
+        })?;
         let content = inputs
             .get("content")
             .or_else(|| inputs.get("return"))
@@ -302,7 +300,10 @@ impl Executable for PrepareFileWriteCompatOp {
             .and_then(Value::as_str)
             .unwrap_or("");
         OutputMap::new()
-            .request("request", TransportRequest::File(FileRequest::write(path, content)))
+            .request(
+                "request",
+                TransportRequest::File(FileRequest::write(path, content)),
+            )
             .bool("skip", false)
             .ok()
     }
@@ -432,10 +433,7 @@ fn resolve_domain(
         "tools.testgen" => resolve_testgen(node_id, name, outputs),
         "tools.clippy" => resolve_clippy(node_id, name, outputs),
         "tools.deps" => resolve_deps(node_id, name, outputs),
-        "pipelines.ci"
-        | "shared.dag_util"
-        | "shared.gist_modes"
-        | "std.patterns"
+        "pipelines.ci" | "shared.dag_util" | "shared.gist_modes" | "std.patterns"
         | "std.resources" => Ok(deferred_callable(module, name, outputs)),
         _ if module.starts_with("services.") || module.starts_with("workspace.") => {
             resolve_service_transport(node_id, module, name, outputs)
@@ -497,20 +495,22 @@ fn resolve_bootstrap(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynO
 fn resolve_docgen(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match name {
         "docgen" => Ok(deferred_callable("tools.docgen", "docgen", outputs)),
-        "render_ab_workflows_doc" => {
-            Ok(deferred_callable(
-                "tools.docgen",
-                "render_ab_workflows_doc",
-                outputs,
-            ))
-        }
+        "render_ab_workflows_doc" => Ok(deferred_callable(
+            "tools.docgen",
+            "render_ab_workflows_doc",
+            outputs,
+        )),
         _ => Err(unknown_callable(node_id, "tools.docgen", name)),
     }
 }
 
 fn resolve_testgen(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match name {
-        "generate_tests" => Ok(deferred_callable("tools.testgen", "generate_tests", outputs)),
+        "generate_tests" => Ok(deferred_callable(
+            "tools.testgen",
+            "generate_tests",
+            outputs,
+        )),
         "testgen" => Ok(deferred_callable("tools.testgen", "testgen", outputs)),
         _ => Err(unknown_callable(node_id, "tools.testgen", name)),
     }
@@ -526,9 +526,11 @@ fn resolve_clippy(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, 
 fn resolve_deps(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match name {
         "render_deps_toml" => Ok(deferred_callable("tools.deps", "render_deps_toml", outputs)),
-        "select_platform_deps" => {
-            Ok(deferred_callable("tools.deps", "select_platform_deps", outputs))
-        }
+        "select_platform_deps" => Ok(deferred_callable(
+            "tools.deps",
+            "select_platform_deps",
+            outputs,
+        )),
         "deps_install" => Ok(deferred_callable("tools.deps", "deps_install", outputs)),
         "deps_generate" => Ok(deferred_callable("tools.deps", "deps_generate", outputs)),
         _ => Err(unknown_callable(node_id, "tools.deps", name)),
@@ -613,8 +615,9 @@ fn default_value_for_output(type_id: &str, port_name: &str) -> Value {
         }
         "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
         "Secret" => Value::Secret(gunbc_ir::SecretString::new("mock")),
-        "FilesystemHandle" => filename::FilesystemHandle::cross_platform(filename::Scope::Write)
-            .into(),
+        "FilesystemHandle" => {
+            filename::FilesystemHandle::cross_platform(filename::Scope::Write).into()
+        }
         _ => match value_backing_for_type_id(type_id) {
             ValueBacking::String => Value::Str("mock".to_string()),
             ValueBacking::Bool => {
@@ -838,7 +841,12 @@ mod tests {
 
     #[test]
     fn resolve_tools_codegen_entrypoint_identity() {
-        let node = callable_node("codegen", "tools.codegen", "codegen", ObligationCategory::None);
+        let node = callable_node(
+            "codegen",
+            "tools.codegen",
+            "codegen",
+            ObligationCategory::None,
+        );
         let result = resolve_node(&node).expect("tools.codegen::codegen");
         assert!(format!("{:?}", result).contains("IdentityCallableOp"));
     }

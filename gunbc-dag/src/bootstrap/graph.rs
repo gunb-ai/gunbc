@@ -2,50 +2,14 @@
 
 use crate::dsl_builder::build_bootstrap_graph_dsl;
 use gunbc_exec::DynOp;
-use gunbc_ir::{BuilderError, Cardinality, Dag, WorkflowSignature};
+use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 
 /// Runtime op type for bootstrap graphs.
 pub type BootstrapGraphOp = DynOp;
 
-/// Get the declared signature for the bootstrap workflow.
+/// Get the declared signature for the bootstrap workflow (auto-derived from DAG).
 pub fn bootstrap_signature() -> WorkflowSignature {
-    WorkflowSignature::new()
-        .with_input("check_mode", "OptionalBool", Cardinality::ZERO_OR_ONE)
-        .with_input("path", "String", Cardinality::ONE)
-        .with_output(
-            "makefile_response",
-            "TransportResponse",
-            Cardinality::ZERO_OR_ONE,
-        )
-        .with_output(
-            "makefile_written_path",
-            "OptionalString",
-            Cardinality::ZERO_OR_ONE,
-        )
-        .with_output(
-            "makefile_content",
-            "OptionalString",
-            Cardinality::ZERO_OR_ONE,
-        )
-        .with_output(
-            "gitignore_response",
-            "TransportResponse",
-            Cardinality::ZERO_OR_ONE,
-        )
-        .with_output(
-            "gitignore_written_path",
-            "OptionalString",
-            Cardinality::ZERO_OR_ONE,
-        )
-        .with_output(
-            "gitignore_content",
-            "OptionalString",
-            Cardinality::ZERO_OR_ONE,
-        )
-        .with_output("fresh", "Bool", Cardinality::ONE)
-        .with_output("skip", "Bool", Cardinality::ONE)
-        .with_output("skip_reason", "OptionalString", Cardinality::ZERO_OR_ONE)
-        .with_output("crate_count", "Int", Cardinality::ONE)
+    infer_signature(&build_bootstrap_graph().expect("bootstrap DAG should build for signature"))
 }
 
 /// Build bootstrap graph from the DSL source.

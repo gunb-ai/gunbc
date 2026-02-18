@@ -115,6 +115,16 @@ const DEAD_CODE_ALLOW_RULES: &[DeadCodeAllowRule] = &[
         fallback_path: "core/daglang/daglang-emit/src/lower_mips.rs",
     },
     DeadCodeAllowRule {
+        crate_name: "gunbc-dag",
+        relative_path: "src/makegen/registry.rs",
+        fallback_path: "gunbc-dag/src/makegen/registry.rs",
+    },
+    DeadCodeAllowRule {
+        crate_name: "gunbc-dag",
+        relative_path: "src/workspace/subdags/languages.rs",
+        fallback_path: "gunbc-dag/src/workspace/subdags/languages.rs",
+    },
+    DeadCodeAllowRule {
         crate_name: "gunbc-lib-gcp-ops",
         relative_path: "src/graph.rs",
         fallback_path: "lib/gcp-ops/src/graph.rs",

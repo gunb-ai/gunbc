@@ -35,8 +35,8 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use crate::resource::{
-    capability_marker, ensure_capability_marker, AccessMode, ContentHash, Resource, ResourceHandle,
-    ResourceId, ResourceKind,
+    capability_marker, ensure_capability_marker, AccessMode, ContentHash, DagResource, Resource,
+    ResourceHandle, ResourceId, ResourceKind,
 };
 
 /// Definition of a CLI tool for the upsert pattern.
@@ -308,6 +308,10 @@ impl Resource for ToolHandle {
     fn kind(&self) -> ResourceKind {
         ResourceKind::Capability
     }
+}
+
+impl DagResource for ToolHandle {
+    const TYPE_ID: &'static str = "ToolHandle";
 }
 
 fn tool_resource_handle(tool: &'static CliToolDef, path: &Path) -> ResourceHandle<ToolResource> {

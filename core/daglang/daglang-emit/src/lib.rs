@@ -504,7 +504,7 @@ fn is_makegen_module(artifacts: &DerivedArtifacts) -> bool {
         .any(|module| module.module == "tools.makegen")
 }
 
-fn resolve_makegen_content<'a>(override_content: Option<&'a str>) -> &'a str {
+fn resolve_makegen_content(override_content: Option<&str>) -> &str {
     override_content.unwrap_or(MAKEGEN_STUB_CONTENT)
 }
 

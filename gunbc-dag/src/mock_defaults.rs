@@ -6,7 +6,9 @@ use gunbc_ir::transport::{
     FileOp, FileResponse, RestResponse, ShellRequest, ShellResponse, TransportRequest,
     TransportResponse,
 };
-use gunbc_ir::{detect_boundaries, value_backing_for_type_id, Dag, NodeId, PortName, Value, ValueBacking};
+use gunbc_ir::{
+    detect_boundaries, value_backing_for_type_id, Dag, NodeId, PortName, Value, ValueBacking,
+};
 use gunbc_primitives::filename;
 use gunbc_test::extract_mock_requirements;
 use gunbc_test::MockSpec;
@@ -20,9 +22,7 @@ fn default_fs_handle() -> Value {
 fn default_value_for_type(type_id: &str) -> Value {
     match type_id {
         "TransportResponse" => default_shell_response(),
-        "TransportRequest" => {
-            Value::Request(TransportRequest::Shell(ShellRequest::new("true")))
-        }
+        "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
         "CloudSecretConfig" => default_cloud_secret_config(),
         "Secret" => Value::Secret(gunbc_ir::SecretString::new("mock")),
         "FilesystemHandle" => default_fs_handle(),
@@ -214,13 +214,17 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             break;
         }
         for (node, port, type_id) in missing {
-            let value =
-                default_value_for_slot(&lowered.dag, node.as_str(), port.as_str(), type_id.as_str());
+            let value = default_value_for_slot(
+                &lowered.dag,
+                node.as_str(),
+                port.as_str(),
+                type_id.as_str(),
+            );
             reqs = reqs
                 .boundary(node.as_str(), port.as_str(), value)
                 .unwrap_or_else(|error| {
                     panic!("failed to auto-fill mock slot {node}.{port} ({type_id}): {error}")
-            });
+                });
         }
     }
     let mut spec = reqs.build_unchecked();

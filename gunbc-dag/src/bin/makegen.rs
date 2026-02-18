@@ -8,7 +8,8 @@ use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
 use gunbc_dag::{
     build_makegen_graph_dsl, freshness_steps_planned, makefile_resource_def, print_tool_header,
-    run_tool, update_freshness_manifest_if_needed, wire_fs_env_write_mock, RunToolOptions,
+    render_justfile, run_tool, update_freshness_manifest_if_needed, wire_fs_env_write_mock,
+    RunToolOptions,
 };
 use gunbc_exec::{
     compose_with_freshness, execute_and_display_with_result, print_attention, AttentionLevel,
@@ -21,14 +22,35 @@ use gunbc_ir::resource::{
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::TransportIo;
+use std::fs;
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OutputFormat {
+    Make,
+    Just,
+    Both,
+}
+
+impl OutputFormat {
+    fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "make" => Some(Self::Make),
+            "just" => Some(Self::Just),
+            "both" => Some(Self::Both),
+            _ => None,
+        }
+    }
+}
 
 fn main() {
     let parsed = BinaryArgs::new()
         .with_mode()
         .with_string_param("path", Some('o'), Some("Makefile"))
+        .with_string_param("format", Some('f'), Some("make"))
+        .with_string_param("just_path", None, Some("Justfile"))
         .parse_env();
     if parsed.help {
         print_help();
@@ -37,6 +59,34 @@ fn main() {
     let dry_run = parsed.dry_run;
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
     let path = parsed.get_string("path").unwrap_or("Makefile").to_string();
+    let just_path = parsed
+        .get_string("just_path")
+        .unwrap_or("Justfile")
+        .to_string();
+    let raw_format = parsed.get_string("format").unwrap_or("make");
+    let format = match OutputFormat::parse(raw_format) {
+        Some(format) => format,
+        None => {
+            print_attention(
+                AttentionLevel::Error,
+                "invalid output format",
+                &format!("unsupported format '{raw_format}' (expected: make, just, both)"),
+            );
+            process::exit(1);
+        }
+    };
+
+    if format == OutputFormat::Just {
+        if let Err(error) = run_justfile_flow(&just_path, dry_run, resource_mode) {
+            print_attention(
+                AttentionLevel::Error,
+                "justfile generation failed",
+                &error.to_string(),
+            );
+            process::exit(1);
+        }
+        return;
+    }
 
     // Build the graph
     let dag = match build_makegen_graph_dsl() {
@@ -146,6 +196,16 @@ fn main() {
 
                 if fresh {
                     println!("makegen --mode=verify: 1 file up to date");
+                    if format == OutputFormat::Both {
+                        if let Err(error) = run_justfile_flow(&just_path, dry_run, resource_mode) {
+                            print_attention(
+                                AttentionLevel::Error,
+                                "justfile verify failed",
+                                &error.to_string(),
+                            );
+                            process::exit(1);
+                        }
+                    }
                 } else {
                     print_attention(
                         AttentionLevel::Error,
@@ -224,7 +284,65 @@ fn main() {
         if !dry_run && resource_mode == ExecMode::Ensure {
             update_manifest_after_makegen(&path);
         }
+
+        if format == OutputFormat::Both {
+            if let Err(error) = run_justfile_flow(&just_path, dry_run, resource_mode) {
+                print_attention(
+                    AttentionLevel::Error,
+                    "justfile generation failed",
+                    &error.to_string(),
+                );
+                process::exit(1);
+            }
+        }
     }
+}
+
+#[allow(clippy::disallowed_methods)] // Build-time Justfile generation (not runtime I/O)
+fn run_justfile_flow(path: &str, dry_run: bool, resource_mode: ExecMode) -> Result<(), String> {
+    let registry = gunbc_dag::makegen::registry::ToolRegistry::default_registry();
+    let expected = render_justfile(&registry);
+
+    if resource_mode == ExecMode::Verify {
+        let actual = fs::read_to_string(path).map_err(|error| {
+            format!(
+                "failed to read Justfile '{}' for verify mode: {}",
+                path, error
+            )
+        })?;
+        if actual == expected {
+            println!("makegen --mode=verify: {} up to date", path);
+            return Ok(());
+        }
+
+        print_attention(
+            AttentionLevel::Error,
+            "justfile --mode=verify: drift detected",
+            &format!("DRIFT  {path}"),
+        );
+        eprintln!();
+        eprintln!("--- Drift diff (expected vs disk) ---");
+        eprintln!("{}", format_diff(&actual, &expected));
+        eprintln!();
+        eprintln!("To fix:");
+        eprintln!(
+            "  cargo run -p gunbc-dag --bin gunbc-makegen -- --format just --just-path {}",
+            path
+        );
+        return Err(format!("drift detected for {path}"));
+    }
+
+    if dry_run {
+        println!(
+            "makegen --dry-run: would write Justfile output to '{}'",
+            path
+        );
+        return Ok(());
+    }
+
+    fs::write(path, expected).map_err(|error| format!("failed to write '{}': {}", path, error))?;
+    println!("Wrote Justfile output to {}", path);
+    Ok(())
 }
 
 fn update_manifest_after_makegen(path: &str) {
@@ -292,6 +410,8 @@ fn print_help() {
     println!();
     println!("OPTIONS:");
     println!("    -o, --path <VAL>     Output Makefile path");
+    println!("    -f, --format <VAL>   Output format: make | just | both (default: make)");
+    println!("    --just-path <VAL>    Output Justfile path (default: Justfile)");
     println!("    -n, --dry-run        Don't perform actual I/O");
     println!("    --mode=MODE          Resource mode: verify (CI) or ensure (default)");
     println!("    -h, --help           Print this help");

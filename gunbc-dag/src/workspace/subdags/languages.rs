@@ -21,7 +21,10 @@ struct LanguageExecOp {
 }
 
 impl Executable for LanguageExecOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         Ok(HashMap::new())
     }
 }

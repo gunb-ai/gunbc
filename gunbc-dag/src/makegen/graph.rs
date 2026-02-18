@@ -2,36 +2,14 @@
 
 use crate::dsl_builder::build_makegen_graph_dsl;
 use gunbc_exec::DynOp;
-use gunbc_ir::{BuilderError, Cardinality, Dag, WorkflowSignature};
+use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 
 /// Runtime op type for makegen graphs.
 pub type MakegenGraphOp = DynOp;
 
-/// Get the declared signature for the makegen workflow.
+/// Get the declared signature for the makegen workflow (auto-derived from DAG).
 pub fn makegen_signature() -> WorkflowSignature {
-    WorkflowSignature::new()
-        .with_input("check_mode", "OptionalBool", Cardinality::ZERO_OR_ONE)
-        .with_input("path", "String", Cardinality::ONE)
-        .with_output(
-            "makegen_response",
-            "TransportResponse",
-            Cardinality::ZERO_OR_ONE,
-        )
-        .with_output(
-            "makegen_written_path",
-            "OptionalString",
-            Cardinality::ZERO_OR_ONE,
-        )
-        .with_output(
-            "makegen_content",
-            "OptionalString",
-            Cardinality::ZERO_OR_ONE,
-        )
-        .with_output("skip", "Bool", Cardinality::ONE)
-        .with_output("skip_reason", "OptionalString", Cardinality::ZERO_OR_ONE)
-        .with_output("fresh", "Bool", Cardinality::ONE)
-        .with_output("tool_count", "Int", Cardinality::ONE)
-        .with_output("tool_names", "NonEmptyStringList", Cardinality::ONE_OR_MORE)
+    infer_signature(&build_makegen_graph().expect("makegen DAG should build for signature"))
 }
 
 /// Build makegen graph from the DSL source.

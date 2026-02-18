@@ -12,11 +12,11 @@
 //! Service traits produce `RestRequest` values that flow through the
 //! existing DAG transport layer (prepare → execute → parse).
 
-pub mod iam;
-pub mod compute_engine;
 pub mod cloud_run;
-pub mod local_auth;
+pub mod compute_engine;
+pub mod iam;
 pub mod load_balancer;
+pub mod local_auth;
 pub mod resource_manager;
 pub mod secret_manager;
 pub mod storage;

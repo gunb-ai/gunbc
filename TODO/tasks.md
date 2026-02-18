@@ -186,15 +186,16 @@ Design: `docs/design/integration-testgen.md`. Tier 0 (Makefile contract) done in
 ## Wave 4+ — Horizon / Deferred
 
 These require DSL language features that don't exist yet, or are low priority.
+Design drafts: `docs/design/horizon/README.md`.
 
 ### Needs DSL Reactive/Metaprogramming
 
 | ID | Task | Deps | Size | Started | Done |
 |----|------|------|------|---------|------|
-| **H1** | Display orchestration DSL migration (channel-driven event loop, timer ticks) | DSL reactive primitives | XL | | |
-| **H2** | Testgen dynamic targets (N upsert chains per DagSpecDef via inventory) | DSL metaprogramming | L | | |
-| **H3** | Makegen tool registry (procedural target gen from #[tool_target]) | DSL metaprogramming | L | | |
-| **H4** | Loop extra inputs passthrough (for body needs non-element context) | DSL for-loop enhancement | M | | |
+| **H1** | Display orchestration DSL migration (channel-driven event loop, timer ticks) | DSL reactive primitives | XL | 2026-02-18 | |
+| **H2** | Testgen dynamic targets (N upsert chains per DagSpecDef via inventory) | DSL metaprogramming | L | 2026-02-18 | 2026-02-18 |
+| **H3** | Makegen tool registry (procedural target gen from #[tool_target]) | DSL metaprogramming | L | 2026-02-18 | 2026-02-18 |
+| **H4** | Loop extra inputs passthrough (for body needs non-element context) | DSL for-loop enhancement | M | 2026-02-18 | 2026-02-18 |
 
 ### Low Priority / Design-Gated
 
@@ -202,11 +203,11 @@ These require DSL language features that don't exist yet, or are low priority.
 |----|------|------|------|---------|------|
 | **H5** | Fermi guard live tests (blocked on GCP WIF + codegen for secrets) | E3 | M | 2026-02-18 | 2026-02-18 |
 | **H6** | Cardinality compositional modeling (non-blocking) | — | L | 2026-02-18 | 2026-02-18 |
-| **H7** | Resource abstraction trait for DAG-native resource management | design decision | L | | |
-| **H8** | Rendering workflows as DAGs: Makefile generation (when adding Justfile) | second format consumer | L | | |
-| **H9** | Rendering workflows as DAGs: CI workflow generation (when adding second provider) | second CI provider | L | | |
-| **H10** | Compute stack service interfaces (GCE, Cloud Run, LB, GCS bucket) | E3 | XL | 2026-02-18 | |
-| **H11** | DAG typing hardening: typed node I/O wrappers + semantic carrier refinements | — | L | | |
+| **H7** | Resource abstraction trait for DAG-native resource management | design decision | L | 2026-02-18 | 2026-02-18 |
+| **H8** | Rendering workflows as DAGs: Makefile generation (when adding Justfile) | second format consumer | L | 2026-02-18 | 2026-02-18 |
+| **H9** | Rendering workflows as DAGs: CI workflow generation (when adding second provider) | second CI provider | L | 2026-02-18 | 2026-02-18 |
+| **H10** | Compute stack service interfaces (GCE, Cloud Run, LB, GCS bucket) | E3 | XL | 2026-02-18 | 2026-02-18 |
+| **H11** | DAG typing hardening: typed node I/O wrappers + semantic carrier refinements | — | L | 2026-02-18 | 2026-02-18 |
 | **H12** | `make test-integration` / `make test-external` Makefile targets | — | S | 2026-02-18 | 2026-02-18 |
 
 ---

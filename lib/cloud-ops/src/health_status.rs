@@ -33,11 +33,14 @@ pub fn evaluate_health(spec: &InfraSpec) -> HealthCheckReport {
     } else if !login.adc_exists {
         format!("ADC missing at {}", login.adc_path)
     } else {
-        format!("ADC present at {} but refresh_token is missing", login.adc_path)
+        format!(
+            "ADC present at {} but refresh_token is missing",
+            login.adc_path
+        )
     };
 
-    let projects_ok = !spec.config.project.trim().is_empty()
-        && !spec.config.secrets_project.trim().is_empty();
+    let projects_ok =
+        !spec.config.project.trim().is_empty() && !spec.config.secrets_project.trim().is_empty();
     let project_detail = if projects_ok {
         format!(
             "project={} secrets_project={}",
@@ -56,7 +59,10 @@ pub fn evaluate_health(spec: &InfraSpec) -> HealthCheckReport {
     let service_accounts_ok =
         !spec.service_accounts.is_empty() && valid_service_accounts == spec.service_accounts.len();
     let service_accounts_detail = if service_accounts_ok {
-        format!("{} configured service account(s)", spec.service_accounts.len())
+        format!(
+            "{} configured service account(s)",
+            spec.service_accounts.len()
+        )
     } else {
         format!(
             "invalid service account definitions: {} valid out of {}",

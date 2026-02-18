@@ -35,8 +35,8 @@ pub fn wire_fs_env_write_edges<T>(
 mod tests {
     use super::*;
     use gunbc_exec::{DynOp, ExecError, Executable};
-    use gunbc_ir::{DagBuilder, Node, Port};
     use gunbc_ir::Value;
+    use gunbc_ir::{DagBuilder, Node, Port};
     use std::collections::HashMap;
 
     #[derive(Debug, Clone)]

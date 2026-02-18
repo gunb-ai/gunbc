@@ -211,7 +211,7 @@ fn build_core_targets(registry: &ToolRegistry, config: &BuildConfig) -> Vec<Stru
         .collect()
 }
 
-fn core_workflow_comment(workflow: &WorkflowSpec, config: &BuildConfig) -> String {
+pub(crate) fn core_workflow_comment(workflow: &WorkflowSpec, config: &BuildConfig) -> String {
     if workflow.name == "build" {
         let build_desc = if config.use_dag_entrypoints {
             "codegen \u{2192} testgen \u{2192} gunbc-build"
@@ -223,7 +223,10 @@ fn core_workflow_comment(workflow: &WorkflowSpec, config: &BuildConfig) -> Strin
     workflow.description.clone()
 }
 
-fn core_workflow_body(workflow: &WorkflowSpec, config: &BuildConfig) -> Vec<Cow<'static, str>> {
+pub(crate) fn core_workflow_body(
+    workflow: &WorkflowSpec,
+    config: &BuildConfig,
+) -> Vec<Cow<'static, str>> {
     match workflow.name.as_str() {
         "preflight-fix" => {
             vec!["@cargo fix --workspace --all-targets --allow-dirty --allow-staged".into()]
@@ -413,7 +416,10 @@ fn build_meta_targets(registry: &ToolRegistry, config: &BuildConfig) -> Vec<Stru
 /// Build the dependency list for a meta target (base/check variant).
 ///
 /// Resolves each `ResourceNeed` using its `base_mode` via `ResourceTargetMap`.
-fn meta_target_deps(meta: &MetaTarget, res_map: &ResourceTargetMap) -> Vec<Cow<'static, str>> {
+pub(crate) fn meta_target_deps(
+    meta: &MetaTarget,
+    res_map: &ResourceTargetMap,
+) -> Vec<Cow<'static, str>> {
     meta.workflow_spec(res_map)
         .deps
         .into_iter()
@@ -554,7 +560,7 @@ fn build_dry_run_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBloc
     })
 }
 
-fn tool_target_deps(tool: &ToolInfo, config: &BuildConfig) -> Vec<Cow<'static, str>> {
+pub(crate) fn tool_target_deps(tool: &ToolInfo, config: &BuildConfig) -> Vec<Cow<'static, str>> {
     tool.workflow_spec(config)
         .deps
         .into_iter()
@@ -762,12 +768,12 @@ mod tests {
 
         assert!(makefile.contains("Build commands:"));
         assert!(makefile.contains("codegen  - Generate CLI entrypoints (DAG upsert)"));
-        assert!(makefile.contains("ensure-codegen  - Ensure CLI entrypoints exist (bootstrap-safe)"));
         assert!(
-            makefile.contains(
-                "preflight-fix  - Preflight: auto-fix rustc warnings before running generators"
-            )
+            makefile.contains("ensure-codegen  - Ensure CLI entrypoints exist (bootstrap-safe)")
         );
+        assert!(makefile.contains(
+            "preflight-fix  - Preflight: auto-fix rustc warnings before running generators"
+        ));
         assert!(makefile.contains("lint-upsert  - Lint upsert: fix if needed, then verify"));
         assert!(makefile.contains("Development:"));
         assert!(makefile.contains("Tools:"));

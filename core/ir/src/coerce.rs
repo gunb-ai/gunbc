@@ -256,13 +256,13 @@ pub fn validate_coercions_with_registry<T>(
                 }) {
                     CoercionResult::Ok => {}
                     CoercionResult::Err(reason) => {
-                        let reason =
-                            if let Some(strategy) = reg.coercion_strategy(&fp.type_id, &tp.type_id)
-                            {
-                                format!("{reason}. Explicit transform: {strategy}")
-                            } else {
-                                reason
-                            };
+                        let reason = if let Some(strategy) =
+                            reg.coercion_strategy(&fp.type_id, &tp.type_id)
+                        {
+                            format!("{reason}. Explicit transform: {strategy}")
+                        } else {
+                            reason
+                        };
                         errors.push(CoercionError {
                             from_node: edge.from_node.clone(),
                             from_port: edge.from_port.clone(),

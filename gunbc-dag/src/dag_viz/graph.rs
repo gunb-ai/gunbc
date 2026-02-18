@@ -45,8 +45,8 @@ use gunbc_ir::transport::{
     TransportResponse,
 };
 use gunbc_ir::{
-    add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node,
-    RuntimePlatform, Value, WorkflowSignature,
+    add_transport_triplet, build::*, BuilderError, Dag, DagBuilder, Node, RuntimePlatform, Value,
+    WorkflowSignature,
 };
 use gunbc_lib_cloud_ops::graph_cloud_config;
 use gunbc_lib_gist_ops::{build_gist_upload_subdag, GistUploadOp};
@@ -492,47 +492,11 @@ fn lift_branch_dag(dag: Dag<BranchResolutionOp>) -> Dag<DagVizGraphOp> {
 // Workflow Signature
 // ============================================================================
 
-/// Declared workflow signature for dag-viz.
+/// Declared workflow signature for dag-viz (auto-derived from DAG).
 pub fn dag_viz_signature(mode: &DagVizMode) -> WorkflowSignature {
-    let mut sig = WorkflowSignature::new();
-
-    match mode {
-        DagVizMode::Snapshot => {
-            sig = sig
-                .with_input("repo_path", "String", Cardinality::ONE)
-                .with_input("format", "String", Cardinality::ONE)
-                .with_input("base_ref", "OptionalString", Cardinality::ZERO_OR_ONE)
-                .with_output("url", "String", Cardinality::ONE)
-                .with_output("node_count", "Int", Cardinality::ONE)
-                .with_output("total_node_count", "Int", Cardinality::ONE)
-                .with_output("opened", "Bool", Cardinality::ONE)
-                .with_output("ok", "Bool", Cardinality::ONE);
-        }
-        DagVizMode::Diff { .. } => {
-            sig = sig
-                .with_input("repo_path", "String", Cardinality::ONE)
-                .with_input("base_ref", "OptionalString", Cardinality::ZERO_OR_ONE)
-                .with_output("url", "String", Cardinality::ONE)
-                .with_output("node_count", "Int", Cardinality::ONE)
-                .with_output("total_node_count", "Int", Cardinality::ONE)
-                .with_output("is_empty", "Bool", Cardinality::ONE)
-                .with_output("ok", "Bool", Cardinality::ONE);
-        }
-        DagVizMode::Recent => {
-            sig = sig
-                .with_input("repo_path", "String", Cardinality::ONE)
-                .with_output("url", "String", Cardinality::ONE)
-                .with_output("node_count", "Int", Cardinality::ONE)
-                .with_output("total_node_count", "Int", Cardinality::ONE)
-                .with_output("is_empty", "Bool", Cardinality::ONE)
-                .with_output("ok", "Bool", Cardinality::ONE);
-        }
-        DagVizMode::SaveSnapshot => {
-            sig = sig.with_output("summary", "String", Cardinality::ONE);
-        }
-    }
-
-    sig
+    gunbc_ir::infer_signature(
+        &build_dag_viz_graph(mode.clone()).expect("dag-viz DAG should build for signature"),
+    )
 }
 
 // ============================================================================

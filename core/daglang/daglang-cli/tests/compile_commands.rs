@@ -6590,7 +6590,9 @@ fn run_command_rejects_duplicate_output_flags_with_usage() {
 }
 
 #[test]
-fn run_command_real_mode_propagates_write_failure() {
+fn run_command_real_mode_skips_write_when_content_is_fresh() {
+    // When the content upsert pattern detects fresh content (read matches
+    // expected), the write transport is skipped — even to an unwritable path.
     let output_path = "/proc/1/daglang_makegen_forbidden.mk";
     let output = Command::new(daglang_bin())
         .arg("run")
@@ -6601,13 +6603,16 @@ fn run_command_real_mode_propagates_write_failure() {
         .output()
         .expect("failed to run daglang run with unwritable output path");
 
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        !output.status.success(),
-        "run should fail when write transport cannot persist output"
+        output.status.success(),
+        "run should succeed when write is skipped due to fresh content: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("failed to write"));
-    assert!(stderr.contains(output_path));
+    assert!(
+        stdout.contains("written=false"),
+        "should report written=false when write is skipped"
+    );
 }
 
 #[test]

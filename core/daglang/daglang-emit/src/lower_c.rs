@@ -356,13 +356,11 @@ fn lower_expr(expr: &Expr, config: &CConfig) -> CExpr {
             obligation,
         } => {
             let func_name = match func.as_ref() {
-                Expr::Var(name) => {
-                    obligation
-                        .is_some_and(CallObligation::is_runtime_call)
-                        .then(|| rewrite_transport_call_c(name, config))
-                        .flatten()
-                        .unwrap_or_else(|| name.clone())
-                }
+                Expr::Var(name) => obligation
+                    .is_some_and(CallObligation::is_runtime_call)
+                    .then(|| rewrite_transport_call_c(name, config))
+                    .flatten()
+                    .unwrap_or_else(|| name.clone()),
                 _ => "unknown_fn".to_string(),
             };
             CExpr::Call {

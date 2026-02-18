@@ -90,6 +90,7 @@ fn live_targets_with_secrets_have_cost_above_preflight_gate() {
 }
 
 #[test]
+#[allow(clippy::disallowed_methods)] // Test reads generated test files to verify guard presence
 fn generated_live_tests_include_guard_for_required_secrets() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()

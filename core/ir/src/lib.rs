@@ -79,6 +79,7 @@ pub mod transport;
 pub mod type_lib;
 pub mod type_op;
 pub mod type_registry;
+pub mod typed_io;
 pub mod types;
 pub mod validate;
 pub mod value;
@@ -163,8 +164,8 @@ pub use render_ir::{
 };
 pub use resource::{
     derive_resource_accesses, detect_resource_conflicts, normalize_resource_id, resource_api_port,
-    resource_file_port, resource_port, resource_target_port, AccessMode, Resource, ResourceAccess,
-    ResourceAccessError, ResourceConflict, ResourceId, ResourceKind, Timestamp,
+    resource_file_port, resource_port, resource_target_port, AccessMode, DagResource, Resource,
+    ResourceAccess, ResourceAccessError, ResourceConflict, ResourceId, ResourceKind, Timestamp,
     API_NETWORK_HANDLE_PORT, FILE_HANDLE_READ_PORT, FILE_HANDLE_WRITE_PORT, RESOURCE_API_NETWORK,
     RESOURCE_FILE, RESOURCE_FILE_PREFIX, RESOURCE_PORT_PREFIX, RESOURCE_REPO, RESOURCE_TARGET,
 };
@@ -172,11 +173,11 @@ pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSign
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};
 pub use system_model::{
     default_system_models, derive_contract_test_specs, generate_contract_test_harnesses,
-    get_registered_system_model, iter_registered_system_models,
-    render_contract_test_harness, validate_dependency_graph_acyclic,
-    validate_store_behavior_mapping, validate_system_model, Behavior, BehaviorInput,
-    BehaviorOutput, ContractTestSpec, Dependency, DependencyKind, InputType, Invocation,
-    OutputType, Property, SystemKind, SystemModel, SystemModelDef, UpsertPhase,
+    get_registered_system_model, iter_registered_system_models, render_contract_test_harness,
+    validate_dependency_graph_acyclic, validate_store_behavior_mapping, validate_system_model,
+    Behavior, BehaviorInput, BehaviorOutput, ContractTestSpec, Dependency, DependencyKind,
+    InputType, Invocation, OutputType, Property, SystemKind, SystemModel, SystemModelDef,
+    UpsertPhase,
 };
 pub use transport::{
     default_transport_behaviors, AuthScheme, Credential, CredentialError, CredentialIntent,
@@ -185,11 +186,19 @@ pub use transport::{
 };
 pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
+pub use typed_io::{
+    typed_input, typed_output, typed_port, AnyTag, CredentialTag, FilePathTag, FilesystemHandleTag,
+    ListTag, NetworkHandleTag, NonEmptyListTag, OptionalTag, PlatformTag, PortTypeTag, SecretTag,
+    TimestampTag, ToolHandleTag, TransportRequestTag, TransportResponseTag, TypedInput,
+    TypedOutput, TypedPort, UrlTag,
+};
 pub use types::{
     boundary_label, parse_map_type_id, seed_placeholder_policy_for_type_id,
-    semantic_carrier_class_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
+    semantic_carrier_class_for_type_id, semantic_carrier_compatible,
+    semantic_carrier_kind_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
     value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy, NodeId,
-    PortName, SeedPlaceholderPolicy, SemanticCarrierClass, TypeId, ValueBacking,
+    PortName, SeedPlaceholderPolicy, SemanticCarrierClass, SemanticCarrierKind, TypeId,
+    ValueBacking,
 };
 pub use validate::{
     validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,

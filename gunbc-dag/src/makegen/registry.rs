@@ -1448,7 +1448,11 @@ impl ToolRegistry {
             self.core_workflows.len() + self.meta_targets.len() + self.tools.len(),
         );
         specs.extend(self.core_workflows.iter().cloned());
-        specs.extend(self.meta_targets.iter().map(|meta| meta.workflow_spec(&res_map)));
+        specs.extend(
+            self.meta_targets
+                .iter()
+                .map(|meta| meta.workflow_spec(&res_map)),
+        );
         specs.extend(self.tools.iter().map(|tool| tool.workflow_spec(config)));
         propagate_workflow_live_secrets(&mut specs);
         specs
@@ -1582,10 +1586,7 @@ fn dedupe_live_secrets(secrets: impl IntoIterator<Item = String>) -> Vec<String>
     deduped
 }
 
-fn extend_live_secrets_unique(
-    target: &mut Vec<String>,
-    secrets: impl IntoIterator<Item = String>,
-) {
+fn extend_live_secrets_unique(target: &mut Vec<String>, secrets: impl IntoIterator<Item = String>) {
     for secret in secrets {
         if !target.contains(&secret) {
             target.push(secret);

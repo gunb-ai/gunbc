@@ -1,6 +1,6 @@
+use gunbc_cli::{parse, CliParam, ParamType};
 use gunbc_dag::makegen::ToolRegistry;
 use gunbc_dag::render_makefile;
-use gunbc_cli::{parse, CliParam, ParamType};
 use gunbc_ir::{to_bridge_json, Cardinality, Value};
 use std::collections::{BTreeMap, HashMap};
 
@@ -68,9 +68,10 @@ fn param_type_from_hint(type_hint: &str) -> ParamType {
 fn parse_scalar_value(param_type: ParamType, raw: &str) -> Value {
     match param_type {
         ParamType::Str => Value::Str(raw.to_string()),
-        ParamType::Int => {
-            Value::Int(raw.parse::<i64>().expect("contract sample int should parse as i64"))
-        }
+        ParamType::Int => Value::Int(
+            raw.parse::<i64>()
+                .expect("contract sample int should parse as i64"),
+        ),
         ParamType::Bool => Value::Bool(raw == "true"),
     }
 }
@@ -135,7 +136,10 @@ fn test_per_tool_dry_run_cli_contracts_match_registry_entrypoints() {
             let value = scalar_sample(&entry.port_name, param_type, 0);
             argv.push(entry.cli_flag.clone());
             argv.push(value.clone());
-            expected.insert(entry.port_name.clone(), parse_scalar_value(param_type, &value));
+            expected.insert(
+                entry.port_name.clone(),
+                parse_scalar_value(param_type, &value),
+            );
         }
 
         let result = parse(&argv, &schema).unwrap_or_else(|err| {
@@ -213,8 +217,7 @@ fn test_per_tool_print_inputs_json_round_trip() {
 
             if param_type == ParamType::Bool {
                 full_argv.push(entry.cli_flag.clone());
-                expected_json
-                    .insert(entry.port_name.clone(), serde_json::Value::Bool(true));
+                expected_json.insert(entry.port_name.clone(), serde_json::Value::Bool(true));
                 continue;
             }
 
@@ -272,9 +275,12 @@ fn test_per_tool_print_inputs_json_round_trip() {
             .unwrap_or_else(|| panic!("tool '{}': to_bridge_json returned None", tool.short_name));
 
         // Step 4: Verify JSON is an object with expected keys
-        let obj = json
-            .as_object()
-            .unwrap_or_else(|| panic!("tool '{}': JSON output should be an object", tool.short_name));
+        let obj = json.as_object().unwrap_or_else(|| {
+            panic!(
+                "tool '{}': JSON output should be an object",
+                tool.short_name
+            )
+        });
 
         for (key, expected_val) in &expected_json {
             assert_eq!(
@@ -311,10 +317,7 @@ fn test_print_inputs_equals_form_parses() {
         .expect("registry should have at least one tool with entrypoints");
 
     let mut schema = Vec::new();
-    let mut full_argv = vec![
-        tool.short_name.clone(),
-        "--print-inputs=json".to_string(),
-    ];
+    let mut full_argv = vec![tool.short_name.clone(), "--print-inputs=json".to_string()];
 
     for entry in &tool.entrypoints {
         let param_type = param_type_from_hint(&entry.type_hint);

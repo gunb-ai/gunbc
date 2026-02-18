@@ -393,20 +393,29 @@ fn cmd_cigen(dry_run: bool) {
         .with_permissions(ci_perms)
         .with_secrets_env(ci_secrets);
 
-    let outputs: Vec<(&str, String, String)> = vec![
+    let outputs: Vec<(&str, CiTemplateKind, String, String)> = vec![
         (
             "GitHub Actions",
+            CiTemplateKind::GitHubActions,
             generate_github_actions_template(&config),
             github_provider.output_path("ci"),
         ),
         (
             "GitLab CI",
+            CiTemplateKind::GitLabCi,
             generate_gitlab_ci_template(&config),
             gitlab_provider.output_path("ci"),
         ),
     ];
 
-    for (label, yaml, path) in &outputs {
+    let mut had_errors = false;
+    for (label, kind, yaml, path) in &outputs {
+        if let Err(error) = validate_generated_ci_template(*kind, yaml) {
+            eprintln!("  [ci] {} validation ERROR: {}", label, error);
+            had_errors = true;
+            continue;
+        }
+
         match writer.write_if_changed(Path::new(path), yaml) {
             Ok(result) => {
                 let status = if dry_run {
@@ -420,12 +429,75 @@ fn cmd_cigen(dry_run: bool) {
             }
             Err(e) => {
                 eprintln!("  [ci] {} ERROR: {}", label, e);
+                had_errors = true;
             }
         }
     }
 
+    if had_errors {
+        std::process::exit(1);
+    }
+
     println!();
     println!("Generated: {} CI files", outputs.len());
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CiTemplateKind {
+    GitHubActions,
+    GitLabCi,
+}
+
+fn validate_generated_ci_template(kind: CiTemplateKind, yaml: &str) -> Result<(), String> {
+    match kind {
+        CiTemplateKind::GitHubActions => validate_github_actions_template(yaml),
+        CiTemplateKind::GitLabCi => validate_gitlab_ci_template(yaml),
+    }
+}
+
+fn validate_required_sections(yaml: &str, required: &[&str]) -> Result<(), String> {
+    for section in required {
+        if !yaml.contains(section) {
+            return Err(format!("missing required section: {section}"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_github_actions_template(yaml: &str) -> Result<(), String> {
+    validate_required_sections(
+        yaml,
+        &[
+            "name:",
+            "on:",
+            "permissions:",
+            "env:",
+            "jobs:",
+            "runs-on:",
+            "steps:",
+        ],
+    )?;
+
+    // Basic interpolation sanity check to catch malformed template insertion.
+    let opens = yaml.matches("${{").count();
+    let closes = yaml.matches("}}").count();
+    if opens != closes {
+        return Err(format!(
+            "unbalanced GitHub interpolation markers: {} opening vs {} closing",
+            opens, closes
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_gitlab_ci_template(yaml: &str) -> Result<(), String> {
+    validate_required_sections(
+        yaml,
+        &["image:", "variables:", "stages:", "cache:", "script:"],
+    )?;
+
+    Ok(())
 }
 
 /// Generate GitHub Actions YAML template.
@@ -921,7 +993,10 @@ fn validate_required_dsl_modules_for_codegen(
         .collect();
 
     // Required tools = union of registry dsl_module names and workspace binary tool modules.
-    let required_tools: BTreeSet<&str> = registry_modules.union(&binary_tool_modules).copied().collect();
+    let required_tools: BTreeSet<&str> = registry_modules
+        .union(&binary_tool_modules)
+        .copied()
+        .collect();
 
     // Required pipelines: workspace binaries that map to DSL pipeline modules.
     let required_pipelines: BTreeSet<&str> = WorkspaceBinary::all()
@@ -999,7 +1074,10 @@ fn validate_codegen_dsl_coverage(
     if !unknown_tools.is_empty() || !unknown_pipelines.is_empty() {
         let mut parts = Vec::new();
         if !unknown_tools.is_empty() {
-            parts.push(format!("unmapped DSL tool modules: {}", unknown_tools.join(", ")));
+            parts.push(format!(
+                "unmapped DSL tool modules: {}",
+                unknown_tools.join(", ")
+            ));
         }
         if !unknown_pipelines.is_empty() {
             parts.push(format!(
@@ -1007,7 +1085,10 @@ fn validate_codegen_dsl_coverage(
                 unknown_pipelines.join(", ")
             ));
         }
-        return Err(format!("codegen DSL coverage validation failed: {}", parts.join("; ")));
+        return Err(format!(
+            "codegen DSL coverage validation failed: {}",
+            parts.join("; ")
+        ));
     }
 
     let tool_name_set: BTreeSet<&str> = tools
@@ -1465,9 +1546,11 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        discover_codegen_tools, parse_command_arg, parse_tool_defs_from_file,
-        validate_codegen_dsl_coverage, WorkspaceBinary,
+        discover_codegen_tools, generate_github_actions_template, generate_gitlab_ci_template,
+        parse_command_arg, parse_tool_defs_from_file, validate_codegen_dsl_coverage,
+        validate_generated_ci_template, CiTemplateKind, WorkspaceBinary,
     };
+    use gunbc_ir::transport::ci::{CacheConfig, RenderConfig};
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
 
@@ -1492,6 +1575,54 @@ mod tests {
         let args = argv(&["gunbc-codegen", "commit", "rollback"]);
         let err = parse_command_arg(&args).unwrap_err();
         assert!(err.contains("unexpected extra positional arguments"));
+    }
+
+    #[test]
+    fn github_template_passes_static_validation() {
+        let codegen = WorkspaceBinary::Codegen.invocation();
+        let config = RenderConfig::new("ci", WorkspaceBinary::Ci.invocation())
+            .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
+            .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
+            .with_cargo_env(gunbc_ir::CargoEnv::ci())
+            .with_cache(CacheConfig::rust())
+            .with_permissions(vec![
+                ("contents".to_string(), "read".to_string()),
+                ("id-token".to_string(), "write".to_string()),
+            ]);
+
+        let yaml = generate_github_actions_template(&config);
+        validate_generated_ci_template(CiTemplateKind::GitHubActions, &yaml)
+            .expect("generated GitHub Actions template should validate");
+    }
+
+    #[test]
+    fn github_template_validation_rejects_missing_sections() {
+        let malformed = "name: ci\njobs:\n";
+        let err = validate_generated_ci_template(CiTemplateKind::GitHubActions, malformed)
+            .expect_err("malformed GitHub template should fail validation");
+        assert!(err.contains("missing required section"));
+    }
+
+    #[test]
+    fn gitlab_template_passes_static_validation() {
+        let codegen = WorkspaceBinary::Codegen.invocation();
+        let config = RenderConfig::new("ci", WorkspaceBinary::Ci.invocation())
+            .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
+            .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
+            .with_cargo_env(gunbc_ir::CargoEnv::ci())
+            .with_cache(CacheConfig::rust());
+
+        let yaml = generate_gitlab_ci_template(&config);
+        validate_generated_ci_template(CiTemplateKind::GitLabCi, &yaml)
+            .expect("generated GitLab CI template should validate");
+    }
+
+    #[test]
+    fn gitlab_template_validation_rejects_missing_sections() {
+        let malformed = "image: rust:latest\n";
+        let err = validate_generated_ci_template(CiTemplateKind::GitLabCi, malformed)
+            .expect_err("malformed GitLab template should fail validation");
+        assert!(err.contains("missing required section"));
     }
 
     #[test]

@@ -598,11 +598,17 @@ fn collect_contract_obligations<T>(
                 "verified",
             ),
             EntailmentStatus::Unknown { reason } => (
-                format!("Edge {}: predicate entailment unknown ({})", edge_label, reason),
+                format!(
+                    "Edge {}: predicate entailment unknown ({})",
+                    edge_label, reason
+                ),
                 "unknown",
             ),
             EntailmentStatus::Invalid { reason } => (
-                format!("Edge {}: predicate entailment INVALID ({})", edge_label, reason),
+                format!(
+                    "Edge {}: predicate entailment INVALID ({})",
+                    edge_label, reason
+                ),
                 "invalid",
             ),
         };

@@ -111,6 +111,7 @@ struct Parser {
     tokens: Vec<Token>,
     pos: usize,
     errors: Vec<ParseError>,
+    allow_named_record_suffix: bool,
 }
 
 // Flatten an expression into a dotted path (for Call vs ServiceCall).
@@ -133,6 +134,7 @@ impl Parser {
             tokens,
             pos: 0,
             errors: Vec::new(),
+            allow_named_record_suffix: true,
         }
     }
 
@@ -1634,7 +1636,7 @@ impl Parser {
                     "ternary operator is not supported; did you mean an optional type?".into(),
                 ));
             }
-            if self.check(&TokenKind::LBrace) {
+            if self.allow_named_record_suffix && self.check(&TokenKind::LBrace) {
                 if 21u8 < min_bp {
                     break;
                 }
@@ -2133,11 +2135,56 @@ impl Parser {
         self.expect(&TokenKind::For)?;
         let var = self.expect_ident()?;
         self.expect(&TokenKind::In)?;
-        let iter = self.parse_expr(0)?;
+        let iter = self.parse_for_iterable_expr()?;
+        let (iter, passthrough) = self.split_for_iterable_and_passthrough(&var, iter)?;
         self.expect(&TokenKind::LBrace)?;
         let body = self.parse_expr(0)?;
         self.expect(&TokenKind::RBrace)?;
-        Ok(Expr::For(var, Box::new(iter), Box::new(body)))
+        Ok(Expr::For(var, Box::new(iter), passthrough, Box::new(body)))
+    }
+
+    fn parse_for_iterable_expr(&mut self) -> Result<Expr, ParseError> {
+        let previous = self.allow_named_record_suffix;
+        self.allow_named_record_suffix = false;
+        let parsed = self.parse_expr(0);
+        self.allow_named_record_suffix = previous;
+        parsed
+    }
+
+    fn split_for_iterable_and_passthrough(
+        &self,
+        loop_var: &str,
+        iter_expr: Expr,
+    ) -> Result<(Expr, Vec<String>), ParseError> {
+        let Expr::Call(name, args) = &iter_expr else {
+            return Ok((iter_expr, Vec::new()));
+        };
+        if name != "with" || args.len() != 2 || args[0].0.is_some() || args[1].0.is_some() {
+            return Ok((iter_expr, Vec::new()));
+        }
+        let Expr::Record(None, fields) = &args[1].1 else {
+            return Ok((iter_expr, Vec::new()));
+        };
+
+        let mut passthrough = Vec::with_capacity(fields.len());
+        for (field_name, field_expr) in fields {
+            match field_expr {
+                Expr::Ident(ident) if ident == field_name => {}
+                _ => return Ok((iter_expr, Vec::new())),
+            }
+
+            if field_name == loop_var {
+                return Err(self.err(format!(
+                    "loop passthrough cannot include loop variable '{loop_var}'"
+                )));
+            }
+            if passthrough.iter().any(|existing| existing == field_name) {
+                return Err(self.err(format!("duplicate loop passthrough binding '{field_name}'")));
+            }
+            passthrough.push(field_name.clone());
+        }
+
+        Ok((args[0].1.clone(), passthrough))
     }
 }
 
@@ -2379,6 +2426,48 @@ interface Storage {
             Expr::BinOp(lhs, BinOp::Lt, rhs) => {
                 assert!(matches!(*lhs, Expr::BinOp(_, BinOp::Add, _)));
                 assert!(matches!(*rhs, Expr::Ident(ref name) if name == "c"));
+            }
+            other => panic!("unexpected expression tree: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_for_expr_with_passthrough_clause() {
+        let expr = parse_expr_only("for item in items with { repo, branch } { render(item) }");
+        match expr {
+            Expr::For(var, iter, passthrough, body) => {
+                assert_eq!(var, "item");
+                assert!(matches!(*iter, Expr::Ident(ref ident) if ident == "items"));
+                assert_eq!(passthrough, vec!["repo".to_string(), "branch".to_string()]);
+                assert!(matches!(*body, Expr::Call(ref name, _) if name == "render"));
+            }
+            other => panic!("unexpected expression tree: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_for_expr_rejects_passthrough_loop_var_collision() {
+        let err = parse_expr_only_err("for item in items with { item } { item }");
+        assert!(err.message.contains("cannot include loop variable 'item'"));
+    }
+
+    #[test]
+    fn parse_for_expr_rejects_duplicate_passthrough_bindings() {
+        let err = parse_expr_only_err("for item in items with { repo, repo } { item }");
+        assert!(err
+            .message
+            .contains("duplicate loop passthrough binding 'repo'"));
+    }
+
+    #[test]
+    fn parse_for_expr_without_passthrough_remains_supported() {
+        let expr = parse_expr_only("for item in items { item }");
+        match expr {
+            Expr::For(var, iter, passthrough, body) => {
+                assert_eq!(var, "item");
+                assert!(matches!(*iter, Expr::Ident(ref ident) if ident == "items"));
+                assert!(passthrough.is_empty());
+                assert!(matches!(*body, Expr::Ident(ref ident) if ident == "item"));
             }
             other => panic!("unexpected expression tree: {other:?}"),
         }

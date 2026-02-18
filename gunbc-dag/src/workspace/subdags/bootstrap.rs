@@ -118,7 +118,10 @@ pub fn build_bootstrap_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
 
     builder.add_edge(prepare_scan.out("request"), execute_scan.in_port("request"))?;
     builder.add_edge(prepare_scan.out("skip"), execute_scan.in_port("skip"))?;
-    builder.add_edge(execute_scan.out("response"), scan_workspace.in_port("response"))?;
+    builder.add_edge(
+        execute_scan.out("response"),
+        scan_workspace.in_port("response"),
+    )?;
 
     builder.add_edge(
         scan_workspace.out("crate_names"),
@@ -132,7 +135,10 @@ pub fn build_bootstrap_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
         prepare_makefile.out("request"),
         execute_makefile.in_port("request"),
     )?;
-    builder.add_edge(prepare_makefile.out("skip"), execute_makefile.in_port("skip"))?;
+    builder.add_edge(
+        prepare_makefile.out("skip"),
+        execute_makefile.in_port("skip"),
+    )?;
 
     builder.add_edge(
         scan_workspace.out("crate_names"),

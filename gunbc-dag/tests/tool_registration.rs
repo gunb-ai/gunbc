@@ -236,7 +236,9 @@ fn collect_tool_target_builders(root: &Path) -> Vec<(String, String, String)> {
 /// Returns (function_name, crate_dir).
 fn collect_testgen_builder_functions(root: &Path) -> Vec<(String, String)> {
     let io = TransportIo::new();
-    let pattern = format!("{}/**/graph_mock.rs", root.display());
+    // Some transport/glob implementations are less reliable with a fixed
+    // terminal filename pattern, so glob all Rust files and filter by filename.
+    let pattern = format!("{}/**/*.rs", root.display());
     let mut results = Vec::new();
 
     let paths = match io.glob_paths(&pattern) {
@@ -247,6 +249,9 @@ fn collect_testgen_builder_functions(root: &Path) -> Vec<(String, String)> {
     for path in paths {
         let path_str = path.to_string_lossy();
         if path_str.contains("/target/") || path_str.contains("/buck-out/") {
+            continue;
+        }
+        if path.file_name().and_then(|name| name.to_str()) != Some("graph_mock.rs") {
             continue;
         }
 

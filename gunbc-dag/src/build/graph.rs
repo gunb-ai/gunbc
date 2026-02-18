@@ -2,16 +2,14 @@
 
 use crate::dsl_builder::build_build_graph_dsl;
 use gunbc_exec::DynOp;
-use gunbc_ir::{BuilderError, Cardinality, Dag, WorkflowSignature};
+use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 
 /// Runtime op type for build graphs.
 pub type BuildGraphOp = DynOp;
 
-/// Get the declared signature for the build workflow.
+/// Get the declared signature for the build workflow (auto-derived from DAG).
 pub fn build_signature() -> WorkflowSignature {
-    WorkflowSignature::new()
-        .with_output("overall_success", "Bool", Cardinality::ONE)
-        .with_output("report", "String", Cardinality::ONE)
+    infer_signature(&build_build_graph().expect("build DAG should build for signature"))
 }
 
 /// Build the build graph from the DSL source.

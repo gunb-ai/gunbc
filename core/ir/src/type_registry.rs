@@ -489,6 +489,16 @@ impl TypeRegistry {
             .is_ok()
     }
 
+    /// Check structural + strict semantic-carrier compatibility.
+    ///
+    /// This is stricter than [`Self::is_compatible`]:
+    /// - structural compatibility must hold
+    /// - semantic carrier kinds must be compatible (no semantic→structural fallback)
+    /// - unknown semantic carriers are rejected (fail-closed)
+    pub fn is_compatible_strict_semantic(&self, from: &TypeId, to: &TypeId) -> bool {
+        self.is_compatible(from, to) && crate::types::semantic_carrier_compatible(from, to)
+    }
+
     /// Check whether `from` is a structural refinement of `to`.
     ///
     /// A refinement can safely coerce to its base type (widening).
@@ -701,6 +711,21 @@ mod tests {
         // Registry-driven refinement: CustomUrl (refines Url) upcasts to String via Url.
         assert!(registry.is_compatible(&TypeId::from("CustomUrl"), &TypeId::from("String")));
         assert!(!registry.is_compatible(&TypeId::from("String"), &TypeId::from("CustomUrl")));
+    }
+
+    #[test]
+    fn test_type_compatibility_strict_semantic_rejects_semantic_to_any() {
+        let registry = TypeRegistry::with_core_types();
+        // Structural compatibility allows Any as target.
+        assert!(registry.is_compatible(&TypeId::from("Credential"), &TypeId::from("Any")));
+        // Strict semantic mode rejects semantic -> structural fallback.
+        assert!(!registry
+            .is_compatible_strict_semantic(&TypeId::from("Credential"), &TypeId::from("Any")));
+        // Same semantic type remains allowed.
+        assert!(registry.is_compatible_strict_semantic(
+            &TypeId::from("TransportResponse"),
+            &TypeId::from("TransportResponse"),
+        ));
     }
 
     #[test]

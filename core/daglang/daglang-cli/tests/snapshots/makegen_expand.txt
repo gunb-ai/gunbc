@@ -17,9 +17,11 @@ Nodes:
       * res:file:Makefile: FilesystemHandle (1)
     outputs:
       * request: TransportRequest (1)
+      * skip: Bool (1)
   - execute_read_makegen [callable::Pattern tools.makegen.content_upsert::execute_read_makegen]
     inputs:
       * request: TransportRequest (1)
+      * skip: Bool (1)
     outputs:
       * response: TransportResponse (1)
   - compare_makegen_content [callable::Pattern tools.makegen.content_upsert::compare_makegen_content]
@@ -41,7 +43,7 @@ Nodes:
       * skip: Bool (1)
       * res:file:*: FilesystemHandle (1)
     outputs:
-      * makegen_response: TransportResponse (1)
+      * response: TransportResponse (1)
   - load_registry [callable::Pattern tools.makegen.load_registry]
     outputs:
       * registry: ToolRegistry (1)
@@ -51,10 +53,11 @@ Nodes:
 Edges:
   - tools.makegen::render_makefile.return -> tools.makegen::makegen.__deps
   - prepare_read_makegen.request -> execute_read_makegen.request
+  - prepare_read_makegen.skip -> execute_read_makegen.skip
   - execute_read_makegen.response -> compare_makegen_content.response
   - prepare_write_makegen.request -> execute_makegen_transport.request
   - compare_makegen_content.skip -> execute_makegen_transport.skip
-  - execute_makegen_transport.makegen_response -> tools.makegen::makegen.__deps
+  - execute_makegen_transport.response -> tools.makegen::makegen.__deps
   - tools.makegen::render_makefile.return -> compare_makegen_content.expected_content
   - tools.makegen::render_makefile.return -> prepare_write_makegen.content
   - load_registry.registry -> tools.makegen::render_makefile.registry

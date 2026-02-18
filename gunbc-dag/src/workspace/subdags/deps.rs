@@ -4,8 +4,8 @@
 //! Provides both install and generate workflows.
 
 use crate::workspace::WorkspaceOp;
-use gunbc_exec::DynOp;
 use gunbc_deps::{DepsOp, PlatformEnv};
+use gunbc_exec::DynOp;
 use gunbc_ir::build::*;
 use gunbc_ir::{BuilderError, DagBuilder, Node};
 use gunbc_lib_transport::TransportOps;
@@ -240,7 +240,9 @@ pub fn build_deps_generate_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
             "prepare_file_write",
             vec![scalar("content", "String"), port("path", "String")],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            DynOp::new(gunbc_primitives::PrimitiveOp::PrepareFileWrite(PrepareFileWriteOp)),
+            DynOp::new(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
+                PrepareFileWriteOp,
+            )),
         ),
         &render_deps_toml,
     )?;

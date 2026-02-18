@@ -46,9 +46,7 @@ pub mod workspace;
 pub use binaries::WorkspaceBinary;
 pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp, BootstrapOp};
 pub use build::{build_build_graph, build_signature, BuildGraphOp, BuildOp};
-pub use ci::{
-    build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp, CIOp,
-};
+pub use ci::{build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp, CIOp};
 pub use cloud_env::{
     aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
     gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements,
@@ -68,8 +66,9 @@ pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
 pub use makegen::{
     build_makegen_graph, default_build_config, default_core_workflows, makegen_signature,
-    render_gitignore, render_makefile, BuildConfig, MakegenGraphOp, MakegenOp, WorkflowKind,
-    WorkflowSpec,
+    render_github_actions_from_workflow_specs, render_gitignore,
+    render_gitlab_ci_from_workflow_specs, render_justfile, render_makefile, workflow_specs_to_dag,
+    BuildConfig, MakegenGraphOp, MakegenOp, WorkflowKind, WorkflowSpec,
 };
 pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp, PragmaOp};
 pub use resolve::{resolve_lowered_dag, ResolveError};

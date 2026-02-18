@@ -39,9 +39,9 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, parse_map_type_id, semantic_carrier_class_for_type_id,
-    value_compatible_with_type_id, value_kind_name, Cardinality, Dag, NodeId, Os, PortName,
-    SecretString, SeedPlaceholderPolicy, SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
+    contract, parse_map_type_id, semantic_carrier_class_for_type_id, value_compatible_with_type_id,
+    value_kind_name, Cardinality, Dag, NodeId, Os, PortName, SecretString, SeedPlaceholderPolicy,
+    SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -3528,7 +3528,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 Expr::var("spec").method("to_boundary_mocks", vec![]),
             ),
             Stmt::let_bind(
-                if spec.expected_outputs.is_empty() { "_log" } else { "log" },
+                if spec.expected_outputs.is_empty() {
+                    "_log"
+                } else {
+                    "log"
+                },
                 Expr::call(
                     "execute_with_mode",
                     vec![
@@ -4869,7 +4873,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             argv_str
         )
         .unwrap();
-        parse_code.push_str("let result = parse(&argv, &schema).expect(\"parse should succeed\");\n");
+        parse_code
+            .push_str("let result = parse(&argv, &schema).expect(\"parse should succeed\");\n");
         for assertion in &assertions {
             parse_code.push_str(assertion);
         }
@@ -4890,9 +4895,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             full_argv_parts.join(", ")
         )
         .unwrap();
-        print_inputs_code.push_str(
-            "let mut parse_args: Vec<String> = Vec::with_capacity(full_argv.len());\n",
-        );
+        print_inputs_code
+            .push_str("let mut parse_args: Vec<String> = Vec::with_capacity(full_argv.len());\n");
         print_inputs_code.push_str("if let Some(program) = full_argv.first() {\n");
         print_inputs_code.push_str("    parse_args.push(program.clone());\n");
         print_inputs_code.push_str("}\n");
@@ -4905,16 +4909,23 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         print_inputs_code.push_str("        assert!(raw_idx < full_argv.len(), \"--print-inputs should include a format value\");\n");
         print_inputs_code.push_str("        assert_eq!(full_argv[raw_idx], \"json\", \"--print-inputs only supports json\");\n");
         print_inputs_code.push_str("        print_inputs_json = true;\n");
-        print_inputs_code.push_str("    } else if let Some(format) = arg.strip_prefix(\"--print-inputs=\") {\n");
-        print_inputs_code.push_str("        assert_eq!(format, \"json\", \"--print-inputs only supports json\");\n");
+        print_inputs_code
+            .push_str("    } else if let Some(format) = arg.strip_prefix(\"--print-inputs=\") {\n");
+        print_inputs_code.push_str(
+            "        assert_eq!(format, \"json\", \"--print-inputs only supports json\");\n",
+        );
         print_inputs_code.push_str("        print_inputs_json = true;\n");
         print_inputs_code.push_str("    } else {\n");
         print_inputs_code.push_str("        parse_args.push(arg.clone());\n");
         print_inputs_code.push_str("    }\n");
         print_inputs_code.push_str("    raw_idx += 1;\n");
         print_inputs_code.push_str("}\n");
-        print_inputs_code.push_str("assert!(print_inputs_json, \"expected --print-inputs json to be detected\");\n");
-        print_inputs_code.push_str("let result = parse(&parse_args, &schema).expect(\"parse should succeed\");\n");
+        print_inputs_code.push_str(
+            "assert!(print_inputs_json, \"expected --print-inputs json to be detected\");\n",
+        );
+        print_inputs_code.push_str(
+            "let result = parse(&parse_args, &schema).expect(\"parse should succeed\");\n",
+        );
         for assertion in &assertions {
             print_inputs_code.push_str(assertion);
         }
@@ -4922,9 +4933,13 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         print_inputs_code.push_str("for (port, value) in &result.values {\n");
         print_inputs_code.push_str("    ordered_inputs.insert(port.clone(), value.clone());\n");
         print_inputs_code.push_str("}\n");
-        print_inputs_code.push_str("let json = gunbc_ir::to_bridge_json(&Value::Map(ordered_inputs))\n");
-        print_inputs_code.push_str("    .expect(\"to_bridge_json should serialize parsed inputs\");\n");
-        print_inputs_code.push_str("assert!(json.is_object(), \"--print-inputs json should be a JSON object\");\n");
+        print_inputs_code
+            .push_str("let json = gunbc_ir::to_bridge_json(&Value::Map(ordered_inputs))\n");
+        print_inputs_code
+            .push_str("    .expect(\"to_bridge_json should serialize parsed inputs\");\n");
+        print_inputs_code.push_str(
+            "assert!(json.is_object(), \"--print-inputs json should be a JSON object\");\n",
+        );
 
         // Wrap entire body in a single TailExpr to avoid extra semicolons.
         // The raw code already has its own semicolons where needed.

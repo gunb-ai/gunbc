@@ -153,11 +153,8 @@ mod tests {
             .expect("clock should be monotonic")
             .as_nanos();
         let path = std::env::temp_dir().join(format!("gunbc-adc-{unique}.json"));
-        std::fs::write(
-            &path,
-            r#"{"type":"authorized_user","refresh_token":"tok"}"#,
-        )
-        .expect("should write temp ADC fixture");
+        std::fs::write(&path, r#"{"type":"authorized_user","refresh_token":"tok"}"#)
+            .expect("should write temp ADC fixture");
 
         let (exists, has_refresh_token, warning) = check_adc_file(&path);
         assert!(exists);

@@ -8,30 +8,16 @@ use gunbc_ir::transport::github_actions::{
     checkout, gcp_workload_identity, rust_toolchain, ubuntu_latest, Integration, Permissions,
     WorkflowConfig,
 };
-use gunbc_ir::{BuilderError, Cardinality, Dag, WorkflowSignature};
+use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 use gunbc_testgen_registry::iter_dag_specs;
 use std::collections::BTreeSet;
 
 /// Runtime op type for CI graphs.
 pub type CIGraphOp = DynOp;
 
-/// Get the declared signature for the ci workflow.
+/// Get the declared signature for the ci workflow (auto-derived from DAG).
 pub fn ci_signature() -> WorkflowSignature {
-    WorkflowSignature::new()
-        .with_output("deps_exists", "Bool", Cardinality::ONE)
-        .with_output("deps_checked", "Bool", Cardinality::ONE)
-        .with_output("deps_installed", "Int", Cardinality::ONE)
-        .with_output("message", "String", Cardinality::ONE)
-        .with_output("codegen_ran", "Bool", Cardinality::ONE)
-        .with_output("prep_message", "String", Cardinality::ONE)
-        .with_output("response", "TransportResponse", Cardinality::ZERO_OR_ONE)
-        .with_output("skip", "Bool", Cardinality::ONE)
-        .with_output("build_skipped", "Bool", Cardinality::ONE)
-        .with_output("test_skipped", "Bool", Cardinality::ONE)
-        .with_output("lint_skipped", "Bool", Cardinality::ONE)
-        .with_output("skip_reason", "OptionalString", Cardinality::ZERO_OR_ONE)
-        .with_output("overall_success", "Bool", Cardinality::ONE)
-        .with_output("report", "String", Cardinality::ONE)
+    infer_signature(&build_ci_graph().expect("ci DAG should build for signature"))
 }
 
 /// Get the integrations used by the CI workflow.

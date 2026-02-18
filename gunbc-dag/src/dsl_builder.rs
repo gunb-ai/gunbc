@@ -117,5 +117,4 @@ mod tests {
         let dag = build_ci_graph_dsl().expect("ci DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
-
 }

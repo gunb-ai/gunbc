@@ -17,7 +17,8 @@ fn is_fs_env_node(node_id: &NodeId) -> bool {
 ///
 /// Returns true when a mock was inserted.
 pub fn wire_fs_env_write_mock<T>(dag: &Dag<T>, mocks: &mut BoundaryMocks) -> bool {
-    let fs: gunbc_ir::Value = filename::FilesystemHandle::cross_platform(filename::Scope::Write).into();
+    let fs: gunbc_ir::Value =
+        filename::FilesystemHandle::cross_platform(filename::Scope::Write).into();
     let mut inserted = false;
 
     for node in dag.nodes.iter().filter(|node| is_fs_env_node(&node.id)) {
@@ -84,9 +85,6 @@ mod tests {
 
         let mut mocks = BoundaryMocks::new();
         assert!(wire_fs_env_write_mock(&dag, &mut mocks));
-        assert!(mocks.has_mock(
-            &NodeId::from("fs_env"),
-            &PortName::from("FilesystemHandle")
-        ));
+        assert!(mocks.has_mock(&NodeId::from("fs_env"), &PortName::from("FilesystemHandle")));
     }
 }

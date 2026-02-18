@@ -14,8 +14,8 @@ use gunbc_exec::{
 };
 use gunbc_ir::build::{list, optional, port, resource};
 use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
-use gunbc_ir::transport::rest::RestResponse;
 use gunbc_ir::transport::github::api::github_rest_request;
+use gunbc_ir::transport::rest::RestResponse;
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::{
     add_transport_triplet_named_with_passthrough, AccessMode, BuilderError, Dag, DagBuilder, Node,

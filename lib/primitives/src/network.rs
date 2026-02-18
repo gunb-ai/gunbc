@@ -3,7 +3,8 @@
 //! A capability token representing permission to perform network I/O.
 
 use gunbc_ir::resource::{
-    capability_marker, ensure_capability_marker, AccessMode, Resource, ResourceId, ResourceKind,
+    capability_marker, ensure_capability_marker, AccessMode, DagResource, Resource, ResourceId,
+    ResourceKind,
 };
 use gunbc_ir::Value;
 use std::collections::BTreeMap;
@@ -24,6 +25,10 @@ impl Resource for NetworkHandle {
     fn kind(&self) -> ResourceKind {
         ResourceKind::Capability
     }
+}
+
+impl DagResource for NetworkHandle {
+    const TYPE_ID: &'static str = "NetworkHandle";
 }
 
 /// Encode a NetworkHandle for DAG edges.
