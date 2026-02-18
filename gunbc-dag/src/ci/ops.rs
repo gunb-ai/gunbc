@@ -181,7 +181,15 @@ fn execute_parse_deps_exists(
     if let Some(result) = propagate_skipped(
         &inputs,
         "response",
-        &["deps_exists", "deps_checked", "deps_installed", "message"],
+        &[
+            "deps_exists",
+            "deps_checked",
+            "deps_installed",
+            "message",
+            "success",
+            "error_summary",
+            "detail",
+        ],
     ) {
         return result;
     }
@@ -204,6 +212,7 @@ fn execute_parse_deps_exists(
         .bool("deps_checked", true)
         .int("deps_installed", 0)
         .str("message", message)
+        .status(true, "", message)
         .ok()
 }
 
@@ -1001,11 +1010,25 @@ fn execute_aggregate_verify_results(
     };
 
     let verify_stdout = verify_stdout_parts.join("\n\n");
+    let verify_detail = if verify_success {
+        "All verify checks passed".to_string()
+    } else {
+        verify_stderr.clone()
+    };
 
     OutputMap::new()
         .bool("verify_success", verify_success)
         .str("verify_stdout", verify_stdout)
         .str("verify_stderr", verify_stderr)
+        .status(
+            verify_success,
+            if verify_success {
+                ""
+            } else {
+                "One or more verify checks failed"
+            },
+            verify_detail,
+        )
         .ok()
 }
 
@@ -1061,10 +1084,16 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
     for block in &blocks {
         report.push_str(&renderer.render_block(block));
     }
+    let status_summary = if overall_success {
+        ""
+    } else {
+        "One or more CI stages failed"
+    };
 
     OutputMap::new()
         .bool("overall_success", overall_success)
-        .str("report", report)
+        .str("report", report.clone())
+        .status(overall_success, status_summary, report)
         .ok()
 }
 
@@ -1640,6 +1669,11 @@ mod tests {
             result.get("deps_exists").and_then(|v| v.as_bool()),
             Some(true)
         );
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            result.get("error_summary").and_then(|v| v.as_str()),
+            Some("")
+        );
     }
 
     #[test]
@@ -1664,6 +1698,11 @@ mod tests {
         assert_eq!(
             result.get("deps_exists").and_then(|v| v.as_bool()),
             Some(false)
+        );
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            result.get("detail").and_then(|v| v.as_str()),
+            Some("No deps.toml found, skipping dependency check")
         );
     }
 
@@ -1821,6 +1860,11 @@ mod tests {
             result.get("verify_stdout").and_then(|v| v.as_str()),
             Some("makegen:\nstdout-only failure")
         );
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(
+            result.get("error_summary").and_then(|v| v.as_str()),
+            Some("One or more verify checks failed")
+        );
     }
 
     #[test]
@@ -1839,6 +1883,11 @@ mod tests {
         assert_eq!(
             result.get("overall_success").and_then(|v| v.as_bool()),
             Some(true)
+        );
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            result.get("error_summary").and_then(|v| v.as_str()),
+            Some("")
         );
     }
 
@@ -1867,6 +1916,11 @@ mod tests {
             result.get("overall_success").and_then(|v| v.as_bool()),
             Some(false)
         );
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(
+            result.get("error_summary").and_then(|v| v.as_str()),
+            Some("One or more CI stages failed")
+        );
     }
 
     #[test]
@@ -1891,6 +1945,7 @@ mod tests {
             .get("report")
             .and_then(|v| v.as_str())
             .expect("report text");
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
         assert!(report.contains("Verify errors"));
         assert!(report.contains("verify output:"));
         assert!(report.contains("verify output details"));

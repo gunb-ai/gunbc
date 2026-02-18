@@ -249,6 +249,10 @@ convention for each op.
 Then the display layer can generically show `error_summary` on failure without
 knowing anything about the specific op.
 
+**2026-02-18 progress**:
+- Added shared `OutputMap::status(success, error_summary, detail)` helper in `core/exec`.
+- Migrated CI ops incrementally (`parse_deps_exists`, `aggregate_verify_results`, `report`) to emit standardized status fields while preserving existing stage-specific outputs.
+
 ---
 
 ## 8. Secret Redaction Depends on Display Functions, Not the Type System

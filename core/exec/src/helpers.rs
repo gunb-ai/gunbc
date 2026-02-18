@@ -552,6 +552,28 @@ impl OutputMap {
         self
     }
 
+    /// Insert standardized status fields.
+    ///
+    /// Convention:
+    /// - `success: bool`
+    /// - `error_summary: String` (empty when success is true)
+    /// - `detail: String`
+    pub fn status(
+        mut self,
+        success: bool,
+        error_summary: impl Into<String>,
+        detail: impl Into<String>,
+    ) -> Self {
+        self.0.insert("success".to_string(), Value::Bool(success));
+        self.0.insert(
+            "error_summary".to_string(),
+            Value::Str(error_summary.into()),
+        );
+        self.0
+            .insert("detail".to_string(), Value::Str(detail.into()));
+        self
+    }
+
     /// Insert any Value directly.
     pub fn value(mut self, key: &str, val: Value) -> Self {
         self.0.insert(key.to_string(), val);

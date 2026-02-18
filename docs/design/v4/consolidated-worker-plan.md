@@ -709,8 +709,8 @@ Preflight currently uses raw `println!/eprint!`, bypassing CI groups and progres
 
 Different ops use `"report"`, `"message"`, `"stderr"`, `"error"`, `"success"`, etc.
 
-- [ ] D1.7a — Define convention: `success: bool`, `error_summary: String`, `detail: String`
-- [ ] D1.7b — Migrate existing ops to convention (incremental)
+- [x] D1.7a — Define convention: `success: bool`, `error_summary: String`, `detail: String`
+- [x] D1.7b — Migrate existing ops to convention (incremental)
 
 ##### D1.8 — Attention-level messaging shared format [S]
 **Deps**: D1.4
