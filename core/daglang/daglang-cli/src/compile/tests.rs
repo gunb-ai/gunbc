@@ -736,6 +736,65 @@ fn render_triplets_text_is_deterministic() {
 }
 
 #[test]
+fn workspace_tool_transport_triplet_audit_preserves_prepare_execute_parse_structure() {
+    let tool_files = [
+        ("tools/build.dag", 1usize),
+        ("tools/bootstrap.dag", 1usize),
+        ("tools/codegen.dag", 1usize),
+        ("tools/deps.dag", 1usize),
+        ("tools/docgen.dag", 1usize),
+        ("tools/gist.dag", 1usize),
+        ("tools/makegen.dag", 1usize),
+        ("tools/pragma.dag", 1usize),
+        ("tools/testgen.dag", 0usize),
+    ];
+
+    let mut total_triplets = 0usize;
+
+    for (relative_path, min_triplets) in tool_files {
+        let context = workspace_single_file_context(relative_path);
+        let output = compile_from_context(&context).expect("tool compile should succeed");
+        let triplets = &output.derived.transport_triplets;
+        assert!(
+            triplets.len() >= min_triplets,
+            "expected at least {min_triplets} transport triplets in {relative_path}"
+        );
+        total_triplets += triplets.len();
+
+        for triplet in triplets {
+            assert!(
+                output.lowered_dag.edges.iter().any(|edge| {
+                    edge.from_node.0 == triplet.prepare_node
+                        && edge.from_port.0 == "request"
+                        && edge.to_node.0 == triplet.execute_node
+                        && edge.to_port.0 == "request"
+                }),
+                "missing prepare->execute request edge for triplet {:?} in {relative_path}",
+                triplet
+            );
+
+            for parse_node in &triplet.parse_nodes {
+                assert!(
+                    output.lowered_dag.edges.iter().any(|edge| {
+                        edge.from_node.0 == triplet.execute_node
+                            && edge.from_port.0 == "response"
+                            && edge.to_node.0 == *parse_node
+                            && edge.to_port.0 == "response"
+                    }),
+                    "missing execute->parse response edge for triplet {:?} in {relative_path}",
+                    triplet
+                );
+            }
+        }
+    }
+
+    assert!(
+        total_triplets >= 16,
+        "expected substantial tool triplet coverage across workspace DSL tools"
+    );
+}
+
+#[test]
 fn render_manifest_reuses_obligations_text_block() {
     let context = workspace_single_file_context("tools/makegen.dag");
     let output = compile_from_context(&context).expect("compile should succeed");

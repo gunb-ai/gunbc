@@ -142,9 +142,9 @@ allowlist, lint policy). Express as DSL `pattern` invocations with service calls
 prepare/execute/parse 3-node pattern appears in every binary. DSL already supports
 via service call lowering.
 
-- [ ] B1.2a — Audit all transport triplet instances across binaries
-- [ ] B1.2b — Verify DSL `service` call lowering produces equivalent triplet structure
-- [ ] B1.2c — Migrate at least one triplet to DSL and verify parity
+- [x] B1.2a — Audit all transport triplet instances across binaries
+- [x] B1.2b — Verify DSL `service` call lowering produces equivalent triplet structure
+- [x] B1.2c — Migrate at least one triplet to DSL and verify parity
 
 ##### B1.3 — Codegen graph DSL migration [M]
 **Deps**: None

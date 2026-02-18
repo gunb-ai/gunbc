@@ -28,8 +28,7 @@ converter functions, preserving the boilerplate the DSL was meant to eliminate.
 
 - [ ] **Pragma graphs** (`gunbc-dag/src/pragma/graph.rs`) — 3 parallel content
       upsert chains. Express as `pattern` invocations with service calls.
-- [ ] **Transport triplets** (all binaries) — prepare/execute/parse 3-node pattern.
-      DSL already supports via service call lowering.
+- [x] **Transport triplets** (all binaries) — audited/verified via daglang triplet derivation tests across workspace DSL tool modules; lowering preserves prepare→execute request wiring and execute→parse response wiring where parse stages exist.
 - [ ] **Codegen graph** (`gunbc-dag/src/codegen/graph.rs`) — staged pipeline:
       exists check → conditional codegen → stamp. DSL `if` in `func` bodies.
 - [x] **Conditional execution / skip semantics** — covered by existing
