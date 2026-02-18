@@ -162,6 +162,29 @@ impl Os {
             Self::Other(v) => v.as_str(),
         }
     }
+
+    /// Parse DSL `Platform` variants into canonical OS tokens.
+    ///
+    /// Supports both the current spelling (`Macos`) and legacy spelling
+    /// (`MacOS`) used in older DSL/docs snapshots.
+    pub fn parse_dsl_platform(value: &str) -> Self {
+        match value.trim() {
+            "Linux" => Self::Linux,
+            "Macos" | "MacOS" => Self::Macos,
+            "Windows" => Self::Windows,
+            other => Self::parse(other),
+        }
+    }
+
+    /// Render this OS as a DSL `Platform` variant token.
+    pub fn to_dsl_platform_variant(&self) -> String {
+        match self {
+            Self::Linux => "Linux".to_string(),
+            Self::Macos => "Macos".to_string(),
+            Self::Windows => "Windows".to_string(),
+            _ => self.as_token().to_string(),
+        }
+    }
 }
 
 impl fmt::Display for Os {
@@ -522,5 +545,20 @@ mod tests {
         assert_eq!(triple.os, Os::Windows);
         assert_eq!(triple.env, AbiEnv::Msvc);
         assert_eq!(triple.to_string(), "x86_64-pc-windows-msvc");
+    }
+
+    #[test]
+    fn os_dsl_platform_adapter_accepts_legacy_and_current_spellings() {
+        assert_eq!(Os::parse_dsl_platform("Linux"), Os::Linux);
+        assert_eq!(Os::parse_dsl_platform("Macos"), Os::Macos);
+        assert_eq!(Os::parse_dsl_platform("MacOS"), Os::Macos);
+        assert_eq!(Os::parse_dsl_platform("Windows"), Os::Windows);
+    }
+
+    #[test]
+    fn os_dsl_platform_adapter_round_trips_canonical_variants() {
+        assert_eq!(Os::Linux.to_dsl_platform_variant(), "Linux");
+        assert_eq!(Os::Macos.to_dsl_platform_variant(), "Macos");
+        assert_eq!(Os::Windows.to_dsl_platform_variant(), "Windows");
     }
 }

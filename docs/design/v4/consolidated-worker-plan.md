@@ -406,7 +406,7 @@ Add canonical types in `core/ir` as single source of truth.
 - [x] C1.1c — Add `ExecutionEnv` enum (Native, WSL, Container, CI, Emulator)
 - [x] C1.1d — Add `RuntimePlatform { host: TargetTriple, env: ExecutionEnv }`
 - [x] C1.1e — Add parsing/formatting helpers for target triple strings
-- [ ] C1.1f — Add compatibility adapters from `deps::Platform`, DSL `Platform`, etc. *(deps adapter landed; DSL adapter still pending)*
+- [x] C1.1f — Add compatibility adapters from `deps::Platform`, DSL `Platform`, etc.
 
 #### Wave 2
 

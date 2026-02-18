@@ -21,7 +21,7 @@ This creates repeated logic and makes it hard to add a new variant without touch
 
 ## Fragmentation Map (Current State)
 
-1. DSL platform enum: `dsl/std/types.dag` (`type Platform = Linux | MacOS | Windows`)
+1. DSL platform enum: `dsl/std/types.dag` (`type Platform = Linux | Macos | Windows`)
 2. Deps runtime platform enum: `lib/tools/deps/src/platform.rs` (`Linux | Macos | Windows | Unknown`)
 3. Tool satisfiability platform model: `core/ir/src/transport/tool.rs` (`PlatformDef`, `PlatformRegistry`, `linux/ubuntu/debian/alpine/macos`)
 4. CI runner models:
@@ -96,7 +96,7 @@ This creates repeated logic and makes it hard to add a new variant without touch
 
 - [x] Add canonical platform/target/env types in `core/ir` (single source of truth). _(2026-02-18: added `Arch`/`Vendor`/`Os`/`AbiEnv` + `TargetTriple` + `ExecutionEnv` + `RuntimePlatform`.)_
 - [x] Add parsing/formatting helpers for target triples and env variants. _(2026-02-18: `TargetTriple::parse`/`Display` + enum parse/format helpers + host/env detection.)_
-- [ ] Add compatibility adapters from existing enums (`deps::Platform`, DSL platform type). _(2026-02-18: `deps::Platform` adapter landed; DSL adapter pending.)_
+- [x] Add compatibility adapters from existing enums (`deps::Platform`, DSL platform type). _(2026-02-18: `deps::Platform` adapter landed earlier; `Os::parse_dsl_platform` / `to_dsl_platform_variant` now provide canonical DSL Platform compatibility in `core/ir/src/platform.rs`.)_
 
 ### Phase 2: Highest-ROI Migrations
 
