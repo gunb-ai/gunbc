@@ -62,7 +62,9 @@ pub mod state;
 
 // Re-exports from submodules
 pub use def::{DagRef, InputPattern, ResourceDef, ResourceScope};
-pub use defs::{codegen_resource_def, CODEGEN_INPUT_FILES, CODEGEN_INPUT_GLOBS};
+pub use defs::{
+    codegen_input_patterns, codegen_resource_def, CODEGEN_INPUT_FILES, CODEGEN_INPUT_GLOBS,
+};
 pub use gunbc_infra::hash::{ContentHash, HashBuilder};
 pub use gunbc_infra::manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
 pub use handle::{HandleParseError, ResourceHandle};

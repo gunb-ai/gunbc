@@ -609,10 +609,10 @@ The immediate bug: `emit_cargo_toml()` in `rust_exec_runtime.rs` hardcodes `../.
 Eliminate `CODEGEN_INPUT_GLOBS`, `REPO_SOURCE_INPUT_GLOBS`, `TESTGEN_INPUT_GLOBS` etc.
 Derive them from `WorkspaceLayout` crate locations.
 
-- [ ] C7.3a — Replace `CODEGEN_INPUT_GLOBS` / `CODEGEN_INPUT_FILES` in `resource/defs.rs`
-- [ ] C7.3b — Replace `REPO_SOURCE_INPUT_GLOBS` / `REPO_CONFIG_INPUT_FILES` in `resources.rs`
-- [ ] C7.3c — Replace `TESTGEN_INPUT_GLOBS` / `TESTGEN_EXTRA_FILES` in `resources.rs`
-- [ ] C7.3d — Verify freshness hashing unchanged (same files discovered, different derivation)
+- [x] C7.3a — Replace `CODEGEN_INPUT_GLOBS` / `CODEGEN_INPUT_FILES` in `resource/defs.rs`
+- [x] C7.3b — Replace `REPO_SOURCE_INPUT_GLOBS` / `REPO_CONFIG_INPUT_FILES` in `resources.rs`
+- [x] C7.3c — Replace `TESTGEN_INPUT_GLOBS` / `TESTGEN_EXTRA_FILES` in `resources.rs`
+- [x] C7.3d — Verify freshness hashing unchanged (same files discovered, different derivation)
 
 ##### C7.4 — Replace parent() chains and hardcoded joins [M]
 **Deps**: C7.1
