@@ -14,6 +14,7 @@
 - `C4.2c` added typed request/response support in transport triplet helpers via `TransportPortTypes`.
 - `C4.3a` added a typed `TransportBehavior` spec model (`TransportKind`, `FieldRouteSpec`) in `core/ir`.
 - `C4.3b` added canonical behavior specs for TCP/HTTP/REST/File/Shell, including explicit TCP timeout routing invariants.
+- `C4.3c` integrated behavior specs into test generation by emitting transport-behavior coverage assertions in generated test modules for DAGs with transport executors.
 - Remaining work in this doc is focused on `C4.3+` behavioral specs integration.
 
 Feasibility analysis and migration plan for modeling transport executor

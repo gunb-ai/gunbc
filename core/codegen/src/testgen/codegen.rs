@@ -1602,6 +1602,114 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 ],
                 body,
             });
+
+            tests.push(TestFn {
+                name: "test_transport_behavior_specs_cover_core_families".to_string(),
+                doc: vec![
+                    "Transport behavior specs cover all core executor families.".to_string(),
+                    String::new(),
+                    "Proves: testgen is wired to the shared transport behavior catalog".to_string(),
+                    "used to drive behavioral transport contract checks.".to_string(),
+                ],
+                body: vec![
+                    Stmt::let_bind(
+                        "specs",
+                        Expr::RawCode("gunbc_ir::default_transport_behaviors()".to_string()),
+                    ),
+                    Stmt::Expr(Expr::call(
+                        "assert_eq!",
+                        vec![
+                            Expr::RawCode("specs.len()".to_string()),
+                            Expr::IntLit(5),
+                            Expr::Str(
+                                "transport behavior catalog should cover tcp/http/rest/file/shell"
+                                    .to_string(),
+                            ),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "specs.iter().any(|s| matches!(s.transport, gunbc_ir::TransportKind::Tcp))"
+                                    .to_string(),
+                            ),
+                            Expr::Str("missing tcp transport behavior spec".to_string()),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "specs.iter().any(|s| matches!(s.transport, gunbc_ir::TransportKind::Http))"
+                                    .to_string(),
+                            ),
+                            Expr::Str("missing http transport behavior spec".to_string()),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "specs.iter().any(|s| matches!(s.transport, gunbc_ir::TransportKind::Rest))"
+                                    .to_string(),
+                            ),
+                            Expr::Str("missing rest transport behavior spec".to_string()),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "specs.iter().any(|s| matches!(s.transport, gunbc_ir::TransportKind::File))"
+                                    .to_string(),
+                            ),
+                            Expr::Str("missing file transport behavior spec".to_string()),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "specs.iter().any(|s| matches!(s.transport, gunbc_ir::TransportKind::Shell))"
+                                    .to_string(),
+                            ),
+                            Expr::Str("missing shell transport behavior spec".to_string()),
+                        ],
+                    )),
+                    Stmt::let_bind(
+                        "tcp",
+                        Expr::RawCode(
+                            "specs.iter().find(|s| matches!(s.transport, gunbc_ir::TransportKind::Tcp)).expect(\"tcp behavior spec should exist\")"
+                                .to_string(),
+                        ),
+                    ),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "tcp.field_routes.iter().any(|route| route.request_field == \"read_timeout_ms\" && route.operation == \"set_read_timeout\")"
+                                    .to_string(),
+                            ),
+                            Expr::Str(
+                                "tcp behavior spec should pin read_timeout_ms routing".to_string(),
+                            ),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "tcp.field_routes.iter().any(|route| route.request_field == \"write_timeout_ms\" && route.operation == \"set_write_timeout\")"
+                                    .to_string(),
+                            ),
+                            Expr::Str(
+                                "tcp behavior spec should pin write_timeout_ms routing".to_string(),
+                            ),
+                        ],
+                    )),
+                ],
+            });
         }
 
         let determinism_obligations: Vec<_> = bucket
@@ -5697,6 +5805,7 @@ mod tests {
 
         // Should have transport interception test
         assert!(code.contains("test_transport_interception"));
+        assert!(code.contains("test_transport_behavior_specs_cover_core_families"));
 
         // Should have scenario tests
         assert!(code.contains("test_scenario_all_succeed"));

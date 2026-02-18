@@ -537,7 +537,7 @@ Declarative specification for transport behavior.
 
 - [x] C4.3a — Define `TransportBehavior` spec type
 - [x] C4.3b — Write specs for TCP, HTTP, REST, File, Shell
-- [ ] C4.3c — Integrate with testgen for behavioral test generation
+- [x] C4.3c — Integrate with testgen for behavioral test generation
 
 #### Wave 4
 
