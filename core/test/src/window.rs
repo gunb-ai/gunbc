@@ -225,13 +225,6 @@ pub fn apply_window_inputs<T>(
     mocks: &mut BoundaryMocks,
 ) -> Result<(), WindowError> {
     let node_set = window.node_set();
-    let mixed = mixed_input_ports(dag, &node_set);
-    if let Some((node, port)) = mixed.first() {
-        return Err(WindowError::MixedInput {
-            node: node.0.clone(),
-            port: port.0.clone(),
-        });
-    }
 
     let mut list_ports: HashSet<(String, String)> = HashSet::new();
     for node in &dag.nodes {
@@ -241,6 +234,21 @@ pub fn apply_window_inputs<T>(
                     list_ports.insert((node.id.0.clone(), port.name.0.clone()));
                 }
             }
+        }
+    }
+
+    // Mixed input ports are only an error for scalar ports. List/collect
+    // ports (e.g. `__deps`) can receive values from both internal edges
+    // (handled by window subdag execution) and external edges (injected
+    // from the baseline).
+    let mixed = mixed_input_ports(dag, &node_set);
+    for (node, port) in &mixed {
+        let key = (node.0.clone(), port.0.clone());
+        if !list_ports.contains(&key) {
+            return Err(WindowError::MixedInput {
+                node: node.0.clone(),
+                port: port.0.clone(),
+            });
         }
     }
 

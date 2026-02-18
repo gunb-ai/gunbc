@@ -116,6 +116,8 @@ enum HandlerKind {
     FsEnv,
     RenderMakefile,
     Entrypoint,
+    ParamSource,
+    LiteralSource,
     RenderPragmaClippyToml,
     RenderPragmaAllowlist,
     RenderPragmaLintPolicy,
@@ -136,6 +138,8 @@ impl HandlerKind {
             Self::FsEnv => "FsEnv",
             Self::RenderMakefile => "RenderMakefile",
             Self::Entrypoint => "Entrypoint",
+            Self::ParamSource => "ParamSource",
+            Self::LiteralSource => "LiteralSource",
             Self::RenderPragmaClippyToml => "RenderPragmaClippyToml",
             Self::RenderPragmaAllowlist => "RenderPragmaAllowlist",
             Self::RenderPragmaLintPolicy => "RenderPragmaLintPolicy",
@@ -159,6 +163,7 @@ impl HandlerKind {
 struct ClassifiedNode {
     node_id: String,
     handler: HandlerKind,
+    op_ctor: String,
     inputs: Vec<(String, String, Cardinality)>, // (port_name, type_id, cardinality)
     outputs: Vec<(String, String, Cardinality)>, // (port_name, type_id, cardinality)
 }
@@ -179,6 +184,12 @@ fn classify_nodes(dag: &Dag<LoweredOp>) -> Result<Vec<ClassifiedNode>, ExecRunti
             node_id: node_id.clone(),
             detail: format!("no runtime op classification for {op:?}"),
         })?;
+        let op_ctor = classify_op_ctor(op, &node.outputs, handler).map_err(|detail| {
+            ExecRuntimeError::UnresolvableNode {
+                node_id: node_id.clone(),
+                detail,
+            }
+        })?;
 
         let inputs = node
             .inputs
@@ -194,6 +205,7 @@ fn classify_nodes(dag: &Dag<LoweredOp>) -> Result<Vec<ClassifiedNode>, ExecRunti
         result.push(ClassifiedNode {
             node_id,
             handler,
+            op_ctor,
             inputs,
             outputs,
         });
@@ -208,6 +220,12 @@ fn collect_handler_kinds(classified: &[ClassifiedNode]) -> BTreeSet<HandlerKind>
 fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
     match op {
         LoweredOp::Collection { .. } => return Some(HandlerKind::Collection),
+        LoweredOp::Callable { name, .. } if name.starts_with("call_param_source::") => {
+            return Some(HandlerKind::ParamSource);
+        }
+        LoweredOp::Callable { name, .. } if name.starts_with("call_literal_source::") => {
+            return Some(HandlerKind::LiteralSource);
+        }
         LoweredOp::Pipeline { .. } => {}
         LoweredOp::Callable { module, name, .. } if module == "tools.makegen" => {
             return match name.as_str() {
@@ -257,6 +275,32 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
         _ if is_deferred_callable_module(module) => Some(HandlerKind::DeferredCallable),
         _ => None,
     }
+}
+
+fn classify_op_ctor(
+    op: &LoweredOp,
+    outputs: &[gunbc_ir::Port],
+    handler: HandlerKind,
+) -> Result<String, String> {
+    if handler != HandlerKind::LiteralSource {
+        return Ok(format!("Op::{}", handler.variant_name()));
+    }
+
+    let LoweredOp::Callable { name, .. } = op else {
+        return Err("literal source classification requires callable op".to_string());
+    };
+    let literal_spec = name
+        .strip_prefix("call_literal_source::")
+        .ok_or_else(|| format!("literal source callable `{name}` missing prefix"))?;
+    let output_port = outputs
+        .first()
+        .map(|port| port.name.0.as_str())
+        .ok_or_else(|| format!("literal source callable `{name}` has no output ports"))?;
+    Ok(format!(
+        "Op::LiteralSource {{ output_port: {}, literal_spec: {} }}",
+        rust_string_literal(output_port),
+        rust_string_literal(literal_spec)
+    ))
 }
 
 fn is_deferred_callable_module(module: &str) -> bool {
@@ -412,6 +456,44 @@ fn handler_body(kind: HandlerKind) -> &'static str {
             Value::Response(TransportResponse::File(r)) if r.operation == FileOp::Write && r.success))
     }).unwrap_or(false);
     OutputMap::new().bool("written", written).ok()
+"##
+        }
+        HandlerKind::ParamSource => {
+            r##"    Ok(inputs)
+"##
+        }
+        HandlerKind::LiteralSource => {
+            r##"    let value = if let Some(hex) = literal_spec.strip_prefix("strhex:") {
+        let mut bytes = Vec::with_capacity(hex.len() / 2);
+        if !hex.len().is_multiple_of(2) {
+            return Err(ExecError::new(format!("invalid literal source `{literal_spec}`: invalid hex length")));
+        }
+        for idx in (0..hex.len()).step_by(2) {
+            let byte = u8::from_str_radix(&hex[idx..idx + 2], 16)
+                .map_err(|_| ExecError::new(format!("invalid literal source `{literal_spec}`: invalid hex at offset {idx}")))?;
+            bytes.push(byte);
+        }
+        let decoded = String::from_utf8(bytes)
+            .map_err(|error| ExecError::new(format!("invalid literal source `{literal_spec}`: invalid utf8 literal: {error}")))?;
+        Value::Str(decoded)
+    } else if let Some(int) = literal_spec.strip_prefix("int:") {
+        let parsed = int
+            .parse::<i64>()
+            .map_err(|error| ExecError::new(format!("invalid literal source `{literal_spec}`: {error}")))?;
+        Value::Int(parsed)
+    } else if let Some(boolean) = literal_spec.strip_prefix("bool:") {
+        let parsed = boolean
+            .parse::<bool>()
+            .map_err(|error| ExecError::new(format!("invalid literal source `{literal_spec}`: {error}")))?;
+        Value::Bool(parsed)
+    } else if literal_spec == "none" {
+        Value::Unit
+    } else {
+        return Err(ExecError::new(format!(
+            "invalid literal source `{literal_spec}`: unknown literal kind"
+        )));
+    };
+    OutputMap::new().value(output_port, value).ok()
 "##
         }
         HandlerKind::RenderPragmaClippyToml => {
@@ -682,6 +764,10 @@ fn to_snake(s: &str) -> String {
     out
 }
 
+fn rust_string_literal(value: &str) -> String {
+    format!("{value:?}")
+}
+
 // ===========================================================================
 // IR construction helpers
 // ===========================================================================
@@ -694,7 +780,7 @@ fn build_exec_runtime_source(
     classified: &[ClassifiedNode],
     handler_kinds: &BTreeSet<HandlerKind>,
 ) -> gunbc_ir::code_ir::SourceFile {
-    use gunbc_ir::code_ir::{EnumDef, Import, Item, SourceFile};
+    use gunbc_ir::code_ir::{Import, Item, SourceFile};
 
     let mut items = Vec::new();
 
@@ -760,22 +846,8 @@ fn build_exec_runtime_source(
     // but pragma helpers use fully-qualified `serde_json::Value` paths
     // so no `use` import is needed here.
 
-    // ── Op enum (proper IR) ──
-    items.push(Item::Enum(EnumDef {
-        name: "Op".to_string(),
-        is_pub: false,
-        derives: vec![
-            "Debug".into(),
-            "Clone".into(),
-            "PartialEq".into(),
-            "Eq".into(),
-        ],
-        variants: handler_kinds
-            .iter()
-            .map(|k| k.variant_name().to_string())
-            .collect(),
-        doc: vec![],
-    }));
+    // ── Op enum (Raw — optional data payload for literal-source nodes) ──
+    items.push(build_op_enum_raw(handler_kinds));
 
     // ── impl Executable for Op (Raw — match indentation) ──
     items.push(build_executable_impl_raw(handler_kinds));
@@ -815,6 +887,25 @@ fn build_exec_runtime_source(
     }
 }
 
+fn build_op_enum_raw(kinds: &BTreeSet<HandlerKind>) -> gunbc_ir::code_ir::Item {
+    let mut text = String::new();
+    writeln!(text, "#[derive(Debug, Clone, PartialEq, Eq)]").unwrap();
+    writeln!(text, "enum Op {{").unwrap();
+    for kind in kinds {
+        if *kind == HandlerKind::LiteralSource {
+            writeln!(
+                text,
+                "    LiteralSource {{ output_port: &'static str, literal_spec: &'static str }},"
+            )
+            .unwrap();
+        } else {
+            writeln!(text, "    {},", kind.variant_name()).unwrap();
+        }
+    }
+    writeln!(text, "}}").unwrap();
+    gunbc_ir::code_ir::Item::Raw(text)
+}
+
 fn build_executable_impl_raw(kinds: &BTreeSet<HandlerKind>) -> gunbc_ir::code_ir::Item {
     let mut text = String::new();
     writeln!(text, "impl Executable for Op {{").unwrap();
@@ -825,13 +916,21 @@ fn build_executable_impl_raw(kinds: &BTreeSet<HandlerKind>) -> gunbc_ir::code_ir
     .unwrap();
     writeln!(text, "        match self {{").unwrap();
     for kind in kinds {
-        writeln!(
-            text,
-            "            Self::{} => execute_{}(inputs),",
-            kind.variant_name(),
-            to_snake(kind.variant_name())
-        )
-        .unwrap();
+        if *kind == HandlerKind::LiteralSource {
+            writeln!(
+                text,
+                "            Self::LiteralSource {{ output_port, literal_spec }} => execute_literal_source(inputs, output_port, literal_spec),"
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                text,
+                "            Self::{} => execute_{}(inputs),",
+                kind.variant_name(),
+                to_snake(kind.variant_name())
+            )
+            .unwrap();
+        }
     }
     writeln!(text, "        }}").unwrap();
     writeln!(text, "    }}").unwrap();
@@ -844,9 +943,15 @@ fn build_handler_fn_raw(kind: HandlerKind) -> gunbc_ir::code_ir::Item {
     let fn_name = format!("execute_{}", to_snake(kind.variant_name()));
     let body = handler_body(kind);
     // Raw because handler bodies are authored as raw Rust snippets for exact control flow.
-    gunbc_ir::code_ir::Item::Raw(format!(
-        "fn {fn_name}(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {{\n    let _ = &inputs;\n{body}}}"
-    ))
+    if kind == HandlerKind::LiteralSource {
+        gunbc_ir::code_ir::Item::Raw(format!(
+            "fn {fn_name}(inputs: HashMap<String, Value>, output_port: &'static str, literal_spec: &'static str) -> Result<HashMap<String, Value>, ExecError> {{\n    let _ = &inputs;\n{body}}}"
+        ))
+    } else {
+        gunbc_ir::code_ir::Item::Raw(format!(
+            "fn {fn_name}(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {{\n    let _ = &inputs;\n{body}}}"
+        ))
+    }
 }
 
 fn build_file_request_helper_raw() -> gunbc_ir::code_ir::Item {
@@ -909,9 +1014,9 @@ fn build_build_dag_ir(
             .collect::<Vec<_>>()
             .join(", ");
         body.push(Stmt::Expr(Expr::raw(format!(
-            r#"dag.add_node(Node::opaque("{}", vec![{inputs_code}], vec![{outputs_code}], Op::{}))"#,
+            r#"dag.add_node(Node::opaque("{}", vec![{inputs_code}], vec![{outputs_code}], {}))"#,
             cn.node_id,
-            cn.handler.variant_name()
+            cn.op_ctor
         ))));
     }
 
@@ -1229,6 +1334,38 @@ mod tests {
         assert!(
             matches!(err, ExecRuntimeError::UnresolvableNode { .. }),
             "should be UnresolvableNode error"
+        );
+    }
+
+    #[test]
+    fn emit_exec_runtime_supports_literal_source_nodes() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "literal_path",
+            vec![],
+            vec![Port::scalar("path", "String")],
+            LoweredOp::Callable {
+                module: "tools.pragma".to_string(),
+                kind: CallableKind::Pattern,
+                name: "call_literal_source::strhex:636c697070792e746f6d6c".to_string(),
+                obligation: ObligationCategory::ServiceParamSource,
+                service_metadata: None,
+            },
+        ));
+
+        let files = emit_exec_runtime(&dag, "tools.pragma").expect("literal source should emit");
+        let main_rs = &files[0].content;
+        assert!(
+            main_rs.contains("LiteralSource { output_port: &'static str, literal_spec: &'static str }"),
+            "generated Op enum should include literal-source payload variant"
+        );
+        assert!(
+            main_rs.contains("Op::LiteralSource { output_port: \"path\", literal_spec: \"strhex:636c697070792e746f6d6c\" }"),
+            "build_dag should instantiate literal-source op with encoded literal spec"
+        );
+        assert!(
+            main_rs.contains("execute_literal_source(inputs, output_port, literal_spec)"),
+            "Executable impl should dispatch literal-source payload variant"
         );
     }
 

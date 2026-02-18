@@ -544,7 +544,9 @@ impl<M: TextMedium> RustCodeRenderer<M> {
                 _ => None,
             },
             "gunbc_ir::transport::ShellRequest" => match field {
-                "cwd" | "stdin" => Some(format!("{}: {}", field, self.render_option_value(value))),
+                "cwd" | "stdin" | "timeout_ms" => {
+                    Some(format!("{}: {}", field, self.render_option_value(value)))
+                }
                 _ => None,
             },
             "gunbc_ir::transport::TcpRequest" => match field {

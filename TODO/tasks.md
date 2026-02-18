@@ -21,6 +21,15 @@
 
 ---
 
+## Active Cleanup (Thread Follow-up)
+
+| ID | Task | Deps | Size | Started | Done |
+|----|------|------|------|---------|------|
+| **C1** | Resolver hardening: fail fast for unknown modules and unknown service prepare/parse callables; remove silent literal decode fallback | — | S | 2026-02-18 | 2026-02-18 |
+| **C2** | Lowering hardening: wire `content_upsert(path: ...)` literal/source args into prepare nodes and shrink CI node-id path mapping accordingly | C1 | S | 2026-02-18 | 2026-02-18 |
+
+---
+
 ## Critical Blocker: DynOp Type-Dispatch Elimination
 
 **Why first**: 1,350 lines of zero-logic boilerplate. Adding a new tool costs ~60 lines across 4-5 files.

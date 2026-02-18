@@ -20,27 +20,3 @@ pub fn ci_mock_spec() -> MockSpec {
     crate::mock_defaults::auto_mock_spec(&dag, "ci")
 }
 
-#[gunbc_testgen_registry_macros::testgen_target(skip)]
-pub fn ci_mock_spec_test_fails() -> MockSpec {
-    ci_mock_spec()
-}
-
-#[gunbc_testgen_registry_macros::testgen_target(skip)]
-pub fn ci_mock_spec_build_fails() -> MockSpec {
-    ci_mock_spec()
-}
-
-#[gunbc_testgen_registry_macros::testgen_target(skip)]
-pub fn ci_mock_spec_prep_fails() -> MockSpec {
-    ci_mock_spec()
-}
-
-#[gunbc_testgen_registry_macros::testgen_target(skip)]
-pub fn ci_mock_spec_lint_fails() -> MockSpec {
-    ci_mock_spec()
-}
-
-#[gunbc_testgen_registry_macros::testgen_target(skip)]
-pub fn ci_mock_spec_build_contended() -> MockSpec {
-    ci_mock_spec()
-}

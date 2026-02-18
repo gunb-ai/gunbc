@@ -4,7 +4,6 @@ use crate::infra_spec::InfraSpec;
 use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_exec::{require_bool, require_str, ExecError, Executable, OutputMap};
 use gunbc_ir::build::port;
-use gunbc_ir::transport::rest::RestRequest;
 use gunbc_ir::transport::TransportResponse;
 use gunbc_ir::{
     AuthScheme, BuilderError, Credential, Dag, DagBuilder, Node, NodeRef, Secret, Value,
@@ -638,14 +637,14 @@ fn to_provider_config(
 
 fn skipped_stage(action: &str) -> Result<HashMap<String, Value>, ExecError> {
     OutputMap::new()
-        .request("request", skipped_request().into())
+        .value("request", skipped_request())
         .bool("skip", true)
         .str("action", action)
         .ok()
 }
 
-fn skipped_request() -> RestRequest {
-    RestRequest::get("about:blank".to_string())
+fn skipped_request() -> Value {
+    Value::Skipped
 }
 
 fn required_response(

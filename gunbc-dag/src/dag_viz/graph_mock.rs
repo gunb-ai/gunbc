@@ -1,6 +1,7 @@
 //! Mock specifications for dag-viz modes.
 
 use crate::dag_viz::{build_dag_viz_graph, DagVizMode};
+use gunbc_ir::transport::{FileOp, FileResponse, RestResponse, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_test::{MockSpec, OutputMatcher};
 
@@ -34,17 +35,50 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                     "diff_and_render",
                     "base_json",
                     Value::Str(EMPTY_TOPOLOGY_JSON.to_string()),
+                )
+                // parse_set_iam expects a REST response
+                .input_mock(
+                    "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
+                    "response",
+                    Value::Response(TransportResponse::Rest(RestResponse::new(
+                        200,
+                        serde_json::json!({"ok": true}),
+                    ))),
                 );
         }
         DagVizMode::Snapshot => {
             // render_snapshot expects valid DagTopology JSON
+            spec = spec
+                .input_mock(
+                    "render_snapshot",
+                    "topology_json",
+                    Value::Str(EMPTY_TOPOLOGY_JSON.to_string()),
+                )
+                // parse_set_iam expects a REST response
+                .input_mock(
+                    "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
+                    "response",
+                    Value::Response(TransportResponse::Rest(RestResponse::new(
+                        200,
+                        serde_json::json!({"ok": true}),
+                    ))),
+                );
+        }
+        DagVizMode::SaveSnapshot => {
+            // parse_write_result expects a File response
             spec = spec.input_mock(
-                "render_snapshot",
-                "topology_json",
-                Value::Str(EMPTY_TOPOLOGY_JSON.to_string()),
+                "parse_write_result",
+                "response",
+                Value::Response(TransportResponse::File(FileResponse {
+                    path: ".dag-snapshots/workspace.json".to_string(),
+                    operation: FileOp::Write,
+                    success: true,
+                    content: None,
+                    exists: None,
+                    error: None,
+                })),
             );
         }
-        DagVizMode::SaveSnapshot => {}
     }
 
     spec

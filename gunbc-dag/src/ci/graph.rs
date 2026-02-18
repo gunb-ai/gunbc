@@ -3,7 +3,6 @@
 use crate::dsl_builder::build_ci_graph_dsl;
 use crate::WorkspaceBinary;
 use gunbc_exec::DynOp;
-use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::github_actions::{
     checkout, gcp_workload_identity, rust_toolchain, ubuntu_latest, Integration, Permissions,
     WorkflowConfig,
@@ -88,14 +87,6 @@ fn is_github_actions_runtime_env(name: &str) -> bool {
 /// Build the CI graph from the DSL source.
 pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     build_ci_graph_dsl()
-}
-
-/// Build the CI graph with a compatibility mode parameter.
-///
-/// Mode-specific behavior is controlled by runtime `check_mode` inputs.
-pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, BuilderError> {
-    let _ = mode;
-    build_ci_graph()
 }
 
 #[cfg(test)]

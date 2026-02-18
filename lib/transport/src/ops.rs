@@ -41,8 +41,6 @@ impl Executable for TransportOps {
             TransportOps::PrepareTcp => execute_prepare_tcp(inputs),
             TransportOps::ParseTcpResponse => execute_parse_tcp_response(inputs),
             TransportOps::Execute => {
-                // Legacy hand-built DAGs usually wire `skip`; DSL-lowered graphs may omit it.
-                // Treat missing skip as false so execute remains backward-compatible.
                 let skip = optional_bool_strict(&inputs, "skip")?.unwrap_or(false);
 
                 if skip {

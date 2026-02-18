@@ -280,9 +280,63 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
                 _ => OutputMatcher::NonEmpty,
             };
             example = example.output(output.name.0.as_str(), matcher);
+            // Passthrough ops (IdentityCallableOp, DeferredCallableOp) forward
+            // inputs as outputs. Provide an input for each output port so the
+            // output will exist and satisfy the matcher.
+            example = example.input(
+                output.name.0.as_str(),
+                default_value_for_type(output.type_id.0.as_str()),
+            );
+        }
+        // Also provide values for required input ports that don't overlap
+        // with output names (e.g. guard inputs, domain-specific required inputs).
+        let output_names: HashSet<&str> =
+            node.outputs.iter().map(|o| o.name.0.as_str()).collect();
+        for input_port in &node.inputs {
+            if output_names.contains(input_port.name.0.as_str()) {
+                continue;
+            }
+            if input_port.cardinality.allows_empty() {
+                continue;
+            }
+            // Special case: `skip` ports should default to false so transport
+            // execute nodes actually run and produce their expected outputs.
+            let value = if input_port.name.0 == "skip" && input_port.type_id.0 == "Bool" {
+                Value::Bool(false)
+            } else if input_port.type_id.0 == "TransportResponse" {
+                // Try all response variants and pick the one that works.
+                probe_best_response(&lowered.dag, &node.id.0, &example)
+            } else {
+                default_value_for_type(input_port.type_id.0.as_str())
+            };
+            example = example.input(input_port.name.0.as_str(), value);
         }
         spec = spec.node_example(example);
     }
 
     spec
+}
+
+/// Try executing a terminal node with each response variant and return the
+/// first one that produces the expected outputs. Falls back to Shell.
+fn probe_best_response<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    node_id: &str,
+    partial_example: &NodeExample,
+) -> Value {
+    let candidates = [
+        default_shell_response(),
+        default_file_response(),
+        default_rest_response(),
+    ];
+
+    for candidate in candidates {
+        let mut inputs = partial_example.inputs.clone();
+        inputs.insert("response".to_string(), candidate.clone());
+        if execute_single_node(dag, node_id, inputs, ExecutionMode::Real).is_ok() {
+            return candidate;
+        }
+    }
+
+    default_shell_response()
 }

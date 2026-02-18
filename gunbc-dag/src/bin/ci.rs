@@ -22,34 +22,29 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::resources::{DEPS_CONFIG_OUTPUT_PATH, GITIGNORE_OUTPUT_PATH, MAKEFILE_OUTPUT_PATH};
 use gunbc_dag::{
     build_ci_graph_dsl, print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions,
 };
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, CiContext, ExecutionMode};
 use gunbc_ir::resource::ExecMode;
-use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::{detect_entrypoints, Value};
-use gunbc_ir::CODEGEN_STAMP_PATH;
+use gunbc_testgen_registry::iter_dag_specs;
 use std::process;
+
+fn ci_generated_tests_path() -> Option<&'static str> {
+    iter_dag_specs()
+        .find(|spec| spec.name == "ci")
+        .map(|spec| spec.meta.output_path)
+}
 
 fn ci_path_for_node(node_id: &str) -> Option<&'static str> {
     if node_id.contains("Find_ListDirs") {
         Some("crates")
-    } else if node_id.contains("bootstrap_2") || node_id.contains("gitignore") {
-        Some(GITIGNORE_OUTPUT_PATH)
-    } else if node_id.contains("bootstrap") || node_id.contains("makegen") {
-        Some(MAKEFILE_OUTPUT_PATH)
-    } else if node_id.contains("deps_generate") || node_id.contains("deps_config") {
-        Some(DEPS_CONFIG_OUTPUT_PATH)
-    } else if node_id.contains("pragma_3") {
-        Some("tools/pragma-lint-policy.txt")
-    } else if node_id.contains("pragma_2") {
-        Some("tools/disallowed-methods-allowlist.txt")
-    } else if node_id.contains("pragma") {
-        Some("clippy.toml")
-    } else if node_id.contains("render_and_upsert") {
-        Some("gunbc-dag/src/ci/generated_tests.rs")
+    } else if node_id.contains("render_and_upsert")
+        || node_id == "std.patterns::content_upsert"
+        || node_id == "std.patterns::file_content_matches"
+    {
+        ci_generated_tests_path()
     } else {
         None
     }
@@ -86,6 +81,7 @@ fn main() {
     // Set up entrypoint inputs for lower-time content_upsert/service args that
     // are still injected by tool frontends.
     let mut input_mocks = BoundaryMocks::new();
+    let mut unresolved_path_nodes = Vec::<String>::new();
     let entrypoints = detect_entrypoints(&dag);
     for (node_id, port_name, _) in &entrypoints.entrypoint_ports {
         match port_name.0.as_str() {
@@ -103,6 +99,8 @@ fn main() {
                         port_name.0.clone(),
                         Value::Str(path.to_string()),
                     );
+                } else {
+                    unresolved_path_nodes.push(node_id.0.clone());
                 }
             }
             "max_depth" if node_id.0.contains("Find_ListDirs") => {
@@ -114,102 +112,22 @@ fn main() {
             _ => {}
         }
     }
+    if !unresolved_path_nodes.is_empty() {
+        unresolved_path_nodes.sort();
+        unresolved_path_nodes.dedup();
+        print_attention(
+            AttentionLevel::Error,
+            "CI entrypoint path wiring is incomplete",
+            &format!("unmapped path entrypoints: {}", unresolved_path_nodes.join(", ")),
+        );
+        process::exit(1);
+    }
 
     // Set up execution mode
     let mode = if dry_run {
-        let mut mocks = BoundaryMocks::new();
-
-        // Resource environment: filesystem handle used by transport executors.
+        // Keep dry-run mocks in sync with the latest lowered CI graph shape.
+        let mut mocks = gunbc_dag::ci::graph_mock::ci_mock_spec().to_boundary_mocks();
         wire_fs_env_write_mock(&dag, &mut mocks);
-
-        // Transport execution nodes need properly-typed Response mocks.
-        // The default mock is Value::Str("<DRY-RUN>"), but downstream parse
-        // nodes call v.as_response() which only matches Value::Response.
-
-        // execute_deps_exists: file exists check for deps.toml
-        mocks.set_value(
-            "execute_deps_exists",
-            "response",
-            Value::Response(
-                FileResponse {
-                    path: "deps.toml".to_string(),
-                    operation: FileOp::Exists,
-                    success: true,
-                    content: None,
-                    exists: Some(false),
-                    error: None,
-                }
-                .into(),
-            ),
-        );
-
-        // execute_codegen_exists: shell exists check
-        mocks.set_value(
-            "execute_codegen_exists",
-            "response",
-            Value::Response(ShellResponse::ok("").into()),
-        );
-
-        // execute_codegen: shell command (skipped when codegen exists)
-        mocks.set_value(
-            "execute_codegen",
-            "response",
-            Value::Response(ShellResponse::ok("").into()),
-        );
-        mocks.set_value("execute_codegen", "skip", Value::Bool(true));
-
-        // execute_stamp_write: file write (codegen prep succeeded)
-        mocks.set_value(
-            "execute_stamp_write",
-            "response",
-            Value::Response(
-                FileResponse {
-                    path: CODEGEN_STAMP_PATH.to_string(),
-                    operation: FileOp::Write,
-                    success: true,
-                    content: None,
-                    exists: None,
-                    error: None,
-                }
-                .into(),
-            ),
-        );
-        mocks.set_value("execute_stamp_write", "skip", Value::Bool(false));
-
-        let mut set_skippable_shell = |node: &str| {
-            mocks.set_value(
-                node,
-                "response",
-                Value::Response(ShellResponse::ok("<DRY-RUN>").into()),
-            );
-            mocks.set_value(node, "skip", Value::Bool(false));
-            mocks.set_value(node, "skip_reason", Value::Str(String::new()));
-        };
-
-        // Main CI stage transports (skippable triplets).
-        for node in [
-            "execute_testgen",
-            "execute_bootstrap",
-            "execute_pragma",
-            "execute_build",
-            "execute_test",
-            "execute_clippy_lint",
-            "execute_guardrail_check",
-        ] {
-            set_skippable_shell(node);
-        }
-
-        // Verify checks: per-generator --mode=verify commands (skippable triplets).
-        for node in [
-            "execute_verify_makegen_check",
-            "execute_verify_deps_config_check",
-            "execute_verify_bootstrap_check",
-            "execute_verify_testgen_check",
-            "execute_verify_pragma_check",
-        ] {
-            set_skippable_shell(node);
-        }
-
         ExecutionMode::DryRun(mocks)
     } else {
         ExecutionMode::Real

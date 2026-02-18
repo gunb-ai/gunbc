@@ -963,10 +963,7 @@ impl Executable for GcpOps {
 
                 if service_account.is_empty() || project.is_empty() {
                     return OutputMap::new()
-                        .request(
-                            "request",
-                            RestRequest::get("about:blank".to_string()).into(),
-                        )
+                        .value("request", Value::Skipped)
                         .bool("skip", true)
                         .str("service_account", service_account)
                         .str("project", project)
@@ -989,10 +986,7 @@ impl Executable for GcpOps {
                 let response = match inputs.get("response") {
                     Some(Value::Skipped) => {
                         return OutputMap::new()
-                            .request(
-                                "request",
-                                RestRequest::get("about:blank".to_string()).into(),
-                            )
+                            .value("request", Value::Skipped)
                             .bool("skip", true)
                             .ok();
                     }
@@ -1019,10 +1013,7 @@ impl Executable for GcpOps {
                 // the set step — the SA may already have the role.
                 if !rest.is_success() {
                     return OutputMap::new()
-                        .request(
-                            "request",
-                            RestRequest::get("about:blank".to_string()).into(),
-                        )
+                        .value("request", Value::Skipped)
                         .bool("skip", true)
                         .ok();
                 }
@@ -1048,10 +1039,7 @@ impl Executable for GcpOps {
 
                 if already_bound {
                     return OutputMap::new()
-                        .request(
-                            "request",
-                            RestRequest::get("about:blank".to_string()).into(),
-                        )
+                        .value("request", Value::Skipped)
                         .bool("skip", true)
                         .ok();
                 }
@@ -1135,10 +1123,7 @@ impl Executable for GcpOps {
 
                 if project.is_empty() || service_account.is_empty() || member.is_empty() {
                     return OutputMap::new()
-                        .request(
-                            "request",
-                            RestRequest::get("about:blank".to_string()).into(),
-                        )
+                        .value("request", Value::Skipped)
                         .bool("skip", true)
                         .str("project", project)
                         .str("service_account", service_account)
@@ -1162,10 +1147,7 @@ impl Executable for GcpOps {
                 let response = match inputs.get("response") {
                     Some(Value::Skipped) => {
                         return OutputMap::new()
-                            .request(
-                                "request",
-                                RestRequest::get("about:blank".to_string()).into(),
-                            )
+                            .value("request", Value::Skipped)
                             .bool("skip", true)
                             .ok();
                     }
@@ -1190,10 +1172,7 @@ impl Executable for GcpOps {
 
                 if !rest.is_success() {
                     return OutputMap::new()
-                        .request(
-                            "request",
-                            RestRequest::get("about:blank".to_string()).into(),
-                        )
+                        .value("request", Value::Skipped)
                         .bool("skip", true)
                         .ok();
                 }
@@ -1222,10 +1201,7 @@ impl Executable for GcpOps {
 
                 if already_bound {
                     return OutputMap::new()
-                        .request(
-                            "request",
-                            RestRequest::get("about:blank".to_string()).into(),
-                        )
+                        .value("request", Value::Skipped)
                         .bool("skip", true)
                         .ok();
                 }

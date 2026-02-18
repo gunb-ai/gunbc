@@ -13399,8 +13399,8 @@ fn compile_layer_one_pragma_generated_binary_writes_expected_files() {
     assert!(
         bindings
             .iter()
-            .all(|(_node, port)| port == "directives" || port == "path"),
-        "generated pragma bindings should only require directives/path: {bindings:?}"
+            .all(|(_node, port)| port == "directives"),
+        "generated pragma bindings should only require directives input: {bindings:?}"
     );
 
     let output_root = unique_temp_dir("pragma_layer1_runtime");
@@ -13422,15 +13422,6 @@ fn compile_layer_one_pragma_generated_binary_writes_expected_files() {
         .iter()
         .map(|(node_id, port_name)| match port_name.as_str() {
             "directives" => directives_json.clone(),
-            "path" => {
-                if node_id.contains("_3") {
-                    policy_path.display().to_string()
-                } else if node_id.contains("_2") {
-                    allowlist_path.display().to_string()
-                } else {
-                    clippy_path.display().to_string()
-                }
-            }
             _ => panic!("unexpected generated pragma binding: ({node_id}, {port_name})"),
         })
         .collect();
@@ -13448,7 +13439,7 @@ fn compile_layer_one_pragma_generated_binary_writes_expected_files() {
         .arg("--manifest-path")
         .arg(out_dir.join("Cargo.toml"))
         .arg("--")
-        .current_dir(workspace_root());
+        .current_dir(&output_root);
     for arg in &args {
         generated_run_cmd.arg(arg);
     }

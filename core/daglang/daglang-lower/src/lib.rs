@@ -2915,6 +2915,28 @@ fn expand_single_content_upsert(
             "content",
         );
     }
+
+    if let Some(source) = resolve_path_source(args, bound_callables, endpoints_by_name) {
+        builder.add_edge(&source.node_id, &source.primary_output, &prepare_read_id, "path");
+        builder.add_edge(
+            &source.node_id,
+            &source.primary_output,
+            &prepare_write_id,
+            "path",
+        );
+    } else if let Some(literal) = resolve_path_literal(args) {
+        let literal_source = ensure_literal_source_node(
+            builder,
+            module_name,
+            item_name,
+            "path",
+            "String",
+            &literal,
+            format!("content_upsert_path_{suffix}").as_str(),
+        );
+        builder.add_edge(literal_source.as_str(), "path", &prepare_read_id, "path");
+        builder.add_edge(literal_source.as_str(), "path", &prepare_write_id, "path");
+    }
 }
 
 fn resolve_content_source(
@@ -2925,7 +2947,33 @@ fn resolve_content_source(
     let (_, content_expr) = args
         .iter()
         .find(|(name, _)| matches!(name.as_deref(), Some("content")))?;
-    let source_name = match content_expr {
+    resolve_source_expr(content_expr, bound_callables, endpoints_by_name)
+}
+
+fn resolve_path_source(
+    args: &[(Option<String>, Expr)],
+    bound_callables: &HashMap<String, String>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+) -> Option<LoweredEndpoint> {
+    let (_, path_expr) = args
+        .iter()
+        .find(|(name, _)| matches!(name.as_deref(), Some("path")))?;
+    resolve_source_expr(path_expr, bound_callables, endpoints_by_name)
+}
+
+fn resolve_path_literal(args: &[(Option<String>, Expr)]) -> Option<ServiceCallArgLiteral> {
+    let (_, path_expr) = args
+        .iter()
+        .find(|(name, _)| matches!(name.as_deref(), Some("path")))?;
+    service_call_literal_arg(path_expr)
+}
+
+fn resolve_source_expr(
+    expr: &Expr,
+    bound_callables: &HashMap<String, String>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+) -> Option<LoweredEndpoint> {
+    let source_name = match expr {
         Expr::Ident(name) => bound_callables
             .get(name)
             .cloned()
@@ -3337,9 +3385,11 @@ fn add_service_call_edges(
                 .iter()
                 .map(|param| (param.name.clone(), type_expr_to_string(&param.ty)))
                 .collect::<HashMap<_, _>>();
+            let bound_callable_sources =
+                collect_bound_callable_sources(module_name.as_str(), stmts, endpoints_by_full);
             let mut service_calls = Vec::<ServiceCallSite>::new();
             collect_service_calls_from_stmts(stmts, &mut service_calls);
-            for call in service_calls {
+            for (call_index, call) in service_calls.into_iter().enumerate() {
                 let Some(source) = resolve_service_endpoint(&call.path, service_registry) else {
                     if call
                         .path
@@ -3360,12 +3410,6 @@ fn add_service_call_edges(
                     "__deps",
                 );
                 for (index, arg) in call.args.iter().enumerate() {
-                    let Some(arg_ident) = arg.ident.as_deref() else {
-                        continue;
-                    };
-                    let Some(param_ty) = param_types.get(arg_ident) else {
-                        continue;
-                    };
                     let Some(prepare_input) = arg
                         .name
                         .as_deref()
@@ -3373,16 +3417,51 @@ fn add_service_call_edges(
                     else {
                         continue;
                     };
-                    let param_source = ensure_param_source_node(
+                    if let Some(arg_ident) = arg.ident.as_deref() {
+                        let Some(param_ty) = param_types.get(arg_ident) else {
+                            continue;
+                        };
+                        let param_source = ensure_param_source_node(
+                            builder,
+                            module_name.as_str(),
+                            item_name,
+                            arg_ident,
+                            param_ty.as_str(),
+                        );
+                        builder.add_edge(
+                            param_source.as_str(),
+                            arg_ident,
+                            source.prepare_node_id.as_str(),
+                            prepare_input,
+                        );
+                        continue;
+                    }
+                    if let Some((base_ident, field_name)) = arg.field_access.as_ref() {
+                        if let Some(source_endpoint) = bound_callable_sources.get(base_ident) {
+                            builder.add_edge(
+                                source_endpoint.node_id.as_str(),
+                                field_name.as_str(),
+                                source.prepare_node_id.as_str(),
+                                prepare_input,
+                            );
+                            continue;
+                        }
+                    }
+                    let Some(literal) = arg.literal.as_ref() else {
+                        continue;
+                    };
+                    let literal_source = ensure_literal_source_node(
                         builder,
                         module_name.as_str(),
                         item_name,
-                        arg_ident,
-                        param_ty.as_str(),
+                        prepare_input,
+                        "Any",
+                        literal,
+                        format!("{call_index}_{index}").as_str(),
                     );
                     builder.add_edge(
-                        param_source.as_str(),
-                        arg_ident,
+                        literal_source.as_str(),
+                        prepare_input,
                         source.prepare_node_id.as_str(),
                         prepare_input,
                     );
@@ -3905,6 +3984,54 @@ fn ensure_param_source_node(
     node_id
 }
 
+fn ensure_literal_source_node(
+    builder: &mut DagBuilder,
+    module_name: &str,
+    callable: &str,
+    param: &str,
+    ty: &str,
+    literal: &ServiceCallArgLiteral,
+    disambiguator: &str,
+) -> String {
+    let node_id = format!(
+        "literal_source_{}",
+        sanitize_identifier(&format!(
+            "{module_name}_{callable}_{param}_{disambiguator}"
+        ))
+    );
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        vec![],
+        vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
+        LoweredOp::Callable {
+            module: module_name.to_string(),
+            kind: CallableKind::Pattern,
+            name: format!("call_literal_source::{}", encode_literal_for_name(literal)),
+            obligation: ObligationCategory::ServiceParamSource,
+            service_metadata: None,
+        },
+    ));
+    node_id
+}
+
+fn encode_literal_for_name(literal: &ServiceCallArgLiteral) -> String {
+    match literal {
+        ServiceCallArgLiteral::String(value) => format!("strhex:{}", hex_encode(value.as_bytes())),
+        ServiceCallArgLiteral::Int(value) => format!("int:{value}"),
+        ServiceCallArgLiteral::Bool(value) => format!("bool:{value}"),
+        ServiceCallArgLiteral::None => "none".to_string(),
+    }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write;
+        let _ = write!(encoded, "{byte:02x}");
+    }
+    encoded
+}
+
 fn item_callable_body(item: &Item) -> Option<(&str, &[Stmt])> {
     match item {
         Item::FnDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
@@ -3943,12 +4070,22 @@ fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut BTreeSet<String>) {
 struct ServiceCallArgSite {
     name: Option<String>,
     ident: Option<String>,
+    field_access: Option<(String, String)>,
+    literal: Option<ServiceCallArgLiteral>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ServiceCallSite {
     path: Vec<String>,
     args: Vec<ServiceCallArgSite>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ServiceCallArgLiteral {
+    String(String),
+    Int(i64),
+    Bool(bool),
+    None,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4086,11 +4223,58 @@ fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallS
                             Expr::Ident(ident) => Some(ident.clone()),
                             _ => None,
                         },
+                        field_access: match arg {
+                            Expr::FieldAccess(base, field) => match base.as_ref() {
+                                Expr::Ident(base_ident) => Some((base_ident.clone(), field.clone())),
+                                _ => None,
+                            },
+                            _ => None,
+                        },
+                        literal: service_call_literal_arg(arg),
                     })
                     .collect::<Vec<_>>(),
             });
         }
     });
+}
+
+fn service_call_literal_arg(arg: &Expr) -> Option<ServiceCallArgLiteral> {
+    match arg {
+        Expr::Literal(Literal::String(value)) => Some(ServiceCallArgLiteral::String(value.clone())),
+        Expr::Literal(Literal::Int(value)) => Some(ServiceCallArgLiteral::Int(*value)),
+        Expr::Literal(Literal::Bool(value)) => Some(ServiceCallArgLiteral::Bool(*value)),
+        Expr::Literal(Literal::None) => Some(ServiceCallArgLiteral::None),
+        _ => None,
+    }
+}
+
+fn collect_bound_callable_sources(
+    module_name: &str,
+    stmts: &[Stmt],
+    endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
+) -> HashMap<String, LoweredEndpoint> {
+    let mut bound = HashMap::<String, LoweredEndpoint>::new();
+    let module_key = module_name.to_string();
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(binding, expr) | Stmt::Assign(binding, expr) => match expr {
+                Expr::Call(name, _) => {
+                    if let Some(endpoint) = endpoints_by_full.get(&(module_key.clone(), name.clone()))
+                    {
+                        bound.insert(binding.clone(), endpoint.clone());
+                    }
+                }
+                Expr::Ident(source) => {
+                    if let Some(endpoint) = bound.get(source).cloned() {
+                        bound.insert(binding.clone(), endpoint);
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    bound
 }
 
 #[cfg(test)]
@@ -4822,8 +5006,8 @@ fn run(values: List<String>) -> String {
 
         assert_eq!(
             dag.nodes.len(),
-            9,
-            "expected callable + content_upsert chain + source scaffold nodes"
+            10,
+            "expected callable + content_upsert chain + source scaffold nodes + literal path source"
         );
         let required_edges = [
             (
@@ -4886,6 +5070,29 @@ fn run(values: List<String>) -> String {
                 "missing edge {from_node}.{from_port} -> {to_node}.{to_port}"
             );
         }
+        let literal_node = dag
+            .nodes
+            .iter()
+            .find(|node| {
+                matches!(
+                    &node.body,
+                    gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { name, .. })
+                        if name.starts_with("call_literal_source::strhex:")
+                )
+            })
+            .expect("literal source node should be present for content_upsert path");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node == literal_node.id
+                && edge.from_port.0 == "path"
+                && edge.to_node.0 == "prepare_read_makegen"
+                && edge.to_port.0 == "path"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node == literal_node.id
+                && edge.from_port.0 == "path"
+                && edge.to_node.0 == "prepare_write_makegen"
+                && edge.to_port.0 == "path"
+        }));
     }
 
     #[test]
@@ -5158,6 +5365,77 @@ func run(path: String) -> { body: String } {
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == "param_source_sample_services_run_path"
+                && edge.from_port.0 == "path"
+                && edge.to_node.0 == "prepare_transport_sample_services_FsStorage_read"
+                && edge.to_port.0 == "path"
+        }));
+    }
+
+    #[test]
+    fn literal_service_call_args_wire_to_prepare_inputs() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/storage_calls_literal.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run() -> { body: String } {
+  let response = FsStorage.read(path: "crates")
+  return { body: response.body }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let literal_node = dag
+            .nodes
+            .iter()
+            .find(|node| {
+                matches!(
+                    &node.body,
+                    gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { name, .. })
+                        if name.starts_with("call_literal_source::strhex:")
+                )
+            })
+            .expect("literal source node should be present");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node == literal_node.id
+                && edge.from_port.0 == "path"
+                && edge.to_node.0 == "prepare_transport_sample_services_FsStorage_read"
+                && edge.to_port.0 == "path"
+        }));
+    }
+
+    #[test]
+    fn field_access_service_call_args_wire_to_prepare_inputs() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/storage_calls_field_access.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func make_path() -> { path: String } {
+  return { path: "crates" }
+}
+func run() -> { body: String } {
+  let req = make_path()
+  let response = FsStorage.read(path: req.path)
+  return { body: response.body }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.services::make_path"
                 && edge.from_port.0 == "path"
                 && edge.to_node.0 == "prepare_transport_sample_services_FsStorage_read"
                 && edge.to_port.0 == "path"

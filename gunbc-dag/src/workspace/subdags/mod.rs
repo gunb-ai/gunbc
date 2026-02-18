@@ -47,10 +47,12 @@ pub fn build_workspace_dag() -> Result<Dag<WorkspaceOp>, BuilderError> {
     // Hard-cut discovery: workspace composition is sourced directly from DSL.
     let tool_names = discover_dsl_tool_names()?;
     let pipeline_names = discover_dsl_pipeline_names()?;
-    validate_required_dsl_tools(&tool_names)?;
-    validate_required_dsl_pipelines(&pipeline_names)?;
-    validate_dsl_tool_coverage(&tool_names)?;
-    validate_dsl_pipeline_coverage(&pipeline_names)?;
+    let required_tools = required_dsl_tool_modules();
+    let required_pipelines = required_dsl_pipeline_modules();
+    validate_required("tool", &tool_names, &required_tools)?;
+    validate_required("pipeline", &pipeline_names, &required_pipelines)?;
+    validate_coverage("tool", &tool_names, &required_tools)?;
+    validate_coverage("pipeline", &pipeline_names, &required_pipelines)?;
     add_discovered_tool_subdags(&mut dag, &tool_names)?;
     add_discovered_pipeline_subdags(&mut dag, &pipeline_names)?;
 
@@ -125,73 +127,35 @@ fn workspace_layout() -> Result<WorkspaceLayout, BuilderError> {
         })
 }
 
-fn validate_required_dsl_tools(tool_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    let required = required_dsl_tool_modules();
-    let missing: Vec<String> = required
-        .iter()
-        .filter(|name| !tool_names.contains(*name))
-        .cloned()
-        .collect();
+fn validate_required(
+    kind: &str,
+    actual: &BTreeSet<String>,
+    required: &BTreeSet<String>,
+) -> Result<(), BuilderError> {
+    let missing: Vec<&String> = required.difference(actual).collect();
     if missing.is_empty() {
         return Ok(());
     }
+    let names: Vec<&str> = missing.iter().map(|s| s.as_str()).collect();
     Err(BuilderError::InternalInvariant(format!(
-        "missing required DSL tool modules for workspace DAG: {}",
-        missing.join(", ")
+        "missing required DSL {kind} modules for workspace DAG: {}",
+        names.join(", ")
     )))
 }
 
-fn validate_required_dsl_pipelines(pipeline_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    let required = required_dsl_pipeline_modules();
-    let missing: Vec<String> = required
-        .iter()
-        .filter(|name| !pipeline_names.contains(*name))
-        .cloned()
-        .collect();
-    if missing.is_empty() {
-        return Ok(());
-    }
-    Err(BuilderError::InternalInvariant(format!(
-        "missing required DSL pipeline modules for workspace DAG: {}",
-        missing.join(", ")
-    )))
-}
-
-fn validate_dsl_tool_coverage(tool_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    let covered = required_dsl_tool_modules();
-
-    let unknown: Vec<String> = tool_names
-        .iter()
-        .filter(|name| !covered.contains(*name))
-        .cloned()
-        .collect();
-
+fn validate_coverage(
+    kind: &str,
+    actual: &BTreeSet<String>,
+    covered: &BTreeSet<String>,
+) -> Result<(), BuilderError> {
+    let unknown: Vec<&String> = actual.difference(covered).collect();
     if unknown.is_empty() {
         return Ok(());
     }
-
+    let names: Vec<&str> = unknown.iter().map(|s| s.as_str()).collect();
     Err(BuilderError::InternalInvariant(format!(
-        "unmapped DSL tool modules in workspace DAG discovery: {} (add mapping in workspace/subdags or explicit exclusion)",
-        unknown.join(", ")
-    )))
-}
-
-fn validate_dsl_pipeline_coverage(pipeline_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    let covered = required_dsl_pipeline_modules();
-
-    let unknown: Vec<String> = pipeline_names
-        .iter()
-        .filter(|name| !covered.contains(*name))
-        .cloned()
-        .collect();
-
-    if unknown.is_empty() {
-        return Ok(());
-    }
-
-    Err(BuilderError::InternalInvariant(format!(
-        "unmapped DSL pipeline modules in workspace DAG discovery: {} (add mapping in workspace/subdags or explicit exclusion)",
-        unknown.join(", ")
+        "unmapped DSL {kind} modules in workspace DAG discovery: {} (add mapping in workspace/subdags or explicit exclusion)",
+        names.join(", ")
     )))
 }
 
@@ -351,7 +315,8 @@ mod tests {
         tool_names.insert("makegen".to_string());
         tool_names.insert("deps".to_string());
 
-        let error = validate_required_dsl_tools(&tool_names)
+        let required = required_dsl_tool_modules();
+        let error = validate_required("tool", &tool_names, &required)
             .expect_err("missing required modules should fail");
         assert!(
             error
@@ -364,7 +329,8 @@ mod tests {
     #[test]
     fn test_required_registered_pipelines_validation() {
         let pipeline_names = BTreeSet::new();
-        let error = validate_required_dsl_pipelines(&pipeline_names)
+        let required = required_dsl_pipeline_modules();
+        let error = validate_required("pipeline", &pipeline_names, &required)
             .expect_err("missing required pipeline modules should fail");
         assert!(
             error
@@ -437,7 +403,8 @@ mod tests {
         .map(|name| name.to_string())
         .collect();
 
-        let error = validate_dsl_tool_coverage(&tool_names)
+        let covered = required_dsl_tool_modules();
+        let error = validate_coverage("tool", &tool_names, &covered)
             .expect_err("missing required registrations should fail");
         assert!(
             error.to_string().contains("unmapped DSL tool modules"),
@@ -452,7 +419,8 @@ mod tests {
             .map(|name| name.to_string())
             .collect();
 
-        let error = validate_dsl_pipeline_coverage(&pipeline_names)
+        let covered = required_dsl_pipeline_modules();
+        let error = validate_coverage("pipeline", &pipeline_names, &covered)
             .expect_err("unknown pipeline registrations should fail");
         assert!(
             error.to_string().contains("unmapped DSL pipeline modules"),

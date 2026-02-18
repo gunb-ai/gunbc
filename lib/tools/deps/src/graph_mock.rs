@@ -255,15 +255,6 @@ pub fn deps_mock_spec() -> MockSpec {
         )
 }
 
-/// Mock spec for testing sudo elevation scenarios.
-///
-/// Simulates a time-bounded sudo lease (5 minutes).
-#[gunbc_testgen_registry_macros::testgen_target(skip)]
-pub fn deps_mock_spec_with_sudo() -> MockSpec {
-    deps_mock_spec()
-        // Sudo lease: 5 minutes before re-auth needed
-        .resource_lease("sudo:elevation", 300_000)
-}
 
 /// Mock spec for testing package manager failure.
 #[gunbc_testgen_registry_macros::testgen_target(skip)]

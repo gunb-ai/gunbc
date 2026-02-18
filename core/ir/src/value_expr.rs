@@ -109,6 +109,13 @@ fn request_to_value_expr(req: &TransportRequest) -> ValueExpr {
                 ("env".to_string(), str_map_expr(&s.env)),
                 ("cwd".to_string(), opt_str(&s.cwd)),
                 ("stdin".to_string(), opt_str(&s.stdin)),
+                (
+                    "timeout_ms".to_string(),
+                    match s.timeout_ms {
+                        Some(ms) => ValueExpr::Int(ms as i64),
+                        None => ValueExpr::Unit,
+                    },
+                ),
                 ("passthrough".to_string(), ValueExpr::Bool(s.passthrough)),
             ],
         },

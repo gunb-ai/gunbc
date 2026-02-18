@@ -5545,6 +5545,8 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
                 ("env".to_string(), ValueExpr::Map(vec![])),
                 ("cwd".to_string(), ValueExpr::Unit),
                 ("stdin".to_string(), ValueExpr::Unit),
+                ("timeout_ms".to_string(), ValueExpr::Unit),
+                ("passthrough".to_string(), ValueExpr::Bool(false)),
             ],
         },
         "TransportResponse" => ValueExpr::Struct {

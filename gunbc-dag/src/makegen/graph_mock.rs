@@ -20,13 +20,3 @@ pub fn makegen_mock_spec() -> MockSpec {
     let dag = build_makegen_graph().expect("makegen graph should build");
     crate::mock_defaults::auto_mock_spec(&dag, "makegen")
 }
-
-#[gunbc_testgen_registry_macros::testgen_target(skip)]
-pub fn makegen_mock_spec_no_change() -> MockSpec {
-    makegen_mock_spec()
-}
-
-#[gunbc_testgen_registry_macros::testgen_target(skip)]
-pub fn makegen_mock_spec_fs_fails() -> MockSpec {
-    makegen_mock_spec()
-}
