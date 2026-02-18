@@ -363,9 +363,9 @@ This effort is done only when all items below are true.
 ### B. Progress parity with `gunb.ai`
 
 - [x] Progress is live (observer/event driven), not post-execution replay.
-- [ ] Stage/task grouping exists for `gunbc` pipelines (at least CI stages).
+- [x] Stage/task grouping exists for `gunbc` pipelines (at least CI stages). _(2026-02-18: `derive_stage_groups` + grouped stage panel rendering are active in `core/exec/src/progress.rs` and `core/exec/src/frame_build.rs`.)_
 - [x] Non-TTY mode emits concise status/progress summaries instead of full per-node output dumps.
-- [ ] Long-running/noisy groups have an expansion path (or equivalent drill-down) without dumping everything by default.
+- [x] Long-running/noisy groups have an expansion path (or equivalent drill-down) without dumping everything by default. _(2026-02-18: grouped panel auto-expands failed groups and long-running groups with bounded detail lines.)_
 - [x] Spinner behavior (TTY) is present and consistent across tools: running state, completion state, and failure state are visually distinct.
 
 ### C. Output quality and noise control

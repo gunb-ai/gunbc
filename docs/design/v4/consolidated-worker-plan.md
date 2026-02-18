@@ -690,9 +690,9 @@ Report node currently gets raw unstructured text. Need per-stage error extractor
 
 Stage/task grouping for pipeline progress (CI stages, tool phases).
 
-- [ ] D1.5a — Design grouped progress model (stage → tasks → nodes)
-- [ ] D1.5b — Implement stage grouping in observer
-- [ ] D1.5c — Long-running/noisy groups have expansion path
+- [x] D1.5a — Design grouped progress model (stage → tasks → nodes)
+- [x] D1.5b — Implement stage grouping in observer
+- [x] D1.5c — Long-running/noisy groups have expansion path
 
 #### Wave 3
 
