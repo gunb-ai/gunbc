@@ -618,24 +618,22 @@ Mock generation now hard-fails on unknown type_ids and on `List`/`Set`.
 
 ---
 
-## 31. Cardinality test-case cap is a bandaid
+## ~~31. Cardinality test-case cap is a bandaid~~ RESOLVED (2026-02-18)
 
 **Where**: `core/ir/src/types.rs`, `core/ir/src/contract.rs`
 
-**What happens**: To avoid huge generated vectors when a bounded max is large, testgen now
-uses a capped boundary set (`Cardinality::test_cases_for_tests`, cap=64).
-This prevents OOM/giant files but hides the deeper design issue.
-
-**Why it's a hack**: The contract/testgen layer doesn't distinguish "boundary correctness"
-from "large-N stress." We need a principled sampling strategy or explicit
-test-budget policy (e.g., boundary-only by default, optional stress tests
-per port/type) rather than a hardcoded cap.
+**What changed**:
+- Added explicit sampling policy model:
+  `CardinalitySamplingStrategy` (`BoundaryOnly`, `BoundaryWithUpperBound`).
+- `Cardinality::test_cases_for_tests()` now uses **boundary-only** sampling
+  by default (no hardcoded 64-cap mutation).
+- Retained optional bounded mode via
+  `Cardinality::test_cases_with_strategy(CardinalitySamplingStrategy::BoundaryWithUpperBound(_))`
+  for callers that explicitly want clamped stress sampling.
 
 **Files**:
-- core/ir/src/types.rs (test_cases_for_tests / cap)
-- core/ir/src/contract.rs (witnesses uses capped cases)
-- core/codegen/src/testgen/analyze.rs
-- core/codegen/src/testgen/obligation.rs
+- core/ir/src/types.rs
+- core/ir/src/contract.rs
 
 **Added**: 2026-02-14 (consolidated from root TODO_hacks)
 

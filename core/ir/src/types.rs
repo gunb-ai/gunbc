@@ -37,10 +37,16 @@ pub struct Cardinality {
     pub max: Option<u32>,
 }
 
-impl Cardinality {
-    /// Default cap for test-case generation (prevents huge vectors in tests).
-    pub const TEST_CASE_CAP: u32 = 64;
+/// Sampling policy for cardinality-driven test case generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CardinalitySamplingStrategy {
+    /// Use only boundary-valid cases (`min`, optional `min+1`, optional `max`).
+    BoundaryOnly,
+    /// Use boundary-valid cases and clamp values above the given upper bound.
+    BoundaryWithUpperBound(u32),
+}
 
+impl Cardinality {
     /// ∅ — signal-only, no data.
     pub const ZERO: Self = Self {
         min: 0,
@@ -199,9 +205,17 @@ impl Cardinality {
         cases
     }
 
-    /// Default test cases used by generators (with a safe cap).
+    /// Default test cases used by generators (boundary-only sampling).
     pub fn test_cases_for_tests(&self) -> Vec<u32> {
-        self.test_cases_capped(Self::TEST_CASE_CAP)
+        self.test_cases_with_strategy(CardinalitySamplingStrategy::BoundaryOnly)
+    }
+
+    /// Returns test cases using an explicit sampling strategy.
+    pub fn test_cases_with_strategy(&self, strategy: CardinalitySamplingStrategy) -> Vec<u32> {
+        match strategy {
+            CardinalitySamplingStrategy::BoundaryOnly => self.test_cases(),
+            CardinalitySamplingStrategy::BoundaryWithUpperBound(max) => self.test_cases_capped(max),
+        }
     }
 
     /// Check if the given count is within this cardinality's interval.
@@ -751,6 +765,26 @@ mod tests {
         // Unbounded: no synthetic "large" values are added here.
         let unbounded = Cardinality::new(0, None);
         assert_eq!(unbounded.test_cases_capped(5), vec![0, 1]);
+    }
+
+    #[test]
+    fn test_test_cases_with_strategy() {
+        let bounded = Cardinality::new(0, Some(1000));
+        assert_eq!(
+            bounded.test_cases_with_strategy(CardinalitySamplingStrategy::BoundaryOnly),
+            vec![0, 1, 1000]
+        );
+        assert_eq!(
+            bounded
+                .test_cases_with_strategy(CardinalitySamplingStrategy::BoundaryWithUpperBound(12)),
+            vec![0, 1, 12]
+        );
+    }
+
+    #[test]
+    fn test_test_cases_for_tests_uses_boundary_only_sampling() {
+        let bounded = Cardinality::new(0, Some(1000));
+        assert_eq!(bounded.test_cases_for_tests(), vec![0, 1, 1000]);
     }
 
     #[test]
