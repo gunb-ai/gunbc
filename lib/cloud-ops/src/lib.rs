@@ -11,6 +11,7 @@ mod env_status;
 mod github_credential_graph;
 mod graph;
 pub mod infra_graph;
+pub mod infra_plan_apply;
 pub mod infra_spec;
 mod ops;
 pub mod project_spec;
@@ -49,11 +50,16 @@ pub use graph::{
     build_cloud_secret_manager_upsert_graph_gcp_metadata, CloudSecretManagerGraphOp,
 };
 pub use infra_graph::render_infra_spec_dot;
+pub use infra_plan_apply::{
+    build_infra_apply_dag, build_infra_plan_dag, InfraApplyFilter, InfraPlanApplyGraphOp,
+    InfraPlanApplyOps,
+};
 pub use infra_spec::{EnvironmentConfig, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC};
 pub use ops::CloudOps;
 pub use secret_exports::{render_direnv_exports, SecretExportResult};
 pub use secret_provision_graph::{
     build_secrets_provision_dag, build_secrets_provision_dag_from_spec,
+    build_secrets_provision_dag_from_spec_with_filter, SecretProvisionFilter,
 };
 pub use secret_rotation::{check_secret_age, rotate_secret, SecretAgeCheck, SecretRotationAction};
 

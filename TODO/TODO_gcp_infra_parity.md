@@ -271,16 +271,23 @@ Update (2026-02-18):
 
 **Gap**: No plan/apply workflow — only individual upsert patterns.
 
-- [ ] Create `build_infra_plan_dag(spec: &InfraSpec)` that:
+- [x] Create `build_infra_plan_dag(spec: &InfraSpec)` that:
   1. Discovers current state (SAs, secrets, IAM bindings)
   2. Compares against spec
   3. Outputs planned changes (create, update, delete)
-- [ ] Create `build_infra_apply_dag(spec: &InfraSpec)` that:
+- [x] Create `build_infra_apply_dag(spec: &InfraSpec)` that:
   1. Runs plan
   2. Executes changes with proper dependency ordering
   3. Reports results
 - [ ] Add CLI entrypoints: `make infra-plan`, `make infra-apply`
-- [ ] Add `--target=ID` and `--skip=ID` filtering
+- [x] Add `--target=ID` and `--skip=ID` filtering
+
+Update (2026-02-18):
+- Added `lib/cloud-ops/src/infra_plan_apply.rs`:
+  - `build_infra_plan_dag(...)`
+  - `build_infra_apply_dag(...)`
+  - `InfraApplyFilter { target, skip }`
+  - apply summary/report node and plan target accounting.
 
 **Ref**: `gunb.ai/tools/infra/cmd/infra/main.go` — plan/apply commands
 

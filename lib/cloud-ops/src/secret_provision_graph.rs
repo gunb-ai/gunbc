@@ -7,6 +7,32 @@ use crate::project_spec::{ProjectSpec, SecretStatus, GUNBAI_SECRETS};
 use gunbc_ir::transport::cloud::CloudRuntimeKind;
 use gunbc_ir::{Dag, DagBuilder, Node};
 
+/// Filters for secret provisioning target selection.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SecretProvisionFilter {
+    /// When non-empty, only these secret IDs are provisioned.
+    pub include_secret_ids: Vec<String>,
+    /// Secret IDs to exclude from provisioning.
+    pub exclude_secret_ids: Vec<String>,
+}
+
+impl SecretProvisionFilter {
+    fn includes(&self, secret_id: &str) -> bool {
+        let include_match = if self.include_secret_ids.is_empty() {
+            true
+        } else {
+            self.include_secret_ids
+                .iter()
+                .any(|id| id.as_str() == secret_id)
+        };
+        include_match
+            && !self
+                .exclude_secret_ids
+                .iter()
+                .any(|id| id.as_str() == secret_id)
+    }
+}
+
 /// Build a provisioning DAG that upserts all active secrets for one namespace.
 ///
 /// Each active secret becomes one sub-DAG node named `provision_<secret_id>`.
@@ -15,7 +41,12 @@ pub fn build_secrets_provision_dag(
     namespace: &str,
     runtime: CloudRuntimeKind,
 ) -> Result<Dag<CloudSecretManagerGraphOp>, String> {
-    build_secrets_provision_dag_from_spec(&GUNBAI_SECRETS, namespace, runtime)
+    build_secrets_provision_dag_from_spec_with_filter(
+        &GUNBAI_SECRETS,
+        namespace,
+        runtime,
+        &SecretProvisionFilter::default(),
+    )
 }
 
 /// Build provisioning DAG from an explicit project spec.
@@ -23,6 +54,21 @@ pub fn build_secrets_provision_dag_from_spec(
     project_spec: &'static ProjectSpec,
     namespace: &str,
     runtime: CloudRuntimeKind,
+) -> Result<Dag<CloudSecretManagerGraphOp>, String> {
+    build_secrets_provision_dag_from_spec_with_filter(
+        project_spec,
+        namespace,
+        runtime,
+        &SecretProvisionFilter::default(),
+    )
+}
+
+/// Build provisioning DAG from an explicit project spec and filter.
+pub fn build_secrets_provision_dag_from_spec_with_filter(
+    project_spec: &'static ProjectSpec,
+    namespace: &str,
+    runtime: CloudRuntimeKind,
+    filter: &SecretProvisionFilter,
 ) -> Result<Dag<CloudSecretManagerGraphOp>, String> {
     let mut base_config = project_spec
         .to_cloud_secret_config(namespace, runtime)
@@ -33,7 +79,7 @@ pub fn build_secrets_provision_dag_from_spec(
     for secret in project_spec
         .secrets
         .iter()
-        .filter(|s| s.status == SecretStatus::Active)
+        .filter(|s| s.status == SecretStatus::Active && filter.includes(s.secret_id))
     {
         base_config.secret.name = secret.secret_id.to_string();
         let secret_subdag = build_cloud_secret_manager_upsert_graph_from_config(&base_config);
@@ -87,5 +133,28 @@ mod tests {
                 node_id
             );
         }
+    }
+
+    #[test]
+    fn build_secrets_provision_dag_filter_respects_include_and_exclude() {
+        let filter = SecretProvisionFilter {
+            include_secret_ids: vec!["github-token".to_string()],
+            exclude_secret_ids: vec!["other".to_string()],
+        };
+        let dag = build_secrets_provision_dag_from_spec_with_filter(
+            &GUNBAI_SECRETS,
+            "dev",
+            CloudRuntimeKind::LocalDev,
+            &filter,
+        )
+        .expect("filtered provision dag should build");
+
+        let node_ids = dag
+            .nodes
+            .iter()
+            .map(|n| n.id.0.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        assert!(node_ids.contains("provision_github_token"));
+        assert_eq!(node_ids.len(), 1);
     }
 }

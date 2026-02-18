@@ -924,7 +924,7 @@ Implementation of SA/IAM operations against the typed understanding spec from C6
 **Deps**: E2.3
 
 - [x] E2.5a — Unified InfraSpec type
-- [ ] E2.5b — Plan/apply DAG builder
+- [x] E2.5b — Plan/apply DAG builder
 - [x] E2.5c — Infrastructure graph visualization
 
 ##### E2.6 — Compute stack [XL]
