@@ -279,8 +279,13 @@ Update (2026-02-18):
 **Gap**: No DOT graph output for infrastructure dependency visualization.
 
 - [ ] Add `infra graph --env=dev` command that outputs DOT format
-- [ ] Visualize resource dependencies (SA → IAM → secret → compute)
+- [x] Visualize resource dependencies (SA → IAM → secret → compute)
 - [ ] Integrate with existing DAG rendering (`PlainStructuredRenderer`)
+
+Update (2026-02-18):
+- Added `render_infra_spec_dot(&InfraSpec)` in `lib/cloud-ops/src/infra_graph.rs`
+  to emit DOT with environment, WIF, service-account, secret, and rotation
+  dependency edges.
 
 **Ref**: `gunb.ai/tools/infra/cmd/infra/main.go` — `graph` subcommand
 

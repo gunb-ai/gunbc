@@ -10,6 +10,7 @@ pub mod env_requirements;
 mod env_status;
 mod github_credential_graph;
 mod graph;
+pub mod infra_graph;
 pub mod infra_spec;
 mod ops;
 pub mod project_spec;
@@ -45,6 +46,7 @@ pub use graph::{
     build_cloud_secret_manager_upsert_graph_gcp_local,
     build_cloud_secret_manager_upsert_graph_gcp_metadata, CloudSecretManagerGraphOp,
 };
+pub use infra_graph::render_infra_spec_dot;
 pub use infra_spec::{EnvironmentConfig, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC};
 pub use ops::CloudOps;
 pub use secret_rotation::{check_secret_age, rotate_secret, SecretAgeCheck, SecretRotationAction};
