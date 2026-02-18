@@ -1,8 +1,8 @@
 # URGENT: Consolidate DAG-Level Logging & Error Reporting
 
-**Status**: Active
-**Date**: 2026-02-13
-**Priority**: High
+**Status**: DONE
+**Date**: 2026-02-18 (completed)
+**Priority**: High (resolved)
 **DSL Alignment**: Runtime observability hardening for DSL-generated workflows
 **Track**: D — Runtime/Test Hardening
 

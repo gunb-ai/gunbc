@@ -1,12 +1,13 @@
 # Consolidated Worker Plan
 
-**Status**: Working Draft — February 2026
-**Companion**: [`dsl-roadmap.md`](./dsl-roadmap.md), [`dsl-codegen-roadmap.md`](./dsl-codegen-roadmap.md), [`TODO/README.md`](../../../TODO/README.md)
+**Status**: Architecture context — February 2026
+**Execution queue**: [`TODO/tasks.md`](../../../TODO/tasks.md) — the single source of truth for what to do next.
+**Companion**: [`dsl-roadmap.md`](./dsl-roadmap.md), [`dsl-codegen-roadmap.md`](./dsl-codegen-roadmap.md)
 **Track A (DSL Core)**: DONE — compiler produces real binaries across 4 targets (see dsl-codegen-roadmap.md)
 
-This document unifies all active TODO files into a single dependency-ordered execution plan.
-Original TODO files retain detailed rationale; this doc provides sequencing, dependencies, and
-task assignments.
+This document provides the dependency DAG, cross-track relationships, and wave decomposition
+that inform the execution order in `TODO/tasks.md`. The checkboxes below are a historical
+record; for current task status, see `TODO/tasks.md`.
 
 **Guiding principle**: All new modeling and infrastructure work must be properly typed from the
 ground up — types are DAGs, coercion is DAG comparison/transform, and external systems are

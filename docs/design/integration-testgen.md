@@ -1,7 +1,7 @@
 # Integration Test Generation: Repo-Wide Contracts
 
-**Status**: Draft — February 2026  
-**Owner**: Unassigned
+**Status**: Draft — February 2026
+**Active task tracking**: [`TODO/tasks.md`](../../TODO/tasks.md)
 
 ## Problem
 
