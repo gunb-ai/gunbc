@@ -1,6 +1,6 @@
 # Transport-as-DAG Migration
 
-**Status**: In Progress (C4.1+C4.2 completed; behavioral spec phases pending)
+**Status**: In Progress (C4.1-C4.4a completed; handle-model extension not required)
 **Date**: 2026-02-14
 **DSL Alignment**: Transport execution model alignment with DSL testability guarantees
 **Track**: C — Modeling Foundation
@@ -15,7 +15,9 @@
 - `C4.3a` added a typed `TransportBehavior` spec model (`TransportKind`, `FieldRouteSpec`) in `core/ir`.
 - `C4.3b` added canonical behavior specs for TCP/HTTP/REST/File/Shell, including explicit TCP timeout routing invariants.
 - `C4.3c` integrated behavior specs into test generation by emitting transport-behavior coverage assertions in generated test modules for DAGs with transport executors.
-- Remaining work in this doc is focused on `C4.3+` behavioral specs integration.
+- `C4.4a` evaluation complete: current behavioral-spec + generated-test coverage is sufficient to prevent field-routing regressions (including TCP timeout mapping) without modeling OS handles inside `Value`.
+- `C4.4b` decision: no `Value` model extension required at this time. Runtime executor remains imperative for handle-bearing operations; DAG/testgen model targets request/response contracts and routing invariants.
+- Remaining work in this doc is focused on future behavioral depth, not immediate `Value`-handle modeling.
 
 Feasibility analysis and migration plan for modeling transport executor
 behavior as DAG nodes, bringing the executor under the testgen umbrella.

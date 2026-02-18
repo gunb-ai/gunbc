@@ -546,8 +546,8 @@ Declarative specification for transport behavior.
 
 Only pursue if Phase 3 evaluation shows behavioral specs are insufficient.
 
-- [ ] C4.4a — Evaluate whether C4.3 coverage is sufficient
-- [ ] C4.4b — If needed, design Value model extensions for OS handles
+- [x] C4.4a — Evaluate whether C4.3 coverage is sufficient
+- [x] C4.4b — If needed, design Value model extensions for OS handles *(not needed after C4.4a: keep handle-bearing execution imperative; model behavior/routing at request-response/spec layer)* 
 
 ---
 
