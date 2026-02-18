@@ -823,7 +823,7 @@ Cache tuple:
 
 **Phase D: Workflow consolidation + parallelism (next)**
 - [ ] Consolidate Makefile + CI + CLI to a single canonical workflow registry.
-- [ ] Add resource-conflict admission control to the existing ready-queue executor.
+- [x] Add resource-conflict admission control to the existing ready-queue executor. _(2026-02-18: executor now derives per-node `res:*` requirements and gates dispatch with read/write/exclusive admission locks; includes unit tests for Write/Write serialization and Read/Read parallelism in `core/exec/src/execute.rs`.)_
 - [ ] Add fast-path freshness check to skip full scans on clean repos.
 
 ## Acceptance Criteria (Current Workflow)

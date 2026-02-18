@@ -227,9 +227,9 @@ migration work (B1.x) informs which workflows can be registry-driven.
 Add resource-conflict admission control to the executor so parallel DAG execution
 is safe.
 
-- [ ] B2.2a — Implement conflict detection from `ResourceAccess` declarations
-- [ ] B2.2b — Add admission gating in executor before node dispatch
-- [ ] B2.2c — Tests: conflicting Write/Write blocked, Read/Read allowed
+- [x] B2.2a — Implement conflict detection from `ResourceAccess` declarations
+- [x] B2.2b — Add admission gating in executor before node dispatch
+- [x] B2.2c — Tests: conflicting Write/Write blocked, Read/Read allowed
 
 ##### B2.3 — Fast-path freshness [M]
 **Deps**: B2.1

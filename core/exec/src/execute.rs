@@ -36,8 +36,8 @@ use crate::topo::topo_sort;
 use crate::Executable;
 use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
-    canonical_edge_order, detect_boundaries, detect_entrypoints, AccessMode, BoundaryInfo,
-    Cardinality, Dag, LogDetailLevel, Node, NodeBody, NodeId, Value, RESOURCE_FILE,
+    canonical_edge_order, detect_boundaries, detect_entrypoints, normalize_resource_id, AccessMode,
+    BoundaryInfo, Cardinality, Dag, LogDetailLevel, Node, NodeBody, NodeId, Value, RESOURCE_FILE,
     RESOURCE_FILE_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
@@ -884,6 +884,87 @@ fn execution_max_concurrency() -> usize {
         .unwrap_or(usize::MAX)
 }
 
+#[derive(Debug, Clone, Default)]
+struct ActiveResourceLock {
+    readers: usize,
+    writer: bool,
+    exclusive: bool,
+}
+
+fn derive_node_resource_requirements<T>(
+    dag: &Dag<T>,
+) -> HashMap<NodeId, Vec<(String, AccessMode)>> {
+    dag.nodes
+        .iter()
+        .map(|node| {
+            let requirements = node
+                .inputs
+                .iter()
+                .filter_map(|port| {
+                    if !port.name.0.starts_with("res:") {
+                        return None;
+                    }
+                    port.resource_access
+                        .map(|mode| (normalize_resource_id(&port.name.0), mode))
+                })
+                .collect::<Vec<_>>();
+            (node.id.clone(), requirements)
+        })
+        .collect()
+}
+
+fn node_requirements_can_acquire(
+    requirements: &[(String, AccessMode)],
+    active: &HashMap<String, ActiveResourceLock>,
+) -> bool {
+    requirements.iter().all(|(resource_id, mode)| {
+        let lock = active.get(resource_id);
+        match mode {
+            AccessMode::Read => lock.is_none_or(|l| !l.writer && !l.exclusive),
+            AccessMode::Write | AccessMode::Exclusive => {
+                lock.is_none_or(|l| l.readers == 0 && !l.writer && !l.exclusive)
+            }
+        }
+    })
+}
+
+fn acquire_node_requirements(
+    requirements: &[(String, AccessMode)],
+    active: &mut HashMap<String, ActiveResourceLock>,
+) {
+    for (resource_id, mode) in requirements {
+        let entry = active.entry(resource_id.clone()).or_default();
+        match mode {
+            AccessMode::Read => entry.readers += 1,
+            AccessMode::Write => entry.writer = true,
+            AccessMode::Exclusive => entry.exclusive = true,
+        }
+    }
+}
+
+fn release_node_requirements(
+    requirements: &[(String, AccessMode)],
+    active: &mut HashMap<String, ActiveResourceLock>,
+) {
+    let mut touched = HashSet::new();
+    for (resource_id, mode) in requirements {
+        if let Some(entry) = active.get_mut(resource_id) {
+            match mode {
+                AccessMode::Read => entry.readers = entry.readers.saturating_sub(1),
+                AccessMode::Write => entry.writer = false,
+                AccessMode::Exclusive => entry.exclusive = false,
+            }
+            touched.insert(resource_id.clone());
+        }
+    }
+    active.retain(|resource_id, entry| {
+        if !touched.contains(resource_id) {
+            return true;
+        }
+        entry.readers > 0 || entry.writer || entry.exclusive
+    });
+}
+
 /// Parse optional runtime file guard toggle from `GUNBC_RESOURCE_FILE_GUARD`.
 ///
 /// Enabled values: `1`, `true`, `yes`, `on` (case-insensitive).
@@ -1387,6 +1468,8 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
 
     let max_concurrency = execution_max_concurrency();
     let file_guard_enabled = runtime_file_guard_enabled();
+    let node_resource_requirements = derive_node_resource_requirements(dag);
+    let mut active_resource_locks: HashMap<String, ActiveResourceLock> = HashMap::new();
     let mut in_flight = 0usize;
     let mut obs = observer;
     let dag_start = Instant::now();
@@ -1402,8 +1485,19 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
             state
                 .ready
                 .sort_by_key(|id| node_index.get(id).copied().unwrap_or(usize::MAX));
-            while !state.ready.is_empty() && in_flight < max_concurrency {
-                let node_id = state.ready.remove(0);
+            let mut ready_idx = 0usize;
+            while ready_idx < state.ready.len() && in_flight < max_concurrency {
+                let node_id = state.ready[ready_idx].clone();
+                let requirements = node_resource_requirements
+                    .get(&node_id)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                if !node_requirements_can_acquire(requirements, &active_resource_locks) {
+                    ready_idx += 1;
+                    continue;
+                }
+                state.ready.remove(ready_idx);
+                acquire_node_requirements(requirements, &mut active_resource_locks);
                 let node = node_map
                     .get(node_id.0.as_str())
                     .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
@@ -1437,6 +1531,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         log_detail,
                         &mut state,
                     )?;
+                    release_node_requirements(requirements, &mut active_resource_locks);
                     continue;
                 }
 
@@ -1458,6 +1553,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                             if let Some(ref mut o) = obs {
                                 o.on_node_failed(&node_id, &e.to_string());
                             }
+                            release_node_requirements(requirements, &mut active_resource_locks);
                             return Err(e);
                         }
                     };
@@ -1474,6 +1570,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         log_detail,
                         &mut state,
                     )?;
+                    release_node_requirements(requirements, &mut active_resource_locks);
                     continue;
                 }
 
@@ -1503,6 +1600,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         if let Some(ref mut o) = obs {
                             o.on_node_failed(&node_id, &err.to_string());
                         }
+                        release_node_requirements(requirements, &mut active_resource_locks);
                         return Err(err);
                     }
                 }
@@ -1513,6 +1611,17 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
             }
 
             if in_flight == 0 {
+                if !state.ready.is_empty() {
+                    let blocked = state
+                        .ready
+                        .iter()
+                        .map(|id| id.0.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return Err(ExecError::new(format!(
+                        "execution stalled: ready nodes blocked by resource admission control ({blocked})"
+                    )));
+                }
                 return Err(ExecError::new(
                     "execution stalled: no ready nodes and no running tasks",
                 ));
@@ -1522,6 +1631,11 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                 .recv()
                 .map_err(|_| ExecError::new("execution worker channel closed unexpectedly"))?;
             in_flight = in_flight.saturating_sub(1);
+            let requirements = node_resource_requirements
+                .get(&completed_node.node_id)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            release_node_requirements(requirements, &mut active_resource_locks);
             match completed_node.result {
                 Ok(outputs) => {
                     let node =
@@ -2016,6 +2130,209 @@ mod tests {
             peak.load(Ordering::SeqCst) >= 2,
             "expected at least 2 concurrent nodes, saw {}",
             peak.load(Ordering::SeqCst)
+        );
+    }
+
+    #[test]
+    fn test_execute_resource_conflicts_serialize_parallel_writes() {
+        if execution_max_concurrency() == 1 {
+            return;
+        }
+
+        #[derive(Debug, Clone)]
+        struct BlockingOp {
+            port: String,
+            value: Value,
+            sleep_ms: u64,
+            active: Arc<AtomicUsize>,
+            peak: Arc<AtomicUsize>,
+        }
+
+        impl BlockingOp {
+            fn new(
+                port: &str,
+                value: Value,
+                sleep_ms: u64,
+                active: Arc<AtomicUsize>,
+                peak: Arc<AtomicUsize>,
+            ) -> Self {
+                Self {
+                    port: port.to_string(),
+                    value,
+                    sleep_ms,
+                    active,
+                    peak,
+                }
+            }
+        }
+
+        impl Executable for BlockingOp {
+            fn execute(
+                &self,
+                _inputs: HashMap<String, Value>,
+            ) -> Result<HashMap<String, Value>, ExecError> {
+                let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+                loop {
+                    let observed = self.peak.load(Ordering::SeqCst);
+                    if current <= observed {
+                        break;
+                    }
+                    if self
+                        .peak
+                        .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(self.sleep_ms));
+                self.active.fetch_sub(1, Ordering::SeqCst);
+
+                let mut out = HashMap::new();
+                out.insert(self.port.clone(), self.value.clone());
+                Ok(out)
+            }
+        }
+
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+
+        let mut dag: Dag<BlockingOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "fs_env",
+            vec![],
+            vec![port("fs", "FilesystemHandle")],
+            BlockingOp::new("fs", Value::Unit, 0, active.clone(), peak.clone()),
+        ));
+        dag.add_node(Node::opaque(
+            "writer_a",
+            vec![resource(
+                "file:shared.txt",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
+            vec![port("a", "Int")],
+            BlockingOp::new("a", Value::Int(1), 50, active.clone(), peak.clone()),
+        ));
+        dag.add_node(Node::opaque(
+            "writer_b",
+            vec![resource(
+                "file:shared.txt",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
+            vec![port("b", "Int")],
+            BlockingOp::new("b", Value::Int(2), 50, active.clone(), peak.clone()),
+        ));
+        dag.add_edge(edge("fs_env", "fs", "writer_a", "res:file:shared.txt"));
+        dag.add_edge(edge("fs_env", "fs", "writer_b", "res:file:shared.txt"));
+
+        let _ = execute(&dag).expect("execution should succeed");
+        assert_eq!(
+            peak.load(Ordering::SeqCst),
+            1,
+            "conflicting write nodes should be serialized by admission control"
+        );
+    }
+
+    #[test]
+    fn test_execute_resource_reads_can_run_in_parallel() {
+        if execution_max_concurrency() == 1 {
+            return;
+        }
+
+        #[derive(Debug, Clone)]
+        struct BlockingOp {
+            port: String,
+            value: Value,
+            sleep_ms: u64,
+            active: Arc<AtomicUsize>,
+            peak: Arc<AtomicUsize>,
+        }
+
+        impl BlockingOp {
+            fn new(
+                port: &str,
+                value: Value,
+                sleep_ms: u64,
+                active: Arc<AtomicUsize>,
+                peak: Arc<AtomicUsize>,
+            ) -> Self {
+                Self {
+                    port: port.to_string(),
+                    value,
+                    sleep_ms,
+                    active,
+                    peak,
+                }
+            }
+        }
+
+        impl Executable for BlockingOp {
+            fn execute(
+                &self,
+                _inputs: HashMap<String, Value>,
+            ) -> Result<HashMap<String, Value>, ExecError> {
+                let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+                loop {
+                    let observed = self.peak.load(Ordering::SeqCst);
+                    if current <= observed {
+                        break;
+                    }
+                    if self
+                        .peak
+                        .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(self.sleep_ms));
+                self.active.fetch_sub(1, Ordering::SeqCst);
+
+                let mut out = HashMap::new();
+                out.insert(self.port.clone(), self.value.clone());
+                Ok(out)
+            }
+        }
+
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+
+        let mut dag: Dag<BlockingOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "fs_env",
+            vec![],
+            vec![port("fs", "FilesystemHandle")],
+            BlockingOp::new("fs", Value::Unit, 0, active.clone(), peak.clone()),
+        ));
+        dag.add_node(Node::opaque(
+            "reader_a",
+            vec![resource(
+                "file:shared.txt",
+                "FilesystemHandle",
+                AccessMode::Read,
+            )],
+            vec![port("a", "Int")],
+            BlockingOp::new("a", Value::Int(1), 50, active.clone(), peak.clone()),
+        ));
+        dag.add_node(Node::opaque(
+            "reader_b",
+            vec![resource(
+                "file:shared.txt",
+                "FilesystemHandle",
+                AccessMode::Read,
+            )],
+            vec![port("b", "Int")],
+            BlockingOp::new("b", Value::Int(2), 50, active.clone(), peak.clone()),
+        ));
+        dag.add_edge(edge("fs_env", "fs", "reader_a", "res:file:shared.txt"));
+        dag.add_edge(edge("fs_env", "fs", "reader_b", "res:file:shared.txt"));
+
+        let _ = execute(&dag).expect("execution should succeed");
+        assert!(
+            peak.load(Ordering::SeqCst) >= 2,
+            "read/read nodes should be allowed to run in parallel"
         );
     }
 
