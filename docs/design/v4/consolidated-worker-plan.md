@@ -416,8 +416,8 @@ Add canonical types in `core/ir` as single source of truth.
 Replace the worst fragmentation points with canonical types.
 
 - [ ] C1.2a — Replace hardcoded MIPS assembler/linker/qemu strings with modeled toolchain resources
-- [ ] C1.2b — Replace inline browser-open platform branching with env-aware resolver
-- [ ] C1.2c — Switch deps install and GH install platform keys to typed platform IDs
+- [x] C1.2b — Replace inline browser-open platform branching with env-aware resolver
+- [x] C1.2c — Switch deps install and GH install platform keys to typed platform IDs
 - [ ] C1.2d — Replace `PlatformDef` / `PlatformRegistry` stringly-typed keys
 
 #### Wave 3
