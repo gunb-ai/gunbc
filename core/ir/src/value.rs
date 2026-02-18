@@ -22,6 +22,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
+/// Shared maximum line count for human-readable text truncation.
+pub const HUMAN_TEXT_MAX_LINES: usize = 40;
+/// Shared maximum line width for human-readable text truncation.
+pub const HUMAN_TEXT_MAX_LINE_WIDTH: usize = 500;
+
 /// Build a serialization-based lookup index for a slice of Values.
 /// Used for O(1) containment checks in set operations.
 fn value_index(values: &[Value]) -> HashSet<String> {

@@ -376,7 +376,7 @@ This effort is done only when all items below are true.
 
 - [x] Default output is failure-first: concise success path, detailed output only for failed stages/nodes. _(2026-02-18: shared `StageResult`/extractor path emits concise stage summaries by default; grouped progress panel expands failed/long-running groups only.)_
 - [ ] Raw stdout/stderr is not duplicated across execution logs, parse nodes, and final report.
-- [ ] CI report and terminal summaries use one consistent truncation/summarization policy.
+- [x] CI report and terminal summaries use one consistent truncation/summarization policy. _(2026-02-18: both paths now use shared `Value::display_redacted_truncated` policy and shared max-line/max-width constants from `gunbc_ir`.)_
 - [x] Per-stage extractors exist for at least build, test, lint, and verify-style failures (with sensible fallback). _(2026-02-18: build/lint/test extractors were already present; verify now uses `extract_verify_failures(stdout, stderr)` with bounded fallback rendering.)_
 
 ### D. Data capture completeness

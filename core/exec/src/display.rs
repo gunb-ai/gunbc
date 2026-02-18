@@ -30,7 +30,9 @@ use crate::{
 };
 use gunbc_ir::layout::compute_layout;
 use gunbc_ir::symbols::{SemanticColor, SymbolId, Tier, STANDARD};
-use gunbc_ir::{detect_boundaries, Dag, NodeId, Value};
+use gunbc_ir::{
+    detect_boundaries, Dag, NodeId, Value, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,
+};
 use std::collections::HashMap;
 use std::io::{self, IsTerminal, Write};
 use std::process;
@@ -995,10 +997,10 @@ pub fn print_attention(level: AttentionLevel, title: &str, body: &str) {
 }
 
 /// Maximum lines to display for a single port value in log output.
-const MAX_LOG_VALUE_LINES: usize = 40;
+const MAX_LOG_VALUE_LINES: usize = HUMAN_TEXT_MAX_LINES;
 
 /// Maximum characters per line before truncation.
-const MAX_LINE_WIDTH: usize = 500;
+const MAX_LINE_WIDTH: usize = HUMAN_TEXT_MAX_LINE_WIDTH;
 
 /// Maximum lines to show for a single failure detail in NonTty mode.
 const FAILURE_DETAIL_LINES: usize = 30;

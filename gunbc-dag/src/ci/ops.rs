@@ -23,7 +23,9 @@ use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::transport::{ShellRequest, TransportRequest};
 use gunbc_ir::PlainStructuredRenderer;
 use gunbc_ir::Value;
-use gunbc_ir::{CargoCommand, Subcommand, Warnings};
+use gunbc_ir::{
+    CargoCommand, Subcommand, Warnings, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,
+};
 use gunbc_testgen_registry::iter_dag_specs;
 use std::collections::HashMap;
 
@@ -1223,48 +1225,18 @@ fn build_report_blocks(
 }
 
 /// Maximum lines per stderr/stdout section in the CI report.
-const MAX_REPORT_SECTION_LINES: usize = 60;
+const MAX_REPORT_SECTION_LINES: usize = HUMAN_TEXT_MAX_LINES;
 /// Maximum characters per line before truncation.
-const MAX_REPORT_LINE_WIDTH: usize = 500;
+const MAX_REPORT_LINE_WIDTH: usize = HUMAN_TEXT_MAX_LINE_WIDTH;
 
 /// Truncate verbose output for the CI report.
 ///
 /// - Individual lines longer than [`MAX_REPORT_LINE_WIDTH`] are truncated
 ///   (catches massive linker commands with hundreds of `.rlib` paths).
-/// - If the total exceeds [`MAX_REPORT_SECTION_LINES`], the middle is
-///   replaced with a marker keeping the first 10 and last 50 lines.
+/// - Uses the same shared truncation policy as terminal display output.
 fn truncate_for_report(text: &str) -> String {
-    let raw_lines: Vec<&str> = text.lines().collect();
-
-    // Truncate individual long lines
-    let lines: Vec<String> = raw_lines
-        .iter()
-        .map(|line| {
-            if line.len() > MAX_REPORT_LINE_WIDTH {
-                format!(
-                    "{}... ({} more chars)",
-                    &line[..MAX_REPORT_LINE_WIDTH],
-                    line.len() - MAX_REPORT_LINE_WIDTH
-                )
-            } else {
-                (*line).to_string()
-            }
-        })
-        .collect();
-
-    if lines.len() <= MAX_REPORT_SECTION_LINES {
-        return lines.join("\n");
-    }
-
-    let head = 10;
-    let tail = MAX_REPORT_SECTION_LINES - head;
-    let omitted = lines.len() - head - tail;
-
-    let mut result = Vec::with_capacity(head + 1 + tail);
-    result.extend_from_slice(&lines[..head]);
-    result.push(format!("... ({omitted} lines omitted) ..."));
-    result.extend_from_slice(&lines[lines.len() - tail..]);
-    result.join("\n")
+    Value::Str(text.to_string())
+        .display_redacted_truncated(MAX_REPORT_SECTION_LINES, MAX_REPORT_LINE_WIDTH)
 }
 
 /// Extract `error[E...]` lines + context from build stderr.
@@ -1988,7 +1960,7 @@ mod tests {
         let long_line = "x".repeat(600);
         let result = truncate_for_report(&long_line);
         assert!(result.len() < long_line.len());
-        assert!(result.contains("more chars)"));
+        assert!(result.ends_with("..."));
     }
 
     #[test]
@@ -2000,10 +1972,10 @@ mod tests {
         // Should be capped at MAX_REPORT_SECTION_LINES + 1 (truncation marker)
         assert!(result_lines.len() <= MAX_REPORT_SECTION_LINES + 1);
         assert!(result.contains("lines omitted"));
-        // First 10 lines preserved
+        // First head lines preserved
         assert!(result.contains("line 0"));
-        assert!(result.contains("line 9"));
-        // Last 50 lines preserved
+        assert!(result.contains("line 4"));
+        // Tail lines preserved
         assert!(result.contains("line 199"));
     }
 
