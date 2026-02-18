@@ -279,7 +279,7 @@ DAGs, not by checking hardcoded rules.
 - [x] C5.1a — Replace `base_type_upcasts_to()` with registry-driven DAG ancestry check
 - [x] C5.1b — Coercion discovery: given `Dag<TypeOp>` for source and target, find the
       transform chain (e.g., Url→String = unwrap NonEmpty + unwrap Matches)
-- [ ] C5.1c — `TypeOp::Transform(Coercion)` used as explicit coercion edges in registry
+- [x] C5.1c — `TypeOp::Transform(Coercion)` used as explicit coercion edges in registry
 - [x] C5.1d — Tests: Url→String, Int→Json, String→Json coercion found via DAG walk
 - [x] C5.1e — Tests: String→Url coercion correctly rejected (narrowing = unsafe)
 

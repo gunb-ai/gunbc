@@ -22,9 +22,9 @@
 use crate::contract::{self, TypeContract};
 use crate::dag::Dag;
 use crate::type_lib;
-use crate::type_op::{TypeOp, WrapperKind};
+use crate::type_op::{BaseType, Coercion, TypeOp, WrapperKind};
 use crate::types::{Cardinality, TypeId};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -238,6 +238,14 @@ fn parse_type_expr(raw: &str) -> Result<TypeExpr, TypeExprError> {
 pub struct TypeRegistry {
     /// Map from type name to type DAG.
     types: HashMap<TypeId, Dag<TypeOp>>,
+    /// Explicit coercion edges keyed by source type.
+    coercion_edges: HashMap<TypeId, Vec<CoercionEdge>>,
+}
+
+#[derive(Debug, Clone)]
+struct CoercionEdge {
+    to: TypeId,
+    transform: TypeOp,
 }
 
 /// Suggested explicit transformation strategy for an unsafe coercion.
@@ -262,6 +270,7 @@ impl TypeRegistry {
     pub fn new() -> Self {
         Self {
             types: HashMap::new(),
+            coercion_edges: HashMap::new(),
         }
     }
 
@@ -324,6 +333,24 @@ impl TypeRegistry {
     /// Register a type DAG with a name.
     pub fn register(&mut self, name: impl Into<TypeId>, type_dag: Dag<TypeOp>) {
         self.types.insert(name.into(), type_dag);
+    }
+
+    /// Register an explicit coercion edge between named types.
+    ///
+    /// This records a `TypeOp::Transform(Coercion)` edge in the registry-level
+    /// coercion graph so discovery can find paths that are not implied by base
+    /// ancestry alone.
+    pub fn register_coercion_edge(&mut self, from: impl Into<TypeId>, to: impl Into<TypeId>) {
+        let from = from.into();
+        let to = to.into();
+        let edge = CoercionEdge {
+            to: to.clone(),
+            transform: TypeOp::Transform(Coercion::new(
+                BaseType::named(from.0.clone()),
+                BaseType::named(to.0.clone()),
+            )),
+        };
+        self.coercion_edges.entry(from).or_default().push(edge);
     }
 
     /// Resolve a type DAG, honoring wrapper expressions like `Optional<T>`.
@@ -496,37 +523,58 @@ impl TypeRegistry {
     /// Returns the shortest known upcast chain as type IDs, including source
     /// and target, when `from` can safely widen into `to`.
     pub fn coercion_path(&self, from: &TypeId, to: &TypeId) -> Option<Vec<TypeId>> {
-        if from == to {
-            return Some(vec![from.clone()]);
-        }
-
-        // Json is treated as the top type for widening coercions.
-        if to.0 == "Json" {
-            return Some(vec![from.clone(), TypeId::from("Json")]);
-        }
-
+        let mut queue: VecDeque<Vec<TypeId>> = VecDeque::new();
         let mut visited = std::collections::HashSet::new();
-        let mut current = from.0.clone();
-        let mut path = vec![TypeId(current.clone())];
+        queue.push_back(vec![from.clone()]);
 
-        while visited.insert(current.clone()) {
-            let Some(dag) = self.get_by_name(&current) else {
-                break;
-            };
-            let Some(parent) = crate::contract::base_type(dag) else {
-                break;
-            };
-            if parent == current {
-                break;
-            }
-            path.push(TypeId(parent.clone()));
-            if parent == to.0 {
+        while let Some(path) = queue.pop_front() {
+            let current = path.last().cloned()?;
+            if current == *to {
                 return Some(path);
             }
-            current = parent;
+            if !visited.insert(current.clone()) {
+                continue;
+            }
+
+            for next in self.coercion_neighbors(&current) {
+                if path.iter().any(|step| step == &next) {
+                    continue;
+                }
+                let mut next_path = path.clone();
+                next_path.push(next);
+                queue.push_back(next_path);
+            }
         }
 
         None
+    }
+
+    fn coercion_neighbors(&self, current: &TypeId) -> Vec<TypeId> {
+        let mut neighbors = Vec::new();
+
+        // Explicit registry edges via TypeOp::Transform(Coercion).
+        if let Some(edges) = self.coercion_edges.get(current) {
+            neighbors.extend(edges.iter().filter_map(|edge| match &edge.transform {
+                TypeOp::Transform(_) => Some(edge.to.clone()),
+                _ => None,
+            }));
+        }
+
+        // Json is the widening top type.
+        if current.0 != "Json" {
+            neighbors.push(TypeId::from("Json"));
+        }
+
+        // Structural ancestry from base type DAG.
+        if let Some(dag) = self.get_by_name(&current.0) {
+            if let Some(parent) = crate::contract::base_type(dag) {
+                if parent != current.0 {
+                    neighbors.push(TypeId(parent));
+                }
+            }
+        }
+
+        neighbors
     }
 
     pub(crate) fn base_type_upcasts_to(&self, from: &str, to: &str) -> bool {
@@ -687,6 +735,25 @@ mod tests {
                 .is_none(),
             "String -> Url is narrowing and must not be discovered as safe path"
         );
+    }
+
+    #[test]
+    fn test_explicit_coercion_edge_registers_transform_and_is_discoverable() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register_coercion_edge("String", "Url");
+
+        let path = registry
+            .coercion_path(&TypeId::from("String"), &TypeId::from("Url"))
+            .expect("explicit String->Url transform edge should be discoverable");
+        assert_eq!(path, vec![TypeId::from("String"), TypeId::from("Url")]);
+
+        let edges = registry
+            .coercion_edges
+            .get(&TypeId::from("String"))
+            .expect("coercion edge should be stored");
+        assert!(edges.iter().any(|edge| {
+            edge.to == TypeId::from("Url") && matches!(edge.transform, TypeOp::Transform(_))
+        }));
     }
 
     #[test]
