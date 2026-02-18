@@ -132,7 +132,7 @@ These hand-rolled Rust patterns have DSL equivalents now. Migrate them.
 `gunbc-dag/src/pragma/graph.rs` has 3 identical content upsert chains (clippy.toml,
 allowlist, lint policy). Express as DSL `pattern` invocations with service calls.
 
-- [ ] B1.1a — Write `pragma.dag` using `pattern content_upsert` for 3 chains
+- [x] B1.1a — Write `pragma.dag` using `pattern content_upsert` for 3 chains
 - [ ] B1.1b — Verify generated binary produces identical output to hand-built
 - [ ] B1.1c — Wire into build system (replace hand-built pragma binary)
 
@@ -152,7 +152,7 @@ via service call lowering.
 `gunbc-dag/src/codegen/graph.rs` — staged pipeline: exists check → conditional codegen
 → stamp. DSL `if` in `func` bodies.
 
-- [ ] B1.3a — Write `codegen.dag` expressing conditional pipeline
+- [x] B1.3a — Write `codegen.dag` expressing conditional pipeline
 - [ ] B1.3b — Verify generated binary matches hand-built codegen behavior
 
 ##### B1.4 — Conditional execution / skip semantics [S]

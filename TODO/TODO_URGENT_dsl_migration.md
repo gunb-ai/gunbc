@@ -26,11 +26,9 @@ converter functions, preserving the boilerplate the DSL was meant to eliminate.
 
 ## Ready Now (DSL has the primitives)
 
-- [ ] **Pragma graphs** (`gunbc-dag/src/pragma/graph.rs`) — 3 parallel content
-      upsert chains. Express as `pattern` invocations with service calls.
+- [ ] **Pragma graphs** (`gunbc-dag/src/pragma/graph.rs`) — `dsl/tools/pragma.dag` is authored with 3 parallel `content_upsert` chains; runtime cutover from the hand-built Rust builder is still pending.
 - [x] **Transport triplets** (all binaries) — audited/verified via daglang triplet derivation tests across workspace DSL tool modules; lowering preserves prepare→execute request wiring and execute→parse response wiring where parse stages exist.
-- [ ] **Codegen graph** (`gunbc-dag/src/codegen/graph.rs`) — staged pipeline:
-      exists check → conditional codegen → stamp. DSL `if` in `func` bodies.
+- [ ] **Codegen graph** (`gunbc-dag/src/codegen/graph.rs`) — `dsl/tools/codegen.dag` is authored with staged conditional pipeline (exists check → conditional codegen → stamp); runtime cutover from the hand-built Rust builder is still pending.
 - [x] **Conditional execution / skip semantics** — covered by existing
       `content_upsert` lowering (compare output `skip` is wired to execute transport `skip`); no new `[skip_if]` syntax required for this pattern.
 
