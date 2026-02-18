@@ -32,8 +32,8 @@ converter functions, preserving the boilerplate the DSL was meant to eliminate.
       DSL already supports via service call lowering.
 - [ ] **Codegen graph** (`gunbc-dag/src/codegen/graph.rs`) — staged pipeline:
       exists check → conditional codegen → stamp. DSL `if` in `func` bodies.
-- [ ] **Conditional execution / skip semantics** — content upsert "compare" step
-      skips write when content matches. Needs `[skip_if]` or equivalent DSL syntax.
+- [x] **Conditional execution / skip semantics** — covered by existing
+      `content_upsert` lowering (compare output `skip` is wired to execute transport `skip`); no new `[skip_if]` syntax required for this pattern.
 
 ## Needs DSL Work First
 

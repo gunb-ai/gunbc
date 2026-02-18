@@ -161,9 +161,9 @@ via service call lowering.
 Content upsert "compare" step skips write when content matches. May need `[skip_if]`
 or equivalent DSL annotation.
 
-- [ ] B1.4a — Determine whether existing DSL constructs handle skip semantics
-- [ ] B1.4b — If needed, add skip annotation to DSL syntax + lowering
-- [ ] B1.4c — Verify upsert pattern with skip produces correct generated code
+- [x] B1.4a — Determine whether existing DSL constructs handle skip semantics
+- [x] B1.4b — If needed, add skip annotation to DSL syntax + lowering *(not needed: existing `content_upsert` lowering already wires compare→execute skip semantics)*
+- [x] B1.4c — Verify upsert pattern with skip produces correct generated code
 
 #### Needs DSL Work First (Wave 3+)
 
