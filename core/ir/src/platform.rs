@@ -502,4 +502,25 @@ mod tests {
         assert_eq!(toolchain.linker, "mips-linux-gnu-ld");
         assert_eq!(toolchain.emulator.as_deref(), Some("qemu-mips"));
     }
+
+    #[test]
+    fn target_triple_conformance_linux_gnu_vs_musl() {
+        let gnu = TargetTriple::parse("x86_64-unknown-linux-gnu").expect("parse gnu");
+        let musl = TargetTriple::parse("x86_64-unknown-linux-musl").expect("parse musl");
+        assert_eq!(gnu.arch, musl.arch);
+        assert_eq!(gnu.vendor, musl.vendor);
+        assert_eq!(gnu.os, musl.os);
+        assert_eq!(gnu.env, AbiEnv::Gnu);
+        assert_eq!(musl.env, AbiEnv::Musl);
+    }
+
+    #[test]
+    fn target_triple_conformance_windows_msvc() {
+        let triple = TargetTriple::parse("x86_64-pc-windows-msvc").expect("parse windows msvc");
+        assert_eq!(triple.arch, Arch::X86_64);
+        assert_eq!(triple.vendor, Vendor::Pc);
+        assert_eq!(triple.os, Os::Windows);
+        assert_eq!(triple.env, AbiEnv::Msvc);
+        assert_eq!(triple.to_string(), "x86_64-pc-windows-msvc");
+    }
 }
