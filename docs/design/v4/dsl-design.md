@@ -2576,7 +2576,7 @@ Plus: operation enum (25 lines), `Executable` impl (40 lines), operation impleme
 
 **Total: ~200+ lines across 3 files.**
 
-### Resulting IR (8 nodes, 10 edges)
+### Resulting IR (normalized parity core)
 
 ```
 Dag {
@@ -2645,9 +2645,12 @@ func makegen(registry: ToolRegistry) -> { written: Bool } {
 
 ## A.3 Compiler Output
 
-### Resulting IR (identical structure — 8 nodes, 10 edges)
+### Resulting IR (identical normalized structure)
 
-The compiler produces the same IR as the hand-wired version. The key differences:
+The compiler produces the same normalized core IR as the hand-wired version.
+The raw compiled DAG also includes the DSL wrapper callable/dependency edges
+(`tools.makegen::makegen`), so raw counts are higher (currently 9 nodes, 12 edges).
+The key differences:
 
 1. `content_upsert` pattern expansion creates the 5-node chain automatically.
 2. `render_makefile(registry: registry)` becomes a service call (pure, no transport).

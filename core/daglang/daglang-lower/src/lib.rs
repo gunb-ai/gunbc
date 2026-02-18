@@ -235,11 +235,12 @@ struct ResourceLifecycleEndpoint {
     release_node: Option<String>,
 }
 
-/// Best-effort cloud provider classification for Phase 0 obligation enrichment.
+/// Best-effort cloud provider classification for Phase 0 resource/interface resolution.
 ///
 /// These heuristics match type names, module paths, and resource names to infer
-/// which cloud provider a service call targets. They feed `ServiceCallMetadata`
-/// for obligation tagging — they do NOT affect DAG structure or execution.
+/// cloud provider intent when resolving interface-backed resources. The hint can
+/// affect which concrete resource lifecycle endpoint is selected in ambiguous
+/// multi-provider graphs.
 ///
 /// Known limitation: string matching is intentionally approximate. Renamed types
 /// or unconventional naming will misclassify. The planned replacement (Phase 2+)

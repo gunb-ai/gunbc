@@ -1739,7 +1739,7 @@ For each workflow: what DSL constructs are required, what modeling gaps are like
 |---|---|
 | **DSL constructs** | `type`, `pattern content_upsert`, `uses fs: Filesystem(mode: Write)`, `func` |
 | **Modeling gaps** | File resource mode (Write vs ReadWrite), skip-if-unchanged semantics at IR level |
-| **Parity gates** | 8 nodes, 10 edges, ProgressManifest with 4 waves, DryRun completes |
+| **Parity gates** | Normalized parity core matches (8 nodes, 10 edges); raw compiled graph includes wrapper/dependency edges (currently 9 nodes, 12 edges); ProgressManifest with 4 waves; DryRun completes |
 | **Deletes in unify** | `gunbc-dag/src/makegen/graph.rs` (137 lines), makegen registration in `all_tools()` |
 
 ### S2: Credential Chain (GCP)
