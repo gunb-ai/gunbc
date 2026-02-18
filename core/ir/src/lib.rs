@@ -134,6 +134,7 @@ pub use log_detail::LogDetailLevel;
 pub use makefile_render::MakefileStructuredRenderer;
 pub use node::{Node, NodeBody, NodeIoExample};
 pub use patterns::{
+    canonical_authenticate_chain,
     content_upsert::{add_content_upsert_chain, ContentUpsertChain},
     transport_triplet::{
         add_skippable_transport_triplet, add_skippable_transport_triplet_typed,
@@ -141,8 +142,9 @@ pub use patterns::{
         add_transport_triplet_named_with_passthrough_typed, add_transport_triplet_typed,
         TransportPortTypes,
     },
-    AtomicBuilder, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder, RepeatPolicy,
-    ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
+    validate_authenticate_chain, AtomicBuilder, AuthenticatePhase, BackoffStrategy,
+    FailureClassifier, PatternOp, PollBuilder, RepeatPolicy, ResourceInput, RetryBuilder,
+    TransactionBuilder, UpsertBuilder, WhileBuilder,
 };
 pub use plain_render::PlainStructuredRenderer;
 pub use platform::{

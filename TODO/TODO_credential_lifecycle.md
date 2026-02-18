@@ -408,6 +408,14 @@ Phase 1.5: Introduce `pattern/authenticate`
 - Rewire existing `cloud_credential` internals to call pattern phases.
 - Keep external graph shape unchanged while internals migrate.
 
+Update (2026-02-18):
+- Added `core/ir/src/patterns/authenticate.rs` with canonical phase model:
+  - `AuthenticatePhase`
+  - `canonical_authenticate_chain(...)`
+  - `validate_authenticate_chain(...)`
+- This closes the contract-definition milestone; flow migrations remain in
+  follow-on steps (gist/llm rewiring).
+
 Phase 2: Policy binding
 
 - Introduce `credential-policy` schema and loader.

@@ -27,6 +27,7 @@
 //! ```
 
 pub mod atomic;
+pub mod authenticate;
 pub mod branch;
 pub mod content_upsert;
 pub mod emit;
@@ -38,6 +39,9 @@ pub mod transport_triplet;
 pub mod upsert;
 
 pub use atomic::AtomicBuilder;
+pub use authenticate::{
+    canonical_authenticate_chain, validate_authenticate_chain, AuthenticatePhase,
+};
 pub use branch::BranchBuilder;
 pub use emit::EmitBuilder;
 pub use loop_pattern::LoopBuilder;

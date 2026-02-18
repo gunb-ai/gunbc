@@ -838,7 +838,7 @@ Deterministic precedence rules for credential context resolution.
 
 Central authentication pattern in `core/ir` that all credentialed flows consume.
 
-- [ ] E1.1.5a — Define `pattern/authenticate` module with canonical chain
+- [x] E1.1.5a — Define `pattern/authenticate` module with canonical chain
 - [ ] E1.1.5b — Migrate gist flow to use pattern
 - [ ] E1.1.5c — Migrate LLM flow to use pattern
 
