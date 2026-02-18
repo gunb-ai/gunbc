@@ -406,9 +406,15 @@ but should have the service interfaces ready.
 **Gap**: gunbc only models one project (`gunbai-secrets`). gunb.ai uses
 3 projects (auto, secrets, CI).
 
-- [ ] Create `ProjectRegistry` with multiple `ProjectSpec` entries
-- [ ] Support cross-project references (e.g., SA in project A accesses secrets in project B)
+- [x] Create `ProjectRegistry` with multiple `ProjectSpec` entries
+- [x] Support cross-project references (e.g., SA in project A accesses secrets in project B)
 - [ ] Add project-level IAM management for cross-project access
+
+Update (2026-02-18):
+- Added `lib/cloud-ops/src/project_registry.rs`:
+  - `ProjectRegistry` with default multi-project entries (`secrets`, `platform`)
+  - `derive_cross_project_wif_bindings(...)` for cross-project WIF access
+    recommendations by namespace.
 
 ### 8.2 Compute Project
 

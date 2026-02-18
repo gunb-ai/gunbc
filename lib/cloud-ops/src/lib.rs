@@ -14,6 +14,7 @@ pub mod infra_graph;
 pub mod infra_plan_apply;
 pub mod infra_spec;
 mod ops;
+pub mod project_registry;
 pub mod project_spec;
 pub mod secret_cache;
 pub mod secret_exports;
@@ -57,6 +58,9 @@ pub use infra_plan_apply::{
 };
 pub use infra_spec::{EnvironmentConfig, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC};
 pub use ops::CloudOps;
+pub use project_registry::{
+    derive_cross_project_wif_bindings, CrossProjectWifBinding, ProjectRegistry, GUNBAI_PLATFORM,
+};
 pub use secret_cache::{plan_secret_fetch, SecretCacheEntry, SecretValueCache};
 pub use secret_exports::{render_direnv_exports, SecretExportResult};
 pub use secret_provision_graph::{

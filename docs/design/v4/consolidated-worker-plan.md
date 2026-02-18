@@ -942,8 +942,8 @@ Compute Engine, Cloud Run, Load Balancer, GCS bucket service interfaces.
 ##### E2.8 — Multi-project support [L]
 **Deps**: E2.5
 
-- [ ] E2.8a — Project registry (multiple ProjectSpecs)
-- [ ] E2.8b — Cross-project access + WIF bindings
+- [x] E2.8a — Project registry (multiple ProjectSpecs)
+- [x] E2.8b — Cross-project access + WIF bindings
 
 ---
 
