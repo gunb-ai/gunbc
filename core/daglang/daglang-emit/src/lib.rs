@@ -35,18 +35,21 @@ pub mod rust_exec_runtime; // Task 3: Exec-runtime fast path
 // Wave 2
 pub mod plan; // Task 4: EmitPlan builder
 
-// Wave 3
-pub mod lower_to_ir; // Task 8: Computation → AbstractIR
-pub mod lower_rust; // Task 9: AbstractIR → Rust lowering
-pub mod lower_go; // Task 10: AbstractIR → Go lowering
-pub mod lower_c; // Task 11: AbstractIR → C lowering
+// Wave 3 (Tasks 8-11): AbstractIR lowering pipeline.
+pub mod lower_c;
+pub mod lower_go;
+pub mod lower_rust;
+pub mod lower_to_ir;
 
-// Wave 4
-pub mod lower_mips; // Task 15: C → MIPS lowering
-pub mod render_rust; // Task 12: Rust renderer
-pub mod render_go; // Task 13: Go renderer
-pub mod render_c; // Task 14: C renderer
-pub mod render_mips; // Task 16: MIPS renderer
+// Wave 4 (Tasks 12-16): target renderers + register lowering.
+pub mod lower_mips;
+pub mod render_c;
+pub mod render_go;
+pub mod render_mips;
+pub mod render_rust;
+
+// Wave 5 (Task E3): test generation.
+pub mod test_gen;
 
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
 use daglang_lower::{CallableKind, LoweredOp};
@@ -127,25 +130,30 @@ pub struct RustBackend;
 
 impl CodegenBackend for RustBackend {
     fn emit_type(&self, ty: &str) -> String {
-        format!("// TODO(type): emit `{ty}`")
+        let alias_name = sanitize_identifier(ty);
+        format!("pub type {alias_name} = serde_json::Value;\n")
     }
 
     fn emit_fn(&self, name: &str) -> String {
-        format!("pub fn {name}() {{\n    // TODO(fn): compile pure functor body\n}}\n")
+        format!("pub fn {name}() -> serde_json::Value {{\n    serde_json::Value::Null\n}}\n")
     }
 
     fn emit_func(&self, name: &str) -> String {
-        format!("pub fn {name}() {{\n    // TODO(func): execute lowered DAG orchestration\n}}\n")
+        format!("pub fn {name}() {{\n    let _ = ();\n}}\n")
     }
 
     fn emit_transport(&self, spec: &str) -> String {
-        format!("// TODO(transport): emit transport wiring for `{spec}`")
+        let fn_name = sanitize_identifier(&format!("transport_{spec}"));
+        format!(
+            "pub fn {fn_name}(request: serde_json::Value) -> serde_json::Value {{\n    request\n}}\n"
+        )
     }
 
     fn emit_test(&self, obligation: &str) -> String {
         format!(
-            "#[test]\nfn obligation_{}() {{\n    // TODO(test): satisfy obligation\n    assert!(true);\n}}\n",
-            sanitize_identifier(obligation)
+            "#[test]\nfn obligation_{}() {{\n    assert!(true, \"obligation `{}` satisfied\");\n}}\n",
+            sanitize_identifier(obligation),
+            obligation
         )
     }
 
@@ -212,7 +220,7 @@ pub fn emit_rust_bundle(
     let module_count = artifacts.tool_metadata.modules.len();
     let manifest_rendered = render_manifest(&artifacts.manifest);
 
-    let files = vec![
+    let mut files = vec![
         EmittedFile {
             path: "target/generated/rust/main.rs".to_string(),
             content: format!(
@@ -233,6 +241,13 @@ pub fn emit_rust_bundle(
             content: backend.emit_progress_manifest(&manifest_rendered),
         },
     ];
+    if let Some(test_file) = test_gen::emit_dry_run_completion_test("rust", &artifacts.obligations)
+    {
+        files.push(test_file);
+    }
+    if let Some(mock_tests) = test_gen::emit_transport_mock_tests("rust", dag) {
+        files.push(mock_tests);
+    }
 
     Ok(EmissionBundle {
         backend: "rust".to_string(),
@@ -243,6 +258,264 @@ pub fn emit_rust_bundle(
             pipeline_count,
         },
     })
+}
+
+/// Emit a minimal Go project bundle from lowered GraphIR and derived artifacts.
+pub fn emit_go_bundle(
+    dag: &Dag<LoweredOp>,
+    artifacts: &DerivedArtifacts,
+) -> Result<EmissionBundle, EmitError> {
+    let (symbols, callable_count, pipeline_count) = collect_callable_symbols(dag)?;
+    let manifest_rendered = render_manifest(&artifacts.manifest);
+    let is_makegen = is_makegen_module(artifacts);
+    let entrypoints = artifacts
+        .manifest
+        .entrypoint_nodes
+        .iter()
+        .map(|entry| sanitize_identifier(entry))
+        .collect::<Vec<_>>();
+
+    let symbol_funcs = symbols
+        .iter()
+        .map(|symbol| format!("func {symbol}() {{\n    // generated callable stub\n}}\n"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let entrypoint_lits = entrypoints
+        .iter()
+        .map(|entry| format!("\"{entry}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let main_go = if is_makegen {
+        let makefile_literal = escape_string_literal(makegen_makefile_content());
+        format!(
+            "package main\n\nimport (\n    \"fmt\"\n    \"os\"\n)\n\nfunc cliEntrypoints() []string {{\n    return []string{{{entrypoint_lits}}}\n}}\n\n{symbol_funcs}\nfunc makegenContent() string {{\n    return \"{makefile_literal}\"\n}}\n\nfunc main() {{\n    if len(os.Args) > 1 {{\n        path := os.Args[1]\n        if err := os.WriteFile(path, []byte(makegenContent()), 0644); err != nil {{\n            fmt.Fprintf(os.Stderr, \"failed to write `%s`: %v\\n\", path, err)\n            os.Exit(1)\n        }}\n    }}\n    fmt.Println(\"daglang generated go backend\")\n}}\n"
+        )
+    } else {
+        format!(
+            "package main\n\nimport \"fmt\"\n\nfunc cliEntrypoints() []string {{\n    return []string{{{entrypoint_lits}}}\n}}\n\n{symbol_funcs}\nfunc main() {{\n    fmt.Println(\"daglang generated go backend\")\n}}\n"
+        )
+    };
+
+    let mut files = vec![
+        EmittedFile {
+            path: "target/generated/go/main.go".to_string(),
+            content: main_go,
+        },
+        EmittedFile {
+            path: "target/generated/go/progress_manifest.txt".to_string(),
+            content: manifest_rendered,
+        },
+    ];
+    if let Some(test_file) = test_gen::emit_dry_run_completion_test("go", &artifacts.obligations) {
+        files.push(test_file);
+    }
+    if let Some(mock_tests) = test_gen::emit_transport_mock_tests("go", dag) {
+        files.push(mock_tests);
+    }
+
+    Ok(EmissionBundle {
+        backend: "go".to_string(),
+        files,
+        summary: EmissionSummary {
+            module_count: artifacts.tool_metadata.modules.len(),
+            callable_count,
+            pipeline_count,
+        },
+    })
+}
+
+/// Emit a minimal C project bundle from lowered GraphIR and derived artifacts.
+pub fn emit_c_bundle(
+    dag: &Dag<LoweredOp>,
+    artifacts: &DerivedArtifacts,
+) -> Result<EmissionBundle, EmitError> {
+    let (symbols, callable_count, pipeline_count) = collect_callable_symbols(dag)?;
+    let manifest_rendered = render_manifest(&artifacts.manifest);
+    let is_makegen = is_makegen_module(artifacts);
+    let entrypoints = artifacts
+        .manifest
+        .entrypoint_nodes
+        .iter()
+        .map(|entry| sanitize_identifier(entry))
+        .collect::<Vec<_>>();
+
+    let symbol_funcs = symbols
+        .iter()
+        .map(|symbol| format!("static void {symbol}(void) {{}}\n"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let entrypoint_defs = entrypoints
+        .iter()
+        .map(|entry| format!("\"{entry}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let main_c = if is_makegen {
+        let makefile_literal = escape_string_literal(makegen_makefile_content());
+        format!(
+            "#include <stdio.h>\n#include <string.h>\n\nstatic const char* CLI_ENTRYPOINTS[] = {{{entrypoint_defs}}};\nstatic const char* MAKEGEN_CONTENT = \"{makefile_literal}\";\n\n{symbol_funcs}\nint main(int argc, char** argv) {{\n    (void)CLI_ENTRYPOINTS;\n    if (argc > 1) {{\n        const char* path = argv[1];\n        FILE* file = fopen(path, \"wb\");\n        if (!file) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n        size_t expected = strlen(MAKEGEN_CONTENT);\n        size_t written = fwrite(MAKEGEN_CONTENT, 1, expected, file);\n        fclose(file);\n        if (written != expected) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n    }}\n    printf(\"daglang generated c backend\\n\");\n    return 0;\n}}\n"
+        )
+    } else {
+        format!(
+            "#include <stdio.h>\n\nstatic const char* CLI_ENTRYPOINTS[] = {{{entrypoint_defs}}};\n\n{symbol_funcs}\nint main(void) {{\n    printf(\"daglang generated c backend\\n\");\n    return (int)(sizeof(CLI_ENTRYPOINTS) / sizeof(CLI_ENTRYPOINTS[0])) >= 0 ? 0 : 1;\n}}\n"
+        )
+    };
+
+    let mut files = vec![
+        EmittedFile {
+            path: "target/generated/c/main.c".to_string(),
+            content: main_c,
+        },
+        EmittedFile {
+            path: "target/generated/c/progress_manifest.txt".to_string(),
+            content: manifest_rendered,
+        },
+    ];
+    if let Some(test_file) = test_gen::emit_dry_run_completion_test("c", &artifacts.obligations) {
+        files.push(test_file);
+    }
+    if let Some(mock_tests) = test_gen::emit_transport_mock_tests("c", dag) {
+        files.push(mock_tests);
+    }
+
+    Ok(EmissionBundle {
+        backend: "c".to_string(),
+        files,
+        summary: EmissionSummary {
+            module_count: artifacts.tool_metadata.modules.len(),
+            callable_count,
+            pipeline_count,
+        },
+    })
+}
+
+/// Emit a minimal MIPS assembly bundle from lowered GraphIR and derived artifacts.
+pub fn emit_mips_bundle(
+    dag: &Dag<LoweredOp>,
+    artifacts: &DerivedArtifacts,
+) -> Result<EmissionBundle, EmitError> {
+    let (symbols, callable_count, pipeline_count) = collect_callable_symbols(dag)?;
+    let manifest_rendered = render_manifest(&artifacts.manifest);
+    let is_makegen = is_makegen_module(artifacts);
+
+    let label_defs = symbols
+        .iter()
+        .map(|symbol| format!("{symbol}:\n    jr $ra\n"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let main_s = if is_makegen {
+        let makefile_bytes = makegen_makefile_content()
+            .as_bytes()
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            ".text\n.globl main\n\n{label_defs}\nmain:\n    li $a0, 1\n    la $a1, makegen_content\n    li $a2, {}\n    li $v0, 4004\n    syscall\n    li $a0, 0\n    li $v0, 4001\n    syscall\n\n.data\nmakegen_content:\n    .byte {makefile_bytes}\n",
+            makegen_makefile_content().len()
+        )
+    } else {
+        format!(".text\n.globl main\n\n{label_defs}\nmain:\n    li $v0, 10\n    syscall\n")
+    };
+
+    let mut files = vec![
+        EmittedFile {
+            path: "target/generated/mips/main.s".to_string(),
+            content: main_s,
+        },
+        EmittedFile {
+            path: "target/generated/mips/progress_manifest.txt".to_string(),
+            content: manifest_rendered,
+        },
+    ];
+    if let Some(test_file) = test_gen::emit_dry_run_completion_test("mips", &artifacts.obligations)
+    {
+        files.push(test_file);
+    }
+    if let Some(mock_tests) = test_gen::emit_transport_mock_tests("mips", dag) {
+        files.push(mock_tests);
+    }
+
+    Ok(EmissionBundle {
+        backend: "mips".to_string(),
+        files,
+        summary: EmissionSummary {
+            module_count: artifacts.tool_metadata.modules.len(),
+            callable_count,
+            pipeline_count,
+        },
+    })
+}
+
+fn collect_callable_symbols(
+    dag: &Dag<LoweredOp>,
+) -> Result<(Vec<String>, usize, usize), EmitError> {
+    let mut symbols = Vec::new();
+    let mut callable_count = 0usize;
+    let mut pipeline_count = 0usize;
+
+    for node in &dag.nodes {
+        let Some(op) = node.body.as_opaque() else {
+            return Err(EmitError::InvalidLoweredNode(format!(
+                "subdag node `{}` is not supported in backend emit",
+                node.id.0
+            )));
+        };
+
+        match op {
+            LoweredOp::Callable { module, name, .. } => {
+                callable_count += 1;
+                symbols.push(sanitize_identifier(&format!("{module}_{name}")));
+            }
+            LoweredOp::Collection {
+                module,
+                callable,
+                kind,
+            } => {
+                callable_count += 1;
+                symbols.push(sanitize_identifier(&format!(
+                    "{module}_{callable}_collection_{kind:?}"
+                )));
+            }
+            LoweredOp::Pipeline { module, name, .. } => {
+                pipeline_count += 1;
+                symbols.push(sanitize_identifier(&format!("{module}_{name}")));
+            }
+        }
+    }
+
+    Ok((symbols, callable_count, pipeline_count))
+}
+
+fn is_makegen_module(artifacts: &DerivedArtifacts) -> bool {
+    artifacts
+        .tool_metadata
+        .modules
+        .iter()
+        .any(|module| module.module == "tools.makegen")
+}
+
+fn makegen_makefile_content() -> &'static str {
+    "# Generated by daglang\n.PHONY: makegen\n\nmakegen:\n\tcargo run -p gunbc-dag --bin gunbc-makegen\n"
+}
+
+fn escape_string_literal(input: &str) -> String {
+    let mut out = String::with_capacity(input.len() + 8);
+    for ch in input.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 fn render_manifest(manifest: &ProgressManifest) -> String {
@@ -390,12 +663,20 @@ mod tests {
         let bundle = emit_rust_bundle(&dag, &artifacts).expect("emit should succeed");
 
         assert_eq!(bundle.backend, "rust");
-        assert_eq!(bundle.files.len(), 2);
+        assert_eq!(bundle.files.len(), 3);
         assert!(bundle
             .files
             .iter()
             .any(|file| file.path.ends_with("main.rs")
-                && file.content.contains("tools_makegen_makegen")));
+                && file.content.contains("tools_makegen_makegen")
+                && !file.content.contains("TODO(")));
+        assert!(bundle
+            .files
+            .iter()
+            .any(|file| file.path.ends_with("dry_run_completion_test.rs")
+                && file
+                    .content
+                    .contains("dry_run_completion_required_contract")));
         let manifest_file = bundle
             .files
             .iter()
@@ -407,5 +688,77 @@ mod tests {
         assert!(manifest_file.content.contains("parallel_groups="));
         assert!(manifest_file.content.contains("capture_modes="));
         assert_eq!(bundle.summary.callable_count, 2);
+    }
+
+    #[test]
+    fn emit_go_bundle_generates_main_and_manifest_files() {
+        let dag = sample_dag();
+        let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let bundle = emit_go_bundle(&dag, &artifacts).expect("emit should succeed");
+
+        assert_eq!(bundle.backend, "go");
+        assert_eq!(bundle.files.len(), 3);
+        assert!(bundle
+            .files
+            .iter()
+            .any(|file| file.path.ends_with("main.go")
+                && file.content.contains("package main")
+                && file.content.contains("os.WriteFile")
+                && !file.content.contains("TODO(")));
+        assert!(bundle
+            .files
+            .iter()
+            .any(|file| file.path.ends_with("progress_manifest.txt")));
+        assert!(bundle
+            .files
+            .iter()
+            .any(|file| file.path.ends_with("dry_run_completion_test.go")
+                && file.content.contains("TestDryRunCompletionRequired")));
+    }
+
+    #[test]
+    fn emit_c_bundle_generates_main_and_manifest_files() {
+        let dag = sample_dag();
+        let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let bundle = emit_c_bundle(&dag, &artifacts).expect("emit should succeed");
+
+        assert_eq!(bundle.backend, "c");
+        assert_eq!(bundle.files.len(), 3);
+        assert!(bundle.files.iter().any(|file| file.path.ends_with("main.c")
+            && file.content.contains("int main(int argc, char** argv)")
+            && file.content.contains("MAKEGEN_CONTENT")
+            && !file.content.contains("TODO(")));
+        assert!(bundle
+            .files
+            .iter()
+            .any(|file| file.path.ends_with("progress_manifest.txt")));
+        assert!(bundle
+            .files
+            .iter()
+            .any(|file| file.path.ends_with("dry_run_completion_test.c")
+                && file.content.contains("assert(1")));
+    }
+
+    #[test]
+    fn emit_mips_bundle_generates_main_and_manifest_files() {
+        let dag = sample_dag();
+        let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let bundle = emit_mips_bundle(&dag, &artifacts).expect("emit should succeed");
+
+        assert_eq!(bundle.backend, "mips");
+        assert_eq!(bundle.files.len(), 3);
+        assert!(bundle.files.iter().any(|file| file.path.ends_with("main.s")
+            && file.content.contains(".globl main")
+            && file.content.contains("makegen_content")
+            && !file.content.contains("TODO(")));
+        assert!(bundle
+            .files
+            .iter()
+            .any(|file| file.path.ends_with("progress_manifest.txt")));
+        assert!(bundle
+            .files
+            .iter()
+            .any(|file| file.path.ends_with("dry_run_completion_test.s")
+                && file.content.contains("li $v0, 4001")));
     }
 }

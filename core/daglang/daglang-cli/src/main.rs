@@ -13,24 +13,23 @@
 //! - `daglang show-triplets <file.dag> [--format text|json]`: Show transport triplet expansions
 //! - `daglang modules [dir] [--format text|json]`: Show the discovered module graph
 //! - `daglang check <file.dag|dir>` -- Parse + typecheck modules (no lowering)
-//! - `daglang compile <file.dag|dir> [--emit-collection-nodes]`: Full compilation pipeline
+//! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]`: Full compilation pipeline
 //! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`: Compile + resolve + execute makegen DAG
 
 use std::path::PathBuf;
 
 use daglang_cli::compile::{
-    build_context, check_from_context, compile_from_context, compile_from_context_with_options,
-    render_expand, render_manifest_with_format, render_obligations, render_triplets,
-    CompileOptions, CompileOutput, OutputFormat,
+    build_context, check_from_context, compile_from_context_with_options,
+    compile_resolve_execute_from_context, makegen_check_mode_transport_mocks,
+    makegen_dry_run_transport_mocks, makegen_entrypoint_mocks, render_expand,
+    render_manifest_with_format, render_obligations, render_triplets, CompileOptions,
+    CompileOutput, OutputFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{
     build_pipeline_dag, run_pipeline, PipelineContext, PipelineResult, PipelineStop,
 };
-use daglang_exec_bridge::{
-    execute_resolved_dag, makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks,
-    makegen_entrypoint_mocks, resolve_lowered_dag,
-};
+use daglang_driver::{CodegenLayer, CodegenTarget};
 use daglang_syntax::diagnostic::DiagnosticKind;
 use gunbc_exec::ExecutionMode;
 use gunbc_ir::Value;
@@ -60,7 +59,9 @@ fn main() {
         eprintln!("  modules [dir] [--format text|json]");
         eprintln!("                      Show discovered module graph");
         eprintln!("  check <file.dag|dir> Parse + typecheck modules (no lowering)");
-        eprintln!("  compile <file.dag|dir> [--emit-collection-nodes]");
+        eprintln!(
+            "  compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]"
+        );
         eprintln!("                      Full compilation pipeline");
         eprintln!("  run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>");
         eprintln!("                      Compile + resolve + execute makegen DAG");
@@ -182,6 +183,21 @@ fn compile_target_or_exit_with_options(
     input: Option<&String>,
     emit_collection_nodes: bool,
 ) -> CompileOutput {
+    compile_target_or_exit_with_compile_options(
+        cwd,
+        input,
+        CompileOptions {
+            emit_collection_nodes,
+            ..CompileOptions::default()
+        },
+    )
+}
+
+fn compile_target_or_exit_with_compile_options(
+    cwd: &std::path::Path,
+    input: Option<&String>,
+    options: CompileOptions,
+) -> CompileOutput {
     if let Some(value) = input {
         let normalized = path_utils::normalize_cli_path(cwd, &PathBuf::from(value));
         if let Some(error) = path_utils::check_dag_extension_casing(&normalized) {
@@ -203,18 +219,38 @@ fn compile_target_or_exit_with_options(
     } else {
         build_context(cwd, input)
     };
-    match compile_from_context_with_options(
-        &context,
-        CompileOptions {
-            emit_collection_nodes,
-        },
-    ) {
+    match compile_from_context_with_options(&context, options) {
         Ok(output) => output,
         Err(error) => {
             eprintln!("{error}");
             std::process::exit(1);
         }
     }
+}
+
+#[allow(clippy::disallowed_methods)]
+fn write_emitted_files(
+    cwd: &std::path::Path,
+    out_dir: &str,
+    files: &[daglang_emit::EmittedFile],
+) -> Result<Vec<PathBuf>, String> {
+    let out_root = path_utils::normalize_cli_path(cwd, &PathBuf::from(out_dir));
+    let mut written = Vec::with_capacity(files.len());
+    for file in files {
+        let destination = out_root.join(&file.path);
+        if let Some(parent) = destination.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "failed to create output directory {}: {error}",
+                    parent.display()
+                )
+            })?;
+        }
+        std::fs::write(&destination, &file.content)
+            .map_err(|error| format!("failed to write {}: {error}", destination.display()))?;
+        written.push(destination);
+    }
+    Ok(written)
 }
 
 fn run_pipeline_or_exit(context: &PipelineContext, stop: PipelineStop) -> PipelineResult {
@@ -238,6 +274,9 @@ fn resolve_default_roots(cwd: &std::path::Path) -> Result<Vec<PathBuf>, String> 
 struct CompileCommandArgs {
     input: Option<String>,
     emit_collection_nodes: bool,
+    target: Option<CodegenTarget>,
+    layer: Option<CodegenLayer>,
+    out_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -260,6 +299,9 @@ fn parse_compile_command_args(
     }
     let mut input: Option<String> = None;
     let mut emit_collection_nodes = false;
+    let mut target: Option<CodegenTarget> = None;
+    let mut layer: Option<CodegenLayer> = None;
+    let mut out_dir: Option<String> = None;
     let mut i = 2usize;
     while i < args.len() {
         let token = &args[i];
@@ -268,6 +310,72 @@ fn parse_compile_command_args(
                 return Err(usage.to_string());
             }
             emit_collection_nodes = true;
+            i += 1;
+            continue;
+        }
+        if token == "--target" {
+            if command != "compile" {
+                return Err(usage.to_string());
+            }
+            if target.is_some() {
+                return Err(usage.to_string());
+            }
+            let value = args.get(i + 1).ok_or_else(|| usage.to_string())?;
+            target = Some(parse_codegen_target(value).ok_or_else(|| usage.to_string())?);
+            i += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--target=") {
+            if command != "compile" {
+                return Err(usage.to_string());
+            }
+            if target.is_some() {
+                return Err(usage.to_string());
+            }
+            target = Some(parse_codegen_target(value).ok_or_else(|| usage.to_string())?);
+            i += 1;
+            continue;
+        }
+        if token == "--layer" {
+            if command != "compile" {
+                return Err(usage.to_string());
+            }
+            if layer.is_some() {
+                return Err(usage.to_string());
+            }
+            let value = args.get(i + 1).ok_or_else(|| usage.to_string())?;
+            layer = Some(parse_codegen_layer(value).ok_or_else(|| usage.to_string())?);
+            i += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--layer=") {
+            if command != "compile" {
+                return Err(usage.to_string());
+            }
+            if layer.is_some() {
+                return Err(usage.to_string());
+            }
+            layer = Some(parse_codegen_layer(value).ok_or_else(|| usage.to_string())?);
+            i += 1;
+            continue;
+        }
+        if token == "--out" {
+            if command != "compile" || out_dir.is_some() {
+                return Err(usage.to_string());
+            }
+            let value = args.get(i + 1).ok_or_else(|| usage.to_string())?;
+            if value.starts_with("--") {
+                return Err(usage.to_string());
+            }
+            out_dir = Some(value.clone());
+            i += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--out=") {
+            if command != "compile" || out_dir.is_some() || value.is_empty() {
+                return Err(usage.to_string());
+            }
+            out_dir = Some(value.to_string());
             i += 1;
             continue;
         }
@@ -286,7 +394,28 @@ fn parse_compile_command_args(
     Ok(CompileCommandArgs {
         input,
         emit_collection_nodes,
+        target,
+        layer,
+        out_dir,
     })
+}
+
+fn parse_codegen_target(value: &str) -> Option<CodegenTarget> {
+    match value {
+        "rust" => Some(CodegenTarget::Rust),
+        "go" => Some(CodegenTarget::Go),
+        "c" => Some(CodegenTarget::C),
+        "mips" => Some(CodegenTarget::Mips),
+        _ => None,
+    }
+}
+
+fn parse_codegen_layer(value: &str) -> Option<CodegenLayer> {
+    match value {
+        "1" | "exec-runtime" => Some(CodegenLayer::ExecRuntime),
+        "2" | "native" => Some(CodegenLayer::Native),
+        _ => None,
+    }
 }
 
 fn parse_manifest_command_args(args: &[String]) -> Result<ManifestCommandArgs, String> {
@@ -1080,11 +1209,24 @@ mod tests {
         .expect("expand compile args should parse");
         assert_eq!(parsed.input.as_deref(), Some("dsl/tools/makegen.dag"));
         assert!(parsed.emit_collection_nodes);
+        assert!(parsed.target.is_none());
+        assert!(parsed.layer.is_none());
+        assert!(parsed.out_dir.is_none());
     }
 
     #[test]
-    fn parse_compile_command_args_rejects_invalid_shapes() {
-        let usage = "compile <file.dag|dir> [--emit-collection-nodes]";
+    fn parse_compile_command_args_handles_codegen_and_output_flags() {
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]";
+        let valid = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--target".to_string(),
+            "rust".to_string(),
+            "--layer".to_string(),
+            "1".to_string(),
+            "--out=target/generated/test".to_string(),
+        ];
         let duplicate_flag = vec![
             "daglang".to_string(),
             "compile".to_string(),
@@ -1092,20 +1234,70 @@ mod tests {
             "--emit-collection-nodes".to_string(),
             "dsl".to_string(),
         ];
+        let duplicate_out = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl".to_string(),
+            "--out".to_string(),
+            "target/generated/one".to_string(),
+            "--out=target/generated/two".to_string(),
+        ];
         let unknown_flag = vec![
             "daglang".to_string(),
             "compile".to_string(),
             "--collection".to_string(),
             "dsl".to_string(),
         ];
+        let bad_target = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl".to_string(),
+            "--target".to_string(),
+            "zig".to_string(),
+        ];
+        let bad_layer = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl".to_string(),
+            "--layer".to_string(),
+            "3".to_string(),
+        ];
         let missing_target = vec!["daglang".to_string(), "compile".to_string()];
+
+        let parsed_valid = super::parse_compile_command_args("compile", &valid, usage, false)
+            .expect("compile parser should accept full codegen args");
+        assert_eq!(parsed_valid.input.as_deref(), Some("dsl/tools/makegen.dag"));
+        assert_eq!(
+            parsed_valid.target,
+            Some(daglang_driver::CodegenTarget::Rust)
+        );
+        assert_eq!(
+            parsed_valid.layer,
+            Some(daglang_driver::CodegenLayer::ExecRuntime)
+        );
+        assert_eq!(
+            parsed_valid.out_dir.as_deref(),
+            Some("target/generated/test")
+        );
 
         assert_eq!(
             super::parse_compile_command_args("compile", &duplicate_flag, usage, false),
             Err(usage.to_string())
         );
         assert_eq!(
+            super::parse_compile_command_args("compile", &duplicate_out, usage, false),
+            Err(usage.to_string())
+        );
+        assert_eq!(
             super::parse_compile_command_args("compile", &unknown_flag, usage, false),
+            Err(usage.to_string())
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &bad_target, usage, false),
+            Err(usage.to_string())
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &bad_layer, usage, false),
             Err(usage.to_string())
         );
         assert_eq!(
@@ -1116,6 +1308,49 @@ mod tests {
         );
         assert_eq!(
             super::parse_compile_command_args("compile", &missing_target, usage, true),
+            Err(usage.to_string())
+        );
+    }
+
+    #[test]
+    fn parse_compile_command_args_rejects_codegen_flags_for_expand() {
+        let usage = "expand <file.dag> [--emit-collection-nodes]";
+        let with_target = vec![
+            "daglang".to_string(),
+            "expand".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--target".to_string(),
+            "rust".to_string(),
+        ];
+        let with_out = vec![
+            "daglang".to_string(),
+            "expand".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--out".to_string(),
+            "target/generated".to_string(),
+        ];
+
+        assert_eq!(
+            super::parse_compile_command_args("expand", &with_target, usage, true),
+            Err(usage.to_string())
+        );
+        assert_eq!(
+            super::parse_compile_command_args("expand", &with_out, usage, true),
+            Err(usage.to_string())
+        );
+    }
+
+    #[test]
+    fn parse_compile_command_args_rejects_invalid_shapes() {
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]";
+        let unknown_flag = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "--collection".to_string(),
+            "dsl".to_string(),
+        ];
+        assert_eq!(
+            super::parse_compile_command_args("compile", &unknown_flag, usage, false),
             Err(usage.to_string())
         );
     }

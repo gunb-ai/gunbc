@@ -1316,7 +1316,7 @@ Port order follows the scenario inventory, because it progressively exercises th
 
 The big unlock is to unify the runtime around a **single engine that consumes IR**. If gist/ci/review currently each implement pieces of scheduling, retries, error handling, or policy enforcement differently — that's the drift. Centralize it.
 
-#### C0: Engine Unification (the central thrust)
+#### C0: Engine Unification (the central thrust) *(Taken by Codex — 2026-02-18)*
 
 The DSL is a frontend. The engine is where drift currently hides.
 
@@ -1342,6 +1342,8 @@ Parse DSL → AST
 | Error handling + run state transitions | Inconsistent error classification across workflows |
 | Standardized telemetry | Per-workflow logging/tracing |
 
+**Current cutover (2026-02-18):** `daglang run` now routes through one compile→resolve→execute entrypoint (`compile_resolve_execute_from_context`) instead of open-coded stage wiring in command dispatch.
+
 **IR primitives** the engine consumes (stable set that covers all workflows):
 
 | Primitive | Covers |
@@ -1356,9 +1358,10 @@ Parse DSL → AST
 | `Telemetry` hooks | Correlation IDs, structured events, progress manifest |
 | `ErrorTaxonomy` | Retryable vs terminal, with domain-specific classification |
 
-#### C0-a: gunbc as Adapter Layer (not second execution path)
+#### C0-a: gunbc as Adapter Layer (not second execution path) *(Taken by Codex — 2026-02-18)*
 
 > Key principle: `gunbc` should **not** be a second execution path. It should route into the same engine so you don't maintain two semantics.
+> **Fast-migration mode (current repo preference):** keep this layer minimal and short-lived; prefer direct cutovers over long-lived compatibility wrappers.
 
 | gunbc becomes | Description |
 |---|---|
@@ -1369,7 +1372,7 @@ Parse DSL → AST
 
 During migration, gunbc builders still work. After cutover, they become thin adapters that compile to the same IR the `.dag` files produce. Eventually, the adapters are deleted when all consumers use `.dag` directly.
 
-#### C1: Discovery Unification (delete islands)
+#### C1: Discovery Unification (delete islands) *(Taken by Codex — 2026-02-18)*
 
 Replace registration islands with filesystem discovery + module graph.
 
@@ -1381,6 +1384,8 @@ Replace registration islands with filesystem discovery + module graph.
 | `all_tools()` 360-line vec | Filesystem scan of `tools/*.dag` |
 
 **Metric**: manual tool registrations → **0**, stringly ID references → **0**
+
+**Current cutover (2026-02-18):** `gunbc-dag` workspace composition now discovers tool modules from `dsl/tools/*.dag` directly. Registry metadata is no longer used for workspace DAG discovery, and unmapped discovered modules fail fast. The workspace now composes `build`, `makegen`, `clippy`, `deps`, `bootstrap`, `codegen`, `docgen`, `gist`, `pragma`, `testgen`, and `dag_viz` from discovered DSL modules.
 
 #### C2: Emission Unification (collapse rendering systems)
 
@@ -1621,7 +1626,7 @@ Input fixture
 
 ### Lint Rules
 
-- Forbid new ad-hoc execution paths outside the engine
+- Forbid new ad-hoc execution paths outside the engine *(Taken by Codex — 2026-02-18)*
 - Forbid direct I/O outside transport boundaries (existing clippy guardrails)
 - Forbid `format!()` constructing source code (use `Emit` phase)
 - Forbid manual tool registration (use filesystem discovery)

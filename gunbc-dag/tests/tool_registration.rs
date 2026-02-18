@@ -68,6 +68,42 @@ fn derive_tool_defs_matches_inventory() {
             );
         }
     }
+
+    // Hard-migration guardrail: do not hide execution routing behind adapter aliases.
+    for tool in &tools {
+        if let Some(import) = &tool.custom_import {
+            assert!(
+                !import.contains("_adapter as "),
+                "tool '{}' uses adapter-style import alias in registry metadata: {}",
+                tool.meta.tool_name,
+                import
+            );
+        }
+    }
+}
+
+#[test]
+fn workspace_subdag_discovery_avoids_tool_registry_inventory() {
+    let workspace_subdags = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("workspace")
+        .join("subdags")
+        .join("mod.rs");
+    let io = TransportIo::new();
+    let content = String::from_utf8(
+        io.read_file(&workspace_subdags)
+            .expect("workspace subdags module should be readable"),
+    )
+    .expect("workspace subdags module should be UTF-8");
+
+    assert!(
+        !content.contains("iter_tool_targets"),
+        "workspace DAG discovery must source from dsl/tools, not iter_tool_targets()"
+    );
+    assert!(
+        !content.contains("gunbc_tool_registry"),
+        "workspace DAG discovery must not import gunbc_tool_registry directly"
+    );
 }
 
 /// Every #[tool_target] builder function has at least one #[testgen_target]

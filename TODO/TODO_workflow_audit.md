@@ -2,6 +2,8 @@
 
 **Status**: Draft
 **Date**: 2026-02-07
+**DSL Alignment**: Migration inventory and sequencing input for DSL adoption
+**Track**: B — Migration Targets
 
 ## Goal
 

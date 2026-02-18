@@ -2,6 +2,8 @@
 
 **Status**: Draft (recommended migration plan; not implemented end-to-end)
 **Date**: 2026-02-14
+**DSL Alignment**: Transport execution model alignment with DSL testability guarantees
+**Track**: C — Modeling Foundation
 
 Feasibility analysis and migration plan for modeling transport executor
 behavior as DAG nodes, bringing the executor under the testgen umbrella.

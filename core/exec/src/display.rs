@@ -393,7 +393,14 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
         spinner.tick(now.saturating_duration_since(last_tick));
         last_tick = now;
 
-        render_progress_frame(&progress, &layout, &spinner, &mut writer, &mut stderr, &profile);
+        render_progress_frame(
+            &progress,
+            &layout,
+            &spinner,
+            &mut writer,
+            &mut stderr,
+            &profile,
+        );
 
         if matches!(
             progress.phase,

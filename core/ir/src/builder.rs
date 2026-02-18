@@ -28,7 +28,7 @@
 //! let dag = builder.build();
 //! ```
 
-use crate::dag::{Dag, Edge};
+use crate::dag::{Dag, Edge, EdgeKind};
 use crate::node::Node;
 use crate::type_registry::TypeRegistry;
 use crate::types::{Cardinality, NodeId, PortName, TypeId};
@@ -593,6 +593,7 @@ impl<T> DagBuilder<T> {
             to_node: to.node_id,
             to_port: to.port,
             index,
+            kind: EdgeKind::DataFlow,
         });
 
         Ok(())

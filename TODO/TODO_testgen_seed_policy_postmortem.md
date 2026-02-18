@@ -3,6 +3,8 @@
 **Status**: Partially complete (core fix landed; follow-up items open)
 Status date: 2026-02-12
 Owner: codegen/testgen + auth modeling
+**DSL Alignment**: Testgen correctness hardening for DSL-generated workflows
+**Track**: D — Runtime/Test Hardening
 
 ## Incident
 

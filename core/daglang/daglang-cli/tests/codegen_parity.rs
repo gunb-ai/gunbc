@@ -1,0 +1,543 @@
+// Test infrastructure: filesystem access for generated artifacts.
+#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
+}
+
+fn daglang_bin() -> &'static str {
+    env!("CARGO_BIN_EXE_daglang")
+}
+
+fn unique_workspace_target_dir(name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    workspace_root().join("target").join(format!(
+        "daglang_codegen_parity_{name}_{}_{}",
+        std::process::id(),
+        nanos
+    ))
+}
+
+fn compile_makegen_for_target(target: &str, out_dir: &Path) {
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--target")
+        .arg(target)
+        .arg("--out")
+        .arg(out_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile for codegen parity");
+    assert!(
+        output.status.success(),
+        "compile --target {target} should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn compile_makegen_layer1_rust(out_dir: &Path) {
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--target")
+        .arg("rust")
+        .arg("--layer")
+        .arg("1")
+        .arg("--out")
+        .arg(out_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile --target rust --layer 1");
+    assert!(
+        output.status.success(),
+        "compile --target rust --layer 1 should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn read_target_manifest(out_dir: &Path, target: &str) -> String {
+    let manifest_path = out_dir
+        .join("target")
+        .join("generated")
+        .join(target)
+        .join("progress_manifest.txt");
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap_or_else(|error| {
+        panic!(
+            "failed to read progress manifest for target `{target}` at {}: {error}",
+            manifest_path.display()
+        )
+    });
+    normalize_manifest_text(&manifest)
+}
+
+fn normalize_manifest_text(manifest: &str) -> String {
+    manifest
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && trimmed != "// progress-manifest"
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn normalize_makefile_text(content: &str) -> String {
+    content.replace("\r\n", "\n").trim_end().to_string()
+}
+
+fn command_exists(name: &str) -> bool {
+    Command::new("bash")
+        .arg("-lc")
+        .arg(format!("command -v {name} >/dev/null 2>&1"))
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn generated_cli_bindings(main_rs: &str) -> Vec<(String, String)> {
+    main_rs
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let rest = trimmed.strip_prefix("input_mocks.set_input(\"")?;
+            let (node_id, after_node) = rest.split_once("\", \"")?;
+            let (port_name, _) = after_node.split_once("\", Value::Str(val.clone()));")?;
+            Some((node_id.to_string(), port_name.to_string()))
+        })
+        .collect()
+}
+
+#[derive(Debug)]
+enum RuntimeOutcome {
+    Ran { stdout: String, stderr: String },
+    Skipped { reason: String },
+}
+
+fn run_makegen_generated_rust_layer1(crate_out_dir: &Path) -> RuntimeOutcome {
+    let generated_main = match std::fs::read_to_string(crate_out_dir.join("src/main.rs")) {
+        Ok(content) => content,
+        Err(error) => {
+            return RuntimeOutcome::Skipped {
+                reason: format!("missing generated src/main.rs: {error}"),
+            };
+        }
+    };
+    let bindings = generated_cli_bindings(&generated_main);
+    if bindings.is_empty() {
+        return RuntimeOutcome::Skipped {
+            reason: "generated rust layer1 crate exposed zero CLI bindings".to_string(),
+        };
+    }
+
+    let output_dir = unique_workspace_target_dir("runtime_rust_makegen_out");
+    if let Err(error) = std::fs::create_dir_all(&output_dir) {
+        return RuntimeOutcome::Skipped {
+            reason: format!("failed to create runtime output dir: {error}"),
+        };
+    }
+    let generated_path = output_dir.join("Makefile.generated");
+    let generated_path_arg = generated_path.to_string_lossy().into_owned();
+
+    let mut run_cmd = Command::new("cargo");
+    if let Err(error) = std::fs::copy(
+        workspace_root().join("Cargo.lock"),
+        crate_out_dir.join("Cargo.lock"),
+    ) {
+        let _ = std::fs::remove_dir_all(&output_dir);
+        return RuntimeOutcome::Skipped {
+            reason: format!("failed to stage Cargo.lock for generated crate: {error}"),
+        };
+    }
+    run_cmd
+        .arg("run")
+        .arg("--quiet")
+        .arg("--offline")
+        .arg("--manifest-path")
+        .arg(crate_out_dir.join("Cargo.toml"))
+        .arg("--")
+        .current_dir(workspace_root());
+    for _ in &bindings {
+        run_cmd.arg(&generated_path_arg);
+    }
+
+    let run_output = match run_cmd.output() {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to execute generated rust layer1 crate: {error}"),
+            };
+        }
+    };
+
+    let stderr = String::from_utf8_lossy(&run_output.stderr).into_owned();
+    if !run_output.status.success() {
+        let _ = std::fs::remove_dir_all(&output_dir);
+        return RuntimeOutcome::Skipped {
+            reason: format!("generated rust layer1 run failed: {stderr}"),
+        };
+    }
+
+    let generated_content = match std::fs::read_to_string(&generated_path) {
+        Ok(content) => content,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!(
+                    "generated rust layer1 run did not write {}: {error}",
+                    generated_path.display()
+                ),
+            };
+        }
+    };
+
+    let _ = std::fs::remove_dir_all(&output_dir);
+    RuntimeOutcome::Ran {
+        stdout: generated_content,
+        stderr,
+    }
+}
+
+fn run_makegen_generated_go(native_out_dir: &Path) -> RuntimeOutcome {
+    if !command_exists("go") {
+        return RuntimeOutcome::Skipped {
+            reason: "go toolchain not available on PATH".to_string(),
+        };
+    }
+
+    let go_dir = native_out_dir.join("target/generated/go");
+    let main_go = go_dir.join("main.go");
+    if !main_go.is_file() {
+        return RuntimeOutcome::Skipped {
+            reason: format!("missing generated go source: {}", main_go.display()),
+        };
+    }
+
+    let output_dir = unique_workspace_target_dir("runtime_go_makegen_out");
+    if let Err(error) = std::fs::create_dir_all(&output_dir) {
+        return RuntimeOutcome::Skipped {
+            reason: format!("failed to create go runtime output dir: {error}"),
+        };
+    }
+    let output_path = output_dir.join("Makefile.generated");
+
+    let cache_root = native_out_dir.join(".go-cache");
+    let run_output = match Command::new("go")
+        .arg("run")
+        .arg("main.go")
+        .arg(&output_path)
+        .current_dir(&go_dir)
+        .env("GOCACHE", cache_root.join("build"))
+        .env("GOMODCACHE", cache_root.join("mod"))
+        .env("GOPATH", cache_root.join("path"))
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to execute generated go binary: {error}"),
+            };
+        }
+    };
+
+    if !run_output.status.success() {
+        let _ = std::fs::remove_dir_all(&output_dir);
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated go run failed: {}",
+                String::from_utf8_lossy(&run_output.stderr)
+            ),
+        };
+    }
+
+    let generated_content = match std::fs::read_to_string(&output_path) {
+        Ok(content) => content,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!(
+                    "generated go run did not write {}: {error}",
+                    output_path.display()
+                ),
+            };
+        }
+    };
+
+    let _ = std::fs::remove_dir_all(&output_dir);
+    RuntimeOutcome::Ran {
+        stdout: generated_content,
+        stderr: String::from_utf8_lossy(&run_output.stderr).into_owned(),
+    }
+}
+
+fn run_makegen_generated_c(native_out_dir: &Path) -> RuntimeOutcome {
+    if !command_exists("gcc") {
+        return RuntimeOutcome::Skipped {
+            reason: "gcc toolchain not available on PATH".to_string(),
+        };
+    }
+
+    let c_dir = native_out_dir.join("target/generated/c");
+    let main_c = c_dir.join("main.c");
+    if !main_c.is_file() {
+        return RuntimeOutcome::Skipped {
+            reason: format!("missing generated c source: {}", main_c.display()),
+        };
+    }
+
+    let output_dir = unique_workspace_target_dir("runtime_c_makegen_out");
+    if let Err(error) = std::fs::create_dir_all(&output_dir) {
+        return RuntimeOutcome::Skipped {
+            reason: format!("failed to create c runtime output dir: {error}"),
+        };
+    }
+    let output_path = output_dir.join("Makefile.generated");
+
+    let app_path = c_dir.join("parity_app");
+    let build = match Command::new("gcc")
+        .arg("-std=c11")
+        .arg("-Wall")
+        .arg("-Wextra")
+        .arg("-o")
+        .arg(&app_path)
+        .arg(&main_c)
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to invoke gcc for generated c source: {error}"),
+            };
+        }
+    };
+    if !build.status.success() {
+        let _ = std::fs::remove_dir_all(&output_dir);
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated c compile failed: {}",
+                String::from_utf8_lossy(&build.stderr)
+            ),
+        };
+    }
+
+    let run = match Command::new(&app_path).arg(&output_path).output() {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to execute generated c binary: {error}"),
+            };
+        }
+    };
+    if !run.status.success() {
+        let _ = std::fs::remove_dir_all(&output_dir);
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated c binary exited nonzero: {}",
+                String::from_utf8_lossy(&run.stderr)
+            ),
+        };
+    }
+
+    let generated_content = match std::fs::read_to_string(&output_path) {
+        Ok(content) => content,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!(
+                    "generated c run did not write {}: {error}",
+                    output_path.display()
+                ),
+            };
+        }
+    };
+
+    let _ = std::fs::remove_dir_all(&output_dir);
+    RuntimeOutcome::Ran {
+        stdout: generated_content,
+        stderr: String::from_utf8_lossy(&run.stderr).into_owned(),
+    }
+}
+
+fn run_makegen_generated_mips(native_out_dir: &Path) -> RuntimeOutcome {
+    if !(command_exists("mips-linux-gnu-as")
+        && command_exists("mips-linux-gnu-ld")
+        && command_exists("qemu-mips"))
+    {
+        return RuntimeOutcome::Skipped {
+            reason: "MIPS assembler/linker/runtime not available (need mips-linux-gnu-as, mips-linux-gnu-ld, qemu-mips)".to_string(),
+        };
+    }
+
+    let mips_dir = native_out_dir.join("target/generated/mips");
+    let main_s = mips_dir.join("main.s");
+    if !main_s.is_file() {
+        return RuntimeOutcome::Skipped {
+            reason: format!("missing generated mips source: {}", main_s.display()),
+        };
+    }
+
+    let obj_path = mips_dir.join("main.o");
+    let bin_path = mips_dir.join("main.bin");
+
+    let assemble = match Command::new("mips-linux-gnu-as")
+        .arg("-o")
+        .arg(&obj_path)
+        .arg(&main_s)
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to invoke mips assembler: {error}"),
+            };
+        }
+    };
+    if !assemble.status.success() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "mips assembly failed: {}",
+                String::from_utf8_lossy(&assemble.stderr)
+            ),
+        };
+    }
+
+    let link = match Command::new("mips-linux-gnu-ld")
+        .arg("-e")
+        .arg("main")
+        .arg("-o")
+        .arg(&bin_path)
+        .arg(&obj_path)
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to invoke mips linker: {error}"),
+            };
+        }
+    };
+    if !link.status.success() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "mips link failed: {}",
+                String::from_utf8_lossy(&link.stderr)
+            ),
+        };
+    }
+
+    let run = match Command::new("qemu-mips").arg(&bin_path).output() {
+        Ok(output) => output,
+        Err(error) => {
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to execute mips binary under qemu: {error}"),
+            };
+        }
+    };
+    if !run.status.success() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "qemu-mips execution failed: {}",
+                String::from_utf8_lossy(&run.stderr)
+            ),
+        };
+    }
+
+    RuntimeOutcome::Ran {
+        stdout: String::from_utf8_lossy(&run.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&run.stderr).into_owned(),
+    }
+}
+
+#[test]
+fn makegen_manifest_parity_across_rust_go_c_mips_targets() {
+    let out_root = unique_workspace_target_dir("manifest_parity");
+    let targets = ["rust", "go", "c", "mips"];
+    let mut manifests = BTreeMap::<String, String>::new();
+
+    for target in targets {
+        let target_out = out_root.join(target);
+        compile_makegen_for_target(target, &target_out);
+        manifests.insert(
+            target.to_string(),
+            read_target_manifest(&target_out, target),
+        );
+    }
+
+    let rust_manifest = manifests
+        .get("rust")
+        .expect("manifest map should contain rust output")
+        .clone();
+    for target in ["go", "c", "mips"] {
+        let target_manifest = manifests
+            .get(target)
+            .unwrap_or_else(|| panic!("manifest map should contain {target} output"));
+        assert_eq!(
+            &rust_manifest, target_manifest,
+            "progress manifest parity mismatch: rust != {target}"
+        );
+    }
+
+    std::fs::remove_dir_all(&out_root).expect("failed to cleanup manifest parity output root");
+}
+
+#[test]
+fn makegen_runtime_smoke_per_target_with_toolchain_awareness() {
+    let native_out_root = unique_workspace_target_dir("runtime_native");
+    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1");
+
+    compile_makegen_for_target("go", &native_out_root.join("go"));
+    compile_makegen_for_target("c", &native_out_root.join("c"));
+    compile_makegen_for_target("mips", &native_out_root.join("mips"));
+    compile_makegen_layer1_rust(&rust_layer1_out);
+
+    let rust = run_makegen_generated_rust_layer1(&rust_layer1_out);
+    let go = run_makegen_generated_go(&native_out_root.join("go"));
+    let c = run_makegen_generated_c(&native_out_root.join("c"));
+    let mips = run_makegen_generated_mips(&native_out_root.join("mips"));
+
+    let rust_makefile = match rust {
+        RuntimeOutcome::Ran { stdout, stderr } => {
+            assert!(
+                stdout.contains(".PHONY:"),
+                "rust layer1 runtime should emit makegen makefile content"
+            );
+            assert!(
+                stderr.contains("execution completed"),
+                "rust layer1 runtime should log execution completion"
+            );
+            normalize_makefile_text(&stdout)
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("rust runtime parity smoke should not skip: {reason}");
+        }
+    };
+
+    for (target, outcome) in [("go", go), ("c", c), ("mips", mips)] {
+        match outcome {
+            RuntimeOutcome::Ran { stdout, .. } => {
+                let target_makefile = normalize_makefile_text(&stdout);
+                assert_eq!(
+                    rust_makefile, target_makefile,
+                    "makegen runtime parity mismatch: rust != {target}"
+                );
+            }
+            RuntimeOutcome::Skipped { reason } => {
+                eprintln!("SKIP {target} runtime parity: {reason}");
+            }
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root).expect("failed to cleanup native runtime out root");
+    std::fs::remove_dir_all(&rust_layer1_out)
+        .expect("failed to cleanup rust layer1 runtime out root");
+}

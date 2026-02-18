@@ -1,64 +1,76 @@
-# TODO — Active Plan Index
+# TODO — DSL Program Index
 
-Active and planned work items live in this folder. When a plan is complete,
-move it to `TODO/TODONE/`.
+This folder is now organized around the DSL adoption program.  
+Primary roadmap reference: `docs/design/v4/dsl-roadmap.md`.
 
-Last reconciled: 2026-02-14
+Last reconciled: 2026-02-18
 
-## Active Plans
+## Execution Order
 
-| Plan | Status | Notes |
-|------|--------|-------|
-| `TODO/TODO_URGENT_logging_consolidation.md` | Active | CI/local display + logging parity and failure-first output hardening |
-| `TODO/TODO_hacks.md` | Active | Consolidated runtime/design debt tracker |
-| `TODO/TODO_gcp_infra_parity.md` | In Progress | Primary implementation checklist for GCP infra parity |
-| `TODO/TODO_credential_lifecycle.md` | Draft | Architecture reset for auth/credential lifecycle |
-| `TODO/TODO_workflow_audit.md` | Draft | Workflow consolidation, purity/resource, parallelization roadmap |
-| `TODO/consolidation.md` | Ongoing | Broad consolidation + remaining design-dependent tasks |
-| `TODO/llm-code-review-pipeline.md` | V0 complete, Track 1 open | Resource abstraction track still pending |
-| `TODO/design-codegen-quality.md` | Active (ongoing concern) | Generated code quality and backend idiom coverage |
-| `TODO/TODO_transport_dag_migration.md` | Draft | Recommended migration plan, not implemented end-to-end |
-| `TODO/TODO_testgen_seed_policy_postmortem.md` | Partially complete | Core fix landed; follow-up hardening still open |
+1. Track A: DSL core compiler capabilities
+2. Track B: DSL migration targets (move existing Rust DAG graphs to `.dag`)
+3. Track C: modeling foundations needed for non-fragile DSL migration
+4. Track D: runtime/test hardening required for confident rollout
+5. Track E: domain parity and adjacent programs
+6. Track F: general debt ledger
 
-## Source Of Truth Notes
+## Track Definitions
 
-- For GCP infra execution progress, treat `TODO/TODO_gcp_infra_parity.md` as
-  the canonical tracker. `docs/design/gcp-service-modeling.md` is architecture
-  reference.
-- For completed work, prefer links under `TODO/TODONE/`; stale `TODO/...`
-  references should be updated during doc edits.
-- Hack debt is primarily tracked in `TODO/TODO_hacks.md`; root-level
-  `TODO_hacks` contains additional historical notes that may still have open
-  items.
+| Track | Purpose |
+|------|---------|
+| A — DSL Core | Language/compiler/runtime features needed by the roadmap |
+| B — Migration Targets | Existing workflows that should be rewritten in DSL now |
+| C — Modeling Foundation | Canonical models (platform, env, transport, composition) that remove stringly/manual wiring |
+| D — Runtime/Test Hardening | Logging, testgen, codegen quality, and execution safety for DSL-generated flows |
+| E — Domain Parity | Product/domain workstreams that should become DSL consumers over time |
+| F — Debt Ledger | Generic cleanup and fallback debt not tied to one feature |
 
-## Recently Moved To TODONE
+## Active Docs By Track
 
-- `TODO/TODONE/TODO_ci_timeout_fermi.md` (moved 2026-02-14)
-- `TODO/TODONE/TODO_remove_disallowed_methods_script.md` (moved 2026-02-14)
+| Doc | Track | DSL Alignment | Status |
+|-----|-------|---------------|--------|
+| `TODO/TODO_URGENT_dsl_migration.md` | B | Primary migration backlog | Active |
+| `TODO/TODO_workflow_audit.md` | B | Migration inventory + sequencing input | Draft |
+| `TODO/TODO_URGENT_anemic_modeling_audit.md` | C | Cross-cutting model consolidation | Active |
+| `TODO/TODO_URGENT_browser_modeling.md` | C | Platform/environment modeling prerequisite | Active |
+| `TODO/TODO_URGENT_platform_toolchain_modeling.md` | C | Target/platform/toolchain canonicalization | Active |
+| `TODO/TODO_transport_dag_migration.md` | C | Bring transport executor behavior into DAG/testing model | Draft |
+| `TODO/TODO_URGENT_logging_consolidation.md` | D | Execution observability hardening for generated workflows | Active |
+| `TODO/TODO_testgen_seed_policy_postmortem.md` | D | Testgen semantic input correctness | Partially complete |
+| `TODO/design-codegen-quality.md` | D | Generated code idiom/IR quality | Active |
+| `TODO/TODO_credential_lifecycle.md` | E | Credential/service modeling for DSL consumers | Draft |
+| `TODO/TODO_gcp_infra_parity.md` | E | Domain parity backlog (DSL consumer target) | In Progress |
+| `TODO/llm-code-review-pipeline.md` | E | Adjacent DAG pipeline architecture | V0 complete, follow-up open |
+| `TODO/consolidation.md` | F | Generic consolidation backlog | Ongoing |
+| `TODO/TODO_hacks.md` | F | Fallback/debt register | Active |
 
-## Plan Template
+## Conventions
+
+- Every active TODO doc should include:
+  - `Status`
+  - `Date` (or status date)
+  - `DSL Alignment`
+  - `Track`
+- Use `TODO_URGENT_*.md` only for blockers or high-priority prerequisites.
+- When complete, move docs to `TODO/TODONE/` and note completion date.
+- If a doc is superseded, keep a short pointer at the top to the new source.
+
+## Short Template
 
 ```markdown
-# [Feature Name]
+# [Title]
 
-**Status**: Draft | In Progress | Completed
+**Status**: Draft | Active | In Progress | Completed
 **Date**: YYYY-MM-DD
+**DSL Alignment**: [one line]
+**Track**: A | B | C | D | E | F
 
 ## Goal
 
-[What we're trying to achieve]
-
-## Design
-
-[Architecture, data models, diagrams]
+[Outcome]
 
 ## Tasks
 
 - [ ] Task A
 - [ ] Task B
-- [ ] Task C
-
-## Notes
-
-[Implementation notes, decisions made]
 ```

@@ -2,6 +2,8 @@
 
 **Status**: In Progress (planning + phased implementation tracker)
 **Date**: 2026-02-14
+**DSL Alignment**: Domain parity backlog; target DSL consumer after core migration tracks stabilize
+**Track**: E — Domain Parity
 
 ## Context
 

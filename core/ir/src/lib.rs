@@ -57,6 +57,7 @@ pub mod dag;
 pub mod dag_diff;
 pub mod dag_mermaid;
 pub mod dag_topology;
+pub mod effect;
 pub mod entrypoint;
 pub mod git;
 pub mod language;
@@ -66,6 +67,7 @@ pub mod makefile_render;
 pub mod node;
 pub mod patterns;
 pub mod plain_render;
+pub mod port_type;
 pub mod render_ir;
 pub mod resource;
 pub mod signature;
@@ -77,6 +79,7 @@ pub mod type_registry;
 pub mod types;
 pub mod validate;
 pub mod value;
+pub mod value_bridge;
 pub mod value_expr;
 
 // ── DSL codegen IR tiers (dsl-codegen-tasks.md) ────────────────────
@@ -109,12 +112,13 @@ pub use coerce::{
     CoercionKind, CoercionReport,
 };
 pub use contract::{BoundaryWitness, TypeContract};
-pub use dag::{build, canonical_edge_order, edges_to_port, Dag, Edge, Port};
+pub use dag::{build, canonical_edge_order, edges_to_port, Dag, Edge, EdgeKind, Port};
 pub use dag_diff::{diff_topologies, DagDiffResult, NodeChangeSummary, NodeDiffStatus, PortChange};
 pub use dag_mermaid::{
     render_changelog, to_mermaid_expanded_diff, to_mermaid_overview_diff, to_mermaid_snapshot,
 };
 pub use dag_topology::{DagTopology, EdgeTopology, NodeTopology, PortTopology};
+pub use effect::Effect;
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};
 pub use git::GitConfig;
 pub use layout::{
@@ -134,6 +138,7 @@ pub use patterns::{
     ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
 };
 pub use plain_render::PlainStructuredRenderer;
+pub use port_type::PortType;
 pub use render_ir::{
     AnsiText, Block, Category, CodeRenderer, CursorAction, DataNode, DataValue, Document,
     DocumentBody, DocumentRenderer, FileHeader, Frame, FrameRenderer, GraphicsElement,
@@ -164,6 +169,7 @@ pub use validate::{
     PortDirection, SubDagError, UnwiredResource,
 };
 pub use value::{SecretString, Value};
+pub use value_bridge::{classify_value, from_bridge_json, to_bridge_json, ValueCategory};
 pub use value_expr::ValueExpr;
 
 // Re-exports from language module for common use

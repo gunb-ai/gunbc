@@ -797,6 +797,7 @@ fn run(values: List<String>) -> String {
         &context,
         CompileOptions {
             emit_collection_nodes: true,
+            ..CompileOptions::default()
         },
     )
     .expect("compile should succeed with collection nodes");
@@ -1594,6 +1595,7 @@ fn run(values: List<String>) -> String {
         &context,
         CompileOptions {
             emit_collection_nodes: true,
+            ..CompileOptions::default()
         },
     )
     .expect("compile should succeed with collection option");

@@ -4,11 +4,33 @@
 //! any target-language syntax. A `TestFile` or `SourceFile` is rendered
 //! to source text by a `CodeRenderer` implementation.
 //!
+//! # Tier classification
+//!
+//! Each construct belongs to an abstraction tier:
+//!
+//! - **Tier 0 (AbstractIR)** — Universal: variables, calls, conditionals, loops.
+//!   Every target language can express these directly.
+//! - **Tier 1 (SystemsIR)** — Rust/C++ extensions: ownership (`Deref`, `Ref`,
+//!   `RefMut`), pattern matching (`Match`), implicit return (`TailExpr`),
+//!   macros (`MacroCall`), impl blocks, derive attributes.
+//! - **Tier 2 (ManagedIR)** — Go/Python: see [`go_ir`](crate::go_ir).
+//! - **Tier 3 (CStyleIR)** — C: malloc/free, pointers, goto/label, typedef.
+//!   See [`c_ir`].
+//! - **Tier 4 (RegisterIR)** — MIPS/x86: registers, instructions, syscalls.
+//!   See [`register_ir`].
+//!
+//! Lowering flows downward: AbstractIR → SystemsIR/ManagedIR → CStyleIR → RegisterIR.
+//! The lowering trait is defined in [`lower`].
+//!
 //! # History
 //!
 //! The test-specific types (`TestFile`, `Stmt`, `Expr`, `Assert`) were
 //! originally in `gunbc-codegen::testgen::test_ir`. They were moved here
 //! in Phase 2 to be shared across testgen, dag_gen, and cli_gen.
+
+pub mod c_ir;
+pub mod lower;
+pub mod register_ir;
 
 use crate::ValueExpr;
 
@@ -77,33 +99,35 @@ pub struct TestFn {
 // ===========================================================================
 
 /// A statement in generated code.
+///
+/// Variants are annotated with their abstraction tier.
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    /// Variable binding: `let [mut] name = expr;`
+    /// **Tier 0.** Variable binding: `let [mut] name = expr;`
     Let {
         name: String,
         mutable: bool,
         expr: Expr,
     },
-    /// Expression as statement (for side effects like `map.insert(...)`).
+    /// **Tier 0.** Expression as statement (for side effects like `map.insert(...)`).
     Expr(Expr),
-    /// An assertion.
+    /// **Tier 0.** An assertion.
     Assert(Assert),
-    /// A comment line.
+    /// **Tier 0.** A comment line.
     Comment(String),
-    /// Blank line for readability.
+    /// **Tier 0.** Blank line for readability.
     Blank,
-    /// Explicit return statement.
+    /// **Tier 0.** Explicit return statement.
     Return(Expr),
-    /// Implicit return: final expression without semicolon (Rust idiom).
+    /// **Tier 1 (SystemsIR).** Implicit return: final expression without semicolon (Rust idiom).
     TailExpr(Expr),
-    /// For loop: `for binding in iter { body }`.
+    /// **Tier 0.** For loop: `for binding in iter { body }`.
     For {
         binding: String,
         iter: Expr,
         body: Vec<Stmt>,
     },
-    /// Nested item (e.g., inner function).
+    /// **Tier 0.** Nested item (e.g., inner function).
     Item(Item),
 }
 
@@ -112,74 +136,76 @@ pub enum Stmt {
 // ===========================================================================
 
 /// An expression in generated code.
+///
+/// Variants are annotated with their abstraction tier.
 #[derive(Debug, Clone)]
 pub enum Expr {
-    /// A value literal.
+    /// **Tier 0.** A value literal.
     Value(ValueExpr),
-    /// A variable reference.
+    /// **Tier 0.** A variable reference.
     Var(String),
-    /// A string literal (for keys, messages, identifiers — not Value::Str).
+    /// **Tier 0.** A string literal (for keys, messages, identifiers — not Value::Str).
     Str(String),
-    /// Function call: `func(args...)`.
+    /// **Tier 0.** Function call: `func(args...)`.
     Call { func: Box<Expr>, args: Vec<Expr> },
-    /// Method call: `receiver.method(args...)`.
+    /// **Tier 0.** Method call: `receiver.method(args...)`.
     MethodCall {
         receiver: Box<Expr>,
         method: String,
         args: Vec<Expr>,
     },
-    /// Field access: `expr.field`.
+    /// **Tier 0.** Field access: `expr.field`.
     Field(Box<Expr>, String),
-    /// Dereference: `*expr`.
+    /// **Tier 1 (SystemsIR).** Dereference: `*expr`.
     Deref(Box<Expr>),
-    /// Reference: `&expr`.
+    /// **Tier 1 (SystemsIR).** Reference: `&expr`.
     Ref(Box<Expr>),
-    /// Mutable reference: `&mut expr`.
+    /// **Tier 1 (SystemsIR).** Mutable reference: `&mut expr`.
     RefMut(Box<Expr>),
-    /// Path expression: `path::to::Item` (for enum variants, associated fns).
+    /// **Tier 1 (SystemsIR).** Path expression: `path::to::Item` (for enum variants, associated fns).
     Path(Vec<String>),
-    /// Struct construction: `Name { field: value, ... }`.
+    /// **Tier 0.** Struct construction: `Name { field: value, ... }`.
     Struct {
         name: String,
         fields: Vec<(String, Expr)>,
     },
-    /// Closure/lambda: `|args| body` / `lambda args: body`.
+    /// **Tier 0.** Closure/lambda: `|args| body` / `lambda args: body`.
     Closure { args: Vec<String>, body: Box<Expr> },
-    /// Binary operation: `left op right` (e.g., `n >= 2`, `a == b`).
+    /// **Tier 0.** Binary operation: `left op right` (e.g., `n >= 2`, `a == b`).
     BinOp {
         left: Box<Expr>,
         op: String,
         right: Box<Expr>,
     },
-    /// Unary operation: `op expr` (e.g., `!flag`).
+    /// **Tier 0.** Unary operation: `op expr` (e.g., `!flag`).
     UnaryOp { op: String, expr: Box<Expr> },
-    /// Bare integer literal (not `Value::Int`). For use in expressions
+    /// **Tier 0.** Bare integer literal (not `Value::Int`). For use in expressions
     /// operating on unwrapped values (e.g., closure bodies after `as_int()`).
     IntLit(i64),
-    /// Bare boolean literal (true/false).
+    /// **Tier 0.** Bare boolean literal (true/false).
     BoolLit(bool),
-    /// Match expression: `match expr { arms }`.
+    /// **Tier 1 (SystemsIR).** Match expression: `match expr { arms }`.
     Match {
         expr: Box<Expr>,
         arms: Vec<MatchArm>,
     },
-    /// If expression: `if cond { then } else { else }`.
+    /// **Tier 0.** If expression: `if cond { then } else { else }`.
     If {
         cond: Box<Expr>,
         then_body: Vec<Stmt>,
         else_body: Option<Vec<Stmt>>,
     },
-    /// Block expression: `{ stmts }`.
+    /// **Tier 0.** Block expression: `{ stmts }`.
     Block(Vec<Stmt>),
-    /// format!() macro: `format!("template", args...)`.
+    /// **Tier 0.** Format string: `format!("template", args...)` / `fmt.Sprintf(...)` / `f"..."`.
     FormatStr { template: String, args: Vec<Expr> },
-    /// General macro invocation: `name!(args...)`.
+    /// **Tier 1 (SystemsIR).** General macro invocation: `name!(args...)`.
     MacroCall { name: String, args: Vec<Expr> },
-    /// Tuple expression: `(a, b, c)`.
+    /// **Tier 0.** Tuple expression: `(a, b, c)`.
     Tuple(Vec<Expr>),
-    /// Array expression: `[a, b, c]`.
+    /// **Tier 0.** Array expression: `[a, b, c]`.
     Array(Vec<Expr>),
-    /// Escape hatch for complex expressions that don't fit the IR.
+    /// **Tier 0.** Escape hatch for complex expressions that don't fit the IR.
     RawCode(String),
 }
 
@@ -226,18 +252,25 @@ pub struct MatchArm {
 // ===========================================================================
 
 /// Top-level items in a source file.
+///
+/// Variants are annotated with their abstraction tier.
 #[derive(Debug, Clone)]
 pub enum Item {
+    /// **Tier 0.** Module import.
     Use(Import),
+    /// **Tier 0.** Function definition.
     Fn(FnDef),
+    /// **Tier 0.** Enum definition.
     Enum(EnumDef),
+    /// **Tier 1 (SystemsIR).** Impl block (Rust trait implementations).
     Impl(ImplBlock),
+    /// **Tier 0.** Struct definition.
     Struct(StructDef),
-    /// Escape hatch for complex constructs.
+    /// **Tier 0.** Escape hatch for complex constructs.
     Raw(String),
 }
 
-/// A function definition.
+/// **Tier 0** (core) / **Tier 1** (`attributes` field). A function definition.
 #[derive(Debug, Clone)]
 pub struct FnDef {
     pub name: String,
@@ -248,15 +281,16 @@ pub struct FnDef {
     pub body: Vec<Stmt>,
     /// Doc comment lines.
     pub doc: Vec<String>,
-    /// Attributes (e.g., "#[test]", "#[derive(Debug)]").
+    /// **Tier 1 (SystemsIR).** Attributes (e.g., `#[test]`, `#[derive(Debug)]`).
     pub attributes: Vec<String>,
 }
 
-/// An enum definition.
+/// **Tier 0** (core) / **Tier 1** (`derives` field). An enum definition.
 #[derive(Debug, Clone)]
 pub struct EnumDef {
     pub name: String,
     pub is_pub: bool,
+    /// **Tier 1 (SystemsIR).** Derive macros (e.g., `Debug`, `Clone`).
     pub derives: Vec<String>,
     /// Variant text (e.g., "Primitive(PrimitiveOp)").
     pub variants: Vec<String>,
@@ -272,11 +306,12 @@ pub struct ImplBlock {
     pub items: Vec<FnDef>,
 }
 
-/// A struct definition.
+/// **Tier 0** (core) / **Tier 1** (`derives` field). A struct definition.
 #[derive(Debug, Clone)]
 pub struct StructDef {
     pub name: String,
     pub is_pub: bool,
+    /// **Tier 1 (SystemsIR).** Derive macros (e.g., `Debug`, `Clone`).
     pub derives: Vec<String>,
     /// Fields: (name, type, is_pub).
     pub fields: Vec<(String, String, bool)>,
@@ -291,6 +326,79 @@ pub struct SourceFile {
     pub doc: Vec<String>,
     /// Top-level items.
     pub items: Vec<Item>,
+}
+
+// ===========================================================================
+// Tier checks
+// ===========================================================================
+
+/// Returns `true` when a statement is expressible in Tier 0 (AbstractIR).
+pub fn is_abstract(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::Let { expr, .. } | Stmt::Expr(expr) | Stmt::Return(expr) => is_abstract_expr(expr),
+        Stmt::Assert(assertion) => is_abstract_assert(assertion),
+        Stmt::Comment(_) | Stmt::Blank => true,
+        Stmt::TailExpr(_) => false,
+        Stmt::For { iter, body, .. } => is_abstract_expr(iter) && body.iter().all(is_abstract),
+        Stmt::Item(item) => is_abstract_item(item),
+    }
+}
+
+/// Returns `true` when an expression is expressible in Tier 0 (AbstractIR).
+pub fn is_abstract_expr(expr: &Expr) -> bool {
+    match expr {
+        Expr::Value(_) | Expr::Var(_) | Expr::Str(_) | Expr::IntLit(_) | Expr::BoolLit(_) => true,
+        Expr::Call { func, args } => is_abstract_expr(func) && args.iter().all(is_abstract_expr),
+        Expr::MethodCall { receiver, args, .. } => {
+            is_abstract_expr(receiver) && args.iter().all(is_abstract_expr)
+        }
+        Expr::Field(receiver, _) => is_abstract_expr(receiver),
+        Expr::Struct { fields, .. } => fields.iter().all(|(_, value)| is_abstract_expr(value)),
+        Expr::Closure { body, .. } => is_abstract_expr(body),
+        Expr::BinOp { left, right, .. } => is_abstract_expr(left) && is_abstract_expr(right),
+        Expr::UnaryOp { expr, .. } => is_abstract_expr(expr),
+        Expr::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            is_abstract_expr(cond)
+                && then_body.iter().all(is_abstract)
+                && else_body
+                    .as_ref()
+                    .is_none_or(|body| body.iter().all(is_abstract))
+        }
+        Expr::Block(stmts) => stmts.iter().all(is_abstract),
+        Expr::FormatStr { args, .. } => args.iter().all(is_abstract_expr),
+        Expr::Tuple(values) | Expr::Array(values) => values.iter().all(is_abstract_expr),
+        Expr::Deref(_)
+        | Expr::Ref(_)
+        | Expr::RefMut(_)
+        | Expr::Path(_)
+        | Expr::Match { .. }
+        | Expr::MacroCall { .. }
+        | Expr::RawCode(_) => false,
+    }
+}
+
+fn is_abstract_assert(assertion: &Assert) -> bool {
+    match assertion {
+        Assert::Eq { left, right, .. } => is_abstract_expr(left) && is_abstract_expr(right),
+        Assert::True { expr, .. } | Assert::NonEmpty { expr, .. } => is_abstract_expr(expr),
+        Assert::Contains { expr, .. } => is_abstract_expr(expr),
+    }
+}
+
+fn is_abstract_item(item: &Item) -> bool {
+    match item {
+        Item::Use(_) => true,
+        Item::Fn(function) => {
+            function.attributes.is_empty() && function.body.iter().all(is_abstract)
+        }
+        Item::Enum(definition) => definition.derives.is_empty(),
+        Item::Struct(definition) => definition.derives.is_empty(),
+        Item::Impl(_) | Item::Raw(_) => false,
+    }
 }
 
 // ===========================================================================
@@ -425,5 +533,43 @@ impl Stmt {
     /// Implicit return: `expr` (no semicolon, no return keyword).
     pub fn tail(expr: Expr) -> Self {
         Stmt::TailExpr(expr)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn abstract_stmt_let_is_true() {
+        let stmt = Stmt::let_bind("value", Expr::int(1));
+        assert!(is_abstract(&stmt));
+    }
+
+    #[test]
+    fn systems_stmt_tail_expr_is_false() {
+        let stmt = Stmt::tail(Expr::int(1));
+        assert!(!is_abstract(&stmt));
+    }
+
+    #[test]
+    fn abstract_expr_call_is_true() {
+        let expr = Expr::call("render", vec![Expr::str_lit("input")]);
+        assert!(is_abstract_expr(&expr));
+    }
+
+    #[test]
+    fn systems_expr_deref_is_false() {
+        let expr = Expr::Deref(Box::new(Expr::var("ptr")));
+        assert!(!is_abstract_expr(&expr));
+    }
+
+    #[test]
+    fn systems_expr_macro_call_is_false() {
+        let expr = Expr::MacroCall {
+            name: "format".to_string(),
+            args: vec![Expr::str_lit("hello")],
+        };
+        assert!(!is_abstract_expr(&expr));
     }
 }

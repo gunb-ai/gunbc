@@ -15,7 +15,8 @@ use crate::language::LanguageOp;
 use crate::node::Node;
 
 /// Type mappings for a specific language.
-#[cfg(test)]
+/// Aligned with `gunbai-integrations-contracts::TypeSystemMapping` from
+/// the-gunbai for cross-repo compatibility (F2.3).
 #[derive(Debug, Clone)]
 pub struct TypeMapping {
     pub string: &'static str,

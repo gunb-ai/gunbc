@@ -1,5 +1,11 @@
 # URGENT: DSL Migration Checklist
 
+**Status**: Active
+**Date**: 2026-02-17
+**Priority**: High
+**DSL Alignment**: Primary DSL migration backlog
+**Track**: B — Migration Targets
+
 Hand-rolled patterns that should migrate to daglang as the compiler matures.
 
 ## Ready Now (DSL has the primitives)

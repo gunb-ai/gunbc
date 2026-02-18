@@ -3,6 +3,8 @@
 **Status**: Active
 **Date**: 2026-02-07
 **Last reconciled**: 2026-02-13 (external review cross-checked against codebase)
+**DSL Alignment**: Debt ledger; prioritize items that block DSL migration tracks
+**Track**: F — Debt Ledger
 
 Sweep of explicit fallbacks and "best effort" behaviors in the codebase and
 recent changes. These are not necessarily bugs, but they are places where

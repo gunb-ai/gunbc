@@ -32,12 +32,7 @@ pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineC
 }
 
 pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, CompileError> {
-    compile_from_context_with_options(
-        context,
-        CompileOptions {
-            emit_collection_nodes: false,
-        },
-    )
+    compile_from_context_with_options(context, CompileOptions::default())
 }
 
 pub fn compile_from_context_with_options(

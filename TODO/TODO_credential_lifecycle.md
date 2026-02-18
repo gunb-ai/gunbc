@@ -4,6 +4,8 @@
 Status date: 2026-02-12  
 Owner: runtime/auth modeling  
 Supersedes: checklist-style convergence tracker version
+**DSL Alignment**: Credential/service lifecycle modeling for future DSL service consumers
+**Track**: E — Domain Parity
 
 ## Why This Rewrite Exists
 

@@ -193,10 +193,59 @@ impl<T> Dag<T> {
     }
 }
 
+/// The semantic kind of an edge.
+///
+/// Aligned with `gunbai-ir::EdgeKind` from the-gunbai for cross-repo compatibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum EdgeKind {
+    /// Data flow edge (default) — carries a value from output port to input port.
+    /// Creates both a data dependency and an ordering dependency.
+    #[default]
+    DataFlow,
+    /// Control/ordering edge — creates an ordering dependency without data transfer.
+    /// The source must complete before the target can start, but no value flows.
+    /// Used for sequencing side effects (e.g., "write file before read file").
+    Control,
+    /// Trigger gate edge — control flow with conditional execution.
+    /// The target node only executes if the source outputs a truthy value.
+    /// If the source outputs false/null, the target is skipped.
+    TriggerGate,
+}
+
+impl EdgeKind {
+    /// Whether this edge carries a data value.
+    pub fn carries_data(&self) -> bool {
+        matches!(self, EdgeKind::DataFlow | EdgeKind::TriggerGate)
+    }
+
+    /// Whether this edge creates an ordering dependency (always true).
+    pub fn creates_ordering(&self) -> bool {
+        true
+    }
+
+    /// Whether this edge gates execution of the target node.
+    pub fn is_gating(&self) -> bool {
+        matches!(self, EdgeKind::TriggerGate)
+    }
+}
+
+impl std::fmt::Display for EdgeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EdgeKind::DataFlow => write!(f, "DataFlow"),
+            EdgeKind::Control => write!(f, "Control"),
+            EdgeKind::TriggerGate => write!(f, "TriggerGate"),
+        }
+    }
+}
+
 /// An edge connecting an output port of one node to an input port of another.
 ///
 /// The `index` field provides a tie-breaker for canonical ordering when multiple
 /// edges have the same source node/port. This ensures deterministic fan-in collection.
+///
+/// The `kind` field classifies edge semantics (data flow, control, trigger gate).
+/// Defaults to `DataFlow` for backward compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Edge {
     pub from_node: NodeId,
@@ -206,6 +255,9 @@ pub struct Edge {
     /// Index for canonical ordering (tie-breaker for edges with same source)
     #[serde(default)]
     pub index: usize,
+    /// Semantic kind of this edge. Defaults to `DataFlow`.
+    #[serde(default)]
+    pub kind: EdgeKind,
 }
 
 impl Edge {
@@ -221,6 +273,41 @@ impl Edge {
             to_node: to_node.into(),
             to_port: to_port.into(),
             index: 0,
+            kind: EdgeKind::DataFlow,
+        }
+    }
+
+    /// Create a control edge (ordering dependency, no data transfer).
+    pub fn control(
+        from_node: impl Into<NodeId>,
+        from_port: impl Into<PortName>,
+        to_node: impl Into<NodeId>,
+        to_port: impl Into<PortName>,
+    ) -> Self {
+        Self {
+            from_node: from_node.into(),
+            from_port: from_port.into(),
+            to_node: to_node.into(),
+            to_port: to_port.into(),
+            index: 0,
+            kind: EdgeKind::Control,
+        }
+    }
+
+    /// Create a trigger gate edge (conditional execution).
+    pub fn trigger(
+        from_node: impl Into<NodeId>,
+        from_port: impl Into<PortName>,
+        to_node: impl Into<NodeId>,
+        to_port: impl Into<PortName>,
+    ) -> Self {
+        Self {
+            from_node: from_node.into(),
+            from_port: from_port.into(),
+            to_node: to_node.into(),
+            to_port: to_port.into(),
+            index: 0,
+            kind: EdgeKind::TriggerGate,
         }
     }
 
@@ -238,7 +325,18 @@ impl Edge {
             to_node: to_node.into(),
             to_port: to_port.into(),
             index,
+            kind: EdgeKind::DataFlow,
         }
+    }
+
+    /// Whether this edge carries a data value.
+    pub fn carries_data(&self) -> bool {
+        self.kind.carries_data()
+    }
+
+    /// Whether this edge gates execution of the target node.
+    pub fn is_gating(&self) -> bool {
+        self.kind.is_gating()
     }
 
     /// Get the canonical sort key for this edge.

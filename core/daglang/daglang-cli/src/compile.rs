@@ -6,7 +6,9 @@ pub use context::{
     build_context, check_from_context, compile_from_context, compile_from_context_with_options,
     compile_resolve_execute_from_context, execute_resolved_dag,
 };
-pub use daglang_driver::{CheckOutput, CompileError, CompileOptions, CompileOutput};
+pub use daglang_driver::{
+    CheckOutput, CodegenLayer, CodegenTarget, CompileError, CompileOptions, CompileOutput,
+};
 pub use daglang_exec_bridge::{
     makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks, makegen_entrypoint_mocks,
     resolve_lowered_dag, ResolveDagError, ResolvedOp,

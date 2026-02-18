@@ -2,6 +2,8 @@
 
 **Status**: Active (ongoing concern)
 **Date**: 2026-02-05
+**DSL Alignment**: Backend/codegen quality required for confident DSL emission parity
+**Track**: D — Runtime/Test Hardening
 
 ## Problem Statement
 

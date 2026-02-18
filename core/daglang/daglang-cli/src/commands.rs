@@ -158,23 +158,44 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let parsed = parse_compile_command_args(
                 "compile",
                 args,
-                "compile <file.dag|dir> [--emit-collection-nodes]",
+                "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]",
                 false,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
-            let output = compile_target_or_exit_with_options(
-                cwd,
-                parsed.input.as_ref(),
-                parsed.emit_collection_nodes,
-            );
+            let options = CompileOptions {
+                emit_collection_nodes: parsed.emit_collection_nodes,
+                target: parsed.target.unwrap_or_default(),
+                layer: parsed.layer.unwrap_or_default(),
+            };
+            let output =
+                compile_target_or_exit_with_compile_options(cwd, parsed.input.as_ref(), options);
+            let written_files = if let Some(out_dir) = parsed.out_dir.as_ref() {
+                match write_emitted_files(cwd, out_dir, &output.emitted.files) {
+                    Ok(files) => files,
+                    Err(error) => {
+                        eprintln!("{error}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                Vec::new()
+            };
             println!(
-                "Compiled {} module(s) to {} node(s), {} file(s) emitted.",
+                "Compiled {} module(s) to {} node(s), {} file(s) emitted (target={} layer={}).",
                 output.emitted.summary.module_count,
                 output.derived.manifest.total_nodes,
-                output.emitted.files.len()
+                output.emitted.files.len(),
+                options.target,
+                options.layer
             );
-            for file in &output.emitted.files {
-                println!("  - {}", file.path);
+            if parsed.out_dir.is_some() {
+                for file in &written_files {
+                    println!("  - {}", file.display());
+                }
+            } else {
+                for file in &output.emitted.files {
+                    println!("  - {}", file.path);
+                }
             }
         }
         "run" => {
@@ -198,24 +219,11 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 }
             };
             let context = build_context(cwd, Some(&parsed.input_path));
-            let output = match compile_from_context(&context) {
-                Ok(output) => output,
-                Err(error) => {
-                    eprintln!("{error}");
-                    std::process::exit(1);
-                }
-            };
-            let resolved = match resolve_lowered_dag(&output.lowered_dag) {
-                Ok(resolved) => resolved,
-                Err(error) => {
-                    eprintln!("resolve error: {error}");
-                    std::process::exit(1);
-                }
-            };
-            let log = match execute_resolved_dag(&resolved, mode, Some(&input_mocks)) {
+            let log = match compile_resolve_execute_from_context(&context, mode, Some(&input_mocks))
+            {
                 Ok(log) => log,
                 Err(error) => {
-                    eprintln!("execution error: {error}");
+                    eprintln!("{error}");
                     std::process::exit(1);
                 }
             };
