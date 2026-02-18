@@ -2,14 +2,23 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use daglang_resolve::ModuleGraph;
+use gunbc_ir::WorkspaceLayout;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::{Command, Output};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
+    static WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
+    WORKSPACE_ROOT
+        .get_or_init(|| {
+            WorkspaceLayout::from_env_manifest_dir()
+                .expect("resolve workspace layout")
+                .workspace_root
+        })
+        .clone()
 }
 
 fn daglang_bin() -> &'static str {

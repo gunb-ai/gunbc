@@ -620,7 +620,7 @@ Derive them from `WorkspaceLayout` crate locations.
 Eliminate `CARGO_MANIFEST_DIR` + `join("../../..")` patterns and `parent().parent()` chains.
 
 - [ ] C7.4a — Replace `dsl_tools_root()` / `dsl_pipelines_root()` in `subdags/mod.rs`
-- [ ] C7.4b — Replace `workspace_root()` helpers in daglang-cli tests (7+ sites)
+- [x] C7.4b — Replace `workspace_root()` helpers in daglang-cli tests (7+ sites)
 - [x] C7.4c — Replace `repo_root()` in `lib/transport/src/pragma_lint.rs`
 - [ ] C7.4d — Replace hardcoded `CODEGEN_OUT_DIR` / `CODEGEN_BIN_DIR` constants
 
