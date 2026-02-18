@@ -696,21 +696,17 @@ values without the marker are rejected:
 
 ---
 
-## 35. Compound shell commands should be replaced with native Rust — PARTIAL
+## ~~35. Compound shell commands should be replaced with native Rust~~ RESOLVED (2026-02-18)
 
 **Where**: `lib/tools/gist/src/graph.rs`
 
-**What happens**: `execute_prepare_read_files` builds a shell script that concatenates N
-`echo marker; cat file` commands joined with `;`. This exists because we
-need the contents of N files and chose to batch them into one shell call.
-
-**Update (2026-02-14)**: Snapshot-mode runtime reads now use per-file native
-`TransportRequest::File(FileRequest::read(...))` in the active LoopBuilder
-path. The legacy batch helpers still exist but are no longer the active
-snapshot execution path.
-
-**Files**:
-- lib/tools/gist/src/graph.rs (`execute_prepare_read_files`, ~line 150)
-- lib/tools/gist/src/graph.rs (`execute_parse_read_files`, ~line 207)
+**What changed**:
+- Removed legacy batch-read helpers (`execute_prepare_read_files`,
+  `execute_parse_read_files`) and their enum variants (`PrepareReadFiles`,
+  `ParseReadFiles`) from `GistGraphOp`.
+- Snapshot-mode file acquisition now has a single implementation path:
+  per-file loop execution (`PrepareReadFile -> Transport(file read) -> ParseReadFile`)
+  plus `CollectFileContents`.
+- Updated graph docs/comments to reflect the loop-native transport pattern.
 
 **Added**: 2026-02-14 (consolidated from root TODO_hacks)

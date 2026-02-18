@@ -7,7 +7,7 @@
 //!
 //! All I/O happens through explicit `TransportOps::Execute` nodes:
 //! - ListFiles: PrepareListFiles -> Execute -> ParseListFiles
-//! - ReadFiles: PrepareReadFiles -> Execute -> ParseReadFiles (with loop)
+//! - ReadFiles: per-file loop (`PrepareReadFile -> Execute -> ParseReadFile`)
 //! - Gist creation: PrepareRequest -> Execute
 
 use gunbc_exec::{
@@ -83,17 +83,6 @@ pub enum GistGraphOp {
     FsEnv(FsEnv),
 
     // ========================================================================
-    // ReadFiles chain (batch): PrepareReadFiles -> Execute -> ParseReadFiles
-    // Legacy batch approach — retained for potential bulk-read scenarios.
-    // ========================================================================
-    /// Prepare batch file read request (PURE - no I/O)
-    /// Takes file list and repo_path, outputs shell command to read files
-    PrepareReadFiles,
-    /// Parse batch file read response (PURE - no I/O)
-    /// Takes shell response, outputs contents map
-    ParseReadFiles,
-
-    // ========================================================================
     // Single-file operations (used by LoopBuilder in snapshot mode)
     // ========================================================================
     /// Prepare single file read request (PURE - no I/O)
@@ -154,10 +143,6 @@ impl Executable for GistGraphOp {
             // Environment ops (resource acquisition)
             GistGraphOp::FsEnv(op) => op.execute(inputs),
 
-            // ReadFiles chain - batch (pure)
-            GistGraphOp::PrepareReadFiles => execute_prepare_read_files(inputs),
-            GistGraphOp::ParseReadFiles => execute_parse_read_files(inputs),
-
             // Single-file operations (pure)
             GistGraphOp::PrepareReadFile => execute_prepare_read_file(inputs),
             GistGraphOp::ParseReadFile => execute_parse_read_file(inputs),
@@ -177,141 +162,6 @@ impl Executable for GistGraphOp {
             GistGraphOp::BranchResolution(op) => op.execute(inputs),
         }
     }
-}
-
-// ============================================================================
-// PrepareReadFiles - PURE (builds batch file read shell command)
-// ============================================================================
-
-/// File marker used to delimit files in batch read output.
-const FILE_MARKER: &str = "===GUNBC_FILE:";
-const FILE_MARKER_END: &str = "===";
-
-/// Prepare batch file read request (PURE - no I/O).
-///
-/// Creates a shell command that reads all files with markers for parsing.
-///
-/// Inputs:
-/// - files: list of file paths to read
-/// - repo_path: base path
-///
-/// Outputs:
-/// - request: TransportRequest (shell command to read files)
-fn execute_prepare_read_files(
-    inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    if matches!(inputs.get("files"), Some(Value::List(items)) if items.iter().any(|v| matches!(v, Value::Skipped)))
-    {
-        return OutputMap::new().value("request", Value::Skipped).ok();
-    }
-    if let Some(result) = propagate_skipped(&inputs, "files", &["request"]) {
-        return result;
-    }
-    let files = optional_str_list_strict(&inputs, "files")?.unwrap_or_default();
-
-    let repo_path = require_str(&inputs, "repo_path")?;
-
-    // Build full paths
-    let full_paths: Vec<String> = files
-        .iter()
-        .map(|f| {
-            if repo_path == "." {
-                f.clone()
-            } else {
-                format!("{}/{}", repo_path, f)
-            }
-        })
-        .collect();
-
-    // Create a shell command that reads each file with markers
-    // Format: for each file, output "===GUNBC_FILE:filename===" then file content
-    // Use bash -c with a heredoc-style approach for reliability
-    let script = full_paths
-        .iter()
-        .zip(files.iter())
-        .map(|(full_path, original_name)| {
-            // Use the original name (not full path) as the key for the map
-            format!(
-                "echo '{}{}{}'; cat '{}' 2>/dev/null || true",
-                FILE_MARKER, original_name, FILE_MARKER_END, full_path
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("; ");
-
-    let request = ShellRequest::new("sh")
-        .args(["-c", &script])
-        .into_transport_request();
-
-    OutputMap::new()
-        .request("request", request)
-        .bool("skip", false)
-        .ok()
-}
-
-// ============================================================================
-// ParseReadFiles - PURE (parses batch file read response)
-// ============================================================================
-
-/// Parse batch file read response to contents map (PURE - no I/O).
-///
-/// Inputs:
-/// - response: TransportResponse from batch file read
-///
-/// Outputs:
-/// - contents: map of filename -> content
-fn execute_parse_read_files(
-    inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) = propagate_skipped(&inputs, "response", &["contents"]) {
-        return result;
-    }
-    let response = require_response(&inputs, "response")?;
-    let shell = response.require_shell()?;
-    let stdout = shell.stdout.clone();
-
-    // Parse the output: look for ===GUNBC_FILE:name=== markers
-    let mut contents = BTreeMap::new();
-    let mut current_file: Option<String> = None;
-    let mut current_content = String::new();
-
-    for line in stdout.lines() {
-        if line.starts_with(FILE_MARKER) && line.ends_with(FILE_MARKER_END) {
-            // Save previous file if any
-            if let Some(filename) = current_file.take() {
-                // Trim trailing newline from content
-                let content = current_content.trim_end().to_string();
-                if !content.is_empty() {
-                    contents.insert(filename, content);
-                }
-            }
-
-            // Extract new filename
-            let name = line
-                .strip_prefix(FILE_MARKER)
-                .and_then(|s| s.strip_suffix(FILE_MARKER_END))
-                .unwrap_or("")
-                .to_string();
-            current_file = Some(name);
-            current_content = String::new();
-        } else if current_file.is_some() {
-            // Append to current file content
-            if !current_content.is_empty() {
-                current_content.push('\n');
-            }
-            current_content.push_str(line);
-        }
-    }
-
-    // Save last file
-    if let Some(filename) = current_file {
-        let content = current_content.trim_end().to_string();
-        if !content.is_empty() {
-            contents.insert(filename, content);
-        }
-    }
-
-    OutputMap::new().map_str_str("contents", contents).ok()
 }
 
 // ============================================================================
@@ -944,22 +794,6 @@ impl Mockable for GistGraphOp {
                     }
                     GitOps::ParseGitShow => OutputMap::new().str("content", "{}").build(),
                 }
-            }
-
-            // ReadFiles chain
-            GistGraphOp::PrepareReadFiles => OutputMap::new()
-                .request(
-                    "request",
-                    ShellRequest::new("sh")
-                        .args(["-c", "echo file contents"])
-                        .into_transport_request(),
-                )
-                .bool("skip", false)
-                .build(),
-            GistGraphOp::ParseReadFiles => {
-                let mut contents = std::collections::BTreeMap::new();
-                contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
-                OutputMap::new().map_str_str("contents", contents).build()
             }
 
             // Single-file operations

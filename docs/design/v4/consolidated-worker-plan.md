@@ -990,7 +990,7 @@ V0 complete (Tracks 2-6). Track 1 (Resource abstraction trait) still in design.
 #### Code Quality (Wave 1-2)
 
 - [x] F1.18 — Report node structured output: stage-specific extractors (= D1.4) [M]
-- [ ] F1.35 — Remove legacy batch shell helpers in gist [S] (~50%)
+- [x] F1.35 — Remove legacy batch shell helpers in gist [S]
 
 ---
 
