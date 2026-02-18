@@ -1708,6 +1708,68 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                             ),
                         ],
                     )),
+                    Stmt::let_bind(
+                        "models",
+                        Expr::RawCode("gunbc_ir::default_system_models()".to_string()),
+                    ),
+                    Stmt::let_bind(
+                        "contract_specs",
+                        Expr::RawCode("gunbc_ir::derive_contract_test_specs(&models)".to_string()),
+                    ),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode("!contract_specs.is_empty()".to_string()),
+                            Expr::Str(
+                                "system model contract specs should derive at least one test spec"
+                                    .to_string(),
+                            ),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "contract_specs.iter().any(|s| matches!(s.phase, gunbc_ir::UpsertPhase::Check))"
+                                    .to_string(),
+                            ),
+                            Expr::Str(
+                                "derived contract specs should include check-phase coverage"
+                                    .to_string(),
+                            ),
+                        ],
+                    )),
+                    Stmt::let_bind(
+                        "harnesses",
+                        Expr::RawCode(
+                            "gunbc_ir::generate_contract_test_harnesses(&contract_specs)"
+                                .to_string(),
+                        ),
+                    ),
+                    Stmt::Expr(Expr::call(
+                        "assert_eq!",
+                        vec![
+                            Expr::RawCode("harnesses.len()".to_string()),
+                            Expr::RawCode("contract_specs.len()".to_string()),
+                            Expr::Str(
+                                "each contract test spec should render a harness signature"
+                                    .to_string(),
+                            ),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "harnesses.iter().all(|h| h.starts_with(\"fn contract_\"))"
+                                    .to_string(),
+                            ),
+                            Expr::Str(
+                                "rendered harnesses should be generated contract function signatures"
+                                    .to_string(),
+                            ),
+                        ],
+                    )),
                 ],
             });
         }
@@ -5806,6 +5868,9 @@ mod tests {
         // Should have transport interception test
         assert!(code.contains("test_transport_interception"));
         assert!(code.contains("test_transport_behavior_specs_cover_core_families"));
+        assert!(code.contains("default_system_models()"));
+        assert!(code.contains("derive_contract_test_specs(&models)"));
+        assert!(code.contains("generate_contract_test_harnesses(&contract_specs)"));
 
         // Should have scenario tests
         assert!(code.contains("test_scenario_all_succeed"));

@@ -362,11 +362,11 @@ and provide the typed foundation for E2 (GCP infra) and C4 (transport).
 
 Auto-generate behavioral contract tests from understanding specs.
 
-- [ ] C6.3a — Define `ContractTestSpec` from Behavior + observed_properties
-- [ ] C6.3b — Upsert phase enforcement: Check=ReadOnly+Deterministic,
+- [x] C6.3a — Define `ContractTestSpec` from Behavior + observed_properties
+- [x] C6.3b — Upsert phase enforcement: Check=ReadOnly+Deterministic,
       Create=IdempotentWithKey, Resolve=ReadOnly+FailsWhen
-- [ ] C6.3c — Generate type-safe test harnesses from InputType/OutputType
-- [ ] C6.3d — Wire into testgen for understanding-driven test generation
+- [x] C6.3c — Generate type-safe test harnesses from InputType/OutputType
+- [x] C6.3d — Wire into testgen for understanding-driven test generation
 
 #### Wave 3
 

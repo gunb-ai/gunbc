@@ -51,6 +51,9 @@ pub enum Property {
     WritesWorld,
     Deterministic,
     Idempotent,
+    IdempotentWithKey,
+    FailsWhen,
+    EdgeCase,
     Retryable,
     SecretScoped,
     PermissionScoped,
@@ -222,6 +225,32 @@ pub struct SystemModel {
     pub dependencies: Vec<Dependency>,
 }
 
+/// Upsert-oriented lifecycle phases used for contract tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpsertPhase {
+    Check,
+    Create,
+    Resolve,
+}
+
+/// Contract-test specification derived from a behavior.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContractTestSpec {
+    pub system_id: String,
+    pub behavior_id: String,
+    pub phase: UpsertPhase,
+    pub required_all: Vec<Property>,
+    pub required_any: Vec<Property>,
+    pub inputs: Vec<BehaviorInput>,
+    pub outputs: Vec<BehaviorOutput>,
+}
+
+impl ContractTestSpec {
+    pub fn id(&self) -> String {
+        format!("{}::{}::{:?}", self.system_id, self.behavior_id, self.phase)
+    }
+}
+
 impl SystemModel {
     pub fn new(
         id: impl Into<String>,
@@ -373,6 +402,127 @@ pub fn validate_dependency_graph_acyclic(models: &[SystemModel]) -> Result<(), S
     }
 
     Ok(())
+}
+
+/// Derive contract-test specs from system models and behavior properties.
+pub fn derive_contract_test_specs(models: &[SystemModel]) -> Vec<ContractTestSpec> {
+    let mut specs = Vec::new();
+    for model in models {
+        for behavior in &model.behaviors {
+            let has = |property: Property| behavior.properties.contains(&property);
+
+            if has(Property::ReadOnly) && has(Property::Deterministic) {
+                specs.push(ContractTestSpec {
+                    system_id: model.id.clone(),
+                    behavior_id: behavior.id.clone(),
+                    phase: UpsertPhase::Check,
+                    required_all: vec![Property::ReadOnly, Property::Deterministic],
+                    required_any: Vec::new(),
+                    inputs: behavior.inputs.clone(),
+                    outputs: behavior.outputs.clone(),
+                });
+            }
+
+            if has(Property::WritesWorld)
+                && (has(Property::Idempotent) || has(Property::IdempotentWithKey))
+            {
+                specs.push(ContractTestSpec {
+                    system_id: model.id.clone(),
+                    behavior_id: behavior.id.clone(),
+                    phase: UpsertPhase::Create,
+                    required_all: vec![Property::WritesWorld],
+                    required_any: vec![Property::Idempotent, Property::IdempotentWithKey],
+                    inputs: behavior.inputs.clone(),
+                    outputs: behavior.outputs.clone(),
+                });
+            }
+
+            if has(Property::ReadOnly) && has(Property::FailsWhen) {
+                specs.push(ContractTestSpec {
+                    system_id: model.id.clone(),
+                    behavior_id: behavior.id.clone(),
+                    phase: UpsertPhase::Resolve,
+                    required_all: vec![Property::ReadOnly, Property::FailsWhen],
+                    required_any: Vec::new(),
+                    inputs: behavior.inputs.clone(),
+                    outputs: behavior.outputs.clone(),
+                });
+            }
+        }
+    }
+    specs
+}
+
+fn rust_type_for_type_id(type_id: &TypeId) -> &'static str {
+    match type_id.0.as_str() {
+        "String" | "OptionalString" => "String",
+        "Bool" => "bool",
+        "Int" | "OptionalInt" => "i64",
+        "StringList" | "JsonList" => "Vec<String>",
+        "FileResponse" => "gunbc_ir::transport::FileResponse",
+        "ShellResponse" => "gunbc_ir::transport::ShellResponse",
+        "RestResponse" => "gunbc_ir::transport::RestResponse",
+        "HttpResponse" => "gunbc_ir::transport::HttpResponse",
+        _ => "gunbc_ir::Value",
+    }
+}
+
+fn sanitize_ident(input: &str) -> String {
+    let mut out = String::new();
+    for ch in input.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push('_');
+        }
+    }
+    while out.contains("__") {
+        out = out.replace("__", "_");
+    }
+    out.trim_matches('_').to_string()
+}
+
+/// Render a Rust harness signature for one contract-test spec.
+pub fn render_contract_test_harness(spec: &ContractTestSpec) -> String {
+    let fn_name = format!(
+        "contract_{}_{}_{}",
+        sanitize_ident(&spec.system_id),
+        sanitize_ident(&spec.behavior_id),
+        format!("{:?}", spec.phase).to_lowercase()
+    );
+
+    let args = spec
+        .inputs
+        .iter()
+        .map(|input| {
+            format!(
+                "{}: {}",
+                sanitize_ident(&input.name),
+                rust_type_for_type_id(input.input_type.type_id())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let return_type = if spec.outputs.len() == 1 {
+        rust_type_for_type_id(spec.outputs[0].output_type.type_id()).to_string()
+    } else {
+        format!(
+            "({})",
+            spec.outputs
+                .iter()
+                .map(|out| rust_type_for_type_id(out.output_type.type_id()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+
+    format!("fn {fn_name}({args}) -> {return_type} {{ unimplemented!(\"generated contract harness\") }}")
+}
+
+/// Render Rust harness signatures for all specs.
+pub fn generate_contract_test_harnesses(specs: &[ContractTestSpec]) -> Vec<String> {
+    specs.iter().map(render_contract_test_harness).collect()
 }
 
 fn ty(id: &str) -> InputType {
@@ -993,5 +1143,39 @@ mod tests {
         ] {
             assert!(ops.contains(op), "missing http/rest operation {op}");
         }
+    }
+
+    #[test]
+    fn contract_specs_follow_upsert_phase_rules() {
+        let models = default_system_models();
+        let specs = derive_contract_test_specs(&models);
+        assert!(!specs.is_empty());
+        assert!(specs.iter().any(|spec| spec.phase == UpsertPhase::Check
+            && spec.required_all.contains(&Property::Deterministic)));
+        assert!(specs.iter().any(|spec| {
+            spec.phase == UpsertPhase::Create
+                && spec.required_all.contains(&Property::WritesWorld)
+                && spec
+                    .required_any
+                    .iter()
+                    .any(|p| matches!(p, Property::Idempotent | Property::IdempotentWithKey))
+        }));
+    }
+
+    #[test]
+    fn contract_harnesses_render_type_safe_signatures() {
+        let specs = derive_contract_test_specs(&default_system_models());
+        let harnesses = generate_contract_test_harnesses(&specs);
+        assert_eq!(harnesses.len(), specs.len());
+        assert!(
+            harnesses.iter().all(|h| h.starts_with("fn contract_")),
+            "all harnesses should be generated contract fn signatures"
+        );
+        assert!(
+            harnesses
+                .iter()
+                .any(|h| h.contains("gunbc_ir::transport::FileResponse")),
+            "at least one harness should include concrete transport response type mappings"
+        );
     }
 }
