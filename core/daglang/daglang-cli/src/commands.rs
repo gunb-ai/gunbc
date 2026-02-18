@@ -75,6 +75,13 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
         "modules" => {
             let (root_arg, format) =
                 parse_modules_args(args).unwrap_or_else(|usage| exit_usage(&usage));
+            if let Some(root) = &root_arg {
+                let normalized = path_utils::normalize_cli_path(cwd, &PathBuf::from(root));
+                if let Some(error) = path_utils::check_dag_extension_casing(&normalized) {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
             let roots = if let Some(root) = root_arg {
                 vec![resolve_root(cwd, Some(&root))]
             } else {
@@ -106,6 +113,13 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
         "check" => {
             if args.len() > 3 {
                 exit_usage("check <file.dag|dir>");
+            }
+            if let Some(input) = args.get(2) {
+                let normalized = path_utils::normalize_cli_path(cwd, &PathBuf::from(input));
+                if let Some(error) = path_utils::check_dag_extension_casing(&normalized) {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
             }
             let configured_default_roots = if args.get(2).is_none() {
                 match resolve_configured_roots(cwd) {

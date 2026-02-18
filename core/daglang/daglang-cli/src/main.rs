@@ -182,6 +182,13 @@ fn compile_target_or_exit_with_options(
     input: Option<&String>,
     emit_collection_nodes: bool,
 ) -> CompileOutput {
+    if let Some(value) = input {
+        let normalized = path_utils::normalize_cli_path(cwd, &PathBuf::from(value));
+        if let Some(error) = path_utils::check_dag_extension_casing(&normalized) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    }
     let context = if input.is_none() {
         match resolve_default_roots(cwd) {
             Ok(roots) => PipelineContext {
@@ -603,7 +610,11 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     }
 
     let input_path = input_path.ok_or_else(|| "run requires <file.dag> input".to_string())?;
-    if !path_utils::has_dag_extension(&PathBuf::from(&input_path)) {
+    let input_pb = PathBuf::from(&input_path);
+    if let Some(error) = path_utils::check_dag_extension_casing(&input_pb) {
+        return Err(error);
+    }
+    if !path_utils::has_dag_extension(&input_pb) {
         return Err(format!(
             "run input must be a .dag file path, got `{input_path}`"
         ));
@@ -793,10 +804,10 @@ mod tests {
     }
 
     #[test]
-    fn has_dag_extension_is_case_insensitive() {
+    fn has_dag_extension_accepts_lowercase_only() {
         assert!(has_dag_extension(Path::new("main.dag")));
-        assert!(has_dag_extension(Path::new("main.DAG")));
-        assert!(has_dag_extension(Path::new("main.DaG")));
+        assert!(!has_dag_extension(Path::new("main.DAG")));
+        assert!(!has_dag_extension(Path::new("main.DaG")));
     }
 
     #[test]

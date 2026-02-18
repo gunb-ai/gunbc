@@ -1,6 +1,19 @@
 use std::path::{Component, Path, PathBuf};
 
-pub use daglang_resolve::has_dag_extension;
+pub use daglang_resolve::{has_dag_extension, has_dag_like_extension};
+
+/// Returns an error message if the path has a dag-like extension with wrong casing.
+/// Returns `None` if the path is fine (either lowercase `.dag` or not dag-like at all).
+pub fn check_dag_extension_casing(path: &Path) -> Option<String> {
+    if has_dag_like_extension(path) && !has_dag_extension(path) {
+        Some(format!(
+            "path `{}` has wrong-cased extension; rename to `.dag` (lowercase)",
+            path.display()
+        ))
+    } else {
+        None
+    }
+}
 
 pub fn is_single_file_target(path: &Path, treat_dag_directories_as_files: bool) -> bool {
     if !has_dag_extension(path) {

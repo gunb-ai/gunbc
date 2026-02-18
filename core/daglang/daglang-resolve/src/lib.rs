@@ -28,8 +28,16 @@ use daglang_syntax::parser;
 
 type ParsedModuleRecord = (PathBuf, Vec<String>, Vec<Vec<String>>, SourceFile);
 
-/// Case-insensitive check for `.dag` file extension.
+/// Strict check for `.dag` file extension (lowercase only).
 pub fn has_dag_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext == "dag")
+}
+
+/// Case-insensitive check — matches `.dag`, `.DAG`, `.DaG`, etc.
+/// Used internally to detect wrong-cased extensions and produce clear errors.
+pub fn has_dag_like_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| ext.eq_ignore_ascii_case("dag"))
@@ -217,6 +225,8 @@ fn collect_dag_files(
             collect_dag_files(&p, out, visited_dirs)?;
         } else if has_dag_extension(&p) {
             out.push(p);
+        } else if has_dag_like_extension(&p) {
+            return Err(ResolveError::InvalidExtensionCase(p));
         }
     }
     Ok(())
@@ -407,6 +417,8 @@ pub enum ResolveError {
     DuplicateModule(Vec<String>),
     /// Discovery root path is invalid.
     InvalidRootPath { path: PathBuf, reason: String },
+    /// A `.dag` file has wrong-cased extension (e.g., `.DAG`, `.DaG`).
+    InvalidExtensionCase(PathBuf),
     /// Internal invariant violation while resolving modules.
     InternalInvariant(String),
 }
@@ -447,6 +459,13 @@ impl std::fmt::Display for ResolveError {
             Self::DuplicateModule(path) => write!(f, "duplicate module: {}", path.join(".")),
             Self::InvalidRootPath { path, reason } => {
                 write!(f, "invalid discovery root {}: {reason}", path.display())
+            }
+            Self::InvalidExtensionCase(path) => {
+                write!(
+                    f,
+                    "file `{}` has wrong-cased extension; rename to `.dag` (lowercase)",
+                    path.display()
+                )
             }
             Self::InternalInvariant(message) => {
                 write!(f, "internal resolver invariant failed: {message}")

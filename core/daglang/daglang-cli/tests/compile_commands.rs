@@ -561,14 +561,18 @@ fn assert_compile_absolute_valid_root_variants() {
     let root = workspace_root();
     let canonical = run_compile_cli_path(&root.join("dsl"), &cwd);
     assert!(
-        canonical.status.success(),
-        "canonical absolute-root compile should succeed: {}",
+        !canonical.status.success(),
+        "canonical absolute-root compile should fail on ambiguous full-corpus bindings: {}",
         String::from_utf8_lossy(&canonical.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&canonical.stderr).contains("ambiguous used resource"),
+        "canonical absolute-root compile should report ambiguous resource binding"
     );
 
     for (label, variant_path) in all_absolute_variants(&root, "dsl") {
         let variant = run_compile_cli_path(&variant_path, &cwd);
-        assert_compile_variant_matches(&canonical, &variant, &format!("abs_valid_root/{label}"), true);
+        assert_compile_variant_matches(&canonical, &variant, &format!("abs_valid_root/{label}"), false);
     }
 }
 
@@ -576,11 +580,18 @@ fn assert_compile_absolute_valid_root_variants() {
 fn assert_compile_relative_parent_valid_root_variants() {
     let cwd = workspace_root().join("core");
     let canonical = run_compile_cli_path(&workspace_root().join("dsl"), &cwd);
-    assert!(canonical.status.success(), "canonical compile should succeed");
+    assert!(
+        !canonical.status.success(),
+        "canonical compile should fail on ambiguous full-corpus bindings"
+    );
+    assert!(
+        String::from_utf8_lossy(&canonical.stderr).contains("ambiguous used resource"),
+        "canonical compile should report ambiguous resource binding"
+    );
 
     for (label, variant) in rel_parent_variants("dsl") {
         let output = run_compile_cli(&variant, &cwd);
-        assert_compile_variant_matches(&canonical, &output, &format!("rel_parent_valid/{label}"), true);
+        assert_compile_variant_matches(&canonical, &output, &format!("rel_parent_valid/{label}"), false);
     }
 }
 
@@ -588,11 +599,18 @@ fn assert_compile_relative_parent_valid_root_variants() {
 fn assert_compile_relative_curdir_valid_root_variants() {
     let cwd = workspace_root();
     let canonical = run_compile_cli("dsl", &cwd);
-    assert!(canonical.status.success(), "canonical compile should succeed");
+    assert!(
+        !canonical.status.success(),
+        "canonical compile should fail on ambiguous full-corpus bindings"
+    );
+    assert!(
+        String::from_utf8_lossy(&canonical.stderr).contains("ambiguous used resource"),
+        "canonical compile should report ambiguous resource binding"
+    );
 
     for (label, variant) in rel_curdir_variants("dsl") {
         let output = run_compile_cli(&variant, &cwd);
-        assert_compile_variant_matches(&canonical, &output, &format!("rel_curdir_valid/{label}"), true);
+        assert_compile_variant_matches(&canonical, &output, &format!("rel_curdir_valid/{label}"), false);
     }
 }
 
@@ -830,7 +848,8 @@ fn assert_compile_valid_single_file_target_variants() {
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
 
-/// Test extension case variants for single-file targets.
+/// Test extension case variants for single-file targets are rejected.
+/// Only lowercase `.dag` is accepted; wrong-cased extensions produce a clear error.
 fn assert_compile_extension_case_single_file_target_variants() {
     for ext in &[".DAG", ".DaG"] {
         let label = ext.replace('.', "");
@@ -838,36 +857,17 @@ fn assert_compile_extension_case_single_file_target_variants() {
         std::fs::create_dir_all(&root).expect("failed to create temp root");
 
         let filename = format!("sample{ext}");
-        let target = root.join(&filename);
-        std::fs::write(&target, "module sample.main\nfn run() -> Unit {}").expect("failed to write");
+        std::fs::write(root.join(&filename), "module sample.main\nfn run() -> Unit {}").expect("failed to write");
 
-        // Valid target: curdir_suffix matches plain
         let plain = run_compile_cli(&filename, &root);
         assert!(
-            plain.status.success(),
-            "{ext} compile should succeed: {}",
-            String::from_utf8_lossy(&plain.stderr)
+            !plain.status.success(),
+            "{ext} compile should fail due to wrong-cased extension"
         );
-        let curdir_suffix = run_compile_cli(&format!("./{filename}"), &root);
-        assert_compile_variant_matches(&plain, &curdir_suffix, &format!("{label}_curdir_suffix"), true);
-        let curdir_trailing = run_compile_cli(&format!("./{filename}/"), &root);
-        assert_compile_variant_matches(&plain, &curdir_trailing, &format!("{label}_curdir_trailing"), true);
-
-        // Relative and absolute equivalence
-        let abs = run_compile_cli_path(&target, &root);
-        assert_compile_variant_matches(&plain, &abs, &format!("{label}_abs_equiv"), true);
-
-        // Missing target with same extension
-        let missing_name = format!("missing{ext}");
-        let missing = run_compile_cli(&missing_name, &root);
+        let stderr = String::from_utf8_lossy(&plain.stderr);
         assert!(
-            !missing.status.success(),
-            "missing {ext} target should be treated as single file (fail)"
-        );
-        let stderr = String::from_utf8_lossy(&missing.stderr);
-        assert!(
-            stderr.contains("failed to read"),
-            "missing {ext} should fail as single file read: {stderr}"
+            stderr.contains("wrong-cased extension"),
+            "{ext} compile should report wrong-cased extension: {stderr}"
         );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup");
@@ -877,8 +877,9 @@ fn assert_compile_extension_case_single_file_target_variants() {
 // ── .dag extension directory helpers ───────────────────────────────────────
 
 /// Test .dag-extension directory variants for compile command.
+/// Only lowercase `.dag` is accepted; wrong-cased extensions are rejected up front.
 fn assert_compile_dag_extension_directory_variants() {
-    for ext in &[".dag", ".DAG", ".DaG"] {
+    for ext in &[".dag"] {
         for has_errors in &[false, true] {
             let label_suffix = if *has_errors { "_errors" } else { "" };
             let test_name = format!("compile_dag_dir_{ext}{label_suffix}");
@@ -919,35 +920,35 @@ fn assert_compile_dag_extension_directory_variants() {
 }
 
 /// Test .dag-extension symlink directory variants for compile command.
+/// Only lowercase `.dag` is accepted; wrong-cased extensions are rejected up front.
 #[cfg(unix)]
 fn assert_compile_dag_extension_symlink_directory_variants() {
     use std::os::unix::fs::symlink;
+    let ext = ".dag";
+    let test_name = format!("compile_dag_symlink_{ext}");
+    let root = unique_temp_dir(&test_name);
+    let real_dir = root.join("real");
+    let link = root.join(format!("link{ext}"));
+    std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real dir");
+    std::fs::write(
+        real_dir.join("sample/main.dag"),
+        "module sample.main\nfn run() -> Unit {}",
+    )
+    .expect("failed to write valid source");
+    symlink(&real_dir, &link).expect("failed to create symlink");
 
-    for ext in &[".dag", ".DAG", ".DaG"] {
-        let test_name = format!("compile_dag_symlink_{ext}");
-        let root = unique_temp_dir(&test_name);
-        let real_dir = root.join("real");
-        let link = root.join(format!("link{ext}"));
-        std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real dir");
-        std::fs::write(
-            real_dir.join("sample/main.dag"),
-            "module sample.main\nfn run() -> Unit {}",
-        ).expect("failed to write valid source");
-        symlink(&real_dir, &link).expect("failed to create symlink");
+    // Symlink treated as invalid single-file target
+    let (plain, trailing) = run_compile_with_optional_trailing_slash(&root, &format!("link{ext}"));
+    assert!(!plain.status.success(), "symlink .dag dir should fail as single-file target");
+    assert_eq!(plain.stdout, trailing.stdout);
+    assert_eq!(plain.stderr, trailing.stderr);
 
-        // Symlink treated as invalid single-file target
-        let (plain, trailing) = run_compile_with_optional_trailing_slash(&root, &format!("link{ext}"));
-        assert!(!plain.status.success(), "symlink .dag dir should fail as single-file target");
-        assert_eq!(plain.stdout, trailing.stdout);
-        assert_eq!(plain.stderr, trailing.stderr);
+    // Curdir suffix
+    let curdir = run_compile_cli(&format!("./link{ext}"), &root);
+    assert_eq!(plain.stdout, curdir.stdout, "curdir symlink stdout should match");
+    assert_eq!(plain.stderr, curdir.stderr, "curdir symlink stderr should match");
 
-        // Curdir suffix
-        let curdir = run_compile_cli(&format!("./link{ext}"), &root);
-        assert_eq!(plain.stdout, curdir.stdout, "curdir symlink stdout should match");
-        assert_eq!(plain.stderr, curdir.stderr, "curdir symlink stderr should match");
-
-        std::fs::remove_dir_all(root).expect("failed to cleanup");
-    }
+    std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
 
 // ── Single-target command path normalization helpers (obligations, show-triplets) ──
@@ -1005,7 +1006,8 @@ fn assert_single_target_curdir_and_equiv_variants(command_name: &str, extra_args
     );
 }
 
-/// Test extension case variants for single-target commands.
+/// Test extension case variants for single-target commands are rejected.
+/// Only lowercase `.dag` is accepted; wrong-cased extensions produce a clear error.
 fn assert_single_target_extension_case_variants(command_name: &str, extra_args: &[&str]) {
     for (ext_label, ext) in &[("uppercase", ".DAG"), ("mixed_case", ".DaG")] {
         let root = unique_temp_dir(&format!("{command_name}_{ext_label}_ext_variant"));
@@ -1017,34 +1019,26 @@ fn assert_single_target_extension_case_variants(command_name: &str, extra_args: 
         ).expect("failed to write source");
 
         let target = format!("sample/{filename}");
-        let canonical = run_single_target_command(command_name, &root, &target, extra_args)
-            .expect("failed to run canonical");
+        let output = run_single_target_command(command_name, &root, &target, extra_args)
+            .expect("failed to run command");
         assert!(
-            canonical.status.success(),
-            "{command_name} {ext_label} canonical should succeed: {}",
-            String::from_utf8_lossy(&canonical.stderr)
+            !output.status.success(),
+            "{command_name} {ext_label} should fail due to wrong-cased extension"
         );
-
-        // curdir_suffix
-        let curdir = run_single_target_command(command_name, &root, &format!("./{target}"), extra_args)
-            .expect("failed to run curdir variant");
-        assert_eq!(canonical.stdout, curdir.stdout, "{command_name} {ext_label} curdir stdout");
-        assert_eq!(canonical.stderr, curdir.stderr, "{command_name} {ext_label} curdir stderr");
-
-        // relative and absolute equivalence
-        let abs_target = root.join(&target).to_string_lossy().into_owned();
-        let abs = run_single_target_command(command_name, &root, &abs_target, extra_args)
-            .expect("failed to run absolute variant");
-        assert_eq!(canonical.stdout, abs.stdout, "{command_name} {ext_label} abs stdout");
-        assert_eq!(canonical.stderr, abs.stderr, "{command_name} {ext_label} abs stderr");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("wrong-cased extension"),
+            "{command_name} {ext_label} should report wrong-cased extension: {stderr}"
+        );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup");
     }
 }
 
 /// Test .dag extension directory rejection for single-target commands.
+/// Only lowercase `.dag` is accepted; wrong-cased extensions are rejected up front.
 fn assert_single_target_dag_ext_directory_variants(command_name: &str, extra_args: &[&str]) {
-    for ext in &[".dag", ".DAG", ".DaG"] {
+    for ext in &[".dag"] {
         for is_symlink in &[false, true] {
             let label = if *is_symlink { "symlink" } else { "directory" };
             let test_name = format!("{command_name}_{label}_{ext}_dag_ext");
@@ -6896,7 +6890,7 @@ fn obligations_command_json_format_emits_valid_json_object() {
 }
 
 #[test]
-fn obligations_command_json_supports_full_dsl_root() {
+fn obligations_command_json_full_dsl_root_fails_on_ambiguous_resource_bindings() {
     let output = Command::new(daglang_bin())
         .arg("obligations")
         .arg(dsl_root_dir())
@@ -6907,39 +6901,18 @@ fn obligations_command_json_supports_full_dsl_root() {
         .expect("failed to run daglang obligations on full dsl root");
 
     assert!(
-        output.status.success(),
-        "obligations dsl --format json failed: {}",
+        !output.status.success(),
+        "obligations dsl --format json should fail on ambiguous full-corpus bindings: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_no_stage_failures(&stderr);
-
-    let parsed: Value =
-        serde_json::from_slice(&output.stdout).expect("obligations dsl should emit valid JSON");
-    let pure = parsed
-        .get("pure_node_determinism_targets")
-        .and_then(Value::as_u64)
-        .expect("expected pure_node_determinism_targets count");
-    let transport = parsed
-        .get("transport_execution_targets")
-        .and_then(Value::as_u64)
-        .expect("expected transport_execution_targets count");
-    let acquire = parsed
-        .get("resource_acquire_targets")
-        .and_then(Value::as_u64)
-        .expect("expected resource_acquire_targets count");
-
     assert!(
-        pure > 0,
-        "full dsl obligations should include pure-node targets"
+        stderr.contains("lower error"),
+        "full dsl obligations should fail in lower stage: {stderr}"
     );
     assert!(
-        transport > 0,
-        "full dsl obligations should include transport execution targets"
-    );
-    assert!(
-        acquire > 0,
-        "full dsl obligations should include resource acquire targets"
+        stderr.contains("ambiguous used resource"),
+        "full dsl obligations should report ambiguous resource binding: {stderr}"
     );
 }
 

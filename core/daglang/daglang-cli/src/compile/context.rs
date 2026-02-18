@@ -14,8 +14,9 @@ use super::{
 ///
 /// Compatibility note: paths ending in `.dag` are always treated as
 /// single-file targets, even when they point to a directory.
-/// Integration tests lock this behavior for lowercase/uppercase/mixed-case
-/// extensions and trailing-slash variants.
+/// This only applies to the strict lowercase `.dag` extension.
+/// Wrong-cased dag-like extensions (`.DAG`, `.DaG`, etc.) are handled by
+/// higher-level CLI validation and are not treated as single-file targets.
 pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
     let parsed = input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
     let (roots, target_file) = match parsed {
