@@ -234,7 +234,7 @@ upsert patterns for individual resources.
 **Gap**: No unified infrastructure spec — individual resources are modeled
 separately.
 
-- [ ] Create `InfraSpec` struct that aggregates all resource specs:
+- [x] Create `InfraSpec` struct that aggregates all resource specs:
   ```rust
   pub struct InfraSpec {
       pub environment: &'static str,
@@ -245,8 +245,15 @@ separately.
       // Future: buckets, cloud_run, compute, etc.
   }
   ```
-- [ ] Create `DEV_SPEC`, `CI_SPEC`, etc. as compile-time constants
-- [ ] Add `InfraSpec::validate()` for cross-resource consistency checks
+- [x] Create `DEV_SPEC`, `CI_SPEC`, etc. as compile-time constants
+- [x] Add `InfraSpec::validate()` for cross-resource consistency checks
+
+Update (2026-02-18):
+- Added `lib/cloud-ops/src/infra_spec.rs`:
+  - `EnvironmentConfig`
+  - `InfraSpec`
+  - static specs: `DEV_SPEC`, `CI_SPEC`, `TEST_SPEC`, `PROD_SPEC`
+  - `InfraSpec::validate()` consistency checks + tests.
 
 **Ref**: `gunb.ai/tools/infra/spec/spec.go:568-600` — `InfraSpec`
 

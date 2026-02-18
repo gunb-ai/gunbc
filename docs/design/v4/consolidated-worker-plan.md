@@ -923,7 +923,7 @@ Implementation of SA/IAM operations against the typed understanding spec from C6
 ##### E2.5 — InfraSpec + plan/apply [L]
 **Deps**: E2.3
 
-- [ ] E2.5a — Unified InfraSpec type
+- [x] E2.5a — Unified InfraSpec type
 - [ ] E2.5b — Plan/apply DAG builder
 - [ ] E2.5c — Infrastructure graph visualization
 
