@@ -14,11 +14,12 @@
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
+use std::path::Path;
 
 use daglang_lower::{classify_runtime_op, LoweredOp, RuntimeOpId};
 use gunbc_ir::node::NodeBody;
-use gunbc_ir::Cardinality;
 use gunbc_ir::Dag;
+use gunbc_ir::{Cardinality, WorkspaceLayout};
 
 use crate::EmittedFile;
 
@@ -38,11 +39,23 @@ pub fn emit_exec_runtime(
     dag: &Dag<LoweredOp>,
     module_name: &str,
 ) -> Result<Vec<EmittedFile>, ExecRuntimeError> {
+    emit_exec_runtime_with_output_dir(dag, module_name, None)
+}
+
+/// Emit a standalone Rust crate from a lowered DAG with an optional output directory.
+///
+/// When `output_dir` is provided, Cargo path dependencies are rendered relative
+/// to that directory using workspace layout discovery.
+pub fn emit_exec_runtime_with_output_dir(
+    dag: &Dag<LoweredOp>,
+    module_name: &str,
+    output_dir: Option<&Path>,
+) -> Result<Vec<EmittedFile>, ExecRuntimeError> {
     let classified = classify_nodes(dag)?;
     let handler_kinds = collect_handler_kinds(&classified);
     let source = build_exec_runtime_source(dag, module_name, &classified, &handler_kinds);
     let main_rs = crate::render_rust::render_rust_source(&source);
-    let cargo_toml = emit_cargo_toml(module_name, &handler_kinds);
+    let cargo_toml = emit_cargo_toml(module_name, &handler_kinds, output_dir);
 
     Ok(vec![
         EmittedFile {
@@ -562,18 +575,39 @@ fn render_port_literal(name: &str, ty: &str, cardinality: Cardinality) -> String
 // Cargo.toml
 // ===========================================================================
 
-fn emit_cargo_toml(module_name: &str, handler_kinds: &BTreeSet<HandlerKind>) -> String {
+fn emit_cargo_toml(
+    module_name: &str,
+    handler_kinds: &BTreeSet<HandlerKind>,
+    output_dir: Option<&Path>,
+) -> String {
     let crate_name = module_name.replace('.', "-");
     let needs_helper = handler_kinds.contains(&HandlerKind::ExecuteReadContent)
         || handler_kinds.contains(&HandlerKind::ExecuteTransport);
     let needs_serde_json = handler_kinds.contains(&HandlerKind::LoadRegistry)
         || requires_pragma_helpers(handler_kinds);
+    let layout = WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .ok();
 
     let mut deps = String::new();
-    deps.push_str("gunbc-ir = { path = \"../../core/ir\" }\n");
-    deps.push_str("gunbc-exec = { path = \"../../core/exec\" }\n");
+    deps.push_str(&format!(
+        "gunbc-ir = {{ path = \"{}\" }}\n",
+        dependency_path(layout.as_ref(), output_dir, "gunbc-ir", "../../core/ir")
+    ));
+    deps.push_str(&format!(
+        "gunbc-exec = {{ path = \"{}\" }}\n",
+        dependency_path(layout.as_ref(), output_dir, "gunbc-exec", "../../core/exec")
+    ));
     if needs_helper {
-        deps.push_str("gunbc-lib-transport = { path = \"../../lib/transport\" }\n");
+        deps.push_str(&format!(
+            "gunbc-lib-transport = {{ path = \"{}\" }}\n",
+            dependency_path(
+                layout.as_ref(),
+                output_dir,
+                "gunbc-lib-transport",
+                "../../lib/transport"
+            )
+        ));
     }
     if needs_serde_json {
         deps.push_str("serde_json = \"1\"\n");
@@ -593,6 +627,28 @@ edition = "2021"
 [workspace]
 "#
     )
+}
+
+fn dependency_path(
+    layout: Option<&WorkspaceLayout>,
+    output_dir: Option<&Path>,
+    crate_name: &str,
+    fallback: &str,
+) -> String {
+    let Some(layout) = layout else {
+        return fallback.to_string();
+    };
+    let Some(output_dir) = output_dir else {
+        return fallback.to_string();
+    };
+    let Some(dep_dir) = layout.crate_dir(crate_name) else {
+        return fallback.to_string();
+    };
+    normalize_dep_path(&layout.relative_path(output_dir, dep_dir))
+}
+
+fn normalize_dep_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 // ===========================================================================
@@ -800,11 +856,7 @@ fn build_file_request_helper_raw() -> gunbc_ir::code_ir::Item {
     )
     .unwrap();
     writeln!(text, "        Ok(_other) => FileResponse::error(").unwrap();
-    writeln!(
-        text,
-        "            request.path.clone(), request.operation,"
-    )
-    .unwrap();
+    writeln!(text, "            request.path.clone(), request.operation,").unwrap();
     writeln!(
         text,
         r#"            "transport executor returned non-file response for file request","#
@@ -1110,6 +1162,38 @@ mod tests {
         assert!(
             !toml.contains("gunbc-lib-transport"),
             "should not depend on gunbc-lib-transport (no transport handlers)"
+        );
+    }
+
+    #[test]
+    fn emitted_cargo_toml_uses_output_relative_workspace_dependency_paths() {
+        let dag = sample_makegen_dag();
+        let layout = WorkspaceLayout::from_env_manifest_dir().expect("resolve workspace layout");
+        let out_dir = layout
+            .workspace_root
+            .join("target")
+            .join("exec_runtime_nested")
+            .join("a")
+            .join("b")
+            .join("tools-makegen");
+        let files = emit_exec_runtime_with_output_dir(&dag, "tools.makegen", Some(&out_dir))
+            .expect("should succeed");
+        let toml = &files[1].content;
+        let ir_path = normalize_dep_path(&layout.relative_path(
+            &out_dir,
+            layout.crate_dir("gunbc-ir").expect("gunbc-ir crate"),
+        ));
+        let exec_path = normalize_dep_path(&layout.relative_path(
+            &out_dir,
+            layout.crate_dir("gunbc-exec").expect("gunbc-exec crate"),
+        ));
+        assert!(
+            toml.contains(&format!("gunbc-ir = {{ path = \"{ir_path}\" }}")),
+            "expected workspace-relative gunbc-ir dependency path, got:\n{toml}"
+        );
+        assert!(
+            toml.contains(&format!("gunbc-exec = {{ path = \"{exec_path}\" }}")),
+            "expected workspace-relative gunbc-exec dependency path, got:\n{toml}"
         );
     }
 
@@ -1428,5 +1512,4 @@ mod tests {
         assert_eq!(to_snake("PrepareReadContent"), "prepare_read_content");
         assert_eq!(to_snake("ExecuteTransport"), "execute_transport");
     }
-
 }

@@ -596,10 +596,10 @@ or a workspace manifest — not hardcoded strings.
 
 The immediate bug: `emit_cargo_toml()` in `rust_exec_runtime.rs` hardcodes `../../core/ir`.
 
-- [ ] C7.2a — `emit_cargo_toml()` takes output directory + workspace layout, computes
+- [x] C7.2a — `emit_cargo_toml()` takes output directory + workspace layout, computes
   relative deps from actual locations
-- [ ] C7.2b — Test: generate into arbitrary depth directory, `cargo check` succeeds
-- [ ] C7.2c — Remove the depth-2 assumption documented in `cli_commands.rs` e2e test
+- [x] C7.2b — Test: generate into arbitrary depth directory, `cargo check` succeeds
+- [x] C7.2c — Remove the depth-2 assumption documented in `cli_commands.rs` e2e test
 
 #### Wave 1
 

@@ -13175,6 +13175,53 @@ fn compile_layer_one_with_out_writes_exec_runtime_files() {
 }
 
 #[test]
+fn compile_layer_one_with_nested_out_allows_generated_cargo_check() {
+    let out_root = unique_temp_dir("compile_out_layer1_nested");
+    let out_dir = out_root.join("nested").join("deeper").join("tools-makegen");
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--layer")
+        .arg("1")
+        .arg("--out")
+        .arg(&out_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile --layer 1 --out nested path");
+    assert!(
+        output.status.success(),
+        "compile --layer 1 --out nested path should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        out_dir.join("Cargo.toml").is_file(),
+        "nested layer 1 output should include Cargo.toml"
+    );
+    std::fs::copy(
+        workspace_root().join("Cargo.lock"),
+        out_dir.join("Cargo.lock"),
+    )
+    .expect("failed to copy workspace Cargo.lock into nested generated crate");
+
+    let cargo_check = Command::new("cargo")
+        .arg("check")
+        .arg("--offline")
+        .arg("--manifest-path")
+        .arg(out_dir.join("Cargo.toml"))
+        .arg("--quiet")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run cargo check for nested generated crate");
+    assert!(
+        cargo_check.status.success(),
+        "cargo check should succeed for nested generated crate: {}",
+        String::from_utf8_lossy(&cargo_check.stderr)
+    );
+
+    std::fs::remove_dir_all(&out_root).expect("failed to cleanup nested layer 1 compile output");
+}
+
+#[test]
 fn compile_with_go_target_writes_native_go_files() {
     let out_dir = unique_temp_dir("compile_out_go");
     let output = Command::new(daglang_bin())
@@ -13500,11 +13547,11 @@ fn viz_with_mermaid_format_emits_compiled_mermaid_graph() {
 #[test]
 #[ignore]
 fn makegen_e2e_generated_binary_produces_correct_makefile() {
-    // 1. Compile makegen.dag → exec-runtime → write to workspace-relative dir.
-    //    The generated Cargo.toml uses `path = "../../core/ir"` etc., so the output
-    //    must be at exactly 2 levels below workspace root.
+    // 1. Compile makegen.dag → exec-runtime.
+    //    Cargo.toml workspace path dependencies should be derived from the actual
+    //    output directory (not fixed-depth assumptions).
     let ws_root = workspace_root();
-    let out_dir = ws_root.join("e2e_codegen_test/tools-makegen");
+    let out_dir = ws_root.join("e2e_codegen_test/nested/deeper/tools-makegen");
     // Clean up any leftover from a previous run.
     let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test"));
 
@@ -13658,7 +13705,7 @@ fn compile_pragma_layer_one_with_out_writes_exec_runtime_files() {
 #[ignore]
 fn pragma_e2e_generated_binary_produces_correct_config_files() {
     let ws_root = workspace_root();
-    let out_dir = ws_root.join("e2e_codegen_test_pragma/tools-pragma");
+    let out_dir = ws_root.join("e2e_codegen_test_pragma/nested/deeper/tools-pragma");
     let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test_pragma"));
 
     // 1. Compile pragma.dag → exec-runtime.

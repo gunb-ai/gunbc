@@ -162,14 +162,22 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 false,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
+            let normalized_out_dir = parsed
+                .out_dir
+                .as_ref()
+                .map(|out_dir| path_utils::normalize_cli_path(cwd, &PathBuf::from(out_dir)));
             let options = CompileOptions {
                 emit_collection_nodes: parsed.emit_collection_nodes,
                 target: parsed.target.unwrap_or_default(),
                 layer: parsed.layer.unwrap_or_default(),
+                output_dir: normalized_out_dir.clone(),
             };
-            let output =
-                compile_target_or_exit_with_compile_options(cwd, parsed.input.as_ref(), options);
-            let written_files = if let Some(out_dir) = parsed.out_dir.as_ref() {
+            let output = compile_target_or_exit_with_compile_options(
+                cwd,
+                parsed.input.as_ref(),
+                options.clone(),
+            );
+            let written_files = if let Some(out_dir) = normalized_out_dir.as_ref() {
                 match write_emitted_files(cwd, out_dir, &output.emitted.files) {
                     Ok(files) => files,
                     Err(error) => {
