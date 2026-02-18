@@ -2,6 +2,8 @@
 
 **Status**: Ongoing
 **Date**: 2026-02-03
+**DSL Alignment**: Generic refactors that reduce pre-DSL duplication and escape hatches
+**Track**: F — Debt Ledger
 
 Tracking for misplaced generic ops, duplicated patterns, and rendering
 workflows that should become DAGs. Add items as they're discovered.

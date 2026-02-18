@@ -3,6 +3,8 @@
 **Status**: V0 complete. Tracks 2-6 implemented. Track 1 (Resource trait) still design.
 **Date**: 2026-02-01
 **Updated**: 2026-02-03
+**DSL Alignment**: Adjacent DAG architecture; useful reference, not current DSL migration blocker
+**Track**: E — Domain Parity
 
 ## North Star
 

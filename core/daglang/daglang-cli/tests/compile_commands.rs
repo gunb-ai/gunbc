@@ -363,7 +363,6 @@ fn obligations_block(output: &str) -> String {
         + "\n"
 }
 
-
 // ── Path variant generators (shared across all command tests) ──────────────
 
 fn run_compile_cli(arg: &str, cwd: &Path) -> Output {
@@ -392,10 +391,7 @@ fn assert_compile_variant_matches(
             String::from_utf8_lossy(&variant.stderr)
         );
     } else {
-        assert!(
-            !variant.status.success(),
-            "{label}: variant should fail"
-        );
+        assert!(!variant.status.success(), "{label}: variant should fail");
     }
     assert_eq!(
         canonical.stdout, variant.stdout,
@@ -509,14 +505,8 @@ fn rel_parent_variants(target: &str) -> Vec<(&'static str, String)> {
         ("parent_segment", format!("../{target}")),
         ("parent_curdir_segment", format!(".././{target}")),
         ("parent_double_separator", format!("..//{target}")),
-        (
-            "parent_double_separator_trailing",
-            format!("..//{target}/"),
-        ),
-        (
-            "parent_curdir_double_separator",
-            format!(".././/{target}"),
-        ),
+        ("parent_double_separator_trailing", format!("..//{target}/")),
+        ("parent_curdir_double_separator", format!(".././/{target}")),
         ("parent_curdir_trailing_slash", format!(".././{target}/")),
     ]
 }
@@ -526,25 +516,64 @@ fn rel_curdir_variants(target: &str) -> Vec<(&'static str, String)> {
     vec![
         ("curdir_segment", format!("./{target}")),
         ("curdir_segment_trailing_slash", format!("./{target}/")),
-        ("dot_double_separator_curdir_suffix", format!(".//{target}/.")),
-        ("dot_double_separator_curdir_segment_suffix", format!(".//{target}/./.")),
-        ("dot_double_separator_curdir_segment_double_separator", format!(".//{target}//./"),),
-        ("dot_double_separator_double_separator", format!(".//{target}//")),
-        ("dot_double_separator_trailing_slash", format!(".//{target}/")),
-        ("dot_double_separator_curdir_suffix_double_separator", format!(".//{target}/.//")),
-        ("dot_double_separator_curdir_segment_double_separator_suffix", format!(".//{target}//./.")),
-        ("dot_double_separator_curdir_segment_trailing_slash", format!(".//{target}/./")),
+        (
+            "dot_double_separator_curdir_suffix",
+            format!(".//{target}/."),
+        ),
+        (
+            "dot_double_separator_curdir_segment_suffix",
+            format!(".//{target}/./."),
+        ),
+        (
+            "dot_double_separator_curdir_segment_double_separator",
+            format!(".//{target}//./"),
+        ),
+        (
+            "dot_double_separator_double_separator",
+            format!(".//{target}//"),
+        ),
+        (
+            "dot_double_separator_trailing_slash",
+            format!(".//{target}/"),
+        ),
+        (
+            "dot_double_separator_curdir_suffix_double_separator",
+            format!(".//{target}/.//"),
+        ),
+        (
+            "dot_double_separator_curdir_segment_double_separator_suffix",
+            format!(".//{target}//./."),
+        ),
+        (
+            "dot_double_separator_curdir_segment_trailing_slash",
+            format!(".//{target}/./"),
+        ),
         ("curdir_suffix", format!("{target}/.")),
         ("relative_curdir_suffix", format!("./{target}/.")),
-        ("relative_curdir_segment_trailing_slash", format!("./{target}/./")),
+        (
+            "relative_curdir_segment_trailing_slash",
+            format!("./{target}/./"),
+        ),
         ("relative_curdir_segment_suffix", format!("./{target}/./.")),
         ("curdir_segment_suffix", format!("{target}/./.")),
         ("curdir_suffix_double_separator", format!("{target}/.//.")),
-        ("relative_curdir_suffix_double_separator", format!("./{target}/.//"),),
-        ("curdir_segment_double_separator", format!("{target}//./"),),
-        ("relative_curdir_segment_double_separator_trailing_slash", format!("./{target}//./"),),
-        ("relative_curdir_segment_double_separator_suffix", format!("./{target}//./."),),
-        ("curdir_segment_double_separator_suffix", format!("{target}//./."),),
+        (
+            "relative_curdir_suffix_double_separator",
+            format!("./{target}/.//"),
+        ),
+        ("curdir_segment_double_separator", format!("{target}//./")),
+        (
+            "relative_curdir_segment_double_separator_trailing_slash",
+            format!("./{target}//./"),
+        ),
+        (
+            "relative_curdir_segment_double_separator_suffix",
+            format!("./{target}//./."),
+        ),
+        (
+            "curdir_segment_double_separator_suffix",
+            format!("{target}//./."),
+        ),
         ("trailing_slash", format!("{target}/")),
         ("mixed_segment", format!("./{target}/../{target}")),
         ("double_separator", format!("{target}//")),
@@ -572,7 +601,12 @@ fn assert_compile_absolute_valid_root_variants() {
 
     for (label, variant_path) in all_absolute_variants(&root, "dsl") {
         let variant = run_compile_cli_path(&variant_path, &cwd);
-        assert_compile_variant_matches(&canonical, &variant, &format!("abs_valid_root/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &variant,
+            &format!("abs_valid_root/{label}"),
+            false,
+        );
     }
 }
 
@@ -591,7 +625,12 @@ fn assert_compile_relative_parent_valid_root_variants() {
 
     for (label, variant) in rel_parent_variants("dsl") {
         let output = run_compile_cli(&variant, &cwd);
-        assert_compile_variant_matches(&canonical, &output, &format!("rel_parent_valid/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &output,
+            &format!("rel_parent_valid/{label}"),
+            false,
+        );
     }
 }
 
@@ -610,7 +649,12 @@ fn assert_compile_relative_curdir_valid_root_variants() {
 
     for (label, variant) in rel_curdir_variants("dsl") {
         let output = run_compile_cli(&variant, &cwd);
-        assert_compile_variant_matches(&canonical, &output, &format!("rel_curdir_valid/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &output,
+            &format!("rel_curdir_valid/{label}"),
+            false,
+        );
     }
 }
 
@@ -624,15 +668,30 @@ fn assert_compile_missing_root_variants() {
 
     for (label, variant_path) in abs_parent_segment_variants(&root, "missing_root") {
         let variant = run_compile_cli_path(&variant_path, &root);
-        assert_compile_variant_matches(&canonical, &variant, &format!("abs_missing_root_parent/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &variant,
+            &format!("abs_missing_root_parent/{label}"),
+            false,
+        );
     }
     for (label, variant_path) in abs_curdir_segment_variants(&root, "missing_root") {
         let variant = run_compile_cli_path(&variant_path, &root);
-        assert_compile_variant_matches(&canonical, &variant, &format!("abs_missing_root_curdir/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &variant,
+            &format!("abs_missing_root_curdir/{label}"),
+            false,
+        );
     }
     for (label, variant_path) in abs_separator_variants(&root, "missing_root") {
         let variant = run_compile_cli_path(&variant_path, &root);
-        assert_compile_variant_matches(&canonical, &variant, &format!("abs_missing_root_sep/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &variant,
+            &format!("abs_missing_root_sep/{label}"),
+            false,
+        );
     }
 
     let stderr = String::from_utf8_lossy(&canonical.stderr);
@@ -655,21 +714,37 @@ fn assert_compile_relative_missing_root_variants() {
 
     for (label, variant) in rel_curdir_variants("missing_root") {
         let output = run_compile_cli(&variant, &root);
-        assert_compile_variant_matches(&canonical, &output, &format!("rel_missing_root_curdir/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &output,
+            &format!("rel_missing_root_curdir/{label}"),
+            false,
+        );
     }
 
     let cwd_nested = root.join("anchor");
     let canonical_abs = run_compile_cli_path(&root.join("missing_root"), &cwd_nested);
     for (label, variant) in rel_parent_variants("missing_root") {
         let output = run_compile_cli(&variant, &cwd_nested);
-        assert_compile_variant_matches(&canonical_abs, &output, &format!("rel_missing_root_parent/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical_abs,
+            &output,
+            &format!("rel_missing_root_parent/{label}"),
+            false,
+        );
     }
 
     // Relative and absolute equivalence
     let rel = run_compile_cli("missing_root", &root);
     let abs = run_compile_cli_path(&root.join("missing_root"), &root);
-    assert_eq!(rel.stdout, abs.stdout, "relative and absolute missing root stdout should match");
-    assert_eq!(rel.stderr, abs.stderr, "relative and absolute missing root stderr should match");
+    assert_eq!(
+        rel.stdout, abs.stdout,
+        "relative and absolute missing root stdout should match"
+    );
+    assert_eq!(
+        rel.stderr, abs.stderr,
+        "relative and absolute missing root stderr should match"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -682,19 +757,37 @@ fn assert_compile_non_directory_root_variants() {
     std::fs::write(&root_file, "not a directory").expect("failed to create root file");
 
     let canonical = run_compile_cli_path(&root_file, &root);
-    assert!(!canonical.status.success(), "non-directory root should fail");
+    assert!(
+        !canonical.status.success(),
+        "non-directory root should fail"
+    );
 
     for (label, variant_path) in abs_parent_segment_variants(&root, "input.txt") {
         let variant = run_compile_cli_path(&variant_path, &root);
-        assert_compile_variant_matches(&canonical, &variant, &format!("abs_non_dir_root_parent/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &variant,
+            &format!("abs_non_dir_root_parent/{label}"),
+            false,
+        );
     }
     for (label, variant_path) in abs_curdir_segment_variants(&root, "input.txt") {
         let variant = run_compile_cli_path(&variant_path, &root);
-        assert_compile_variant_matches(&canonical, &variant, &format!("abs_non_dir_root_curdir/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &variant,
+            &format!("abs_non_dir_root_curdir/{label}"),
+            false,
+        );
     }
     for (label, variant_path) in abs_separator_variants(&root, "input.txt") {
         let variant = run_compile_cli_path(&variant_path, &root);
-        assert_compile_variant_matches(&canonical, &variant, &format!("abs_non_dir_root_sep/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &variant,
+            &format!("abs_non_dir_root_sep/{label}"),
+            false,
+        );
     }
 
     let stderr = String::from_utf8_lossy(&canonical.stderr);
@@ -714,24 +807,43 @@ fn assert_compile_relative_non_directory_root_variants() {
     std::fs::write(root.join("input.txt"), "not a directory").expect("failed to create root file");
 
     let canonical = run_compile_cli("input.txt", &root);
-    assert!(!canonical.status.success(), "non-directory root should fail");
+    assert!(
+        !canonical.status.success(),
+        "non-directory root should fail"
+    );
 
     for (label, variant) in rel_curdir_variants("input.txt") {
         let output = run_compile_cli(&variant, &root);
-        assert_compile_variant_matches(&canonical, &output, &format!("rel_non_dir_root_curdir/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &output,
+            &format!("rel_non_dir_root_curdir/{label}"),
+            false,
+        );
     }
 
     let cwd_nested = root.join("anchor");
     let canonical_abs = run_compile_cli_path(&root.join("input.txt"), &cwd_nested);
     for (label, variant) in rel_parent_variants("input.txt") {
         let output = run_compile_cli(&variant, &cwd_nested);
-        assert_compile_variant_matches(&canonical_abs, &output, &format!("rel_non_dir_root_parent/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical_abs,
+            &output,
+            &format!("rel_non_dir_root_parent/{label}"),
+            false,
+        );
     }
 
     let rel = run_compile_cli("input.txt", &root);
     let abs = run_compile_cli_path(&root.join("input.txt"), &root);
-    assert_eq!(rel.stdout, abs.stdout, "relative and absolute non-directory root stdout should match");
-    assert_eq!(rel.stderr, abs.stderr, "relative and absolute non-directory root stderr should match");
+    assert_eq!(
+        rel.stdout, abs.stdout,
+        "relative and absolute non-directory root stdout should match"
+    );
+    assert_eq!(
+        rel.stderr, abs.stderr,
+        "relative and absolute non-directory root stderr should match"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -745,25 +857,44 @@ fn assert_compile_missing_single_file_target_variants() {
     let missing = root.join("missing.dag");
 
     let canonical = run_compile_cli("missing.dag", &root);
-    assert!(!canonical.status.success(), "missing single-file should fail");
+    assert!(
+        !canonical.status.success(),
+        "missing single-file should fail"
+    );
 
     for (label, variant) in rel_curdir_variants("missing.dag") {
         let output = run_compile_cli(&variant, &root);
-        assert_compile_variant_matches(&canonical, &output, &format!("missing_sf_curdir/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &output,
+            &format!("missing_sf_curdir/{label}"),
+            false,
+        );
     }
 
     let cwd_nested = root.join("anchor");
     let canonical_abs = run_compile_cli_path(&missing, &cwd_nested);
     for (label, variant) in rel_parent_variants("missing.dag") {
         let output = run_compile_cli(&variant, &cwd_nested);
-        assert_compile_variant_matches(&canonical_abs, &output, &format!("missing_sf_parent/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical_abs,
+            &output,
+            &format!("missing_sf_parent/{label}"),
+            false,
+        );
     }
 
     // Relative and absolute equivalence
     let rel = run_compile_cli("missing.dag", &root);
     let abs = run_compile_cli_path(&missing, &root);
-    assert_eq!(rel.stdout, abs.stdout, "relative and absolute missing single-file stdout should match");
-    assert_eq!(rel.stderr, abs.stderr, "relative and absolute missing single-file stderr should match");
+    assert_eq!(
+        rel.stdout, abs.stdout,
+        "relative and absolute missing single-file stdout should match"
+    );
+    assert_eq!(
+        rel.stderr, abs.stderr,
+        "relative and absolute missing single-file stderr should match"
+    );
 
     let stderr = String::from_utf8_lossy(&rel.stderr);
     assert!(
@@ -783,25 +914,44 @@ fn assert_compile_invalid_single_file_target_variants() {
     std::fs::create_dir_all(&invalid).expect("failed to create invalid target directory");
 
     let canonical = run_compile_cli("invalid.dag", &root);
-    assert!(!canonical.status.success(), "invalid single-file should fail");
+    assert!(
+        !canonical.status.success(),
+        "invalid single-file should fail"
+    );
 
     for (label, variant) in rel_curdir_variants("invalid.dag") {
         let output = run_compile_cli(&variant, &root);
-        assert_compile_variant_matches(&canonical, &output, &format!("invalid_sf_curdir/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical,
+            &output,
+            &format!("invalid_sf_curdir/{label}"),
+            false,
+        );
     }
 
     let cwd_nested = root.join("anchor");
     let canonical_abs = run_compile_cli_path(&invalid, &cwd_nested);
     for (label, variant) in rel_parent_variants("invalid.dag") {
         let output = run_compile_cli(&variant, &cwd_nested);
-        assert_compile_variant_matches(&canonical_abs, &output, &format!("invalid_sf_parent/{label}"), false);
+        assert_compile_variant_matches(
+            &canonical_abs,
+            &output,
+            &format!("invalid_sf_parent/{label}"),
+            false,
+        );
     }
 
     // Relative and absolute equivalence
     let rel = run_compile_cli("invalid.dag", &root);
     let abs = run_compile_cli_path(&invalid, &root);
-    assert_eq!(rel.stdout, abs.stdout, "relative and absolute invalid single-file stdout should match");
-    assert_eq!(rel.stderr, abs.stderr, "relative and absolute invalid single-file stderr should match");
+    assert_eq!(
+        rel.stdout, abs.stdout,
+        "relative and absolute invalid single-file stdout should match"
+    );
+    assert_eq!(
+        rel.stderr, abs.stderr,
+        "relative and absolute invalid single-file stderr should match"
+    );
 
     let stderr = String::from_utf8_lossy(&rel.stderr);
     assert!(
@@ -829,21 +979,37 @@ fn assert_compile_valid_single_file_target_variants() {
 
     for (label, variant) in rel_curdir_variants("sample.dag") {
         let output = run_compile_cli(&variant, &root);
-        assert_compile_variant_matches(&canonical, &output, &format!("valid_sf_curdir/{label}"), true);
+        assert_compile_variant_matches(
+            &canonical,
+            &output,
+            &format!("valid_sf_curdir/{label}"),
+            true,
+        );
     }
 
     let cwd_nested = root.join("anchor");
     let canonical_abs = run_compile_cli_path(&target, &cwd_nested);
     for (label, variant) in rel_parent_variants("sample.dag") {
         let output = run_compile_cli(&variant, &cwd_nested);
-        assert_compile_variant_matches(&canonical_abs, &output, &format!("valid_sf_parent/{label}"), true);
+        assert_compile_variant_matches(
+            &canonical_abs,
+            &output,
+            &format!("valid_sf_parent/{label}"),
+            true,
+        );
     }
 
     // Relative and absolute equivalence
     let rel = run_compile_cli("sample.dag", &root);
     let abs = run_compile_cli_path(&target, &root);
-    assert_eq!(rel.stdout, abs.stdout, "relative and absolute single-file stdout should match");
-    assert_eq!(rel.stderr, abs.stderr, "relative and absolute single-file stderr should match");
+    assert_eq!(
+        rel.stdout, abs.stdout,
+        "relative and absolute single-file stdout should match"
+    );
+    assert_eq!(
+        rel.stderr, abs.stderr,
+        "relative and absolute single-file stderr should match"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -857,7 +1023,11 @@ fn assert_compile_extension_case_single_file_target_variants() {
         std::fs::create_dir_all(&root).expect("failed to create temp root");
 
         let filename = format!("sample{ext}");
-        std::fs::write(root.join(&filename), "module sample.main\nfn run() -> Unit {}").expect("failed to write");
+        std::fs::write(
+            root.join(&filename),
+            "module sample.main\nfn run() -> Unit {}",
+        )
+        .expect("failed to write");
 
         let plain = run_compile_cli(&filename, &root);
         assert!(
@@ -885,18 +1055,27 @@ fn assert_compile_dag_extension_directory_variants() {
             let test_name = format!("compile_dag_dir_{ext}{label_suffix}");
             let root = unique_temp_dir(&test_name);
             let dag_dir = root.join(format!("bundle{ext}"));
-            std::fs::create_dir_all(dag_dir.join("sample")).expect("failed to create .dag directory");
+            std::fs::create_dir_all(dag_dir.join("sample"))
+                .expect("failed to create .dag directory");
             std::fs::write(
                 dag_dir.join("sample/main.dag"),
                 "module sample.main\nfn run() -> Unit {}",
-            ).expect("failed to write valid source");
+            )
+            .expect("failed to write valid source");
 
             if *has_errors {
-                std::fs::write(dag_dir.join("sample/broken.dag"), "module sample.broken\nfn")
-                    .expect("failed to write broken source");
+                std::fs::write(
+                    dag_dir.join("sample/broken.dag"),
+                    "module sample.broken\nfn",
+                )
+                .expect("failed to write broken source");
             }
 
-            let nested_snippet = if *has_errors { Some("broken.dag:") } else { None };
+            let nested_snippet = if *has_errors {
+                Some("broken.dag:")
+            } else {
+                None
+            };
 
             // Plain vs trailing slash
             assert_dag_suffixed_directory_is_invalid_single_file_target(
@@ -939,14 +1118,23 @@ fn assert_compile_dag_extension_symlink_directory_variants() {
 
     // Symlink treated as invalid single-file target
     let (plain, trailing) = run_compile_with_optional_trailing_slash(&root, &format!("link{ext}"));
-    assert!(!plain.status.success(), "symlink .dag dir should fail as single-file target");
+    assert!(
+        !plain.status.success(),
+        "symlink .dag dir should fail as single-file target"
+    );
     assert_eq!(plain.stdout, trailing.stdout);
     assert_eq!(plain.stderr, trailing.stderr);
 
     // Curdir suffix
     let curdir = run_compile_cli(&format!("./link{ext}"), &root);
-    assert_eq!(plain.stdout, curdir.stdout, "curdir symlink stdout should match");
-    assert_eq!(plain.stderr, curdir.stderr, "curdir symlink stderr should match");
+    assert_eq!(
+        plain.stdout, curdir.stdout,
+        "curdir symlink stdout should match"
+    );
+    assert_eq!(
+        plain.stderr, curdir.stderr,
+        "curdir symlink stderr should match"
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -959,12 +1147,36 @@ fn assert_single_target_absolute_variants(command_name: &str, extra_args: &[&str
     let canonical_target = makegen_file().to_string_lossy().into_owned();
 
     let variants: Vec<(&str, String)> = vec![
-        ("curdir_segment", root.join("./dsl/./tools/../tools/makegen.dag").to_string_lossy().into_owned()),
-        ("double_separator", format!("{}/dsl//tools///makegen.dag", root.display())),
-        ("parent_segment", root.join("dsl/../dsl/tools/makegen.dag").to_string_lossy().into_owned()),
-        ("parent_curdir_segment", root.join("dsl/tools/./../tools/makegen.dag").to_string_lossy().into_owned()),
-        ("parent_double_separator", format!("{}/dsl/..//dsl/tools/makegen.dag", root.display())),
-        ("parent_curdir_double_separator", format!("{}/dsl/tools/.//../tools/makegen.dag", root.display())),
+        (
+            "curdir_segment",
+            root.join("./dsl/./tools/../tools/makegen.dag")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        (
+            "double_separator",
+            format!("{}/dsl//tools///makegen.dag", root.display()),
+        ),
+        (
+            "parent_segment",
+            root.join("dsl/../dsl/tools/makegen.dag")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        (
+            "parent_curdir_segment",
+            root.join("dsl/tools/./../tools/makegen.dag")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        (
+            "parent_double_separator",
+            format!("{}/dsl/..//dsl/tools/makegen.dag", root.display()),
+        ),
+        (
+            "parent_curdir_double_separator",
+            format!("{}/dsl/tools/.//../tools/makegen.dag", root.display()),
+        ),
     ];
 
     for (label, variant_target) in &variants {
@@ -1016,7 +1228,8 @@ fn assert_single_target_extension_case_variants(command_name: &str, extra_args: 
         std::fs::write(
             root.join(format!("sample/{filename}")),
             "module sample.main\nfn run() -> Unit {}",
-        ).expect("failed to write source");
+        )
+        .expect("failed to write source");
 
         let target = format!("sample/{filename}");
         let output = run_single_target_command(command_name, &root, &target, extra_args)
@@ -1049,12 +1262,15 @@ fn assert_single_target_dag_ext_directory_variants(command_name: &str, extra_arg
                 #[cfg(unix)]
                 {
                     let real_dir = root.join("real");
-                    std::fs::create_dir_all(real_dir.join("sample")).expect("failed to create real dir");
+                    std::fs::create_dir_all(real_dir.join("sample"))
+                        .expect("failed to create real dir");
                     std::fs::write(
                         real_dir.join("sample/main.dag"),
                         "module sample.main\nfn run() -> Unit {}",
-                    ).expect("failed to write source");
-                    std::os::unix::fs::symlink(&real_dir, &dag_dir).expect("failed to create symlink");
+                    )
+                    .expect("failed to write source");
+                    std::os::unix::fs::symlink(&real_dir, &dag_dir)
+                        .expect("failed to create symlink");
                 }
                 #[cfg(not(unix))]
                 continue;
@@ -1063,7 +1279,8 @@ fn assert_single_target_dag_ext_directory_variants(command_name: &str, extra_arg
                 std::fs::write(
                     dag_dir.join("sample/main.dag"),
                     "module sample.main\nfn run() -> Unit {}",
-                ).expect("failed to write source");
+                )
+                .expect("failed to write source");
             }
 
             // Plain
@@ -1085,12 +1302,36 @@ fn assert_single_target_dag_ext_directory_variants(command_name: &str, extra_arg
             // Absolute with path manipulation variants
             std::fs::create_dir_all(root.join("nested")).expect("failed to create nested dir");
             let path_variants: Vec<(&str, String)> = vec![
-                ("abs_parent_segment", root.join(format!("nested/../bundle{ext}")).to_string_lossy().into_owned()),
-                ("abs_parent_double_separator", format!("{}/nested/..//bundle{ext}", root.display())),
-                ("abs_parent_curdir_segment", root.join(format!("nested/./../bundle{ext}")).to_string_lossy().into_owned()),
-                ("abs_parent_curdir_double_separator", format!("{}/nested/.//../bundle{ext}", root.display())),
-                ("abs_curdir_segment", root.join(format!("./bundle{ext}")).to_string_lossy().into_owned()),
-                ("abs_double_separator", format!("{}/./bundle{ext}", root.display())),
+                (
+                    "abs_parent_segment",
+                    root.join(format!("nested/../bundle{ext}"))
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+                (
+                    "abs_parent_double_separator",
+                    format!("{}/nested/..//bundle{ext}", root.display()),
+                ),
+                (
+                    "abs_parent_curdir_segment",
+                    root.join(format!("nested/./../bundle{ext}"))
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+                (
+                    "abs_parent_curdir_double_separator",
+                    format!("{}/nested/.//../bundle{ext}", root.display()),
+                ),
+                (
+                    "abs_curdir_segment",
+                    root.join(format!("./bundle{ext}"))
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+                (
+                    "abs_double_separator",
+                    format!("{}/./bundle{ext}", root.display()),
+                ),
             ];
             for (_plabel, variant_input) in &path_variants {
                 assert_single_target_command_treats_dag_directory_as_invalid_single_file_target_with_args(
@@ -1113,7 +1354,8 @@ fn assert_single_target_dag_ext_symlink_fail_variants(command_name: &str, extra_
         std::fs::write(
             real_dir.join("sample/main.dag"),
             "module sample.main\nfn run() -> Unit {}",
-        ).expect("failed to write source");
+        )
+        .expect("failed to write source");
         let link = root.join("alias.dag");
         std::os::unix::fs::symlink(&real_dir, &link).expect("failed to create symlink");
 
@@ -1122,22 +1364,37 @@ fn assert_single_target_dag_ext_symlink_fail_variants(command_name: &str, extra_
             .expect("failed to run directory variant");
         let link_output = run_single_target_command(command_name, &root, "alias.dag", extra_args)
             .expect("failed to run symlink variant");
-        assert!(!dir_output.status.success(), "directory variant should fail");
+        assert!(
+            !dir_output.status.success(),
+            "directory variant should fail"
+        );
         assert!(!link_output.status.success(), "symlink variant should fail");
 
         // Relative and absolute equivalence for directory alias
         let abs_dir = real_dir.to_string_lossy().into_owned();
         let abs_dir_output = run_single_target_command(command_name, &root, &abs_dir, extra_args)
             .expect("failed to run abs directory variant");
-        assert_eq!(dir_output.stdout, abs_dir_output.stdout, "directory alias rel/abs stdout");
-        assert_eq!(dir_output.stderr, abs_dir_output.stderr, "directory alias rel/abs stderr");
+        assert_eq!(
+            dir_output.stdout, abs_dir_output.stdout,
+            "directory alias rel/abs stdout"
+        );
+        assert_eq!(
+            dir_output.stderr, abs_dir_output.stderr,
+            "directory alias rel/abs stderr"
+        );
 
         // Relative and absolute equivalence for symlink alias
         let abs_link = link.to_string_lossy().into_owned();
         let abs_link_output = run_single_target_command(command_name, &root, &abs_link, extra_args)
             .expect("failed to run abs symlink variant");
-        assert_eq!(link_output.stdout, abs_link_output.stdout, "symlink alias rel/abs stdout");
-        assert_eq!(link_output.stderr, abs_link_output.stderr, "symlink alias rel/abs stderr");
+        assert_eq!(
+            link_output.stdout, abs_link_output.stdout,
+            "symlink alias rel/abs stdout"
+        );
+        assert_eq!(
+            link_output.stderr, abs_link_output.stderr,
+            "symlink alias rel/abs stderr"
+        );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup");
     }
@@ -1310,8 +1567,6 @@ fn show_triplets_command_json_dag_ext_directory_variants_match() {
 fn show_triplets_command_json_dag_ext_symlink_fail_variants_match() {
     assert_single_target_dag_ext_symlink_fail_variants("show-triplets", &["--format", "json"]);
 }
-
-
 
 #[test]
 fn compile_command_emits_summary_for_single_file() {
@@ -5335,8 +5590,7 @@ func run() -> { ok: Bool } provides out: Storage provides out: Storage { return 
 }
 
 #[test]
-fn compile_command_single_file_duplicate_resource_provides_reports_ambiguous_provided_type()
-{
+fn compile_command_single_file_duplicate_resource_provides_reports_ambiguous_provided_type() {
     let fixture = unique_temp_file("compile_single_file_duplicate_resource_provides_relaxed");
     std::fs::write(
         &fixture,

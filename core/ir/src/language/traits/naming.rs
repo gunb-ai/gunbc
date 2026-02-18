@@ -12,12 +12,13 @@
 
 use crate::dag::{Dag, Port};
 use crate::language::LanguageOp;
-#[cfg(test)]
 use crate::language::NamingCase;
 use crate::node::Node;
 
 /// Naming conventions for a language.
-#[cfg(test)]
+///
+/// Aligned with `gunbai-integrations-contracts::NamingConventions` from
+/// the-gunbai for cross-repo compatibility (F2.3).
 #[derive(Debug, Clone)]
 pub struct LanguageNaming {
     pub type_case: NamingCase,
@@ -28,7 +29,6 @@ pub struct LanguageNaming {
 }
 
 /// Rust naming conventions.
-#[cfg(test)]
 pub const RUST_NAMING: LanguageNaming = LanguageNaming {
     type_case: NamingCase::PascalCase,
     function_case: NamingCase::SnakeCase,
@@ -38,7 +38,6 @@ pub const RUST_NAMING: LanguageNaming = LanguageNaming {
 };
 
 /// Python naming conventions.
-#[cfg(test)]
 pub const PYTHON_NAMING: LanguageNaming = LanguageNaming {
     type_case: NamingCase::PascalCase,
     function_case: NamingCase::SnakeCase,
@@ -48,7 +47,6 @@ pub const PYTHON_NAMING: LanguageNaming = LanguageNaming {
 };
 
 /// TypeScript/JavaScript naming conventions.
-#[cfg(test)]
 pub const TYPESCRIPT_NAMING: LanguageNaming = LanguageNaming {
     type_case: NamingCase::PascalCase,
     function_case: NamingCase::CamelCase,
@@ -87,7 +85,6 @@ pub fn build_naming_conventions_subdag() -> Node<LanguageOp> {
 }
 
 /// Get the naming conventions for a language.
-#[cfg(test)]
 pub fn naming_for_language(language: &str) -> Option<&'static LanguageNaming> {
     match language {
         "rust" => Some(&RUST_NAMING),
@@ -98,7 +95,6 @@ pub fn naming_for_language(language: &str) -> Option<&'static LanguageNaming> {
 }
 
 /// Convert a name to match a language's convention for a specific context.
-#[cfg(test)]
 pub fn convert_for_language(name: &str, language: &str, context: &str) -> Option<String> {
     let naming = naming_for_language(language)?;
 

@@ -3,7 +3,11 @@ use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use daglang_derive::{derive_artifacts, DerivedArtifacts};
-use daglang_emit::{emit_rust_bundle, EmissionBundle};
+use daglang_emit::rust_exec_runtime::emit_exec_runtime;
+use daglang_emit::{
+    emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle,
+    EmissionSummary,
+};
 use daglang_lower::{
     lower_typed_project, lower_typed_project_for_modules,
     lower_typed_project_for_modules_with_collection_nodes,
@@ -72,6 +76,48 @@ pub struct CheckOutput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CompileOptions {
     pub emit_collection_nodes: bool,
+    pub target: CodegenTarget,
+    pub layer: CodegenLayer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CodegenTarget {
+    #[default]
+    Rust,
+    Go,
+    C,
+    Mips,
+}
+
+impl std::fmt::Display for CodegenTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Rust => "rust",
+            Self::Go => "go",
+            Self::C => "c",
+            Self::Mips => "mips",
+        };
+        f.write_str(value)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CodegenLayer {
+    /// Layer 1: Rust fast-path using gunbc-exec runtime.
+    ExecRuntime,
+    /// Layer 2: native codegen path through daglang-emit backend.
+    #[default]
+    Native,
+}
+
+impl std::fmt::Display for CodegenLayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::ExecRuntime => "1",
+            Self::Native => "2",
+        };
+        f.write_str(value)
+    }
 }
 
 pub fn compile_from_context(context: &DriverContext) -> Result<CompileOutput, CompileError> {
@@ -109,8 +155,8 @@ pub fn compile_from_context_with_options(
     }
     .map_err(|error| format!("lower error: {error}"))?;
     let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
-    let emitted =
-        emit_rust_bundle(&lowered, &derived).map_err(|error| format!("emit error: {error}"))?;
+    let emitted = emit_with_options(&lowered, &derived, options)
+        .map_err(|error| format!("emit error: {error}"))?;
 
     Ok(CompileOutput {
         lowered_dag: lowered,
@@ -139,6 +185,60 @@ fn format_typecheck_errors<E: std::fmt::Display>(errors: Vec<E>) -> CompileError
         writeln!(message, "  {error}").ok();
     }
     message.into()
+}
+
+fn emit_with_options(
+    dag: &Dag<LoweredOp>,
+    derived: &DerivedArtifacts,
+    options: CompileOptions,
+) -> Result<EmissionBundle, CompileError> {
+    match (options.target, options.layer) {
+        (CodegenTarget::Rust, CodegenLayer::Native) => {
+            emit_rust_bundle(dag, derived).map_err(|error| {
+                CompileError::from(format!("rust emit backend failed: {error}"))
+            })
+        }
+        (CodegenTarget::Go, CodegenLayer::Native) => emit_go_bundle(dag, derived)
+            .map_err(|error| CompileError::from(format!("go emit backend failed: {error}"))),
+        (CodegenTarget::C, CodegenLayer::Native) => emit_c_bundle(dag, derived)
+            .map_err(|error| CompileError::from(format!("c emit backend failed: {error}"))),
+        (CodegenTarget::Mips, CodegenLayer::Native) => emit_mips_bundle(dag, derived)
+            .map_err(|error| CompileError::from(format!("mips emit backend failed: {error}"))),
+        (CodegenTarget::Rust, CodegenLayer::ExecRuntime) => {
+            let module_name = derived
+                .tool_metadata
+                .modules
+                .first()
+                .map(|module| module.module.as_str())
+                .unwrap_or("daglang.generated");
+            let files = emit_exec_runtime(dag, module_name).map_err(|error| {
+                CompileError::from(format!("rust exec-runtime emit failed: {error}"))
+            })?;
+            let callable_count = dag.nodes.len();
+            let pipeline_count = dag
+                .nodes
+                .iter()
+                .filter(|node| {
+                    matches!(
+                        &node.body,
+                        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { .. })
+                    )
+                })
+                .count();
+            Ok(EmissionBundle {
+                backend: "rust-exec-runtime".to_string(),
+                files,
+                summary: EmissionSummary {
+                    module_count: derived.tool_metadata.modules.len(),
+                    callable_count,
+                    pipeline_count,
+                },
+            })
+        }
+        (target, CodegenLayer::ExecRuntime) => Err(CompileError::from(format!(
+            "unsupported compile target/layer combination: --target {target} --layer 1; layer 1 currently supports only --target rust"
+        ))),
+    }
 }
 
 fn discover_module_graph_for_context(context: &DriverContext) -> Result<ModuleGraph, CompileError> {
@@ -170,9 +270,9 @@ fn discover_target_module_graph_for_context(
         &mut module_index_by_decl,
     )?
     else {
-        return Err(
-            CompileError::from("target file module path did not match expected import path")
-        );
+        return Err(CompileError::from(
+            "target file module path did not match expected import path",
+        ));
     };
 
     let mut queue = VecDeque::from([target_index]);
@@ -252,7 +352,8 @@ fn add_target_module_if_applicable(
 
     let canonical_path = match canonical_path {
         Some(path) => path,
-        None => {
+        None =>
+        {
             #[allow(clippy::disallowed_methods)]
             std::fs::canonicalize(path)
                 .map_err(|error| format!("failed to read {}: {error}", path.display()))?
@@ -299,7 +400,10 @@ fn parse_target_module_file(
             .map_err(|error| format!("failed to read {}: {error}", path.display()))?
     };
     let ast = parser::parse_with_file_diagnostics(path, &source).map_err(|diagnostics| {
-        format_resolve_error(ResolveError::ParseErrors(vec![(path.to_path_buf(), diagnostics)]))
+        format_resolve_error(ResolveError::ParseErrors(vec![(
+            path.to_path_buf(),
+            diagnostics,
+        )]))
     })?;
     let module_path = ast
         .module_path
@@ -729,6 +833,7 @@ fn run(values: List<String>) -> String {
             &context,
             CompileOptions {
                 emit_collection_nodes: true,
+                ..CompileOptions::default()
             },
         )
         .expect("compile should succeed with collection nodes enabled");
@@ -743,4 +848,406 @@ fn run(values: List<String>) -> String {
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
+
+    #[test]
+    fn compile_with_exec_runtime_layer_emits_exec_runtime_bundle() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let root = workspace.join("dsl");
+        let file = root.join("tools/makegen.dag");
+
+        let context = DriverContext {
+            roots: vec![root],
+            target_file: Some(file),
+        };
+        let output = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                layer: CodegenLayer::ExecRuntime,
+                ..CompileOptions::default()
+            },
+        )
+        .expect("compile should succeed with rust exec-runtime layer");
+
+        assert_eq!(output.emitted.backend, "rust-exec-runtime");
+        assert!(output
+            .emitted
+            .files
+            .iter()
+            .any(|file| file.path == "src/main.rs"));
+        assert!(output
+            .emitted
+            .files
+            .iter()
+            .any(|file| file.path == "Cargo.toml"));
+    }
+
+    #[test]
+    fn compile_with_non_rust_exec_runtime_layer_reports_error() {
+        let root = unique_temp_dir("compile_unsupported_target");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = root.join("sample.dag");
+        std::fs::write(
+            &file,
+            r#"module sample
+fn run() -> Bool {
+  return true
+}
+"#,
+        )
+        .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let error = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                target: CodegenTarget::Go,
+                layer: CodegenLayer::ExecRuntime,
+                ..CompileOptions::default()
+            },
+        )
+        .expect_err("compile should fail for unsupported target");
+        assert!(
+            error
+                .as_str()
+                .contains("layer 1 currently supports only --target rust"),
+            "expected unsupported target error, got: {error}"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_with_go_native_layer_emits_go_bundle() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let root = workspace.join("dsl");
+        let file = root.join("tools/makegen.dag");
+        let context = DriverContext {
+            roots: vec![root],
+            target_file: Some(file),
+        };
+
+        let output = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                target: CodegenTarget::Go,
+                ..CompileOptions::default()
+            },
+        )
+        .expect("compile should succeed for go native layer");
+        assert_eq!(output.emitted.backend, "go");
+        assert!(output
+            .emitted
+            .files
+            .iter()
+            .any(|file| file.path == "target/generated/go/main.go"));
+    }
+
+    /// D1.7 — Structural verification that exec-runtime codegen for the real
+    /// makegen.dag produces correct code.
+    ///
+    /// This test compiles the actual `dsl/tools/makegen.dag` through the full
+    /// pipeline and verifies the generated main.rs contains:
+    /// - All expected handler kinds (content upsert chain + entrypoint + render)
+    /// - Correct DAG topology (matching the lowered DAG)
+    /// - Correct entrypoint argument parsing
+    /// - Valid Cargo.toml with required dependencies
+    #[test]
+    fn makegen_exec_runtime_e2e_structural_verification() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let root = workspace.join("dsl");
+        let file = root.join("tools/makegen.dag");
+
+        let context = DriverContext {
+            roots: vec![root],
+            target_file: Some(file),
+        };
+        let output = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                layer: CodegenLayer::ExecRuntime,
+                ..CompileOptions::default()
+            },
+        )
+        .expect("compile should succeed for makegen exec-runtime");
+
+        let main_rs = output
+            .emitted
+            .files
+            .iter()
+            .find(|f| f.path == "src/main.rs")
+            .expect("should emit src/main.rs")
+            .content
+            .as_str();
+        let cargo_toml = output
+            .emitted
+            .files
+            .iter()
+            .find(|f| f.path == "Cargo.toml")
+            .expect("should emit Cargo.toml")
+            .content
+            .as_str();
+
+        // ---- Handler kinds ----
+        // The content upsert pattern should produce all these handler kinds:
+        assert!(
+            main_rs.contains("LoadRegistry"),
+            "missing LoadRegistry handler"
+        );
+        assert!(
+            main_rs.contains("RenderMakefile"),
+            "missing RenderMakefile handler"
+        );
+        assert!(main_rs.contains("Entrypoint"), "missing Entrypoint handler");
+        assert!(
+            main_rs.contains("PrepareReadContent"),
+            "missing PrepareReadContent handler"
+        );
+        assert!(
+            main_rs.contains("ExecuteReadContent"),
+            "missing ExecuteReadContent handler"
+        );
+        assert!(
+            main_rs.contains("CompareContent"),
+            "missing CompareContent handler"
+        );
+        assert!(
+            main_rs.contains("PrepareWriteContent"),
+            "missing PrepareWriteContent handler"
+        );
+        assert!(
+            main_rs.contains("ExecuteTransport"),
+            "missing ExecuteTransport handler"
+        );
+
+        // ---- DAG topology ----
+        // The number of add_node calls should match the lowered DAG node count.
+        let expected_nodes = output.lowered_dag.nodes.len();
+        let actual_nodes = main_rs.matches("dag.add_node").count();
+        assert_eq!(
+            actual_nodes, expected_nodes,
+            "generated DAG should have {expected_nodes} nodes, got {actual_nodes}"
+        );
+
+        // The number of add_edge calls should match the lowered DAG edge count.
+        let expected_edges = output.lowered_dag.edges.len();
+        let actual_edges = main_rs.matches("dag.add_edge").count();
+        assert_eq!(
+            actual_edges, expected_edges,
+            "generated DAG should have {expected_edges} edges, got {actual_edges}"
+        );
+
+        // Every node ID from the lowered DAG should appear in the generated code.
+        for node in &output.lowered_dag.nodes {
+            assert!(
+                main_rs.contains(&node.id.0),
+                "generated code should reference node `{}`",
+                node.id.0
+            );
+        }
+
+        // ---- Entrypoint parsing ----
+        // makegen has an entrypoint port for the output path — the generated
+        // main should parse it from CLI args.
+        assert!(
+            main_rs.contains("input_mocks"),
+            "generated main should set up input mocks for entrypoints"
+        );
+
+        // ---- Executable impl structure ----
+        assert!(
+            main_rs.contains("impl Executable for Op"),
+            "should contain Executable impl"
+        );
+        assert!(
+            main_rs.contains("fn execute("),
+            "should contain execute method"
+        );
+        assert!(
+            main_rs.contains("fn build_dag()"),
+            "should contain build_dag function"
+        );
+        assert!(
+            main_rs.contains("fn main()"),
+            "should contain main function"
+        );
+        assert!(
+            main_rs.contains("execute_with_mode_and_inputs"),
+            "main should call the executor"
+        );
+
+        // ---- Handler body correctness ----
+        // The render_makefile handler should produce "Generated by daglang" header.
+        assert!(
+            main_rs.contains("Generated by daglang"),
+            "render_makefile handler should contain Makefile header text"
+        );
+        // The compare handler should check freshness.
+        assert!(
+            main_rs.contains("fresh"),
+            "compare handler should compute freshness"
+        );
+        // The execute_transport handler should respect skip flag.
+        assert!(
+            main_rs.contains("Value::Skipped"),
+            "execute_transport handler should handle skip"
+        );
+
+        // ---- Cargo.toml ----
+        assert!(
+            cargo_toml.contains("gunbc-ir"),
+            "Cargo.toml should depend on gunbc-ir"
+        );
+        assert!(
+            cargo_toml.contains("gunbc-exec"),
+            "Cargo.toml should depend on gunbc-exec"
+        );
+        assert!(
+            cargo_toml.contains("gunbc-lib-transport"),
+            "Cargo.toml should depend on gunbc-lib-transport"
+        );
+        assert!(
+            cargo_toml.contains(r#"name = "tools-makegen""#),
+            "Cargo.toml should have sanitized crate name"
+        );
+    }
+
+    /// D1.8 — Structural verification that exec-runtime codegen for the real
+    /// pragma.dag produces correct code with 3 parallel content upsert chains.
+    #[test]
+    fn pragma_exec_runtime_e2e_structural_verification() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let root = workspace.join("dsl");
+        let file = root.join("tools/pragma.dag");
+
+        let context = DriverContext {
+            roots: vec![root],
+            target_file: Some(file),
+        };
+        let output = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                layer: CodegenLayer::ExecRuntime,
+                ..CompileOptions::default()
+            },
+        )
+        .expect("compile should succeed for pragma exec-runtime");
+
+        let main_rs = output
+            .emitted
+            .files
+            .iter()
+            .find(|f| f.path == "src/main.rs")
+            .expect("should emit src/main.rs")
+            .content
+            .as_str();
+        let cargo_toml = output
+            .emitted
+            .files
+            .iter()
+            .find(|f| f.path == "Cargo.toml")
+            .expect("should emit Cargo.toml")
+            .content
+            .as_str();
+
+        // ---- Pragma-specific handler kinds ----
+        assert!(
+            main_rs.contains("RenderPragmaClippyToml"),
+            "missing RenderPragmaClippyToml handler"
+        );
+        assert!(
+            main_rs.contains("RenderPragmaAllowlist"),
+            "missing RenderPragmaAllowlist handler"
+        );
+        assert!(
+            main_rs.contains("RenderPragmaLintPolicy"),
+            "missing RenderPragmaLintPolicy handler"
+        );
+        assert!(
+            main_rs.contains("PragmaEntrypoint"),
+            "missing PragmaEntrypoint handler"
+        );
+
+        // ---- Content upsert pattern handlers (shared) ----
+        assert!(
+            main_rs.contains("PrepareReadContent"),
+            "missing PrepareReadContent handler"
+        );
+        assert!(
+            main_rs.contains("ExecuteReadContent"),
+            "missing ExecuteReadContent handler"
+        );
+        assert!(
+            main_rs.contains("CompareContent"),
+            "missing CompareContent handler"
+        );
+        assert!(
+            main_rs.contains("PrepareWriteContent"),
+            "missing PrepareWriteContent handler"
+        );
+        assert!(
+            main_rs.contains("ExecuteTransport"),
+            "missing ExecuteTransport handler"
+        );
+
+        // ---- Pragma helper infrastructure ----
+        assert!(
+            main_rs.contains("PragmaDirectiveRuntime"),
+            "should emit PragmaDirectiveRuntime struct"
+        );
+        assert!(
+            main_rs.contains("parse_pragma_directives"),
+            "should emit pragma directive parsing helper"
+        );
+
+        // ---- DAG topology ----
+        // Pragma has 3 parallel chains (clippy, allowlist, policy) each with
+        // 5 content-upsert nodes, plus render nodes, fs_env, and entrypoint.
+        let expected_nodes = output.lowered_dag.nodes.len();
+        let actual_nodes = main_rs.matches("dag.add_node").count();
+        assert_eq!(
+            actual_nodes, expected_nodes,
+            "generated DAG should have {expected_nodes} nodes, got {actual_nodes}"
+        );
+
+        let expected_edges = output.lowered_dag.edges.len();
+        let actual_edges = main_rs.matches("dag.add_edge").count();
+        assert_eq!(
+            actual_edges, expected_edges,
+            "generated DAG should have {expected_edges} edges, got {actual_edges}"
+        );
+
+        // Every node ID from the lowered DAG should appear in the generated code.
+        for node in &output.lowered_dag.nodes {
+            assert!(
+                main_rs.contains(&node.id.0),
+                "generated code should reference node `{}`",
+                node.id.0
+            );
+        }
+
+        // ---- Handler body correctness ----
+        // Pragma render handlers should filter directives by scope.
+        assert!(
+            main_rs.contains("clippy"),
+            "clippy render handler should filter by clippy scope"
+        );
+        assert!(
+            main_rs.contains("disallowed_method"),
+            "allowlist render handler should filter by disallowed_method key"
+        );
+        assert!(
+            main_rs.contains("lint"),
+            "lint policy render handler should filter by lint scope"
+        );
+
+        // ---- Cargo.toml ----
+        assert!(
+            cargo_toml.contains(r#"name = "tools-pragma""#),
+            "Cargo.toml should have sanitized crate name"
+        );
+    }
+
 }

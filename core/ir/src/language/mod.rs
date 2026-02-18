@@ -52,6 +52,9 @@ pub use languages::{
 pub use patterns::{build_glob_subdag, build_regex_subdag, build_variable_syntax_subdag};
 pub use traits::{
     build_comment_prefix_subdag, build_naming_conventions_subdag, build_type_system_mapping_subdag,
+    convert_for_language, map_type, naming_for_language, optional_wrapper, LanguageNaming,
+    TypeMapping, PYTHON_NAMING, PYTHON_TYPES, RUST_NAMING, RUST_TYPES, TYPESCRIPT_NAMING,
+    TYPESCRIPT_TYPES,
 };
 
 // Re-exports - Static configurations

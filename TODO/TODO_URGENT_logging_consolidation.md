@@ -3,6 +3,8 @@
 **Status**: Active
 **Date**: 2026-02-13
 **Priority**: High
+**DSL Alignment**: Runtime observability hardening for DSL-generated workflows
+**Track**: D — Runtime/Test Hardening
 
 ## Motivating Incident: CI Log Explosion (2026-02-13)
 

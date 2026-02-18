@@ -15,7 +15,8 @@ use crate::language::LanguageOp;
 use crate::node::Node;
 
 /// Type mappings for a specific language.
-#[cfg(test)]
+/// Aligned with `gunbai-integrations-contracts::TypeSystemMapping` from
+/// the-gunbai for cross-repo compatibility (F2.3).
 #[derive(Debug, Clone)]
 pub struct TypeMapping {
     pub string: &'static str,
@@ -29,7 +30,6 @@ pub struct TypeMapping {
 }
 
 /// Rust type mappings.
-#[cfg(test)]
 pub const RUST_TYPES: TypeMapping = TypeMapping {
     string: "String",
     int: "i64",
@@ -42,7 +42,6 @@ pub const RUST_TYPES: TypeMapping = TypeMapping {
 };
 
 /// Python type mappings.
-#[cfg(test)]
 pub const PYTHON_TYPES: TypeMapping = TypeMapping {
     string: "str",
     int: "int",
@@ -55,7 +54,6 @@ pub const PYTHON_TYPES: TypeMapping = TypeMapping {
 };
 
 /// TypeScript type mappings.
-#[cfg(test)]
 pub const TYPESCRIPT_TYPES: TypeMapping = TypeMapping {
     string: "string",
     int: "number",
@@ -102,7 +100,6 @@ pub fn build_type_system_mapping_subdag() -> Node<LanguageOp> {
 }
 
 /// Map an abstract type to a language-specific type.
-#[cfg(test)]
 pub fn map_type(abstract_type: &str, language: &str) -> Option<String> {
     let mapping = match language {
         "rust" => &RUST_TYPES,
@@ -149,7 +146,6 @@ pub fn map_type(abstract_type: &str, language: &str) -> Option<String> {
 }
 
 /// Get the optional wrapper template for a language.
-#[cfg(test)]
 pub fn optional_wrapper(language: &str) -> Option<&'static str> {
     match language {
         "rust" => Some(RUST_TYPES.optional_template),

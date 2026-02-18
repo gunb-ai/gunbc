@@ -49,6 +49,10 @@ const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowPattern] = &[
         pattern: "core/daglang/",
         rationale: "compiler pipeline: filesystem discovery for .dag module resolution",
     },
+    DisallowedMethodsAllowPattern {
+        pattern: "gunbc-dag/src/",
+        rationale: "build-time DSL module discovery and workspace graph construction",
+    },
 ];
 
 const PRAGMA_LINT_POLICY: PragmaLintPolicy = PragmaLintPolicy {

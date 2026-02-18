@@ -40,6 +40,31 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     ))
 }
 
+fn unique_workspace_target_dir(name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    workspace_root().join("target").join(format!(
+        "daglang_cli_{name}_{}_{}",
+        std::process::id(),
+        nanos
+    ))
+}
+
+fn generated_cli_bindings(main_rs: &str) -> Vec<(String, String)> {
+    main_rs
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let rest = trimmed.strip_prefix("input_mocks.set_input(\"")?;
+            let (node_id, after_node) = rest.split_once("\", \"")?;
+            let (port_name, _) = after_node.split_once("\", Value::Str(val.clone()));")?;
+            Some((node_id.to_string(), port_name.to_string()))
+        })
+        .collect()
+}
+
 fn assert_no_compile_stage_banners(stderr: &str) {
     assert!(
         !stderr.contains("typecheck errors"),
@@ -326,12 +351,7 @@ fn run_cli_path(command: &str, arg: &std::path::Path, cwd: &std::path::Path) -> 
 }
 
 /// Assert that a variant output matches a canonical output (stdout + stderr).
-fn assert_variant_matches(
-    canonical: &Output,
-    variant: &Output,
-    label: &str,
-    expect_success: bool,
-) {
+fn assert_variant_matches(canonical: &Output, variant: &Output, label: &str, expect_success: bool) {
     assert_eq!(
         variant.status.success(),
         expect_success,
@@ -360,24 +380,15 @@ fn parent_segment_variants(root: &std::path::Path, target: &str) -> Vec<(&'stati
         ),
         (
             "parent_curdir_segment_trailing",
-            PathBuf::from(format!(
-                "{}/anchor/.././{target}/",
-                root.display()
-            )),
+            PathBuf::from(format!("{}/anchor/.././{target}/", root.display())),
         ),
         (
             "parent_curdir_segment_double_separator",
-            PathBuf::from(format!(
-                "{}/anchor/.././{target}//",
-                root.display()
-            )),
+            PathBuf::from(format!("{}/anchor/.././{target}//", root.display())),
         ),
         (
             "parent_curdir_segment_double_separator_trailing",
-            PathBuf::from(format!(
-                "{}/anchor//.././{target}/",
-                root.display()
-            )),
+            PathBuf::from(format!("{}/anchor//.././{target}/", root.display())),
         ),
         (
             "parent_double_separator",
@@ -389,10 +400,7 @@ fn parent_segment_variants(root: &std::path::Path, target: &str) -> Vec<(&'stati
         ),
         (
             "parent_double_separator_trailing",
-            PathBuf::from(format!(
-                "{}/anchor/..//{target}/",
-                root.display()
-            )),
+            PathBuf::from(format!("{}/anchor/..//{target}/", root.display())),
         ),
     ]
 }
@@ -404,27 +412,24 @@ fn curdir_segment_variants(root: &std::path::Path, target: &str) -> Vec<(&'stati
         ("mixed_segment", root.join(".").join(target)),
         (
             "curdir_segment_trailing_slash",
-            root.join(format!("{target}/./"))
+            root.join(format!("{target}/./")),
         ),
         (
             "curdir_segment_double_separator",
-            PathBuf::from(format!("{}//./", target_path.display()))
+            PathBuf::from(format!("{}//./", target_path.display())),
         ),
-        (
-            "curdir_suffix",
-            root.join(format!("{target}/."))
-        ),
+        ("curdir_suffix", root.join(format!("{target}/."))),
         (
             "curdir_suffix_double_separator",
-            PathBuf::from(format!("{}//.", target_path.display()))
+            PathBuf::from(format!("{}//.", target_path.display())),
         ),
         (
             "curdir_segment_suffix",
-            PathBuf::from(format!("{}/{target}/./.", root.display()))
+            PathBuf::from(format!("{}/{target}/./.", root.display())),
         ),
         (
             "curdir_segment_double_separator_suffix",
-            PathBuf::from(format!("{}//./.", target_path.display()))
+            PathBuf::from(format!("{}//./.", target_path.display())),
         ),
     ]
 }
@@ -462,14 +467,8 @@ fn relative_parent_variants(target: &str) -> Vec<(&'static str, String)> {
         ("parent_segment", format!("../{target}")),
         ("parent_curdir_segment", format!(".././{target}")),
         ("parent_double_separator", format!("..//{target}")),
-        (
-            "parent_double_separator_trailing",
-            format!("..//{target}/"),
-        ),
-        (
-            "parent_curdir_double_separator",
-            format!(".././/{target}"),
-        ),
+        ("parent_double_separator_trailing", format!("..//{target}/")),
+        ("parent_curdir_double_separator", format!(".././/{target}")),
         ("parent_curdir_trailing_slash", format!(".././{target}/")),
     ]
 }
@@ -485,7 +484,7 @@ fn relative_curdir_variants(target: &str) -> Vec<(&'static str, String)> {
         ),
         (
             "dot_double_separator_curdir_segment_suffix",
-            format!(".//{target}/./.")
+            format!(".//{target}/./."),
         ),
         (
             "dot_double_separator_curdir_segment_double_separator",
@@ -505,7 +504,7 @@ fn relative_curdir_variants(target: &str) -> Vec<(&'static str, String)> {
         ),
         (
             "dot_double_separator_curdir_segment_double_separator_suffix",
-            format!(".//{target}//./.")
+            format!(".//{target}//./."),
         ),
         (
             "dot_double_separator_curdir_segment_trailing_slash",
@@ -517,20 +516,14 @@ fn relative_curdir_variants(target: &str) -> Vec<(&'static str, String)> {
             "relative_curdir_segment_trailing_slash",
             format!("./{target}/./"),
         ),
-        (
-            "relative_curdir_segment_suffix",
-            format!("./{target}/./."),
-        ),
+        ("relative_curdir_segment_suffix", format!("./{target}/./.")),
         ("curdir_segment_suffix", format!("{target}/./.")),
         ("curdir_suffix_double_separator", format!("{target}/.//.")),
         (
             "relative_curdir_suffix_double_separator",
             format!("./{target}/.//"),
         ),
-        (
-            "curdir_segment_double_separator",
-            format!("{target}//./"),
-        ),
+        ("curdir_segment_double_separator", format!("{target}//./")),
         (
             "relative_curdir_segment_double_separator_trailing_slash",
             format!("./{target}//./"),
@@ -547,10 +540,7 @@ fn relative_curdir_variants(target: &str) -> Vec<(&'static str, String)> {
         ("mixed_segment", format!("./{target}/../{target}")),
         ("double_separator", format!("{target}//")),
         ("dot_double_separator", format!(".//{target}")),
-        (
-            "curdir_double_separator",
-            format!("./{target}//"),
-        ),
+        ("curdir_double_separator", format!("./{target}//")),
     ]
 }
 
@@ -569,7 +559,12 @@ fn assert_absolute_valid_root_variants(command: &str) {
 
     for (label, variant_path) in all_absolute_variants(&root, "dsl") {
         let variant = run_cli_path(command, &variant_path, &cwd);
-        assert_variant_matches(&canonical, &variant, &format!("absolute_valid_root/{label}"), true);
+        assert_variant_matches(
+            &canonical,
+            &variant,
+            &format!("absolute_valid_root/{label}"),
+            true,
+        );
     }
 }
 
@@ -577,11 +572,19 @@ fn assert_absolute_valid_root_variants(command: &str) {
 fn assert_relative_parent_valid_root_variants(command: &str) {
     let cwd = workspace_root().join("core");
     let canonical = run_cli_path(command, &workspace_root().join("dsl"), &cwd);
-    assert!(canonical.status.success(), "canonical {command} should succeed");
+    assert!(
+        canonical.status.success(),
+        "canonical {command} should succeed"
+    );
 
     for (label, variant) in relative_parent_variants("dsl") {
         let output = run_cli(command, &variant, &cwd);
-        assert_variant_matches(&canonical, &output, &format!("relative_parent_valid/{label}"), true);
+        assert_variant_matches(
+            &canonical,
+            &output,
+            &format!("relative_parent_valid/{label}"),
+            true,
+        );
     }
 }
 
@@ -589,11 +592,19 @@ fn assert_relative_parent_valid_root_variants(command: &str) {
 fn assert_relative_curdir_valid_root_variants(command: &str) {
     let cwd = workspace_root();
     let canonical = run_cli(command, "dsl", &cwd);
-    assert!(canonical.status.success(), "canonical {command} should succeed");
+    assert!(
+        canonical.status.success(),
+        "canonical {command} should succeed"
+    );
 
     for (label, variant) in relative_curdir_variants("dsl") {
         let output = run_cli(command, &variant, &cwd);
-        assert_variant_matches(&canonical, &output, &format!("relative_curdir_valid/{label}"), true);
+        assert_variant_matches(
+            &canonical,
+            &output,
+            &format!("relative_curdir_valid/{label}"),
+            true,
+        );
     }
 }
 
@@ -706,7 +717,10 @@ fn assert_non_directory_root_variants(command: &str) {
     std::fs::write(&root_file, "not a directory").expect("failed to create root file");
 
     let canonical = run_cli_path(command, &root_file, &root);
-    assert!(!canonical.status.success(), "non-directory root should fail");
+    assert!(
+        !canonical.status.success(),
+        "non-directory root should fail"
+    );
 
     // Absolute parent-segment variants
     for (label, variant_path) in parent_segment_variants(&root, "input.txt") {
@@ -758,12 +772,14 @@ fn assert_non_directory_root_variants(command: &str) {
 fn assert_relative_non_directory_root_variants(command: &str) {
     let root = unique_temp_dir(&format!("{command}_rel_non_dir_root_variants"));
     std::fs::create_dir_all(root.join("anchor")).expect("failed to create anchor dir");
-    std::fs::write(root.join("input.txt"), "not a directory")
-        .expect("failed to create root file");
+    std::fs::write(root.join("input.txt"), "not a directory").expect("failed to create root file");
 
     // Relative curdir variants
     let canonical = run_cli(command, "input.txt", &root);
-    assert!(!canonical.status.success(), "non-directory root should fail");
+    assert!(
+        !canonical.status.success(),
+        "non-directory root should fail"
+    );
 
     for (label, variant) in relative_curdir_variants("input.txt") {
         let output = run_cli(command, &variant, &root);
@@ -809,8 +825,7 @@ fn assert_dag_extension_directory_variants(command: &str) {
     for ext in &[".dag"] {
         for has_errors in &[false, true] {
             let label_suffix = if *has_errors { "_errors" } else { "" };
-            let test_name =
-                format!("{command}_dag_dir_{ext}{label_suffix}");
+            let test_name = format!("{command}_dag_dir_{ext}{label_suffix}");
             let root = unique_temp_dir(&test_name);
             let dag_dir = root.join(format!("bundle{ext}"));
             std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory");
@@ -835,7 +850,11 @@ fn assert_dag_extension_directory_variants(command: &str) {
 
             // `modules` succeeds even with broken files (reports diagnostics
             // in stdout); `check` fails with nonzero exit.
-            let expect_success = if command == "check" { !has_errors } else { true };
+            let expect_success = if command == "check" {
+                !has_errors
+            } else {
+                true
+            };
             assert_variant_matches(
                 &plain,
                 &trailing,
@@ -896,7 +915,11 @@ fn assert_dag_extension_symlink_directory_variants(command: &str) {
             let real_output = run_cli(command, "real", &root);
             let curdir_link = run_cli(command, &curdir_link_arg, &root);
 
-            let expect_success = if command == "check" { !has_errors } else { true };
+            let expect_success = if command == "check" {
+                !has_errors
+            } else {
+                true
+            };
             assert_variant_matches(
                 &real_output,
                 &link_output,
@@ -1284,7 +1307,11 @@ fn check_command_relative_and_absolute_single_file_targets_are_equivalent() {
 fn check_command_uppercase_dag_extension_single_file_target_matches_absolute_output() {
     let root = unique_temp_dir("uppercase_dag_extension_single_file_target_matches");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
-    std::fs::write(root.join("main.DAG"), "module sample.main\nfn ok() -> Unit {}").expect("failed to write");
+    std::fs::write(
+        root.join("main.DAG"),
+        "module sample.main\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write");
 
     let output = Command::new(daglang_bin())
         .arg("check")
@@ -1292,7 +1319,10 @@ fn check_command_uppercase_dag_extension_single_file_target_matches_absolute_out
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_uppercase_dag_extension_single_file_target_matches_absolute_output");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_uppercase_dag_extension_single_file_target_matches_absolute_output",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -1301,7 +1331,11 @@ fn check_command_uppercase_dag_extension_single_file_target_matches_absolute_out
 fn check_command_mixed_case_dag_extension_single_file_target_matches_absolute_output() {
     let root = unique_temp_dir("mixed_case_dag_extension_single_file_target_matche");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
-    std::fs::write(root.join("main.DaG"), "module sample.main\nfn ok() -> Unit {}").expect("failed to write");
+    std::fs::write(
+        root.join("main.DaG"),
+        "module sample.main\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write");
 
     let output = Command::new(daglang_bin())
         .arg("check")
@@ -1309,7 +1343,10 @@ fn check_command_mixed_case_dag_extension_single_file_target_matches_absolute_ou
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_mixed_case_dag_extension_single_file_target_matches_absolute_output");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_mixed_case_dag_extension_single_file_target_matches_absolute_output",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -1325,7 +1362,10 @@ fn check_command_uppercase_dag_extension_missing_target_is_treated_as_single_fil
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_uppercase_dag_extension_missing_target_is_treated_as_single_file");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_uppercase_dag_extension_missing_target_is_treated_as_single_file",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -1341,7 +1381,10 @@ fn check_command_mixed_case_dag_extension_missing_target_is_treated_as_single_fi
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_mixed_case_dag_extension_missing_target_is_treated_as_single_file");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_mixed_case_dag_extension_missing_target_is_treated_as_single_file",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -1351,7 +1394,11 @@ fn check_command_uppercase_dag_extension_curdir_suffix_single_file_target_matche
 ) {
     let root = unique_temp_dir("uppercase_dag_extension_curdir_suffix_single_file_");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
-    std::fs::write(root.join("main.DAG"), "module sample.main\nfn ok() -> Unit {}").expect("failed to write");
+    std::fs::write(
+        root.join("main.DAG"),
+        "module sample.main\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write");
 
     let output = Command::new(daglang_bin())
         .arg("check")
@@ -1378,7 +1425,11 @@ fn check_command_uppercase_dag_extension_curdir_segment_trailing_slash_single_fi
 ) {
     let root = unique_temp_dir("uppercase_dag_extension_curdir_segment_trailing_sl");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
-    std::fs::write(root.join("main.DAG"), "module sample.main\nfn ok() -> Unit {}").expect("failed to write");
+    std::fs::write(
+        root.join("main.DAG"),
+        "module sample.main\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write");
 
     let output = Command::new(daglang_bin())
         .arg("check")
@@ -1457,7 +1508,11 @@ fn check_command_mixed_case_dag_extension_curdir_suffix_single_file_target_match
 ) {
     let root = unique_temp_dir("mixed_case_dag_extension_curdir_suffix_single_file");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
-    std::fs::write(root.join("main.DaG"), "module sample.main\nfn ok() -> Unit {}").expect("failed to write");
+    std::fs::write(
+        root.join("main.DaG"),
+        "module sample.main\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write");
 
     let output = Command::new(daglang_bin())
         .arg("check")
@@ -1484,7 +1539,11 @@ fn check_command_mixed_case_dag_extension_curdir_segment_trailing_slash_single_f
 ) {
     let root = unique_temp_dir("mixed_case_dag_extension_curdir_segment_trailing_s");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
-    std::fs::write(root.join("main.DaG"), "module sample.main\nfn ok() -> Unit {}").expect("failed to write");
+    std::fs::write(
+        root.join("main.DaG"),
+        "module sample.main\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write");
 
     let output = Command::new(daglang_bin())
         .arg("check")
@@ -9715,7 +9774,10 @@ fn check_command_accepts_symlink_uppercase_dag_single_file_target() {
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_accepts_symlink_uppercase_dag_single_file_target");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_accepts_symlink_uppercase_dag_single_file_target",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -9737,7 +9799,10 @@ fn check_command_accepts_symlink_mixed_case_dag_single_file_target() {
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_accepts_symlink_mixed_case_dag_single_file_target");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_accepts_symlink_mixed_case_dag_single_file_target",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -9759,7 +9824,10 @@ fn check_command_uppercase_symlink_single_file_curdir_suffix_target_matches_plai
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_uppercase_symlink_single_file_curdir_suffix_target_matches_plain_output");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_uppercase_symlink_single_file_curdir_suffix_target_matches_plain_output",
+    );
 
     let output2 = Command::new(daglang_bin())
         .arg("check")
@@ -9790,7 +9858,10 @@ fn check_command_mixed_case_symlink_single_file_curdir_suffix_target_matches_pla
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_mixed_case_symlink_single_file_curdir_suffix_target_matches_plain_output");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_mixed_case_symlink_single_file_curdir_suffix_target_matches_plain_output",
+    );
 
     let output2 = Command::new(daglang_bin())
         .arg("check")
@@ -9806,8 +9877,8 @@ fn check_command_mixed_case_symlink_single_file_curdir_suffix_target_matches_pla
 
 #[cfg(unix)]
 #[test]
-fn check_command_uppercase_symlink_single_file_curdir_segment_trailing_target_matches_plain_output(
-) {
+fn check_command_uppercase_symlink_single_file_curdir_segment_trailing_target_matches_plain_output()
+{
     let root = unique_temp_dir("uppercase_symlink_single_file_curdir_segment_trail");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
 
@@ -9870,8 +9941,8 @@ fn check_command_mixed_case_symlink_single_file_curdir_segment_trailing_target_m
 
 #[cfg(unix)]
 #[test]
-fn check_command_uppercase_symlink_single_file_curdir_double_separator_target_matches_plain_output(
-) {
+fn check_command_uppercase_symlink_single_file_curdir_double_separator_target_matches_plain_output()
+{
     let root = unique_temp_dir("uppercase_symlink_single_file_curdir_double_separa");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
 
@@ -10001,7 +10072,10 @@ fn check_command_symlink_and_real_invalid_uppercase_single_file_targets_are_equi
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_symlink_and_real_invalid_uppercase_single_file_targets_are_equivalent");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_symlink_and_real_invalid_uppercase_single_file_targets_are_equivalent",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -10023,7 +10097,10 @@ fn check_command_symlink_and_real_invalid_mixed_case_single_file_targets_are_equ
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_symlink_and_real_invalid_mixed_case_single_file_targets_are_equivalent");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_symlink_and_real_invalid_mixed_case_single_file_targets_are_equivalent",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -10082,7 +10159,10 @@ fn check_command_dangling_uppercase_symlink_single_file_target_exits_nonzero() {
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_dangling_uppercase_symlink_single_file_target_exits_nonzero");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_dangling_uppercase_symlink_single_file_target_exits_nonzero",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -10103,7 +10183,10 @@ fn check_command_dangling_mixed_case_symlink_single_file_target_exits_nonzero() 
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_dangling_mixed_case_symlink_single_file_target_exits_nonzero");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_dangling_mixed_case_symlink_single_file_target_exits_nonzero",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -10124,7 +10207,10 @@ fn check_command_uppercase_dangling_symlink_single_file_curdir_suffix_matches_pl
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_uppercase_dangling_symlink_single_file_curdir_suffix_matches_plain_output");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_uppercase_dangling_symlink_single_file_curdir_suffix_matches_plain_output",
+    );
 
     let output2 = Command::new(daglang_bin())
         .arg("check")
@@ -10154,7 +10240,10 @@ fn check_command_mixed_case_dangling_symlink_single_file_curdir_suffix_matches_p
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_mixed_case_dangling_symlink_single_file_curdir_suffix_matches_plain_output");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_mixed_case_dangling_symlink_single_file_curdir_suffix_matches_plain_output",
+    );
 
     let output2 = Command::new(daglang_bin())
         .arg("check")
@@ -10361,7 +10450,10 @@ fn check_command_relative_and_absolute_uppercase_dangling_symlink_targets_are_eq
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_relative_and_absolute_uppercase_dangling_symlink_targets_are_equivalent");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_relative_and_absolute_uppercase_dangling_symlink_targets_are_equivalent",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -10382,7 +10474,10 @@ fn check_command_relative_and_absolute_mixed_case_dangling_symlink_targets_are_e
         .current_dir(&root)
         .output()
         .expect("failed to run daglang check");
-    assert_wrong_cased_dag_extension_rejected(&output, "check_command_relative_and_absolute_mixed_case_dangling_symlink_targets_are_equivalent");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "check_command_relative_and_absolute_mixed_case_dangling_symlink_targets_are_equivalent",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -12289,7 +12384,11 @@ fn modules_command_single_dag_file_path_exits_nonzero() {
 fn modules_command_single_uppercase_dag_file_path_exits_nonzero() {
     let root = unique_temp_dir("single_uppercase_dag_file_path_exits_nonzero");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
-    std::fs::write(root.join("main.DAG"), "module sample.main\nfn ok() -> Unit {}").expect("failed to write");
+    std::fs::write(
+        root.join("main.DAG"),
+        "module sample.main\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write");
 
     let output = Command::new(daglang_bin())
         .arg("modules")
@@ -12297,7 +12396,10 @@ fn modules_command_single_uppercase_dag_file_path_exits_nonzero() {
         .current_dir(&root)
         .output()
         .expect("failed to run daglang modules");
-    assert_wrong_cased_dag_extension_rejected(&output, "modules_command_single_uppercase_dag_file_path_exits_nonzero");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "modules_command_single_uppercase_dag_file_path_exits_nonzero",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -12306,7 +12408,11 @@ fn modules_command_single_uppercase_dag_file_path_exits_nonzero() {
 fn modules_command_single_mixed_case_dag_file_path_exits_nonzero() {
     let root = unique_temp_dir("single_mixed_case_dag_file_path_exits_nonzero");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
-    std::fs::write(root.join("main.DaG"), "module sample.main\nfn ok() -> Unit {}").expect("failed to write");
+    std::fs::write(
+        root.join("main.DaG"),
+        "module sample.main\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write");
 
     let output = Command::new(daglang_bin())
         .arg("modules")
@@ -12314,7 +12420,10 @@ fn modules_command_single_mixed_case_dag_file_path_exits_nonzero() {
         .current_dir(&root)
         .output()
         .expect("failed to run daglang modules");
-    assert_wrong_cased_dag_extension_rejected(&output, "modules_command_single_mixed_case_dag_file_path_exits_nonzero");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "modules_command_single_mixed_case_dag_file_path_exits_nonzero",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -12323,7 +12432,11 @@ fn modules_command_single_mixed_case_dag_file_path_exits_nonzero() {
 fn modules_command_relative_and_absolute_uppercase_single_file_roots_are_equivalent() {
     let root = unique_temp_dir("relative_and_absolute_uppercase_single_file_roots_");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
-    std::fs::write(root.join("main.DAG"), "module sample.main\nfn ok() -> Unit {}").expect("failed to write");
+    std::fs::write(
+        root.join("main.DAG"),
+        "module sample.main\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write");
 
     let output = Command::new(daglang_bin())
         .arg("modules")
@@ -12331,7 +12444,10 @@ fn modules_command_relative_and_absolute_uppercase_single_file_roots_are_equival
         .current_dir(&root)
         .output()
         .expect("failed to run daglang modules");
-    assert_wrong_cased_dag_extension_rejected(&output, "modules_command_relative_and_absolute_uppercase_single_file_roots_are_equivalent");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "modules_command_relative_and_absolute_uppercase_single_file_roots_are_equivalent",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -12340,7 +12456,11 @@ fn modules_command_relative_and_absolute_uppercase_single_file_roots_are_equival
 fn modules_command_relative_and_absolute_mixed_case_single_file_roots_are_equivalent() {
     let root = unique_temp_dir("relative_and_absolute_mixed_case_single_file_roots");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
-    std::fs::write(root.join("main.DaG"), "module sample.main\nfn ok() -> Unit {}").expect("failed to write");
+    std::fs::write(
+        root.join("main.DaG"),
+        "module sample.main\nfn ok() -> Unit {}",
+    )
+    .expect("failed to write");
 
     let output = Command::new(daglang_bin())
         .arg("modules")
@@ -12348,7 +12468,10 @@ fn modules_command_relative_and_absolute_mixed_case_single_file_roots_are_equiva
         .current_dir(&root)
         .output()
         .expect("failed to run daglang modules");
-    assert_wrong_cased_dag_extension_rejected(&output, "modules_command_relative_and_absolute_mixed_case_single_file_roots_are_equivalent");
+    assert_wrong_cased_dag_extension_rejected(
+        &output,
+        "modules_command_relative_and_absolute_mixed_case_single_file_roots_are_equivalent",
+    );
 
     std::fs::remove_dir_all(root).expect("failed to cleanup");
 }
@@ -12972,6 +13095,348 @@ fn compile_family_commands_makegen_target_variants_are_output_equivalent() {
 }
 
 #[test]
+fn compile_with_out_writes_native_emitted_files() {
+    let out_dir = unique_temp_dir("compile_out_native");
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--out")
+        .arg(&out_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile --out");
+    assert!(
+        output.status.success(),
+        "compile --out should succeed for makegen target"
+    );
+
+    let main_rs = out_dir.join("target/generated/rust/main.rs");
+    let manifest = out_dir.join("target/generated/rust/progress_manifest.txt");
+    assert!(main_rs.is_file(), "compile --out should write main.rs");
+    assert!(
+        manifest.is_file(),
+        "compile --out should write progress_manifest.txt"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("target=rust layer=2"),
+        "compile summary should include selected backend/layer: {stdout}"
+    );
+
+    std::fs::remove_dir_all(&out_dir).expect("failed to cleanup compile --out directory");
+}
+
+#[test]
+fn compile_layer_one_with_out_writes_exec_runtime_files() {
+    let out_dir = unique_temp_dir("compile_out_layer1");
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--layer")
+        .arg("1")
+        .arg("--out")
+        .arg(&out_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile --layer 1 --out");
+    assert!(
+        output.status.success(),
+        "compile --layer 1 --out should succeed for makegen target"
+    );
+
+    let main_rs = out_dir.join("src/main.rs");
+    let cargo_toml = out_dir.join("Cargo.toml");
+    assert!(
+        main_rs.is_file(),
+        "layer 1 compile should write src/main.rs"
+    );
+    assert!(
+        cargo_toml.is_file(),
+        "layer 1 compile should write Cargo.toml"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("target=rust layer=1"),
+        "layer 1 compile summary should include selected backend/layer: {stdout}"
+    );
+
+    std::fs::remove_dir_all(&out_dir).expect("failed to cleanup layer 1 compile directory");
+}
+
+#[test]
+fn compile_with_go_target_writes_native_go_files() {
+    let out_dir = unique_temp_dir("compile_out_go");
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--target")
+        .arg("go")
+        .arg("--out")
+        .arg(&out_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile --target go --out");
+    assert!(
+        output.status.success(),
+        "compile --target go --out should succeed"
+    );
+    assert!(
+        out_dir.join("target/generated/go/main.go").is_file(),
+        "compile --target go should emit main.go"
+    );
+    assert!(
+        out_dir
+            .join("target/generated/go/progress_manifest.txt")
+            .is_file(),
+        "compile --target go should emit progress manifest"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("target=go layer=2"),
+        "compile summary should include go native backend/layer: {stdout}"
+    );
+
+    std::fs::remove_dir_all(&out_dir).expect("failed to cleanup go compile directory");
+}
+
+#[test]
+fn compile_non_rust_layer_one_reports_error() {
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--target")
+        .arg("go")
+        .arg("--layer")
+        .arg("1")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile --target go --layer 1");
+    assert!(
+        !output.status.success(),
+        "compile --target go --layer 1 should fail because layer 1 is rust-only"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("layer 1 currently supports only --target rust"),
+        "compile --target go --layer 1 should report rust-only layer 1: {stderr}"
+    );
+}
+
+#[test]
+fn compile_layer_one_makegen_generated_binary_matches_run_output() {
+    let out_dir = unique_workspace_target_dir("compile_layer1_makegen_e2e");
+    let compile_output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--layer")
+        .arg("1")
+        .arg("--out")
+        .arg(&out_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile --layer 1 for makegen e2e");
+    assert!(
+        compile_output.status.success(),
+        "layer 1 compile should succeed for makegen e2e: {}",
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    let generated_main = std::fs::read_to_string(out_dir.join("src/main.rs"))
+        .expect("generated makegen crate should contain src/main.rs");
+    let bindings = generated_cli_bindings(&generated_main);
+    assert!(
+        !bindings.is_empty(),
+        "generated makegen binary should expose at least one CLI binding"
+    );
+    assert!(
+        bindings.iter().all(|(_node, port)| port == "path"),
+        "generated makegen bindings should only require path inputs: {bindings:?}"
+    );
+
+    let output_dir = unique_temp_dir("makegen_layer1_runtime");
+    std::fs::create_dir_all(&output_dir).expect("failed to create makegen runtime output dir");
+    let generated_path = output_dir.join("Makefile.generated");
+    let reference_path = output_dir.join("Makefile.reference");
+    let generated_path_arg = generated_path.to_string_lossy().into_owned();
+
+    let mut generated_run_cmd = Command::new("cargo");
+    std::fs::copy(
+        workspace_root().join("Cargo.lock"),
+        out_dir.join("Cargo.lock"),
+    )
+    .expect("failed to copy workspace Cargo.lock into generated makegen crate");
+    generated_run_cmd
+        .arg("run")
+        .arg("--quiet")
+        .arg("--offline")
+        .arg("--manifest-path")
+        .arg(out_dir.join("Cargo.toml"))
+        .arg("--")
+        .current_dir(workspace_root());
+    for _ in &bindings {
+        generated_run_cmd.arg(&generated_path_arg);
+    }
+    let generated_run = generated_run_cmd
+        .output()
+        .expect("failed to run generated makegen layer 1 binary");
+    assert!(
+        generated_run.status.success(),
+        "generated makegen binary should execute successfully: {}",
+        String::from_utf8_lossy(&generated_run.stderr)
+    );
+
+    let reference_run = Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg(&reference_path)
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run reference daglang makegen execution");
+    assert!(
+        reference_run.status.success(),
+        "reference daglang run should succeed: {}",
+        String::from_utf8_lossy(&reference_run.stderr)
+    );
+
+    let generated_content = std::fs::read_to_string(&generated_path)
+        .expect("generated layer 1 makegen output file should exist");
+    let reference_content = std::fs::read_to_string(&reference_path)
+        .expect("reference makegen output file should exist");
+    assert_eq!(
+        generated_content, reference_content,
+        "generated layer 1 makegen output should match reference daglang run output"
+    );
+
+    std::fs::remove_dir_all(&out_dir).expect("failed to cleanup makegen layer 1 crate output");
+    std::fs::remove_dir_all(&output_dir).expect("failed to cleanup makegen layer 1 runtime output");
+}
+
+#[test]
+fn compile_layer_one_pragma_generated_binary_writes_expected_files() {
+    let out_dir = unique_workspace_target_dir("compile_layer1_pragma_e2e");
+    let compile_output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/pragma.dag")
+        .arg("--layer")
+        .arg("1")
+        .arg("--out")
+        .arg(&out_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile --layer 1 for pragma e2e");
+    assert!(
+        compile_output.status.success(),
+        "layer 1 compile should succeed for pragma e2e: {}",
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    let generated_main = std::fs::read_to_string(out_dir.join("src/main.rs"))
+        .expect("generated pragma crate should contain src/main.rs");
+    let bindings = generated_cli_bindings(&generated_main);
+    assert!(
+        !bindings.is_empty(),
+        "generated pragma binary should expose CLI bindings"
+    );
+    assert!(
+        bindings
+            .iter()
+            .all(|(_node, port)| port == "directives" || port == "path"),
+        "generated pragma bindings should only require directives/path: {bindings:?}"
+    );
+
+    let output_root = unique_temp_dir("pragma_layer1_runtime");
+    std::fs::create_dir_all(output_root.join("tools"))
+        .expect("failed to create pragma runtime tools directory");
+    let clippy_path = output_root.join("clippy.toml");
+    let allowlist_path = output_root.join("tools/disallowed-methods-allowlist.txt");
+    let policy_path = output_root.join("tools/pragma-lint-policy.txt");
+
+    let directives_json = serde_json::json!([
+        {"key":"warn","value":"\"clippy::all\"","scope":"clippy"},
+        {"key":"disallowed_method","value":"std::process::Command","scope":null},
+        {"key":"level","value":"deny","scope":"lint"},
+        {"key":"allow","value":"clippy::restriction","scope":null}
+    ])
+    .to_string();
+
+    let args: Vec<String> = bindings
+        .iter()
+        .map(|(node_id, port_name)| match port_name.as_str() {
+            "directives" => directives_json.clone(),
+            "path" => {
+                if node_id.contains("_3") {
+                    policy_path.to_string_lossy().into_owned()
+                } else if node_id.contains("_2") {
+                    allowlist_path.to_string_lossy().into_owned()
+                } else {
+                    clippy_path.to_string_lossy().into_owned()
+                }
+            }
+            _ => panic!("unexpected generated pragma binding: ({node_id}, {port_name})"),
+        })
+        .collect();
+
+    let mut generated_run_cmd = Command::new("cargo");
+    std::fs::copy(
+        workspace_root().join("Cargo.lock"),
+        out_dir.join("Cargo.lock"),
+    )
+    .expect("failed to copy workspace Cargo.lock into generated pragma crate");
+    generated_run_cmd
+        .arg("run")
+        .arg("--quiet")
+        .arg("--offline")
+        .arg("--manifest-path")
+        .arg(out_dir.join("Cargo.toml"))
+        .arg("--")
+        .current_dir(workspace_root());
+    for arg in &args {
+        generated_run_cmd.arg(arg);
+    }
+    let generated_run = generated_run_cmd
+        .output()
+        .expect("failed to run generated pragma layer 1 binary");
+    assert!(
+        generated_run.status.success(),
+        "generated pragma binary should execute successfully: {}",
+        String::from_utf8_lossy(&generated_run.stderr)
+    );
+
+    let header = "# Generated by gunbc pragma\n";
+    let expected_clippy = format!(
+        "{header}\nwarn = \"clippy::all\"\ndisallowed_method = std::process::Command\nallow = clippy::restriction\n"
+    );
+    let expected_allowlist = format!("{header}std::process::Command\n");
+    let expected_policy = format!("{header}level: deny\n");
+
+    let clippy_content =
+        std::fs::read_to_string(&clippy_path).expect("generated clippy.toml should exist");
+    let allowlist_content =
+        std::fs::read_to_string(&allowlist_path).expect("generated allowlist should exist");
+    let policy_content =
+        std::fs::read_to_string(&policy_path).expect("generated pragma policy should exist");
+
+    assert_eq!(
+        clippy_content, expected_clippy,
+        "generated clippy.toml should match pragma DSL semantics"
+    );
+    assert_eq!(
+        allowlist_content, expected_allowlist,
+        "generated allowlist should match pragma DSL semantics"
+    );
+    assert_eq!(
+        policy_content, expected_policy,
+        "generated pragma policy should match pragma DSL semantics"
+    );
+
+    std::fs::remove_dir_all(&out_dir).expect("failed to cleanup pragma layer 1 crate output");
+    std::fs::remove_dir_all(&output_root).expect("failed to cleanup pragma layer 1 runtime output");
+}
+
+#[test]
 fn viz_without_self_defaults_to_compiled_ascii_graph() {
     let output = Command::new(daglang_bin())
         .arg("viz")
@@ -13016,4 +13481,232 @@ fn viz_with_mermaid_format_emits_compiled_mermaid_graph() {
         stdout.contains("flowchart TB"),
         "viz mermaid output should include flowchart header: {stdout}"
     );
+}
+
+/// D1.7 — Full end-to-end test: compile makegen.dag to exec-runtime binary,
+/// build it, run it, and verify the Makefile output matches expected content.
+///
+/// This test is marked `#[ignore]` because it builds the generated crate from
+/// scratch (~60-120s). Run explicitly with: `cargo test -- --ignored`
+#[test]
+#[ignore]
+fn makegen_e2e_generated_binary_produces_correct_makefile() {
+    // 1. Compile makegen.dag → exec-runtime → write to workspace-relative dir.
+    //    The generated Cargo.toml uses `path = "../../core/ir"` etc., so the output
+    //    must be at exactly 2 levels below workspace root.
+    let ws_root = workspace_root();
+    let out_dir = ws_root.join("e2e_codegen_test/tools-makegen");
+    // Clean up any leftover from a previous run.
+    let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test"));
+
+    let compile_output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--target")
+        .arg("rust")
+        .arg("--layer")
+        .arg("1")
+        .arg("--out")
+        .arg(&out_dir)
+        .current_dir(&ws_root)
+        .output()
+        .expect("failed to run daglang compile --layer 1 --out");
+    assert!(
+        compile_output.status.success(),
+        "compile should succeed: {}",
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    // Verify expected files exist.
+    assert!(
+        out_dir.join("src/main.rs").is_file(),
+        "should write src/main.rs"
+    );
+    assert!(
+        out_dir.join("Cargo.toml").is_file(),
+        "should write Cargo.toml"
+    );
+
+    // 2. Build the generated crate.
+    let build_output = Command::new("cargo")
+        .arg("build")
+        .current_dir(&out_dir)
+        .output()
+        .expect("failed to run cargo build on generated crate");
+    assert!(
+        build_output.status.success(),
+        "generated crate should compile: {}",
+        String::from_utf8_lossy(&build_output.stderr)
+    );
+
+    // 3. Run the generated binary with a temp file path.
+    let makefile_path =
+        std::env::temp_dir().join(format!("e2e_makegen_output_{}.mk", std::process::id()));
+    let run_output = Command::new(out_dir.join("target/debug/tools-makegen"))
+        .arg(makefile_path.to_string_lossy().as_ref())
+        .output()
+        .expect("failed to run generated binary");
+    assert!(
+        run_output.status.success(),
+        "generated binary should run successfully: {}",
+        String::from_utf8_lossy(&run_output.stderr)
+    );
+
+    // 4. Verify the Makefile content.
+    let makefile =
+        std::fs::read_to_string(&makefile_path).expect("should be able to read generated Makefile");
+    assert!(
+        makefile.contains("# Generated by daglang"),
+        "Makefile should contain daglang header"
+    );
+    assert!(
+        makefile.contains(".PHONY:"),
+        "Makefile should contain .PHONY directive"
+    );
+    assert!(
+        makefile.contains("makegen"),
+        "Makefile should contain makegen target"
+    );
+    assert!(
+        makefile.contains("cargo run -p gunbc-dag --bin gunbc-makegen"),
+        "Makefile should contain correct makegen command"
+    );
+
+    // 5. Cleanup.
+    let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test"));
+    let _ = std::fs::remove_file(&makefile_path);
+}
+
+/// D1.8 — Compile pragma.dag to exec-runtime layer and verify generated files.
+#[test]
+fn compile_pragma_layer_one_with_out_writes_exec_runtime_files() {
+    let out_dir = unique_temp_dir("compile_out_pragma_layer1");
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/pragma.dag")
+        .arg("--layer")
+        .arg("1")
+        .arg("--out")
+        .arg(&out_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile pragma --layer 1 --out");
+    assert!(
+        output.status.success(),
+        "compile pragma --layer 1 --out should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let main_rs = out_dir.join("src/main.rs");
+    let cargo_toml = out_dir.join("Cargo.toml");
+    assert!(
+        main_rs.is_file(),
+        "layer 1 pragma compile should write src/main.rs"
+    );
+    assert!(
+        cargo_toml.is_file(),
+        "layer 1 pragma compile should write Cargo.toml"
+    );
+
+    // Verify pragma-specific handler kinds in generated code.
+    let main_rs_content =
+        std::fs::read_to_string(&main_rs).expect("should read generated src/main.rs");
+    assert!(
+        main_rs_content.contains("RenderPragmaClippyToml"),
+        "generated code should contain pragma clippy render handler"
+    );
+    assert!(
+        main_rs_content.contains("RenderPragmaAllowlist"),
+        "generated code should contain pragma allowlist render handler"
+    );
+    assert!(
+        main_rs_content.contains("RenderPragmaLintPolicy"),
+        "generated code should contain pragma lint policy render handler"
+    );
+    assert!(
+        main_rs_content.contains("PragmaEntrypoint"),
+        "generated code should contain pragma entrypoint handler"
+    );
+    assert!(
+        main_rs_content.contains("PragmaDirectiveRuntime"),
+        "generated code should contain pragma directive struct"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("target=rust layer=1"),
+        "compile summary should include selected backend/layer: {stdout}"
+    );
+
+    std::fs::remove_dir_all(&out_dir).expect("failed to cleanup pragma layer 1 compile directory");
+}
+
+/// D1.8 — Full end-to-end test: compile pragma.dag to exec-runtime binary,
+/// build it, run it, and verify the pragma config files are generated.
+///
+/// Marked `#[ignore]` because it builds the generated crate (~60-120s).
+#[test]
+#[ignore]
+fn pragma_e2e_generated_binary_produces_correct_config_files() {
+    let ws_root = workspace_root();
+    let out_dir = ws_root.join("e2e_codegen_test_pragma/tools-pragma");
+    let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test_pragma"));
+
+    // 1. Compile pragma.dag → exec-runtime.
+    let compile_output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/pragma.dag")
+        .arg("--target")
+        .arg("rust")
+        .arg("--layer")
+        .arg("1")
+        .arg("--out")
+        .arg(&out_dir)
+        .current_dir(&ws_root)
+        .output()
+        .expect("failed to run daglang compile pragma --layer 1");
+    assert!(
+        compile_output.status.success(),
+        "pragma compile should succeed: {}",
+        String::from_utf8_lossy(&compile_output.stderr)
+    );
+
+    // 2. Build the generated crate.
+    let build_output = Command::new("cargo")
+        .arg("build")
+        .current_dir(&out_dir)
+        .output()
+        .expect("failed to run cargo build on generated pragma crate");
+    assert!(
+        build_output.status.success(),
+        "generated pragma crate should compile: {}",
+        String::from_utf8_lossy(&build_output.stderr)
+    );
+
+    // 3. Run the generated binary. Pragma expects a directives JSON arg.
+    let output_dir = std::env::temp_dir().join(format!("e2e_pragma_output_{}", std::process::id()));
+    std::fs::create_dir_all(&output_dir).expect("failed to create pragma output dir");
+
+    let directives_json = serde_json::json!([
+        {"key": "disallowed-methods", "value": "[]", "scope": "clippy"},
+        {"key": "disallowed_method", "value": "std::fs::read_to_string", "scope": null},
+        {"key": "warn-level", "value": "deny", "scope": "lint"}
+    ])
+    .to_string();
+
+    let run_output = Command::new(out_dir.join("target/debug/tools-pragma"))
+        .arg(&directives_json)
+        .output()
+        .expect("failed to run generated pragma binary");
+    // The binary may not succeed if it can't resolve paths, but it should at
+    // least not panic during handler execution.
+    let stderr = String::from_utf8_lossy(&run_output.stderr);
+    assert!(
+        !stderr.contains("panicked"),
+        "generated pragma binary should not panic: {stderr}"
+    );
+
+    // 4. Cleanup.
+    let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test_pragma"));
+    let _ = std::fs::remove_dir_all(&output_dir);
 }

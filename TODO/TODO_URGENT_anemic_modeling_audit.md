@@ -3,6 +3,8 @@
 **Status**: Active
 **Date**: 2026-02-14
 **Priority**: High
+**DSL Alignment**: DSL foundation via cross-cutting model consolidation
+**Track**: C — Modeling Foundation
 
 ## The Problem Pattern
 
