@@ -686,6 +686,12 @@ A malicious/buggy node could construct a fake handle from data.
 Also: `EnvVars` as observation resource risks spilling secrets unless it's a
 filtered projection (the `CredentialOp` approach is safer).
 
+**Update (2026-02-18)**: Capability parse paths enforce secret marker validation
+via `ensure_capability_marker(...)`, and regression tests now assert that forged
+values without the marker are rejected:
+- `FilesystemHandle::try_from(Value)` rejects missing `cap` marker
+- `NetworkHandle::try_from(Value)` rejects missing `cap` marker
+
 **Added**: 2026-02-14 (consolidated from root TODO_hacks)
 
 ---

@@ -68,3 +68,26 @@ impl TryFrom<Value> for NetworkHandle {
         NetworkHandle::try_from(&value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn network_handle_try_from_rejects_missing_capability_marker() {
+        let mut map = BTreeMap::new();
+        map.insert("type".to_string(), Value::Str("network_handle".to_string()));
+        let err = NetworkHandle::try_from(Value::Map(map)).expect_err("missing cap should fail");
+        assert!(
+            err.contains("missing capability marker"),
+            "error should mention missing capability marker: {err}"
+        );
+    }
+
+    #[test]
+    fn network_handle_try_from_accepts_framework_encoded_value() {
+        let encoded = Value::from(NetworkHandle);
+        let parsed = NetworkHandle::try_from(encoded).expect("framework value should parse");
+        assert_eq!(parsed, NetworkHandle);
+    }
+}

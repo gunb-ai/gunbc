@@ -753,6 +753,38 @@ impl TryFrom<Value> for FilesystemHandle {
     }
 }
 
+#[cfg(test)]
+mod capability_tests {
+    use super::*;
+
+    #[test]
+    fn filesystem_handle_try_from_rejects_missing_capability_marker() {
+        let mut map = BTreeMap::new();
+        map.insert(
+            "type".to_string(),
+            Value::Str("filesystem_handle".to_string()),
+        );
+        map.insert("scope".to_string(), Value::Str("write".to_string()));
+        map.insert("targets".to_string(), Value::List(vec![]));
+        map.insert("replacement".to_string(), Value::Str("-".to_string()));
+
+        let err = FilesystemHandle::try_from(Value::Map(map))
+            .expect_err("missing cap marker should fail");
+        assert!(
+            err.to_string().contains("missing capability marker"),
+            "error should mention missing capability marker: {err}"
+        );
+    }
+
+    #[test]
+    fn filesystem_handle_try_from_accepts_framework_encoded_value() {
+        let encoded = Value::from(FilesystemHandle::cross_platform(Scope::Write));
+        let parsed =
+            FilesystemHandle::try_from(encoded).expect("framework-encoded value should parse");
+        assert_eq!(parsed.scope(), Scope::Write);
+    }
+}
+
 // ============================================================================
 // Validation
 // ============================================================================

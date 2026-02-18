@@ -979,7 +979,7 @@ V0 complete (Tracks 2-6). Track 1 (Resource abstraction trait) still in design.
 
 - [x] F1.6 — Mtime freshness fallback: improve diagnostic beyond eprintln [S]
 - [ ] F1.23 — Strict DryRun mode: fail on missing resource wiring [S]
-- [ ] F1.34 — Resource capability forgery prevention (TryFrom<Value> guard) [S]
+- [x] F1.34 — Resource capability forgery prevention (TryFrom<Value> guard) [S]
 
 #### Testing (Wave 1-2)
 
