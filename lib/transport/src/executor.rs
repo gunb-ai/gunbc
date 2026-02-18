@@ -1235,6 +1235,81 @@ mod tests {
         handle.join().expect("server thread should finish");
     }
 
+    #[test]
+    fn test_execute_transport_tcp_connect_refused() {
+        if !guard_network(stringify!(test_execute_transport_tcp_connect_refused)) {
+            return;
+        }
+
+        // Reserve an ephemeral port, then drop listener so connect is refused.
+        let Some(listener) =
+            bind_loopback_listener(stringify!(test_execute_transport_tcp_connect_refused))
+        else {
+            return;
+        };
+        let port = listener.local_addr().expect("listener local addr").port();
+        drop(listener);
+
+        let request =
+            TransportRequest::Tcp(TcpRequest::new("127.0.0.1", port).connect_timeout(200));
+        let err = execute_transport(&request).expect_err("tcp connect should fail");
+        assert!(
+            err.to_string().contains("connection failed"),
+            "expected connection-failed error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_execute_transport_tcp_read_timeout_returns_connected_with_empty_data() {
+        if !guard_network(stringify!(
+            test_execute_transport_tcp_read_timeout_returns_connected_with_empty_data
+        )) {
+            return;
+        }
+
+        let Some(listener) = bind_loopback_listener(stringify!(
+            test_execute_transport_tcp_read_timeout_returns_connected_with_empty_data
+        )) else {
+            return;
+        };
+        let port = listener.local_addr().expect("listener local addr").port();
+
+        let handle = thread::spawn(move || {
+            let (mut stream, _addr) = listener.accept().expect("accept client");
+            let mut buf = [0_u8; 5];
+            stream
+                .read_exact(&mut buf)
+                .expect("read tcp payload from client");
+            assert_eq!(&buf, b"PING\n");
+            // Hold connection open past client read timeout without writing response.
+            thread::sleep(Duration::from_millis(300));
+        });
+
+        let request = TransportRequest::Tcp(
+            TcpRequest::new("127.0.0.1", port)
+                .data("PING\n")
+                .connect_timeout(500)
+                .read_timeout(100),
+        );
+        let response = execute_transport(&request).expect("tcp request should not hard-fail");
+
+        match response {
+            TransportResponse::Tcp(tcp) => {
+                assert!(tcp.connected, "timeout should still report connected");
+                assert_eq!(tcp.bytes_sent, 5);
+                assert_eq!(tcp.data, None, "read timeout should yield empty payload");
+                assert_eq!(
+                    tcp.bytes_received, 0,
+                    "read timeout should report zero bytes received"
+                );
+            }
+            other => panic!("expected Tcp response, got {other:?}"),
+        }
+
+        handle.join().expect("server thread should finish");
+    }
+
     // ========================================================================
     // Git transport integration tests
     //

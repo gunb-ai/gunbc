@@ -513,9 +513,9 @@ behavioral tests.
 
 ~200 lines of behavioral tests. This is the gap that allowed the TCP timeout swap bug.
 
-- [ ] C4.1a — TCP tests: connect success/refused, read timeout, write/roundtrip
-- [ ] C4.1b — Shell tests: nonexistent command, exit code, env vars, cwd, stdin
-- [ ] C4.1c — File tests: read/write/exists for edge cases
+- [x] C4.1a — TCP tests: connect success/refused, read timeout, write/roundtrip
+- [x] C4.1b — Shell tests: nonexistent command, exit code, env vars, cwd, stdin
+- [x] C4.1c — File tests: read/write/exists for edge cases
 
 #### Wave 2
 
@@ -985,7 +985,7 @@ V0 complete (Tracks 2-6). Track 1 (Resource abstraction trait) still in design.
 
 - [ ] F1.14 — Fermi guard live tests: blocked on GCP WIF + codegen for secret requirements [M]
 - [ ] F1.22 — Coercion coverage test assertions: design decision needed [S]
-- [ ] F1.21 — Transport executor test coverage (= C4.1) [S]
+- [x] F1.21 — Transport executor test coverage (= C4.1) [S]
 
 #### Code Quality (Wave 1-2)
 
