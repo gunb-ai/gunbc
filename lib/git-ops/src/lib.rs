@@ -25,8 +25,8 @@
 
 #![deny(dead_code)]
 use gunbc_exec::{
-    optional_str_strict, propagate_skipped, require_response, require_str, ExecError, Executable,
-    OutputMap, TransportResponseExt,
+    optional_str_strict, propagate_skipped, require_response, ExecError, Executable, OutputMap,
+    TransportResponseExt,
 };
 use gunbc_ir::build::{optional, port, resource, AccessMode};
 use gunbc_ir::dag::{Dag, Edge};
@@ -146,7 +146,7 @@ impl Executable for GitOps {
             // ls-files
             // ================================================================
             GitOps::PrepareLsFiles { extensions } => {
-                let repo_path = require_str(&inputs, "repo_path")?;
+                let repo_path = optional_str_strict(&inputs, "repo_path")?.unwrap_or(".");
 
                 let mut req = GitRequest::ls_files();
                 if !extensions.is_empty() {
@@ -186,7 +186,7 @@ impl Executable for GitOps {
                 base_ref,
                 extensions,
             } => {
-                let repo_path = require_str(&inputs, "repo_path")?;
+                let repo_path = optional_str_strict(&inputs, "repo_path")?.unwrap_or(".");
 
                 // Allow runtime override of base_ref
                 let effective_ref =
@@ -238,7 +238,7 @@ impl Executable for GitOps {
                 base_ref,
                 extensions,
             } => {
-                let repo_path = require_str(&inputs, "repo_path")?;
+                let repo_path = optional_str_strict(&inputs, "repo_path")?.unwrap_or(".");
 
                 let effective_ref =
                     optional_str_strict(&inputs, "base_ref")?.unwrap_or(base_ref.as_str());
@@ -277,7 +277,7 @@ impl Executable for GitOps {
             // Utilities
             // ================================================================
             GitOps::PrepareCurrentBranch => {
-                let repo_path = require_str(&inputs, "repo_path")?;
+                let repo_path = optional_str_strict(&inputs, "repo_path")?.unwrap_or(".");
 
                 let mut req = GitRequest::current_branch();
                 if repo_path != "." {
@@ -313,7 +313,7 @@ impl Executable for GitOps {
             // Remote branches at HEAD
             // ================================================================
             GitOps::PrepareRemoteBranchesAtHead => {
-                let repo_path = require_str(&inputs, "repo_path")?;
+                let repo_path = optional_str_strict(&inputs, "repo_path")?.unwrap_or(".");
 
                 let mut req = GitRequest::remote_branches_at_head();
                 if repo_path != "." {
@@ -351,7 +351,7 @@ impl Executable for GitOps {
             // rev-list
             // ================================================================
             GitOps::PrepareRevListBefore { before } => {
-                let repo_path = require_str(&inputs, "repo_path")?;
+                let repo_path = optional_str_strict(&inputs, "repo_path")?.unwrap_or(".");
 
                 let mut req = GitRequest::rev_list_before(before.as_str());
                 if repo_path != "." {

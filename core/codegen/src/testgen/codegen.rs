@@ -38,7 +38,7 @@ use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, Transpo
 use gunbc_ir::{
     contract, parse_map_type_id, semantic_carrier_class_for_type_id, value_backing_for_type_id,
     Cardinality, Dag, NodeId, Os, PortName, RuntimePlatform, SecretString, SeedPlaceholderPolicy,
-    SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
+    SemanticCarrierClass, TypeRegistry, Value, ValueKind, ValueExpr,
 };
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -107,28 +107,19 @@ fn requires_explicit_seed(type_id: &str, context: SeedContext) -> bool {
     seed_policy_for_context(type_id, context) == SeedPolicy::ExplicitSeedRequired
 }
 
-fn mock_value_type_name(value: &Value) -> &'static str {
-    match value {
-        Value::Unit => "Unit",
-        Value::Bool(_) => "Bool",
-        Value::Str(_) => "String",
-        Value::Int(_) => "Int",
-        Value::List(_) => "List",
-        Value::Set(_) => "Set",
-        Value::Map(_) => "Map",
-        Value::Json(_) => "Json",
-        Value::Request(_) => "TransportRequest",
-        Value::Response(_) => "TransportResponse",
-        Value::Secret(_) => "Secret",
-        Value::Skipped => "Skipped",
-    }
+/// Returns the canonical type-name string for a Value's kind.
+/// Thin wrapper around `Value::kind().type_name()` — kept as a private helper
+/// so callers don't repeat the two-step chain.
+fn mock_value_kind_name(value: &Value) -> &'static str {
+    value.kind().type_name()
 }
 
 fn mock_types_compatible(port_type: &str, value: &Value) -> bool {
-    let value_type = mock_value_type_name(value);
+    let kind = value.kind();
+    let kind_name = kind.type_name();
 
     // Exact match
-    if port_type == value_type {
+    if port_type == kind_name {
         return true;
     }
     // Any matches anything
@@ -137,16 +128,16 @@ fn mock_types_compatible(port_type: &str, value: &Value) -> bool {
     }
     // Optional types accept the inner type or Unit (none)
     if let Some(inner) = port_type.strip_prefix("Optional") {
-        if value_type == inner || value_type == "Unit" {
+        if kind_name == inner || kind == ValueKind::Unit {
             return true;
         }
     }
     // Skipped is a control flow value, compatible with any type
-    if value_type == "Skipped" {
+    if kind == ValueKind::Skipped {
         return true;
     }
     // Json is flexible - can hold structured data that might be typed differently
-    if port_type == "Json" || value_type == "Json" {
+    if port_type == "Json" || kind == ValueKind::Json {
         return true;
     }
     // Parametric Map<K,V> — validate value entries against the value type parameter
@@ -162,12 +153,12 @@ fn mock_types_compatible(port_type: &str, value: &Value) -> bool {
         return false;
     }
     // Platform has dual backing: String or Map (structured platform info)
-    if port_type == "Platform" && (value_type == "String" || value_type == "Map") {
+    if port_type == "Platform" && (kind == ValueKind::String || kind == ValueKind::Map) {
         return true;
     }
     // Derive backing from the type system
     let backing = value_backing_for_type_id(port_type);
-    backing.accepts_value_type(value_type)
+    backing.accepts_value_kind(kind)
 }
 
 /// Configuration for test generation.
@@ -763,7 +754,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if let Some(node) = node {
                 if let Some(port) = node.outputs.iter().find(|p| p.name.0 == tm.port) {
                     let expected = &port.type_id.0;
-                    let actual = mock_value_type_name(&tm.value);
+                    let actual = mock_value_kind_name(&tm.value);
                     if !mock_types_compatible(expected, &tm.value) {
                         mismatches.push((
                             tm.node.clone(),
@@ -785,7 +776,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if let Some(node) = node {
                 if let Some(port) = node.outputs.iter().find(|p| p.name.0 == bm.port) {
                     let expected = &port.type_id.0;
-                    let actual = mock_value_type_name(&bm.value);
+                    let actual = mock_value_kind_name(&bm.value);
                     if !mock_types_compatible(expected, &bm.value) {
                         mismatches.push((
                             bm.node.clone(),
@@ -807,7 +798,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if let Some(node) = node {
                 if let Some(port) = node.inputs.iter().find(|p| p.name.0 == im.port) {
                     let expected = &port.type_id.0;
-                    let actual = mock_value_type_name(&im.value);
+                    let actual = mock_value_kind_name(&im.value);
                     if !mock_types_compatible(expected, &im.value) {
                         mismatches.push((
                             im.node.clone(),
@@ -2143,6 +2134,9 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                         Stmt::let_bind("mocks", mocks_expr),
                         Stmt::let_bind("log", exec),
+                        // Raw because: coercion assertion sequence requires chained
+                        // let-bindings with complex match/assert shapes that have no
+                        // Code IR statement equivalent.
                         Stmt::Item(Item::Raw(format!(
                             "let target_entry = log.entries.iter().rev().find(|entry| entry.node_id == \"{}\").expect(\"coercion target entry missing for {}.{}\");",
                             to_node.0, to_node.0, to_port.0
@@ -3560,7 +3554,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 Expr::var("spec").method("to_boundary_mocks", vec![]),
             ),
             Stmt::let_bind(
-                "log",
+                if spec.expected_outputs.is_empty() { "_log" } else { "log" },
                 Expr::call(
                     "execute_with_mode",
                     vec![
@@ -4116,7 +4110,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     "matchers",
                     Expr::call("HashMap::new", vec![]),
                 ),
-                // Insert only chain-safe (input-independent) matchers at runtime.
+                // Raw because: runtime for-loop filter+insert patterns have no Code IR
+                // equivalent — these iterate spec data to populate matcher maps.
                 Stmt::Item(Item::Raw(format!(
                     "for ex in spec.node_examples.iter().filter(|e| e.node_id == \"{}\") {{\n\
                         for (port, matcher) in &ex.outputs {{\n\

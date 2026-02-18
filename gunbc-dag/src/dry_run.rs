@@ -38,6 +38,7 @@ pub fn wire_fs_env_write_mock<T>(dag: &Dag<T>, mocks: &mut BoundaryMocks) -> boo
 mod tests {
     use super::*;
     use gunbc_ir::{Node, Port, PortName, Value};
+    use gunbc_primitives::FsEnv;
 
     #[test]
     fn wire_fs_env_write_mock_sets_value_when_node_exists() {

@@ -689,19 +689,20 @@ pub enum ValueBacking {
 }
 
 impl ValueBacking {
-    /// Whether a `Value` variant name (from `mock_value_type_name`) is compatible.
-    pub fn accepts_value_type(&self, value_type: &str) -> bool {
+    /// Whether a [`ValueKind`] is compatible with this backing.
+    pub fn accepts_value_kind(&self, kind: crate::value::ValueKind) -> bool {
+        use crate::value::ValueKind;
         match self {
-            ValueBacking::String => value_type == "String",
-            ValueBacking::Bool => value_type == "Bool",
-            ValueBacking::Int => value_type == "Int",
-            ValueBacking::Float => value_type == "Int", // Float can accept Int
-            ValueBacking::Json => true,                 // Json accepts anything
-            ValueBacking::Map => value_type == "Map",
-            ValueBacking::List => value_type == "List",
-            ValueBacking::Set => value_type == "Set",
-            ValueBacking::Unit => value_type == "Unit",
-            ValueBacking::Bytes => value_type == "List", // byte arrays are lists
+            ValueBacking::String => kind == ValueKind::String,
+            ValueBacking::Bool => kind == ValueKind::Bool,
+            ValueBacking::Int => kind == ValueKind::Int,
+            ValueBacking::Float => kind == ValueKind::Int, // Float can accept Int
+            ValueBacking::Json => true,                    // Json accepts anything
+            ValueBacking::Map => kind == ValueKind::Map,
+            ValueBacking::List => kind == ValueKind::List,
+            ValueBacking::Set => kind == ValueKind::Set,
+            ValueBacking::Unit => kind == ValueKind::Unit,
+            ValueBacking::Bytes => kind == ValueKind::List, // byte arrays are lists
         }
     }
 }

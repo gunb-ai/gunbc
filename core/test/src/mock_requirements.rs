@@ -23,6 +23,7 @@ use crate::mock_spec::{BoundaryMock, MockSpec, NodeExample, TransportMock};
 use gunbc_ir::transport::TransportResponse;
 use gunbc_ir::{
     parse_map_type_id, value_backing_for_type_id, Cardinality, NodeId, PortName, TypeId, Value,
+    ValueKind,
 };
 use std::collections::HashSet;
 use std::error::Error;
@@ -234,30 +235,18 @@ impl MockRequirements {
             })
     }
 
-    /// Get the type name from a Value.
-    fn value_type_name(value: &Value) -> &'static str {
-        match value {
-            Value::Unit => "Unit",
-            Value::Bool(_) => "Bool",
-            Value::Str(_) => "String",
-            Value::Int(_) => "Int",
-            Value::List(_) => "List",
-            Value::Set(_) => "Set",
-            Value::Map(_) => "Map",
-            Value::Json(_) => "Json",
-            Value::Request(_) => "TransportRequest",
-            Value::Response(_) => "TransportResponse",
-            Value::Secret(_) => "Secret",
-            Value::Skipped => "Skipped",
-        }
+    /// Returns the canonical type-name string for a Value's kind.
+    fn value_kind_name(value: &Value) -> &'static str {
+        value.kind().type_name()
     }
 
     /// Check if a value type is compatible with an expected type.
     fn types_compatible(expected: &str, value: &Value) -> bool {
-        let actual = Self::value_type_name(value);
+        let actual_kind = value.kind();
+        let actual_name = actual_kind.type_name();
 
         // Exact match
-        if expected == actual {
+        if expected == actual_name {
             return true;
         }
 
@@ -268,18 +257,18 @@ impl MockRequirements {
 
         // Optional types accept the inner type or Unit (none)
         if let Some(inner) = expected.strip_prefix("Optional") {
-            if actual == inner || actual == "Unit" {
+            if actual_name == inner || actual_kind == ValueKind::Unit {
                 return true;
             }
         }
 
         // Skipped is compatible with any type
-        if actual == "Skipped" {
+        if actual_kind == ValueKind::Skipped {
             return true;
         }
 
         // Json is flexible
-        if expected == "Json" || actual == "Json" {
+        if expected == "Json" || actual_kind == ValueKind::Json {
             return true;
         }
 
@@ -297,13 +286,15 @@ impl MockRequirements {
         }
 
         // Platform has dual backing (String or Map)
-        if expected == "Platform" && (actual == "String" || actual == "Map") {
+        if expected == "Platform"
+            && (actual_kind == ValueKind::String || actual_kind == ValueKind::Map)
+        {
             return true;
         }
 
         // Delegate to centralized ValueBacking for all other type→value compatibility
         let backing = value_backing_for_type_id(expected);
-        backing.accepts_value_type(actual)
+        backing.accepts_value_kind(actual_kind)
     }
 
     /// Validate a value against a slot's type.
@@ -313,7 +304,7 @@ impl MockRequirements {
                 node: slot.node_id.0.clone(),
                 port: slot.port_name.0.clone(),
                 expected: slot.type_id.0.clone(),
-                actual: Self::value_type_name(value).to_string(),
+                actual: Self::value_kind_name(value).to_string(),
             });
         }
         Ok(())

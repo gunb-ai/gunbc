@@ -332,6 +332,7 @@ fn build_cli_imports(
         Some(line) if !line.is_empty() => line.to_string(),
         _ => format!("use {}::build_{}_graph;", crate_module, tool.tool_name),
     };
+    // Raw because: tool imports vary per binary and can't be expressed as a fixed Use node.
     items.push(Item::Raw(tool_import));
 
     // std imports (HashMap only needed in step mode for env_dict/inputs)

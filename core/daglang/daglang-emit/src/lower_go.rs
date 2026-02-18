@@ -42,7 +42,7 @@ pub fn lower_to_go(source: &SourceFile, config: &GoConfig) -> Result<SourceFile,
     let imports = collect_go_imports(source, config);
     let mut items: Vec<Item> = Vec::new();
 
-    // B3.3: Package declaration as first item.
+    // Raw because: Go package declarations have no Code IR node equivalent.
     items.push(Item::Raw(format!("package {}", config.package_name)));
 
     // B3.3: Emit import block.
@@ -110,6 +110,7 @@ fn lower_item(item: &Item, config: &GoConfig) -> Result<Item, LowerError> {
                 }
             }
             lines.push(")".to_string());
+            // Raw because: Go const/iota enum blocks have no Code IR node equivalent.
             Ok(Item::Raw(lines.join("\n")))
         }
         // Pass through other items unchanged.

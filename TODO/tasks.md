@@ -102,8 +102,8 @@ These can start immediately, in parallel with the DynOp work above.
 | ID | Task | Deps | Size | Started | Done |
 |----|------|------|------|---------|------|
 | **SD1** | Replace hardcoded tool/binary lists (5+ files) with inventory-derived registries | T8 | M | | |
-| **SD2** | Consider `Box<dyn Executable>` for workspace DAG dispatch | T5 | S | | |
-| **SD3** | Eliminate manual `From` impls for `WorkspaceOp` (9 impls + ~15 match arms) | T5 | M | | |
+| **SD2** | Consider `Box<dyn Executable>` for workspace DAG dispatch | T5 | S | 2026-02-18 | 2026-02-18 |
+| **SD3** | Eliminate manual `From` impls for `WorkspaceOp` (9 impls + ~15 match arms) | T5 | M | 2026-02-18 | 2026-02-18 |
 
 ### 2C: Workflow Registry
 
