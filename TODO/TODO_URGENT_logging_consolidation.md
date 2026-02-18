@@ -399,7 +399,7 @@ This effort is done only when all items below are true.
 
 - [x] High-signal failures are rendered with explicit attention formatting (boxed sections / equivalent) in TTY mode.
 - [x] Error detail rendering preserves a clear non-TTY fallback (plain but structured, not raw dumps).
-- [ ] Attention-level messaging (error/warning/info notices) uses one shared formatting path, not per-tool ad-hoc printing.
+- [x] Attention-level messaging (error/warning/info notices) uses one shared formatting path, not per-tool ad-hoc printing. _(2026-02-18: `print_attention(AttentionLevel, ...)` is now used across DAG binaries, including `gunbc-codegen` top-level/error+warning pathways, providing unified semantics and color mapping.)_
 - [x] Color semantics are consistent across status states (running, success, failure, dim/inactive) in TTY mode.
 
 ### H. End-to-end workflow adoption

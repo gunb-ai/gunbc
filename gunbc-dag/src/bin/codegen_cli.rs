@@ -25,7 +25,7 @@ use cargo_metadata::MetadataCommand;
 use gunbc_cli::BinaryArgs;
 use gunbc_codegen::{core_outputs, generate_cli_with_import, FileWriter, ToolDef};
 use gunbc_dag::WorkspaceBinary;
-use gunbc_exec::run_freshness_steps;
+use gunbc_exec::{print_attention, run_freshness_steps, AttentionLevel};
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default,
     update_resource_manifest, FreshnessOptions, ManagedResource, ManifestEntry, ManifestFreshness,
@@ -51,7 +51,11 @@ fn main() {
     let parsed = match BinaryArgs::new().parse(&args) {
         Ok(parsed) => parsed,
         Err(e) => {
-            eprintln!("error: {}", e);
+            print_attention(
+                AttentionLevel::Error,
+                "Argument parsing failed",
+                &e.to_string(),
+            );
             std::process::exit(1);
         }
     };
@@ -63,15 +67,23 @@ fn main() {
     let command = match parse_command_arg(&args) {
         Ok(command) => command,
         Err(e) => {
-            eprintln!("error: {}", e);
-            eprintln!("Run 'gunbc-codegen --help' for usage");
+            print_attention(AttentionLevel::Error, "Invalid command", &e);
+            print_attention(
+                AttentionLevel::Info,
+                "Usage",
+                "Run 'gunbc-codegen --help' for usage",
+            );
             std::process::exit(1);
         }
     };
 
     if let Some(steps) = gunbc_lib_transport::check_and_plan_freshness() {
         if let Err(e) = run_freshness_steps(&steps) {
-            eprintln!("{e}");
+            print_attention(
+                AttentionLevel::Error,
+                "Freshness check failed",
+                &e.to_string(),
+            );
             std::process::exit(1);
         }
     }
@@ -82,8 +94,16 @@ fn main() {
         "codegen" => cmd_codegen(dry_run),
         "cigen" => cmd_cigen(dry_run),
         _ => {
-            eprintln!("Unknown command: {}", command);
-            eprintln!("Run 'gunbc-codegen --help' for usage");
+            print_attention(
+                AttentionLevel::Error,
+                "Unknown command",
+                &format!("Unknown command: {command}"),
+            );
+            print_attention(
+                AttentionLevel::Info,
+                "Usage",
+                "Run 'gunbc-codegen --help' for usage",
+            );
             std::process::exit(1);
         }
     }
@@ -117,7 +137,11 @@ fn cmd_commit(dry_run: bool) {
     // Step 1: Generate CLIs
     println!("[1/3] Generating CLIs...");
     if !codegen_clis(dry_run, &io) {
-        eprintln!("Codegen failed");
+        print_attention(
+            AttentionLevel::Error,
+            "Codegen failed",
+            "CLI generation returned errors",
+        );
         std::process::exit(1);
     }
 
@@ -130,7 +154,7 @@ fn cmd_commit(dry_run: bool) {
         match run_cargo_build(&io) {
             Ok(()) => println!("  cargo build: success"),
             Err(e) => {
-                eprintln!("Cargo build failed: {}", e);
+                print_attention(AttentionLevel::Error, "Cargo build failed", &e.to_string());
                 std::process::exit(1);
             }
         }
@@ -144,8 +168,16 @@ fn cmd_commit(dry_run: bool) {
         match setup_bin_directory(&io) {
             Ok(()) => println!("  bin -> target/debug (symlink or copy)"),
             Err(e) => {
-                eprintln!("Warning: Could not setup bin directory: {}", e);
-                eprintln!("         Binaries are available at target/debug/");
+                print_attention(
+                    AttentionLevel::Warning,
+                    "Could not setup bin directory",
+                    &e.to_string(),
+                );
+                print_attention(
+                    AttentionLevel::Info,
+                    "Fallback",
+                    "Binaries are available at target/debug/",
+                );
                 // Non-fatal - binaries are still built
             }
         }
@@ -305,7 +337,11 @@ fn cmd_codegen(dry_run: bool) {
     }
 
     if !codegen_clis(dry_run, &io) {
-        eprintln!("Codegen failed");
+        print_attention(
+            AttentionLevel::Error,
+            "Codegen failed",
+            "CLI generation returned errors",
+        );
         std::process::exit(1);
     }
 
@@ -1246,7 +1282,11 @@ fn should_skip_codegen(io: &dyn ResourceIo) -> bool {
         Ok(m) if m.is_empty() => return false,
         Ok(m) => m,
         Err(e) => {
-            eprintln!("  Warning: could not load resource manifest: {}", e);
+            print_attention(
+                AttentionLevel::Warning,
+                "Could not load resource manifest",
+                &e.to_string(),
+            );
             return false;
         }
     };
@@ -1271,7 +1311,11 @@ fn should_skip_codegen(io: &dyn ResourceIo) -> bool {
         }
         ManifestFreshness::Missing => false,
         ManifestFreshness::Error(err) => {
-            eprintln!("  Warning: could not verify codegen freshness: {}", err);
+            print_attention(
+                AttentionLevel::Warning,
+                "Could not verify codegen freshness",
+                &err,
+            );
             false
         }
     }
@@ -1286,7 +1330,7 @@ fn codegen_outputs_exist(io: &dyn ResourceIo) -> bool {
     let tools = match discover_codegen_tools(&workspace_root) {
         Ok(tools) => tools,
         Err(e) => {
-            eprintln!("  Warning: codegen tool discovery failed: {e}");
+            print_attention(AttentionLevel::Warning, "Codegen tool discovery failed", &e);
             return false;
         }
     };
@@ -1340,19 +1384,40 @@ fn update_manifest_after_codegen(dry_run: bool, io: &dyn ResourceIo) {
             println!("  Updated resource manifest: target/.resource-manifest.json");
         }
         Err(ManifestUpdateError::Load(e)) => {
-            eprintln!("  ERROR: Could not load manifest: {}", e);
-            eprintln!("  Codegen outputs exist but freshness cannot be verified.");
-            eprintln!("  CI --mode=verify will fail until manifest is written.");
+            print_attention(
+                AttentionLevel::Error,
+                "Could not load manifest",
+                &e.to_string(),
+            );
+            print_attention(
+                AttentionLevel::Warning,
+                "Freshness verification unavailable",
+                "Codegen outputs exist but freshness cannot be verified. CI --mode=verify will fail until manifest is written.",
+            );
         }
         Err(ManifestUpdateError::Save(e)) => {
-            eprintln!("  ERROR: Could not write manifest: {}", e);
-            eprintln!("  Codegen outputs exist but freshness cannot be verified.");
-            eprintln!("  CI --mode=verify will fail until manifest is written.");
+            print_attention(
+                AttentionLevel::Error,
+                "Could not write manifest",
+                &e.to_string(),
+            );
+            print_attention(
+                AttentionLevel::Warning,
+                "Freshness verification unavailable",
+                "Codegen outputs exist but freshness cannot be verified. CI --mode=verify will fail until manifest is written.",
+            );
         }
         Err(ManifestUpdateError::Acquire(e)) => {
-            eprintln!("  ERROR: Could not update manifest: {}", e);
-            eprintln!("  Codegen outputs exist but freshness cannot be verified.");
-            eprintln!("  CI --mode=verify will fail until manifest is written.");
+            print_attention(
+                AttentionLevel::Error,
+                "Could not update manifest",
+                &e.to_string(),
+            );
+            print_attention(
+                AttentionLevel::Warning,
+                "Freshness verification unavailable",
+                "Codegen outputs exist but freshness cannot be verified. CI --mode=verify will fail until manifest is written.",
+            );
         }
     }
 }

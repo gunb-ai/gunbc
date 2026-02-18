@@ -715,8 +715,8 @@ Different ops use `"report"`, `"message"`, `"stderr"`, `"error"`, `"success"`, e
 ##### D1.8 — Attention-level messaging shared format [S]
 **Deps**: D1.4
 
-- [ ] D1.8a — Shared formatting path for attention-level messaging
-- [ ] D1.8b — Consistent color semantics across all tools
+- [x] D1.8a — Shared formatting path for attention-level messaging
+- [x] D1.8b — Consistent color semantics across all tools
 
 #### Wave 4
 
