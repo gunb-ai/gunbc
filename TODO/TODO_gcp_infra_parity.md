@@ -17,7 +17,7 @@ gunb.ai has a mature GCP infrastructure-as-code system with:
 
 gunbc currently models:
 - 5 GCP service interfaces (Resource Manager, IAM, Secret Manager, WIF, Storage)
-- 1 project spec (`GUNBAI_SECRETS`) with 2 namespaces (dev, ci)
+- 1 project spec (`GUNBAI_SECRETS`) with expanded namespace/service-account catalog (8 namespaces)
 - Credential + upsert graphs for Secret Manager
 - Discovery ops (list projects/SAs/secrets/buckets/WIF)
 - IAM ensure pattern (auto-grant secretAccessor role)
@@ -62,10 +62,10 @@ impersonate) is missing.
 **Gap**: `project_spec.rs` has `ServiceAccountSpec` with name + roles but
 no display_name, self_roles, service_account_users, or WIF bindings.
 
-- [ ] Add `display_name: &'static str` to `ServiceAccountSpec`
-- [ ] Add `self_roles: &'static [&'static str]` (roles the SA has on itself, e.g. tokenCreator)
+- [x] Add `display_name: &'static str` to `ServiceAccountSpec`
+- [x] Add `self_roles: &'static [&'static str]` (roles the SA has on itself, e.g. tokenCreator)
 - [ ] Add `service_account_users: &'static [&'static str]` (members who can act-as)
-- [ ] Add `wif_bindings: &'static [WifBindingSpec]` to `ServiceAccountSpec`
+- [x] Add `wif_bindings` to `ServiceAccountSpec`
 - [ ] Add `WifBindingSpec { pool: &str, provider: &str, attribute: &str }`
 - [ ] Add derived method `wif_member(&self, project_number: &str) -> String`
 
@@ -76,14 +76,14 @@ no display_name, self_roles, service_account_users, or WIF bindings.
 **Gap**: gunbc only has 2 SAs (dev-secrets, ci-secrets). gunb.ai has ~8
 SAs with distinct roles.
 
-- [ ] Model the full SA catalog needed for gunbc's infrastructure:
+- [x] Model the full SA catalog needed for gunbc's infrastructure:
   - `gunbai-dev-secrets` — dev secret access (exists)
   - `gunbai-ci-secrets` — CI secret access (exists)
   - `gunbai-deployer` — GitHub Actions deployment (compute.admin, iam.serviceAccountAdmin, etc.)
   - `gunbai-ci-runner` — CI runner VM operations
   - Other SAs as needed for the compute/CI stack
-- [ ] Add roles, self-roles, WIF bindings to each SA spec
-- [ ] Add tests for derived values (emails, WIF member strings)
+- [x] Add roles, self-roles, WIF bindings to each SA spec
+- [x] Add tests for derived values (emails, WIF binding/member projections)
 
 **Ref**: `gunb.ai/tools/infra/spec/spec.go:670-750` — SA definitions per env
 

@@ -84,10 +84,14 @@ impl WifConfig {
 pub struct ServiceAccountSpec {
     /// SA name without the `@project.iam.gserviceaccount.com` suffix.
     pub name: &'static str,
+    /// Human-friendly service account display name.
+    pub display_name: &'static str,
     /// Human-readable description.
     pub description: &'static str,
-    /// IAM roles to grant on the project.
-    pub roles: &'static [&'static str],
+    /// IAM roles this service account should hold on the target project.
+    pub self_roles: &'static [&'static str],
+    /// Members that should be allowed to impersonate this SA through WIF.
+    pub wif_bindings: &'static [&'static str],
 }
 
 impl ServiceAccountSpec {
@@ -95,6 +99,36 @@ impl ServiceAccountSpec {
     pub fn email(&self, project_id: &str) -> String {
         format!("{}@{}.iam.gserviceaccount.com", self.name, project_id)
     }
+
+    /// IAM bindings where this service account is granted its own project roles.
+    pub fn self_role_bindings(&self, project_id: &str) -> Vec<ServiceAccountBinding> {
+        let member = format!("serviceAccount:{}", self.email(project_id));
+        self.self_roles
+            .iter()
+            .map(|role| ServiceAccountBinding {
+                role: (*role).to_string(),
+                members: vec![member.clone()],
+            })
+            .collect()
+    }
+
+    /// IAM bindings allowing configured principals to impersonate this SA.
+    pub fn wif_impersonation_bindings(&self) -> Vec<ServiceAccountBinding> {
+        if self.wif_bindings.is_empty() {
+            return Vec::new();
+        }
+        vec![ServiceAccountBinding {
+            role: "roles/iam.workloadIdentityUser".to_string(),
+            members: self.wif_bindings.iter().map(|m| (*m).to_string()).collect(),
+        }]
+    }
+}
+
+/// Canonical IAM binding shape used by service account catalog specs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceAccountBinding {
+    pub role: String,
+    pub members: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -285,16 +319,96 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
             name: "dev",
             secrets_service_account: ServiceAccountSpec {
                 name: "gunbai-dev-secrets",
+                display_name: "Gunbai Dev Secrets",
                 description: "Dev environment secrets access",
-                roles: &["roles/secretmanager.secretAccessor"],
+                self_roles: &["roles/secretmanager.secretAccessor"],
+                wif_bindings: &[
+                    "principalSet://iam.googleapis.com/projects/314501921854/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc",
+                ],
             },
         },
         NamespaceSpec {
             name: "ci",
             secrets_service_account: ServiceAccountSpec {
                 name: "gunbai-ci-secrets",
+                display_name: "Gunbai CI Secrets",
                 description: "CI environment secrets access",
-                roles: &["roles/secretmanager.secretAccessor"],
+                self_roles: &["roles/secretmanager.secretAccessor"],
+                wif_bindings: &[
+                    "principalSet://iam.googleapis.com/projects/314501921854/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc",
+                ],
+            },
+        },
+        NamespaceSpec {
+            name: "staging",
+            secrets_service_account: ServiceAccountSpec {
+                name: "gunbai-staging-secrets",
+                display_name: "Gunbai Staging Secrets",
+                description: "Staging environment secrets access",
+                self_roles: &["roles/secretmanager.secretAccessor"],
+                wif_bindings: &[
+                    "principalSet://iam.googleapis.com/projects/314501921854/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc",
+                ],
+            },
+        },
+        NamespaceSpec {
+            name: "prod",
+            secrets_service_account: ServiceAccountSpec {
+                name: "gunbai-prod-secrets",
+                display_name: "Gunbai Prod Secrets",
+                description: "Production environment secrets access",
+                self_roles: &["roles/secretmanager.secretAccessor"],
+                wif_bindings: &[
+                    "principalSet://iam.googleapis.com/projects/314501921854/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc",
+                ],
+            },
+        },
+        NamespaceSpec {
+            name: "review",
+            secrets_service_account: ServiceAccountSpec {
+                name: "gunbai-review-secrets",
+                display_name: "Gunbai Review Secrets",
+                description: "Review workflow secrets access",
+                self_roles: &["roles/secretmanager.secretAccessor"],
+                wif_bindings: &[
+                    "principalSet://iam.googleapis.com/projects/314501921854/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc",
+                ],
+            },
+        },
+        NamespaceSpec {
+            name: "llm",
+            secrets_service_account: ServiceAccountSpec {
+                name: "gunbai-llm-secrets",
+                display_name: "Gunbai LLM Secrets",
+                description: "LLM workflow secrets access",
+                self_roles: &["roles/secretmanager.secretAccessor"],
+                wif_bindings: &[
+                    "principalSet://iam.googleapis.com/projects/314501921854/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc",
+                ],
+            },
+        },
+        NamespaceSpec {
+            name: "ops",
+            secrets_service_account: ServiceAccountSpec {
+                name: "gunbai-ops-secrets",
+                display_name: "Gunbai Ops Secrets",
+                description: "Operational automation secrets access",
+                self_roles: &["roles/secretmanager.secretAccessor"],
+                wif_bindings: &[
+                    "principalSet://iam.googleapis.com/projects/314501921854/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc",
+                ],
+            },
+        },
+        NamespaceSpec {
+            name: "sandbox",
+            secrets_service_account: ServiceAccountSpec {
+                name: "gunbai-sandbox-secrets",
+                display_name: "Gunbai Sandbox Secrets",
+                description: "Sandbox environment secrets access",
+                self_roles: &["roles/secretmanager.secretAccessor"],
+                wif_bindings: &[
+                    "principalSet://iam.googleapis.com/projects/314501921854/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc",
+                ],
             },
         },
     ],
@@ -451,6 +565,77 @@ mod tests {
             let prefix = ns.secret_prefix();
             assert!(seen.insert(prefix.clone()), "duplicate prefix: {prefix}");
         }
+    }
+
+    #[test]
+    fn service_account_catalog_expanded_beyond_dev_and_ci() {
+        assert!(
+            GUNBAI_SECRETS.namespaces.len() >= 8,
+            "expected expanded namespace/service-account catalog"
+        );
+    }
+
+    #[test]
+    fn service_account_specs_define_display_name_roles_and_wif_bindings() {
+        for ns in GUNBAI_SECRETS.namespaces {
+            let sa = &ns.secrets_service_account;
+            assert!(
+                !sa.display_name.trim().is_empty(),
+                "display_name must be non-empty for namespace {}",
+                ns.name
+            );
+            assert!(
+                !sa.self_roles.is_empty(),
+                "self_roles must be non-empty for namespace {}",
+                ns.name
+            );
+            assert!(
+                !sa.wif_bindings.is_empty(),
+                "wif_bindings must be non-empty for namespace {}",
+                ns.name
+            );
+        }
+    }
+
+    #[test]
+    fn service_account_binding_helpers_emit_expected_roles() {
+        let dev = GUNBAI_SECRETS
+            .namespace("dev")
+            .expect("dev namespace must exist");
+        let sa = &dev.secrets_service_account;
+
+        let self_bindings = sa.self_role_bindings(GUNBAI_SECRETS.secrets_project.project_id);
+        assert!(
+            self_bindings
+                .iter()
+                .any(|b| b.role == "roles/secretmanager.secretAccessor"),
+            "self-role bindings should include secret accessor role"
+        );
+        assert!(
+            self_bindings
+                .iter()
+                .flat_map(|b| b.members.iter())
+                .any(|member| member.starts_with("serviceAccount:gunbai-dev-secrets@")),
+            "self-role binding member should target dev service account"
+        );
+
+        let wif_bindings = sa.wif_impersonation_bindings();
+        assert_eq!(
+            wif_bindings.len(),
+            1,
+            "expected one WIF impersonation binding"
+        );
+        assert_eq!(
+            wif_bindings[0].role, "roles/iam.workloadIdentityUser",
+            "WIF bindings should grant workload identity user role"
+        );
+        assert!(
+            wif_bindings[0]
+                .members
+                .iter()
+                .any(|m| m.contains("workloadIdentityPools/github-pool")),
+            "WIF binding should reference canonical workload identity pool"
+        );
     }
 
     #[test]
