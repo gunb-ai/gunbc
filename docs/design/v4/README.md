@@ -20,6 +20,7 @@ Read these to understand *why* the DSL looks the way it does.
 - **[`v3-worked-examples.md`](./v3-worked-examples.md)** — Concrete examples (zstd, git, tectonic) through the fractal `Node<T>/Dag<T>` lens.
 - **[`v2-worked-examples.md`](./v2-worked-examples.md)** — Before/after comparisons showing what typed contracts replace.
 - **[`dag-systems-overview.md`](./dag-systems-overview.md)** — The Go-era DAG system (gunb.ai). Historical reference for the `Contractor`/`NodeContract` pattern that started all of this.
+- **[`sandbox-replay-rfc.md`](./sandbox-replay-rfc.md)** — Runtime policy proposal for sandbox deny/allow/replay semantics and durable boundary event replay.
 
 ## The arc
 

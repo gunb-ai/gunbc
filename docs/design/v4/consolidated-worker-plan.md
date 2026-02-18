@@ -246,8 +246,8 @@ Git HEAD + dirty state as fast-path freshness signal before full content hashing
 
 Design sandbox mode (no real I/O) and replay/durability for DAG execution.
 
-- [ ] B2.4a — Draft RFC for sandbox execution model
-- [ ] B2.4b — Draft RFC for durability/replay
+- [x] B2.4a — Draft RFC for sandbox execution model
+- [x] B2.4b — Draft RFC for durability/replay
 
 ---
 

@@ -797,7 +797,7 @@ Cache tuple:
 - [x] Add clippy guardrails to forbid direct I/O in pure crates (only transport/boundary crates allowed). _(2026-02-14: enforced via root `clippy.toml` disallowed-methods policy.)_
 - [x] Add `#[resource_test_target]` registry + test runner for codebase-wide purity checks. _(2026-02-14: registry implemented + CI guardrail now runs `resource_purity_checks`.)_
 - [x] Add optional runtime file guard for `res:file:*` during tests. _(2026-02-14: implemented in `core/exec/src/execute.rs` behind `GUNBC_RESOURCE_FILE_GUARD`; enforces write-path declaration matching for non-intercepted node outputs and supports `res:file:*` + legacy `res:fs`.)_
-- [ ] Draft a sandbox + durability/replay RFC (record/replay transport I/O, deterministic tests).
+- [x] Draft a sandbox + durability/replay RFC (record/replay transport I/O, deterministic tests). _(2026-02-18: added `docs/design/v4/sandbox-replay-rfc.md` covering execution policy, replay event model, rollout, and validation criteria.)_
 
 ## Workflow Update Task List (Start ASAP)
 
