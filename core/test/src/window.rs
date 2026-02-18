@@ -257,8 +257,8 @@ pub fn apply_window_inputs<T>(
                         node: edge.from_node.0.clone(),
                     })?;
             let output_port = dag
-                .get_node(&edge.from_node)
-                .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port));
+                .resolve_output_port(&edge.from_node, &edge.from_port)
+                .map(|port| port.port());
             let from_cardinality = output_port
                 .map(|p| p.cardinality)
                 .unwrap_or(gunbc_ir::Cardinality::ONE);
@@ -494,6 +494,7 @@ mod window_helper_tests {
             inputs: None,
             outputs: map,
             was_intercepted: false,
+            coercions_applied: vec![],
         }
     }
 
@@ -801,6 +802,7 @@ mod assert_chain_outputs_tests {
                         .map(|(p, v)| (p.to_string(), v))
                         .collect(),
                     was_intercepted: false,
+                    coercions_applied: vec![],
                 })
                 .collect(),
         }
@@ -960,6 +962,7 @@ mod tests {
                 inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
+                coercions_applied: vec![],
             }],
         };
         let window_log = ExecutionLog {
@@ -968,6 +971,7 @@ mod tests {
                 inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
+                coercions_applied: vec![],
             }],
         };
 
@@ -991,6 +995,7 @@ mod tests {
                 inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
+                coercions_applied: vec![],
             }],
         };
         let window_log = ExecutionLog {
@@ -999,6 +1004,7 @@ mod tests {
                 inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
+                coercions_applied: vec![],
             }],
         };
 

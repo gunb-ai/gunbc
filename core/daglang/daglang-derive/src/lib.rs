@@ -106,6 +106,7 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         nodes
     };
     let manifest = ProgressManifest {
+        schema_version: 1,
         total_nodes: dag.nodes.len(),
         total_edges: dag.edges.len(),
         topology: derive_topology_from_waves(&waves),

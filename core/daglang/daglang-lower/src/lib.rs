@@ -26,7 +26,7 @@ use daglang_syntax::ast_utils::{
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::resource::AccessMode;
-use gunbc_ir::{Cardinality, Dag, Edge, Node, Port};
+use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, Node, Port};
 use serde::Serialize;
 
 /// Lowered operation payload for daglang graph nodes.
@@ -201,6 +201,19 @@ pub fn canonical_kind_for_obligation(obligation: ObligationCategory) -> Option<&
 pub fn classify_service_transport(op: &LoweredOp) -> Option<ServiceTransportClass> {
     op.service_call_metadata()
         .map(|metadata| metadata.transport)
+}
+
+/// Extract DAG topology with canonical obligation-kind metadata on each node.
+///
+/// This is the preferred topology form for renderers (e.g. Mermaid) that need
+/// stable semantic classes without depending on fragile node-id prefixes.
+pub fn topology_with_obligation_kinds(dag: &Dag<LoweredOp>) -> DagTopology {
+    dag.topology_with_kind(|node| match &node.body {
+        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { obligation, .. }) => {
+            canonical_kind_for_obligation(*obligation).map(str::to_string)
+        }
+        gunbc_ir::node::NodeBody::Opaque(_) | gunbc_ir::node::NodeBody::SubDag(_) => None,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1108,6 +1121,9 @@ mod parity {
         if let Some(kind) = obligation.and_then(canonical_kind_for_obligation) {
             return kind.to_string();
         }
+        // Fallback: name-based heuristics for parity canonical graphs where
+        // obligation is ObligationCategory::None. Real lowered DAGs always
+        // have obligation set; this only fires for parity comparison fixtures.
         let looks_expanded = node_id.starts_with("prepare_")
             || node_id.starts_with("compare_")
             || node_id.starts_with("execute_transport_")
@@ -5963,6 +5979,27 @@ func run() -> { ok: Bool } provides auth: AuthContext {
                 Some("pattern-expanded")
             );
         }
+    }
+
+    #[test]
+    fn topology_with_obligation_kinds_populates_canonical_kind_metadata() {
+        let mut dag: Dag<LoweredOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "execute_transport_sample",
+            vec![],
+            vec![],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "execute_transport_sample".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: None,
+            },
+        ));
+
+        let topo = topology_with_obligation_kinds(&dag);
+        assert_eq!(topo.nodes.len(), 1);
+        assert_eq!(topo.nodes[0].canonical_kind.as_deref(), Some("transport"));
     }
 
     // Test infrastructure: filesystem access for test fixtures

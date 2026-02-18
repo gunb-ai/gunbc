@@ -7,8 +7,8 @@ use gunbc_cli::BinaryArgs;
 use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
 use gunbc_dag::{
-    build_makegen_graph_dsl, makefile_resource_def, print_tool_header, run_tool,
-    wire_fs_env_write_mock, RunToolOptions,
+    build_makegen_graph_dsl, freshness_steps_planned, makefile_resource_def, print_tool_header,
+    run_tool, update_freshness_manifest_if_needed, wire_fs_env_write_mock, RunToolOptions,
 };
 use gunbc_exec::{
     compose_with_freshness, execute_and_display_with_result, print_attention, AttentionLevel,
@@ -126,11 +126,13 @@ fn main() {
     let animated = std::io::stdout().is_terminal();
 
     let steps = gunbc_lib_transport::check_and_plan_freshness();
+    let ran_freshness_steps = freshness_steps_planned(steps.as_deref());
     let dag = compose_with_freshness(dag, steps);
     if resource_mode == ExecMode::Verify {
         // Check mode: execute through shared display path and inspect log outputs.
         match execute_and_display_with_result(&dag, mode, animated, None, Some(&input_mocks)) {
             Ok(result) => {
+                update_freshness_manifest_if_needed(ran_freshness_steps);
                 let log = result.log;
                 // Scan log for compare_*_content.fresh
                 let fresh = log
@@ -217,6 +219,7 @@ fn main() {
                 ..RunToolOptions::default()
             },
         );
+        update_freshness_manifest_if_needed(ran_freshness_steps);
 
         if !dry_run && resource_mode == ExecMode::Ensure {
             update_manifest_after_makegen(&path);

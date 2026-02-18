@@ -94,6 +94,33 @@ impl std::fmt::Display for CardinalityCoercion {
     }
 }
 
+/// Record of a coercion that was actually applied at execution time.
+///
+/// Unlike `CardinalityCoercion` (a static analysis result), this records a
+/// coercion that the execution engine performed on a concrete value during
+/// a specific DAG run. Used for execution trace observability.
+#[derive(Debug, Clone)]
+pub struct AppliedCoercion {
+    /// Source node that produced the value.
+    pub from_node: String,
+    /// Source output port.
+    pub from_port: String,
+    /// Target input port that received the coerced value.
+    pub to_port: String,
+    /// What transformation the engine applied.
+    pub kind: CoercionKind,
+}
+
+impl std::fmt::Display for AppliedCoercion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}.{} → {} ({})",
+            self.from_node, self.from_port, self.to_port, self.kind
+        )
+    }
+}
+
 /// Classify what coercion, if any, an edge requires based on port cardinalities.
 ///
 /// Returns `None` if no coercion is needed (cardinalities are identical or
@@ -199,91 +226,88 @@ pub fn validate_coercions_with_registry<T>(
     let mut errors = Vec::new();
 
     for edge in &dag.edges {
-        let from_port = dag
-            .get_node(&edge.from_node)
-            .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port));
-        let to_port = dag
-            .get_node(&edge.to_node)
-            .and_then(|n| n.inputs.iter().find(|p| p.name == edge.to_port));
+        let Some(ports) = dag.resolve_edge_ports(edge) else {
+            continue;
+        };
+        let fp = ports.from.port();
+        let tp = ports.to.port();
 
-        if let (Some(fp), Some(tp)) = (from_port, to_port) {
-            let from_card = match registry {
-                Some(registry) => fp.infer_cardinality(registry),
-                None => fp.cardinality,
-            };
-            let to_card = match registry {
-                Some(registry) => tp.infer_cardinality(registry),
-                None => tp.cardinality,
-            };
+        let from_card = match registry {
+            Some(registry) => fp.infer_cardinality(registry),
+            None => fp.cardinality,
+        };
+        let to_card = match registry {
+            Some(registry) => tp.infer_cardinality(registry),
+            None => tp.cardinality,
+        };
 
-            if let Some(reg) = registry {
-                if let (Some(from_dag), Some(to_dag)) =
-                    (reg.resolve_type(&fp.type_id), reg.resolve_type(&tp.type_id))
-                {
-                    let mut from_contract = TypeContract::from_type_dag(&from_dag);
-                    let mut to_contract = TypeContract::from_type_dag(&to_dag);
-                    // Registry-provided wrappers override port cardinality.
-                    from_contract.cardinality = from_card;
-                    to_contract.cardinality = to_card;
+        if let Some(reg) = registry {
+            if let (Some(from_dag), Some(to_dag)) =
+                (reg.resolve_type(&fp.type_id), reg.resolve_type(&tp.type_id))
+            {
+                let mut from_contract = TypeContract::from_type_dag(&from_dag);
+                let mut to_contract = TypeContract::from_type_dag(&to_dag);
+                // Registry-provided wrappers override port cardinality.
+                from_contract.cardinality = from_card;
+                to_contract.cardinality = to_card;
 
-                    match from_contract.can_safely_coerce_to_with(&to_contract, |from, to| {
-                        reg.base_type_upcasts_to(from, to)
-                    }) {
-                        CoercionResult::Ok => {}
-                        CoercionResult::Err(reason) => {
-                            let reason = if let Some(strategy) =
-                                reg.coercion_strategy(&fp.type_id, &tp.type_id)
+                match from_contract.can_safely_coerce_to_with(&to_contract, |from, to| {
+                    reg.base_type_upcasts_to(from, to)
+                }) {
+                    CoercionResult::Ok => {}
+                    CoercionResult::Err(reason) => {
+                        let reason =
+                            if let Some(strategy) = reg.coercion_strategy(&fp.type_id, &tp.type_id)
                             {
                                 format!("{reason}. Explicit transform: {strategy}")
                             } else {
                                 reason
                             };
-                            errors.push(CoercionError {
-                                from_node: edge.from_node.clone(),
-                                from_port: edge.from_port.clone(),
-                                to_node: edge.to_node.clone(),
-                                to_port: edge.to_port.clone(),
-                                from_cardinality: from_card,
-                                to_cardinality: to_card,
-                                reason,
-                            });
-                            continue;
-                        }
+                        errors.push(CoercionError {
+                            from_node: edge.from_node.clone(),
+                            from_port: edge.from_port.clone(),
+                            to_node: edge.to_node.clone(),
+                            to_port: edge.to_port.clone(),
+                            from_cardinality: from_card,
+                            to_cardinality: to_card,
+                            reason,
+                        });
+                        continue;
                     }
                 }
             }
+        }
 
-            if from_card == to_card {
-                // Identical — no coercion needed
-                continue;
-            }
+        if from_card == to_card {
+            // Identical — no coercion needed
+            continue;
+        }
 
-            if from_card.satisfies(to_card) {
-                // Compatible but different — implicit coercion
-                if let Some(kind) = classify_coercion(from_card, to_card) {
-                    coercions.push(CardinalityCoercion {
-                        from_node: edge.from_node.clone(),
-                        from_port: edge.from_port.clone(),
-                        to_node: edge.to_node.clone(),
-                        to_port: edge.to_port.clone(),
-                        from_cardinality: from_card,
-                        to_cardinality: to_card,
-                        kind,
-                    });
-                }
-            } else {
-                // Incompatible — error
-                let reason = from_card.check_satisfies(to_card).unwrap_err().reason;
-                errors.push(CoercionError {
+        if from_card.satisfies(to_card) {
+            // Compatible but different — implicit coercion
+            if let Some(kind) = classify_coercion(from_card, to_card) {
+                coercions.push(CardinalityCoercion {
                     from_node: edge.from_node.clone(),
                     from_port: edge.from_port.clone(),
                     to_node: edge.to_node.clone(),
                     to_port: edge.to_port.clone(),
                     from_cardinality: from_card,
                     to_cardinality: to_card,
-                    reason,
+                    kind,
                 });
             }
+        } else {
+            // Incompatible — error
+            let reason = from_card.check_satisfies(to_card).unwrap_err().reason;
+            errors.push(CoercionError {
+                from_node: edge.from_node.clone(),
+                from_port: edge.from_port.clone(),
+                to_node: edge.to_node.clone(),
+                to_port: edge.to_port.clone(),
+                from_cardinality: from_card,
+                to_cardinality: to_card,
+                reason,
+            });
         }
     }
 

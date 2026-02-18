@@ -907,27 +907,36 @@ fn validate_required_dsl_modules_for_codegen(
     tool_modules: &BTreeSet<String>,
     pipeline_modules: &BTreeSet<String>,
 ) -> Result<(), String> {
-    const REQUIRED_TOOLS: &[&str] = &[
-        "build",
-        "bootstrap",
-        "clippy",
-        "codegen",
-        "dag_viz",
-        "deps",
-        "docgen",
-        "gist",
-        "makegen",
-        "pragma",
-        "testgen",
-    ];
-    const REQUIRED_PIPELINES: &[&str] = &["ci"];
+    // Derive required tool modules from the tool registry (dsl_module field)
+    // and WorkspaceBinary (which covers manual/internal tools without registrations).
+    let registry_modules: BTreeSet<&str> = gunbc_tool_registry::dsl_module_to_targets()
+        .keys()
+        .copied()
+        .collect();
+    let binary_tool_modules: BTreeSet<&str> = WorkspaceBinary::all()
+        .iter()
+        .copied()
+        .filter(|binary| binary.is_dsl_tool_module())
+        .map(WorkspaceBinary::tool_name)
+        .collect();
 
-    let missing_tools: Vec<&str> = REQUIRED_TOOLS
+    // Required tools = union of registry dsl_module names and workspace binary tool modules.
+    let required_tools: BTreeSet<&str> = registry_modules.union(&binary_tool_modules).copied().collect();
+
+    // Required pipelines: workspace binaries that map to DSL pipeline modules.
+    let required_pipelines: BTreeSet<&str> = WorkspaceBinary::all()
+        .iter()
+        .copied()
+        .filter(|binary| binary.is_dsl_pipeline_module())
+        .map(WorkspaceBinary::tool_name)
+        .collect();
+
+    let missing_tools: Vec<&str> = required_tools
         .iter()
         .copied()
         .filter(|name| !tool_modules.contains(*name))
         .collect();
-    let missing_pipelines: Vec<&str> = REQUIRED_PIPELINES
+    let missing_pipelines: Vec<&str> = required_pipelines
         .iter()
         .copied()
         .filter(|name| !pipeline_modules.contains(*name))
@@ -955,80 +964,75 @@ fn validate_codegen_dsl_coverage(
     tool_modules: &BTreeSet<String>,
     pipeline_modules: &BTreeSet<String>,
 ) -> Result<(), String> {
-    const TOOL_MODULE_TO_TARGETS: &[(&str, &[&str])] = &[
-        ("bootstrap", &["bootstrap"]),
-        ("clippy", &["clippy"]),
-        (
-            "dag_viz",
-            &["dag-viz", "dag-viz-diff", "dag-viz-recent", "dag-snapshot"],
-        ),
-        ("deps", &["deps"]),
-        ("gist", &["gist", "gist-diff", "gist-recent"]),
-        ("makegen", &["makegen"]),
-    ];
-    const TOOL_MODULE_EXCLUDED: &[&str] = &["build", "codegen", "docgen", "pragma", "testgen"];
-    const PIPELINE_MODULE_EXCLUDED: &[&str] = &["ci"];
+    // Derive module→targets mapping from the tool registry's dsl_module field.
+    // Modules not in this map must be explicitly known as workspace-binary
+    // modules; otherwise they are unmapped and should fail closed.
+    let module_to_targets = gunbc_tool_registry::dsl_module_to_targets();
+    let known_tool_modules: BTreeSet<&str> = module_to_targets
+        .keys()
+        .copied()
+        .chain(
+            WorkspaceBinary::all()
+                .iter()
+                .copied()
+                .filter(|binary| binary.is_dsl_tool_module())
+                .map(WorkspaceBinary::tool_name),
+        )
+        .collect();
+    let known_pipeline_modules: BTreeSet<&str> = WorkspaceBinary::all()
+        .iter()
+        .copied()
+        .filter(|binary| binary.is_dsl_pipeline_module())
+        .map(WorkspaceBinary::tool_name)
+        .collect();
+
+    let unknown_tools: Vec<String> = tool_modules
+        .iter()
+        .filter(|module| !known_tool_modules.contains(module.as_str()))
+        .cloned()
+        .collect();
+    let unknown_pipelines: Vec<String> = pipeline_modules
+        .iter()
+        .filter(|module| !known_pipeline_modules.contains(module.as_str()))
+        .cloned()
+        .collect();
+    if !unknown_tools.is_empty() || !unknown_pipelines.is_empty() {
+        let mut parts = Vec::new();
+        if !unknown_tools.is_empty() {
+            parts.push(format!("unmapped DSL tool modules: {}", unknown_tools.join(", ")));
+        }
+        if !unknown_pipelines.is_empty() {
+            parts.push(format!(
+                "unmapped DSL pipeline modules: {}",
+                unknown_pipelines.join(", ")
+            ));
+        }
+        return Err(format!("codegen DSL coverage validation failed: {}", parts.join("; ")));
+    }
 
     let tool_name_set: BTreeSet<&str> = tools
         .iter()
         .map(|tool| tool.meta.tool_name.as_ref())
         .collect();
 
-    let mut unknown_tool_modules = Vec::new();
     let mut missing_targets = Vec::new();
     for module in tool_modules {
-        if let Some((_, targets)) = TOOL_MODULE_TO_TARGETS
-            .iter()
-            .find(|(mapped_module, _)| mapped_module == &module.as_str())
-        {
-            for target in *targets {
+        if let Some(targets) = module_to_targets.get(module.as_str()) {
+            for target in targets {
                 if !tool_name_set.contains(target) {
                     missing_targets.push(format!("{module}->{target}"));
                 }
             }
-            continue;
         }
-        if TOOL_MODULE_EXCLUDED.contains(&module.as_str()) {
-            continue;
-        }
-        unknown_tool_modules.push(module.clone());
     }
 
-    let unknown_pipeline_modules: Vec<String> = pipeline_modules
-        .iter()
-        .filter(|module| !PIPELINE_MODULE_EXCLUDED.contains(&module.as_str()))
-        .cloned()
-        .collect();
-
-    if unknown_tool_modules.is_empty()
-        && missing_targets.is_empty()
-        && unknown_pipeline_modules.is_empty()
-    {
+    if missing_targets.is_empty() {
         return Ok(());
     }
 
-    let mut parts = Vec::new();
-    if !unknown_tool_modules.is_empty() {
-        parts.push(format!(
-            "unmapped DSL tool modules: {}",
-            unknown_tool_modules.join(", ")
-        ));
-    }
-    if !missing_targets.is_empty() {
-        parts.push(format!(
-            "missing generated targets for mapped DSL modules: {}",
-            missing_targets.join(", ")
-        ));
-    }
-    if !unknown_pipeline_modules.is_empty() {
-        parts.push(format!(
-            "unmapped DSL pipeline modules: {}",
-            unknown_pipeline_modules.join(", ")
-        ));
-    }
     Err(format!(
-        "codegen DSL coverage validation failed: {}",
-        parts.join("; ")
+        "codegen DSL coverage validation failed: missing generated targets for mapped DSL modules: {}",
+        missing_targets.join(", ")
     ))
 }
 
@@ -1462,7 +1466,7 @@ fn print_help() {
 mod tests {
     use super::{
         discover_codegen_tools, parse_command_arg, parse_tool_defs_from_file,
-        validate_codegen_dsl_coverage,
+        validate_codegen_dsl_coverage, WorkspaceBinary,
     };
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
@@ -1586,8 +1590,12 @@ pub fn sample_tool() {}
         .collect();
         // Ensure deterministic assertion error path.
         tool_modules.insert("unknown_new_tool".to_string());
-        let pipeline_modules: BTreeSet<String> =
-            ["ci"].into_iter().map(|name| name.to_string()).collect();
+        let pipeline_modules: BTreeSet<String> = WorkspaceBinary::all()
+            .iter()
+            .copied()
+            .filter(|binary| binary.is_dsl_pipeline_module())
+            .map(|binary| binary.tool_name().to_string())
+            .collect();
 
         let err = validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)
             .expect_err("unknown tool module must fail coverage validation");

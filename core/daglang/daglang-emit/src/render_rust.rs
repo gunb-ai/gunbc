@@ -274,7 +274,7 @@ fn render_expr(expr: &Expr) -> String {
         Expr::Value(v) => render_value_expr(v),
         Expr::Var(name) => name.clone(),
         Expr::Str(s) => format!("\"{}\"", escape_rust_str(s)),
-        Expr::Call { func, args } => {
+        Expr::Call { func, args, .. } => {
             let func_str = render_expr(func);
             let args_str: Vec<String> = args.iter().map(render_expr).collect();
             format!("{}({})", func_str, args_str.join(", "))

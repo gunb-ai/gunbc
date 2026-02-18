@@ -49,6 +49,36 @@ impl<T> Dag<T> {
         self.nodes.iter_mut().find(|n| &n.id == id)
     }
 
+    /// Resolve a typed view of an input port by `(node_id, port_name)`.
+    pub fn resolve_input_port(
+        &self,
+        node_id: &NodeId,
+        port_name: &PortName,
+    ) -> Option<DagInputPort<'_, T>> {
+        let node = self.get_node(node_id)?;
+        let port = node.inputs.iter().find(|p| &p.name == port_name)?;
+        Some(DagInputPort { node, port })
+    }
+
+    /// Resolve a typed view of an output port by `(node_id, port_name)`.
+    pub fn resolve_output_port(
+        &self,
+        node_id: &NodeId,
+        port_name: &PortName,
+    ) -> Option<DagOutputPort<'_, T>> {
+        let node = self.get_node(node_id)?;
+        let port = node.outputs.iter().find(|p| &p.name == port_name)?;
+        Some(DagOutputPort { node, port })
+    }
+
+    /// Resolve both endpoints of an edge as typed input/output wrappers.
+    pub fn resolve_edge_ports(&self, edge: &Edge) -> Option<DagEdgePorts<'_, T>> {
+        Some(DagEdgePorts {
+            from: self.resolve_output_port(&edge.from_node, &edge.from_port)?,
+            to: self.resolve_input_port(&edge.to_node, &edge.to_port)?,
+        })
+    }
+
     /// Map all node operations to a new op type.
     ///
     /// Useful for structural analyses that don't care about op payloads.
@@ -191,6 +221,79 @@ impl<T> Dag<T> {
 
         out
     }
+}
+
+/// Typed wrapper for a resolved DAG input port.
+#[derive(Debug, Clone, Copy)]
+pub struct DagInputPort<'a, T> {
+    node: &'a Node<T>,
+    port: &'a Port,
+}
+
+impl<'a, T> DagInputPort<'a, T> {
+    pub fn node(&self) -> &'a Node<T> {
+        self.node
+    }
+
+    pub fn port(&self) -> &'a Port {
+        self.port
+    }
+
+    pub fn node_id(&self) -> &'a NodeId {
+        &self.node.id
+    }
+
+    pub fn name(&self) -> &'a PortName {
+        &self.port.name
+    }
+
+    pub fn type_id(&self) -> &'a TypeId {
+        &self.port.type_id
+    }
+
+    pub fn cardinality(&self) -> Cardinality {
+        self.port.cardinality
+    }
+}
+
+/// Typed wrapper for a resolved DAG output port.
+#[derive(Debug, Clone, Copy)]
+pub struct DagOutputPort<'a, T> {
+    node: &'a Node<T>,
+    port: &'a Port,
+}
+
+impl<'a, T> DagOutputPort<'a, T> {
+    pub fn node(&self) -> &'a Node<T> {
+        self.node
+    }
+
+    pub fn port(&self) -> &'a Port {
+        self.port
+    }
+
+    pub fn node_id(&self) -> &'a NodeId {
+        &self.node.id
+    }
+
+    pub fn name(&self) -> &'a PortName {
+        &self.port.name
+    }
+
+    pub fn type_id(&self) -> &'a TypeId {
+        &self.port.type_id
+    }
+
+    pub fn cardinality(&self) -> Cardinality {
+        self.port.cardinality
+    }
+}
+
+/// Typed wrapper for both resolved endpoints of a DAG edge.
+#[derive(Debug, Clone, Copy)]
+pub struct DagEdgePorts<'a, T> {
+    pub from: DagOutputPort<'a, T>,
+    pub to: DagInputPort<'a, T>,
 }
 
 /// The semantic kind of an edge.
@@ -782,6 +885,49 @@ mod tests {
     fn test_edge_default_index() {
         let edge = Edge::new("a", "out", "b", "in");
         assert_eq!(edge.index, 0);
+    }
+
+    #[test]
+    fn test_resolve_ports_wrappers() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "producer",
+            vec![],
+            vec![Port::list("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "consumer",
+            vec![Port::optional("in", "String")],
+            vec![],
+            (),
+        ));
+        let edge = Edge::new("producer", "out", "consumer", "in");
+        dag.add_edge(edge.clone());
+
+        let out = dag
+            .resolve_output_port(&"producer".into(), &"out".into())
+            .expect("output should resolve");
+        assert_eq!(out.node_id().0, "producer");
+        assert_eq!(out.name().0, "out");
+        assert_eq!(out.type_id().0, "String");
+        assert_eq!(out.cardinality(), Cardinality::ZERO_OR_MORE);
+
+        let input = dag
+            .resolve_input_port(&"consumer".into(), &"in".into())
+            .expect("input should resolve");
+        assert_eq!(input.node_id().0, "consumer");
+        assert_eq!(input.name().0, "in");
+        assert_eq!(input.type_id().0, "String");
+        assert_eq!(input.cardinality(), Cardinality::ZERO_OR_ONE);
+
+        let ports = dag
+            .resolve_edge_ports(&edge)
+            .expect("edge endpoints should resolve");
+        assert_eq!(ports.from.node_id().0, "producer");
+        assert_eq!(ports.from.name().0, "out");
+        assert_eq!(ports.to.node_id().0, "consumer");
+        assert_eq!(ports.to.name().0, "in");
     }
 
     #[test]

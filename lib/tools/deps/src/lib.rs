@@ -75,6 +75,7 @@ pub use upsert::{UpsertPhase, UpsertResult};
     mock_spec = "gunbc_deps::graph_mock::deps_mock_spec()",
     package = "deps",
     entrypoints = r#"[{"port_name":"manifest_path","type_id":"String","short":"m","help":"Path to deps.toml manifest","make_var":"MANIFEST"}]"#,
+    dsl_module = "deps",
     has_invocation,
     returns_result
 )]

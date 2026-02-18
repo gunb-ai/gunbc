@@ -67,8 +67,9 @@ pub use dsl_builder::{
 pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
 pub use makegen::{
-    build_makegen_graph, default_build_config, makegen_signature, render_gitignore,
-    render_makefile, BuildConfig, MakegenGraphOp, MakegenOp,
+    build_makegen_graph, default_build_config, default_core_workflows, makegen_signature,
+    render_gitignore, render_makefile, BuildConfig, MakegenGraphOp, MakegenOp, WorkflowKind,
+    WorkflowSpec,
 };
 pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp, PragmaOp};
 pub use resolve::{resolve_lowered_dag, ResolveError};
@@ -76,7 +77,10 @@ pub use resources::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
-pub use tool_runner::{print_tool_header, run_tool, RunToolOptions};
+pub use tool_runner::{
+    freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,
+    RunToolOptions,
+};
 pub use workspace::{
     build_bootstrap_subdag, build_build_subdag, build_ci_subdag, build_clippy_lint_all_subdag,
     build_clippy_subdag, build_codegen_subdag, build_dag_viz_subdag, build_deps_generate_subdag,

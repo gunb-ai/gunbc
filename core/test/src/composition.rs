@@ -39,22 +39,11 @@ pub fn assert_types_compatible<T>(dag: &Dag<T>) -> Vec<TypeCompatibility> {
     let mut results = Vec::new();
 
     for edge in &dag.edges {
-        // Find the source node and port
-        let from_node = dag.get_node(&edge.from_node);
-        let to_node = dag.get_node(&edge.to_node);
-
-        let (from_type, to_type) = match (from_node, to_node) {
-            (Some(from), Some(to)) => {
-                let from_port = from.outputs.iter().find(|p| p.name == edge.from_port);
-                let to_port = to.inputs.iter().find(|p| p.name == edge.to_port);
-
-                match (from_port, to_port) {
-                    (Some(fp), Some(tp)) => (fp.type_id.clone(), tp.type_id.clone()),
-                    _ => continue, // Skip if ports not found
-                }
-            }
-            _ => continue, // Skip if nodes not found
+        let Some(ports) = dag.resolve_edge_ports(edge) else {
+            continue;
         };
+        let from_type = ports.from.type_id().clone();
+        let to_type = ports.to.type_id().clone();
 
         let compatible = types_compatible(&from_type, &to_type);
 

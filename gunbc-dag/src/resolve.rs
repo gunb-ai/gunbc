@@ -260,10 +260,11 @@ impl Executable for ServiceShellCodegenRunParseOp {
     }
 }
 
-/// Lenient file-read prepare adapter for DSL content-upsert chains.
+/// File-read prepare adapter for DSL content-upsert chains.
 ///
-/// Some lowered call paths currently omit the literal `path` edge.
-/// This adapter preserves pure prepare semantics while defaulting path.
+/// Requires a `path` input. Missing `path` is a wiring bug and returns
+/// an error so the issue surfaces at execution time rather than silently
+/// producing a placeholder request.
 #[derive(Debug, Clone)]
 struct PrepareFileReadCompatOp;
 
@@ -272,7 +273,7 @@ impl Executable for PrepareFileReadCompatOp {
         let path = inputs
             .get("path")
             .and_then(Value::as_str)
-            .unwrap_or("mock-path");
+            .ok_or_else(|| ExecError::new("PrepareFileRead: missing required `path` input — check content-upsert wiring"))?;
         OutputMap::new()
             .request("request", TransportRequest::File(FileRequest::read(path)))
             .bool("skip", false)
@@ -280,10 +281,11 @@ impl Executable for PrepareFileReadCompatOp {
     }
 }
 
-/// Lenient file-write prepare adapter for DSL content-upsert chains.
+/// File-write prepare adapter for DSL content-upsert chains.
 ///
-/// Defaults missing `path`/`content` so DryRun and generated tests can
-/// execute end-to-end while resolver/runtime parity is being completed.
+/// Requires a `path` input. Accepts content from `content`, `return`, or
+/// `expected_content` (naming varies across lowered call paths). Missing
+/// `path` is a wiring bug and returns an error.
 #[derive(Debug, Clone)]
 struct PrepareFileWriteCompatOp;
 
@@ -292,7 +294,7 @@ impl Executable for PrepareFileWriteCompatOp {
         let path = inputs
             .get("path")
             .and_then(Value::as_str)
-            .unwrap_or("mock-path");
+            .ok_or_else(|| ExecError::new("PrepareFileWrite: missing required `path` input — check content-upsert wiring"))?;
         let content = inputs
             .get("content")
             .or_else(|| inputs.get("return"))
@@ -862,7 +864,7 @@ mod tests {
             ObligationCategory::ServiceTransportPrepare,
         );
         let result = resolve_node(&node).expect("prepare_read");
-        assert!(format!("{:?}", result).contains("PrepareFileReadOp"));
+        assert!(format!("{:?}", result).contains("PrepareFileRead"));
     }
 
     #[test]
@@ -898,7 +900,7 @@ mod tests {
             ObligationCategory::ServiceTransportPrepare,
         );
         let result = resolve_node(&node).expect("prepare_write");
-        assert!(format!("{:?}", result).contains("PrepareFileWriteOp"));
+        assert!(format!("{:?}", result).contains("PrepareFileWrite"));
     }
 
     #[test]

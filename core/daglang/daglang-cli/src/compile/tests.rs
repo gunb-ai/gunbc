@@ -394,16 +394,16 @@ fn resolve_lowered_dag_maps_makegen_nodes_to_dyn_ops() {
     assert!(debug_op_for("load_registry").contains("LoadRegistry"));
     assert!(debug_op_for("fs_env").contains("FsEnv"));
     assert!(debug_op_for("tools.makegen::render_makefile").contains("RenderMakefile"));
-    assert!(debug_op_for("prepare_read_makegen").contains("PrepareFileReadOp"));
+    assert!(debug_op_for("prepare_read_makegen").contains("PrepareFileRead"));
     assert!(debug_op_for("execute_read_makegen").contains("Execute"));
-    assert!(debug_op_for("prepare_write_makegen").contains("PrepareFileWriteOp"));
+    assert!(debug_op_for("prepare_write_makegen").contains("PrepareFileWrite"));
     assert!(debug_op_for("compare_makegen_content").contains("CompareContent"));
     assert!(debug_op_for("execute_makegen_transport").contains("Execute"));
     assert!(debug_op_for("tools.makegen::makegen").contains("Entrypoint"));
 }
 
 #[test]
-fn resolve_lowered_dag_rejects_unknown_callable_module() {
+fn resolve_lowered_dag_defers_unknown_callable_module() {
     let mut dag = Dag::new();
     dag.add_node(Node::opaque(
         "sample::unknown",
@@ -418,10 +418,13 @@ fn resolve_lowered_dag_rejects_unknown_callable_module() {
         },
     ));
 
-    let error = resolve_lowered_dag(&dag).expect_err("resolver should reject unknown module");
-    assert_eq!(error.node_id, "sample::unknown");
-    assert!(error.reason.contains("unknown callable"));
-    assert!(error.reason.contains("sample.module"));
+    let resolved = resolve_lowered_dag(&dag).expect("unknown modules should defer");
+    assert_eq!(resolved.nodes.len(), 1);
+    let debug = format!("{:?}", resolved.nodes[0].body);
+    assert!(
+        debug.contains("DeferredCallableOp"),
+        "expected deferred callable fallback, got {debug}"
+    );
 }
 
 #[test]

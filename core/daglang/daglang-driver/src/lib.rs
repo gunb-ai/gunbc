@@ -83,6 +83,10 @@ pub struct CompileOptions {
     /// Used by emitters that need to derive relative paths in generated
     /// artifacts (for example Cargo.toml workspace path dependencies).
     pub output_dir: Option<PathBuf>,
+    /// Pre-computed makegen Makefile content. When set, Go/C/MIPS backends
+    /// embed this instead of the default stub, and Rust Layer 1 writes it as
+    /// `src/embedded_makefile.txt`.
+    pub makegen_content_override: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -203,12 +207,18 @@ fn emit_with_options(
                 CompileError::from(format!("rust emit backend failed: {error}"))
             })
         }
-        (CodegenTarget::Go, CodegenLayer::Native) => emit_go_bundle(dag, derived)
-            .map_err(|error| CompileError::from(format!("go emit backend failed: {error}"))),
-        (CodegenTarget::C, CodegenLayer::Native) => emit_c_bundle(dag, derived)
-            .map_err(|error| CompileError::from(format!("c emit backend failed: {error}"))),
-        (CodegenTarget::Mips, CodegenLayer::Native) => emit_mips_bundle(dag, derived)
-            .map_err(|error| CompileError::from(format!("mips emit backend failed: {error}"))),
+        (CodegenTarget::Go, CodegenLayer::Native) => {
+            emit_go_bundle(dag, derived, options.makegen_content_override.as_deref())
+                .map_err(|error| CompileError::from(format!("go emit backend failed: {error}")))
+        }
+        (CodegenTarget::C, CodegenLayer::Native) => {
+            emit_c_bundle(dag, derived, options.makegen_content_override.as_deref())
+                .map_err(|error| CompileError::from(format!("c emit backend failed: {error}")))
+        }
+        (CodegenTarget::Mips, CodegenLayer::Native) => {
+            emit_mips_bundle(dag, derived, options.makegen_content_override.as_deref())
+                .map_err(|error| CompileError::from(format!("mips emit backend failed: {error}")))
+        }
         (CodegenTarget::Rust, CodegenLayer::ExecRuntime) => {
             let module_name = derived
                 .tool_metadata

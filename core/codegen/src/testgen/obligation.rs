@@ -208,6 +208,10 @@ pub enum Obligation {
         port_name: PortName,
     },
 
+    /// CLI contract round-trip: generated CLI harness must verify argument
+    /// parsing and `--print-inputs json` behavior for this tool.
+    CliContractRoundTrip { tool_name: String },
+
     // -----------------------------------------------------------------------
     // Bucket C: Scenario Coverage (graph + transport mocks)
     //
@@ -380,6 +384,14 @@ impl ObligationSet {
         self.bucket_b()
             .into_iter()
             .filter(|o| matches!(&o.kind, Obligation::OptionalInputHandling { .. }))
+            .collect()
+    }
+
+    /// Get only CLI contract round-trip obligations from Bucket B.
+    pub fn cli_contract_obligations(&self) -> Vec<&ProofObligation> {
+        self.bucket_b()
+            .into_iter()
+            .filter(|o| matches!(&o.kind, Obligation::CliContractRoundTrip { .. }))
             .collect()
     }
 
@@ -565,72 +577,60 @@ fn collect_contract_obligations<T>(
 ) {
     // B.1: Edge predicate entailment
     for edge in &dag.edges {
-        let from_node = dag.get_node(&edge.from_node);
-        let to_node = dag.get_node(&edge.to_node);
+        let Some(ports) = dag.resolve_edge_ports(edge) else {
+            continue;
+        };
 
-        if let (Some(from), Some(to)) = (from_node, to_node) {
-            let from_port = from.outputs.iter().find(|p| p.name == edge.from_port);
-            let to_port = to.inputs.iter().find(|p| p.name == edge.to_port);
+        // L1 + L2 are statically verified (type/cardinality compat)
+        // We only care about L3: predicate entailment
+        let entailment =
+            check_predicate_entailment(ports.from.type_id(), ports.to.type_id(), registry);
 
-            if let (Some(fp), Some(tp)) = (from_port, to_port) {
-                // L1 + L2 are statically verified (type/cardinality compat)
-                // We only care about L3: predicate entailment
-                let entailment = check_predicate_entailment(&fp.type_id, &tp.type_id, registry);
+        let edge_label = format!(
+            "{}.{} → {}.{}",
+            edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+        );
 
-                let edge_label = format!(
-                    "{}.{} → {}.{}",
-                    edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
-                );
+        // Determine reason and discharge/invalidate status from entailment
+        let (reason, status) = match &entailment {
+            EntailmentStatus::Verified => (
+                format!("Edge {}: predicate entailment verified", edge_label),
+                "verified",
+            ),
+            EntailmentStatus::Unknown { reason } => (
+                format!("Edge {}: predicate entailment unknown ({})", edge_label, reason),
+                "unknown",
+            ),
+            EntailmentStatus::Invalid { reason } => (
+                format!("Edge {}: predicate entailment INVALID ({})", edge_label, reason),
+                "invalid",
+            ),
+        };
 
-                // Determine reason and discharge/invalidate status from entailment
-                let (reason, status) = match &entailment {
-                    EntailmentStatus::Verified => (
-                        format!("Edge {}: predicate entailment verified", edge_label),
-                        "verified",
-                    ),
-                    EntailmentStatus::Unknown { reason } => (
-                        format!(
-                            "Edge {}: predicate entailment unknown ({})",
-                            edge_label, reason
-                        ),
-                        "unknown",
-                    ),
-                    EntailmentStatus::Invalid { reason } => (
-                        format!(
-                            "Edge {}: predicate entailment INVALID ({})",
-                            edge_label, reason
-                        ),
-                        "invalid",
-                    ),
-                };
+        let obligation = ProofObligation::new(
+            Obligation::EdgePredicateEntailment {
+                from_node: edge.from_node.clone(),
+                from_port: edge.from_port.clone(),
+                to_node: edge.to_node.clone(),
+                to_port: edge.to_port.clone(),
+                from_type: ports.from.type_id().clone(),
+                to_type: ports.to.type_id().clone(),
+                entailment,
+            },
+            &reason,
+            ObligationSource::Contract,
+        );
 
-                let obligation = ProofObligation::new(
-                    Obligation::EdgePredicateEntailment {
-                        from_node: edge.from_node.clone(),
-                        from_port: edge.from_port.clone(),
-                        to_node: edge.to_node.clone(),
-                        to_port: edge.to_port.clone(),
-                        from_type: fp.type_id.clone(),
-                        to_type: tp.type_id.clone(),
-                        entailment,
-                    },
-                    &reason,
-                    ObligationSource::Contract,
-                );
-
-                match status {
-                    "verified" => {
-                        obligations
-                            .push(obligation.discharge("Predicate entailment statically verified"));
-                    }
-                    "invalid" => {
-                        obligations.push(obligation.invalidate(reason));
-                    }
-                    _ => {
-                        // Unknown — needs runtime test
-                        obligations.push(obligation);
-                    }
-                }
+        match status {
+            "verified" => {
+                obligations.push(obligation.discharge("Predicate entailment statically verified"));
+            }
+            "invalid" => {
+                obligations.push(obligation.invalidate(reason));
+            }
+            _ => {
+                // Unknown — needs runtime test
+                obligations.push(obligation);
             }
         }
     }
@@ -680,29 +680,28 @@ fn collect_contract_obligations<T>(
     // across cardinality cases (empty vs one vs many).
     let boundaries = detect_boundaries(dag);
     for (node_id, port_name) in &boundaries.boundary_ports {
-        if let Some(node) = dag.get_node(node_id) {
-            if let Some(port) = node.outputs.iter().find(|p| &p.name == port_name) {
-                let bvs = fermi_test_cases(port.cardinality);
-                if bvs.len() > 1 {
-                    obligations.push(ProofObligation::runtime(
-                        Obligation::CardinalityCoverage {
-                            node_id: node_id.clone(),
-                            port_name: port_name.clone(),
-                            cardinality: port.cardinality,
-                            boundary_values: bvs.clone(),
-                        },
-                        format!(
-                            "Boundary port {}.{} has cardinality {} — test {} boundary values: {:?}",
-                            node_id.0,
-                            port_name.0,
-                            port.cardinality,
-                            bvs.len(),
-                            bvs
-                        ),
-                        ObligationSource::Contract,
-                    ));
-                }
-            }
+        let Some(port) = dag.resolve_output_port(node_id, port_name) else {
+            continue;
+        };
+        let bvs = fermi_test_cases(port.cardinality());
+        if bvs.len() > 1 {
+            obligations.push(ProofObligation::runtime(
+                Obligation::CardinalityCoverage {
+                    node_id: node_id.clone(),
+                    port_name: port_name.clone(),
+                    cardinality: port.cardinality(),
+                    boundary_values: bvs.clone(),
+                },
+                format!(
+                    "Boundary port {}.{} has cardinality {} — test {} boundary values: {:?}",
+                    node_id.0,
+                    port_name.0,
+                    port.cardinality(),
+                    bvs.len(),
+                    bvs
+                ),
+                ObligationSource::Contract,
+            ));
         }
     }
 

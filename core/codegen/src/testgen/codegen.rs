@@ -21,7 +21,10 @@
 //! Only obligations that are Unknown or RuntimeOnly produce tests.
 
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
-use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
+use crate::testgen::obligation::{
+    collect_obligations, DischargeStatus, Obligation, ObligationSet, ObligationSource,
+    ProofObligation,
+};
 use crate::testgen::probe_observer::{
     analyze_probe_observers, observability_report, ProbeObserverAnalysis,
 };
@@ -36,9 +39,9 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, parse_map_type_id, semantic_carrier_class_for_type_id, value_backing_for_type_id,
-    Cardinality, Dag, NodeId, Os, PortName, RuntimePlatform, SecretString, SeedPlaceholderPolicy,
-    SemanticCarrierClass, TypeRegistry, Value, ValueKind, ValueExpr,
+    contract, parse_map_type_id, semantic_carrier_class_for_type_id,
+    value_compatible_with_type_id, value_kind_name, Cardinality, Dag, NodeId, Os, PortName,
+    SecretString, SeedPlaceholderPolicy, SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -111,54 +114,11 @@ fn requires_explicit_seed(type_id: &str, context: SeedContext) -> bool {
 /// Thin wrapper around `Value::kind().type_name()` — kept as a private helper
 /// so callers don't repeat the two-step chain.
 fn mock_value_kind_name(value: &Value) -> &'static str {
-    value.kind().type_name()
+    value_kind_name(value)
 }
 
 fn mock_types_compatible(port_type: &str, value: &Value) -> bool {
-    let kind = value.kind();
-    let kind_name = kind.type_name();
-
-    // Exact match
-    if port_type == kind_name {
-        return true;
-    }
-    // Any matches anything
-    if port_type == "Any" {
-        return true;
-    }
-    // Optional types accept the inner type or Unit (none)
-    if let Some(inner) = port_type.strip_prefix("Optional") {
-        if kind_name == inner || kind == ValueKind::Unit {
-            return true;
-        }
-    }
-    // Skipped is a control flow value, compatible with any type
-    if kind == ValueKind::Skipped {
-        return true;
-    }
-    // Json is flexible - can hold structured data that might be typed differently
-    if port_type == "Json" || kind == ValueKind::Json {
-        return true;
-    }
-    // Parametric Map<K,V> — validate value entries against the value type parameter
-    if let Some((key_type, value_param_type)) = parse_map_type_id(port_type) {
-        if key_type != "String" {
-            return false;
-        }
-        if let Value::Map(entries) = value {
-            return entries
-                .values()
-                .all(|entry| mock_types_compatible(&value_param_type, entry));
-        }
-        return false;
-    }
-    // Platform has dual backing: String or Map (structured platform info)
-    if port_type == "Platform" && (kind == ValueKind::String || kind == ValueKind::Map) {
-        return true;
-    }
-    // Derive backing from the type system
-    let backing = value_backing_for_type_id(port_type);
-    backing.accepts_value_kind(kind)
+    value_compatible_with_type_id(port_type, value)
 }
 
 /// Configuration for test generation.
@@ -595,7 +555,21 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
-        let obligations = collect_obligations(self.dag, None, None);
+        let mut obligations = collect_obligations(self.dag, None, None);
+        if let Some((tool_name, entrypoints)) = &self.cli_entrypoints {
+            if !entrypoints.is_empty() {
+                obligations.all.push(ProofObligation::runtime(
+                    Obligation::CliContractRoundTrip {
+                        tool_name: tool_name.clone(),
+                    },
+                    format!(
+                        "Tool '{}' CLI arguments must round-trip through parse and --print-inputs json",
+                        tool_name
+                    ),
+                    ObligationSource::Contract,
+                ));
+            }
+        }
         let probe_observer_bundle = self.build_probe_observer_bundle(&analysis);
 
         let mut file = self.generate_test_file(
@@ -1268,7 +1242,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
-        if let Some(section) = self.build_cli_contract_section() {
+        if let Some(section) = self.build_cli_contract_section(obligations) {
             // CLI contract tests need gunbc_cli imports
             file.imports.push(Import {
                 path: vec!["gunbc_cli".to_string()],
@@ -1453,7 +1427,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 Self::record_ident(name, used);
             }
             Expr::Str(_) | Expr::IntLit(_) | Expr::BoolLit(_) => {}
-            Expr::Call { func, args } => {
+            Expr::Call { func, args, .. } => {
                 Self::collect_idents_from_expr(func, used);
                 for arg in args {
                     Self::collect_idents_from_expr(arg, used);
@@ -4788,17 +4762,29 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     ///
     /// This verifies that `gunbc_cli::parse()` handles the tool's CLI schema
     /// correctly by parsing sample arguments and checking the results.
-    fn build_cli_contract_section(&self) -> Option<TestSection> {
+    fn build_cli_contract_section(&self, obligations: &ObligationSet) -> Option<TestSection> {
         let (tool_name, entrypoints) = self.cli_entrypoints.as_ref()?;
+        let has_cli_contract_obligation = obligations.cli_contract_obligations().iter().any(|o| {
+            matches!(
+                &o.kind,
+                Obligation::CliContractRoundTrip {
+                    tool_name: obligation_tool
+                } if obligation_tool == tool_name
+            )
+        });
+        if !has_cli_contract_obligation {
+            return None;
+        }
 
-        let test_name = format!("test_cli_contract_{}", tool_name.replace('-', "_"));
+        let parse_test_name = format!("test_cli_contract_{}", tool_name.replace('-', "_"));
+        let print_inputs_test_name = format!(
+            "test_cli_contract_print_inputs_{}",
+            tool_name.replace('-', "_")
+        );
 
-        // Build the entire test body as raw code to avoid Stmt::Expr semicolons
-        // interfering with multi-line constructs like vec![...].
-        let mut code = String::new();
-
-        // Schema
-        code.push_str("let schema = vec![\n");
+        // Shared schema body for both generated tests.
+        let mut schema_code = String::new();
+        schema_code.push_str("let schema = vec![\n");
         for ep in entrypoints {
             let type_expr = match ep.type_id {
                 ParamType::Str => "ParamType::Str",
@@ -4806,25 +4792,25 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 ParamType::Bool => "ParamType::Bool",
             };
             write!(
-                code,
+                schema_code,
                 "    CliParam::new(\"{}\", {})",
                 ep.port_name, type_expr
             )
             .unwrap();
             if ep.cardinality.allows_many() {
-                code.push_str(".with_cardinality(Cardinality::ZERO_OR_MORE)");
+                schema_code.push_str(".with_cardinality(Cardinality::ZERO_OR_MORE)");
             }
             if let Some(c) = ep.short_flag {
-                write!(code, ".short('{}')", c).unwrap();
+                write!(schema_code, ".short('{}')", c).unwrap();
             }
             if let Some(ref d) = ep.default_value {
-                write!(code, ".default(\"{}\")", cli_escape(d)).unwrap();
+                write!(schema_code, ".default(\"{}\")", cli_escape(d)).unwrap();
             }
-            code.push_str(",\n");
+            schema_code.push_str(",\n");
         }
-        code.push_str("];\n");
+        schema_code.push_str("];\n");
 
-        // Build argv and assertions
+        // Build argv and shared assertions.
         let mut argv_parts: Vec<String> =
             vec![format!("\"{}\"", tool_name), "\"--dry-run\"".to_string()];
         let mut assertions: Vec<String> = Vec::new();
@@ -4873,29 +4859,94 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         }
         assertions.push("assert!(result.dry_run, \"dry_run should be true\");\n".to_string());
 
+        // Parse contract test body.
+        let mut parse_code = String::new();
+        parse_code.push_str(&schema_code);
         let argv_str = argv_parts.join(", ");
         writeln!(
-            code,
+            parse_code,
             "let argv: Vec<String> = [{}].iter().map(|s| s.to_string()).collect();",
             argv_str
         )
         .unwrap();
-        code.push_str("let result = parse(&argv, &schema).expect(\"parse should succeed\");\n");
+        parse_code.push_str("let result = parse(&argv, &schema).expect(\"parse should succeed\");\n");
         for assertion in &assertions {
-            code.push_str(assertion);
+            parse_code.push_str(assertion);
         }
+
+        // --print-inputs json round-trip contract test body.
+        let mut print_inputs_code = String::new();
+        print_inputs_code.push_str(&schema_code);
+        let mut full_argv_parts: Vec<String> = vec![
+            format!("\"{}\"", tool_name),
+            "\"--dry-run\"".to_string(),
+            "\"--print-inputs\"".to_string(),
+            "\"json\"".to_string(),
+        ];
+        full_argv_parts.extend(argv_parts.iter().skip(2).cloned());
+        writeln!(
+            print_inputs_code,
+            "let full_argv: Vec<String> = [{}].iter().map(|s| s.to_string()).collect();",
+            full_argv_parts.join(", ")
+        )
+        .unwrap();
+        print_inputs_code.push_str(
+            "let mut parse_args: Vec<String> = Vec::with_capacity(full_argv.len());\n",
+        );
+        print_inputs_code.push_str("if let Some(program) = full_argv.first() {\n");
+        print_inputs_code.push_str("    parse_args.push(program.clone());\n");
+        print_inputs_code.push_str("}\n");
+        print_inputs_code.push_str("let mut print_inputs_json = false;\n");
+        print_inputs_code.push_str("let mut raw_idx = 1usize;\n");
+        print_inputs_code.push_str("while raw_idx < full_argv.len() {\n");
+        print_inputs_code.push_str("    let arg = &full_argv[raw_idx];\n");
+        print_inputs_code.push_str("    if arg == \"--print-inputs\" {\n");
+        print_inputs_code.push_str("        raw_idx += 1;\n");
+        print_inputs_code.push_str("        assert!(raw_idx < full_argv.len(), \"--print-inputs should include a format value\");\n");
+        print_inputs_code.push_str("        assert_eq!(full_argv[raw_idx], \"json\", \"--print-inputs only supports json\");\n");
+        print_inputs_code.push_str("        print_inputs_json = true;\n");
+        print_inputs_code.push_str("    } else if let Some(format) = arg.strip_prefix(\"--print-inputs=\") {\n");
+        print_inputs_code.push_str("        assert_eq!(format, \"json\", \"--print-inputs only supports json\");\n");
+        print_inputs_code.push_str("        print_inputs_json = true;\n");
+        print_inputs_code.push_str("    } else {\n");
+        print_inputs_code.push_str("        parse_args.push(arg.clone());\n");
+        print_inputs_code.push_str("    }\n");
+        print_inputs_code.push_str("    raw_idx += 1;\n");
+        print_inputs_code.push_str("}\n");
+        print_inputs_code.push_str("assert!(print_inputs_json, \"expected --print-inputs json to be detected\");\n");
+        print_inputs_code.push_str("let result = parse(&parse_args, &schema).expect(\"parse should succeed\");\n");
+        for assertion in &assertions {
+            print_inputs_code.push_str(assertion);
+        }
+        print_inputs_code.push_str("let mut ordered_inputs = std::collections::BTreeMap::new();\n");
+        print_inputs_code.push_str("for (port, value) in &result.values {\n");
+        print_inputs_code.push_str("    ordered_inputs.insert(port.clone(), value.clone());\n");
+        print_inputs_code.push_str("}\n");
+        print_inputs_code.push_str("let json = gunbc_ir::to_bridge_json(&Value::Map(ordered_inputs))\n");
+        print_inputs_code.push_str("    .expect(\"to_bridge_json should serialize parsed inputs\");\n");
+        print_inputs_code.push_str("assert!(json.is_object(), \"--print-inputs json should be a JSON object\");\n");
 
         // Wrap entire body in a single TailExpr to avoid extra semicolons.
         // The raw code already has its own semicolons where needed.
-        let body = vec![Stmt::TailExpr(Expr::raw(code.trim_end()))];
+        let parse_body = vec![Stmt::TailExpr(Expr::raw(parse_code.trim_end()))];
+        let print_inputs_body = vec![Stmt::TailExpr(Expr::raw(print_inputs_code.trim_end()))];
 
-        let test = TestFn {
-            name: test_name,
+        let parse_test = TestFn {
+            name: parse_test_name,
             doc: vec![format!(
                 "CLI contract: verify gunbc_cli::parse() handles '{}' arguments.",
                 tool_name
             )],
-            body,
+            body: parse_body,
+        };
+
+        let print_inputs_test = TestFn {
+            name: print_inputs_test_name,
+            doc: vec![format!(
+                "CLI contract: verify '{}' supports --print-inputs json round-trip.",
+                tool_name
+            )],
+            body: print_inputs_body,
         };
 
         Some(TestSection {
@@ -4903,8 +4954,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             notes: vec![
                 "Verifies CLI argument parsing for this tool's entrypoints.".to_string(),
                 "Uses gunbc_cli::parse() for in-process validation (no subprocess).".to_string(),
+                "Also validates --print-inputs json preprocessing and JSON serialization."
+                    .to_string(),
             ],
-            tests: vec![test],
+            tests: vec![parse_test, print_inputs_test],
         })
     }
 }
@@ -5499,23 +5552,14 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
 }
 
 fn platform_mock_variants() -> Vec<String> {
-    let host_token = RuntimePlatform::detect_current()
-        .host
-        .os
-        .as_token()
-        .to_string();
-    let mut variants = vec![host_token];
-    for token in [
-        Os::Linux.as_token(),
-        Os::Macos.as_token(),
-        Os::Windows.as_token(),
-    ] {
-        let token = token.to_string();
-        if !variants.iter().any(|existing| existing == &token) {
-            variants.push(token);
-        }
-    }
-    variants
+    // Use a fixed ordering for determinism across machines. The default
+    // (index 0) is always "linux" regardless of the host OS, which avoids
+    // golden-file churn and "works on my machine" test instability.
+    vec![
+        Os::Linux.as_token().to_string(),
+        Os::Macos.as_token().to_string(),
+        Os::Windows.as_token().to_string(),
+    ]
 }
 
 fn platform_mock_token(index: Option<u32>) -> String {
@@ -5750,12 +5794,8 @@ mod tests {
     #[test]
     fn test_platform_mock_token_includes_host_and_variants() {
         let variants = platform_mock_variants();
-        let host = RuntimePlatform::detect_current()
-            .host
-            .os
-            .as_token()
-            .to_string();
-        assert_eq!(variants.first(), Some(&host));
+        // Default (index 0) is always "linux" for determinism across machines.
+        assert_eq!(variants.first(), Some(&"linux".to_string()));
         assert!(variants.iter().any(|v| v == "linux"));
         assert!(variants.iter().any(|v| v == "macos"));
         assert!(variants.iter().any(|v| v == "windows"));
@@ -5896,6 +5936,74 @@ mod tests {
         assert!(code.contains("test_output"));
         // Should have chain tests
         assert!(code.contains("test_mock_spec_self_consistent"));
+    }
+
+    #[test]
+    fn test_generate_cli_contract_section_when_entrypoints_present() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("in", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in"));
+
+        let spec = MockSpec::new("cli_contract")
+            .boundary("sink", "result", Value::Str("<MOCK>".into()))
+            .skip_node_example("source")
+            .skip_node_example("sink");
+
+        let entrypoints = vec![crate::cli_gen::CliEntrypoint::new(
+            "workspace",
+            gunbc_cli::ParamType::Str,
+        )];
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()")
+            .with_cli_entrypoints("gunbc-demo".to_string(), entrypoints);
+
+        let code = generator.generate_test_module("cli_contract", "build_cli_contract_graph()");
+        assert!(code.contains("CLI Contract Tests"));
+        assert!(code.contains("test_cli_contract_gunbc_demo"));
+        assert!(code.contains("test_cli_contract_print_inputs_gunbc_demo"));
+        assert!(code.contains("--print-inputs json"));
+    }
+
+    #[test]
+    fn test_generate_skips_cli_contract_section_without_entrypoints() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("in", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in"));
+
+        let spec = MockSpec::new("cli_contract")
+            .boundary("sink", "result", Value::Str("<MOCK>".into()))
+            .skip_node_example("source")
+            .skip_node_example("sink");
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+
+        let code = generator.generate_test_module("cli_contract", "build_cli_contract_graph()");
+        assert!(!code.contains("CLI Contract Tests"));
+        assert!(!code.contains("test_cli_contract_"));
     }
 
     #[test]

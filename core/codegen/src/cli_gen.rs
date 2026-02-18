@@ -285,7 +285,6 @@ fn build_cli_imports(
     tool: &ToolMeta,
     custom_import: Option<&str>,
     step_mode: bool,
-    has_entrypoints: bool,
 ) -> Vec<Item> {
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
 
@@ -311,13 +310,11 @@ fn build_cli_imports(
         }),
         Item::Use(Import {
             path: vec!["gunbc_ir".to_string()],
-            items: {
-                let mut ir_items = vec!["detect_entrypoints".to_string()];
-                if has_entrypoints {
-                    ir_items.push("Value".to_string());
-                }
-                ir_items
-            },
+            items: vec![
+                "detect_entrypoints".to_string(),
+                "to_bridge_json".to_string(),
+                "Value".to_string(),
+            ],
         }),
     ];
 
@@ -426,8 +423,39 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     }
     code.push_str("];\n\n");
 
+    code.push_str("let mut parse_args: Vec<String> = Vec::with_capacity(args.len());\n");
+    code.push_str("if let Some(program) = args.first() {\n");
+    code.push_str("    parse_args.push(program.clone());\n");
+    code.push_str("}\n");
+    code.push_str("let mut print_inputs_json = false;\n");
+    code.push_str("let mut raw_idx = 1usize;\n");
+    code.push_str("while raw_idx < args.len() {\n");
+    code.push_str("    let arg = &args[raw_idx];\n");
+    code.push_str("    if arg == \"--print-inputs\" {\n");
+    code.push_str("        raw_idx += 1;\n");
+    code.push_str("        if raw_idx >= args.len() {\n");
+    code.push_str("            eprintln!(\"--print-inputs requires format: 'json'\");\n");
+    code.push_str("            process::exit(1);\n");
+    code.push_str("        }\n");
+    code.push_str("        if args[raw_idx].as_str() != \"json\" {\n");
+    code.push_str("            eprintln!(\"unsupported --print-inputs format '{}'; expected 'json'\", args[raw_idx]);\n");
+    code.push_str("            process::exit(1);\n");
+    code.push_str("        }\n");
+    code.push_str("        print_inputs_json = true;\n");
+    code.push_str("    } else if let Some(format) = arg.strip_prefix(\"--print-inputs=\") {\n");
+    code.push_str("        if format != \"json\" {\n");
+    code.push_str("            eprintln!(\"unsupported --print-inputs format '{}'; expected 'json'\", format);\n");
+    code.push_str("            process::exit(1);\n");
+    code.push_str("        }\n");
+    code.push_str("        print_inputs_json = true;\n");
+    code.push_str("    } else {\n");
+    code.push_str("        parse_args.push(arg.clone());\n");
+    code.push_str("    }\n");
+    code.push_str("    raw_idx += 1;\n");
+    code.push_str("}\n\n");
+
     // Parse
-    code.push_str("let parsed = gunbc_cli::parse(&args, &schema).unwrap_or_else(|e| {\n");
+    code.push_str("let parsed = gunbc_cli::parse(&parse_args, &schema).unwrap_or_else(|e| {\n");
     code.push_str("    eprintln!(\"{}\", e);\n");
     code.push_str("    process::exit(1);\n");
     code.push_str("});\n\n");
@@ -438,6 +466,18 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     // Extract dry_run and cli_inputs (take ownership of values map)
     code.push_str("let dry_run = parsed.dry_run;\n");
     code.push_str("let cli_inputs = parsed.values;\n");
+    code.push_str("if print_inputs_json {\n");
+    code.push_str("    let mut ordered_inputs = std::collections::BTreeMap::new();\n");
+    code.push_str("    for (port, value) in &cli_inputs {\n");
+    code.push_str("        ordered_inputs.insert(port.clone(), value.clone());\n");
+    code.push_str("    }\n");
+    code.push_str("    if let Some(json) = to_bridge_json(&Value::Map(ordered_inputs)) {\n");
+    code.push_str("        println!(\"{}\", json);\n");
+    code.push_str("    } else {\n");
+    code.push_str("        println!(\"{{}}\");\n");
+    code.push_str("    }\n");
+    code.push_str("    return;\n");
+    code.push_str("}\n");
 
     // Extract local variables from cli_inputs for graph_builder_args compatibility
     for ep in entrypoints {
@@ -627,7 +667,7 @@ fn build_cli_source_file(
     entrypoints: &[CliEntrypoint],
     custom_import: Option<&str>,
 ) -> SourceFile {
-    let imports = build_cli_imports(tool, custom_import, false, !entrypoints.is_empty());
+    let imports = build_cli_imports(tool, custom_import, false);
 
     let main_fn = build_main_fn(tool, entrypoints);
     let help_fn = build_help_fn(tool, entrypoints);
@@ -712,6 +752,7 @@ fn build_help_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          println!(\"OPTIONS:\");\n\
          {help_options}\
          println!(\"    -n, --dry-run        Don't perform actual I/O\");\n\
+         println!(\"    --print-inputs json  Print parsed inputs as JSON and exit\");\n\
          println!(\"    -h, --help           Print this help\");\n\
          println!();\n\
          println!(\"Progress display is automatic based on terminal capabilities.\");",
@@ -741,7 +782,7 @@ fn build_step_mode_source_file(
     entrypoints: &[CliEntrypoint],
     custom_import: Option<&str>,
 ) -> SourceFile {
-    let imports = build_cli_imports(tool, custom_import, true, !entrypoints.is_empty());
+    let imports = build_cli_imports(tool, custom_import, true);
 
     let main_fn = build_step_main_fn();
     let run_full_fn = build_run_full_dag_fn(tool, entrypoints);
@@ -1132,6 +1173,7 @@ fn build_step_help_fn(tool: &ToolMeta) -> FnDef {
          println!();\n\
          println!(\"OPTIONS:\");\n\
          println!(\"    -n, --dry-run    Don't perform actual I/O\");\n\
+         println!(\"    --print-inputs json  Print parsed inputs as JSON and exit\");\n\
          println!(\"    -h, --help       Print this help\");\n\
          println!();\n\
          println!(\"Progress display is automatic based on terminal capabilities.\");",
@@ -1185,6 +1227,9 @@ mod tests {
         let code = generate_cli(&tool, &entrypoints);
         assert!(code.contains("--repo-path"));
         assert!(code.contains("--dry-run"));
+        assert!(code.contains("--print-inputs json"));
+        assert!(code.contains("let mut print_inputs_json = false;"));
+        assert!(code.contains("to_bridge_json(&Value::Map(ordered_inputs))"));
         assert!(code.contains("build_gist_graph"));
         assert!(code.contains("execute_and_display"));
         assert!(code.contains("print_preamble_auto"));
@@ -1242,6 +1287,7 @@ mod tests {
         assert!(code.contains("fn print_help()"));
         assert!(code.contains("gunbc_cli::parse_step_mode"));
         assert!(code.contains("gunbc_cli::StepModeSubcommand::Run"));
+        assert!(code.contains("--print-inputs json"));
         assert!(code.contains("execute_single_node"));
         assert!(code.contains("print_value"));
     }

@@ -1271,6 +1271,7 @@ mod tests {
                     Value::Secret(gunbc_ir::SecretString::new(secret)),
                 )]),
                 was_intercepted: false,
+                coercions_applied: vec![],
             }],
         };
 

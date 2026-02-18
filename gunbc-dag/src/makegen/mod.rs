@@ -15,8 +15,9 @@ pub use gitignore::{derive_categories, render_gitignore, GitignoreRenderer};
 pub use graph::{build_makegen_graph, makegen_signature, MakegenGraphOp};
 pub use ops::MakegenOp;
 pub use registry::{
-    default_build_config, default_meta_targets, BuildConfig, BuildSystem, ConfigField,
-    EntrypointParam, FixAlias, MetaTarget, ResourceNeed, ResourceTargetMap, ToolInfo, ToolRegistry,
+    default_build_config, default_core_workflows, default_meta_targets, BuildConfig, BuildSystem,
+    ConfigField, EntrypointParam, FixAlias, MetaTarget, ResourceNeed, ResourceTargetMap, ToolInfo,
+    ToolRegistry, WorkflowKind, WorkflowSpec,
 };
 pub use render::{render_makefile, render_makefile_with_config};
 
@@ -34,6 +35,7 @@ pub use render::{render_makefile, render_makefile_with_config};
     package = "dag",
     binary = "makegen",
     entrypoints = r#"[{"port_name":"path","type_id":"String","short":"o","default":"Makefile","help":"Output Makefile path","make_var":"OUTPUT"}]"#,
+    dsl_module = "makegen",
     has_invocation,
     returns_result
 )]

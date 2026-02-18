@@ -426,11 +426,6 @@ impl TypeRegistry {
         self.types.contains_key(name)
     }
 
-    /// Get all registered type names.
-    pub fn type_names(&self) -> impl Iterator<Item = &TypeId> {
-        self.types.keys()
-    }
-
     /// Get the number of registered types.
     pub fn len(&self) -> usize {
         self.types.len()
@@ -497,7 +492,7 @@ impl TypeRegistry {
     /// Check whether `from` is a structural refinement of `to`.
     ///
     /// A refinement can safely coerce to its base type (widening).
-    pub fn is_refinement_of(&self, from: &TypeId, to: &TypeId) -> bool {
+    fn is_refinement_of(&self, from: &TypeId, to: &TypeId) -> bool {
         self.is_compatible(from, to)
     }
 

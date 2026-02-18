@@ -312,7 +312,7 @@ pub fn iter_registered_system_models() -> impl Iterator<Item = SystemModel> {
 }
 
 /// Collect registered models by id (last writer wins on duplicate ids).
-pub fn registered_system_model_map() -> BTreeMap<String, SystemModel> {
+fn registered_system_model_map() -> BTreeMap<String, SystemModel> {
     let mut map = BTreeMap::new();
     for model in iter_registered_system_models() {
         map.insert(model.id.clone(), model);

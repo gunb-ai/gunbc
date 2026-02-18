@@ -22,8 +22,8 @@
 use crate::mock_spec::{BoundaryMock, MockSpec, NodeExample, TransportMock};
 use gunbc_ir::transport::TransportResponse;
 use gunbc_ir::{
-    parse_map_type_id, value_backing_for_type_id, Cardinality, NodeId, PortName, TypeId, Value,
-    ValueKind,
+    value_compatible_with_type_id, value_kind_name as ir_value_kind_name, Cardinality, NodeId,
+    PortName, TypeId, Value,
 };
 use std::collections::HashSet;
 use std::error::Error;
@@ -237,64 +237,12 @@ impl MockRequirements {
 
     /// Returns the canonical type-name string for a Value's kind.
     fn value_kind_name(value: &Value) -> &'static str {
-        value.kind().type_name()
+        ir_value_kind_name(value)
     }
 
     /// Check if a value type is compatible with an expected type.
     fn types_compatible(expected: &str, value: &Value) -> bool {
-        let actual_kind = value.kind();
-        let actual_name = actual_kind.type_name();
-
-        // Exact match
-        if expected == actual_name {
-            return true;
-        }
-
-        // Any matches anything
-        if expected == "Any" {
-            return true;
-        }
-
-        // Optional types accept the inner type or Unit (none)
-        if let Some(inner) = expected.strip_prefix("Optional") {
-            if actual_name == inner || actual_kind == ValueKind::Unit {
-                return true;
-            }
-        }
-
-        // Skipped is compatible with any type
-        if actual_kind == ValueKind::Skipped {
-            return true;
-        }
-
-        // Json is flexible
-        if expected == "Json" || actual_kind == ValueKind::Json {
-            return true;
-        }
-
-        // Parametric map types: Map<String, T>
-        if let Some((key_type, value_type)) = parse_map_type_id(expected) {
-            if key_type != "String" {
-                return false;
-            }
-            if let Value::Map(entries) = value {
-                return entries
-                    .values()
-                    .all(|entry| Self::types_compatible(&value_type, entry));
-            }
-            return false;
-        }
-
-        // Platform has dual backing (String or Map)
-        if expected == "Platform"
-            && (actual_kind == ValueKind::String || actual_kind == ValueKind::Map)
-        {
-            return true;
-        }
-
-        // Delegate to centralized ValueBacking for all other type→value compatibility
-        let backing = value_backing_for_type_id(expected);
-        backing.accepts_value_kind(actual_kind)
+        value_compatible_with_type_id(expected, value)
     }
 
     /// Validate a value against a slot's type.

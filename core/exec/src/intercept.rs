@@ -160,13 +160,34 @@ impl BoundaryMocks {
     }
 
     /// Get the mock for a boundary port, if defined.
+    ///
+    /// Falls back to the leaf node ID (everything after the last `/`) when
+    /// the full scoped ID is not found. The fallback is only used when the
+    /// leaf name is unambiguous — i.e., exactly one mock key shares that leaf.
     pub fn get_mock(&self, node_id: &NodeId, port_name: &PortName) -> Option<&BoundaryMock> {
         let key = (node_id.0.clone(), port_name.0.clone());
         self.mocks.get(&key).or_else(|| {
-            node_id
-                .0
-                .rsplit_once('/')
-                .and_then(|(_, leaf)| self.mocks.get(&(leaf.to_string(), port_name.0.clone())))
+            let (_, leaf) = node_id.0.rsplit_once('/')?;
+            let leaf_key = (leaf.to_string(), port_name.0.clone());
+            let mock = self.mocks.get(&leaf_key)?;
+            // Guard: only use the leaf fallback if this leaf is unambiguous
+            // among all mock keys for this port. If multiple mock keys share
+            // the same leaf, the fallback could silently bind the wrong one.
+            let leaf_count = self
+                .mocks
+                .keys()
+                .filter(|(nid, pname)| {
+                    pname == &port_name.0
+                        && nid
+                            .rsplit_once('/')
+                            .map_or(nid.as_str() == leaf, |(_, l)| l == leaf)
+                })
+                .count();
+            if leaf_count <= 1 {
+                Some(mock)
+            } else {
+                None
+            }
         })
     }
 
@@ -186,13 +207,10 @@ impl BoundaryMocks {
     }
 
     /// Check if a specific mock is defined for a boundary port.
+    ///
+    /// Uses the same leaf-fallback logic as `get_mock` (unambiguous leaf only).
     pub fn has_mock(&self, node_id: &NodeId, port_name: &PortName) -> bool {
-        let key = (node_id.0.clone(), port_name.0.clone());
-        self.mocks.contains_key(&key)
-            || node_id.0.rsplit_once('/').is_some_and(|(_, leaf)| {
-                self.mocks
-                    .contains_key(&(leaf.to_string(), port_name.0.clone()))
-            })
+        self.get_mock(node_id, port_name).is_some()
     }
 
     /// Iterate over all input mocks as ((node_id, port_name), value).

@@ -18,6 +18,7 @@ pub mod pragma;
 pub mod testgen;
 
 use crate::workspace::WorkspaceOp;
+use crate::WorkspaceBinary;
 use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
 use std::collections::BTreeSet;
 use std::fs;
@@ -125,23 +126,11 @@ fn workspace_layout() -> Result<WorkspaceLayout, BuilderError> {
 }
 
 fn validate_required_dsl_tools(tool_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    const REQUIRED: &[&str] = &[
-        "makegen",
-        "clippy",
-        "deps",
-        "bootstrap",
-        "gist",
-        "build",
-        "codegen",
-        "dag_viz",
-        "docgen",
-        "pragma",
-        "testgen",
-    ];
-    let missing: Vec<&str> = REQUIRED
+    let required = required_dsl_tool_modules();
+    let missing: Vec<String> = required
         .iter()
-        .copied()
         .filter(|name| !tool_names.contains(*name))
+        .cloned()
         .collect();
     if missing.is_empty() {
         return Ok(());
@@ -153,11 +142,11 @@ fn validate_required_dsl_tools(tool_names: &BTreeSet<String>) -> Result<(), Buil
 }
 
 fn validate_required_dsl_pipelines(pipeline_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    const REQUIRED: &[&str] = &["ci"];
-    let missing: Vec<&str> = REQUIRED
+    let required = required_dsl_pipeline_modules();
+    let missing: Vec<String> = required
         .iter()
-        .copied()
         .filter(|name| !pipeline_names.contains(*name))
+        .cloned()
         .collect();
     if missing.is_empty() {
         return Ok(());
@@ -169,24 +158,11 @@ fn validate_required_dsl_pipelines(pipeline_names: &BTreeSet<String>) -> Result<
 }
 
 fn validate_dsl_tool_coverage(tool_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    const COVERED: &[&str] = &[
-        "makegen",
-        "clippy",
-        "deps",
-        "bootstrap",
-        "gist",
-        "build",
-        "codegen",
-        "dag_viz",
-        "docgen",
-        "pragma",
-        "testgen",
-    ];
-    const EXCLUDED: &[&str] = &[];
+    let covered = required_dsl_tool_modules();
 
     let unknown: Vec<String> = tool_names
         .iter()
-        .filter(|name| !COVERED.contains(&name.as_str()) && !EXCLUDED.contains(&name.as_str()))
+        .filter(|name| !covered.contains(*name))
         .cloned()
         .collect();
 
@@ -201,12 +177,11 @@ fn validate_dsl_tool_coverage(tool_names: &BTreeSet<String>) -> Result<(), Build
 }
 
 fn validate_dsl_pipeline_coverage(pipeline_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    const COVERED: &[&str] = &["ci"];
-    const EXCLUDED: &[&str] = &[];
+    let covered = required_dsl_pipeline_modules();
 
     let unknown: Vec<String> = pipeline_names
         .iter()
-        .filter(|name| !COVERED.contains(&name.as_str()) && !EXCLUDED.contains(&name.as_str()))
+        .filter(|name| !covered.contains(*name))
         .cloned()
         .collect();
 
@@ -218,6 +193,31 @@ fn validate_dsl_pipeline_coverage(pipeline_names: &BTreeSet<String>) -> Result<(
         "unmapped DSL pipeline modules in workspace DAG discovery: {} (add mapping in workspace/subdags or explicit exclusion)",
         unknown.join(", ")
     )))
+}
+
+fn required_dsl_tool_modules() -> BTreeSet<String> {
+    let dsl_module_map = gunbc_tool_registry::dsl_module_to_targets();
+    let mut required: BTreeSet<String> = dsl_module_map
+        .keys()
+        .map(|name| (*name).to_string())
+        .collect();
+    required.extend(
+        WorkspaceBinary::all()
+            .iter()
+            .copied()
+            .filter(|binary| binary.is_dsl_tool_module())
+            .map(|binary| binary.tool_name().to_string()),
+    );
+    required
+}
+
+fn required_dsl_pipeline_modules() -> BTreeSet<String> {
+    WorkspaceBinary::all()
+        .iter()
+        .copied()
+        .filter(|binary| binary.is_dsl_pipeline_module())
+        .map(|binary| binary.tool_name().to_string())
+        .collect()
 }
 
 fn add_discovered_tool_subdags(

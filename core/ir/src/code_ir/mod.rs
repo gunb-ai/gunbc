@@ -33,6 +33,7 @@ pub mod lower;
 pub mod register_ir;
 
 use crate::ValueExpr;
+use serde::{Deserialize, Serialize};
 
 // ===========================================================================
 // Test file structure (moved from testgen::test_ir)
@@ -147,7 +148,15 @@ pub enum Expr {
     /// **Tier 0.** A string literal (for keys, messages, identifiers — not Value::Str).
     Str(String),
     /// **Tier 0.** Function call: `func(args...)`.
-    Call { func: Box<Expr>, args: Vec<Expr> },
+    Call {
+        func: Box<Expr>,
+        args: Vec<Expr>,
+        /// Optional obligation metadata propagated from lowering.
+        ///
+        /// This lets target lowerers and renderers reason about call semantics
+        /// without relying on fragile name-prefix heuristics.
+        obligation: Option<CallObligation>,
+    },
     /// **Tier 0.** Method call: `receiver.method(args...)`.
     MethodCall {
         receiver: Box<Expr>,
@@ -207,6 +216,62 @@ pub enum Expr {
     Array(Vec<Expr>),
     /// **Tier 0.** Escape hatch for complex expressions that don't fit the IR.
     RawCode(String),
+}
+
+/// Obligation category attached to a call expression.
+///
+/// Mirrors the lowered obligation categories used by daglang without creating
+/// a crate dependency from `gunbc-ir` to `daglang-lower`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CallObligation {
+    ServiceTransportExecute,
+    ServiceTransportPrepare,
+    ServiceTransportParse,
+    ServiceParamSource,
+    ResourceProvide,
+    ResourceAcquire,
+    ResourceRelease,
+    InterfaceContractVerification,
+}
+
+impl CallObligation {
+    /// Canonical parity-kind string for this obligation.
+    pub fn canonical_kind(self) -> &'static str {
+        match self {
+            Self::ServiceTransportExecute => "transport",
+            Self::ServiceTransportPrepare
+            | Self::ServiceTransportParse
+            | Self::ServiceParamSource
+            | Self::ResourceProvide
+            | Self::ResourceAcquire
+            | Self::ResourceRelease
+            | Self::InterfaceContractVerification => "pattern-expanded",
+        }
+    }
+
+    /// Whether this call participates in a transport runtime triplet.
+    pub fn is_transport_runtime(self) -> bool {
+        matches!(
+            self,
+            Self::ServiceTransportExecute
+                | Self::ServiceTransportPrepare
+                | Self::ServiceTransportParse
+        )
+    }
+
+    /// Whether this call is a transport or resource runtime call that
+    /// requires special import/error-handling treatment in generated code.
+    pub fn is_runtime_call(self) -> bool {
+        matches!(
+            self,
+            Self::ServiceTransportExecute
+                | Self::ServiceTransportPrepare
+                | Self::ServiceTransportParse
+                | Self::ResourceAcquire
+                | Self::ResourceRelease
+                | Self::ResourceProvide
+        )
+    }
 }
 
 // ===========================================================================
@@ -348,7 +413,9 @@ pub fn is_abstract(stmt: &Stmt) -> bool {
 pub fn is_abstract_expr(expr: &Expr) -> bool {
     match expr {
         Expr::Value(_) | Expr::Var(_) | Expr::Str(_) | Expr::IntLit(_) | Expr::BoolLit(_) => true,
-        Expr::Call { func, args } => is_abstract_expr(func) && args.iter().all(is_abstract_expr),
+        Expr::Call { func, args, .. } => {
+            is_abstract_expr(func) && args.iter().all(is_abstract_expr)
+        }
         Expr::MethodCall { receiver, args, .. } => {
             is_abstract_expr(receiver) && args.iter().all(is_abstract_expr)
         }
@@ -426,6 +493,20 @@ impl Expr {
         Expr::Call {
             func: Box::new(Expr::Var(func.into())),
             args,
+            obligation: None,
+        }
+    }
+
+    /// Shorthand for a call with obligation metadata.
+    pub fn call_with_obligation(
+        func: impl Into<String>,
+        args: Vec<Expr>,
+        obligation: CallObligation,
+    ) -> Self {
+        Expr::Call {
+            func: Box::new(Expr::Var(func.into())),
+            args,
+            obligation: Some(obligation),
         }
     }
 

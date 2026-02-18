@@ -1,11 +1,21 @@
 //! Mock specifications for dag-viz modes.
 
 use crate::dag_viz::{build_dag_viz_graph, DagVizMode};
-use gunbc_test::MockSpec;
+use gunbc_test::{MockSpec, OutputMatcher};
 
 fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
     let dag = build_dag_viz_graph(mode.clone()).expect("dag_viz graph should build");
     crate::mock_defaults::auto_mock_spec(&dag, "dag_viz")
+        .live_expected_output(
+            "gist_upload/parse_gist_response",
+            "url",
+            OutputMatcher::non_empty(),
+        )
+        .live_expected_output(
+            "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
+            "ok",
+            OutputMatcher::IsBool,
+        )
 }
 
 #[gunbc_testgen_registry_macros::testgen_target(

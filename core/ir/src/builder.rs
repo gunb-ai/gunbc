@@ -87,6 +87,14 @@ pub enum BuilderError {
         existing_edges: usize,
         cardinality: Cardinality,
     },
+    /// Aggregate fan-in cardinality exceeds the target port interval.
+    FanInCardinalityOverflow {
+        node: NodeId,
+        port: PortName,
+        incoming_edges: usize,
+        aggregate_cardinality: Cardinality,
+        target_cardinality: Cardinality,
+    },
     /// Output port uses the reserved `res:` prefix (reserved for resource inputs).
     InvalidResourceOutputPort { node: NodeId, port: PortName },
     /// Resource input port is not wired to any upstream edge.
@@ -187,6 +195,20 @@ impl fmt::Display for BuilderError {
                     port,
                     existing_edges + 1,
                     cardinality
+                )
+            }
+            BuilderError::FanInCardinalityOverflow {
+                node,
+                port,
+                incoming_edges,
+                aggregate_cardinality,
+                target_cardinality,
+            } => {
+                write!(
+                    f,
+                    "fan-in cardinality overflow on '{}:{}' ({} incoming edges): aggregate {} \
+                     exceeds target {}",
+                    node, port, incoming_edges, aggregate_cardinality, target_cardinality
                 )
             }
             BuilderError::InvalidResourceOutputPort { node, port } => {
@@ -491,6 +513,7 @@ impl<T> DagBuilder<T> {
     /// - `BuilderError::TypeMismatch` if port types don't match
     /// - `BuilderError::CardinalityMismatch` if cardinalities are incompatible
     /// - `BuilderError::FanInOnScalar` if multiple edges target a scalar/optional input
+    /// - `BuilderError::FanInCardinalityOverflow` if aggregate fan-in exceeds bounded list input
     pub fn add_edge(&mut self, from: OutputRef<T>, to: InputRef<T>) -> Result<(), BuilderError> {
         // Check generation ordering (cycle prevention)
         if from.generation >= to.generation {
@@ -594,6 +617,21 @@ impl<T> DagBuilder<T> {
             });
         }
 
+        // For list fan-in, compose source intervals and ensure aggregate still
+        // satisfies the target interval.
+        let aggregate_fan_in = self
+            .incoming_fan_in_cardinality(&to.node_id, &to.port)?
+            .sum(from_cardinality);
+        if !aggregate_fan_in.satisfies(to_cardinality) {
+            return Err(BuilderError::FanInCardinalityOverflow {
+                node: to.node_id.clone(),
+                port: to.port.clone(),
+                incoming_edges: existing_edges + 1,
+                aggregate_cardinality: aggregate_fan_in,
+                target_cardinality: to_cardinality,
+            });
+        }
+
         // Add the edge with auto-assigned index
         let index = self.next_edge_index;
         self.next_edge_index += 1;
@@ -608,6 +646,46 @@ impl<T> DagBuilder<T> {
         });
 
         Ok(())
+    }
+
+    fn output_port_cardinality(
+        &self,
+        node_id: &NodeId,
+        port_name: &PortName,
+    ) -> Result<Cardinality, BuilderError> {
+        let port = self
+            .nodes
+            .iter()
+            .find(|n| &n.id == node_id)
+            .and_then(|n| n.outputs.iter().find(|p| &p.name == port_name))
+            .ok_or_else(|| {
+                BuilderError::InternalInvariant(format!(
+                    "missing output port '{}.{}' while computing fan-in cardinality",
+                    node_id, port_name
+                ))
+            })?;
+
+        Ok(match &self.type_registry {
+            Some(registry) => port.infer_cardinality(registry),
+            None => port.cardinality,
+        })
+    }
+
+    fn incoming_fan_in_cardinality(
+        &self,
+        node_id: &NodeId,
+        port_name: &PortName,
+    ) -> Result<Cardinality, BuilderError> {
+        let mut aggregate = Cardinality::ZERO;
+        for edge in self
+            .edges
+            .iter()
+            .filter(|e| &e.to_node == node_id && &e.to_port == port_name)
+        {
+            let from_card = self.output_port_cardinality(&edge.from_node, &edge.from_port)?;
+            aggregate = aggregate.sum(from_card);
+        }
+        Ok(aggregate)
     }
 
     /// Count the number of edges already connected to a specific input port.
@@ -1392,6 +1470,73 @@ mod tests {
         let result = builder.add_edge(b.out("out"), c.in_port("in"));
 
         assert!(matches!(result, Err(BuilderError::FanInOnScalar { .. })));
+    }
+
+    #[test]
+    fn test_fan_in_bounded_list_within_limit_allowed() {
+        let mut builder: DagBuilder<String> = DagBuilder::new();
+
+        let node_a = test_node("a", vec![], vec![("out", "String")]);
+        let node_b = test_node("b", vec![], vec![("out", "String")]);
+        let node_c = Node::opaque(
+            "c",
+            vec![Port::with_cardinality(
+                "in",
+                "String",
+                Cardinality::new(0, Some(2)),
+            )],
+            vec![],
+            "op_c".to_string(),
+        );
+
+        let a = builder.add_root_node(node_a).unwrap();
+        let b = builder.add_root_node(node_b).unwrap();
+        let c = builder.add_node_after_all(node_c, &[&a, &b]).unwrap();
+
+        builder.add_edge(a.out("out"), c.in_port("in")).unwrap();
+        builder.add_edge(b.out("out"), c.in_port("in")).unwrap();
+    }
+
+    #[test]
+    fn test_fan_in_bounded_list_overflow_rejected() {
+        let mut builder: DagBuilder<String> = DagBuilder::new();
+
+        let node_a = test_node("a", vec![], vec![("out", "String")]);
+        let node_b = test_node("b", vec![], vec![("out", "String")]);
+        let node_c = test_node("c", vec![], vec![("out", "String")]);
+        let node_d = Node::opaque(
+            "d",
+            vec![Port::with_cardinality(
+                "in",
+                "String",
+                Cardinality::new(0, Some(2)),
+            )],
+            vec![],
+            "op_d".to_string(),
+        );
+
+        let a = builder.add_root_node(node_a).unwrap();
+        let b = builder.add_root_node(node_b).unwrap();
+        let c = builder.add_root_node(node_c).unwrap();
+        let d = builder.add_node_after_all(node_d, &[&a, &b, &c]).unwrap();
+
+        builder.add_edge(a.out("out"), d.in_port("in")).unwrap();
+        builder.add_edge(b.out("out"), d.in_port("in")).unwrap();
+        let result = builder.add_edge(c.out("out"), d.in_port("in"));
+
+        match result {
+            Err(BuilderError::FanInCardinalityOverflow {
+                incoming_edges,
+                aggregate_cardinality,
+                target_cardinality,
+                ..
+            }) => {
+                assert_eq!(incoming_edges, 3);
+                assert_eq!(aggregate_cardinality, Cardinality::new(3, Some(3)));
+                assert_eq!(target_cardinality, Cardinality::new(0, Some(2)));
+            }
+            other => panic!("expected FanInCardinalityOverflow, got {other:?}"),
+        }
     }
 
     #[test]

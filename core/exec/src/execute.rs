@@ -36,9 +36,9 @@ use crate::topo::topo_sort;
 use crate::Executable;
 use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
-    canonical_edge_order, detect_boundaries, detect_entrypoints, normalize_resource_id, AccessMode,
-    BoundaryInfo, Cardinality, Dag, LogDetailLevel, Node, NodeBody, NodeId, Value, RESOURCE_FILE,
-    RESOURCE_FILE_PREFIX,
+    canonical_edge_order, classify_coercion, detect_boundaries, detect_entrypoints,
+    normalize_resource_id, AccessMode, AppliedCoercion, BoundaryInfo, Cardinality, Dag,
+    LogDetailLevel, Node, NodeBody, NodeId, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -178,6 +178,11 @@ pub struct LogEntry {
     pub inputs: Option<HashMap<String, Value>>,
     pub outputs: HashMap<String, Value>,
     pub was_intercepted: bool,
+    /// Coercions applied to this node's inputs during execution.
+    ///
+    /// Empty when no coercions were needed or when log detail level
+    /// is below `IncludeInputs`.
+    pub coercions_applied: Vec<AppliedCoercion>,
 }
 
 impl fmt::Display for LogEntry {
@@ -192,6 +197,21 @@ impl fmt::Display for LogEntry {
             write!(f, " {k}={v}")?;
         }
         Ok(())
+    }
+}
+
+impl LogEntry {
+    /// Return the captured input value for a specific port.
+    pub fn input_value(&self, port: &str) -> Option<&Value> {
+        self.inputs.as_ref()?.get(port)
+    }
+
+    /// Return the captured input value associated with an applied coercion.
+    ///
+    /// This is useful for assertion-oriented observability: tests can inspect
+    /// the exact shape delivered to the target port where the coercion landed.
+    pub fn coercion_input_value(&self, coercion: &AppliedCoercion) -> Option<&Value> {
+        self.input_value(&coercion.to_port)
     }
 }
 
@@ -655,6 +675,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         let mut inputs: HashMap<String, Value> = HashMap::new();
         let mut fan_in: HashMap<String, Vec<Value>> = HashMap::new();
         let mut scalar_sources: HashMap<String, String> = HashMap::new();
+        let mut applied_coercions: Vec<AppliedCoercion> = Vec::new();
 
         let list_ports: HashMap<&str, Cardinality> = node
             .inputs
@@ -667,12 +688,23 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             for &edge in edges {
                 if let Some(upstream) = node_outputs.get(&edge.from_node.0) {
                     if let Some(val) = upstream.get(&edge.from_port.0) {
-                        if list_ports.contains_key(edge.to_port.0.as_str()) {
+                        if let Some(&to_cardinality) = list_ports.get(edge.to_port.0.as_str()) {
                             let from_cardinality = dag
                                 .get_node(&edge.from_node)
                                 .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port))
                                 .map(|p| p.cardinality)
                                 .unwrap_or(Cardinality::ONE);
+
+                            // Record coercion if cardinalities differ
+                            if let Some(kind) = classify_coercion(from_cardinality, to_cardinality)
+                            {
+                                applied_coercions.push(AppliedCoercion {
+                                    from_node: edge.from_node.0.clone(),
+                                    from_port: edge.from_port.0.clone(),
+                                    to_port: edge.to_port.0.clone(),
+                                    kind,
+                                });
+                            }
 
                             if let Some(elements) = collect_fan_in(val, from_cardinality) {
                                 let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
@@ -829,6 +861,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             inputs: captured_inputs,
             outputs,
             was_intercepted,
+            coercions_applied: applied_coercions,
         };
 
         // Boundary output via observer (appears inside CI group).
@@ -1180,11 +1213,12 @@ fn build_node_inputs<T>(
     node_outputs: &HashMap<String, HashMap<String, Value>>,
     mode: &ExecutionMode,
     input_mocks: Option<&BoundaryMocks>,
-) -> Result<HashMap<String, Value>, ExecError> {
+) -> Result<(HashMap<String, Value>, Vec<AppliedCoercion>), ExecError> {
     // Gather inputs from upstream edges (cardinality-aware).
     let mut inputs: HashMap<String, Value> = HashMap::new();
     let mut fan_in: HashMap<String, Vec<Value>> = HashMap::new();
     let mut scalar_sources: HashMap<String, String> = HashMap::new();
+    let mut applied_coercions: Vec<AppliedCoercion> = Vec::new();
 
     let list_ports: HashMap<&str, Cardinality> = node
         .inputs
@@ -1197,12 +1231,22 @@ fn build_node_inputs<T>(
         for &edge in edges {
             if let Some(upstream) = node_outputs.get(&edge.from_node.0) {
                 if let Some(val) = upstream.get(&edge.from_port.0) {
-                    if list_ports.contains_key(edge.to_port.0.as_str()) {
+                    if let Some(&to_cardinality) = list_ports.get(edge.to_port.0.as_str()) {
                         let from_cardinality = dag
                             .get_node(&edge.from_node)
                             .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port))
                             .map(|p| p.cardinality)
                             .unwrap_or(Cardinality::ONE);
+
+                        // Record coercion if cardinalities differ
+                        if let Some(kind) = classify_coercion(from_cardinality, to_cardinality) {
+                            applied_coercions.push(AppliedCoercion {
+                                from_node: edge.from_node.0.clone(),
+                                from_port: edge.from_port.0.clone(),
+                                to_port: edge.to_port.0.clone(),
+                                kind,
+                            });
+                        }
 
                         if let Some(elements) = collect_fan_in(val, from_cardinality) {
                             let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
@@ -1263,7 +1307,7 @@ fn build_node_inputs<T>(
         }
     }
 
-    Ok(inputs)
+    Ok((inputs, applied_coercions))
 }
 
 fn capture_log_inputs_for_node<T>(
@@ -1312,11 +1356,13 @@ struct ParallelSchedulerState<'a, T> {
     completed: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finalize_node_parallel<T: Executable + Clone + Send>(
     node_id: &NodeId,
     inputs: Option<HashMap<String, Value>>,
     outputs: HashMap<String, Value>,
     was_intercepted: bool,
+    coercions_applied: Vec<AppliedCoercion>,
     mode: &ExecutionMode,
     log_detail: LogDetailLevel,
     state: &mut ParallelSchedulerState<'_, T>,
@@ -1336,6 +1382,7 @@ fn finalize_node_parallel<T: Executable + Clone + Send>(
         inputs,
         outputs,
         was_intercepted,
+        coercions_applied,
     });
 
     if let Some(loop_info) = state.loops_by_unpack.get(node_id) {
@@ -1388,6 +1435,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
         node_id: NodeId,
         started_at: Instant,
         inputs: Option<HashMap<String, Value>>,
+        coercions_applied: Vec<AppliedCoercion>,
         result: Result<HashMap<String, Value>, ExecError>,
     }
 
@@ -1502,7 +1550,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                     .get(node_id.0.as_str())
                     .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
 
-                let inputs = build_node_inputs(
+                let (inputs, node_coercions) = build_node_inputs(
                     dag,
                     node,
                     &node_id,
@@ -1527,6 +1575,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         captured_inputs,
                         outputs,
                         false,
+                        node_coercions,
                         mode,
                         log_detail,
                         &mut state,
@@ -1566,6 +1615,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         captured_inputs,
                         outputs,
                         true,
+                        node_coercions,
                         mode,
                         log_detail,
                         &mut state,
@@ -1587,6 +1637,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                                 node_id: node_id_clone,
                                 started_at: node_start,
                                 inputs: captured_inputs,
+                                coercions_applied: node_coercions,
                                 result,
                             });
                         });
@@ -1666,6 +1717,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         completed_node.inputs,
                         outputs,
                         false,
+                        completed_node.coercions_applied,
                         mode,
                         log_detail,
                         &mut state,
@@ -1852,6 +1904,7 @@ fn execute_loop_body<T: Executable + Clone + Send>(
                 inputs: entry.inputs,
                 outputs: entry.outputs,
                 was_intercepted: entry.was_intercepted,
+                coercions_applied: entry.coercions_applied,
             });
         }
     }
@@ -2546,6 +2599,55 @@ mod tests {
             }
             other => panic!("expected Value::List, got {:?}", other),
         }
+
+        assert_eq!(c_entry.coercions_applied.len(), 2);
+        assert_eq!(c_entry.coercions_applied[0].from_node, "A");
+        assert_eq!(c_entry.coercions_applied[0].from_port, "out");
+        assert_eq!(c_entry.coercions_applied[0].to_port, "items");
+        assert_eq!(
+            c_entry.coercions_applied[0].kind,
+            gunbc_ir::CoercionKind::WrapScalar
+        );
+        assert_eq!(c_entry.coercions_applied[1].from_node, "B");
+        assert_eq!(c_entry.coercions_applied[1].from_port, "out");
+        assert_eq!(c_entry.coercions_applied[1].to_port, "items");
+        assert_eq!(
+            c_entry.coercions_applied[1].kind,
+            gunbc_ir::CoercionKind::WrapScalar
+        );
+    }
+
+    #[test]
+    fn test_coercion_trace_exposes_coerced_input_value() {
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![port("out", "String")],
+            TestOp::produce("out", Value::Str("alpha".to_string())),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![list("items", "StringList")],
+            vec![list("items", "StringList")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(Edge::new("A", "out", "B", "items"));
+
+        let log = execute(&dag).unwrap();
+        let b_entry = log.get("B").unwrap();
+        assert_eq!(b_entry.coercions_applied.len(), 1);
+
+        let coercion = &b_entry.coercions_applied[0];
+        let received = b_entry
+            .coercion_input_value(coercion)
+            .expect("coercion trace should expose captured input value");
+        assert!(
+            matches!(received, Value::List(values)
+                if values == &vec![Value::Str("alpha".to_string())]),
+            "coerced input should be wrapped as single-element list, got {received:?}"
+        );
+        assert_eq!(b_entry.input_value("items"), Some(received));
     }
 
     #[test]
@@ -2583,6 +2685,11 @@ mod tests {
             }
             other => panic!("expected Value::List, got {:?}", other),
         }
+
+        assert!(
+            b_entry.coercions_applied.is_empty(),
+            "list->list flow should not record scalar/list coercions"
+        );
     }
 
     #[test]
@@ -3597,5 +3704,123 @@ mod tests {
         let remaps: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
         let mode = remap_mode_inputs(ExecutionMode::Real, &remaps);
         assert!(matches!(mode, ExecutionMode::Real));
+    }
+
+    // =========================================================================
+    // Coercion tracking in execution trace (CO6)
+    // =========================================================================
+
+    #[test]
+    fn test_coercion_tracking_wrap_scalar() {
+        // A scalar output → list input should record a WrapScalar coercion.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "producer",
+            vec![],
+            vec![scalar("value", "String")],
+            TestOp::produce("value", Value::Str("hello".into())),
+        ));
+        dag.add_node(Node::opaque(
+            "consumer",
+            vec![list("items", "StringList")],
+            vec![list("items", "StringList")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("producer", "value", "consumer", "items"));
+
+        let log = execute_with_mode_and_inputs_and_detail(
+            &dag,
+            ExecutionMode::Real,
+            None,
+            LogDetailLevel::IncludeInputs,
+        )
+        .unwrap();
+
+        let consumer_entry = log.get("consumer").unwrap();
+        assert_eq!(
+            consumer_entry.coercions_applied.len(),
+            1,
+            "should record exactly one coercion"
+        );
+        let coercion = &consumer_entry.coercions_applied[0];
+        assert_eq!(coercion.from_node, "producer");
+        assert_eq!(coercion.from_port, "value");
+        assert_eq!(coercion.to_port, "items");
+        assert!(
+            matches!(coercion.kind, gunbc_ir::CoercionKind::WrapScalar),
+            "expected WrapScalar, got {:?}",
+            coercion.kind
+        );
+    }
+
+    #[test]
+    fn test_coercion_tracking_no_coercion_for_matching_cardinality() {
+        // Scalar → scalar should have no coercions recorded.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![scalar("out", "String")],
+            TestOp::produce("out", Value::Str("x".into())),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![scalar("input", "String")],
+            vec![scalar("result", "String")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("A", "out", "B", "input"));
+
+        let log = execute_with_mode_and_inputs_and_detail(
+            &dag,
+            ExecutionMode::Real,
+            None,
+            LogDetailLevel::IncludeInputs,
+        )
+        .unwrap();
+
+        let b_entry = log.get("B").unwrap();
+        assert!(
+            b_entry.coercions_applied.is_empty(),
+            "no coercion should be recorded for matching cardinalities"
+        );
+    }
+
+    #[test]
+    fn test_coercion_tracking_optional_to_list() {
+        // Optional [0,1] → list [0,∞) should record OptionalToList.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![optional("item", "OptionalString")],
+            TestOp::produce("item", Value::Str("present".into())),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![list("items", "StringList")],
+            vec![list("items", "StringList")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("A", "item", "B", "items"));
+
+        let log = execute_with_mode_and_inputs_and_detail(
+            &dag,
+            ExecutionMode::Real,
+            None,
+            LogDetailLevel::IncludeInputs,
+        )
+        .unwrap();
+
+        let b_entry = log.get("B").unwrap();
+        assert_eq!(b_entry.coercions_applied.len(), 1);
+        assert!(
+            matches!(
+                b_entry.coercions_applied[0].kind,
+                gunbc_ir::CoercionKind::OptionalToList
+            ),
+            "expected OptionalToList, got {:?}",
+            b_entry.coercions_applied[0].kind
+        );
     }
 }

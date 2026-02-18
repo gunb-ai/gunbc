@@ -16,7 +16,7 @@
 //! **Owned by**: Task 10 (dsl-codegen-tasks.md)
 
 use gunbc_ir::code_ir::lower::LowerError;
-use gunbc_ir::code_ir::{Expr, FnDef, Import, Item, SourceFile, Stmt};
+use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Import, Item, SourceFile, Stmt};
 
 /// Configuration for Go lowering.
 #[derive(Debug, Clone)]
@@ -265,22 +265,30 @@ fn lower_stmt_into(out: &mut Vec<Stmt>, stmt: &Stmt, in_fallible_fn: bool, confi
 fn lower_expr(expr: &Expr, config: &GoConfig) -> Expr {
     match expr {
         // B3.4: Rewrite abstract transport calls to Go runtime equivalents.
-        Expr::Call { func, args } => {
+        Expr::Call {
+            func,
+            args,
+            obligation,
+        } => {
             let lowered_func = lower_expr(func, config);
             let lowered_args: Vec<Expr> = args.iter().map(|a| lower_expr(a, config)).collect();
 
-            if let Expr::Var(name) = &lowered_func {
-                if let Some(go_fn) = rewrite_transport_call_go(name, config) {
-                    return Expr::Call {
-                        func: Box::new(Expr::Var(go_fn)),
-                        args: lowered_args,
-                    };
+            if obligation.is_some_and(CallObligation::is_runtime_call) {
+                if let Expr::Var(name) = &lowered_func {
+                    if let Some(go_fn) = rewrite_transport_call_go(name, config) {
+                        return Expr::Call {
+                            func: Box::new(Expr::Var(go_fn)),
+                            args: lowered_args,
+                            obligation: *obligation,
+                        };
+                    }
                 }
             }
 
             Expr::Call {
                 func: Box::new(lowered_func),
                 args: lowered_args,
+                obligation: *obligation,
             }
         }
 
@@ -291,6 +299,7 @@ fn lower_expr(expr: &Expr, config: &GoConfig) -> Expr {
             Expr::Call {
                 func: Box::new(Expr::var("fmt.Sprintf")),
                 args: call_args,
+                obligation: None,
             }
         }
 
@@ -343,6 +352,7 @@ fn lower_expr(expr: &Expr, config: &GoConfig) -> Expr {
         Expr::MacroCall { name, args } => Expr::Call {
             func: Box::new(Expr::var(name.clone())),
             args: args.iter().map(|a| lower_expr(a, config)).collect(),
+            obligation: None,
         },
         // Leaf expressions pass through.
         other => other.clone(),
@@ -380,12 +390,13 @@ fn rewrite_transport_call_go(name: &str, config: &GoConfig) -> Option<String> {
 }
 
 fn expr_is_transport_call(expr: &Expr) -> bool {
-    if let Expr::Call { func, .. } = expr {
-        if let Expr::Var(name) = func.as_ref() {
-            return name.starts_with("prepare_") || name.starts_with("execute_");
-        }
-    }
-    false
+    matches!(
+        expr,
+        Expr::Call {
+            obligation: Some(obligation),
+            ..
+        } if obligation.is_runtime_call()
+    )
 }
 
 fn body_has_transport_calls(stmts: &[Stmt]) -> bool {
@@ -403,13 +414,15 @@ fn stmt_has_transport(stmt: &Stmt) -> bool {
 
 fn expr_has_transport(expr: &Expr) -> bool {
     match expr {
-        Expr::Call { func, args } => {
-            if let Expr::Var(name) = func.as_ref() {
-                if name.starts_with("prepare_") || name.starts_with("execute_") {
-                    return true;
-                }
+        Expr::Call {
+            func,
+            args,
+            obligation,
+        } => {
+            if obligation.is_some_and(CallObligation::is_runtime_call) {
+                return true;
             }
-            args.iter().any(expr_has_transport)
+            expr_has_transport(func) || args.iter().any(expr_has_transport)
         }
         Expr::MethodCall { receiver, args, .. } => {
             expr_has_transport(receiver) || args.iter().any(expr_has_transport)
@@ -473,6 +486,7 @@ fn collect_go_imports(source: &SourceFile, config: &GoConfig) -> Vec<String> {
     }
 
     imports.sort();
+    imports.dedup();
     imports
 }
 
@@ -488,7 +502,7 @@ fn body_has_format(stmts: &[Stmt]) -> bool {
 fn expr_has_format(expr: &Expr) -> bool {
     match expr {
         Expr::FormatStr { .. } => true,
-        Expr::Call { func, args } => expr_has_format(func) || args.iter().any(expr_has_format),
+        Expr::Call { func, args, .. } => expr_has_format(func) || args.iter().any(expr_has_format),
         Expr::MethodCall { receiver, args, .. } => {
             expr_has_format(receiver) || args.iter().any(expr_has_format)
         }
@@ -519,7 +533,7 @@ fn body_uses_json(stmts: &[Stmt]) -> bool {
 fn expr_uses_json(expr: &Expr) -> bool {
     match expr {
         Expr::Value(gunbc_ir::ValueExpr::Json(_)) => true,
-        Expr::Call { func, args } => expr_uses_json(func) || args.iter().any(expr_uses_json),
+        Expr::Call { func, args, .. } => expr_uses_json(func) || args.iter().any(expr_uses_json),
         Expr::MethodCall { receiver, args, .. } => {
             expr_uses_json(receiver) || args.iter().any(expr_uses_json)
         }
@@ -659,11 +673,19 @@ mod tests {
         let source = make_abstract_main(vec![
             Stmt::let_bind(
                 "request",
-                Expr::call("prepare_file_read", vec![Expr::var("file_path")]),
+                Expr::call_with_obligation(
+                    "prepare_file_read",
+                    vec![Expr::var("file_path")],
+                    CallObligation::ServiceTransportPrepare,
+                ),
             ),
             Stmt::let_bind(
                 "response",
-                Expr::call("execute_file_read", vec![Expr::var("request")]),
+                Expr::call_with_obligation(
+                    "execute_file_read",
+                    vec![Expr::var("request")],
+                    CallObligation::ServiceTransportExecute,
+                ),
             ),
         ]);
 
@@ -698,7 +720,11 @@ mod tests {
     fn multi_return_error_check_inserted() {
         let source = make_abstract_main(vec![Stmt::let_bind(
             "response",
-            Expr::call("execute_file_read", vec![Expr::var("req")]),
+            Expr::call_with_obligation(
+                "execute_file_read",
+                vec![Expr::var("req")],
+                CallObligation::ServiceTransportExecute,
+            ),
         )]);
 
         let config = GoConfig::default();
@@ -770,7 +796,11 @@ mod tests {
     fn imports_generated_for_transport() {
         let source = make_abstract_main(vec![Stmt::let_bind(
             "resp",
-            Expr::call("execute_file_read", vec![Expr::var("req")]),
+            Expr::call_with_obligation(
+                "execute_file_read",
+                vec![Expr::var("req")],
+                CallObligation::ServiceTransportExecute,
+            ),
         )]);
 
         let config = GoConfig::default();
@@ -877,7 +907,11 @@ mod tests {
     fn transport_calls_rewritten_to_go_runtime() {
         let source = make_abstract_main(vec![Stmt::let_bind(
             "req",
-            Expr::call("prepare_file_read", vec![Expr::var("path")]),
+            Expr::call_with_obligation(
+                "prepare_file_read",
+                vec![Expr::var("path")],
+                CallObligation::ServiceTransportPrepare,
+            ),
         )]);
 
         let config = GoConfig::default();
@@ -900,10 +934,54 @@ mod tests {
     }
 
     #[test]
-    fn transport_calls_preserved_in_standalone_mode() {
+    fn transport_named_call_without_obligation_is_not_treated_as_runtime() {
         let source = make_abstract_main(vec![Stmt::let_bind(
             "req",
             Expr::call("prepare_file_read", vec![Expr::var("path")]),
+        )]);
+
+        let config = GoConfig::default();
+        let lowered = lower_to_go(&source, &config).unwrap();
+
+        let imports: Vec<&Import> = lowered
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Use(import) => Some(import),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            imports
+                .iter()
+                .all(|i| !i.path.iter().any(|p| p.contains("transport"))),
+            "call names alone should not trigger transport imports"
+        );
+
+        let main_fn = lowered
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Fn(f) if f.name == "Main" => Some(f),
+                _ => None,
+            })
+            .expect("should have fn Main");
+        assert_eq!(main_fn.return_type, None);
+
+        let body_debug = format!("{:?}", main_fn.body);
+        assert!(body_debug.contains("prepare_file_read"));
+        assert!(!body_debug.contains("transport.NewFileReadRequest"));
+    }
+
+    #[test]
+    fn transport_calls_preserved_in_standalone_mode() {
+        let source = make_abstract_main(vec![Stmt::let_bind(
+            "req",
+            Expr::call_with_obligation(
+                "prepare_file_read",
+                vec![Expr::var("path")],
+                CallObligation::ServiceTransportPrepare,
+            ),
         )]);
 
         let config = GoConfig {
@@ -1041,12 +1119,20 @@ mod tests {
                     Stmt::comment("step 2: prepare_read"),
                     Stmt::let_bind(
                         "read_request",
-                        Expr::call("prepare_file_read", vec![Expr::var("file_path")]),
+                        Expr::call_with_obligation(
+                            "prepare_file_read",
+                            vec![Expr::var("file_path")],
+                            CallObligation::ServiceTransportPrepare,
+                        ),
                     ),
                     Stmt::comment("step 3: execute_read"),
                     Stmt::let_bind(
                         "read_response",
-                        Expr::call("execute_file_read", vec![Expr::var("read_request")]),
+                        Expr::call_with_obligation(
+                            "execute_file_read",
+                            vec![Expr::var("read_request")],
+                            CallObligation::ServiceTransportExecute,
+                        ),
                     ),
                     Stmt::Blank,
                     Stmt::comment("step 4: compare"),

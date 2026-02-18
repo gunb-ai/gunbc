@@ -52,6 +52,7 @@ pub use graph::{build_dag_viz_graph, dag_viz_signature, DagVizGraphOp, DagVizMod
     package = "dag",
     binary = "dag-viz",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path","make_var":"REPO"},{"port_name":"format","type_id":"String","short":"f","default":"html","help":"Output format: html (default) or md","make_var":"FMT"}]"#,
+    dsl_module = "dag_viz",
     has_invocation,
     returns_result
 )]
@@ -68,6 +69,7 @@ pub fn dag_viz_snapshot_tool() {}
     package = "dag",
     binary = "dag-viz-diff",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path","make_var":"REPO"},{"port_name":"format","type_id":"String","short":"f","default":"html","help":"Output format: html (default) or md","make_var":"FMT"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff","make_var":"BASE"}]"#,
+    dsl_module = "dag_viz",
     has_invocation,
     returns_result
 )]
@@ -84,6 +86,7 @@ pub fn dag_viz_diff_tool() {}
     package = "dag",
     binary = "dag-viz-recent",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path","make_var":"REPO"},{"port_name":"format","type_id":"String","short":"f","default":"html","help":"Output format: html (default) or md","make_var":"FMT"}]"#,
+    dsl_module = "dag_viz",
     has_invocation,
     returns_result
 )]
@@ -100,6 +103,7 @@ pub fn dag_viz_recent_tool() {}
     package = "dag",
     binary = "dag-snapshot",
     entrypoints = r#"[]"#,
+    dsl_module = "dag_viz",
     has_invocation,
     returns_result
 )]

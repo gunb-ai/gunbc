@@ -17,12 +17,33 @@ pub enum WorkspaceBinary {
     CodegenDag,
     DepsConfig,
     Docgen,
+    Infra,
     Makegen,
     Pragma,
     Testgen,
 }
 
 impl WorkspaceBinary {
+    /// Canonical ordered registry of all workspace binaries.
+    pub const ALL: [Self; 11] = [
+        Self::Build,
+        Self::Bootstrap,
+        Self::Ci,
+        Self::Codegen,
+        Self::CodegenDag,
+        Self::DepsConfig,
+        Self::Docgen,
+        Self::Infra,
+        Self::Makegen,
+        Self::Pragma,
+        Self::Testgen,
+    ];
+
+    /// Iterate all known workspace binaries.
+    pub fn all() -> &'static [Self] {
+        &Self::ALL
+    }
+
     /// Tool registry name for this binary when present.
     pub fn tool_name(self) -> &'static str {
         match self {
@@ -33,6 +54,7 @@ impl WorkspaceBinary {
             WorkspaceBinary::CodegenDag => "codegen-dag",
             WorkspaceBinary::DepsConfig => "deps-config",
             WorkspaceBinary::Docgen => "docgen",
+            WorkspaceBinary::Infra => "infra",
             WorkspaceBinary::Makegen => "makegen",
             WorkspaceBinary::Pragma => "pragma",
             WorkspaceBinary::Testgen => "testgen",
@@ -49,6 +71,7 @@ impl WorkspaceBinary {
             "codegen-dag" => Some(Self::CodegenDag),
             "deps-config" => Some(Self::DepsConfig),
             "docgen" => Some(Self::Docgen),
+            "infra" => Some(Self::Infra),
             "makegen" => Some(Self::Makegen),
             "pragma" => Some(Self::Pragma),
             "testgen" => Some(Self::Testgen),
@@ -66,10 +89,22 @@ impl WorkspaceBinary {
             WorkspaceBinary::CodegenDag => "codegen-dag",
             WorkspaceBinary::DepsConfig => "deps-config",
             WorkspaceBinary::Docgen => "docgen",
+            WorkspaceBinary::Infra => "infra",
             WorkspaceBinary::Makegen => "makegen",
             WorkspaceBinary::Pragma => "pragma",
             WorkspaceBinary::Testgen => "testgen",
         }
+    }
+
+    /// Whether this binary corresponds to a DSL pipeline module.
+    pub fn is_dsl_pipeline_module(self) -> bool {
+        matches!(self, Self::Ci)
+    }
+
+    /// Whether this binary corresponds to a DSL tool module.
+    pub fn is_dsl_tool_module(self) -> bool {
+        !self.is_dsl_pipeline_module()
+            && !matches!(self, Self::CodegenDag | Self::DepsConfig | Self::Infra)
     }
 
     /// Cargo invocation for this workspace binary.
@@ -100,22 +135,11 @@ mod tests {
 
     #[test]
     fn tool_name_round_trip_supports_workspace_binary_variants() {
-        for binary in [
-            WorkspaceBinary::Build,
-            WorkspaceBinary::Bootstrap,
-            WorkspaceBinary::Ci,
-            WorkspaceBinary::Codegen,
-            WorkspaceBinary::CodegenDag,
-            WorkspaceBinary::DepsConfig,
-            WorkspaceBinary::Docgen,
-            WorkspaceBinary::Makegen,
-            WorkspaceBinary::Pragma,
-            WorkspaceBinary::Testgen,
-        ] {
+        for binary in WorkspaceBinary::all() {
             let name = binary.tool_name();
             assert_eq!(
                 WorkspaceBinary::from_tool_name(name),
-                Some(binary),
+                Some(*binary),
                 "tool name should round-trip for {name}"
             );
         }
@@ -146,6 +170,10 @@ mod tests {
         assert_eq!(
             WorkspaceBinary::DepsConfig.invocation().binary,
             "gunbc-deps-config".to_string()
+        );
+        assert_eq!(
+            WorkspaceBinary::Infra.invocation().binary,
+            "gunbc-infra".to_string()
         );
     }
 }

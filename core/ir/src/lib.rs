@@ -114,10 +114,14 @@ pub use code_ir::{
 pub use codegen_bridge::{BridgeEnum, BridgeField, BridgeFunction, BridgeModule, BridgeStruct};
 pub use coerce::{
     audit_cardinality_drift, classify_coercion, detect_coercions, validate_coercions,
-    CardinalityCoercion, CardinalityDrift, CoercionError, CoercionKind, CoercionReport,
+    AppliedCoercion, CardinalityCoercion, CardinalityDrift, CoercionError, CoercionKind,
+    CoercionReport,
 };
 pub use contract::{BoundaryWitness, TypeContract};
-pub use dag::{build, canonical_edge_order, edges_to_port, Dag, Edge, EdgeKind, Port};
+pub use dag::{
+    build, canonical_edge_order, edges_to_port, Dag, DagEdgePorts, DagInputPort, DagOutputPort,
+    Edge, EdgeKind, Port,
+};
 pub use dag_diff::{diff_topologies, DagDiffResult, NodeChangeSummary, NodeDiffStatus, PortChange};
 pub use dag_mermaid::{
     render_changelog, to_mermaid_expanded_diff, to_mermaid_overview_diff, to_mermaid_snapshot,
@@ -168,7 +172,7 @@ pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSign
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};
 pub use system_model::{
     default_system_models, derive_contract_test_specs, generate_contract_test_harnesses,
-    get_registered_system_model, iter_registered_system_models, registered_system_model_map,
+    get_registered_system_model, iter_registered_system_models,
     render_contract_test_harness, validate_dependency_graph_acyclic,
     validate_store_behavior_mapping, validate_system_model, Behavior, BehaviorInput,
     BehaviorOutput, ContractTestSpec, Dependency, DependencyKind, InputType, Invocation,
@@ -183,9 +187,9 @@ pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, Wrapper
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{
     boundary_label, parse_map_type_id, seed_placeholder_policy_for_type_id,
-    semantic_carrier_class_for_type_id, value_backing_for_type_id, Cardinality,
-    CardinalityMismatch, CardinalitySamplingStrategy, NodeId, PortName, SeedPlaceholderPolicy,
-    SemanticCarrierClass, TypeId, ValueBacking,
+    semantic_carrier_class_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
+    value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy, NodeId,
+    PortName, SeedPlaceholderPolicy, SemanticCarrierClass, TypeId, ValueBacking,
 };
 pub use validate::{
     validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,

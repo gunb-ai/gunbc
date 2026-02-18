@@ -6,6 +6,19 @@
 
 **Sizing**: S (<1 day), M (1-3 days), L (3-5 days), XL (5+ days)
 
+### Conventions
+
+- **Definition of Done**: each task is done when code compiles, tests pass, and clippy is clean.
+- **Cutover tasks** (M1-M3) additionally require: golden/snapshot test, failure-path test,
+  build/Makefile target updated, CI job proves the new binary executes.
+- **Deletion tasks** (T4, T5, T7) additionally require: `rg` search for straggler references,
+  at least one end-to-end `--dry-run` per migrated tool.
+- **Cross-backend tasks** (B1, B2) additionally require: non-Rust renderer compiles after change.
+- **Code TODO/HACK comments** must reference a task ID (e.g., `TODO(SD1): ...`) so orphans
+  are discoverable via grep.
+- **Active Docs invariant**: every path in the task sheet must exist; no doc under
+  `TODO/TODONE/` may appear in active sections.
+
 ---
 
 ## Critical Blocker: DynOp Type-Dispatch Elimination
@@ -101,7 +114,7 @@ These can start immediately, in parallel with the DynOp work above.
 
 | ID | Task | Deps | Size | Started | Done |
 |----|------|------|------|---------|------|
-| **SD1** | Replace hardcoded tool/binary lists (5+ files) with inventory-derived registries | T8 | M | | |
+| **SD1** | Replace hardcoded tool/binary lists (5+ files) with inventory-derived registries | T8 | M | 2026-02-18 | 2026-02-18 |
 | **SD2** | Consider `Box<dyn Executable>` for workspace DAG dispatch | T5 | S | 2026-02-18 | 2026-02-18 |
 | **SD3** | Eliminate manual `From` impls for `WorkspaceOp` (9 impls + ~15 match arms) | T5 | M | 2026-02-18 | 2026-02-18 |
 
@@ -109,10 +122,10 @@ These can start immediately, in parallel with the DynOp work above.
 
 | ID | Task | Deps | Size | Started | Done |
 |----|------|------|------|---------|------|
-| **W1** | Define `WorkflowSpec` type with entry points, deps, resources | T4 | M | | |
-| **W2** | Register all existing workflows (build, test, codegen, testgen, pragma, etc.) | W1 | M | | |
-| **W3** | Generate Makefile targets from registry | W2 | M | | |
-| **W4** | Fast-path freshness: integrate git HEAD + dirty state into workflow execution | W1 | S | | |
+| **W1** | Define `WorkflowSpec` type with entry points, deps, resources | T4 | M | 2026-02-18 | 2026-02-18 |
+| **W2** | Register all existing workflows (build, test, codegen, testgen, pragma, etc.) | W1 | M | 2026-02-18 | 2026-02-18 |
+| **W3** | Generate Makefile targets from registry | W2 | M | 2026-02-18 | 2026-02-18 |
+| **W4** | Fast-path freshness: integrate git HEAD + dirty state into workflow execution | W1 | S | 2026-02-18 | 2026-02-18 |
 
 ### 2D: Codegen Quality
 
@@ -121,6 +134,17 @@ These can start immediately, in parallel with the DynOp work above.
 | **CQ1** | Map `ObligationCategory` variants to canonical kind strings | — | S | 2026-02-18 | 2026-02-18 |
 | **CQ2** | Replace prefix-heuristic branches in `canonical_kind_from_shape` with obligation lookups | CQ1 | M | 2026-02-18 | 2026-02-18 |
 | **CQ3** | Verify parity snapshots unchanged | CQ2 | S | 2026-02-18 | 2026-02-18 |
+| **CQ4** | Propagate obligation lookups to lower_go.rs, lower_c.rs, lower_rust.rs, dag_mermaid.rs (residual prefix heuristics). **Note**: requires plumbing obligation metadata through CodeIR `Expr::Call` — obligation is on `LoweredOp` but lost when emitted to CodeIR. dag_mermaid needs it on `NodeTopology`. | CQ2 | L | 2026-02-18 | 2026-02-18 |
+
+### 2E: Contract / CLI Guardrails
+
+Design: `docs/design/integration-testgen.md`. Tier 0 (Makefile contract) done in `gunbc-dag/tests/cli_contract.rs`.
+
+| ID | Task | Deps | Size | Started | Done |
+|----|------|------|------|---------|------|
+| **CT1** | Tier 1: per-tool `--dry-run` contract tests (validate parsed inputs match CLI args) | — | M | 2026-02-18 | 2026-02-18 |
+| **CT2** | Add `--print-inputs json` flag to generated CLIs for machine-readable input echo | CT1 | S | 2026-02-18 | 2026-02-18 |
+| **CT3** | Generated per-tool contract test harness via testgen obligation | CT1 | M | 2026-02-18 | 2026-02-18 |
 
 ---
 
@@ -132,10 +156,10 @@ These can start immediately, in parallel with the DynOp work above.
 |----|------|------|------|---------|------|
 | **E1** | Provider-granted scope verification (E1.3b) | — | M | 2026-02-18 | 2026-02-18 |
 | **E2** | `make gist-recent` works without hidden hardcoded defaults (E1.5a) | E1 | M | 2026-02-18 | 2026-02-18 |
-| **E3** | WIF Bootstrap DAG — idempotent setup flow (E2.2b) | — | L | | |
-| **E4** | Unified infra CLI: bootstrap, plan, apply, spec, graph (E2.7a) | E3 | M | | |
-| **E5** | Enhanced login flow: verify ADC, SA impersonate, direnv (E2.7b) | E3 | M | | |
-| **E6** | Status/health check: auth, projects, SA, secrets (E2.7c) | E3 | S | | |
+| **E3** | WIF Bootstrap DAG — idempotent setup flow (E2.2b) | — | L | 2026-02-18 | 2026-02-18 |
+| **E4** | Unified infra CLI: bootstrap, plan, apply, spec, graph (E2.7a) | E3 | M | 2026-02-18 | 2026-02-18 |
+| **E5** | Enhanced login flow: verify ADC, SA impersonate, direnv (E2.7b) | E3 | M | 2026-02-18 | 2026-02-18 |
+| **E6** | Status/health check: auth, projects, SA, secrets (E2.7c) | E3 | S | 2026-02-18 | 2026-02-18 |
 
 ### 3B: Cross-Language & Test
 
@@ -149,13 +173,13 @@ These can start immediately, in parallel with the DynOp work above.
 
 | ID | Task | Deps | Size | Started | Done |
 |----|------|------|------|---------|------|
-| **CO1** | `ToolGraphOp<D>` generic wrapper or GraphOp wrapper enum unification | SD3 | M | | |
+| **CO1** | `ToolGraphOp<D>` generic wrapper or GraphOp wrapper enum unification (moot: DynOp migration solved this) | SD3 | M | 2026-02-18 | 2026-02-18 |
 | **CO2** | Split `MergeOutputs` dedup from cardinality handling | — | M | 2026-02-18 | 2026-02-18 |
 | **CO3** | Probe-observer analysis single-source bundle (consolidation §17.A) | — | M | 2026-02-18 | 2026-02-18 |
 | **CO4** | Seed policy ownership in IR types, not testgen whitelist (consolidation §17.B) | — | M | 2026-02-18 | 2026-02-18 |
-| **CO5** | Live-secret requirements as generated workflow metadata (consolidation §17.C) | — | M | | |
-| **CO6** | Execution trace inputs for coercion/assertion observability (consolidation §17.D) | — | M | | |
-| **CO7** | Add `ValueKind` enum on `Value` so `types_compatible` becomes `TypeId backing accepts ValueKind` without manufacturing type-name strings (eliminates `mock_value_type_name` smell) | — | M | 2026-02-18 | |
+| **CO5** | Live-secret requirements as generated workflow metadata (consolidation §17.C) | — | M | 2026-02-18 | 2026-02-18 |
+| **CO6** | Execution trace inputs for coercion/assertion observability (consolidation §17.D) | — | M | 2026-02-18 | 2026-02-18 |
+| **CO7** | Add `ValueKind` enum on `Value` so `types_compatible` becomes `TypeId backing accepts ValueKind` without manufacturing type-name strings (eliminates `mock_value_type_name` smell) | — | M | 2026-02-18 | 2026-02-18 |
 
 ---
 
@@ -176,12 +200,12 @@ These require DSL language features that don't exist yet, or are low priority.
 
 | ID | Task | Deps | Size | Started | Done |
 |----|------|------|------|---------|------|
-| **H5** | Fermi guard live tests (blocked on GCP WIF + codegen for secrets) | E3 | M | | |
-| **H6** | Cardinality compositional modeling (non-blocking) | — | L | | |
+| **H5** | Fermi guard live tests (blocked on GCP WIF + codegen for secrets) | E3 | M | 2026-02-18 | 2026-02-18 |
+| **H6** | Cardinality compositional modeling (non-blocking) | — | L | 2026-02-18 | 2026-02-18 |
 | **H7** | Resource abstraction trait for DAG-native resource management | design decision | L | | |
 | **H8** | Rendering workflows as DAGs: Makefile generation (when adding Justfile) | second format consumer | L | | |
 | **H9** | Rendering workflows as DAGs: CI workflow generation (when adding second provider) | second CI provider | L | | |
-| **H10** | Compute stack service interfaces (GCE, Cloud Run, LB, GCS bucket) | E3 | XL | | |
+| **H10** | Compute stack service interfaces (GCE, Cloud Run, LB, GCS bucket) | E3 | XL | 2026-02-18 | |
 | **H11** | DAG typing hardening: typed node I/O wrappers + semantic carrier refinements | — | L | | |
 | **H12** | `make test-integration` / `make test-external` Makefile targets | — | S | 2026-02-18 | 2026-02-18 |
 

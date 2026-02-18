@@ -42,6 +42,9 @@ pub struct NodeTopology {
     /// `None` = opaque leaf node; `Some` = SubDag with recursive children.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub children: Option<DagTopology>,
+    /// Optional canonical kind metadata for downstream visualization/rendering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_kind: Option<String>,
 }
 
 /// Topology of a single port (name + type + cardinality).
@@ -72,16 +75,39 @@ impl<T> Dag<T> {
     /// and erases the operation type `T`. The result is serializable to JSON
     /// and comparable across different graph op types or git commits.
     pub fn topology(&self) -> DagTopology {
-        DagTopology {
-            nodes: self.nodes.iter().map(|n| node_topology(n)).collect(),
-            edges: self.edges.iter().map(edge_topology).collect(),
-        }
+        self.topology_with_kind(|_| None)
+    }
+
+    /// Extract topology fingerprint with optional per-node canonical kind hints.
+    pub fn topology_with_kind<F>(&self, mut kind_of: F) -> DagTopology
+    where
+        F: FnMut(&crate::node::Node<T>) -> Option<String>,
+    {
+        dag_topology_with_kind(self, &mut kind_of)
     }
 }
 
-fn node_topology<T>(node: &crate::node::Node<T>) -> NodeTopology {
+fn dag_topology_with_kind<T, F>(dag: &Dag<T>, kind_of: &mut F) -> DagTopology
+where
+    F: FnMut(&crate::node::Node<T>) -> Option<String>,
+{
+    DagTopology {
+        nodes: dag
+            .nodes
+            .iter()
+            .map(|n| node_topology(n, kind_of))
+            .collect(),
+        edges: dag.edges.iter().map(edge_topology).collect(),
+    }
+}
+
+fn node_topology<T, F>(node: &crate::node::Node<T>, kind_of: &mut F) -> NodeTopology
+where
+    F: FnMut(&crate::node::Node<T>) -> Option<String>,
+{
+    let canonical_kind = kind_of(node);
     let children = match &node.body {
-        NodeBody::SubDag(dag) => Some(dag.topology()),
+        NodeBody::SubDag(dag) => Some(dag_topology_with_kind(dag, kind_of)),
         NodeBody::Opaque(_) => None,
     };
 
@@ -90,6 +116,7 @@ fn node_topology<T>(node: &crate::node::Node<T>) -> NodeTopology {
         inputs: node.inputs.iter().map(port_topology).collect(),
         outputs: node.outputs.iter().map(port_topology).collect(),
         children,
+        canonical_kind,
     }
 }
 

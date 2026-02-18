@@ -1,7 +1,8 @@
 //! Shared binary entry helpers for DAG tool runners.
 
 use gunbc_exec::{
-    compose_with_freshness, execute_and_display, BoundaryMocks, Executable, ExecutionMode,
+    compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
+    Executable, ExecutionMode, FreshnessStep,
 };
 use gunbc_ir::Dag;
 use std::io::IsTerminal;
@@ -32,6 +33,7 @@ pub fn run_tool<T: Executable + Clone + Send + 'static>(
     let animated = std::io::stdout().is_terminal();
     if options.with_freshness {
         let steps = gunbc_lib_transport::check_and_plan_freshness();
+        let should_update_manifest = steps.as_ref().is_some_and(|s| !s.is_empty());
         let dag_with_freshness = compose_with_freshness(dag, steps);
         execute_and_display(
             &dag_with_freshness,
@@ -40,6 +42,7 @@ pub fn run_tool<T: Executable + Clone + Send + 'static>(
             options.success_port,
             options.input_mocks,
         );
+        update_freshness_manifest_if_needed(should_update_manifest);
     } else {
         execute_and_display(
             &dag,
@@ -48,5 +51,44 @@ pub fn run_tool<T: Executable + Clone + Send + 'static>(
             options.success_port,
             options.input_mocks,
         );
+    }
+}
+
+/// Persist freshness state after successful execution when freshness steps ran.
+pub fn update_freshness_manifest_if_needed(ran_freshness_steps: bool) {
+    if !ran_freshness_steps {
+        return;
+    }
+    if let Err(error) = gunbc_lib_transport::update_freshness_manifest() {
+        print_attention(
+            AttentionLevel::Warning,
+            "Freshness state not persisted",
+            &error,
+        );
+    }
+}
+
+/// Helper for callers that already hold optional planned freshness steps.
+pub fn freshness_steps_planned(steps: Option<&[FreshnessStep]>) -> bool {
+    steps.is_some_and(|planned| !planned.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn freshness_steps_planned_handles_none_and_empty() {
+        assert!(!freshness_steps_planned(None));
+        assert!(!freshness_steps_planned(Some(&[])));
+    }
+
+    #[test]
+    fn freshness_steps_planned_detects_non_empty() {
+        let steps = vec![FreshnessStep {
+            id: "codegen-dag".to_string(),
+            command: vec!["echo".to_string(), "ok".to_string()],
+        }];
+        assert!(freshness_steps_planned(Some(&steps)));
     }
 }

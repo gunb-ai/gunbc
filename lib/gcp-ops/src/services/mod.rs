@@ -13,13 +13,19 @@
 //! existing DAG transport layer (prepare → execute → parse).
 
 pub mod iam;
+pub mod compute_engine;
+pub mod cloud_run;
 pub mod local_auth;
+pub mod load_balancer;
 pub mod resource_manager;
 pub mod secret_manager;
 pub mod storage;
 pub mod workload_identity;
 
+pub use cloud_run::CloudRunService;
+pub use compute_engine::ComputeEngineService;
 pub use iam::IamService;
+pub use load_balancer::LoadBalancerService;
 pub use local_auth::{GcloudCli, GcloudLoginOptions, LocalAuthService};
 pub use resource_manager::ResourceManagerService;
 pub use secret_manager::SecretManagerService;
@@ -58,6 +64,10 @@ pub struct MethodMeta {
 pub mod base_urls {
     /// Secret Manager API.
     pub const SECRET_MANAGER: &str = "https://secretmanager.googleapis.com";
+    /// Compute Engine API.
+    pub const COMPUTE: &str = "https://compute.googleapis.com";
+    /// Cloud Run API.
+    pub const RUN: &str = "https://run.googleapis.com";
     /// IAM API.
     pub const IAM: &str = "https://iam.googleapis.com";
     /// IAM Credentials API (for impersonation / token generation).
