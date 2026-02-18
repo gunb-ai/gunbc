@@ -566,7 +566,8 @@ fn emit_cargo_toml(module_name: &str, handler_kinds: &BTreeSet<HandlerKind>) -> 
     let crate_name = module_name.replace('.', "-");
     let needs_helper = handler_kinds.contains(&HandlerKind::ExecuteReadContent)
         || handler_kinds.contains(&HandlerKind::ExecuteTransport);
-    let needs_serde_json = handler_kinds.contains(&HandlerKind::LoadRegistry);
+    let needs_serde_json = handler_kinds.contains(&HandlerKind::LoadRegistry)
+        || requires_pragma_helpers(handler_kinds);
 
     let mut deps = String::new();
     deps.push_str("gunbc-ir = { path = \"../../core/ir\" }\n");

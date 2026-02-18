@@ -23,9 +23,7 @@
 #![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
 use gunbc_cli::BinaryArgs;
-use gunbc_codegen::{
-    core_outputs, derive_tool_defs, generate_cli_with_import, FileWriter, ToolDef,
-};
+use gunbc_codegen::{core_outputs, generate_cli_with_import, FileWriter, ToolDef};
 use gunbc_dag::WorkspaceBinary;
 use gunbc_exec::run_freshness_steps;
 use gunbc_ir::resource::{
@@ -38,7 +36,7 @@ use gunbc_ir::transport::ci::{
 };
 use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
 use gunbc_lib_transport::TransportIo;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::env;
 use std::fmt::Write;
 use std::fs;
@@ -590,15 +588,14 @@ struct ParsedToolTarget {
 }
 
 fn extract_attr_value(line: &str, key: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches(',');
     let needle = format!("{key} = \"");
-    if let Some(start) = line.find(&needle) {
-        let after = &line[start + needle.len()..];
+    if let Some(after) = trimmed.strip_prefix(&needle) {
         let end = after.find('"')?;
         return Some(after[..end].to_string());
     }
     let raw_needle = format!("{key} = r#\"");
-    if let Some(start) = line.find(&raw_needle) {
-        let after = &line[start + raw_needle.len()..];
+    if let Some(after) = trimmed.strip_prefix(&raw_needle) {
         let end = after.find("\"#")?;
         return Some(after[..end].to_string());
     }
@@ -773,29 +770,43 @@ fn parse_tool_defs_from_file(path: &Path, content: &str) -> Result<Vec<ToolDef>,
     Ok(tool_defs)
 }
 
-fn discover_tool_defs_from_workspace_sources(
-    workspace_root: &Path,
-    io: &dyn ResourceIo,
-) -> Result<Vec<ToolDef>, String> {
-    let pattern = format!("{}/**/*.rs", workspace_root.display());
-    let paths = io
-        .glob_paths(&pattern)
-        .map_err(|e| format!("failed to glob Rust files for tool discovery: {e}"))?;
-
-    let mut by_name: BTreeMap<String, ToolDef> = BTreeMap::new();
-
-    for path in paths {
-        let path_str = path.to_string_lossy();
-        if path_str.contains("/target/") || path_str.contains("/buck-out/") {
-            continue;
+#[allow(clippy::disallowed_methods)] // Build-time source discovery for generator tooling.
+fn collect_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = fs::read_dir(&dir)
+            .map_err(|e| format!("failed to read source discovery dir {}: {e}", dir.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                format!(
+                    "failed to read source discovery entry in {}: {e}",
+                    dir.display()
+                )
+            })?;
+            let path = entry.path();
+            if path.is_dir() {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+                if matches!(name, "target" | "buck-out" | ".git") {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                files.push(path);
+            }
         }
+    }
+    Ok(files)
+}
 
-        let bytes = io
-            .read_file(&path)
+#[allow(clippy::disallowed_methods)] // Build-time source discovery for generator tooling.
+fn discover_tool_defs_from_workspace_sources(workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
+    let mut by_name: BTreeMap<String, ToolDef> = BTreeMap::new();
+    for path in collect_rust_files(workspace_root)? {
+        let content = fs::read_to_string(&path)
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-        let content = String::from_utf8(bytes)
-            .map_err(|e| format!("failed to parse {} as UTF-8: {e}", path.display()))?;
-
         for tool in parse_tool_defs_from_file(&path, &content)? {
             let name = tool.meta.tool_name.clone();
             if let Some(prev) = by_name.insert(name.clone(), tool) {
@@ -808,14 +819,13 @@ fn discover_tool_defs_from_workspace_sources(
             }
         }
     }
-
     if by_name.is_empty() {
         return Err("no #[tool_target] registrations discovered from source".to_string());
     }
-
     Ok(by_name.into_values().collect())
 }
 
+#[allow(clippy::disallowed_methods)] // Build-time DSL module discovery (not runtime I/O)
 fn discover_dsl_module_names(root: &Path, module_kind: &str) -> Result<BTreeSet<String>, String> {
     let entries = fs::read_dir(root).map_err(|e| {
         format!(
@@ -972,11 +982,8 @@ fn validate_codegen_dsl_coverage(
     ))
 }
 
-fn discover_codegen_tools(
-    workspace_root: &Path,
-    io: &dyn ResourceIo,
-) -> Result<Vec<ToolDef>, String> {
-    let tools = discover_tool_defs_from_workspace_sources(workspace_root, io)?;
+fn discover_codegen_tools(workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
+    let tools = discover_tool_defs_from_workspace_sources(workspace_root)?;
     let tool_modules = discover_dsl_module_names(&workspace_root.join("dsl/tools"), "tool")?;
     let pipeline_modules =
         discover_dsl_module_names(&workspace_root.join("dsl/pipelines"), "pipeline")?;
@@ -1005,7 +1012,7 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
         eprintln!("  ERROR: could not resolve workspace packages via cargo metadata");
         return false;
     };
-    let tools = match discover_codegen_tools(&workspace_root, io) {
+    let tools = match discover_codegen_tools(&workspace_root) {
         Ok(tools) => tools,
         Err(e) => {
             eprintln!("  ERROR: {e}");
@@ -1268,7 +1275,7 @@ fn codegen_outputs_exist(io: &dyn ResourceIo) -> bool {
     let Some((workspace_root, _)) = resolve_workspace_packages() else {
         return false;
     };
-    let tools = match discover_codegen_tools(&workspace_root, io) {
+    let tools = match discover_codegen_tools(&workspace_root) {
         Ok(tools) => tools,
         Err(e) => {
             eprintln!("  Warning: codegen tool discovery failed: {e}");
@@ -1353,7 +1360,12 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_command_arg;
+    use super::{
+        discover_codegen_tools, parse_command_arg, parse_tool_defs_from_file,
+        validate_codegen_dsl_coverage,
+    };
+    use std::collections::BTreeSet;
+    use std::path::{Path, PathBuf};
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| s.to_string()).collect()
@@ -1376,5 +1388,110 @@ mod tests {
         let args = argv(&["gunbc-codegen", "commit", "rollback"]);
         let err = parse_command_arg(&args).unwrap_err();
         assert!(err.contains("unexpected extra positional arguments"));
+    }
+
+    #[test]
+    fn parse_tool_target_block_supports_raw_entrypoints_and_flags() {
+        let attr = "tool_target";
+        let src_template = r##"
+#[gunbc_tool_registry_macros::__ATTR__(
+    name = "sample",
+    crate_name = "gunbc-sample",
+    description = "Sample tool",
+    builder = "build_sample_graph",
+    args = "Mode::Default",
+    import = "use gunbc_sample::build_sample_graph;",
+    success_port = "ok",
+    mock_spec = "gunbc_sample::graph_mock::sample_mock_spec()",
+    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path","make_var":"REPO"}]"#,
+    package = "sample",
+    binary = "sample",
+    has_invocation,
+    returns_result,
+    enable_step_mode
+)]
+pub fn sample_tool() {}
+"##;
+        let src = src_template.replace("__ATTR__", attr);
+        let defs = parse_tool_defs_from_file(Path::new("sample.rs"), &src)
+            .expect("tool_target parser should succeed");
+        assert_eq!(defs.len(), 1);
+        let tool = &defs[0];
+        assert_eq!(tool.meta.tool_name, "sample");
+        assert!(tool.meta.returns_result);
+        assert!(tool.meta.enable_step_mode);
+        assert_eq!(tool.meta.success_port.as_deref(), Some("ok"));
+        assert_eq!(tool.entrypoints.len(), 1);
+        assert_eq!(tool.entrypoints[0].port_name, "repo_path");
+        assert!(tool.invocation.is_some());
+    }
+
+    #[test]
+    fn codegen_source_discovery_finds_expected_tools() {
+        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace root should exist")
+            .to_path_buf();
+        let tools = discover_codegen_tools(&workspace_root)
+            .expect("source discovery should return tool defs");
+        let names: BTreeSet<String> = tools.iter().map(|t| t.meta.tool_name.clone()).collect();
+
+        for required in [
+            "bootstrap",
+            "clippy",
+            "deps",
+            "gist",
+            "gist-diff",
+            "gist-recent",
+            "makegen",
+            "dag-viz",
+            "dag-viz-diff",
+            "dag-viz-recent",
+            "dag-snapshot",
+            "review",
+        ] {
+            assert!(
+                names.contains(required),
+                "missing tool target from source discovery: {}",
+                required
+            );
+        }
+    }
+
+    #[test]
+    fn codegen_dsl_coverage_rejects_unknown_tool_module() {
+        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace root should exist")
+            .to_path_buf();
+        let tools = discover_codegen_tools(&workspace_root)
+            .expect("source discovery should return tool defs");
+
+        let mut tool_modules: BTreeSet<String> = [
+            "build",
+            "bootstrap",
+            "clippy",
+            "codegen",
+            "dag_viz",
+            "deps",
+            "docgen",
+            "gist",
+            "makegen",
+            "pragma",
+            "testgen",
+            "unknown_new_tool",
+        ]
+        .into_iter()
+        .map(|name| name.to_string())
+        .collect();
+        // Ensure deterministic assertion error path.
+        tool_modules.insert("unknown_new_tool".to_string());
+        let pipeline_modules: BTreeSet<String> =
+            ["ci"].into_iter().map(|name| name.to_string()).collect();
+
+        let err = validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)
+            .expect_err("unknown tool module must fail coverage validation");
+        assert!(err.contains("unmapped DSL tool modules"));
+        assert!(err.contains("unknown_new_tool"));
     }
 }

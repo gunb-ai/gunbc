@@ -106,6 +106,35 @@ fn workspace_subdag_discovery_avoids_tool_registry_inventory() {
     );
 }
 
+#[test]
+fn codegen_cli_discovery_avoids_tool_registry_inventory() {
+    let codegen_cli = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("bin")
+        .join("codegen_cli.rs");
+    let io = TransportIo::new();
+    let content = String::from_utf8(
+        io.read_file(&codegen_cli)
+            .expect("codegen_cli source should be readable"),
+    )
+    .expect("codegen_cli source should be UTF-8");
+
+    assert!(
+        !content.contains("derive_tool_defs"),
+        "codegen_cli must discover tools from source/DSL, not derive_tool_defs() inventory"
+    );
+    assert!(
+        !content.contains("iter_tool_targets"),
+        "codegen_cli must not depend on iter_tool_targets() inventory"
+    );
+    assert!(
+        !content.contains("clippy_tool")
+            && !content.contains("deps_tool")
+            && !content.contains("gist_snapshot_tool"),
+        "codegen_cli must not use force-link tool symbol touch points for discovery"
+    );
+}
+
 /// Every #[tool_target] builder function has at least one #[testgen_target]
 /// covering it in the same crate. This prevents adding a tool without test
 /// generation coverage.
@@ -182,7 +211,7 @@ fn collect_tool_target_builders(root: &Path) -> Vec<(String, String, String)> {
         let mut attr_start = 0;
         for (idx, line) in lines.iter().enumerate() {
             let trimmed = line.trim();
-            if trimmed.contains("tool_target(") && !trimmed.starts_with("//") {
+            if trimmed.starts_with("#[") && trimmed.contains("tool_target(") {
                 in_tool_target = true;
                 attr_start = idx;
             }
@@ -235,7 +264,7 @@ fn collect_testgen_builder_functions(root: &Path) -> Vec<(String, String)> {
         let mut in_testgen_target = false;
         for line in content.lines() {
             let trimmed = line.trim();
-            if trimmed.contains("testgen_target(") && !trimmed.starts_with("//") {
+            if trimmed.starts_with("#[") && trimmed.contains("testgen_target(") {
                 in_testgen_target = true;
             }
             if in_testgen_target {
