@@ -79,6 +79,11 @@ pub mod validate;
 pub mod value;
 pub mod value_expr;
 
+// ── DSL codegen IR tiers (dsl-codegen-tasks.md) ────────────────────
+pub mod c_ir; // Task 5: C-level AST types (CStyleIR)
+pub mod go_ir; // Task 7: Go-specific code_ir extensions (ManagedIR)
+pub mod register_ir; // Task 6: MIPS instruction model (RegisterIR)
+
 // Codegen output locations used by the bootstrapper and codegen DAG.
 pub const CODEGEN_OUT_DIR: &str = "target/codegen";
 pub const CODEGEN_BIN_DIR: &str = "target/codegen/bin";

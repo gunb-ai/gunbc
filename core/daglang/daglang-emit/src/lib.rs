@@ -27,6 +27,27 @@
 //!   └── makefile/   Makefile target (from module metadata)
 //! ```
 
+// ── Task-owned modules (dsl-codegen-tasks.md) ──────────────────────
+// Wave 1
+pub mod computation; // Task 1: Computation types
+pub mod rust_exec_runtime; // Task 3: Exec-runtime fast path
+
+// Wave 2
+pub mod plan; // Task 4: EmitPlan builder
+
+// Wave 3
+pub mod lower_to_ir; // Task 8: Computation → AbstractIR
+pub mod lower_rust; // Task 9: AbstractIR → Rust lowering
+pub mod lower_go; // Task 10: AbstractIR → Go lowering
+pub mod lower_c; // Task 11: AbstractIR → C lowering
+
+// Wave 4
+pub mod lower_mips; // Task 15: C → MIPS lowering
+pub mod render_rust; // Task 12: Rust renderer
+pub mod render_go; // Task 13: Go renderer
+pub mod render_c; // Task 14: C renderer
+pub mod render_mips; // Task 16: MIPS renderer
+
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
 use daglang_lower::{CallableKind, LoweredOp};
 use gunbc_ir::Dag;
