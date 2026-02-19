@@ -28,6 +28,25 @@ Bug surfaced by automated review. This is real but latent (not causing test fail
 
 ### Code TODOs & DSL Compiler Polish
 
+#### Design Decision: Backend Semantics Must Be Encoded in IR (not naming conventions)
+
+Recent emitter bugs (Go/C redeclaration, MIPS early-return epilogue bypass, MIPS temp
+clobber) show a shared issue: backend lowering currently relies on string/name conventions
+in places where the IR should carry the semantic constraints.
+
+For this track, prefer **model enrichment first**:
+- Add/extend IR nodes so correctness is enforced by construction.
+- Lowerers and renderers should consume explicit modeled semantics, not infer behavior
+  from hardcoded names.
+- Validation passes are still useful, but treated as guardrails, not the primary design.
+
+| ID | Task | Deps | Size | Source |
+|----|------|------|------|--------|
+| **R3** | **Backend modeling enrichment RFC + IR schema update**: define and land minimal IR/API extensions needed for correctness-by-construction across these bugs. Scope: (a) Go declaration intent (short-declare vs assign), (b) C lexical scope block statement for temporary-lifetime isolation, (c) MIPS explicit return-to-epilogue contract (single-exit semantics), (d) fallible temp allocation API for register pressure. Include migration notes for lowerers/renderers/tests. **Acceptance**: changed IR types compile across emit crate; no backend fix requires hardcoded temp names to simulate scope; return/epilogue flow is representable without raw `jr $ra` in lowering logic. | — | M | review synthesis |
+| **R4** | **Go + C lowerer migration to modeled semantics**: migrate transport-call statement lowering to the new IR contracts. Go must avoid repeated `:=` redeclare failures by construction; C must avoid same-scope `__rc` redefinition by construction (scoped block or equivalent modeled mechanism). **Acceptance**: add regressions with 2+ transport expression statements in one function; generated Go/C compile cleanly; tests assert structural IR behavior (not string fragments only). | R3 | M | review synthesis |
+| **R5** | **MIPS control-flow + allocator fail-closed migration**: implement single-exit return lowering (all returns route through epilogue path), and make temp allocation fail with explicit `LowerError` on exhaustion instead of wrapping/clobbering. **Acceptance**: framed functions do not contain body-level direct `JumpReg(Register::Ra)` for lowered returns; deep-expression/register-pressure test fails closed with explicit lowering error, not silent corruption. | R3 | M | review synthesis |
+| **R6** | **Holistic backend correctness harness**: add cross-backend adversarial fixtures + smoke compilation checks for generated artifacts (Go/C compile, MIPS assembly structure checks), plus invariant checks that encode the modeled contracts. **Acceptance**: old buggy patterns are caught by tests; new modeled path passes; CI command includes this harness. | R4, R5 | M | review synthesis |
+
 #### Design Decision: DeferredCallableOp Elimination Strategy (blocks P6)
 
 P6 replaces `DeferredCallableOp` (identity passthrough) with per-tool domain ops.
@@ -272,6 +291,7 @@ SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
     ─────┤ (Sprint 2: review fixes + polish)
          │
          ├─ R2                     (review finding: wildcard resources)
+         ├─ R3→(R4, R5)→R6         (modeled backend correctness hardening)
          ├─ P12                    (resolve_infrastructure typed-lowering migration)
          │
     ─────┤ (Sprint 3: dev pipeline — real workflow)
@@ -285,7 +305,7 @@ SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
          └─ P6                     (per-module domain ops, L)
 ```
 
-**Sprint 2**: R2 + remaining integration fixes.
+**Sprint 2**: R2 + R3/R4/R5/R6 modeling-first backend hardening + remaining integration fixes.
 **Sprint 3**: W1 (`gunbc review` CLI) is the critical path — first real end-to-end
 execution. W4 (abstract review DAG with 4 dimensions) is the design centerpiece.
 By end of sprint: `gunbc pipeline --pr 123` runs coherence + quality + requirements

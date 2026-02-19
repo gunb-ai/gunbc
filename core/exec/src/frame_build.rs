@@ -327,9 +327,6 @@ fn build_grouped_stage_panel(
         .map(|(idx, group)| (idx, group.progress(progress)))
         .collect();
     if rows.is_empty() {
-        while lines.len() < max_lines {
-            lines.push(Line::new(vec![Span::plain("")]));
-        }
         return lines;
     }
 
@@ -469,10 +466,6 @@ fn build_grouped_stage_panel(
         }
     }
 
-    // Keep fixed height to reduce flicker while stages update.
-    while lines.len() < max_lines {
-        lines.push(Line::new(vec![Span::plain("")]));
-    }
     lines
 }
 

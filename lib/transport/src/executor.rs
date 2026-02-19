@@ -383,6 +383,7 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
     let mut cmd = Command::new(&request.command);
     cmd.args(&request.args);
 
+
     if let Some(ref cwd) = request.cwd {
         cmd.current_dir(cwd);
     }
@@ -562,6 +563,16 @@ mod tests {
             &["network"],
             &[],
         )
+    }
+
+    fn is_gcloud_auth_login(request: &ShellRequest) -> bool {
+        let command_name = std::path::Path::new(&request.command)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(request.command.as_str());
+        command_name == "gcloud"
+            && request.args.first().is_some_and(|arg| arg == "auth")
+            && request.args.get(1).is_some_and(|arg| arg == "login")
     }
 
     fn bind_loopback_listener(test_name: &str) -> Option<TcpListener> {
@@ -1082,6 +1093,8 @@ mod tests {
         assert!(response.stdout.is_empty());
         assert!(response.stderr.is_empty());
     }
+
+
 
     // ========================================================================
     // Top-level execute_transport dispatch tests
