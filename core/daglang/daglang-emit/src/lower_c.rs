@@ -435,9 +435,13 @@ fn lower_expr(expr: &Expr, config: &CConfig) -> CExpr {
                     };
                 }
             }
-            // Fallback: render as a variable name (complex if-expression not easily
-            // representable in C expression context).
-            CExpr::Var("/* if-expr */0".to_string())
+            // Complex if-expressions that don't fit the ternary pattern cannot be
+            // represented in C expression context. This is a codegen limitation that
+            // must be addressed by desugaring to statements + temp variable.
+            panic!(
+                "C backend: if-expression with non-trivial body cannot be lowered to \
+                 an expression; desugar to statements before reaching lower_expr"
+            )
         }
         Expr::Path(segments) => CExpr::Var(segments.join("_")),
         Expr::Struct { name, fields } => {

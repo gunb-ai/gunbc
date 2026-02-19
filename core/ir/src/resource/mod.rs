@@ -150,9 +150,16 @@ impl AccessMode {
 /// - `repo`
 /// - `target` / `target:<name>`
 pub fn normalize_resource_id(id: &str) -> String {
-    id.strip_prefix(RESOURCE_PORT_PREFIX)
-        .unwrap_or(id)
-        .to_string()
+    let normalized = id.strip_prefix(RESOURCE_PORT_PREFIX).unwrap_or(id);
+
+    // Wildcard file IDs are currently treated as a coarse file capability.
+    // This keeps resource accounting deterministic until full glob semantics
+    // are designed and implemented end-to-end.
+    if normalized == "file:*" || (normalized.starts_with("file:") && normalized.contains('*')) {
+        return "file".to_string();
+    }
+
+    normalized.to_string()
 }
 
 /// Build a canonical `res:*` port from any canonical resource id.
@@ -795,6 +802,8 @@ mod tests {
     fn test_normalize_resource_id_canonical_only() {
         assert_eq!(normalize_resource_id("res:file"), "file");
         assert_eq!(normalize_resource_id("res:file:Makefile"), "file:Makefile");
+        assert_eq!(normalize_resource_id("res:file:*"), "file");
+        assert_eq!(normalize_resource_id("res:file:src/*"), "file");
         assert_eq!(normalize_resource_id("res:api:network"), "api:network");
         assert_eq!(normalize_resource_id("res:api:gcp"), "api:gcp");
         assert_eq!(normalize_resource_id("res:target"), "target");

@@ -924,6 +924,26 @@ struct ActiveResourceLock {
     exclusive: bool,
 }
 
+fn resource_ids_conflict(required_id: &str, active_id: &str) -> bool {
+    if required_id == active_id {
+        return true;
+    }
+
+    // `file` is a coarse filesystem lock that conflicts with any specific file path.
+    let required_is_file = required_id == "file" || required_id.starts_with("file:");
+    let active_is_file = active_id == "file" || active_id.starts_with("file:");
+    required_is_file && active_is_file && (required_id == "file" || active_id == "file")
+}
+
+fn active_lock_allows_mode(lock: &ActiveResourceLock, mode: AccessMode) -> bool {
+    match mode {
+        AccessMode::Read => !lock.writer && !lock.exclusive,
+        AccessMode::Write | AccessMode::Exclusive => {
+            lock.readers == 0 && !lock.writer && !lock.exclusive
+        }
+    }
+}
+
 fn derive_node_resource_requirements<T>(
     dag: &Dag<T>,
 ) -> HashMap<NodeId, Vec<(String, AccessMode)>> {
@@ -951,13 +971,10 @@ fn node_requirements_can_acquire(
     active: &HashMap<String, ActiveResourceLock>,
 ) -> bool {
     requirements.iter().all(|(resource_id, mode)| {
-        let lock = active.get(resource_id);
-        match mode {
-            AccessMode::Read => lock.is_none_or(|l| !l.writer && !l.exclusive),
-            AccessMode::Write | AccessMode::Exclusive => {
-                lock.is_none_or(|l| l.readers == 0 && !l.writer && !l.exclusive)
-            }
-        }
+        active
+            .iter()
+            .filter(|(active_id, _)| resource_ids_conflict(resource_id, active_id))
+            .all(|(_, lock)| active_lock_allows_mode(lock, *mode))
     })
 }
 
@@ -1148,8 +1165,8 @@ fn enforce_runtime_file_guard<T>(
 
         return Err(ExecError::new(format!(
             "runtime file guard: node '{}' emitted file {:?} on '{}' without matching write \
-             resource input (declared write inputs: {}). declare `res:file:{}` or `res:file:*` \
-             with AccessMode::Write/Exclusive",
+             resource input (declared write inputs: {}). declare `res:file:{}` or coarse \
+             `res:file` with AccessMode::Write/Exclusive",
             node.id.0, op, path, declared_text, path
         )));
     }
@@ -2390,6 +2407,199 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_resource_coarse_file_conflicts_with_specific_file() {
+        if execution_max_concurrency() == 1 {
+            return;
+        }
+
+        #[derive(Debug, Clone)]
+        struct BlockingOp {
+            port: String,
+            value: Value,
+            sleep_ms: u64,
+            active: Arc<AtomicUsize>,
+            peak: Arc<AtomicUsize>,
+        }
+
+        impl BlockingOp {
+            fn new(
+                port: &str,
+                value: Value,
+                sleep_ms: u64,
+                active: Arc<AtomicUsize>,
+                peak: Arc<AtomicUsize>,
+            ) -> Self {
+                Self {
+                    port: port.to_string(),
+                    value,
+                    sleep_ms,
+                    active,
+                    peak,
+                }
+            }
+        }
+
+        impl Executable for BlockingOp {
+            fn execute(
+                &self,
+                _inputs: HashMap<String, Value>,
+            ) -> Result<HashMap<String, Value>, ExecError> {
+                let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+                loop {
+                    let observed = self.peak.load(Ordering::SeqCst);
+                    if current <= observed {
+                        break;
+                    }
+                    if self
+                        .peak
+                        .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(self.sleep_ms));
+                self.active.fetch_sub(1, Ordering::SeqCst);
+
+                let mut out = HashMap::new();
+                out.insert(self.port.clone(), self.value.clone());
+                Ok(out)
+            }
+        }
+
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+
+        let mut dag: Dag<BlockingOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "fs_env",
+            vec![],
+            vec![port("fs", "FilesystemHandle")],
+            BlockingOp::new("fs", Value::Unit, 0, active.clone(), peak.clone()),
+        ));
+        dag.add_node(Node::opaque(
+            "writer_all_files",
+            vec![resource("file", "FilesystemHandle", AccessMode::Write)],
+            vec![port("a", "Int")],
+            BlockingOp::new("a", Value::Int(1), 50, active.clone(), peak.clone()),
+        ));
+        dag.add_node(Node::opaque(
+            "writer_specific_file",
+            vec![resource(
+                "file:shared.txt",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
+            vec![port("b", "Int")],
+            BlockingOp::new("b", Value::Int(2), 50, active.clone(), peak.clone()),
+        ));
+        dag.add_edge(edge("fs_env", "fs", "writer_all_files", "res:file"));
+        dag.add_edge(
+            edge("fs_env", "fs", "writer_specific_file", "res:file:shared.txt"),
+        );
+
+        let _ = execute(&dag).expect("execution should succeed");
+        assert_eq!(
+            peak.load(Ordering::SeqCst),
+            1,
+            "coarse res:file lock should serialize conflicting specific file writes"
+        );
+    }
+
+    #[test]
+    fn test_execute_resource_distinct_file_writes_can_run_in_parallel() {
+        if execution_max_concurrency() == 1 {
+            return;
+        }
+
+        #[derive(Debug, Clone)]
+        struct BlockingOp {
+            port: String,
+            value: Value,
+            sleep_ms: u64,
+            active: Arc<AtomicUsize>,
+            peak: Arc<AtomicUsize>,
+        }
+
+        impl BlockingOp {
+            fn new(
+                port: &str,
+                value: Value,
+                sleep_ms: u64,
+                active: Arc<AtomicUsize>,
+                peak: Arc<AtomicUsize>,
+            ) -> Self {
+                Self {
+                    port: port.to_string(),
+                    value,
+                    sleep_ms,
+                    active,
+                    peak,
+                }
+            }
+        }
+
+        impl Executable for BlockingOp {
+            fn execute(
+                &self,
+                _inputs: HashMap<String, Value>,
+            ) -> Result<HashMap<String, Value>, ExecError> {
+                let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+                loop {
+                    let observed = self.peak.load(Ordering::SeqCst);
+                    if current <= observed {
+                        break;
+                    }
+                    if self
+                        .peak
+                        .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(self.sleep_ms));
+                self.active.fetch_sub(1, Ordering::SeqCst);
+
+                let mut out = HashMap::new();
+                out.insert(self.port.clone(), self.value.clone());
+                Ok(out)
+            }
+        }
+
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+
+        let mut dag: Dag<BlockingOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "fs_env",
+            vec![],
+            vec![port("fs", "FilesystemHandle")],
+            BlockingOp::new("fs", Value::Unit, 0, active.clone(), peak.clone()),
+        ));
+        dag.add_node(Node::opaque(
+            "writer_a",
+            vec![resource("file:a.txt", "FilesystemHandle", AccessMode::Write)],
+            vec![port("a", "Int")],
+            BlockingOp::new("a", Value::Int(1), 50, active.clone(), peak.clone()),
+        ));
+        dag.add_node(Node::opaque(
+            "writer_b",
+            vec![resource("file:b.txt", "FilesystemHandle", AccessMode::Write)],
+            vec![port("b", "Int")],
+            BlockingOp::new("b", Value::Int(2), 50, active.clone(), peak.clone()),
+        ));
+        dag.add_edge(edge("fs_env", "fs", "writer_a", "res:file:a.txt"));
+        dag.add_edge(edge("fs_env", "fs", "writer_b", "res:file:b.txt"));
+
+        let _ = execute(&dag).expect("execution should succeed");
+        assert!(
+            peak.load(Ordering::SeqCst) >= 2,
+            "distinct specific file writes should run in parallel"
+        );
+    }
+
+    #[test]
     fn test_execute_simple_pipeline() {
         let mut dag: Dag<Produce> = Dag::new();
         dag.add_node(Node::opaque(
@@ -2967,7 +3177,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_file_guard_allows_wildcard_and_coarse_file() {
+    fn runtime_file_guard_allows_legacy_wildcard_and_coarse_file() {
         let wildcard_node = Node::opaque(
             "wildcard_writer",
             vec![resource("file:*", "FilesystemHandle", AccessMode::Write)],
@@ -2988,7 +3198,7 @@ mod tests {
         );
 
         enforce_runtime_file_guard(&wildcard_node, &outputs, true)
-            .expect("wildcard res:file:* should allow writes");
+            .expect("legacy wildcard declarations should remain accepted");
         enforce_runtime_file_guard(&coarse_node, &outputs, true)
             .expect("coarse res:file should allow writes");
     }

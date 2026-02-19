@@ -16,7 +16,6 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 struct LanguageExecOp {
-    #[allow(dead_code)]
     inner: LanguageOp,
 }
 
@@ -25,7 +24,10 @@ impl Executable for LanguageExecOp {
         &self,
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
-        Ok(HashMap::new())
+        Err(ExecError::new(format!(
+            "LanguageOp::{:?} is compile-time metadata and must not be executed at runtime",
+            self.inner
+        )))
     }
 }
 

@@ -22,7 +22,7 @@
 //! 2. Map each callable name to its domain op via `DynOp::new(...)`
 //! 3. Infrastructure nodes (content_upsert, fs_env) are handled automatically
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use daglang_lower::{CollectionOpKind, LoweredOp, ObligationCategory};
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
@@ -83,12 +83,14 @@ impl Executable for DeferredCallableOp {
         for (key, value) in &inputs {
             outputs.insert(key.clone(), value.clone());
         }
-        // Ensure all declared output ports have a value (default to empty string
-        // for ports not already populated by input passthrough).
+        // Ensure all declared output ports have a value. Use Value::Skipped
+        // (not empty string) for ports not populated by input passthrough, so
+        // downstream nodes see an honest "no value produced" signal rather than
+        // a type-violating empty string that silently passes type checks.
         for port_name in &self.output_port_names {
             outputs
                 .entry(port_name.clone())
-                .or_insert_with(|| Value::Str(String::new()));
+                .or_insert(Value::Skipped);
         }
         Ok(outputs)
     }
@@ -101,6 +103,27 @@ struct IdentityCallableOp;
 impl Executable for IdentityCallableOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         Ok(inputs)
+    }
+}
+
+/// Typed error op for nodes that exist in topology but must not be executed.
+///
+/// Use this instead of identity/no-op placeholders so that accidental execution
+/// fails immediately with a clear message rather than silently producing wrong outputs.
+#[derive(Debug, Clone)]
+struct UnsupportedOp {
+    callable: String,
+}
+
+impl Executable for UnsupportedOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        Err(ExecError::new(format!(
+            "unsupported operation `{}`: must be lowered away before execution",
+            self.callable
+        )))
     }
 }
 
@@ -698,13 +721,12 @@ pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveEr
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
             resolved_node
                 .inputs
-                .push(Port::resource("res:file:*", "FilesystemHandle", mode));
+                .push(Port::resource("res:file", "FilesystemHandle", mode));
         }
         resolved.add_node(resolved_node);
     }
     resolved.edges = dag.edges.clone();
     wire_missing_filesystem_resources(&mut resolved);
-    dedupe_release_resource_edges(&mut resolved);
     Ok(resolved)
 }
 
@@ -726,7 +748,9 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
 fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
-        LoweredOp::Pipeline { module, name, .. } => Ok(deferred_callable(module, name, outputs)),
+        LoweredOp::Pipeline { module, name, .. } => Ok(DynOp::new(UnsupportedOp {
+            callable: format!("Pipeline::{module}::{name}"),
+        })),
         LoweredOp::Callable {
             module,
             name,
@@ -1068,20 +1092,23 @@ fn resolve_service_transport(
 // Collection resolution
 // ============================================================================
 
-/// Resolve collection ops to passthrough executables.
+/// Resolve collection ops to typed error executables.
 ///
-/// Collection execution is currently a structural scaffold — lowering emits
-/// collection nodes for progress/parity visibility, but runtime semantics
-/// remain unchanged until dedicated collection executors land.
+/// Collection nodes exist in DAG topology for progress/parity visibility,
+/// but must not be executed at runtime until dedicated collection executors
+/// land. Attempting to execute these nodes fails immediately with a clear
+/// message rather than silently passing data through.
 fn resolve_collection(kind: &CollectionOpKind) -> Result<DynOp, ResolveError> {
-    use gunbc_primitives::collection::{FilterOp, FoldOp, MapOp};
-
-    Ok(match kind {
-        CollectionOpKind::Map | CollectionOpKind::FlatMap => DynOp::new(MapOp::Identity),
-        CollectionOpKind::Filter => DynOp::new(FilterOp::All),
-        CollectionOpKind::Fold => DynOp::new(FoldOp::Count),
-        CollectionOpKind::Join => DynOp::new(FoldOp::Join(String::new())),
-    })
+    let label = match kind {
+        CollectionOpKind::Map => "Collection::Map",
+        CollectionOpKind::FlatMap => "Collection::FlatMap",
+        CollectionOpKind::Filter => "Collection::Filter",
+        CollectionOpKind::Fold => "Collection::Fold",
+        CollectionOpKind::Join => "Collection::Join",
+    };
+    Ok(DynOp::new(UnsupportedOp {
+        callable: label.to_string(),
+    }))
 }
 
 // ============================================================================
@@ -1276,16 +1303,6 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
             ));
         }
     }
-}
-
-fn dedupe_release_resource_edges(dag: &mut Dag<DynOp>) {
-    let mut seen = HashSet::<(String, String)>::new();
-    dag.edges.retain(|edge| {
-        if !edge.to_node.0.starts_with("release_resource_") {
-            return true;
-        }
-        seen.insert((edge.to_node.0.clone(), edge.to_port.0.clone()))
-    });
 }
 
 // ============================================================================
@@ -1600,7 +1617,7 @@ mod tests {
     fn resolve_collection_map() {
         let node = collection_node("map_items", CollectionOpKind::Map);
         let result = resolve_node(&node).expect("map");
-        assert!(format!("{:?}", result).contains("Identity"));
+        assert!(format!("{:?}", result).contains("UnsupportedOp"));
     }
 
     #[test]

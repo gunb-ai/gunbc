@@ -42,7 +42,7 @@ Nodes:
     inputs:
       * request: TransportRequest (1)
       * skip: Bool (1)
-      * res:file:*: FilesystemHandle (1)
+      * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
   - param_source_tools_makegen_makegen_path [callable::Pattern tools.makegen.call_param_source::makegen::path]
@@ -71,5 +71,5 @@ Edges:
   - load_registry.registry -> tools.makegen::render_makefile.registry
   - load_registry.registry -> tools.makegen::makegen.registry
   - fs_env.FilesystemHandle -> prepare_read_makegen.res:file:Makefile
-  - fs_env.FilesystemHandle -> execute_makegen_transport.res:file:*
+  - fs_env.FilesystemHandle -> execute_makegen_transport.res:file
 

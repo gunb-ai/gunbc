@@ -41,7 +41,7 @@
           "cardinality": "1"
         },
         {
-          "name": "res:file:*",
+          "name": "res:file",
           "type_id": "FilesystemHandle",
           "cardinality": "1"
         },
@@ -267,7 +267,7 @@
       "from_node": "fs_env",
       "from_port": "FilesystemHandle",
       "to_node": "execute_makegen_transport",
-      "to_port": "res:file:*"
+      "to_port": "res:file"
     },
     {
       "from_node": "fs_env",
