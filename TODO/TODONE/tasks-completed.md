@@ -16,6 +16,23 @@
 
 ---
 
+## Sprint 2: Review Findings + Polish (Landed 2026-02-19)
+
+| ID | Task | Status |
+|----|------|--------|
+| R1 | Makegen transport port naming alignment (`response` across lowerer parity filter, exec runtime emitter, and makegen mocks). | Done 2026-02-19 |
+| P1 | `daglang-derive` capture mode now derived structurally from `obligation` + `is_interactive` metadata (no blanket captured default logic). | Done 2026-02-19 |
+| P2 | `daglang-derive` interactive node detection now uses structural `is_interactive: bool` on `LoweredOp::Callable` (no `name.contains("@interactive")`). | Done 2026-02-19 |
+| P3 | `daglang-derive` resource usage derivation now uses `obligation` enum + `resource_target` metadata (no string prefix stripping). | Done 2026-02-19 |
+| P4 | `daglang-cli check` no longer re-runs discovery/parse/typecheck after pipeline build; reuses build-stage module graph. | Done 2026-02-19 |
+| P5 | GCP impersonation parse now surfaces `expires_at` output (and propagates empty string when skipped), with graph/output tests updated. | Done 2026-02-19 |
+| P8 | Repeated GCP REST client constructors (`new` / `unauthenticated`) consolidated via shared helper macro across service clients. | Done 2026-02-19 |
+| P9 | `content_upsert` source wiring deduplicated via shared helpers for resolved-source / param-source fanout paths. | Done 2026-02-19 |
+| P10 | makegen compile tests now use a shared fixture object with automatic temp output cleanup via `Drop`. | Done 2026-02-19 |
+| P11 (Sprint 2) | `build_workspace_dag_from_discovery(tool_names, pipeline_names)` extracted as a pure composition entrypoint; impure discovery wrapper delegates to it. | Done 2026-02-19 |
+
+---
+
 ## Completed Near-Term Polish
 
 | ID | Task | Status |

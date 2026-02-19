@@ -20,47 +20,13 @@
 
 ### Review Findings
 
-Bugs surfaced by automated review. Both are real but latent (not causing test failures yet).
+Bug surfaced by automated review. This is real but latent (not causing test failures yet).
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **R1** | **Makegen transport port name mismatch**: content-upsert lowering wires edge from port `response` (`daglang-lower/src/lib.rs:2928`), but output port-filtering renames it to `makegen_response` (`daglang-lower/src/lib.rs:2526`). Exec-runtime emitter also hardcodes `makegen_response` (`rust_exec_runtime.rs:615,626`). Fix: align edge wiring and port-filter to use the same port name, or remove the filter. | — | S |
 | **R2** | **[STARTED 2026-02-19]** **Wildcard resource semantics deferred**: remove generated/injected `res:file:*` usage for now (coarsen to `res:file`), treat coarse `file` as conflicting with any specific `file:<path>` lock in admission control, and normalize wildcard IDs to coarse `file` in resource accounting. Track full glob semantics as design work in `backlog.md` before enabling pattern-aware admission control. | — | M |
 
 ### Code TODOs & DSL Compiler Polish
-
-#### Design Decision: Node Metadata Classification (blocks P1-P3)
-
-P1-P3 all replace string heuristics in `daglang-derive/src/lib.rs` with structural
-classification on `LoweredOp`. The shared design question is: **what fields on
-`LoweredOp::Callable` carry the metadata that `daglang-derive` currently extracts
-from name strings?**
-
-Current heuristics and their structural replacements:
-
-| Derive function | Current heuristic | Available structural data | Missing |
-|----------------|-------------------|--------------------------|---------|
-| `derive_capture_modes()` (line 485) | Hardcoded `CaptureMode::Captured` for all nodes | `obligation: ObligationCategory` distinguishes transport (`ServiceTransport*`) from pure | `is_interactive` flag (for `Passthrough` mode); streaming marker (for `Streamed` mode) |
-| `derive_interactive_nodes()` (line 495) | `name.contains("@interactive")` | Nothing — interactivity only exists as a name substring | `is_interactive: bool` on `LoweredOp::Callable` |
-| `derive_resources()` (line 512) | Three `strip_prefix()` calls: `resource_lifecycle::acquire::`, `resource_lifecycle::release::`, `resource_provide::` | `obligation` already has `ResourceAcquire`, `ResourceRelease`, `ResourceProvide` variants | Resource name / binding name as a dedicated field (currently encoded in `name` string suffix) |
-
-**Approach**: Extend `LoweredOp::Callable` with two fields during lowering:
-
-```rust
-Callable {
-    module: String,
-    kind: String,
-    name: String,
-    obligation: ObligationCategory,
-    service_metadata: Option<ServiceMetadata>,
-    is_interactive: bool,          // NEW — parsed from DSL `@interactive` attr
-    resource_target: Option<String>, // NEW — resource name for lifecycle/provide nodes
-}
-```
-
-Then all three derive functions become enum matches on `obligation` + field reads,
-following the established `classify_obligation()` pattern in `daglang-lower:179`.
-No string parsing in the derive phase.
 
 #### Design Decision: DeferredCallableOp Elimination Strategy (blocks P6)
 
@@ -90,16 +56,7 @@ catch-all `_ => Ok(deferred_callable(...))` on line 872 becomes
 
 | ID | Task | Deps | Size | Source |
 |----|------|------|------|--------|
-| **P1** | `daglang-derive:485` — Derive capture mode from `obligation` + `is_interactive` field on `LoweredOp::Callable`, not hardcoded. Three modes: `ServiceTransport*` → `Captured`, `is_interactive` → `Passthrough`, streaming TBD. | — | M | `TODO(Phase 3)` |
-| **P2** | `daglang-derive:495` — Replace `name.contains("@interactive")` with `is_interactive: bool` field on `LoweredOp::Callable`, parsed from DSL `@interactive` attribute during lowering in `daglang-lower`. | P1 | S | `TODO(Phase 3)` |
-| **P3** | `daglang-derive:512` — Replace three `strip_prefix()` calls (`resource_lifecycle::acquire/release::`, `resource_provide::`) with `obligation` enum match + `resource_target: Option<String>` field. The `ObligationCategory::Resource*` variants already exist. | P1 | S | `TODO(Phase 3)` |
-| **P4** | `daglang-cli/commands.rs:147` — Deduplicate `check_from_context` re-discovery/re-parse/re-typecheck with cached pipeline state | — | M | `TODO` |
-| **P5** | `lib/gcp-ops/src/ops.rs:568` — Wire token expiry into output if callers need it | — | S | `TODO` |
 | **P6** | `DeferredCallableOp` → per-module domain ops: implement `*Op` enums for each deferred module (see table above), replace catch-all passthrough with `Err(unknown_callable(...))`. Dry-run via `ExecutionMode` check inside each op, not via identity passthrough. ~15 modules, ~25 callables total. (`resolve.rs`, `rust_exec_runtime.rs:306`) | — | L | PR review |
-| **P8** | Consolidate repeated GCP service client constructors (`new`/`unauthenticated`) into a shared helper/macro across `lib/gcp-ops/src/services/*`. | — | S | PR review |
-| **P9** | Deduplicate `content_upsert` source wiring in `core/daglang/daglang-lower/src/lib.rs` (content/path branches share nearly identical param/source edge logic). | — | M | PR review |
-| **P10** | Consolidate makegen compile test setup/cleanup in `core/daglang/daglang-cli/src/compile/tests.rs` (temp output creation + teardown helpers) to reduce repetition and cleanup leaks. | — | S | PR review |
-| **P11** | Pure/impure split for `build_workspace_dag()`: extract `build_workspace_dag_from_discovery(tool_names, pipeline_names) -> Dag<DynOp>` pure core from the impure wrapper that does `fs::read_dir` discovery. The `add_discovered_tool_subdags` / `add_discovered_pipeline_subdags` helpers are already pure — just need a public entry point that takes pre-discovered names. (`gunbc-dag/src/workspace/subdags/mod.rs`) | — | S | PR review |
 | **P12** | Move `resolve_infrastructure()` string-prefix matching up to lowering: lowerer should emit typed `LoweredOp` variants (e.g., `LoweredOp::Primitive(PrepareFileWrite)`) instead of encoding op identity in callable name strings. Resolver becomes exhaustive enum match, not prefix scan. 9 golden tests already cover current behavior. (`resolve.rs:758-842`, `daglang-lower`) | — | M | PR review |
 
 ---
@@ -314,11 +271,8 @@ SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
          │
     ─────┤ (Sprint 2: review fixes + polish)
          │
-         ├─ R1, R2                 (review findings: port name, wildcard resources)
-         ├─ P8, P10               (mechanical: GCP macro, test helpers)
-         ├─ P9                     (lowerer source wiring dedup)
-         ├─ P1→P2,P3              (LoweredOp metadata fields → structural classify)
-         ├─ P4, P5                (CLI caching, GCP token expiry)
+         ├─ R2                     (review finding: wildcard resources)
+         ├─ P12                    (resolve_infrastructure typed-lowering migration)
          │
     ─────┤ (Sprint 3: dev pipeline — real workflow)
          │
@@ -331,7 +285,7 @@ SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
          └─ P6                     (per-module domain ops, L)
 ```
 
-**Sprint 2**: R1, R2 + polish. Zero design risk.
+**Sprint 2**: R2 + remaining integration fixes.
 **Sprint 3**: W1 (`gunbc review` CLI) is the critical path — first real end-to-end
 execution. W4 (abstract review DAG with 4 dimensions) is the design centerpiece.
 By end of sprint: `gunbc pipeline --pr 123` runs coherence + quality + requirements

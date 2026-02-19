@@ -23,6 +23,7 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::ci::build_ci_graph;
+use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
 use gunbc_dag::{print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions};
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, CiContext, ExecutionMode};
 use gunbc_ir::resource::ExecMode;
@@ -39,6 +40,8 @@ fn ci_generated_tests_path() -> Option<&'static str> {
 fn ci_path_for_node(node_id: &str) -> Option<&'static str> {
     if node_id.contains("Find_ListDirs") {
         Some("crates")
+    } else if node_id.contains("makegen") {
+        Some(MAKEFILE_OUTPUT_PATH)
     } else if node_id.contains("render_and_upsert")
         || node_id == "std.patterns::content_upsert"
         || node_id == "std.patterns::file_content_matches"
@@ -191,4 +194,22 @@ fn print_help() {
     println!("The Prep stage uses manifest-based freshness checking.");
     println!("In 'ensure' mode, stale resources are regenerated automatically.");
     println!("In 'verify' mode, stale resources cause CI to fail immediately.");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ci_path_for_node;
+    use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
+
+    #[test]
+    fn maps_makegen_entrypoints_to_makefile_path() {
+        assert_eq!(
+            ci_path_for_node("param_source_tools_makegen_makegen_path"),
+            Some(MAKEFILE_OUTPUT_PATH)
+        );
+        assert_eq!(
+            ci_path_for_node("tools.makegen::makegen"),
+            Some(MAKEFILE_OUTPUT_PATH)
+        );
+    }
 }

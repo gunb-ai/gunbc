@@ -1,6 +1,6 @@
-//! DSL-backed graph builder for the CI tool.
+//! Graph builder for the CI tool.
 
-use crate::dsl_builder::build_ci_graph_dsl;
+use crate::build::build_build_graph;
 use crate::WorkspaceBinary;
 use gunbc_exec::DynOp;
 use gunbc_ir::transport::github_actions::{
@@ -84,9 +84,12 @@ fn is_github_actions_runtime_env(name: &str) -> bool {
     )
 }
 
-/// Build the CI graph from the DSL source.
+/// Build the CI graph.
+///
+/// CI currently executes the concrete build/test/lint DAG while pipeline DSL
+/// lowering for `pipelines/ci.dag` remains non-executable at runtime.
 pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
-    build_ci_graph_dsl()
+    build_build_graph()
 }
 
 #[cfg(test)]
