@@ -231,23 +231,23 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
             ..
         } => return Some(HandlerKind::FsEnv),
         LoweredOp::Primitive {
-            kind: PrimitiveOpKind::ContentUpsertPrepareRead,
+            kind: PrimitiveOpKind::IoPrepareFileRead,
             ..
         } => return Some(HandlerKind::PrepareReadContent),
         LoweredOp::Primitive {
-            kind: PrimitiveOpKind::ContentUpsertExecuteRead,
+            kind: PrimitiveOpKind::IoExecuteFileRead,
             ..
         } => return Some(HandlerKind::ExecuteReadContent),
         LoweredOp::Primitive {
-            kind: PrimitiveOpKind::ContentUpsertPrepareWrite,
+            kind: PrimitiveOpKind::IoPrepareFileWrite,
             ..
         } => return Some(HandlerKind::PrepareWriteContent),
         LoweredOp::Primitive {
-            kind: PrimitiveOpKind::ContentUpsertCompareContent,
+            kind: PrimitiveOpKind::CompareEquality,
             ..
         } => return Some(HandlerKind::CompareContent),
         LoweredOp::Primitive {
-            kind: PrimitiveOpKind::ContentUpsertExecuteTransport,
+            kind: PrimitiveOpKind::IoExecuteFileWrite,
             ..
         } => return Some(HandlerKind::ExecuteTransport),
         LoweredOp::Pipeline { .. } => {}
@@ -288,41 +288,36 @@ fn classify_op_ctor(
         return Ok(format!("Op::{}", handler.variant_name()));
     }
 
-    let literal_spec = match op {
+    let value_expr = match op {
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::CallLiteralSource { literal },
             ..
-        } => encode_primitive_literal_spec(literal),
-        LoweredOp::Callable { name, .. } => name
-            .strip_prefix("call_literal_source::")
-            .ok_or_else(|| format!("literal source callable `{name}` missing prefix"))?
-            .to_string(),
-        _ => return Err("literal source classification requires literal-source op".to_string()),
+        } => primitive_literal_to_runtime_value_expr(literal),
+        _ => {
+            return Err(
+                "literal source classification requires primitive literal-source op".to_string(),
+            );
+        }
     };
     let output_port = outputs
         .first()
         .map(|port| port.name.0.as_str())
         .ok_or_else(|| "literal source callable has no output ports".to_string())?;
     Ok(format!(
-        "Op::LiteralSource {{ output_port: {}, literal_spec: {} }}",
+        "Op::LiteralSource {{ output_port: {}, value: {} }}",
         rust_string_literal(output_port),
-        rust_string_literal(literal_spec.as_str())
+        value_expr
     ))
 }
 
-fn encode_primitive_literal_spec(literal: &PrimitiveLiteral) -> String {
+fn primitive_literal_to_runtime_value_expr(literal: &PrimitiveLiteral) -> String {
     match literal {
         PrimitiveLiteral::String(value) => {
-            let mut encoded = String::with_capacity(value.len() * 2);
-            for byte in value.as_bytes() {
-                use std::fmt::Write;
-                let _ = write!(encoded, "{byte:02x}");
-            }
-            format!("strhex:{encoded}")
+            format!("Value::Str({}.to_string())", rust_string_literal(value))
         }
-        PrimitiveLiteral::Int(value) => format!("int:{value}"),
-        PrimitiveLiteral::Bool(value) => format!("bool:{value}"),
-        PrimitiveLiteral::None => "none".to_string(),
+        PrimitiveLiteral::Int(value) => format!("Value::Int({value})"),
+        PrimitiveLiteral::Bool(value) => format!("Value::Bool({value})"),
+        PrimitiveLiteral::Unit => "Value::Unit".to_string(),
     }
 }
 
@@ -465,37 +460,7 @@ fn handler_body(kind: HandlerKind) -> &'static str {
 "##
         }
         HandlerKind::LiteralSource => {
-            r##"    let value = if let Some(hex) = literal_spec.strip_prefix("strhex:") {
-        let mut bytes = Vec::with_capacity(hex.len() / 2);
-        if !hex.len().is_multiple_of(2) {
-            return Err(ExecError::new(format!("invalid literal source `{literal_spec}`: invalid hex length")));
-        }
-        for idx in (0..hex.len()).step_by(2) {
-            let byte = u8::from_str_radix(&hex[idx..idx + 2], 16)
-                .map_err(|_| ExecError::new(format!("invalid literal source `{literal_spec}`: invalid hex at offset {idx}")))?;
-            bytes.push(byte);
-        }
-        let decoded = String::from_utf8(bytes)
-            .map_err(|error| ExecError::new(format!("invalid literal source `{literal_spec}`: invalid utf8 literal: {error}")))?;
-        Value::Str(decoded)
-    } else if let Some(int) = literal_spec.strip_prefix("int:") {
-        let parsed = int
-            .parse::<i64>()
-            .map_err(|error| ExecError::new(format!("invalid literal source `{literal_spec}`: {error}")))?;
-        Value::Int(parsed)
-    } else if let Some(boolean) = literal_spec.strip_prefix("bool:") {
-        let parsed = boolean
-            .parse::<bool>()
-            .map_err(|error| ExecError::new(format!("invalid literal source `{literal_spec}`: {error}")))?;
-        Value::Bool(parsed)
-    } else if literal_spec == "none" {
-        Value::Unit
-    } else {
-        return Err(ExecError::new(format!(
-            "invalid literal source `{literal_spec}`: unknown literal kind"
-        )));
-    };
-    OutputMap::new().value(output_port, value).ok()
+            r##"    OutputMap::new().value(output_port, value.clone()).ok()
 "##
         }
         HandlerKind::RenderPragmaClippyToml => {
@@ -891,7 +856,7 @@ fn build_op_enum_raw(kinds: &BTreeSet<HandlerKind>) -> gunbc_ir::code_ir::Item {
         if *kind == HandlerKind::LiteralSource {
             writeln!(
                 text,
-                "    LiteralSource {{ output_port: &'static str, literal_spec: &'static str }},"
+                "    LiteralSource {{ output_port: &'static str, value: Value }},"
             )
             .unwrap();
         } else {
@@ -915,7 +880,7 @@ fn build_executable_impl_raw(kinds: &BTreeSet<HandlerKind>) -> gunbc_ir::code_ir
         if *kind == HandlerKind::LiteralSource {
             writeln!(
                 text,
-                "            Self::LiteralSource {{ output_port, literal_spec }} => execute_literal_source(inputs, output_port, literal_spec),"
+                "            Self::LiteralSource {{ output_port, value }} => execute_literal_source(inputs, output_port, value),"
             )
             .unwrap();
         } else {
@@ -941,7 +906,7 @@ fn build_handler_fn_raw(kind: HandlerKind) -> gunbc_ir::code_ir::Item {
     // Raw because handler bodies are authored as raw Rust snippets for exact control flow.
     if kind == HandlerKind::LiteralSource {
         gunbc_ir::code_ir::Item::Raw(format!(
-            "fn {fn_name}(inputs: HashMap<String, Value>, output_port: &'static str, literal_spec: &'static str) -> Result<HashMap<String, Value>, ExecError> {{\n    let _ = &inputs;\n{body}}}"
+            "fn {fn_name}(inputs: HashMap<String, Value>, output_port: &'static str, value: &Value) -> Result<HashMap<String, Value>, ExecError> {{\n    let _ = &inputs;\n{body}}}"
         ))
     } else {
         gunbc_ir::code_ir::Item::Raw(format!(
@@ -1353,24 +1318,23 @@ mod tests {
                 kind: PrimitiveOpKind::CallLiteralSource {
                     literal: PrimitiveLiteral::String("clippy.toml".to_string()),
                 },
-                obligation: ObligationCategory::ServiceParamSource,
             },
         ));
 
         let files = emit_exec_runtime(&dag, "tools.pragma").expect("literal source should emit");
         let main_rs = &files[0].content;
         assert!(
-            main_rs.contains(
-                "LiteralSource { output_port: &'static str, literal_spec: &'static str }"
-            ),
+            main_rs.contains("LiteralSource { output_port: &'static str, value: Value }"),
             "generated Op enum should include literal-source payload variant"
         );
         assert!(
-            main_rs.contains("Op::LiteralSource { output_port: \"path\", literal_spec: \"strhex:636c697070792e746f6d6c\" }"),
-            "build_dag should instantiate literal-source op with encoded literal spec"
+            main_rs.contains(
+                "Op::LiteralSource { output_port: \"path\", value: Value::Str(\"clippy.toml\".to_string()) }"
+            ),
+            "build_dag should instantiate literal-source op with native Value payload"
         );
         assert!(
-            main_rs.contains("execute_literal_source(inputs, output_port, literal_spec)"),
+            main_rs.contains("execute_literal_source(inputs, output_port, value)"),
             "Executable impl should dispatch literal-source payload variant"
         );
     }
@@ -1457,8 +1421,7 @@ mod tests {
             LoweredOp::Primitive {
                 module: "tools.makegen".into(),
                 name: "content_upsert::prepare_read_makegen".into(),
-                kind: PrimitiveOpKind::ContentUpsertPrepareRead,
-                obligation: ObligationCategory::None,
+                kind: PrimitiveOpKind::IoPrepareFileRead,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1468,8 +1431,7 @@ mod tests {
             LoweredOp::Primitive {
                 module: "tools.makegen".into(),
                 name: "content_upsert::execute_read_makegen".into(),
-                kind: PrimitiveOpKind::ContentUpsertExecuteRead,
-                obligation: ObligationCategory::None,
+                kind: PrimitiveOpKind::IoExecuteFileRead,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1482,8 +1444,7 @@ mod tests {
             LoweredOp::Primitive {
                 module: "tools.makegen".into(),
                 name: "content_upsert::compare_makegen_content".into(),
-                kind: PrimitiveOpKind::ContentUpsertCompareContent,
-                obligation: ObligationCategory::None,
+                kind: PrimitiveOpKind::CompareEquality,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1496,8 +1457,7 @@ mod tests {
             LoweredOp::Primitive {
                 module: "tools.makegen".into(),
                 name: "content_upsert::prepare_write_makegen".into(),
-                kind: PrimitiveOpKind::ContentUpsertPrepareWrite,
-                obligation: ObligationCategory::None,
+                kind: PrimitiveOpKind::IoPrepareFileWrite,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1510,8 +1470,7 @@ mod tests {
             LoweredOp::Primitive {
                 module: "tools.makegen".into(),
                 name: "content_upsert::execute_makegen_transport".into(),
-                kind: PrimitiveOpKind::ContentUpsertExecuteTransport,
-                obligation: ObligationCategory::None,
+                kind: PrimitiveOpKind::IoExecuteFileWrite,
             },
         ));
 
@@ -1644,8 +1603,7 @@ mod tests {
             LoweredOp::Primitive {
                 module: "tools.pragma".into(),
                 name: "content_upsert::prepare_read_pragma".into(),
-                kind: PrimitiveOpKind::ContentUpsertPrepareRead,
-                obligation: ObligationCategory::None,
+                kind: PrimitiveOpKind::IoPrepareFileRead,
             },
         ));
         dag.add_node(Node::opaque(

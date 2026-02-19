@@ -950,15 +950,15 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
                 PrimitiveLiteral::String(value) => Value::Str(value.clone()),
                 PrimitiveLiteral::Int(value) => Value::Int(*value),
                 PrimitiveLiteral::Bool(value) => Value::Bool(*value),
-                PrimitiveLiteral::None => Value::Unit,
+                PrimitiveLiteral::Unit => Value::Unit,
             };
             Ok(DynOp::new(LiteralSourceOp { output_port, value }))
         }
-        PrimitiveOpKind::ContentUpsertPrepareRead => Ok(DynOp::new(PrepareFileReadCompatOp)),
-        PrimitiveOpKind::ContentUpsertExecuteRead => Ok(DynOp::new(TransportOps::Execute)),
-        PrimitiveOpKind::ContentUpsertCompareContent => Ok(DynOp::new(BlobOps::CompareContent)),
-        PrimitiveOpKind::ContentUpsertPrepareWrite => Ok(DynOp::new(PrepareFileWriteCompatOp)),
-        PrimitiveOpKind::ContentUpsertExecuteTransport => Ok(DynOp::new(TransportOps::Execute)),
+        PrimitiveOpKind::IoPrepareFileRead => Ok(DynOp::new(PrepareFileReadCompatOp)),
+        PrimitiveOpKind::IoExecuteFileRead => Ok(DynOp::new(TransportOps::Execute)),
+        PrimitiveOpKind::CompareEquality => Ok(DynOp::new(BlobOps::CompareContent)),
+        PrimitiveOpKind::IoPrepareFileWrite => Ok(DynOp::new(PrepareFileWriteCompatOp)),
+        PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
     }
 }
 
@@ -1411,11 +1411,11 @@ fn needs_transport_resource(
 ) -> Option<AccessMode> {
     let mode = match &lowered.body {
         NodeBody::Opaque(LoweredOp::Primitive {
-            kind: PrimitiveOpKind::ContentUpsertExecuteTransport,
+            kind: PrimitiveOpKind::IoExecuteFileWrite,
             ..
         }) => AccessMode::Write,
         NodeBody::Opaque(LoweredOp::Primitive {
-            kind: PrimitiveOpKind::ContentUpsertExecuteRead,
+            kind: PrimitiveOpKind::IoExecuteFileRead,
             ..
         }) => AccessMode::Read,
         NodeBody::Opaque(LoweredOp::Callable {
@@ -1549,7 +1549,6 @@ mod tests {
         module: &str,
         name: &str,
         kind: PrimitiveOpKind,
-        obligation: ObligationCategory,
     ) -> Node<LoweredOp> {
         Node::opaque(
             id,
@@ -1559,7 +1558,6 @@ mod tests {
                 module: module.to_string(),
                 name: name.to_string(),
                 kind,
-                obligation,
             },
         )
     }
@@ -1649,13 +1647,7 @@ mod tests {
 
     #[test]
     fn resolve_fs_env() {
-        let node = primitive_node(
-            "fs_env",
-            "tools.makegen",
-            "fs_env",
-            PrimitiveOpKind::FsEnv,
-            ObligationCategory::ResourceProvide,
-        );
+        let node = primitive_node("fs_env", "tools.makegen", "fs_env", PrimitiveOpKind::FsEnv);
         let result = resolve_node(&node).expect("fs_env");
         assert!(format!("{:?}", result).contains("FsEnv"));
     }
@@ -1666,8 +1658,7 @@ mod tests {
             "prepare_read_clippy",
             "tools.pragma",
             "content_upsert::prepare_read_clippy",
-            PrimitiveOpKind::ContentUpsertPrepareRead,
-            ObligationCategory::ServiceTransportPrepare,
+            PrimitiveOpKind::IoPrepareFileRead,
         );
         let result = resolve_node(&node).expect("prepare_read");
         assert!(format!("{:?}", result).contains("PrepareFileRead"));
@@ -1679,8 +1670,7 @@ mod tests {
             "execute_read_clippy",
             "tools.pragma",
             "content_upsert::execute_read_clippy",
-            PrimitiveOpKind::ContentUpsertExecuteRead,
-            ObligationCategory::ServiceTransportExecute,
+            PrimitiveOpKind::IoExecuteFileRead,
         );
         let result = resolve_node(&node).expect("execute_read");
         assert!(format!("{:?}", result).contains("Execute"));
@@ -1692,8 +1682,7 @@ mod tests {
             "compare_clippy_content",
             "tools.pragma",
             "content_upsert::compare_clippy_content",
-            PrimitiveOpKind::ContentUpsertCompareContent,
-            ObligationCategory::InterfaceContractVerification,
+            PrimitiveOpKind::CompareEquality,
         );
         let result = resolve_node(&node).expect("compare");
         assert!(format!("{:?}", result).contains("CompareContent"));
@@ -1705,8 +1694,7 @@ mod tests {
             "prepare_write_clippy",
             "tools.pragma",
             "content_upsert::prepare_write_clippy",
-            PrimitiveOpKind::ContentUpsertPrepareWrite,
-            ObligationCategory::ServiceTransportPrepare,
+            PrimitiveOpKind::IoPrepareFileWrite,
         );
         let result = resolve_node(&node).expect("prepare_write");
         assert!(format!("{:?}", result).contains("PrepareFileWrite"));
@@ -1718,8 +1706,7 @@ mod tests {
             "execute_clippy_transport",
             "tools.pragma",
             "content_upsert::execute_clippy_transport",
-            PrimitiveOpKind::ContentUpsertExecuteTransport,
-            ObligationCategory::ServiceTransportExecute,
+            PrimitiveOpKind::IoExecuteFileWrite,
         );
         let result = resolve_node(&node).expect("execute_transport");
         assert!(format!("{:?}", result).contains("Execute"));
@@ -1737,7 +1724,6 @@ mod tests {
                 kind: PrimitiveOpKind::CallLiteralSource {
                     literal: PrimitiveLiteral::String("crates".to_string()),
                 },
-                obligation: ObligationCategory::ServiceParamSource,
             },
         );
         let result = resolve_node(&node).expect("literal source should resolve");
@@ -1764,7 +1750,6 @@ mod tests {
                     callable: "makegen".to_string(),
                     param: "path".to_string(),
                 },
-                obligation: ObligationCategory::ServiceParamSource,
             },
         );
         let result = resolve_node(&node).expect("param source should resolve");
@@ -1869,8 +1854,7 @@ mod tests {
             "prepare_read",
             "tools.pragma",
             "content_upsert::prepare_read_clippy",
-            PrimitiveOpKind::ContentUpsertPrepareRead,
-            ObligationCategory::ServiceTransportPrepare,
+            PrimitiveOpKind::IoPrepareFileRead,
         ));
         dag.edges.push(gunbc_ir::Edge {
             from_node: "render".into(),
@@ -1894,8 +1878,7 @@ mod tests {
             "execute_read_makegen",
             "tools.makegen",
             "content_upsert::execute_read_makegen",
-            PrimitiveOpKind::ContentUpsertExecuteRead,
-            ObligationCategory::ServiceTransportExecute,
+            PrimitiveOpKind::IoExecuteFileRead,
         );
         let resolved = Node::opaque(
             "execute_read_makegen",

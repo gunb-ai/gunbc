@@ -45,7 +45,6 @@ pub enum LoweredOp {
         module: String,
         name: String,
         kind: PrimitiveOpKind,
-        obligation: ObligationCategory,
     },
     Collection {
         module: String,
@@ -139,11 +138,11 @@ pub enum PrimitiveOpKind {
     FsEnv,
     CallParamSource { callable: String, param: String },
     CallLiteralSource { literal: PrimitiveLiteral },
-    ContentUpsertPrepareRead,
-    ContentUpsertExecuteRead,
-    ContentUpsertCompareContent,
-    ContentUpsertPrepareWrite,
-    ContentUpsertExecuteTransport,
+    IoPrepareFileRead,
+    IoExecuteFileRead,
+    CompareEquality,
+    IoPrepareFileWrite,
+    IoExecuteFileWrite,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,7 +150,7 @@ pub enum PrimitiveLiteral {
     String(String),
     Int(i64),
     Bool(bool),
-    None,
+    Unit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,7 +189,7 @@ impl LoweredOp {
     pub fn obligation_category(&self) -> ObligationCategory {
         match self {
             Self::Callable { obligation, .. } => *obligation,
-            Self::Primitive { obligation, .. } => *obligation,
+            Self::Primitive { kind, .. } => kind.obligation_category(),
             Self::Collection { .. } | Self::Pipeline { .. } => ObligationCategory::None,
         }
     }
@@ -201,6 +200,24 @@ impl LoweredOp {
                 service_metadata, ..
             } => service_metadata.as_ref(),
             Self::Primitive { .. } | Self::Collection { .. } | Self::Pipeline { .. } => None,
+        }
+    }
+}
+
+impl PrimitiveOpKind {
+    pub fn obligation_category(&self) -> ObligationCategory {
+        match self {
+            Self::FsEnv => ObligationCategory::ResourceProvide,
+            Self::CallParamSource { .. } | Self::CallLiteralSource { .. } => {
+                ObligationCategory::ServiceParamSource
+            }
+            Self::IoPrepareFileRead | Self::IoPrepareFileWrite => {
+                ObligationCategory::ServiceTransportPrepare
+            }
+            Self::IoExecuteFileRead | Self::IoExecuteFileWrite => {
+                ObligationCategory::ServiceTransportExecute
+            }
+            Self::CompareEquality => ObligationCategory::InterfaceContractVerification,
         }
     }
 }
@@ -241,8 +258,8 @@ pub fn topology_with_obligation_kinds(dag: &Dag<LoweredOp>) -> DagTopology {
         gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { obligation, .. }) => {
             canonical_kind_for_obligation(*obligation).map(str::to_string)
         }
-        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { obligation, .. }) => {
-            canonical_kind_for_obligation(*obligation).map(str::to_string)
+        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { kind, .. }) => {
+            canonical_kind_for_obligation(kind.obligation_category()).map(str::to_string)
         }
         gunbc_ir::node::NodeBody::Opaque(_) | gunbc_ir::node::NodeBody::SubDag(_) => None,
     })
@@ -1131,13 +1148,13 @@ mod parity {
                     Some(*obligation),
                 )
             }
-            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { obligation, .. }) => {
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { kind, .. }) => {
                 canonical_kind_from_shape(
                     &node.id.0,
                     &node.inputs,
                     &node.outputs,
                     false,
-                    Some(*obligation),
+                    Some(kind.obligation_category()),
                 )
             }
         }
@@ -2919,8 +2936,7 @@ fn expand_single_content_upsert(
         LoweredOp::Primitive {
             module: module_name.to_string(),
             name: format!("content_upsert::{prepare_read_id}"),
-            kind: PrimitiveOpKind::ContentUpsertPrepareRead,
-            obligation: ObligationCategory::ServiceTransportPrepare,
+            kind: PrimitiveOpKind::IoPrepareFileRead,
         },
     ));
     builder.add_node(Node::opaque(
@@ -2933,8 +2949,7 @@ fn expand_single_content_upsert(
         LoweredOp::Primitive {
             module: module_name.to_string(),
             name: format!("content_upsert::{execute_read_id}"),
-            kind: PrimitiveOpKind::ContentUpsertExecuteRead,
-            obligation: ObligationCategory::ServiceTransportExecute,
+            kind: PrimitiveOpKind::IoExecuteFileRead,
         },
     ));
     builder.add_node(Node::opaque(
@@ -2947,8 +2962,7 @@ fn expand_single_content_upsert(
         LoweredOp::Primitive {
             module: module_name.to_string(),
             name: format!("content_upsert::{compare_id}"),
-            kind: PrimitiveOpKind::ContentUpsertCompareContent,
-            obligation: ObligationCategory::InterfaceContractVerification,
+            kind: PrimitiveOpKind::CompareEquality,
         },
     ));
     builder.add_node(Node::opaque(
@@ -2961,8 +2975,7 @@ fn expand_single_content_upsert(
         LoweredOp::Primitive {
             module: module_name.to_string(),
             name: format!("content_upsert::{prepare_write_id}"),
-            kind: PrimitiveOpKind::ContentUpsertPrepareWrite,
-            obligation: ObligationCategory::ServiceTransportPrepare,
+            kind: PrimitiveOpKind::IoPrepareFileWrite,
         },
     ));
     let mut execute_transport_inputs = vec![
@@ -2983,8 +2996,7 @@ fn expand_single_content_upsert(
         LoweredOp::Primitive {
             module: module_name.to_string(),
             name: format!("content_upsert::{execute_transport_id}"),
-            kind: PrimitiveOpKind::ContentUpsertExecuteTransport,
-            obligation: ObligationCategory::ServiceTransportExecute,
+            kind: PrimitiveOpKind::IoExecuteFileWrite,
         },
     ));
 
@@ -3224,7 +3236,6 @@ fn add_makegen_scaffolding(
                     module: "tools.makegen".to_string(),
                     name: "fs_env".to_string(),
                     kind: PrimitiveOpKind::FsEnv,
-                    obligation: ObligationCategory::ResourceProvide,
                 },
             ));
         }
@@ -4162,7 +4173,6 @@ fn ensure_param_source_node(
                 callable: callable.to_string(),
                 param: param.to_string(),
             },
-            obligation: ObligationCategory::ServiceParamSource,
         },
     ));
     node_id
@@ -4191,7 +4201,6 @@ fn ensure_literal_source_node(
             kind: PrimitiveOpKind::CallLiteralSource {
                 literal: primitive_literal_from_service_literal(literal),
             },
-            obligation: ObligationCategory::ServiceParamSource,
         },
     ));
     node_id
@@ -4211,7 +4220,7 @@ fn primitive_literal_from_service_literal(literal: &ServiceCallArgLiteral) -> Pr
         ServiceCallArgLiteral::String(value) => PrimitiveLiteral::String(value.clone()),
         ServiceCallArgLiteral::Int(value) => PrimitiveLiteral::Int(*value),
         ServiceCallArgLiteral::Bool(value) => PrimitiveLiteral::Bool(*value),
-        ServiceCallArgLiteral::None => PrimitiveLiteral::None,
+        ServiceCallArgLiteral::None => PrimitiveLiteral::Unit,
     }
 }
 
