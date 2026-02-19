@@ -41,6 +41,7 @@ gunbc-lib-review = { path = "../lib/review" }
 gunbc-cli = { path = "../core/cli" }
 
 serde_json = { workspace = true }
+serde = { workspace = true }
 cargo_metadata = "0.18"
 toml_edit = "0.22"
 

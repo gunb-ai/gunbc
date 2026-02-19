@@ -1,0 +1,439 @@
+//! Workflow planner key/ledger integration (WF3).
+
+use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
+
+use gunbc_exec::topo_sort;
+use gunbc_ir::{canonical_edge_order, NodeBody, NodeId, PortName, Value};
+
+use super::key::{
+    derive_miss_reason, CanonicalKeyPayload, MaterializationDigest, MaterializationKey, MissReason,
+    WorkIdentity,
+};
+use super::ledger::{
+    load_global_ledger, rehydrate_outputs_for_entry, LedgerStatus, RunLedgerEntry,
+    WorkflowLedgerError,
+};
+use super::process_registry::{ProcessId, ProcessUnitRegistry};
+use super::schema::{WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_RESULT};
+
+/// Per-node planner action.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PlanAction {
+    CachedHit {
+        previous_run: String,
+        rehydrated_outputs: BTreeMap<PortName, Value>,
+    },
+    Execute {
+        miss_reason: MissReason,
+    },
+}
+
+/// Node-level plan entry.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NodePlan {
+    pub node_id: NodeId,
+    pub work_id: WorkIdentity,
+    pub key: MaterializationKey,
+    pub action: PlanAction,
+}
+
+/// Deterministic planner output for a workflow.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkflowPlan {
+    pub nodes: Vec<NodePlan>,
+}
+
+/// Planner errors for WF3 key/ledger path.
+#[derive(Debug)]
+pub enum WorkflowPlannerError {
+    Key(String),
+    Ledger(WorkflowLedgerError),
+    UnknownNode(NodeId),
+}
+
+impl std::fmt::Display for WorkflowPlannerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WorkflowPlannerError::Key(error) => write!(f, "workflow planner key error: {error}"),
+            WorkflowPlannerError::Ledger(error) => {
+                write!(f, "workflow planner ledger error: {error}")
+            }
+            WorkflowPlannerError::UnknownNode(node_id) => {
+                write!(f, "workflow planner: unknown node '{}'", node_id.0)
+            }
+        }
+    }
+}
+
+impl std::error::Error for WorkflowPlannerError {}
+
+impl From<WorkflowLedgerError> for WorkflowPlannerError {
+    fn from(error: WorkflowLedgerError) -> Self {
+        Self::Ledger(error)
+    }
+}
+
+/// Explicit planner input map (node_id -> port -> value).
+pub type PlannerInputs = BTreeMap<NodeId, BTreeMap<PortName, Value>>;
+
+/// Plan workflow nodes with deterministic keys and typed miss reasons.
+///
+/// No mtime-only freshness logic is used here.
+pub fn plan_workflow(
+    spec: &WorkflowSpec,
+    registry: &ProcessUnitRegistry,
+    planner_inputs: &PlannerInputs,
+    workspace_root: &Path,
+) -> Result<WorkflowPlan, WorkflowPlannerError> {
+    let previous_entries = load_global_ledger(workspace_root)?;
+    let mut previous_by_work_id: HashMap<WorkIdentity, RunLedgerEntry> = HashMap::new();
+    for entry in previous_entries {
+        previous_by_work_id.insert(entry.work_id.clone(), entry);
+    }
+
+    let mut keys_by_node: BTreeMap<NodeId, MaterializationKey> = BTreeMap::new();
+    let mut plans = Vec::new();
+    let order = topo_sort(&spec.dag);
+
+    let ordered_edges = canonical_edge_order(&spec.dag.edges);
+    for node_id in order {
+        let node = spec
+            .dag
+            .get_node(&node_id)
+            .ok_or_else(|| WorkflowPlannerError::UnknownNode(node_id.clone()))?;
+
+        let NodeBody::Opaque(WorkflowUnit { op }) = &node.body else {
+            return Err(WorkflowPlannerError::UnknownNode(node_id.clone()));
+        };
+
+        let (work_id, op_version) = match op {
+            WorkflowOp::InvokeProcessUnit(process_ref) => {
+                let op_version = registry
+                    .get(process_ref)
+                    .map(|spec| spec.op_version)
+                    .unwrap_or(1);
+                (
+                    WorkIdentity::new(process_ref.process_id.clone(), process_ref.unit_id.clone()),
+                    op_version,
+                )
+            }
+            WorkflowOp::Aggregate(_) => (
+                WorkIdentity::new(
+                    ProcessId::new(format!("workflow:{}", spec.id.0)),
+                    node_id.clone(),
+                ),
+                1,
+            ),
+            WorkflowOp::Report(_) => (
+                WorkIdentity::new(
+                    ProcessId::new(format!("workflow:{}", spec.id.0)),
+                    node_id.clone(),
+                ),
+                1,
+            ),
+        };
+
+        let node_inputs = planner_inputs.get(&node_id).cloned().unwrap_or_default();
+        let input_hashes = hash_input_map(&node_inputs)?;
+        let upstream_keys = collect_upstream_keys(&node_id, &keys_by_node, &ordered_edges);
+
+        let key = MaterializationKey::new(
+            work_id.clone(),
+            CanonicalKeyPayload {
+                key_format_version: 1,
+                op_version,
+                input_hashes,
+                upstream_keys,
+                policy_version: spec.policy_version,
+            },
+        )
+        .map_err(WorkflowPlannerError::Key)?;
+
+        let action = match previous_by_work_id.get(&work_id) {
+            None => PlanAction::Execute {
+                miss_reason: MissReason::NoPriorRun,
+            },
+            Some(previous) if previous.key.digest == key.digest => {
+                let previous_run = previous_run_id(previous);
+                match rehydrate_outputs_for_entry(workspace_root, previous) {
+                    Ok(outputs) => PlanAction::CachedHit {
+                        previous_run,
+                        rehydrated_outputs: outputs,
+                    },
+                    Err(_) => PlanAction::Execute {
+                        miss_reason: MissReason::OutputMissing {
+                            port: PortName::from(PORT_RESULT),
+                        },
+                    },
+                }
+            }
+            Some(previous) => {
+                let reason =
+                    derive_miss_reason(&previous.key, &key).unwrap_or(MissReason::NoPriorRun);
+                PlanAction::Execute {
+                    miss_reason: reason,
+                }
+            }
+        };
+
+        keys_by_node.insert(node_id.clone(), key.clone());
+        plans.push(NodePlan {
+            node_id,
+            work_id,
+            key,
+            action,
+        });
+    }
+
+    Ok(WorkflowPlan { nodes: plans })
+}
+
+fn previous_run_id(entry: &RunLedgerEntry) -> String {
+    match &entry.status {
+        LedgerStatus::CachedHit { previous_run } => previous_run.clone(),
+        _ => format!("{}:{}", entry.work_id.process_id.0, entry.work_id.unit_id.0),
+    }
+}
+
+fn hash_input_map(
+    inputs: &BTreeMap<PortName, Value>,
+) -> Result<BTreeMap<PortName, Vec<String>>, WorkflowPlannerError> {
+    let mut hashed = BTreeMap::new();
+    for (port, value) in inputs {
+        hashed.insert(port.clone(), value_hashes(value)?);
+    }
+    Ok(hashed)
+}
+
+fn value_hashes(value: &Value) -> Result<Vec<String>, WorkflowPlannerError> {
+    match value {
+        Value::List(items) | Value::Set(items) => {
+            let mut hashes = Vec::new();
+            for item in items {
+                hashes.push(hash_value(item)?);
+            }
+            hashes.sort();
+            Ok(hashes)
+        }
+        _ => Ok(vec![hash_value(value)?]),
+    }
+}
+
+fn hash_value(value: &Value) -> Result<String, WorkflowPlannerError> {
+    let bytes = serde_json::to_vec(value).map_err(|error| {
+        WorkflowPlannerError::Key(format!("failed to serialize value for hashing: {error}"))
+    })?;
+    Ok(gunbc_infra::hash::ContentHash::from_bytes(&bytes)
+        .as_str()
+        .to_string())
+}
+
+fn collect_upstream_keys(
+    node_id: &NodeId,
+    keys_by_node: &BTreeMap<NodeId, MaterializationKey>,
+    ordered_edges: &[&gunbc_ir::Edge],
+) -> BTreeMap<PortName, Vec<MaterializationDigest>> {
+    let mut upstream: BTreeMap<PortName, Vec<MaterializationDigest>> = BTreeMap::new();
+    for edge in ordered_edges {
+        if &edge.to_node != node_id {
+            continue;
+        }
+        let Some(upstream_key) = keys_by_node.get(&edge.from_node) else {
+            continue;
+        };
+        upstream
+            .entry(edge.to_port.clone())
+            .or_default()
+            .push(upstream_key.digest.clone());
+    }
+    for digests in upstream.values_mut() {
+        digests.sort();
+    }
+    upstream
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use gunbc_ir::{Edge, Port};
+
+    use super::*;
+    use crate::workflow::ledger::{
+        append_global_ledger_entry, store_output_payload, LedgerStatus, RunLedgerEntry,
+    };
+    use crate::workflow::process_registry::{ProcessUnitRef, ProcessUnitSpec, UnitClaim};
+    use crate::workflow::schema::{
+        required_input_contract, required_output_contract, WorkflowId, WorkflowSpec, WorkflowUnit,
+    };
+
+    fn temp_root() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "gunbc-workflow-plan-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ))
+    }
+
+    fn two_node_spec() -> WorkflowSpec {
+        let mut dag = gunbc_ir::Dag::new();
+        dag.add_node(Node::opaque(
+            "wf.a",
+            required_input_contract(),
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+                "wf", "wf.a",
+            ))),
+        ));
+        dag.add_node(Node::opaque(
+            "wf.b",
+            required_input_contract(),
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+                "wf", "wf.b",
+            ))),
+        ));
+        dag.add_edge(Edge::new("wf.a", "result", "wf.b", "after"));
+        WorkflowSpec::new(WorkflowId::new("wf"), dag, 1)
+    }
+
+    fn two_node_registry() -> ProcessUnitRegistry {
+        let mut registry = ProcessUnitRegistry::new();
+        registry.register(ProcessUnitSpec::new(
+            ProcessUnitRef::new("wf", "wf.a"),
+            1,
+            vec![UnitClaim::read("file:workspace")],
+        ));
+        registry.register(ProcessUnitSpec::new(
+            ProcessUnitRef::new("wf", "wf.b"),
+            1,
+            vec![UnitClaim::read("file:workspace")],
+        ));
+        registry
+    }
+
+    #[test]
+    fn planner_keys_are_deterministic_for_same_inputs() {
+        let root = temp_root();
+        let spec = two_node_spec();
+        let registry = two_node_registry();
+        let inputs = PlannerInputs::new();
+
+        let a = plan_workflow(&spec, &registry, &inputs, &root).expect("plan a");
+        let b = plan_workflow(&spec, &registry, &inputs, &root).expect("plan b");
+        let key_a = &a.nodes[0].key.digest;
+        let key_b = &b.nodes[0].key.digest;
+        assert_eq!(key_a, key_b);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn planner_reports_typed_miss_reason_for_input_drift() {
+        let root = temp_root();
+        let spec = two_node_spec();
+        let registry = two_node_registry();
+
+        let mut first_inputs = PlannerInputs::new();
+        first_inputs.insert(
+            NodeId::from("wf.a"),
+            BTreeMap::from([(PortName::from("after"), Value::Str("alpha".to_string()))]),
+        );
+
+        let first_plan = plan_workflow(&spec, &registry, &first_inputs, &root).expect("first plan");
+        let first = first_plan
+            .nodes
+            .iter()
+            .find(|node| node.node_id == NodeId::from("wf.a"))
+            .expect("wf.a plan");
+        let result_payload = Value::Str("cached".to_string());
+        let hash = store_output_payload(&root, &result_payload).expect("store payload");
+        append_global_ledger_entry(
+            &root,
+            RunLedgerEntry {
+                exec_node_id: first.node_id.clone(),
+                work_id: first.work_id.clone(),
+                key: first.key.clone(),
+                status: LedgerStatus::CachedHit {
+                    previous_run: "run-1".to_string(),
+                },
+                output_hashes: BTreeMap::from([(PortName::from("result"), hash)]),
+                duration_ms: 1,
+            },
+        )
+        .expect("append previous entry");
+
+        let mut second_inputs = PlannerInputs::new();
+        second_inputs.insert(
+            NodeId::from("wf.a"),
+            BTreeMap::from([(PortName::from("after"), Value::Str("beta".to_string()))]),
+        );
+        let second_plan =
+            plan_workflow(&spec, &registry, &second_inputs, &root).expect("second plan");
+        let wf_a = second_plan
+            .nodes
+            .iter()
+            .find(|node| node.node_id == NodeId::from("wf.a"))
+            .expect("wf.a plan");
+        assert!(matches!(
+            wf_a.action,
+            PlanAction::Execute {
+                miss_reason: MissReason::InputChanged { .. }
+            }
+        ));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn planner_rehydrates_outputs_for_cached_hits() {
+        let root = temp_root();
+        let spec = two_node_spec();
+        let registry = two_node_registry();
+        let inputs = PlannerInputs::new();
+
+        let initial_plan = plan_workflow(&spec, &registry, &inputs, &root).expect("initial plan");
+        let node = initial_plan
+            .nodes
+            .iter()
+            .find(|plan| plan.node_id == NodeId::from("wf.a"))
+            .expect("wf.a node");
+
+        let payload = Value::Map(BTreeMap::from([("ok".to_string(), Value::Bool(true))]));
+        let payload_hash = store_output_payload(&root, &payload).expect("store payload");
+        append_global_ledger_entry(
+            &root,
+            RunLedgerEntry {
+                exec_node_id: node.node_id.clone(),
+                work_id: node.work_id.clone(),
+                key: node.key.clone(),
+                status: LedgerStatus::CachedHit {
+                    previous_run: "run-cached".to_string(),
+                },
+                output_hashes: BTreeMap::from([(PortName::from("result"), payload_hash)]),
+                duration_ms: 1,
+            },
+        )
+        .expect("append cache hit");
+
+        let planned = plan_workflow(&spec, &registry, &inputs, &root).expect("replanned");
+        let wf_a = planned
+            .nodes
+            .iter()
+            .find(|plan| plan.node_id == NodeId::from("wf.a"))
+            .expect("wf.a plan");
+        let PlanAction::CachedHit {
+            rehydrated_outputs, ..
+        } = &wf_a.action
+        else {
+            panic!("wf.a should be cache hit with rehydrated outputs");
+        };
+        assert_eq!(
+            rehydrated_outputs.get(&PortName::from("result")),
+            Some(&payload)
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+}

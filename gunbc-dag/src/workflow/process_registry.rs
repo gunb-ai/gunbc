@@ -3,9 +3,10 @@
 use std::collections::BTreeMap;
 
 use gunbc_ir::{AccessMode, NodeId};
+use serde::{Deserialize, Serialize};
 
 /// Canonical process identifier.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ProcessId(pub String);
 
 impl ProcessId {
@@ -21,7 +22,7 @@ impl From<&str> for ProcessId {
 }
 
 /// Stable typed process-unit reference.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ProcessUnitRef {
     pub process_id: ProcessId,
     pub unit_id: NodeId,
@@ -37,7 +38,7 @@ impl ProcessUnitRef {
 }
 
 /// Canonical claim identity.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ClaimId(pub String);
 
 impl ClaimId {
@@ -63,7 +64,7 @@ impl From<String> for ClaimId {
 }
 
 /// Declared claim for a workflow unit.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitClaim {
     pub claim_id: ClaimId,
     pub access_mode: AccessMode,
@@ -87,7 +88,7 @@ impl UnitClaim {
 }
 
 /// Typed process-unit metadata required by workflow planner phases.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessUnitSpec {
     pub reference: ProcessUnitRef,
     pub op_version: u32,
@@ -109,7 +110,7 @@ impl ProcessUnitSpec {
 }
 
 /// Registry for all workflow process-unit references.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProcessUnitRegistry {
     specs: BTreeMap<ProcessUnitRef, ProcessUnitSpec>,
 }

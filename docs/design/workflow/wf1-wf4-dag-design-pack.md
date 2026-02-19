@@ -7,7 +7,7 @@ Canonical normative model: `docs/design/workflow-minimal-execution-model.md`
 
 ## Implementation Status
 
-WF1/WF2 planner foundations now have an initial typed implementation in
+WF1/WF2/WF3 planner foundations now have an initial typed implementation in
 `gunbc-dag::workflow`:
 
 1. WF1 schema types and deterministic `ci` / `test-all` spec builders:
@@ -17,11 +17,16 @@ WF1/WF2 planner foundations now have an initial typed implementation in
 2. WF2 fail-closed admission validation:
    - `workflow/admission.rs`
    - `workflow/errors.rs`
-3. Contract coverage:
+3. WF3 deterministic key/ledger + cached-hit rehydration:
+   - `workflow/key.rs`
+   - `workflow/ledger.rs`
+   - `workflow/planner.rs`
+4. Contract coverage:
    - `gunbc-dag/tests/workflow_schema_contracts.rs`
    - `gunbc-dag/tests/workflow_admission_contracts.rs`
+   - `gunbc-dag/tests/workflow_key_ledger_contracts.rs`
 
-WF3+ remains staged in subsequent implementation tasks.
+WF4+ remains staged in subsequent implementation tasks.
 
 ## 1. Read This First
 

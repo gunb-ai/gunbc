@@ -78,13 +78,18 @@ pub use tool_runner::{
     RunToolOptions,
 };
 pub use workflow::{
-    ci_workflow_spec, ci_workflow_spec_with_registry, default_process_unit_registry,
-    has_required_unit_contract, required_input_contract, required_output_contract,
-    test_all_workflow_spec, test_all_workflow_spec_with_registry, validate_conflicting_claims,
-    validate_required_claims, validate_workflow_admission, AggregateSpec, ClaimId, ProcessId,
-    ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec, ReportSpec, UnitClaim,
-    WorkflowAdmissionError, WorkflowId, WorkflowOp, WorkflowSpec as PlannerWorkflowSpec,
-    WorkflowUnit, PORT_AFTER, PORT_COMMIT, PORT_RESULT, TYPE_WORKFLOW_RESULT,
+    append_global_ledger_entry, ci_workflow_spec, ci_workflow_spec_with_registry,
+    default_process_unit_registry, derive_miss_reason, has_required_unit_contract,
+    load_global_ledger, plan_workflow, rehydrate_outputs_for_entry, required_input_contract,
+    required_output_contract, save_global_ledger, store_output_payload, test_all_workflow_spec,
+    test_all_workflow_spec_with_registry, validate_conflicting_claims, validate_required_claims,
+    validate_workflow_admission, workflow_ledger_paths, AggregateSpec, CanonicalKeyPayload,
+    ClaimId, LedgerStatus, MaterializationDigest, MaterializationKey, MissReason, NodePlan,
+    PlanAction, PlannerInputs, ProcessId, ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec,
+    ReportSpec, RunId, RunLedgerEntry, UnitClaim, WorkIdentity, WorkflowAdmissionError, WorkflowId,
+    WorkflowLedgerError, WorkflowLedgerPaths, WorkflowOp, WorkflowPlan, WorkflowPlannerError,
+    WorkflowSpec as PlannerWorkflowSpec, WorkflowUnit, PORT_AFTER, PORT_COMMIT, PORT_RESULT,
+    TYPE_WORKFLOW_RESULT,
 };
 pub use workspace::{
     build_bootstrap_subdag, build_build_subdag, build_ci_subdag, build_clippy_lint_all_subdag,
