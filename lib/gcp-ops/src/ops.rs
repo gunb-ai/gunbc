@@ -531,7 +531,10 @@ impl Executable for GcpOps {
                     optional_str_strict(&inputs, "base_access_token")?.unwrap_or("");
                 let response = match inputs.get("response") {
                     Some(Value::Skipped) => {
-                        return OutputMap::new().str("access_token", base_access_token).ok()
+                        return OutputMap::new()
+                            .str("access_token", base_access_token)
+                            .str("expires_at", "")
+                            .ok()
                     }
                     Some(Value::Response(r)) => r,
                     _ => return Err(ExecError::new("missing or invalid 'response' input")),
@@ -564,9 +567,16 @@ impl Executable for GcpOps {
                             rest.status, details
                         ))
                     })?;
-                // expireTime is present in the response but not yet surfaced as an output.
-                // TODO: wire into output if callers need token expiry.
-                OutputMap::new().str("access_token", token).ok()
+                let expires_at = rest
+                    .body
+                    .get("expireTime")
+                    .or_else(|| rest.body.get("expire_time"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                OutputMap::new()
+                    .str("access_token", token)
+                    .str("expires_at", expires_at)
+                    .ok()
             }
             GcpOps::PrepareSecretAccess => {
                 let access_token = require_str(&inputs, "access_token")?;
@@ -1760,6 +1770,33 @@ mod tests {
             outputs.get("access_token").and_then(|v| v.as_str()),
             Some("ya29.impersonated")
         );
+        assert_eq!(outputs.get("expires_at").and_then(|v| v.as_str()), Some(""));
+    }
+
+    #[test]
+    fn parse_impersonate_surfaces_expire_time_output() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::ok(
+                serde_json::json!({
+                    "accessToken": "ya29.impersonated",
+                    "expireTime": "2025-01-01T00:00:00Z"
+                }),
+            ))),
+        );
+
+        let outputs = GcpOps::ParseImpersonate
+            .execute(inputs)
+            .expect("impersonation response should parse");
+        assert_eq!(
+            outputs.get("access_token").and_then(|v| v.as_str()),
+            Some("ya29.impersonated")
+        );
+        assert_eq!(
+            outputs.get("expires_at").and_then(|v| v.as_str()),
+            Some("2025-01-01T00:00:00Z")
+        );
     }
 
     #[test]
@@ -1819,6 +1856,7 @@ mod tests {
             outputs.get("access_token").and_then(|v| v.as_str()),
             Some("base-token")
         );
+        assert_eq!(outputs.get("expires_at").and_then(|v| v.as_str()), Some(""));
     }
 
     #[test]

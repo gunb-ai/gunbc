@@ -144,13 +144,25 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 }
                 std::process::exit(1);
             }
-            // TODO: `check_from_context` re-discovers, re-parses, and re-type-checks
-            // all files — work already done by the pipeline Build stage above.
-            // Consider extracting the file count from PipelineResult::Build to
-            // avoid the redundant second pass.
-            match check_from_context(&context) {
-                Ok(output) => {
-                    println!("OK: checked {} file(s)", output.parsed_files);
+            let (parsed_files, module_graph) = match result {
+                PipelineResult::Build {
+                    parsed_count,
+                    module_graph,
+                    ..
+                }
+                | PipelineResult::Report {
+                    parsed_count,
+                    module_graph,
+                    ..
+                } => (parsed_count, module_graph),
+                PipelineResult::Parse { .. } => {
+                    eprintln!("pipeline error: expected build-stage module graph for check");
+                    std::process::exit(1);
+                }
+            };
+            match check_from_module_graph(module_graph) {
+                Ok(_) => {
+                    println!("OK: checked {} file(s)", parsed_files);
                 }
                 Err(error) => {
                     eprintln!("{error}");

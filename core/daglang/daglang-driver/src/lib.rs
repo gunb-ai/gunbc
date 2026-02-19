@@ -176,6 +176,10 @@ pub fn compile_from_context_with_options(
 
 pub fn check_from_context(context: &DriverContext) -> Result<CheckOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
+    check_from_module_graph(module_graph)
+}
+
+pub fn check_from_module_graph(module_graph: ModuleGraph) -> Result<CheckOutput, CompileError> {
     let parsed_files = module_graph.modules.len();
     if let Err(errors) = typecheck_module_graph_with_options(
         module_graph,
