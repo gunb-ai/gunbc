@@ -576,13 +576,7 @@ fn tool_command(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -> String 
     } else {
         ""
     };
-    // gist-recent should fail closed when cloud config is absent instead of
-    // silently falling back to local-dev defaults.
-    let env_prefix = if tool.short_name == "gist-recent" {
-        "GUNBC_CLOUD_CONFIG_REQUIRED=1 "
-    } else {
-        ""
-    };
+    let env_prefix = "";
     if dry_run {
         format!(
             "@{}{}{} -- --dry-run{}",
@@ -900,9 +894,9 @@ mod tests {
         );
         assert!(
             makefile.contains(
-                "GUNBC_CLOUD_CONFIG_REQUIRED=1 RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-gist --bin gunbc-gist-recent --"
+                "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-gist --bin gunbc-gist-recent --"
             ),
-            "gist-recent target should require explicit cloud config"
+            "gist-recent target should use same config resolution as gist"
         );
     }
 
