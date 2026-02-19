@@ -332,8 +332,10 @@ store (CAS). Cached nodes are treated as committed only after output rehydration
 3. missing CAS payload for expected hash is a hard miss/failure path, not silent skip.
 4. when a node exposes `result` on dataflow edges, the typed `result` payload must
    also be materialized/re-hydratable via `output_hashes["result"]`.
-5. if full result payload persistence is undesirable, store a typed bounded
-   summary/reference as the canonical `result` payload and keep that stable.
+5. strict/minimal default: persist a typed bounded summary/reference as the
+   canonical `result` payload.
+6. optional policy: additionally persist full typed result payload in CAS for
+   selected units where required by diagnostics.
 
 ## 8. Planner Algorithm
 
@@ -379,6 +381,11 @@ Executor must satisfy all before starting a node:
    invariant violation (fail-closed).
 4. Success-gated branching is explicit via typed guard units consuming `result`
    (not implicit control-edge semantics in this phase).
+
+Strict default policy:
+
+1. functional units are success-guarded by default,
+2. report/aggregation units remain completion-gated for failure completeness.
 
 Execution/reporting semantic split:
 

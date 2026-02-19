@@ -24,6 +24,10 @@
 | Runtime environment | Resolved | Local-first CLI, env creds + CI/cloud WIF path. |
 | Abstract review model | Resolved | Four-dimension typed model with criteria-driven opt-in. |
 | Workflow minimum unit + exclusive coordination | Resolved | Canonicalized in WF design docs (`WF1-D`..`WF4-D`). |
+| Control-token model | Resolved (strict default) | Keep completion-gated control; require explicit success guards for fail-fast functional paths. |
+| Cached `result` persistence | Resolved (strict/minimal default) | Persist typed summary/reference by default; optional full payload in CAS. |
+| Changed-input routing authority | Resolved (strict correctness) | Optimization hint only; non-authoritative for soundness. |
+| Conflict commutativity exceptions | Resolved (strict default) | No commutativity exceptions in current phase. |
 
 ### Tonight Handoff Lanes (Open Work)
 
@@ -370,6 +374,11 @@ For WF1-WF4 scope, orchestration uses **completion-gated control**:
    (no implicit "success-only control edge" semantics in this phase), and
 5. node readiness requires both control prerequisites and required dataflow inputs to be materialized.
 
+Strict default wiring policy:
+
+1. functional units must be success-guarded unless explicitly exempted,
+2. report/aggregation units remain commit-gated for failure completeness.
+
 ### Design-First Gate (Required)
 
 For modeling tasks in this sprint, implementation is blocked until a concrete
@@ -403,14 +412,14 @@ Additional semantic-erasure/modeling hardening items from 2026-02-19 feedback ar
 tracked in `TODO/modeling.md` and should be promoted into sprint lanes as they are
 prioritized.
 
-### Remaining Open Design Decisions (Active Scope)
+### Resolved Strict Defaults (Locked 2026-02-19)
 
-| ID | Decision | Current State | Required Resolution Artifact | Deps | Size |
-|---|---|---|---|---|---|
-| **WF10-D** | Control-token model beyond fail-late default (`done`/`ok` split) | Current phase uses completion-gated control + explicit typed guard units for success branching. | Design note clarifying whether/when to introduce dual control tokens and migration impact. | WF4-D | S |
-| **WF11-D** | Cached `result` persistence strategy (full payload vs typed summary/reference) | Contract currently allows either with typed stability requirement. | Design decision with retention policy, size bounds, and report/readback guarantees. | WF3-D | S |
-| **WF12-D** | Changed-input routing authority boundary | Currently defined as optimization hint (non-authoritative for correctness). | Design note specifying if/when routing can become authoritative and required completeness constraints. | WF3-D | S |
-| **WF13-D** | Conflict commutativity policy for resource claims | Current policy is strict ordering for conflicting writers. | Design note for any safe commutative exceptions and required proof/validation constraints. | WF2-D | S |
+| ID | Decision | Chosen Default | Deps | Size |
+|---|---|---|---|---|
+| **WF10-D** | Control-token model beyond fail-late default (`done`/`ok` split) | Keep completion-gated control + explicit typed success guards (no dual-token expansion in current phase). | WF4-D | S |
+| **WF11-D** | Cached `result` persistence strategy (full payload vs typed summary/reference) | Typed summary/reference is mandatory baseline; full payload persistence is optional per-unit policy. | WF3-D | S |
+| **WF12-D** | Changed-input routing authority boundary | Routing remains optimization hint only; never authoritative for correctness in current phase. | WF3-D | S |
+| **WF13-D** | Conflict commutativity policy for resource claims | No commutativity exceptions; conflicting claims require explicit ordering. | WF2-D | S |
 
 Additional active open items:
 

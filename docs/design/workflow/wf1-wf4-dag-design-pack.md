@@ -341,8 +341,10 @@ WF-specific coordination requirements:
 ### 7.1 Domain-Failure Caching Policy
 
 1. Domain-failure results are cacheable by policy because they are committed data.
-2. Planner surface must include explicit policy/flag for rerun behavior (`--force-run`
+2. Strict/minimal default: persist/replay typed bounded `result` summary/reference.
+3. Planner surface must include explicit policy/flag for rerun behavior (`--force-run`
    or op-level volatile policy).
+4. Full `result` payload persistence is optional per-unit policy when required.
 
 ## 8. Markdown Visualization Guidance
 
