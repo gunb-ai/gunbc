@@ -184,7 +184,9 @@ pub use transport::{
     FieldRouteSpec, ScopeContract, ScopeContractError, Secret, SecretSource, TransportBehavior,
     TransportKind, TransportRequest, TransportResponse,
 };
-pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
+pub use type_op::{
+    BaseType, Coercion, MetadataPayload, Predicate, PredicateValue, TypeOp, WrapperKind,
+};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use typed_io::{
     typed_input, typed_output, typed_port, AnyTag, CredentialTag, FilePathTag, FilesystemHandleTag,

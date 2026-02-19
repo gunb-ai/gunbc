@@ -42,6 +42,11 @@ pub enum TypeOp {
     /// If validation fails, the type DAG produces an error.
     Validate(Predicate),
 
+    /// Inert metadata payload (non-semantic, non-failing).
+    ///
+    /// `Meta` is traversable/inspectable but must not change runtime behavior.
+    Meta(MetadataPayload),
+
     /// Transformation — coerces value from one base type to another.
     /// Used for type conversions (e.g., String → Int parsing).
     Transform(Coercion),
@@ -52,6 +57,25 @@ pub enum TypeOp {
 
     /// Unwrap operation — extracts value from a container type.
     Unwrap(WrapperKind),
+}
+
+/// Typed inert metadata payload carried by [`TypeOp::Meta`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum MetadataPayload {
+    SystemId(String),
+    SystemKind(String),
+    BehaviorId(String),
+    Invocation(String),
+    Property(String),
+    InputContract {
+        name: String,
+        type_id: String,
+        required: bool,
+    },
+    OutputContract {
+        name: String,
+        type_id: String,
+    },
 }
 
 /// Predicates that can be validated against values.
@@ -220,11 +244,13 @@ mod tests {
     fn test_type_op_variants() {
         let identity = TypeOp::Identity;
         let validate = TypeOp::Validate(Predicate::NonEmpty);
+        let meta = TypeOp::Meta(MetadataPayload::SystemId("gcp".to_string()));
         let transform = TypeOp::Transform(Coercion::new(BaseType::String, BaseType::Int));
         let wrap = TypeOp::Wrap(WrapperKind::Optional);
 
         assert_eq!(identity, TypeOp::Identity);
         assert!(matches!(validate, TypeOp::Validate(Predicate::NonEmpty)));
+        assert!(matches!(meta, TypeOp::Meta(MetadataPayload::SystemId(_))));
         assert!(matches!(transform, TypeOp::Transform(_)));
         assert!(matches!(wrap, TypeOp::Wrap(WrapperKind::Optional)));
     }
