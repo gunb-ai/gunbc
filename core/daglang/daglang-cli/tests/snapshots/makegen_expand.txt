@@ -12,40 +12,40 @@ Nodes:
       * __deps: Any (0..*)
     outputs:
       * written: Bool (1)
-  - prepare_read_makegen [callable::Pattern tools.makegen.content_upsert::prepare_read_makegen]
+  - prepare_read_makegen [primitive::IoPrepareFileRead tools.makegen.content_upsert::prepare_read_makegen]
     inputs:
       * path: String (1)
       * res:file:Makefile: FilesystemHandle (1)
     outputs:
       * request: TransportRequest (1)
       * skip: Bool (1)
-  - execute_read_makegen [callable::Pattern tools.makegen.content_upsert::execute_read_makegen]
+  - execute_read_makegen [primitive::IoExecuteFileRead tools.makegen.content_upsert::execute_read_makegen]
     inputs:
       * request: TransportRequest (1)
       * skip: Bool (1)
     outputs:
       * response: TransportResponse (1)
-  - compare_makegen_content [callable::Pattern tools.makegen.content_upsert::compare_makegen_content]
+  - compare_makegen_content [primitive::CompareEquality tools.makegen.content_upsert::compare_makegen_content]
     inputs:
       * expected_content: String (1)
       * response: TransportResponse (1)
     outputs:
       * fresh: Bool (1)
       * skip: Bool (1)
-  - prepare_write_makegen [callable::Pattern tools.makegen.content_upsert::prepare_write_makegen]
+  - prepare_write_makegen [primitive::IoPrepareFileWrite tools.makegen.content_upsert::prepare_write_makegen]
     inputs:
       * content: String (1)
       * path: String (1)
     outputs:
       * request: TransportRequest (1)
-  - execute_makegen_transport [callable::Pattern tools.makegen.content_upsert::execute_makegen_transport]
+  - execute_makegen_transport [primitive::IoExecuteFileWrite tools.makegen.content_upsert::execute_makegen_transport]
     inputs:
       * request: TransportRequest (1)
       * skip: Bool (1)
       * res:file: FilesystemHandle (1)
     outputs:
       * response: TransportResponse (1)
-  - param_source_tools_makegen_makegen_path [callable::Pattern tools.makegen.call_param_source::makegen::path]
+  - param_source_tools_makegen_makegen_path [primitive::CallParamSource { callable: "makegen", param: "path" } tools.makegen.call_param_source::makegen::path]
     inputs:
       * path: String (1)
     outputs:
@@ -53,7 +53,7 @@ Nodes:
   - load_registry [callable::Pattern tools.makegen.load_registry]
     outputs:
       * registry: ToolRegistry (1)
-  - fs_env [callable::Pattern tools.makegen.fs_env]
+  - fs_env [primitive::FsEnv tools.makegen.fs_env]
     outputs:
       * FilesystemHandle: FilesystemHandle (1)
 Edges:
