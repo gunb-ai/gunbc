@@ -20,6 +20,25 @@ fn default_fs_handle() -> Value {
     fs.into()
 }
 
+/// Returns a realistic mock value when port name matches a known GCP service
+/// field, or `None` to fall back to the generic type-based default.
+///
+/// This avoids GCP prepare ops falling back to `"(unresolved)"` when their
+/// inputs are optional or entrypoint ports filled with generic `"mock"`.
+fn gcp_field_value(port_name: &str) -> Option<Value> {
+    match port_name {
+        "audience" => Some(Value::Str("mock-audience".to_string())),
+        "project" => Some(Value::Str("mock-project".to_string())),
+        "secret" | "secret_name" => Some(Value::Str("mock-secret".to_string())),
+        "subject_token" => Some(Value::Secret(gunbc_ir::SecretString::new("mock-subject-token"))),
+        "version" => Some(Value::Str("latest".to_string())),
+        "service_account" | "service_account_or_role" => {
+            Some(Value::Str("mock-sa@mock-project.iam.gserviceaccount.com".to_string()))
+        }
+        _ => None,
+    }
+}
+
 fn default_value_for_type(type_id: &str) -> Value {
     match type_id {
         "TransportResponse" => default_shell_response(),
@@ -252,7 +271,8 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
     // These are DAG entry points that need values injected at runtime.
     let entrypoints = detect_entrypoints(&lowered.dag);
     for (node_id, port_name, type_id) in &entrypoints.entrypoint_ports {
-        let value = default_value_for_type(type_id.0.as_str());
+        let value = gcp_field_value(port_name.0.as_str())
+            .unwrap_or_else(|| default_value_for_type(type_id.0.as_str()));
         spec = spec.input_mock(node_id.0.as_str(), port_name.0.as_str(), value);
     }
 
@@ -279,7 +299,11 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             if output_names.contains(input_port.name.0.as_str()) {
                 continue;
             }
+            // Inject known GCP field values even for optional inputs.
             if input_port.cardinality.allows_empty() {
+                if let Some(value) = gcp_field_value(input_port.name.0.as_str()) {
+                    required_inputs.insert(input_port.name.0.clone(), value);
+                }
                 continue;
             }
             if input_port.type_id.0 == "TransportResponse" {
@@ -289,7 +313,8 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             let value = if input_port.name.0 == "skip" && input_port.type_id.0 == "Bool" {
                 Value::Bool(false)
             } else {
-                default_value_for_type(input_port.type_id.0.as_str())
+                gcp_field_value(input_port.name.0.as_str())
+                    .unwrap_or_else(|| default_value_for_type(input_port.type_id.0.as_str()))
             };
             required_inputs.insert(input_port.name.0.clone(), value);
         }
