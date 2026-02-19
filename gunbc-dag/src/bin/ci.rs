@@ -118,7 +118,10 @@ fn main() {
         print_attention(
             AttentionLevel::Error,
             "CI entrypoint path wiring is incomplete",
-            &format!("unmapped path entrypoints: {}", unresolved_path_nodes.join(", ")),
+            &format!(
+                "unmapped path entrypoints: {}",
+                unresolved_path_nodes.join(", ")
+            ),
         );
         process::exit(1);
     }

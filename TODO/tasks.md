@@ -27,6 +27,10 @@
 |----|------|------|------|---------|------|
 | **C1** | Resolver hardening: fail fast for unknown modules and unknown service prepare/parse callables; remove silent literal decode fallback | — | S | 2026-02-18 | 2026-02-18 |
 | **C2** | Lowering hardening: wire `content_upsert(path: ...)` literal/source args into prepare nodes and shrink CI node-id path mapping accordingly | C1 | S | 2026-02-18 | 2026-02-18 |
+| **C3** | Exec-runtime hardening: support lowering-generated `call_literal_source::*` and `call_param_source::*` nodes in layer-1 codegen/runtime classification (no unresolved node fallback) | C1, C2 | M | 2026-02-18 | 2026-02-18 |
+| **C4** | Makegen path regression cleanup: restore real-mode/custom-output behavior in daglang compile-run tests and remove temporary literal-node override workaround | C2, C3 | S | 2026-02-18 | 2026-02-18 |
+| **C5** | Makegen mock cleanup: remove legacy prepare-node path mock fallbacks and require callable/param-source path wiring | C2, C3, C4 | S | 2026-02-19 | 2026-02-19 |
+| **C6** | Consolidation sweep: centralize transport-call analysis in emit backends and shared authenticated REST request helpers across GCP services | — | M | 2026-02-19 | 2026-02-19 |
 
 ---
 

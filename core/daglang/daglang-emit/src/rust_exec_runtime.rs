@@ -1015,8 +1015,7 @@ fn build_build_dag_ir(
             .join(", ");
         body.push(Stmt::Expr(Expr::raw(format!(
             r#"dag.add_node(Node::opaque("{}", vec![{inputs_code}], vec![{outputs_code}], {}))"#,
-            cn.node_id,
-            cn.op_ctor
+            cn.node_id, cn.op_ctor
         ))));
     }
 
@@ -1356,7 +1355,9 @@ mod tests {
         let files = emit_exec_runtime(&dag, "tools.pragma").expect("literal source should emit");
         let main_rs = &files[0].content;
         assert!(
-            main_rs.contains("LiteralSource { output_port: &'static str, literal_spec: &'static str }"),
+            main_rs.contains(
+                "LiteralSource { output_port: &'static str, literal_spec: &'static str }"
+            ),
             "generated Op enum should include literal-source payload variant"
         );
         assert!(

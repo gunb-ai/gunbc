@@ -40,6 +40,7 @@ pub mod lower_c;
 pub mod lower_go;
 pub mod lower_rust;
 pub mod lower_to_ir;
+pub mod transport_analysis;
 
 // Wave 4 (Tasks 12-16): target renderers + register lowering.
 pub mod lower_mips;

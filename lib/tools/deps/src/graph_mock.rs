@@ -255,7 +255,6 @@ pub fn deps_mock_spec() -> MockSpec {
         )
 }
 
-
 /// Mock spec for testing package manager failure.
 #[gunbc_testgen_registry_macros::testgen_target(skip)]
 pub fn deps_mock_spec_pkg_fails() -> MockSpec {

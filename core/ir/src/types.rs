@@ -876,8 +876,9 @@ pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
                 // Int-backed types
                 "Timestamp" => ValueBacking::Int,
                 // String-backed types (refined string primitives)
-                "Platform" | "FilePath" | "Path" | "Url" | "Email"
-                | "NonEmptyString" => ValueBacking::String,
+                "Platform" | "FilePath" | "Path" | "Url" | "Email" | "NonEmptyString" => {
+                    ValueBacking::String
+                }
                 // Legacy list aliases
                 s if s.ends_with("List") => ValueBacking::List,
                 // Legacy set aliases

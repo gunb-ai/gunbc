@@ -4,7 +4,7 @@
 //! and IAM policy management.
 
 use super::base_urls::RUN;
-use super::MethodMeta;
+use super::{GcpRestClient, MethodMeta};
 use gunbc_ir::transport::credential::Credential;
 use gunbc_ir::transport::http::HttpMethod;
 use gunbc_ir::transport::rest::RestRequest;
@@ -135,28 +135,6 @@ impl CloudRunRest {
         Self { auth: None }
     }
 
-    fn authed_get(&self, path: &str) -> RestRequest {
-        let mut req = RestRequest::get(format!("{}{}", RUN, path));
-        if let Some(auth) = &self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
-    }
-
-    fn authed_post(&self, path: &str) -> RestRequest {
-        let mut req = RestRequest::post(format!("{}{}", RUN, path));
-        if let Some(auth) = &self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
-    }
-
-    fn authed_patch(&self, path: &str) -> RestRequest {
-        let mut req = self.authed_post(path);
-        req.method = HttpMethod::Patch;
-        req
-    }
-
     fn service_template_body(
         image: &str,
         service_account: &str,
@@ -175,6 +153,16 @@ impl CloudRunRest {
                 }]
             }
         })
+    }
+}
+
+impl GcpRestClient for CloudRunRest {
+    fn base_url(&self) -> &str {
+        RUN
+    }
+
+    fn credential(&self) -> Option<&Credential> {
+        self.auth.as_ref()
     }
 }
 

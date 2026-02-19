@@ -6,21 +6,16 @@ use gunbc_exec::BoundaryMocks;
 use gunbc_ir::transport::{FileResponse, TransportResponse};
 use gunbc_ir::Value;
 
-/// Input mocks for the makegen entrypoint: set output path for read/write nodes.
-///
-/// Note: In the DSL-compiled DAG, the path literal is a separate node
-/// wired via edges. These input mocks only take effect for entrypoint ports
-/// (ports with no upstream edge). In Real mode, the path from the DSL literal
-/// source node takes precedence. Use DryRun mocks to override boundary behavior.
+/// Input mocks for the makegen entrypoint.
 pub fn makegen_entrypoint_mocks(output_path: &str) -> BoundaryMocks {
     let mut input_mocks = BoundaryMocks::new();
     input_mocks.set_input(
-        "prepare_read_makegen",
+        "tools.makegen::makegen",
         "path",
         Value::Str(output_path.to_string()),
     );
     input_mocks.set_input(
-        "prepare_write_makegen",
+        "param_source_tools_makegen_makegen_path",
         "path",
         Value::Str(output_path.to_string()),
     );

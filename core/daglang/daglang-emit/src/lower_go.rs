@@ -16,6 +16,7 @@
 //! **Owned by**: Task 10 (dsl-codegen-tasks.md)
 
 use gunbc_ir::code_ir::lower::LowerError;
+use crate::transport_analysis::{body_has_transport_calls, expr_is_transport_call};
 use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Import, Item, SourceFile, Stmt};
 
 /// Configuration for Go lowering.
@@ -386,65 +387,6 @@ fn rewrite_transport_call_go(name: &str, config: &GoConfig) -> Option<String> {
         "execute_directory_list" => Some("transport.Execute".to_string()),
         "acquire_resource" => Some("resource.Acquire".to_string()),
         _ => None,
-    }
-}
-
-fn expr_is_transport_call(expr: &Expr) -> bool {
-    matches!(
-        expr,
-        Expr::Call {
-            obligation: Some(obligation),
-            ..
-        } if obligation.is_runtime_call()
-    )
-}
-
-fn body_has_transport_calls(stmts: &[Stmt]) -> bool {
-    stmts.iter().any(stmt_has_transport)
-}
-
-fn stmt_has_transport(stmt: &Stmt) -> bool {
-    match stmt {
-        Stmt::Let { expr, .. } => expr_has_transport(expr),
-        Stmt::Expr(expr) | Stmt::Return(expr) | Stmt::TailExpr(expr) => expr_has_transport(expr),
-        Stmt::For { body, .. } => body_has_transport_calls(body),
-        _ => false,
-    }
-}
-
-fn expr_has_transport(expr: &Expr) -> bool {
-    match expr {
-        Expr::Call {
-            func,
-            args,
-            obligation,
-        } => {
-            if obligation.is_some_and(CallObligation::is_runtime_call) {
-                return true;
-            }
-            expr_has_transport(func) || args.iter().any(expr_has_transport)
-        }
-        Expr::MethodCall { receiver, args, .. } => {
-            expr_has_transport(receiver) || args.iter().any(expr_has_transport)
-        }
-        Expr::BinOp { left, right, .. } => expr_has_transport(left) || expr_has_transport(right),
-        Expr::UnaryOp { expr, .. } => expr_has_transport(expr),
-        Expr::If {
-            cond,
-            then_body,
-            else_body,
-        } => {
-            expr_has_transport(cond)
-                || body_has_transport_calls(then_body)
-                || else_body
-                    .as_ref()
-                    .is_some_and(|b| body_has_transport_calls(b))
-        }
-        Expr::Block(stmts) => body_has_transport_calls(stmts),
-        Expr::Field(inner, _) | Expr::Deref(inner) | Expr::Ref(inner) | Expr::RefMut(inner) => {
-            expr_has_transport(inner)
-        }
-        _ => false,
     }
 }
 

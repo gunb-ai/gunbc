@@ -5,7 +5,7 @@
 //! token generation (impersonation).
 
 use super::base_urls::{IAM, IAM_CREDENTIALS};
-use super::MethodMeta;
+use super::{GcpRestClient, MethodMeta};
 use gunbc_ir::transport::credential::Credential;
 use gunbc_ir::transport::http::HttpMethod;
 use gunbc_ir::transport::rest::RestRequest;
@@ -197,50 +197,27 @@ impl IamRest {
     pub fn unauthenticated() -> Self {
         Self { auth: None }
     }
+}
 
-    fn authed_get(&self, base: &str, path: &str) -> RestRequest {
-        let url = format!("{}{}", base, path);
-        let mut req = RestRequest::get(url);
-        if let Some(ref auth) = self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
+impl GcpRestClient for IamRest {
+    fn base_url(&self) -> &str {
+        IAM
     }
 
-    fn authed_post(&self, base: &str, path: &str) -> RestRequest {
-        let url = format!("{}{}", base, path);
-        let mut req = RestRequest::post(url);
-        if let Some(ref auth) = self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
-    }
-
-    fn authed_patch(&self, base: &str, path: &str) -> RestRequest {
-        let mut req = self.authed_post(base, path);
-        req.method = HttpMethod::Patch;
-        req
-    }
-
-    fn authed_delete(&self, base: &str, path: &str) -> RestRequest {
-        let url = format!("{}{}", base, path);
-        let mut req = RestRequest::delete(url);
-        if let Some(ref auth) = self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
+    fn credential(&self) -> Option<&Credential> {
+        self.auth.as_ref()
     }
 }
 
 impl IamService for IamRest {
     fn list_service_accounts(&self, project: &str) -> RestRequest {
         let path = format!("/v1/projects/{}/serviceAccounts", project);
-        self.authed_get(IAM, &path)
+        self.authed_get(&path)
     }
 
     fn get_service_account(&self, project: &str, email: &str) -> RestRequest {
         let path = format!("/v1/projects/{}/serviceAccounts/{}", project, email);
-        self.authed_get(IAM, &path)
+        self.authed_get(&path)
     }
 
     fn create_service_account(
@@ -250,7 +227,7 @@ impl IamService for IamRest {
         display_name: &str,
     ) -> RestRequest {
         let path = format!("/v1/projects/{}/serviceAccounts", project);
-        self.authed_post(IAM, &path).json(serde_json::json!({
+        self.authed_post(&path).json(serde_json::json!({
             "accountId": account_id,
             "serviceAccount": {
                 "displayName": display_name
@@ -268,13 +245,13 @@ impl IamService for IamRest {
             "/v1/projects/{}/serviceAccounts/{}?updateMask=displayName",
             project, email
         );
-        self.authed_patch(IAM, &path)
+        self.authed_patch(&path)
             .json(serde_json::json!({ "displayName": display_name }))
     }
 
     fn delete_service_account(&self, project: &str, email: &str) -> RestRequest {
         let path = format!("/v1/projects/{}/serviceAccounts/{}", project, email);
-        self.authed_delete(IAM, &path)
+        self.authed_delete(&path)
     }
 
     fn get_service_account_iam_policy(&self, project: &str, email: &str) -> RestRequest {
@@ -282,7 +259,7 @@ impl IamService for IamRest {
             "/v1/projects/{}/serviceAccounts/{}:getIamPolicy",
             project, email
         );
-        self.authed_post(IAM, &path)
+        self.authed_post(&path)
     }
 
     fn set_service_account_iam_policy(
@@ -295,7 +272,7 @@ impl IamService for IamRest {
             "/v1/projects/{}/serviceAccounts/{}:setIamPolicy",
             project, email
         );
-        self.authed_post(IAM, &path)
+        self.authed_post(&path)
             .json(serde_json::json!({ "policy": policy }))
     }
 
@@ -315,7 +292,8 @@ impl IamService for IamRest {
         if let Some(lifetime) = lifetime_seconds {
             body["lifetime"] = serde_json::json!(format!("{}s", lifetime));
         }
-        self.authed_post(IAM_CREDENTIALS, &path).json(body)
+        self.authed_request_at(IAM_CREDENTIALS, HttpMethod::Post, &path)
+            .json(body)
     }
 
     fn exchange_token(

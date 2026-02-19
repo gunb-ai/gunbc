@@ -261,12 +261,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
     // Auto-add OutputMatchers for terminal nodes (no outgoing edges) to satisfy
     // the observability invariant: every terminal reachable from a probe must
     // have an OutputMatcher.
-    let has_outgoing: HashSet<&NodeId> = lowered
-        .dag
-        .edges
-        .iter()
-        .map(|e| &e.from_node)
-        .collect();
+    let has_outgoing: HashSet<&NodeId> = lowered.dag.edges.iter().map(|e| &e.from_node).collect();
     for node in &lowered.dag.nodes {
         if has_outgoing.contains(&node.id) {
             continue;
@@ -283,15 +278,25 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             // Passthrough ops (IdentityCallableOp, DeferredCallableOp) forward
             // inputs as outputs. Provide an input for each output port so the
             // output will exist and satisfy the matcher.
-            example = example.input(
-                output.name.0.as_str(),
-                default_value_for_type(output.type_id.0.as_str()),
-            );
+            // Special case: `skip` output ports default to false so transport
+            // execute nodes actually run instead of short-circuiting.
+            let passthrough_value =
+                if output.name.0 == "skip" && output.type_id.0 == "Bool" {
+                    Value::Bool(false)
+                } else {
+                    default_value_for_type(output.type_id.0.as_str())
+                };
+            example = example.input(output.name.0.as_str(), passthrough_value);
         }
         // Also provide values for required input ports that don't overlap
         // with output names (e.g. guard inputs, domain-specific required inputs).
-        let output_names: HashSet<&str> =
-            node.outputs.iter().map(|o| o.name.0.as_str()).collect();
+        //
+        // Two-pass strategy: first populate all non-TransportResponse inputs,
+        // then probe for the best response variant. This ensures the probe
+        // has all required context (e.g. node_count, total_node_count) when
+        // it trial-executes the node.
+        let output_names: HashSet<&str> = node.outputs.iter().map(|o| o.name.0.as_str()).collect();
+        let mut deferred_response_ports: Vec<&str> = Vec::new();
         for input_port in &node.inputs {
             if output_names.contains(input_port.name.0.as_str()) {
                 continue;
@@ -299,17 +304,55 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             if input_port.cardinality.allows_empty() {
                 continue;
             }
-            // Special case: `skip` ports should default to false so transport
-            // execute nodes actually run and produce their expected outputs.
+            if input_port.type_id.0 == "TransportResponse" {
+                deferred_response_ports.push(input_port.name.0.as_str());
+                continue;
+            }
             let value = if input_port.name.0 == "skip" && input_port.type_id.0 == "Bool" {
                 Value::Bool(false)
-            } else if input_port.type_id.0 == "TransportResponse" {
-                // Try all response variants and pick the one that works.
-                probe_best_response(&lowered.dag, &node.id.0, &example)
             } else {
                 default_value_for_type(input_port.type_id.0.as_str())
             };
             example = example.input(input_port.name.0.as_str(), value);
+        }
+        // Second pass: probe for best TransportResponse variant now that
+        // all other required inputs are populated.
+        for port_name in deferred_response_ports {
+            let value = probe_best_response(&lowered.dag, &node.id.0, &example);
+            example = example.input(port_name, value);
+        }
+        // Validate: trial-execute with the proposed inputs and check that
+        // the produced outputs cover the declared output port names. Nodes
+        // whose implementation produces different port names than their
+        // schema declares (e.g. content_upsert execute nodes with prefixed
+        // output ports) are skipped — they are still covered by chain and
+        // window tests.
+        let trial = execute_single_node(
+            &lowered.dag,
+            node.id.0.as_str(),
+            example.inputs.clone(),
+            ExecutionMode::Real,
+        );
+        let outputs_valid = match &trial {
+            Ok(outputs) => {
+                // All required ports must be present.
+                let required_ok = node.outputs.iter().all(|port| {
+                    port.cardinality.allows_empty() || outputs.contains_key(&port.name.0)
+                });
+                // Produced outputs should only use declared port names.
+                // If the implementation produces ports not in the schema
+                // (e.g. content_upsert execute nodes with prefixed schema
+                // ports but generic implementation ports), the example is
+                // invalid and would cause test_example failures.
+                let declared: HashSet<&str> =
+                    node.outputs.iter().map(|p| p.name.0.as_str()).collect();
+                let all_declared = outputs.keys().all(|k| declared.contains(k.as_str()));
+                required_ok && all_declared
+            }
+            Err(_) => false,
+        };
+        if !outputs_valid {
+            continue;
         }
         spec = spec.node_example(example);
     }

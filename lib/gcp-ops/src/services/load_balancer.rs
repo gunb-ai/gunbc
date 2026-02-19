@@ -4,7 +4,7 @@
 //! backend services, URL maps, HTTPS proxies, and forwarding rules.
 
 use super::base_urls::COMPUTE;
-use super::MethodMeta;
+use super::{GcpRestClient, MethodMeta};
 use gunbc_ir::transport::credential::Credential;
 use gunbc_ir::transport::http::HttpMethod;
 use gunbc_ir::transport::rest::RestRequest;
@@ -159,21 +159,15 @@ impl LoadBalancerRest {
     pub fn unauthenticated() -> Self {
         Self { auth: None }
     }
+}
 
-    fn authed_get(&self, path: &str) -> RestRequest {
-        let mut req = RestRequest::get(format!("{}{}", COMPUTE, path));
-        if let Some(auth) = &self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
+impl GcpRestClient for LoadBalancerRest {
+    fn base_url(&self) -> &str {
+        COMPUTE
     }
 
-    fn authed_post(&self, path: &str) -> RestRequest {
-        let mut req = RestRequest::post(format!("{}{}", COMPUTE, path));
-        if let Some(auth) = &self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
+    fn credential(&self) -> Option<&Credential> {
+        self.auth.as_ref()
     }
 }
 

@@ -2656,6 +2656,23 @@ fn add_dependency_edges(
 ) {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
+        let param_types_by_callable = module
+            .signatures
+            .iter()
+            .filter_map(|signature| match signature {
+                TypedItemSignature::Fn(callable)
+                | TypedItemSignature::Func(callable)
+                | TypedItemSignature::Pattern(callable) => Some((
+                    callable.name.clone(),
+                    callable
+                        .params
+                        .iter()
+                        .map(|param| (param.name.clone(), param.ty.clone()))
+                        .collect::<HashMap<_, _>>(),
+                )),
+                _ => None,
+            })
+            .collect::<HashMap<_, _>>();
         for item in &module.ast.items {
             let Some((item_name, stmts)) = item_callable_body(&item.node) else {
                 continue;
@@ -2664,6 +2681,10 @@ fn add_dependency_edges(
             else {
                 continue;
             };
+            let param_types = param_types_by_callable
+                .get(item_name)
+                .cloned()
+                .unwrap_or_default();
 
             let mut calls = BTreeSet::new();
             collect_calls_from_stmts(stmts, &mut calls);
@@ -2689,6 +2710,7 @@ fn add_dependency_edges(
                 stmts,
                 target,
                 endpoints_by_name,
+                &param_types,
             );
             if emit_collection_nodes {
                 add_collection_pipeline_nodes(builder, &module_name, stmts, target);
@@ -2723,6 +2745,7 @@ fn expand_content_upsert_patterns(
     stmts: &[Stmt],
     target: &LoweredEndpoint,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    param_types: &HashMap<String, String>,
 ) {
     let mut bound_callables = HashMap::<String, String>::new();
     let mut expansion_count = 0usize;
@@ -2743,6 +2766,7 @@ fn expand_content_upsert_patterns(
                             target,
                             &bound_callables,
                             endpoints_by_name,
+                            param_types,
                         );
                     }
                 }
@@ -2770,6 +2794,7 @@ fn expand_content_upsert_patterns(
                         target,
                         &bound_callables,
                         endpoints_by_name,
+                        param_types,
                     );
                 }
             }
@@ -2793,6 +2818,7 @@ fn expand_single_content_upsert(
     target: &LoweredEndpoint,
     bound_callables: &HashMap<String, String>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    param_types: &HashMap<String, String>,
 ) {
     let suffix = expansion_suffix(item_name, expansion_count);
     let prepare_read_id = format!("prepare_read_{suffix}");
@@ -2914,16 +2940,55 @@ fn expand_single_content_upsert(
             &prepare_write_id,
             "content",
         );
+    } else if let Some(content_ident) = resolve_named_ident_arg(args, "content") {
+        if let Some(param_ty) = param_types.get(content_ident) {
+            let param_source = ensure_param_source_node(
+                builder,
+                module_name,
+                item_name,
+                content_ident,
+                param_ty.as_str(),
+            );
+            builder.add_edge(
+                param_source.as_str(),
+                content_ident,
+                &compare_id,
+                "expected_content",
+            );
+            builder.add_edge(
+                param_source.as_str(),
+                content_ident,
+                &prepare_write_id,
+                "content",
+            );
+        }
     }
 
     if let Some(source) = resolve_path_source(args, bound_callables, endpoints_by_name) {
-        builder.add_edge(&source.node_id, &source.primary_output, &prepare_read_id, "path");
+        builder.add_edge(
+            &source.node_id,
+            &source.primary_output,
+            &prepare_read_id,
+            "path",
+        );
         builder.add_edge(
             &source.node_id,
             &source.primary_output,
             &prepare_write_id,
             "path",
         );
+    } else if let Some(path_ident) = resolve_named_ident_arg(args, "path") {
+        if let Some(param_ty) = param_types.get(path_ident) {
+            let param_source = ensure_param_source_node(
+                builder,
+                module_name,
+                item_name,
+                path_ident,
+                param_ty.as_str(),
+            );
+            builder.add_edge(param_source.as_str(), path_ident, &prepare_read_id, "path");
+            builder.add_edge(param_source.as_str(), path_ident, &prepare_write_id, "path");
+        }
     } else if let Some(literal) = resolve_path_literal(args) {
         let literal_source = ensure_literal_source_node(
             builder,
@@ -2966,6 +3031,16 @@ fn resolve_path_literal(args: &[(Option<String>, Expr)]) -> Option<ServiceCallAr
         .iter()
         .find(|(name, _)| matches!(name.as_deref(), Some("path")))?;
     service_call_literal_arg(path_expr)
+}
+
+fn resolve_named_ident_arg<'a>(args: &'a [(Option<String>, Expr)], name: &str) -> Option<&'a str> {
+    let (_, expr) = args
+        .iter()
+        .find(|(arg_name, _)| arg_name.as_deref() == Some(name))?;
+    match expr {
+        Expr::Ident(ident) => Some(ident.as_str()),
+        _ => None,
+    }
 }
 
 fn resolve_source_expr(
@@ -3971,7 +4046,7 @@ fn ensure_param_source_node(
     );
     builder.add_node(Node::opaque(
         node_id.clone(),
-        vec![],
+        vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
         vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
         LoweredOp::Callable {
             module: module_name.to_string(),
@@ -3995,9 +4070,7 @@ fn ensure_literal_source_node(
 ) -> String {
     let node_id = format!(
         "literal_source_{}",
-        sanitize_identifier(&format!(
-            "{module_name}_{callable}_{param}_{disambiguator}"
-        ))
+        sanitize_identifier(&format!("{module_name}_{callable}_{param}_{disambiguator}"))
     );
     builder.add_node(Node::opaque(
         node_id.clone(),
@@ -4225,7 +4298,9 @@ fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallS
                         },
                         field_access: match arg {
                             Expr::FieldAccess(base, field) => match base.as_ref() {
-                                Expr::Ident(base_ident) => Some((base_ident.clone(), field.clone())),
+                                Expr::Ident(base_ident) => {
+                                    Some((base_ident.clone(), field.clone()))
+                                }
                                 _ => None,
                             },
                             _ => None,
@@ -4259,7 +4334,8 @@ fn collect_bound_callable_sources(
         match stmt {
             Stmt::Let(binding, expr) | Stmt::Assign(binding, expr) => match expr {
                 Expr::Call(name, _) => {
-                    if let Some(endpoint) = endpoints_by_full.get(&(module_key.clone(), name.clone()))
+                    if let Some(endpoint) =
+                        endpoints_by_full.get(&(module_key.clone(), name.clone()))
                     {
                         bound.insert(binding.clone(), endpoint.clone());
                     }
@@ -5007,7 +5083,7 @@ fn run(values: List<String>) -> String {
         assert_eq!(
             dag.nodes.len(),
             10,
-            "expected callable + content_upsert chain + source scaffold nodes + literal path source"
+            "expected callable + content_upsert chain + source scaffold nodes + param path source"
         );
         let required_edges = [
             (
@@ -5070,25 +5146,19 @@ fn run(values: List<String>) -> String {
                 "missing edge {from_node}.{from_port} -> {to_node}.{to_port}"
             );
         }
-        let literal_node = dag
+        let param_source_node = dag
             .nodes
             .iter()
-            .find(|node| {
-                matches!(
-                    &node.body,
-                    gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { name, .. })
-                        if name.starts_with("call_literal_source::strhex:")
-                )
-            })
-            .expect("literal source node should be present for content_upsert path");
+            .find(|node| node.id.0 == "param_source_tools_makegen_makegen_path")
+            .expect("param source node should be present for content_upsert path");
         assert!(dag.edges.iter().any(|edge| {
-            edge.from_node == literal_node.id
+            edge.from_node == param_source_node.id
                 && edge.from_port.0 == "path"
                 && edge.to_node.0 == "prepare_read_makegen"
                 && edge.to_port.0 == "path"
         }));
         assert!(dag.edges.iter().any(|edge| {
-            edge.from_node == literal_node.id
+            edge.from_node == param_source_node.id
                 && edge.from_port.0 == "path"
                 && edge.to_node.0 == "prepare_write_makegen"
                 && edge.to_port.0 == "path"

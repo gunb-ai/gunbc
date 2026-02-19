@@ -32,7 +32,9 @@ pub use secret_manager::SecretManagerService;
 pub use storage::StorageService;
 pub use workload_identity::WorkloadIdentityService;
 
+use gunbc_ir::transport::credential::Credential;
 use gunbc_ir::transport::http::HttpMethod;
+use gunbc_ir::transport::rest::RestRequest;
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -58,6 +60,68 @@ pub struct MethodMeta {
     pub permissions: &'static [&'static str],
     /// GCP API service name (for rate limiting).
     pub service: &'static str,
+}
+
+/// Shared REST client pattern for GCP service implementations.
+///
+/// Implementors provide a base URL and optional credential; the trait
+/// provides authenticated HTTP helper methods as defaults.
+pub trait GcpRestClient {
+    /// Base URL for the service (e.g. `https://run.googleapis.com`).
+    fn base_url(&self) -> &str;
+
+    /// Optional credential for authentication.
+    fn credential(&self) -> Option<&Credential>;
+
+    /// Build an authenticated request at a specific base URL.
+    fn authed_request_at(&self, base_url: &str, method: HttpMethod, path: &str) -> RestRequest {
+        let url = format!("{}{}", base_url, path);
+        let mut req = match method {
+            HttpMethod::Get => RestRequest::get(url),
+            HttpMethod::Post => RestRequest::post(url),
+            HttpMethod::Put => RestRequest::put(url),
+            HttpMethod::Delete => RestRequest::delete(url),
+            _ => {
+                let mut r = RestRequest::post(url);
+                r.method = method;
+                r
+            }
+        };
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
+    }
+
+    /// Build an authenticated request at the configured base URL.
+    fn authed_request(&self, method: HttpMethod, path: &str) -> RestRequest {
+        self.authed_request_at(self.base_url(), method, path)
+    }
+
+    /// Authenticated GET at the configured base URL.
+    fn authed_get(&self, path: &str) -> RestRequest {
+        self.authed_request(HttpMethod::Get, path)
+    }
+
+    /// Authenticated POST at the configured base URL.
+    fn authed_post(&self, path: &str) -> RestRequest {
+        self.authed_request(HttpMethod::Post, path)
+    }
+
+    /// Authenticated PATCH at the configured base URL.
+    fn authed_patch(&self, path: &str) -> RestRequest {
+        self.authed_request(HttpMethod::Patch, path)
+    }
+
+    /// Authenticated PUT at the configured base URL.
+    fn authed_put(&self, path: &str) -> RestRequest {
+        self.authed_request(HttpMethod::Put, path)
+    }
+
+    /// Authenticated DELETE at the configured base URL.
+    fn authed_delete(&self, path: &str) -> RestRequest {
+        self.authed_request(HttpMethod::Delete, path)
+    }
 }
 
 /// GCP API base URLs.

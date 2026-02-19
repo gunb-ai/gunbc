@@ -4,7 +4,7 @@
 //! All methods produce `RestRequest` values for the DAG transport layer.
 
 use super::base_urls::SECRET_MANAGER;
-use super::MethodMeta;
+use super::{GcpRestClient, MethodMeta};
 use gunbc_ir::transport::credential::Credential;
 use gunbc_ir::transport::http::HttpMethod;
 use gunbc_ir::transport::rest::RestRequest;
@@ -120,20 +120,15 @@ impl SecretManagerRest {
     pub fn unauthenticated() -> Self {
         Self { auth: None }
     }
+}
 
-    fn base_request(&self, method: HttpMethod, path: &str) -> RestRequest {
-        let url = format!("{}{}", SECRET_MANAGER, path);
-        let mut req = match method {
-            HttpMethod::Get => RestRequest::get(url),
-            HttpMethod::Post => RestRequest::post(url),
-            HttpMethod::Put => RestRequest::put(url),
-            HttpMethod::Delete => RestRequest::delete(url),
-            _ => RestRequest::get(url),
-        };
-        if let Some(ref auth) = self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
+impl GcpRestClient for SecretManagerRest {
+    fn base_url(&self) -> &str {
+        SECRET_MANAGER
+    }
+
+    fn credential(&self) -> Option<&Credential> {
+        self.auth.as_ref()
     }
 }
 
@@ -143,17 +138,17 @@ impl SecretManagerService for SecretManagerRest {
             "/v1/projects/{}/secrets/{}/versions/{}:access",
             project, secret, version
         );
-        self.base_request(HttpMethod::Get, &path)
+        self.authed_get(&path)
     }
 
     fn get_secret(&self, project: &str, secret: &str) -> RestRequest {
         let path = format!("/v1/projects/{}/secrets/{}", project, secret);
-        self.base_request(HttpMethod::Get, &path)
+        self.authed_get(&path)
     }
 
     fn create_secret(&self, project: &str, secret_id: &str) -> RestRequest {
         let path = format!("/v1/projects/{}/secrets", project);
-        self.base_request(HttpMethod::Post, &path)
+        self.authed_post(&path)
             .json(serde_json::json!({
                 "replication": {
                     "automatic": {}
@@ -164,17 +159,16 @@ impl SecretManagerService for SecretManagerRest {
 
     fn add_secret_version(&self, project: &str, secret: &str, payload_base64: &str) -> RestRequest {
         let path = format!("/v1/projects/{}/secrets/{}:addVersion", project, secret);
-        self.base_request(HttpMethod::Post, &path)
-            .json(serde_json::json!({
-                "payload": {
-                    "data": payload_base64
-                }
-            }))
+        self.authed_post(&path).json(serde_json::json!({
+            "payload": {
+                "data": payload_base64
+            }
+        }))
     }
 
     fn list_secrets(&self, project: &str) -> RestRequest {
         let path = format!("/v1/projects/{}/secrets", project);
-        self.base_request(HttpMethod::Get, &path)
+        self.authed_get(&path)
     }
 }
 

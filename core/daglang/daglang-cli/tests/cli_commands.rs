@@ -13397,9 +13397,7 @@ fn compile_layer_one_pragma_generated_binary_writes_expected_files() {
         "generated pragma binary should expose CLI bindings"
     );
     assert!(
-        bindings
-            .iter()
-            .all(|(_node, port)| port == "directives"),
+        bindings.iter().all(|(_node, port)| port == "directives"),
         "generated pragma bindings should only require directives input: {bindings:?}"
     );
 

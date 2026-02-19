@@ -19,4 +19,3 @@ pub fn ci_mock_spec() -> MockSpec {
     let dag = build_ci_graph().expect("ci graph should build");
     crate::mock_defaults::auto_mock_spec(&dag, "ci")
 }
-

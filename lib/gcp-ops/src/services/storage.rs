@@ -4,7 +4,7 @@
 //! for bucket discovery and management.
 
 use super::base_urls::STORAGE;
-use super::MethodMeta;
+use super::{GcpRestClient, MethodMeta};
 use gunbc_ir::transport::credential::Credential;
 use gunbc_ir::transport::http::HttpMethod;
 use gunbc_ir::transport::rest::RestRequest;
@@ -121,24 +121,15 @@ impl StorageRest {
     pub fn unauthenticated() -> Self {
         Self { auth: None }
     }
+}
 
-    fn authed_get(&self, path: &str) -> RestRequest {
-        let url = format!("{}{}", STORAGE, path);
-        let mut req = RestRequest::get(url);
-        if let Some(ref auth) = self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
+impl GcpRestClient for StorageRest {
+    fn base_url(&self) -> &str {
+        STORAGE
     }
 
-    fn base_request(&self, method: HttpMethod, path: &str) -> RestRequest {
-        let url = format!("{}{}", STORAGE, path);
-        let mut req = RestRequest::post(url);
-        req.method = method;
-        if let Some(ref auth) = self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
+    fn credential(&self) -> Option<&Credential> {
+        self.auth.as_ref()
     }
 }
 
@@ -164,7 +155,7 @@ impl StorageService for StorageRest {
         location: &str,
         storage_class: &str,
     ) -> RestRequest {
-        self.base_request(HttpMethod::Post, "/storage/v1/b")
+        self.authed_post("/storage/v1/b")
             .query("project", project)
             .json(serde_json::json!({
                 "name": bucket,
@@ -175,7 +166,7 @@ impl StorageService for StorageRest {
 
     fn set_bucket_iam_policy(&self, bucket: &str, policy: serde_json::Value) -> RestRequest {
         let path = format!("/storage/v1/b/{}/iam", bucket);
-        self.base_request(HttpMethod::Put, &path)
+        self.authed_put(&path)
             .json(serde_json::json!({ "policy": policy }))
     }
 }
