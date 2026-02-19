@@ -28,6 +28,8 @@
 | Cached `result` persistence | Resolved (strict/minimal default) | Persist typed summary/reference by default; optional full payload in CAS. |
 | Changed-input routing authority | Resolved (strict correctness) | Optimization hint only; non-authoritative for soundness. |
 | Conflict commutativity exceptions | Resolved (strict default) | No commutativity exceptions in current phase. |
+| Service codegen strategy | Resolved (generic interpreter) | Strategy B: runtime interpreter over `ServiceOperationSpec`, not static codegen. |
+| DSL as source of truth for services | Resolved | `.dag` service definitions replace hand-written IR transport types. |
 
 ### Tonight Handoff Lanes (Open Work)
 
@@ -43,6 +45,7 @@ Use these lanes to assign workers with minimal overlap and clear stop conditions
 | F: Universal capabilities | `WF14-D` -> `WF14` -> `WF15-D` -> `WF15` | `WF1-D`..`WF4-D` reviewed (design deps) | binary dispatch, codegen keyed unit, planner integration | compilation + codegen capabilities keyed and shared across all workflows | `gunbc-workflow --plan gist-snapshot` shows codegen CachedHit |
 | G: Gist capability stack | `WF16-D` -> `WF16` -> (`WF17`, `WF18`) | Lane F complete | gist graph, gist_modes, credential chain, git state units | base gist workflow built; diff + recent augment base; all modes use planner path | `make gist` warm path, credential sharing across gist/dag-viz |
 | H: Remaining capabilities | `WF19-D` -> `WF19` -> `WF20` -> `WF21` -> `WF22` | Lane F complete | bootstrap/makegen/pragma/deps/dag-viz, Makefile | FS write + generator capabilities minimized; all tools on planner path with verification | per-capability hit/miss reporting, cross-workflow sharing observable |
+| I: Service codegen | `SC1-D` -> `SC1` -> `SC2` -> `SC3` -> `SC4` -> `SC5` -> `SC6` | none (design-first) | daglang-lower, resolve.rs, service .dag files, core/ir/transport | new REST services require only .dag definition; hand-written adapters eliminated | `make gist --dry-run` uses generated adapter; new test service defined in .dag only |
 
 Handoff rules:
 
@@ -556,6 +559,66 @@ For every task in this sprint:
 
 ---
 
+## Sprint 7: End-to-End Service Codegen from DSL
+
+**Goal**: make adding a new REST service (e.g., Dropbox, Slack, any external API)
+require only a `.dag` service definition and a `.dag` tool definition — zero hand-written
+Rust for standard REST services.
+
+**Design reference**: `docs/design/service-codegen.md`.
+
+### Design Decision (Resolved 2026-02-19): DSL Is Source of Truth for Service Transport
+
+Service `.dag` definitions already declare endpoint, method, path, input/output types,
+auth scheme, permissions, and mock responses. The daglang compiler already parses these
+and lowers service calls to transport triplets. What's missing is the last mile:
+generating the `Executable` Rust implementations that back those triplet nodes.
+
+### Design Decision (Resolved 2026-02-19): Generic Interpreter Over Static Codegen
+
+Phase 1 uses Strategy B from the design doc: a generic `ServicePrepareOp` and
+`ServiceParseOp` that take `ServiceOperationSpec` at construction time. No per-service
+Rust structs. The spec is configuration; the impl is a single interpreter. This avoids
+a codegen step and is sufficient for the current service count (~12 operations).
+
+### Phase SC-A: Service Metadata + Generic Interpreter
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **SC1-D** | **Service codegen design spec**: finalize `ServiceOperationSpec` schema extracted from daglang compiler's existing `ServiceDef` AST. Must capture: endpoint URL, HTTP method, path template with `{param}` interpolation, input fields (name, type, default), output fields (name, type, JSON path), auth scheme, permissions, body template (for non-default body shapes), custom headers. **Design doc**: `docs/design/service-codegen.md` (Sections 3-4). **Acceptance**: spec schema covers all 12 existing service operations in `resolve.rs`; each existing hand-written adapter is expressible as a spec instance. | — | S |
+| **SC1** | **`ServiceOperationSpec` extraction**: extend daglang-lower to populate `ServiceOperationSpec` on transport triplet `LoweredOp` nodes (attach to `service_metadata` field). The spec travels from lowerer through to resolver. **Acceptance**: `daglang expand gist.dag` shows spec metadata on prepare/parse nodes; all existing service `.dag` files produce valid specs; unit tests pin spec fields for github.Gist.Create, gcp.STS.Exchange, gcp.SecretManager.AccessVersion. | SC1-D | M |
+| **SC2** | **Generic `ServicePrepareOp` + `ServiceParseOp`**: implement two generic `Executable` impls that interpret `ServiceOperationSpec` at runtime. `ServicePrepareOp` builds `TransportRequest` from inputs using spec (REST: URL interpolation + JSON body construction; Shell: command + args). `ServiceParseOp` extracts outputs from `TransportResponse` using spec (JSON path extraction for REST; stdout parsing for Shell). **Acceptance**: unit tests cover all transport classes (REST POST with body, REST GET with path interpolation, Shell with args); property tests verify generated request matches hand-written adapter output for identical inputs. | SC1 | M |
+
+### Phase SC-B: Gradual Migration of Existing Services
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **SC3** | **Migrate Tier 1 REST services**: wire `resolve_service_transport` to try generic interpreter before hand-written fallback. Migrate: `gcp.STS.Exchange`, `gcp.SecretManager.AccessVersion`, `github.Gist.Create`. Delete corresponding hand-written adapter structs from `resolve.rs`. **Acceptance**: `make gist --dry-run` produces identical output; `make ci --dry-run` still works (GCP credential chain uses generated adapters); hand-written adapter count drops from 12 to 6. | SC2 | M |
+| **SC4** | **Migrate Shell services + remaining REST**: migrate `shell.Find.ListDirs`, `shell.Codegen.{Check,Run}`, `cargo.Build.{Build,Test,Clippy}`. **Acceptance**: `make bootstrap --dry-run`, `make build --dry-run` produce identical output; `resolve_service_transport` has zero hand-written match arms (fully generated); old adapter structs deleted. | SC3 | M |
+
+### Phase SC-C: DSL Extensions + Advanced Features
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **SC5** | **`@body_template` + `@headers` DSL annotations**: add new annotations to daglang syntax/typecheck for services that need non-default body shapes (gcp.STS with OAuth2 fields) or extra headers (Anthropic `anthropic-version`). Codegen interprets these in `ServicePrepareOp`. **Acceptance**: `gcp.STS.Exchange` uses `@body_template` instead of hardcoded JSON in adapter; Anthropic service definition can declare `@headers` for API version. | SC4 | M |
+| **SC6** | **Credential scope contract generation**: generate `credential_intent()` from `@auth` + `@permissions` annotations. Replace hand-written `GistScopeContract`, `LlmScopeContract` with generated equivalents. The `.dag` service definition becomes the single source of truth for auth requirements. **Acceptance**: `GistScopeContract` deleted; `LlmScopeContract` deleted; credential intent derived from spec at resolve time; all existing tests pass with generated contracts. | SC5 | M |
+
+### Phase SC-D: IR Type Elimination + New Service Validation
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **SC7** | **Delete redundant IR transport types**: for fully-generated services, delete `core/ir/src/transport/gist.rs` (request/response structs, scope contract, secret ID constant). The `.dag` file's `// Replaces:` comment is now honored. **Acceptance**: `core/ir/src/transport/gist.rs` deleted; all downstream code uses generated spec; tests pass; `dsl/services/github/gist.dag` is the single source of truth. | SC6 | S |
+| **SC8** | **New service smoke test**: define a test-only REST service entirely in `.dag` (e.g., `httpbin.Anything` with `POST /anything`), wire a trivial tool, and verify end-to-end execution with zero Rust. This validates the "30 lines of DSL" developer experience claim. **Acceptance**: test service defined in `dsl/services/test/httpbin.dag`; tool defined in `dsl/tools/httpbin_test.dag`; `make httpbin-test --dry-run` works with no service-specific Rust code. | SC3 | S |
+
+### Lane Summary
+
+Lane I runs independently of Lanes B-H (different concern: codegen pipeline, not
+workflow minimization). It does depend on the daglang compiler being stable, which it is.
+SC6 (credential generation) has a soft dependency on WF16-D (credential capability design)
+for alignment but is not blocked by it.
+
+---
+
 ## Parallelization Guide
 
 ```
@@ -593,6 +656,11 @@ SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
          └─ Lane H: WF19-D→WF19→WF20→WF21→WF22
                                            (remaining: FS write + generators + cutover)
          │
+    ─────┤ (Sprint 7: e2e service codegen from DSL)
+         │
+         └─ Lane I: SC1-D→SC1→SC2→(SC3,SC8)→SC4→SC5→SC6→SC7
+                                           (service codegen: generic interpreter → migration → IR elimination)
+         │
     ─────┤ (Sprint 6: modeling hardening, design-first)
          │
          ├─ M7-D→M7                (secret redaction by construction)
@@ -623,4 +691,9 @@ for generator workflows) and cuts over all tool targets to planner path with
 capability-level verification instrumentation.
 **Sprint 6**: M track is now promoted with explicit paired design/implementation
 tasks (`M7-D`..`M19-D`) and checklist-based review gates from `TODO/modeling.md`.
+**Sprint 7**: Service codegen from DSL. Lane I generates service transport adapters
+from `.dag` definitions via generic interpreter (no per-service Rust). SC1-SC2 build
+the infrastructure; SC3-SC4 migrate all existing services; SC5-SC6 add DSL extensions
+and credential generation; SC7-SC8 validate by deleting redundant IR types and
+proving a new service works with zero Rust.
 **Backlog**: XL features and migration work in `backlog.md`.
