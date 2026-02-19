@@ -95,23 +95,47 @@ super::impl_gcp_rest_client!(ResourceManagerRest, RESOURCE_MANAGER);
 
 impl ResourceManagerService for ResourceManagerRest {
     fn list_projects(&self) -> RestRequest {
-        self.authed_get("/v1/projects")
+        let mut req = LIST_PROJECTS_META.build_request(self.base_url(), &[], &[]);
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn get_project(&self, project: &str) -> RestRequest {
-        let path = format!("/v1/projects/{}", project);
-        self.authed_get(&path)
+        let mut req = GET_PROJECT_META.build_request(
+            self.base_url(),
+            &[("project", project)],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn get_iam_policy(&self, project: &str) -> RestRequest {
-        let path = format!("/v1/projects/{}:getIamPolicy", project);
-        self.authed_post(&path).json(serde_json::json!({}))
+        let mut req = GET_IAM_POLICY_META.build_request(
+            self.base_url(),
+            &[("project", project)],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(serde_json::json!({}))
     }
 
     fn set_iam_policy(&self, project: &str, policy: serde_json::Value) -> RestRequest {
-        let path = format!("/v1/projects/{}:setIamPolicy", project);
-        self.authed_post(&path)
-            .json(serde_json::json!({ "policy": policy }))
+        let mut req = SET_IAM_POLICY_META.build_request(
+            self.base_url(),
+            &[("project", project)],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(serde_json::json!({ "policy": policy }))
     }
 }
 

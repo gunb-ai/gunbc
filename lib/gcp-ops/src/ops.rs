@@ -1028,63 +1028,32 @@ impl Executable for GcpOps {
                         .ok();
                 }
 
-                // Check if the binding already exists in the policy.
-                let policy = &rest.body;
-                let bindings = policy
-                    .get("bindings")
-                    .and_then(|b| b.as_array())
-                    .cloned()
-                    .unwrap_or_default();
+                // Extract the policy, either direct or from an envelope.
+                let mut policy = match crate::services::IamPolicy::extract(&rest.body) {
+                    Some(p) => p,
+                    None => crate::services::IamPolicy {
+                        bindings: vec![],
+                        etag: None,
+                        version: None,
+                    },
+                };
 
-                let already_bound = bindings.iter().any(|binding| {
-                    binding.get("role").and_then(|r| r.as_str()) == Some(role)
-                        && binding
-                            .get("members")
-                            .and_then(|m| m.as_array())
-                            .map(|members| {
-                                members.iter().any(|m| m.as_str() == Some(member.as_str()))
-                            })
-                            .unwrap_or(false)
-                });
+                let changed = policy.ensure_member(role, &member);
 
-                if already_bound {
+                if !changed {
                     return OutputMap::new()
                         .value("request", Value::Skipped)
                         .bool("skip", true)
                         .ok();
                 }
 
-                // Build the updated policy with the new binding.
-                let mut new_bindings = bindings;
-                // Check if there's an existing binding for the role.
-                let mut found_role = false;
-                for binding in &mut new_bindings {
-                    if binding.get("role").and_then(|r| r.as_str()) == Some(role) {
-                        // Add member to existing role binding.
-                        if let Some(members) = binding.get_mut("members") {
-                            if let Some(arr) = members.as_array_mut() {
-                                arr.push(serde_json::Value::String(member.clone()));
-                            }
-                        }
-                        found_role = true;
-                        break;
-                    }
-                }
-                if !found_role {
-                    // Add a new role binding.
-                    new_bindings.push(serde_json::json!({
-                        "role": role,
-                        "members": [member]
-                    }));
-                }
-
-                let mut new_policy = policy.clone();
-                new_policy["bindings"] = serde_json::Value::Array(new_bindings);
-
                 // Build setIamPolicy REST request.
                 let cred = Credential::new(Secret::static_value(access_token), AuthScheme::Bearer);
                 let svc = ResourceManagerRest::new(cred);
-                let req = svc.set_iam_policy(project, new_policy);
+                let req = svc.set_iam_policy(
+                    project,
+                    serde_json::to_value(policy).unwrap_or(serde_json::json!({})),
+                );
 
                 OutputMap::new()
                     .request("request", req.into())
@@ -1187,61 +1156,32 @@ impl Executable for GcpOps {
                         .ok();
                 }
 
-                // getIamPolicy may return either a direct policy object or
-                // an envelope with `policy` depending on transport adapter.
-                let policy = rest
-                    .body
-                    .get("policy")
-                    .cloned()
-                    .unwrap_or_else(|| rest.body.clone());
-                let bindings = policy
-                    .get("bindings")
-                    .and_then(|b| b.as_array())
-                    .cloned()
-                    .unwrap_or_default();
+                // Extract policy, handling both direct and envelope formats.
+                let mut policy = match crate::services::IamPolicy::extract(&rest.body) {
+                    Some(p) => p,
+                    None => crate::services::IamPolicy {
+                        bindings: vec![],
+                        etag: None,
+                        version: None,
+                    },
+                };
 
-                let already_bound = bindings.iter().any(|binding| {
-                    binding.get("role").and_then(|r| r.as_str()) == Some(role)
-                        && binding
-                            .get("members")
-                            .and_then(|m| m.as_array())
-                            .map(|members| members.iter().any(|m| m.as_str() == Some(member)))
-                            .unwrap_or(false)
-                });
+                let changed = policy.ensure_member(role, &member);
 
-                if already_bound {
+                if !changed {
                     return OutputMap::new()
                         .value("request", Value::Skipped)
                         .bool("skip", true)
                         .ok();
                 }
 
-                let mut new_bindings = bindings;
-                let mut found_role = false;
-                for binding in &mut new_bindings {
-                    if binding.get("role").and_then(|r| r.as_str()) == Some(role) {
-                        if let Some(members) = binding.get_mut("members") {
-                            if let Some(arr) = members.as_array_mut() {
-                                arr.push(serde_json::Value::String(member.to_string()));
-                            }
-                        }
-                        found_role = true;
-                        break;
-                    }
-                }
-                if !found_role {
-                    new_bindings.push(serde_json::json!({
-                        "role": role,
-                        "members": [member]
-                    }));
-                }
-
-                let mut new_policy = policy.clone();
-                new_policy["bindings"] = serde_json::Value::Array(new_bindings);
-
                 let cred = Credential::new(Secret::static_value(access_token), AuthScheme::Bearer);
                 let svc = IamRest::new(cred);
-                let req = svc.set_service_account_iam_policy(project, service_account, new_policy);
+                let req = svc.set_service_account_iam_policy(
+                    project,
+                    service_account,
+                    serde_json::to_value(policy).unwrap_or(serde_json::json!({})),
+                );
 
                 OutputMap::new()
                     .request("request", req.into())
@@ -2357,13 +2297,11 @@ mod tests {
     fn check_sa_iam_binding_skips_when_already_bound() {
         use gunbc_ir::transport::rest::RestResponse;
         let policy = serde_json::json!({
-            "policy": {
-                "bindings": [{
-                    "role": "roles/iam.workloadIdentityUser",
-                    "members": ["principalSet://iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc"]
-                }],
-                "etag": "abc123"
-            }
+            "bindings": [{
+                "role": "roles/iam.workloadIdentityUser",
+                "members": ["principalSet://iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc"]
+            }],
+            "etag": "abc123"
         });
         let mut inputs = HashMap::new();
         inputs.insert(

@@ -83,7 +83,7 @@ pub const GET_BUCKET_IAM_POLICY_META: MethodMeta = MethodMeta {
 
 /// Metadata for `create_bucket`.
 pub const CREATE_BUCKET_META: MethodMeta = MethodMeta {
-    endpoint: "/storage/v1/b?project={project}",
+    endpoint: "/storage/v1/b",
     http_method: HttpMethod::Post,
     idempotent: true,
     read_only: false,
@@ -116,17 +116,39 @@ super::impl_gcp_rest_client!(StorageRest, STORAGE);
 
 impl StorageService for StorageRest {
     fn list_buckets(&self, project: &str) -> RestRequest {
-        self.authed_get("/storage/v1/b").query("project", project)
+        let mut req = LIST_BUCKETS_META.build_request(
+            self.base_url(),
+            &[],
+            &[("project", project)],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn get_bucket(&self, bucket: &str) -> RestRequest {
-        let path = format!("/storage/v1/b/{}", bucket);
-        self.authed_get(&path)
+        let mut req = GET_BUCKET_META.build_request(
+            self.base_url(),
+            &[("bucket", bucket)],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn get_bucket_iam_policy(&self, bucket: &str) -> RestRequest {
-        let path = format!("/storage/v1/b/{}/iam", bucket);
-        self.authed_get(&path)
+        let mut req = GET_BUCKET_IAM_POLICY_META.build_request(
+            self.base_url(),
+            &[("bucket", bucket)],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn create_bucket(
@@ -136,19 +158,31 @@ impl StorageService for StorageRest {
         location: &str,
         storage_class: &str,
     ) -> RestRequest {
-        self.authed_post("/storage/v1/b")
-            .query("project", project)
-            .json(serde_json::json!({
-                "name": bucket,
-                "location": location,
-                "storageClass": storage_class
-            }))
+        let mut req = CREATE_BUCKET_META.build_request(
+            self.base_url(),
+            &[],
+            &[("project", project)],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(serde_json::json!({
+            "name": bucket,
+            "location": location,
+            "storageClass": storage_class
+        }))
     }
 
     fn set_bucket_iam_policy(&self, bucket: &str, policy: serde_json::Value) -> RestRequest {
-        let path = format!("/storage/v1/b/{}/iam", bucket);
-        self.authed_put(&path)
-            .json(serde_json::json!({ "policy": policy }))
+        let mut req = SET_BUCKET_IAM_POLICY_META.build_request(
+            self.base_url(),
+            &[("bucket", bucket)],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(serde_json::json!({ "policy": policy }))
     }
 }
 
@@ -165,8 +199,8 @@ mod tests {
         let svc = StorageRest::unauthenticated();
         let req = svc.list_buckets("my-project");
         assert!(req.url.contains("/storage/v1/b"));
-        assert!(req.query.contains_key("project"));
-        assert_eq!(req.query["project"], "my-project");
+        // `build_request` appends query params to the URL instead of the `RestRequest.query` map.
+        assert!(req.url.ends_with("?project=my-project") || req.url.contains("?project=my-project&"));
     }
 
     #[test]
@@ -189,7 +223,8 @@ mod tests {
         let req = svc.create_bucket("my-project", "my-bucket", "US", "STANDARD");
         assert_eq!(req.method, HttpMethod::Post);
         assert!(req.url.contains("/storage/v1/b"));
-        assert_eq!(req.query.get("project"), Some(&"my-project".to_string()));
+        // `build_request` appends query params to the URL instead of the `RestRequest.query` map.
+        assert!(req.url.ends_with("?project=my-project") || req.url.contains("?project=my-project&"));
         let body = req.body.expect("request should include json body");
         assert_eq!(body["name"], "my-bucket");
         assert_eq!(body["location"], "US");

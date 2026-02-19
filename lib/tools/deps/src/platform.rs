@@ -22,9 +22,18 @@ impl Platform {
         Self::from(runtime.host.os)
     }
 
-    /// Parse a platform from a string.
+    /// Parse a platform from a string (tolerant, falls back to Unknown).
     pub fn parse(s: &str) -> Self {
-        Self::from(Os::parse(s))
+        Self::try_parse(s).unwrap_or(Self::Unknown)
+    }
+
+    /// Strictly parse a platform from a string, failing on unknown.
+    pub fn try_parse(s: &str) -> Result<Self, String> {
+        let os = Os::try_parse(s)?;
+        match Self::from(os) {
+            Platform::Unknown => Err(format!("unknown or unsupported platform: {}", s)),
+            other => Ok(other),
+        }
     }
 
     /// Get the platform name as a string.
@@ -105,7 +114,7 @@ impl TryFrom<&Value> for Platform {
         let s = value
             .as_str()
             .ok_or_else(|| "expected string for Platform".to_string())?;
-        Ok(Platform::parse(s))
+        Platform::try_parse(s)
     }
 }
 

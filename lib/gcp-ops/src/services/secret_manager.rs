@@ -115,32 +115,59 @@ super::impl_gcp_rest_client!(SecretManagerRest, SECRET_MANAGER);
 
 impl SecretManagerService for SecretManagerRest {
     fn access_secret_version(&self, project: &str, secret: &str, version: &str) -> RestRequest {
-        let path = format!(
-            "/v1/projects/{}/secrets/{}/versions/{}:access",
-            project, secret, version
+        let mut req = ACCESS_SECRET_VERSION_META.build_request(
+            self.base_url(),
+            &[
+                ("project", project),
+                ("secret", secret),
+                ("version", version),
+            ],
+            &[],
         );
-        self.authed_get(&path)
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn get_secret(&self, project: &str, secret: &str) -> RestRequest {
-        let path = format!("/v1/projects/{}/secrets/{}", project, secret);
-        self.authed_get(&path)
+        let mut req = GET_SECRET_META.build_request(
+            self.base_url(),
+            &[("project", project), ("secret", secret)],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn create_secret(&self, project: &str, secret_id: &str) -> RestRequest {
-        let path = format!("/v1/projects/{}/secrets", project);
-        self.authed_post(&path)
-            .json(serde_json::json!({
-                "replication": {
-                    "automatic": {}
-                }
-            }))
-            .query("secretId", secret_id)
+        let mut req = CREATE_SECRET_META.build_request(
+            self.base_url(),
+            &[("project", project)],
+            &[("secretId", secret_id)],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(serde_json::json!({
+            "replication": {
+                "automatic": {}
+            }
+        }))
     }
 
     fn add_secret_version(&self, project: &str, secret: &str, payload_base64: &str) -> RestRequest {
-        let path = format!("/v1/projects/{}/secrets/{}:addVersion", project, secret);
-        self.authed_post(&path).json(serde_json::json!({
+        let mut req = ADD_SECRET_VERSION_META.build_request(
+            self.base_url(),
+            &[("project", project), ("secret", secret)],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(serde_json::json!({
             "payload": {
                 "data": payload_base64
             }
@@ -148,8 +175,11 @@ impl SecretManagerService for SecretManagerRest {
     }
 
     fn list_secrets(&self, project: &str) -> RestRequest {
-        let path = format!("/v1/projects/{}/secrets", project);
-        self.authed_get(&path)
+        let mut req = LIST_SECRETS_META.build_request(self.base_url(), &[("project", project)], &[]);
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 }
 
@@ -188,8 +218,8 @@ mod tests {
         assert!(req.url.contains("/v1/projects/my-project/secrets"));
         assert_eq!(req.method, HttpMethod::Post);
         assert!(req.body.is_some());
-        assert!(req.query.contains_key("secretId"));
-        assert_eq!(req.query["secretId"], "new-secret");
+        // `build_request` appends query params to the URL instead of the `RestRequest.query` map.
+        assert!(req.url.ends_with("?secretId=new-secret") || req.url.contains("?secretId=new-secret&"));
     }
 
     #[test]

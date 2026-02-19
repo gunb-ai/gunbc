@@ -79,7 +79,7 @@ pub const GET_SERVICE_META: MethodMeta = MethodMeta {
 };
 
 pub const CREATE_SERVICE_META: MethodMeta = MethodMeta {
-    endpoint: "/v2/projects/{project}/locations/{region}/services?serviceId={service}",
+    endpoint: "/v2/projects/{project}/locations/{region}/services",
     http_method: HttpMethod::Post,
     idempotent: true,
     read_only: false,
@@ -88,8 +88,7 @@ pub const CREATE_SERVICE_META: MethodMeta = MethodMeta {
 };
 
 pub const UPDATE_SERVICE_META: MethodMeta = MethodMeta {
-    endpoint:
-        "/v2/projects/{project}/locations/{region}/services/{service}?updateMask=template,labels",
+    endpoint: "/v2/projects/{project}/locations/{region}/services/{service}",
     http_method: HttpMethod::Patch,
     idempotent: true,
     read_only: false,
@@ -151,15 +150,31 @@ super::impl_gcp_rest_client!(CloudRunRest, RUN);
 
 impl CloudRunService for CloudRunRest {
     fn list_services(&self, project: &str, region: &str) -> RestRequest {
-        self.authed_get(&format!(
-            "/v2/projects/{project}/locations/{region}/services"
-        ))
+        let mut req = LIST_SERVICES_META.build_request(
+            self.base_url(),
+            &[("project", project), ("region", region)],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn get_service(&self, project: &str, region: &str, service: &str) -> RestRequest {
-        self.authed_get(&format!(
-            "/v2/projects/{project}/locations/{region}/services/{service}"
-        ))
+        let mut req = GET_SERVICE_META.build_request(
+            self.base_url(),
+            &[
+                ("project", project),
+                ("region", region),
+                ("service", service),
+            ],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn create_service(
@@ -171,11 +186,15 @@ impl CloudRunService for CloudRunRest {
         service_account: &str,
         env: &[(&str, &str)],
     ) -> RestRequest {
-        self.authed_post(&format!(
-            "/v2/projects/{project}/locations/{region}/services"
-        ))
-        .query("serviceId", service)
-        .json(Self::service_template_body(image, service_account, env))
+        let mut req = CREATE_SERVICE_META.build_request(
+            self.base_url(),
+            &[("project", project), ("region", region)],
+            &[("serviceId", service)],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(Self::service_template_body(image, service_account, env))
     }
 
     fn update_service(
@@ -187,17 +206,35 @@ impl CloudRunService for CloudRunRest {
         service_account: &str,
         env: &[(&str, &str)],
     ) -> RestRequest {
-        self.authed_patch(&format!(
-            "/v2/projects/{project}/locations/{region}/services/{service}"
-        ))
-        .query("updateMask", "template,labels")
-        .json(Self::service_template_body(image, service_account, env))
+        let mut req = UPDATE_SERVICE_META.build_request(
+            self.base_url(),
+            &[
+                ("project", project),
+                ("region", region),
+                ("service", service),
+            ],
+            &[("updateMask", "template,labels")],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(Self::service_template_body(image, service_account, env))
     }
 
     fn get_service_iam_policy(&self, project: &str, region: &str, service: &str) -> RestRequest {
-        self.authed_get(&format!(
-            "/v2/projects/{project}/locations/{region}/services/{service}:getIamPolicy"
-        ))
+        let mut req = GET_SERVICE_IAM_POLICY_META.build_request(
+            self.base_url(),
+            &[
+                ("project", project),
+                ("region", region),
+                ("service", service),
+            ],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn set_service_iam_policy(
@@ -207,10 +244,19 @@ impl CloudRunService for CloudRunRest {
         service: &str,
         policy: serde_json::Value,
     ) -> RestRequest {
-        self.authed_post(&format!(
-            "/v2/projects/{project}/locations/{region}/services/{service}:setIamPolicy"
-        ))
-        .json(serde_json::json!({ "policy": policy }))
+        let mut req = SET_SERVICE_IAM_POLICY_META.build_request(
+            self.base_url(),
+            &[
+                ("project", project),
+                ("region", region),
+                ("service", service),
+            ],
+            &[],
+        );
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(serde_json::json!({ "policy": policy }))
     }
 }
 
@@ -237,7 +283,8 @@ mod tests {
         assert!(req
             .url
             .contains("/v2/projects/proj/locations/us-central1/services"));
-        assert_eq!(req.query.get("serviceId"), Some(&"api".to_string()));
+        // `build_request` appends query params to the URL instead of the `RestRequest.query` map.
+        assert!(req.url.ends_with("?serviceId=api") || req.url.contains("?serviceId=api&"));
         let body = req.body.expect("request should include json body");
         assert_eq!(
             body["template"]["containers"][0]["image"],
@@ -257,10 +304,8 @@ mod tests {
             &[],
         );
         assert_eq!(req.method, HttpMethod::Patch);
-        assert_eq!(
-            req.query.get("updateMask"),
-            Some(&"template,labels".to_string())
-        );
+        // `build_request` appends query params to the URL instead of the `RestRequest.query` map.
+        assert!(req.url.ends_with("?updateMask=template%2Clabels") || req.url.contains("?updateMask=template%2Clabels&"));
     }
 
     #[test]

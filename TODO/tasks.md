@@ -44,10 +44,25 @@ For this track, prefer **model enrichment first**:
 
 | ID | Task | Deps | Size | Source |
 |----|------|------|------|--------|
-| **R3** | **Backend modeling enrichment RFC + IR schema update**: define and land minimal IR/API extensions needed for correctness-by-construction across these bugs. Scope: (a) Go binding intent in IR (short-declare vs assign, not encoded via synthetic names like `_, err`), (b) C lexical scope block statement for temporary-lifetime isolation, (c) MIPS explicit return terminator + epilogue destination contract (single-exit semantics), (d) fallible temp allocation API for register pressure, and (e) scope-aware local tracking notes for C->MIPS block lowering. Include migration notes for lowerers/renderers/tests. **Acceptance**: changed IR types compile across emit crate; Go emit path can express declaration vs assignment without string parsing; C/MIPS lowering can represent scoped temps without hardcoded unique names; return/epilogue flow is representable without raw `jr $ra` in lowering logic. | — | M | review synthesis |
+| **R3** | **[STARTED 2026-02-19]** **Backend modeling enrichment RFC + IR schema update**: define and land minimal IR/API extensions needed for correctness-by-construction across these bugs. Scope: (a) Go binding intent in IR (short-declare vs assign, not encoded via synthetic names like `_, err`), (b) C lexical scope block statement for temporary-lifetime isolation, (c) MIPS explicit return terminator + epilogue destination contract (single-exit semantics), (d) fallible temp allocation API for register pressure, and (e) scope-aware local tracking notes for C->MIPS block lowering. Include migration notes for lowerers/renderers/tests. **Acceptance**: changed IR types compile across emit crate; Go emit path can express declaration vs assignment without string parsing; C/MIPS lowering can represent scoped temps without hardcoded unique names; return/epilogue flow is representable without raw `jr $ra` in lowering logic. | — | M | review synthesis |
 | **R4** | **Go + C lowerer migration to modeled semantics**: migrate transport-call statement lowering to the new IR contracts. Go must avoid repeated `:=` redeclare failures by construction; C must avoid same-scope `__rc` redefinition by construction (scoped block or equivalent modeled mechanism). **Acceptance**: add regressions with 2+ transport expression statements in one function; generated Go/C compile cleanly; tests assert structural IR behavior (not string fragments only). Interim `Expr::Block` wrapping is acceptable as a stop-gap, but completion requires bind-intent modeling from R3 to be exercised in tests. | R3 | M | review synthesis |
 | **R5** | **MIPS control-flow + allocator fail-closed migration**: implement single-exit return lowering (all returns route through epilogue path), make temp allocation fail with explicit `LowerError` on exhaustion instead of wrapping/clobbering, and define handling for C block-scope locals during C->MIPS lowering (scope stack or equivalent non-leaking strategy). **Acceptance**: framed functions do not contain body-level direct `JumpReg(Register::Ra)` for lowered returns; deep-expression/register-pressure test fails closed with explicit lowering error, not silent corruption; scoped temps from nested blocks do not alias/leak incorrectly in generated MIPS. | R3 | M | review synthesis |
 | **R6** | **Holistic backend correctness harness**: add cross-backend adversarial fixtures + smoke compilation checks for generated artifacts (Go/C compile, MIPS assembly structure checks), plus invariant checks that encode the modeled contracts. **Acceptance**: old buggy patterns are caught by tests; new modeled path passes; CI command includes this harness. | R4, R5 | M | review synthesis |
+
+#### Design Decision: External System Semantics Must Not Be Stringly-Typed
+
+The same modeling-first rule applies to infra/GCP code: endpoint contracts, IAM policy
+shape, boundary input parsing, and mock seeding should be typed and validated by
+construction, with string heuristics only as explicit transitional compatibility paths.
+
+| ID | Task | Deps | Size | Source |
+|----|------|------|------|--------|
+| **R7** | **[DONE 2026-02-19]** **Typed IAM policy domain model**: replace ad-hoc `serde_json::Value` mutation in IAM binding ops with typed structs (e.g., `IamPolicy`, `IamBinding`) + safe mutation helpers (`ensure_member(role, member)`). Preserve and round-trip `etag`, dedupe members, and support both direct-policy and envelope-policy transport shapes via typed decode adapters. **Acceptance**: `CheckAndPrepareIamBinding` and `CheckAndPrepareSaIamBinding` no longer manually push JSON strings into `bindings`; typed tests cover existing, missing, and duplicate-member cases; `etag` retained in generated setIamPolicy request bodies. | — | M | architecture review |
+| **R8** | **`MethodMeta` as execution source-of-truth**: add shared request-construction utilities that expand endpoint templates from `MethodMeta` + typed params/query map, and migrate service impls to use this path (not duplicated `format!` URLs). **Acceptance**: service methods stop hardcoding endpoint paths already represented by `*_META`; parity tests enforce constructed URL/method equivalence to metadata; drift between metadata and request wiring is caught by tests. | R7 | M | architecture review |
+| **R9** | **[DONE 2026-02-19]** **Fail-closed CLI entrypoint input parsing**: replace fallback `Value::Str` parsing in infra CLI with type-driven parsing based on `TypeId` + `ValueBacking` / compatibility helpers. Unsupported complex carriers should error explicitly with guidance instead of silently coercing to string. **Acceptance**: `parse_input_value` errors for incompatible inputs; list/map/json/basic scalar parsing covered; no silent string fallback for non-string target types. | — | S | architecture review |
+| **R10** | **[DONE 2026-02-19]** **Typed REST path-variable binding in `SystemModel`**: move `Invocation::Rest.path` from wildcard `*` style to named placeholders (`{project_id}`, etc.) and extend `validate_system_model` to verify placeholder↔`BehaviorInput` coverage (no unbound placeholders, no missing required path vars). **Acceptance**: GCP models validate with named variables; validator rejects mismatched path vars; tests cover both valid and invalid models. | R8 | M | architecture review |
+| **R11** | **[DONE 2026-02-19]** **Strict platform parsing at boundaries**: introduce strict parse APIs (`try_parse`/`FromStr` with real errors) for `Arch`/`Vendor`/`Os`/`AbiEnv`/`ExecutionEnv` at user-config boundaries while keeping best-effort detection paths for host introspection. **Acceptance**: config/CLI parse points can fail closed on unknown tokens; host detect remains tolerant; tests cover strict-reject and tolerant-detect behavior split. | — | S | architecture review |
+| **R12** | **[DONE 2026-02-19]** **Mock-default seeding by semantic kind, not port-name heuristics**: migrate GCP mock defaults away from raw port-name matching toward typed semantic hints (`SemanticCarrierKind` and/or refined type aliases). Keep name-based fallback only behind an explicit compatibility path. **Acceptance**: mock seeding still works when ports are renamed but type semantics are preserved; tests demonstrate semantic seeding for audience/project/service-account style inputs without relying on exact port names. | R9 | M | architecture review |
 
 #### Design Decision: DeferredCallableOp Elimination Strategy (blocks P6)
 
@@ -285,6 +300,40 @@ Better informed after W1-W8 reveal which deferred callables are actually exercis
 
 ---
 
+## Sprint 5: Workflow Minimal Execution Model (CI/Test-All)
+
+**Goal**: make `make ci` and `make test-all` warm-path behavior complete in seconds by
+construction, with no redundant work and no implicit fallback paths.
+
+### Design Decision: Minimum Unit of Work + Exclusive Coordination
+
+Workflow execution must be modeled as typed, composable **minimum work units** (not command
+chains). Every unit must declare:
+
+1. explicit typed inputs and outputs,
+2. deterministic materialization key inputs,
+3. exclusive resource claims (or declared shared capacity), and
+4. downstream coordination contracts (what can run only after this unit commits).
+
+This makes work naturally mutually exclusive where needed and deterministically coordinated for
+downstream nodes.
+
+Reference design doc: `docs/design/workflow-minimal-execution-model.md`.
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **WF1** | **Minimum work-unit schema**: introduce first-class `WorkflowSpec`/`WorkflowNode` types for `ci` + `test-all`, including typed unit IDs, declared inputs/outputs, effect metadata, and versioned op identity. **Acceptance**: no planner node can be created from an untyped shell string; each unit has stable ID and explicit IO contract; schema docs landed. | — | M |
+| **WF2** | **Mutual-exclusion claim model**: define `ResourceClaim` classes and capacities for workflow units (e.g., workspace compile, generated-artifact writes, manifest updates), and wire admission checks so conflicting units cannot co-run. **Acceptance**: planner/executor rejects unsatisfied/conflicting claims fail-closed; conflict diagnostics include both unit IDs + claim IDs; tests cover read/read allowed and write/write denied cases. | WF1 | M |
+| **WF3** | **Deterministic materialization keys + miss reasons**: implement normalized key computation (`op_version`, declared inputs, upstream keys, env projection, toolchain fingerprint, policy version) and strict miss-reason taxonomy. **Acceptance**: same repo state yields identical keys; key drift is explained by explicit miss reason; no mtime-only freshness path in planner core. | WF1 | M |
+| **WF4** | **Downstream coordination contract**: model readiness and commit boundaries explicitly so downstream units only execute after upstream success/commit (no implicit ordering via make target position). **Acceptance**: planner proves topological + contract consistency before execution; downstream units are blocked on failed or uncommitted upstream nodes with explicit reason output. | WF1, WF2 | M |
+| **WF5** | **Planner dry-run + execution plan explainability**: add a planner mode that prints execute-set, cache-hit/miss set, and critical path before running. **Acceptance**: `gunbc-workflow --plan ci` and `--plan test-all` produce deterministic node lists and miss reasons; tests pin output stability for a fixed fixture repo state. | WF2, WF3, WF4 | S |
+| **WF6** | **Port `ci` to workflow planner**: implement `gunbc-workflow ci` using the new unit model and planner/executor, with behavior parity to current `gunbc-ci`. **Acceptance**: CI path no longer composes redundant prerequisite chains; all `ci` steps execute via typed units with claims + keys; parity tests validate outputs and failure semantics. | WF5 | M |
+| **WF7** | **Port `test-all` to workflow planner**: implement `gunbc-workflow test-all` with minimal dirty-closure execution and shared artifacts with `ci` flow. **Acceptance**: warm no-op executes zero functional units; single-input edits execute only transitive dirty closure; regression tests assert no duplicate generator/build unit execution in one run. | WF5 | M |
+| **WF8** | **Makefile thinning + strict mode cutover**: convert `make ci`/`make test-all` into thin wrappers over `gunbc-workflow`; remove redundant legacy chaining for these targets; keep explicit strict-mode failures for unmapped/deprecated paths. **Acceptance**: Make targets are transport-only wrappers; removed duplicate orchestration for these commands; CI gate asserts planner path is used. | WF6, WF7 | S |
+| **WF9** | **Latency SLO instrumentation + guardrails**: add run-ledger timing metrics and CI assertions for warm-path budgets (seconds-scale), plus “top slow units” reporting. **Acceptance**: logs expose total units/hits/misses/critical path; failing SLO budgets fail CI with actionable slow-unit breakdown. | WF6, WF7 | S |
+
+---
+
 ## Parallelization Guide
 
 ```
@@ -294,6 +343,9 @@ SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
          │
          ├─ R2                     (review finding: wildcard resources)
          ├─ R3→(R4, R5)→R6         (modeled backend correctness hardening)
+         ├─ R7→R8→R10              (typed GCP/service-model semantics)
+         ├─ R9→R12                 (typed CLI boundary + semantic mock seeding)
+         ├─ R11                    (strict platform parsing boundaries)
          ├─ P12                    (resolve_infrastructure typed-lowering migration)
          │
     ─────┤ (Sprint 3: dev pipeline — real workflow)
@@ -305,12 +357,19 @@ SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
     ─────┤ (Sprint 4: cleanup informed by real usage)
          │
          └─ P6                     (per-module domain ops, L)
+         │
+    ─────┤ (Sprint 5: minimal workflow execution model)
+         │
+         └─ WF1→WF2→(WF3,WF4)→WF5→(WF6,WF7)→WF8→WF9
 ```
 
-**Sprint 2**: R2 + R3/R4/R5/R6 modeling-first backend hardening + remaining integration fixes.
+**Sprint 2**: R2 + R3/R4/R5/R6 backend modeling hardening + R7/R8/R9/R10/R11/R12
+external-system modeling hardening + remaining integration fixes.
 **Sprint 3**: W1 (`gunbc review` CLI) is the critical path — first real end-to-end
 execution. W4 (abstract review DAG with 4 dimensions) is the design centerpiece.
 By end of sprint: `gunbc pipeline --pr 123` runs coherence + quality + requirements
 + aspirational review with CI context, outputs must-fix / defer / accept findings.
 **Sprint 4**: P6 informed by which deferred callables real execution exercises.
+**Sprint 5**: WF track lands typed minimum units + exclusive claims + downstream
+coordination contracts, then ports `ci`/`test-all` to planner-first execution.
 **Backlog**: XL features and migration work in `backlog.md`.

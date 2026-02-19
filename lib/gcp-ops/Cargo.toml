@@ -14,3 +14,4 @@ gunbc-testgen-registry = { path = "../../core/testgen-registry" }
 gunbc-testgen-registry-macros = { path = "../../core/testgen-registry-macros" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+urlencoding = "2.1.3"

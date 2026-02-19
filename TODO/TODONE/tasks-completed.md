@@ -21,6 +21,10 @@
 | ID | Task | Status |
 |----|------|--------|
 | R1 | Makegen transport port naming alignment (`response` across lowerer parity filter, exec runtime emitter, and makegen mocks). | Done 2026-02-19 |
+| R9 | Infra CLI `parse_input_value` fail-closed parsing now type-driven via `ValueBacking` + compatibility checks; structured JSON/list/map/set parsing and incompatibility/unsupported tests added. | Done 2026-02-19 |
+| R10 | `SystemModel` REST invocation paths now use named placeholders and validation enforces wildcard ban + placeholder↔required-input binding (with invalid-path regression tests). | Done 2026-02-19 |
+| R11 | Strict parsing APIs (`try_parse`/`FromStr`) landed for `Arch`/`Vendor`/`Os`/`AbiEnv`/`ExecutionEnv` with tolerant `parse` retained for host detection paths; strict-vs-tolerant tests added. | Done 2026-02-19 |
+| R12 | Mock default seeding now prefers refined typed GCP semantic aliases, with legacy port-name heuristics isolated behind an explicit compatibility fallback; rename-resilient typed seeding tests added. | Done 2026-02-19 |
 | P1 | `daglang-derive` capture mode now derived structurally from `obligation` + `is_interactive` metadata (no blanket captured default logic). | Done 2026-02-19 |
 | P2 | `daglang-derive` interactive node detection now uses structural `is_interactive: bool` on `LoweredOp::Callable` (no `name.contains("@interactive")`). | Done 2026-02-19 |
 | P3 | `daglang-derive` resource usage derivation now uses `obligation` enum + `resource_target` metadata (no string prefix stripping). | Done 2026-02-19 |

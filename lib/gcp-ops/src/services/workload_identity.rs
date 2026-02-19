@@ -137,7 +137,7 @@ pub const GET_PROVIDER_META: MethodMeta = MethodMeta {
 
 /// Metadata for `create_pool`.
 pub const CREATE_POOL_META: MethodMeta = MethodMeta {
-    endpoint: "/v1/projects/{project}/locations/global/workloadIdentityPools?workloadIdentityPoolId={pool}",
+    endpoint: "/v1/projects/{project}/locations/global/workloadIdentityPools",
     http_method: HttpMethod::Post,
     idempotent: true,
     read_only: false,
@@ -147,7 +147,7 @@ pub const CREATE_POOL_META: MethodMeta = MethodMeta {
 
 /// Metadata for `create_provider`.
 pub const CREATE_PROVIDER_META: MethodMeta = MethodMeta {
-    endpoint: "/v1/projects/{project}/locations/global/workloadIdentityPools/{pool}/providers?workloadIdentityPoolProviderId={provider}",
+    endpoint: "/v1/projects/{project}/locations/global/workloadIdentityPools/{pool}/providers",
     http_method: HttpMethod::Post,
     idempotent: true,
     read_only: false,
@@ -157,7 +157,7 @@ pub const CREATE_PROVIDER_META: MethodMeta = MethodMeta {
 
 /// Metadata for `update_provider`.
 pub const UPDATE_PROVIDER_META: MethodMeta = MethodMeta {
-    endpoint: "/v1/projects/{project}/locations/global/workloadIdentityPools/{pool}/providers/{provider}?updateMask=oidc,attributeMapping,attributeCondition",
+    endpoint: "/v1/projects/{project}/locations/global/workloadIdentityPools/{pool}/providers/{provider}",
     http_method: HttpMethod::Patch,
     idempotent: true,
     read_only: false,
@@ -180,44 +180,67 @@ super::impl_gcp_rest_client!(WorkloadIdentityRest, IAM);
 
 impl WorkloadIdentityService for WorkloadIdentityRest {
     fn list_pools(&self, project: &str) -> RestRequest {
-        let path = format!(
-            "/v1/projects/{}/locations/global/workloadIdentityPools",
-            project
+        let mut req = LIST_POOLS_META.build_request(
+            self.base_url(),
+            &[("project", project)],
+            &[],
         );
-        self.authed_get(&path)
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn get_pool(&self, project: &str, pool_id: &str) -> RestRequest {
-        let path = format!(
-            "/v1/projects/{}/locations/global/workloadIdentityPools/{}",
-            project, pool_id
+        let mut req = GET_POOL_META.build_request(
+            self.base_url(),
+            &[("project", project), ("pool", pool_id)],
+            &[],
         );
-        self.authed_get(&path)
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn list_providers(&self, project: &str, pool_id: &str) -> RestRequest {
-        let path = format!(
-            "/v1/projects/{}/locations/global/workloadIdentityPools/{}/providers",
-            project, pool_id
+        let mut req = LIST_PROVIDERS_META.build_request(
+            self.base_url(),
+            &[("project", project), ("pool", pool_id)],
+            &[],
         );
-        self.authed_get(&path)
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn get_provider(&self, project: &str, pool_id: &str, provider_id: &str) -> RestRequest {
-        let path = format!(
-            "/v1/projects/{}/locations/global/workloadIdentityPools/{}/providers/{}",
-            project, pool_id, provider_id
+        let mut req = GET_PROVIDER_META.build_request(
+            self.base_url(),
+            &[
+                ("project", project),
+                ("pool", pool_id),
+                ("provider", provider_id),
+            ],
+            &[],
         );
-        self.authed_get(&path)
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
     }
 
     fn create_pool(&self, project: &str, pool_id: &str, display_name: &str) -> RestRequest {
-        let path = format!(
-            "/v1/projects/{}/locations/global/workloadIdentityPools?workloadIdentityPoolId={}",
-            project, pool_id
+        let mut req = CREATE_POOL_META.build_request(
+            self.base_url(),
+            &[("project", project)],
+            &[("workloadIdentityPoolId", pool_id)],
         );
-        self.authed_post(&path)
-            .json(serde_json::json!({ "displayName": display_name }))
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(serde_json::json!({ "displayName": display_name }))
     }
 
     fn create_provider(
@@ -227,11 +250,15 @@ impl WorkloadIdentityService for WorkloadIdentityRest {
         provider_id: &str,
         config: &WifProviderConfig,
     ) -> RestRequest {
-        let path = format!(
-            "/v1/projects/{}/locations/global/workloadIdentityPools/{}/providers?workloadIdentityPoolProviderId={}",
-            project, pool_id, provider_id
+        let mut req = CREATE_PROVIDER_META.build_request(
+            self.base_url(),
+            &[("project", project), ("pool", pool_id)],
+            &[("workloadIdentityPoolProviderId", provider_id)],
         );
-        self.authed_post(&path).json(config.to_provider_json())
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(config.to_provider_json())
     }
 
     fn update_provider(
@@ -241,11 +268,19 @@ impl WorkloadIdentityService for WorkloadIdentityRest {
         provider_id: &str,
         config: &WifProviderConfig,
     ) -> RestRequest {
-        let path = format!(
-            "/v1/projects/{}/locations/global/workloadIdentityPools/{}/providers/{}?updateMask=oidc,attributeMapping,attributeCondition",
-            project, pool_id, provider_id
+        let mut req = UPDATE_PROVIDER_META.build_request(
+            self.base_url(),
+            &[
+                ("project", project),
+                ("pool", pool_id),
+                ("provider", provider_id),
+            ],
+            &[("updateMask", "oidc,attributeMapping,attributeCondition")],
         );
-        self.authed_patch(&path).json(config.to_provider_json())
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req.json(config.to_provider_json())
     }
 }
 
@@ -317,9 +352,8 @@ mod tests {
         let svc = WorkloadIdentityRest::unauthenticated();
         let cfg = sample_provider_config();
         let req = svc.create_provider("my-project", "github-pool", "github", &cfg);
-        assert!(req
-            .url
-            .contains("providers?workloadIdentityPoolProviderId=github"));
+        // `build_request` appends query params to the URL instead of the `RestRequest.query` map.
+        assert!(req.url.ends_with("?workloadIdentityPoolProviderId=github") || req.url.contains("?workloadIdentityPoolProviderId=github&"));
         assert_eq!(req.method, HttpMethod::Post);
         let body = req.body.expect("create provider should include JSON body");
         assert_eq!(

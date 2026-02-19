@@ -31,7 +31,7 @@ use gunbc_ir::resource::AccessMode;
 use gunbc_ir::transport::{
     FileOp, FileRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
 };
-use gunbc_ir::{Dag, Edge, Node, Port, SecretString, Value};
+use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, SecretString, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
@@ -656,6 +656,12 @@ struct PrepareFileReadCompatOp;
 
 impl Executable for PrepareFileReadCompatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        if matches!(inputs.get("path"), Some(Value::Skipped)) {
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok();
+        }
         let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
             ExecError::new(
                 "PrepareFileRead: missing required `path` input — check content-upsert wiring",
@@ -680,15 +686,22 @@ struct PrepareFileWriteCompatOp;
 
 impl Executable for PrepareFileWriteCompatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        if matches!(inputs.get("path"), Some(Value::Skipped)) {
+            return OutputMap::new().value("request", Value::Skipped).ok();
+        }
         let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
             ExecError::new(
                 "PrepareFileWrite: missing required `path` input — check content-upsert wiring",
             )
         })?;
-        let content = inputs
+        let content_value = inputs
             .get("content")
             .or_else(|| inputs.get("return"))
-            .or_else(|| inputs.get("expected_content"))
+            .or_else(|| inputs.get("expected_content"));
+        if matches!(content_value, Some(Value::Skipped)) {
+            return OutputMap::new().value("request", Value::Skipped).ok();
+        }
+        let content = content_value
             .and_then(Value::as_str)
             .ok_or_else(|| {
                 ExecError::new(
@@ -718,6 +731,7 @@ pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveEr
     for node in &dag.nodes {
         let dyn_op = resolve_node(node)?;
         let mut resolved_node = node.clone().map_ops(&mut |_| dyn_op.clone());
+        normalize_release_resource_inputs(&mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
             resolved_node
                 .inputs
@@ -728,6 +742,17 @@ pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveEr
     resolved.edges = dag.edges.clone();
     wire_missing_filesystem_resources(&mut resolved);
     Ok(resolved)
+}
+
+fn normalize_release_resource_inputs(node: &mut Node<DynOp>) {
+    if !node.id.0.starts_with("release_resource_") {
+        return;
+    }
+    for input in &mut node.inputs {
+        if input.name.0 == "resource_handle" {
+            input.cardinality = Cardinality::ZERO_OR_MORE;
+        }
+    }
 }
 
 // ============================================================================
@@ -1241,7 +1266,10 @@ fn needs_transport_resource(
     let already_has = resolved
         .inputs
         .iter()
-        .any(|port| port.type_id.0 == "FilesystemHandle" && port.name.0.starts_with("res:file:"));
+        .any(|port| {
+            port.type_id.0 == "FilesystemHandle"
+                && (port.name.0 == "res:file" || port.name.0.starts_with("res:file:"))
+        });
     if already_has {
         None
     } else {
@@ -1253,7 +1281,9 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
     let mut pending = Vec::new();
     for node in &dag.nodes {
         for port in &node.inputs {
-            if port.type_id.0 != "FilesystemHandle" || !port.name.0.starts_with("res:file:") {
+            let is_filesystem_resource_port = port.type_id.0 == "FilesystemHandle"
+                && (port.name.0 == "res:file" || port.name.0.starts_with("res:file:"));
+            if !is_filesystem_resource_port {
                 continue;
             }
             let connected = dag
@@ -1697,5 +1727,107 @@ mod tests {
         assert_eq!(resolved.edges.len(), 1);
         assert_eq!(resolved.edges[0].from_node.0, "render");
         assert_eq!(resolved.edges[0].to_node.0, "prepare_read");
+    }
+
+    #[test]
+    fn needs_transport_resource_respects_existing_res_file_port() {
+        let lowered = callable_node(
+            "execute_read_makegen",
+            "tools.makegen",
+            "content_upsert::execute_read_makegen",
+            ObligationCategory::ServiceTransportExecute,
+        );
+        let resolved = Node::opaque(
+            "execute_read_makegen",
+            vec![Port::resource("file", "FilesystemHandle", AccessMode::Read)],
+            vec![Port::new("response", "TransportResponse")],
+            DynOp::new(DslFsEnvOp),
+        );
+
+        let mode = needs_transport_resource(&lowered, &resolved);
+        assert!(
+            mode.is_none(),
+            "existing `res:file` input should prevent duplicate resource port injection"
+        );
+    }
+
+    #[test]
+    fn wire_missing_filesystem_resources_wires_res_file_port() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "fs_env",
+            vec![],
+            vec![Port::new("FilesystemHandle", "FilesystemHandle")],
+            DynOp::new(DslFsEnvOp),
+        ));
+        dag.add_node(Node::opaque(
+            "execute_read_makegen",
+            vec![Port::resource("file", "FilesystemHandle", AccessMode::Read)],
+            vec![Port::new("response", "TransportResponse")],
+            DynOp::new(DslFsEnvOp),
+        ));
+
+        wire_missing_filesystem_resources(&mut dag);
+
+        let has_edge = dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "fs_env"
+                && edge.from_port.0 == "FilesystemHandle"
+                && edge.to_node.0 == "execute_read_makegen"
+                && edge.to_port.0 == "res:file"
+        });
+        assert!(
+            has_edge,
+            "filesystem resource edge should be auto-wired for `res:file` inputs"
+        );
+    }
+
+    #[test]
+    fn prepare_file_write_propagates_skipped_content_to_request() {
+        let mut inputs = HashMap::new();
+        inputs.insert("path".to_string(), Value::Str("foo.txt".to_string()));
+        inputs.insert("content".to_string(), Value::Skipped);
+
+        let outputs = PrepareFileWriteCompatOp
+            .execute(inputs)
+            .expect("skipped content should not error");
+        assert_eq!(
+            outputs.get("request"),
+            Some(&Value::Skipped),
+            "prepare_write should propagate skipped content via skipped request"
+        );
+    }
+
+    #[test]
+    fn normalize_release_resource_inputs_uses_list_cardinality() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "release_resource_std_resources_Filesystem",
+            vec![Port::new("resource_handle", "ResourceHandle")],
+            vec![Port::new("released", "Bool")],
+            LoweredOp::Callable {
+                module: "std.resources".to_string(),
+                kind: CallableKind::Pattern,
+                name: "resource_lifecycle::release::Filesystem".to_string(),
+                obligation: ObligationCategory::ResourceRelease,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+
+        let resolved = resolve_lowered_dag(&dag).expect("release node should resolve");
+        let release_node = resolved
+            .get_node(&"release_resource_std_resources_Filesystem".into())
+            .expect("release node should exist");
+        let handle_port = release_node
+            .inputs
+            .iter()
+            .find(|port| port.name.0 == "resource_handle")
+            .expect("release node should keep resource_handle input");
+        assert_eq!(
+            handle_port.cardinality,
+            Cardinality::ZERO_OR_MORE,
+            "release resource_handle input should accept fan-in without scalar conflicts"
+        );
     }
 }
