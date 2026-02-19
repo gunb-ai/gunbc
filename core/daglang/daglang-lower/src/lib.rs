@@ -711,6 +711,7 @@ fn lower_typed_project_with_callable_scope(
     add_service_call_edges(&mut builder, project, &endpoints_by_full, &service_registry)?;
     let resource_registry = add_resource_lifecycle_nodes(&mut builder, project, callable_modules);
     let known_uses_types = collect_known_uses_types(project);
+    let mut wired_release_targets = HashSet::new();
     add_used_resource_edges(
         &mut builder,
         project,
@@ -724,6 +725,7 @@ fn lower_typed_project_with_callable_scope(
         &endpoints_by_full,
         &resource_registry,
         &known_uses_types,
+        &mut wired_release_targets,
     )?;
     add_interface_contract_verification_nodes(&mut builder, project, &resource_registry);
 
@@ -2527,7 +2529,7 @@ mod parity {
             }
             "execute_makegen_transport" => {
                 inputs.retain(|port| matches!(port.name.0.as_str(), "request" | "skip"));
-                outputs.retain(|port| port.name.0 == "makegen_response");
+                outputs.retain(|port| port.name.0 == "response");
                 for output in outputs.iter_mut() {
                     output.cardinality = Cardinality::ZERO_OR_ONE;
                 }
@@ -6631,7 +6633,7 @@ func run() -> { ok: Bool } provides auth: AuthContext {
                 Port::scalar("request", "TransportRequest"),
                 Port::scalar("skip", "Bool"),
             ],
-            vec![Port::scalar("makegen_response", "TransportResponse")],
+            vec![Port::scalar("response", "TransportResponse")],
             (),
         ));
         dag.add_node(Node::opaque(

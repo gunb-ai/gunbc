@@ -87,7 +87,7 @@ use crate::types::NodeId;
 use crate::{SecretString, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub use gunbc_infra::ResourceId;
@@ -456,50 +456,63 @@ impl std::fmt::Display for ResourceConflict {
 pub fn detect_conflicts<T>(dag: &Dag<T>, accesses: &[ResourceAccess]) -> Vec<ResourceConflict> {
     let mut conflicts = Vec::new();
 
-    // Build a map of resource → accesses
-    let mut resource_accesses: HashMap<&ResourceId, Vec<&ResourceAccess>> = HashMap::new();
-    for access in accesses {
-        resource_accesses
-            .entry(&access.resource_id)
-            .or_default()
-            .push(access);
-    }
-
     // Build a set of ordered pairs (nodes where one must execute before the other)
     let ordered_pairs = compute_ordered_pairs(dag);
 
-    // Check each resource for conflicts
-    for (resource_id, accesses) in resource_accesses {
-        // Check all pairs of accesses to this resource
-        for i in 0..accesses.len() {
-            for j in (i + 1)..accesses.len() {
-                let access_a = accesses[i];
-                let access_b = accesses[j];
+    // Check all access pairs for conflicts, including coarse-vs-specific IDs.
+    for i in 0..accesses.len() {
+        for j in (i + 1)..accesses.len() {
+            let access_a = &accesses[i];
+            let access_b = &accesses[j];
 
-                // Check if modes conflict
-                if !access_a.mode.conflicts_with(&access_b.mode) {
-                    continue;
-                }
+            if !resource_ids_conflict(&access_a.resource_id, &access_b.resource_id) {
+                continue;
+            }
 
-                // Check if nodes are ordered (either A→B or B→A)
-                let a_before_b = ordered_pairs.contains(&(&access_a.node_id, &access_b.node_id));
-                let b_before_a = ordered_pairs.contains(&(&access_b.node_id, &access_a.node_id));
+            // Check if modes conflict
+            if !access_a.mode.conflicts_with(&access_b.mode) {
+                continue;
+            }
 
-                if !a_before_b && !b_before_a {
-                    // No ordering — conflict!
-                    conflicts.push(ResourceConflict {
-                        node_a: access_a.node_id.clone(),
-                        node_b: access_b.node_id.clone(),
-                        resource_id: resource_id.clone(),
-                        mode_a: access_a.mode,
-                        mode_b: access_b.mode,
-                    });
-                }
+            // Check if nodes are ordered (either A→B or B→A)
+            let a_before_b = ordered_pairs.contains(&(&access_a.node_id, &access_b.node_id));
+            let b_before_a = ordered_pairs.contains(&(&access_b.node_id, &access_a.node_id));
+
+            if !a_before_b && !b_before_a {
+                // No ordering — conflict!
+                conflicts.push(ResourceConflict {
+                    node_a: access_a.node_id.clone(),
+                    node_b: access_b.node_id.clone(),
+                    resource_id: conflict_resource_id(&access_a.resource_id, &access_b.resource_id),
+                    mode_a: access_a.mode,
+                    mode_b: access_b.mode,
+                });
             }
         }
     }
 
     conflicts
+}
+
+fn resource_ids_conflict(lhs: &ResourceId, rhs: &ResourceId) -> bool {
+    if lhs == rhs {
+        return true;
+    }
+
+    // Coarse `file` conflicts with any specific `file:<path>` lock.
+    let lhs_file = lhs.0 == "file" || lhs.0.starts_with("file:");
+    let rhs_file = rhs.0 == "file" || rhs.0.starts_with("file:");
+    lhs_file && rhs_file && (lhs.0 == "file" || rhs.0 == "file")
+}
+
+fn conflict_resource_id(lhs: &ResourceId, rhs: &ResourceId) -> ResourceId {
+    if lhs == rhs {
+        return lhs.clone();
+    }
+    if resource_ids_conflict(lhs, rhs) {
+        return ResourceId::new("file");
+    }
+    lhs.clone()
 }
 
 /// Compute all ordered pairs of nodes (A, B) where A must execute before B.
@@ -762,6 +775,20 @@ mod tests {
     }
 
     #[test]
+    fn test_coarse_file_conflicts_with_specific_file_lock() {
+        let dag = parallel_dag();
+
+        let accesses = vec![
+            ResourceAccess::write("a", "file"),
+            ResourceAccess::write("b", "file:Makefile"),
+        ];
+
+        let conflicts = detect_conflicts(&dag, &accesses);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].resource_id.0, "file");
+    }
+
+    #[test]
     fn test_validate_resource_ordering() {
         let dag = parallel_dag();
 
@@ -969,6 +996,35 @@ mod tests {
 
         let conflicts = detect_resource_conflicts(&dag).expect("resource accesses should derive");
         assert!(conflicts.is_empty());
+    }
+
+    #[test]
+    fn test_detect_resource_conflicts_coarse_file_vs_specific_file() {
+        let mut dag: Dag<String> = Dag::new();
+        dag.add_node(Node::opaque(
+            "a",
+            vec![Port::resource(
+                "file",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
+            vec![],
+            "op_a".to_string(),
+        ));
+        dag.add_node(Node::opaque(
+            "b",
+            vec![Port::resource(
+                "file:shared.txt",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
+            vec![],
+            "op_b".to_string(),
+        ));
+
+        let conflicts = detect_resource_conflicts(&dag).expect("resource accesses should derive");
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].resource_id.0, "file");
     }
 
     #[test]

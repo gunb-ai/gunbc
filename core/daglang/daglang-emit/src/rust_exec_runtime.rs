@@ -612,7 +612,7 @@ fn handler_body(kind: HandlerKind) -> &'static str {
         HandlerKind::ExecuteTransport => {
             r##"    let skip = inputs.get("skip").and_then(Value::as_bool).unwrap_or(false);
     if skip {
-        return OutputMap::new().value("makegen_response", Value::Skipped).ok();
+        return OutputMap::new().value("response", Value::Skipped).ok();
     }
     let request = inputs.get("request").and_then(Value::as_request)
         .ok_or_else(|| ExecError::new("missing required input `request`"))?;
@@ -623,7 +623,7 @@ fn handler_body(kind: HandlerKind) -> &'static str {
                 let error = resp.error.clone().unwrap_or_else(|| "unknown write failure".to_string());
                 return Err(ExecError::new(format!("failed to write `{}`: {error}", fr.path)));
             }
-            OutputMap::new().response("makegen_response", TransportResponse::File(resp)).ok()
+            OutputMap::new().response("response", TransportResponse::File(resp)).ok()
         }
         _ => Err(ExecError::new("only file transport requests are supported")),
     }
