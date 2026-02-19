@@ -92,6 +92,7 @@ fn merge_workflow_plan(
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 

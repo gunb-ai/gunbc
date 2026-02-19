@@ -1,5 +1,9 @@
 //! Workflow run ledger + CAS-backed output materialization (WF3).
+#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
+// Planner-side local cache/ledger persistence currently writes under
+// `.gunbc/workflow-ledger/*`. This is intentionally outside transport-boundary
+// DAG execution and is treated as planner-local state.
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, BufWriter, Write};

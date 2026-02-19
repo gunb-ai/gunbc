@@ -41,8 +41,6 @@ fn keys_are_deterministic_for_fixed_inputs() {
         .map(|node| (node.node_id.clone(), node.key.digest.clone()))
         .collect::<Vec<_>>();
     assert_eq!(first_digests, second_digests);
-
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -98,8 +96,6 @@ fn key_drift_produces_typed_miss_reason() {
             miss_reason: MissReason::InputChanged { .. }
         }
     ));
-
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -150,6 +146,4 @@ fn cached_hits_rehydrate_result_outputs() {
         rehydrated_outputs.get(&PortName::from("result")),
         Some(&payload)
     );
-
-    let _ = std::fs::remove_dir_all(root);
 }

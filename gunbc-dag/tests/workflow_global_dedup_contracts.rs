@@ -45,8 +45,6 @@ fn global_plan_dedups_equivalent_work_across_ci_and_test_all() {
     assert_eq!(refs.len(), 2);
     assert!(refs.contains(&WorkflowId::new("ci")));
     assert!(refs.contains(&WorkflowId::new("test-all")));
-
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -64,6 +62,4 @@ fn proof_and_projection_checks_hold_for_global_plan() {
     let projection = project_execute_set(&global);
     validate_projection_equivalence(&global, &projection)
         .expect("canonical execute projection should be drift-free");
-
-    let _ = std::fs::remove_dir_all(root);
 }

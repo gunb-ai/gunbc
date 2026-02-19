@@ -454,6 +454,7 @@ fn critical_path(spec: &WorkflowSpec) -> Vec<NodeId> {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 

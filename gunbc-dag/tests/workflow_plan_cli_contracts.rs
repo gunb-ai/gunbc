@@ -1,4 +1,5 @@
 //! Workflow planner CLI explainability contracts (WF5).
+#![allow(clippy::disallowed_methods)]
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -43,8 +44,6 @@ fn plan_output_is_deterministic_for_ci_fixture_state() {
     assert!(first.contains("execute-set:"));
     assert!(first.contains("cache-hit-set:"));
     assert!(first.contains("critical-path:"));
-
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -65,6 +64,4 @@ fn plan_output_is_deterministic_for_test_all_fixture_state() {
         first.contains("miss:no-prior-run"),
         "fresh fixture should classify misses as no-prior-run"
     );
-
-    let _ = std::fs::remove_dir_all(root);
 }
