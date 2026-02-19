@@ -38,6 +38,7 @@ pub mod graph;
 pub mod installer;
 pub mod manifest;
 pub mod ops;
+pub mod package_manager;
 pub mod platform;
 pub mod tool_upsert;
 pub mod upsert;
@@ -48,17 +49,19 @@ pub use env::{strict_dry_run_enabled, PlatformEnv, STRICT_DRY_RUN_ENV};
 pub use graph::{
     build_deps_generate_graph, build_deps_graph, deps_generate_signature, deps_signature,
 };
-pub use installer::{InstallMethod, Installer};
+pub use installer::{InstallMethod, InstallPlan, Installer};
 pub use manifest::{
     Dependency, DepsManifest, ManifestConfig, PlatformInstall, DEFAULT_MANIFEST_FILENAME,
     MANIFEST_CONFIG,
 };
 pub use ops::DepsOp;
+pub use package_manager::PackageManagerId;
 pub use platform::Platform;
 pub use tool_upsert::{
-    find_install_option, generate_deps_toml, generate_deps_toml_from_registry,
-    generate_tool_deps_entry, generate_tool_idempotent_script, generate_tool_install_cmd,
-    install_inputs_to_platform_install, tool_to_platform_install,
+    find_install_option, find_install_option_with_policy, generate_deps_toml,
+    generate_deps_toml_from_registry, generate_tool_deps_entry, generate_tool_idempotent_script,
+    generate_tool_install_cmd, install_inputs_to_platform_install, tool_to_platform_install,
+    InstallSelectionPolicy,
 };
 pub use upsert::{UpsertPhase, UpsertResult};
 
