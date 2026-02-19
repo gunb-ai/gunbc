@@ -15,6 +15,7 @@
 pub mod cloud_run;
 pub mod compute_engine;
 pub mod iam;
+pub mod iam_policy;
 pub mod load_balancer;
 pub mod local_auth;
 pub mod resource_manager;
@@ -25,6 +26,7 @@ pub mod workload_identity;
 pub use cloud_run::CloudRunService;
 pub use compute_engine::ComputeEngineService;
 pub use iam::IamService;
+pub use iam_policy::{IamBinding, IamPolicy};
 pub use load_balancer::LoadBalancerService;
 pub use local_auth::{GcloudCli, GcloudLoginOptions, LocalAuthService};
 pub use resource_manager::ResourceManagerService;
@@ -62,6 +64,56 @@ pub struct MethodMeta {
     pub service: &'static str,
 }
 
+impl MethodMeta {
+    /// Expands the endpoint template with the provided path parameters and appends
+    /// the optional query parameters.
+    pub fn build_url(
+        &self,
+        base_url: &str,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) -> String {
+        let mut path = self.endpoint.to_string();
+        for (k, v) in path_params {
+            path = path.replace(&format!("{{{}}}", k), v);
+        }
+
+        let mut url = format!("{}{}", base_url, path);
+        if !query_params.is_empty() {
+            let query_string = query_params
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
+                .collect::<Vec<_>>()
+                .join("&");
+            url.push('?');
+            url.push_str(&query_string);
+        }
+        url
+    }
+
+    /// Creates a `RestRequest` from this `MethodMeta` and the given configuration.
+    pub fn build_request(
+        &self,
+        base_url: &str,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) -> RestRequest {
+        let url = self.build_url(base_url, path_params, query_params);
+        match self.http_method {
+            HttpMethod::Get => RestRequest::get(url),
+            HttpMethod::Post => RestRequest::post(url),
+            HttpMethod::Put => RestRequest::put(url),
+            HttpMethod::Patch => RestRequest::patch(url),
+            HttpMethod::Delete => RestRequest::delete(url),
+            _ => {
+                let mut r = RestRequest::post(url);
+                r.method = self.http_method;
+                r
+            }
+        }
+    }
+}
+
 /// Shared REST client pattern for GCP service implementations.
 ///
 /// Implementors provide a base URL and optional credential; the trait
@@ -72,6 +124,31 @@ pub trait GcpRestClient {
 
     /// Optional credential for authentication.
     fn credential(&self) -> Option<&Credential>;
+
+    /// Build an authenticated request from `MethodMeta` at an explicit base URL.
+    fn request_from_meta_at(
+        &self,
+        base_url: &str,
+        meta: &MethodMeta,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) -> RestRequest {
+        let mut req = meta.build_request(base_url, path_params, query_params);
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
+    }
+
+    /// Build an authenticated request from `MethodMeta` at this service's base URL.
+    fn request_from_meta(
+        &self,
+        meta: &MethodMeta,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) -> RestRequest {
+        self.request_from_meta_at(self.base_url(), meta, path_params, query_params)
+    }
 
     /// Build an authenticated request at a specific base URL.
     fn authed_request_at(&self, base_url: &str, method: HttpMethod, path: &str) -> RestRequest {
@@ -140,6 +217,24 @@ macro_rules! impl_gcp_rest_client {
 
 pub(crate) use impl_gcp_rest_client;
 
+macro_rules! impl_gcp_rest_client_constructors {
+    ($ty:ty) => {
+        impl $ty {
+            /// Create a new REST client with the given auth credential.
+            pub fn new(auth: Credential) -> Self {
+                Self { auth: Some(auth) }
+            }
+
+            /// Create a new REST client without auth (for testing).
+            pub fn unauthenticated() -> Self {
+                Self { auth: None }
+            }
+        }
+    };
+}
+
+pub(crate) use impl_gcp_rest_client_constructors;
+
 /// GCP API base URLs.
 pub mod base_urls {
     /// Secret Manager API.
@@ -159,5 +254,5 @@ pub mod base_urls {
     /// STS (Security Token Service) API.
     pub const STS: &str = "https://sts.googleapis.com";
     /// OAuth2 token endpoint.
-    pub const OAUTH2: &str = "https://oauth2.googleapis.com";
+    pub const OAUTH2_TOKEN: &str = "https://oauth2.googleapis.com/token";
 }

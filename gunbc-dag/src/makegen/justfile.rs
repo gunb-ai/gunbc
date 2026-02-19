@@ -274,11 +274,7 @@ fn tool_command_for_just(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -
     } else {
         ""
     };
-    let env_prefix = if tool.short_name == "gist-recent" {
-        "GUNBC_CLOUD_CONFIG_REQUIRED=1 "
-    } else {
-        ""
-    };
+    let env_prefix = "";
 
     if dry_run {
         format!(

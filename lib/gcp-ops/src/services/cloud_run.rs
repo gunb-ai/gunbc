@@ -79,7 +79,7 @@ pub const GET_SERVICE_META: MethodMeta = MethodMeta {
 };
 
 pub const CREATE_SERVICE_META: MethodMeta = MethodMeta {
-    endpoint: "/v2/projects/{project}/locations/{region}/services?serviceId={service}",
+    endpoint: "/v2/projects/{project}/locations/{region}/services",
     http_method: HttpMethod::Post,
     idempotent: true,
     read_only: false,
@@ -88,8 +88,7 @@ pub const CREATE_SERVICE_META: MethodMeta = MethodMeta {
 };
 
 pub const UPDATE_SERVICE_META: MethodMeta = MethodMeta {
-    endpoint:
-        "/v2/projects/{project}/locations/{region}/services/{service}?updateMask=template,labels",
+    endpoint: "/v2/projects/{project}/locations/{region}/services/{service}",
     http_method: HttpMethod::Patch,
     idempotent: true,
     read_only: false,
@@ -125,16 +124,6 @@ pub struct CloudRunRest {
 }
 
 impl CloudRunRest {
-    /// Create a new REST client with the given auth credential.
-    pub fn new(auth: Credential) -> Self {
-        Self { auth: Some(auth) }
-    }
-
-    /// Create a new REST client without auth (for testing).
-    pub fn unauthenticated() -> Self {
-        Self { auth: None }
-    }
-
     fn service_template_body(
         image: &str,
         service_account: &str,
@@ -156,19 +145,28 @@ impl CloudRunRest {
     }
 }
 
+super::impl_gcp_rest_client_constructors!(CloudRunRest);
 super::impl_gcp_rest_client!(CloudRunRest, RUN);
 
 impl CloudRunService for CloudRunRest {
     fn list_services(&self, project: &str, region: &str) -> RestRequest {
-        self.authed_get(&format!(
-            "/v2/projects/{project}/locations/{region}/services"
-        ))
+        self.request_from_meta(
+            &LIST_SERVICES_META,
+            &[("project", project), ("region", region)],
+            &[],
+        )
     }
 
     fn get_service(&self, project: &str, region: &str, service: &str) -> RestRequest {
-        self.authed_get(&format!(
-            "/v2/projects/{project}/locations/{region}/services/{service}"
-        ))
+        self.request_from_meta(
+            &GET_SERVICE_META,
+            &[
+                ("project", project),
+                ("region", region),
+                ("service", service),
+            ],
+            &[],
+        )
     }
 
     fn create_service(
@@ -180,10 +178,11 @@ impl CloudRunService for CloudRunRest {
         service_account: &str,
         env: &[(&str, &str)],
     ) -> RestRequest {
-        self.authed_post(&format!(
-            "/v2/projects/{project}/locations/{region}/services"
-        ))
-        .query("serviceId", service)
+        self.request_from_meta(
+            &CREATE_SERVICE_META,
+            &[("project", project), ("region", region)],
+            &[("serviceId", service)],
+        )
         .json(Self::service_template_body(image, service_account, env))
     }
 
@@ -196,17 +195,28 @@ impl CloudRunService for CloudRunRest {
         service_account: &str,
         env: &[(&str, &str)],
     ) -> RestRequest {
-        self.authed_patch(&format!(
-            "/v2/projects/{project}/locations/{region}/services/{service}"
-        ))
-        .query("updateMask", "template,labels")
+        self.request_from_meta(
+            &UPDATE_SERVICE_META,
+            &[
+                ("project", project),
+                ("region", region),
+                ("service", service),
+            ],
+            &[("updateMask", "template,labels")],
+        )
         .json(Self::service_template_body(image, service_account, env))
     }
 
     fn get_service_iam_policy(&self, project: &str, region: &str, service: &str) -> RestRequest {
-        self.authed_get(&format!(
-            "/v2/projects/{project}/locations/{region}/services/{service}:getIamPolicy"
-        ))
+        self.request_from_meta(
+            &GET_SERVICE_IAM_POLICY_META,
+            &[
+                ("project", project),
+                ("region", region),
+                ("service", service),
+            ],
+            &[],
+        )
     }
 
     fn set_service_iam_policy(
@@ -216,9 +226,15 @@ impl CloudRunService for CloudRunRest {
         service: &str,
         policy: serde_json::Value,
     ) -> RestRequest {
-        self.authed_post(&format!(
-            "/v2/projects/{project}/locations/{region}/services/{service}:setIamPolicy"
-        ))
+        self.request_from_meta(
+            &SET_SERVICE_IAM_POLICY_META,
+            &[
+                ("project", project),
+                ("region", region),
+                ("service", service),
+            ],
+            &[],
+        )
         .json(serde_json::json!({ "policy": policy }))
     }
 }
@@ -230,6 +246,17 @@ impl CloudRunService for CloudRunRest {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_request_matches_meta(
+        req: &RestRequest,
+        meta: &MethodMeta,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) {
+        let expected = meta.build_request(RUN, path_params, query_params);
+        assert_eq!(req.method, expected.method);
+        assert_eq!(req.url, expected.url);
+    }
 
     #[test]
     fn create_service_sets_service_id_and_template_body() {
@@ -246,11 +273,18 @@ mod tests {
         assert!(req
             .url
             .contains("/v2/projects/proj/locations/us-central1/services"));
-        assert_eq!(req.query.get("serviceId"), Some(&"api".to_string()));
-        let body = req.body.expect("request should include json body");
+        // `build_request` appends query params to the URL instead of the `RestRequest.query` map.
+        assert!(req.url.ends_with("?serviceId=api") || req.url.contains("?serviceId=api&"));
+        let body = req.body.as_ref().expect("request should include json body");
         assert_eq!(
             body["template"]["containers"][0]["image"],
             "us-docker.pkg.dev/proj/repo/api:latest"
+        );
+        assert_request_matches_meta(
+            &req,
+            &CREATE_SERVICE_META,
+            &[("project", "proj"), ("region", "us-central1")],
+            &[("serviceId", "api")],
         );
     }
 
@@ -266,9 +300,20 @@ mod tests {
             &[],
         );
         assert_eq!(req.method, HttpMethod::Patch);
-        assert_eq!(
-            req.query.get("updateMask"),
-            Some(&"template,labels".to_string())
+        // `build_request` appends query params to the URL instead of the `RestRequest.query` map.
+        assert!(
+            req.url.ends_with("?updateMask=template%2Clabels")
+                || req.url.contains("?updateMask=template%2Clabels&")
+        );
+        assert_request_matches_meta(
+            &req,
+            &UPDATE_SERVICE_META,
+            &[
+                ("project", "proj"),
+                ("region", "us-central1"),
+                ("service", "api"),
+            ],
+            &[("updateMask", "template,labels")],
         );
     }
 
@@ -279,6 +324,43 @@ mod tests {
         assert_eq!(
             GET_SERVICE_IAM_POLICY_META.permissions,
             &["run.services.getIamPolicy"]
+        );
+    }
+
+    #[test]
+    fn read_requests_match_method_metadata_paths() {
+        let svc = CloudRunRest::unauthenticated();
+
+        let list = svc.list_services("proj", "us-central1");
+        assert_request_matches_meta(
+            &list,
+            &LIST_SERVICES_META,
+            &[("project", "proj"), ("region", "us-central1")],
+            &[],
+        );
+
+        let get = svc.get_service("proj", "us-central1", "api");
+        assert_request_matches_meta(
+            &get,
+            &GET_SERVICE_META,
+            &[
+                ("project", "proj"),
+                ("region", "us-central1"),
+                ("service", "api"),
+            ],
+            &[],
+        );
+
+        let get_iam = svc.get_service_iam_policy("proj", "us-central1", "api");
+        assert_request_matches_meta(
+            &get_iam,
+            &GET_SERVICE_IAM_POLICY_META,
+            &[
+                ("project", "proj"),
+                ("region", "us-central1"),
+                ("service", "api"),
+            ],
+            &[],
         );
     }
 }

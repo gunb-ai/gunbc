@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::path_utils;
 use crate::pipeline::PipelineContext;
 use daglang_driver::DriverContext;
+use daglang_resolve::ModuleGraph;
 use gunbc_exec::{BoundaryMocks, DynOp, ExecutionLog, ExecutionMode};
 use gunbc_ir::Dag;
 
@@ -51,6 +52,10 @@ pub fn check_from_context(context: &PipelineContext) -> Result<CheckOutput, Comp
         roots: context.roots.clone(),
         target_file: context.target_file.clone(),
     })
+}
+
+pub fn check_from_module_graph(module_graph: ModuleGraph) -> Result<CheckOutput, CompileError> {
+    daglang_driver::check_from_module_graph(module_graph)
 }
 
 pub fn execute_resolved_dag(

@@ -90,38 +90,25 @@ pub struct ResourceManagerRest {
     auth: Option<Credential>,
 }
 
-impl ResourceManagerRest {
-    /// Create a new REST client with the given auth credential.
-    pub fn new(auth: Credential) -> Self {
-        Self { auth: Some(auth) }
-    }
-
-    /// Create a new REST client without auth (for testing).
-    pub fn unauthenticated() -> Self {
-        Self { auth: None }
-    }
-}
-
+super::impl_gcp_rest_client_constructors!(ResourceManagerRest);
 super::impl_gcp_rest_client!(ResourceManagerRest, RESOURCE_MANAGER);
 
 impl ResourceManagerService for ResourceManagerRest {
     fn list_projects(&self) -> RestRequest {
-        self.authed_get("/v1/projects")
+        self.request_from_meta(&LIST_PROJECTS_META, &[], &[])
     }
 
     fn get_project(&self, project: &str) -> RestRequest {
-        let path = format!("/v1/projects/{}", project);
-        self.authed_get(&path)
+        self.request_from_meta(&GET_PROJECT_META, &[("project", project)], &[])
     }
 
     fn get_iam_policy(&self, project: &str) -> RestRequest {
-        let path = format!("/v1/projects/{}:getIamPolicy", project);
-        self.authed_post(&path).json(serde_json::json!({}))
+        self.request_from_meta(&GET_IAM_POLICY_META, &[("project", project)], &[])
+            .json(serde_json::json!({}))
     }
 
     fn set_iam_policy(&self, project: &str, policy: serde_json::Value) -> RestRequest {
-        let path = format!("/v1/projects/{}:setIamPolicy", project);
-        self.authed_post(&path)
+        self.request_from_meta(&SET_IAM_POLICY_META, &[("project", project)], &[])
             .json(serde_json::json!({ "policy": policy }))
     }
 }
@@ -134,12 +121,24 @@ impl ResourceManagerService for ResourceManagerRest {
 mod tests {
     use super::*;
 
+    fn assert_request_matches_meta(
+        req: &RestRequest,
+        meta: &MethodMeta,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) {
+        let expected = meta.build_request(RESOURCE_MANAGER, path_params, query_params);
+        assert_eq!(req.method, expected.method);
+        assert_eq!(req.url, expected.url);
+    }
+
     #[test]
     fn test_list_projects_url() {
         let svc = ResourceManagerRest::unauthenticated();
         let req = svc.list_projects();
         assert!(req.url.contains("/v1/projects"));
         assert_eq!(req.method, HttpMethod::Get);
+        assert_request_matches_meta(&req, &LIST_PROJECTS_META, &[], &[]);
     }
 
     #[test]
@@ -148,6 +147,7 @@ mod tests {
         let req = svc.get_project("my-project");
         assert!(req.url.contains("/v1/projects/my-project"));
         assert_eq!(req.method, HttpMethod::Get);
+        assert_request_matches_meta(&req, &GET_PROJECT_META, &[("project", "my-project")], &[]);
     }
 
     #[test]
@@ -156,6 +156,12 @@ mod tests {
         let req = svc.get_iam_policy("my-project");
         assert!(req.url.contains(":getIamPolicy"));
         assert_eq!(req.method, HttpMethod::Post);
+        assert_request_matches_meta(
+            &req,
+            &GET_IAM_POLICY_META,
+            &[("project", "my-project")],
+            &[],
+        );
     }
 
     #[test]
@@ -168,8 +174,14 @@ mod tests {
         let req = svc.set_iam_policy("my-project", policy);
         assert!(req.url.contains(":setIamPolicy"));
         assert_eq!(req.method, HttpMethod::Post);
-        let body = req.body.unwrap();
+        let body = req.body.as_ref().unwrap();
         assert!(body["policy"]["bindings"].is_array());
         assert_eq!(body["policy"]["etag"], "abc123");
+        assert_request_matches_meta(
+            &req,
+            &SET_IAM_POLICY_META,
+            &[("project", "my-project")],
+            &[],
+        );
     }
 }

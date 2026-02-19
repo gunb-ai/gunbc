@@ -4,7 +4,7 @@
 //! management and the `iamcredentials.googleapis.com/v1` API for
 //! token generation (impersonation).
 
-use super::base_urls::{IAM, IAM_CREDENTIALS};
+use super::base_urls::{IAM, IAM_CREDENTIALS, STS};
 use super::{GcpRestClient, MethodMeta};
 use gunbc_ir::transport::credential::Credential;
 use gunbc_ir::transport::http::HttpMethod;
@@ -119,7 +119,7 @@ pub const CREATE_SERVICE_ACCOUNT_META: MethodMeta = MethodMeta {
 
 /// Metadata for `update_service_account`.
 pub const UPDATE_SERVICE_ACCOUNT_META: MethodMeta = MethodMeta {
-    endpoint: "/v1/projects/{project}/serviceAccounts/{email}?updateMask=displayName",
+    endpoint: "/v1/projects/{project}/serviceAccounts/{email}",
     http_method: HttpMethod::Patch,
     idempotent: true,
     read_only: false,
@@ -187,29 +187,20 @@ pub struct IamRest {
     auth: Option<Credential>,
 }
 
-impl IamRest {
-    /// Create a new REST client with the given auth credential.
-    pub fn new(auth: Credential) -> Self {
-        Self { auth: Some(auth) }
-    }
-
-    /// Create a new REST client without auth (for testing).
-    pub fn unauthenticated() -> Self {
-        Self { auth: None }
-    }
-}
-
+super::impl_gcp_rest_client_constructors!(IamRest);
 super::impl_gcp_rest_client!(IamRest, IAM);
 
 impl IamService for IamRest {
     fn list_service_accounts(&self, project: &str) -> RestRequest {
-        let path = format!("/v1/projects/{}/serviceAccounts", project);
-        self.authed_get(&path)
+        self.request_from_meta(&LIST_SERVICE_ACCOUNTS_META, &[("project", project)], &[])
     }
 
     fn get_service_account(&self, project: &str, email: &str) -> RestRequest {
-        let path = format!("/v1/projects/{}/serviceAccounts/{}", project, email);
-        self.authed_get(&path)
+        self.request_from_meta(
+            &GET_SERVICE_ACCOUNT_META,
+            &[("project", project), ("email", email)],
+            &[],
+        )
     }
 
     fn create_service_account(
@@ -218,8 +209,9 @@ impl IamService for IamRest {
         account_id: &str,
         display_name: &str,
     ) -> RestRequest {
-        let path = format!("/v1/projects/{}/serviceAccounts", project);
-        self.authed_post(&path).json(serde_json::json!({
+        let req =
+            self.request_from_meta(&CREATE_SERVICE_ACCOUNT_META, &[("project", project)], &[]);
+        req.json(serde_json::json!({
             "accountId": account_id,
             "serviceAccount": {
                 "displayName": display_name
@@ -233,25 +225,28 @@ impl IamService for IamRest {
         email: &str,
         display_name: &str,
     ) -> RestRequest {
-        let path = format!(
-            "/v1/projects/{}/serviceAccounts/{}?updateMask=displayName",
-            project, email
+        let req = self.request_from_meta(
+            &UPDATE_SERVICE_ACCOUNT_META,
+            &[("project", project), ("email", email)],
+            &[("updateMask", "displayName")],
         );
-        self.authed_patch(&path)
-            .json(serde_json::json!({ "displayName": display_name }))
+        req.json(serde_json::json!({ "displayName": display_name }))
     }
 
     fn delete_service_account(&self, project: &str, email: &str) -> RestRequest {
-        let path = format!("/v1/projects/{}/serviceAccounts/{}", project, email);
-        self.authed_delete(&path)
+        self.request_from_meta(
+            &DELETE_SERVICE_ACCOUNT_META,
+            &[("project", project), ("email", email)],
+            &[],
+        )
     }
 
     fn get_service_account_iam_policy(&self, project: &str, email: &str) -> RestRequest {
-        let path = format!(
-            "/v1/projects/{}/serviceAccounts/{}:getIamPolicy",
-            project, email
-        );
-        self.authed_post(&path)
+        self.request_from_meta(
+            &GET_SERVICE_ACCOUNT_IAM_POLICY_META,
+            &[("project", project), ("email", email)],
+            &[],
+        )
     }
 
     fn set_service_account_iam_policy(
@@ -260,12 +255,12 @@ impl IamService for IamRest {
         email: &str,
         policy: serde_json::Value,
     ) -> RestRequest {
-        let path = format!(
-            "/v1/projects/{}/serviceAccounts/{}:setIamPolicy",
-            project, email
+        let req = self.request_from_meta(
+            &SET_SERVICE_ACCOUNT_IAM_POLICY_META,
+            &[("project", project), ("email", email)],
+            &[],
         );
-        self.authed_post(&path)
-            .json(serde_json::json!({ "policy": policy }))
+        req.json(serde_json::json!({ "policy": policy }))
     }
 
     fn generate_access_token(
@@ -274,9 +269,11 @@ impl IamService for IamRest {
         scopes: &[&str],
         lifetime_seconds: Option<i64>,
     ) -> RestRequest {
-        let path = format!(
-            "/v1/projects/-/serviceAccounts/{}:generateAccessToken",
-            service_account_email
+        let req = self.request_from_meta_at(
+            IAM_CREDENTIALS,
+            &GENERATE_ACCESS_TOKEN_META,
+            &[("email", service_account_email)],
+            &[],
         );
         let mut body = serde_json::json!({
             "scope": scopes,
@@ -284,8 +281,7 @@ impl IamService for IamRest {
         if let Some(lifetime) = lifetime_seconds {
             body["lifetime"] = serde_json::json!(format!("{}s", lifetime));
         }
-        self.authed_request_at(IAM_CREDENTIALS, HttpMethod::Post, &path)
-            .json(body)
+        req.json(body)
     }
 
     fn exchange_token(
@@ -294,8 +290,9 @@ impl IamService for IamRest {
         subject_token: &str,
         subject_token_type: &str,
     ) -> RestRequest {
-        let url = format!("{}/v1/token", super::base_urls::STS);
-        RestRequest::post(url).json(serde_json::json!({
+        let req = EXCHANGE_TOKEN_META.build_request(STS, &[], &[]);
+        // exchange_token doesn't use standard auth headers
+        req.json(serde_json::json!({
             "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
             "audience": format!("//iam.googleapis.com/{}", audience),
             "scope": "https://www.googleapis.com/auth/cloud-platform",
@@ -314,12 +311,31 @@ impl IamService for IamRest {
 mod tests {
     use super::*;
 
+    fn assert_request_matches_meta(
+        req: &RestRequest,
+        meta: &MethodMeta,
+        base_url: &str,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) {
+        let expected = meta.build_request(base_url, path_params, query_params);
+        assert_eq!(req.method, expected.method);
+        assert_eq!(req.url, expected.url);
+    }
+
     #[test]
     fn test_list_service_accounts_url() {
         let svc = IamRest::unauthenticated();
         let req = svc.list_service_accounts("my-project");
         assert!(req.url.contains("/v1/projects/my-project/serviceAccounts"));
         assert_eq!(req.method, HttpMethod::Get);
+        assert_request_matches_meta(
+            &req,
+            &LIST_SERVICE_ACCOUNTS_META,
+            IAM,
+            &[("project", "my-project")],
+            &[],
+        );
     }
 
     #[test]
@@ -329,6 +345,16 @@ mod tests {
         assert!(req
             .url
             .contains("serviceAccounts/sa@project.iam.gserviceaccount.com"));
+        assert_request_matches_meta(
+            &req,
+            &GET_SERVICE_ACCOUNT_META,
+            IAM,
+            &[
+                ("project", "my-project"),
+                ("email", "sa@project.iam.gserviceaccount.com"),
+            ],
+            &[],
+        );
     }
 
     #[test]
@@ -341,8 +367,15 @@ mod tests {
         );
         assert!(req.url.contains(":generateAccessToken"));
         assert_eq!(req.method, HttpMethod::Post);
-        let body = req.body.unwrap();
+        let body = req.body.as_ref().unwrap();
         assert!(body["lifetime"].as_str().unwrap().contains("3600s"));
+        assert_request_matches_meta(
+            &req,
+            &GENERATE_ACCESS_TOKEN_META,
+            IAM_CREDENTIALS,
+            &[("email", "sa@project.iam.gserviceaccount.com")],
+            &[],
+        );
     }
 
     #[test]
@@ -351,11 +384,21 @@ mod tests {
         let req = svc.create_service_account("my-project", "new-sa", "New SA");
         assert!(req.url.contains("/v1/projects/my-project/serviceAccounts"));
         assert_eq!(req.method, HttpMethod::Post);
-        let body = req.body.expect("create request should include json body");
+        let body = req
+            .body
+            .as_ref()
+            .expect("create request should include json body");
         assert_eq!(body["accountId"].as_str(), Some("new-sa"));
         assert_eq!(
             body["serviceAccount"]["displayName"].as_str(),
             Some("New SA")
+        );
+        assert_request_matches_meta(
+            &req,
+            &CREATE_SERVICE_ACCOUNT_META,
+            IAM,
+            &[("project", "my-project")],
+            &[],
         );
     }
 
@@ -371,8 +414,21 @@ mod tests {
             .url
             .contains("serviceAccounts/sa@project.iam.gserviceaccount.com?updateMask=displayName"));
         assert_eq!(req.method, HttpMethod::Patch);
-        let body = req.body.expect("update request should include json body");
+        let body = req
+            .body
+            .as_ref()
+            .expect("update request should include json body");
         assert_eq!(body["displayName"].as_str(), Some("Updated SA"));
+        assert_request_matches_meta(
+            &req,
+            &UPDATE_SERVICE_ACCOUNT_META,
+            IAM,
+            &[
+                ("project", "my-project"),
+                ("email", "sa@project.iam.gserviceaccount.com"),
+            ],
+            &[("updateMask", "displayName")],
+        );
     }
 
     #[test]
@@ -384,6 +440,16 @@ mod tests {
             .contains("serviceAccounts/sa@project.iam.gserviceaccount.com"));
         assert_eq!(req.method, HttpMethod::Delete);
         assert!(req.body.is_none(), "delete request should not include body");
+        assert_request_matches_meta(
+            &req,
+            &DELETE_SERVICE_ACCOUNT_META,
+            IAM,
+            &[
+                ("project", "my-project"),
+                ("email", "sa@project.iam.gserviceaccount.com"),
+            ],
+            &[],
+        );
     }
 
     #[test]
@@ -393,6 +459,16 @@ mod tests {
             svc.get_service_account_iam_policy("my-project", "sa@project.iam.gserviceaccount.com");
         assert!(req.url.contains(":getIamPolicy"));
         assert_eq!(req.method, HttpMethod::Post);
+        assert_request_matches_meta(
+            &req,
+            &GET_SERVICE_ACCOUNT_IAM_POLICY_META,
+            IAM,
+            &[
+                ("project", "my-project"),
+                ("email", "sa@project.iam.gserviceaccount.com"),
+            ],
+            &[],
+        );
     }
 
     #[test]
@@ -412,8 +488,18 @@ mod tests {
         );
         assert!(req.url.contains(":setIamPolicy"));
         assert_eq!(req.method, HttpMethod::Post);
-        let body = req.body.expect("setIamPolicy should include body");
+        let body = req.body.as_ref().expect("setIamPolicy should include body");
         assert!(body.get("policy").is_some());
+        assert_request_matches_meta(
+            &req,
+            &SET_SERVICE_ACCOUNT_IAM_POLICY_META,
+            IAM,
+            &[
+                ("project", "my-project"),
+                ("email", "sa@project.iam.gserviceaccount.com"),
+            ],
+            &[],
+        );
     }
 
     #[test]
@@ -426,5 +512,6 @@ mod tests {
         );
         assert!(req.url.contains("sts.googleapis.com/v1/token"));
         assert_eq!(req.method, HttpMethod::Post);
+        assert_request_matches_meta(&req, &EXCHANGE_TOKEN_META, STS, &[], &[]);
     }
 }

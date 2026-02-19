@@ -320,6 +320,14 @@ fn render_stmt(stmt: &CStmt, indent: usize) -> String {
                 format!("{}:\n", label)
             }
         }
+        CStmt::BlockScope(stmts) => {
+            let mut out = format!("{} {{\n", pad);
+            for s in stmts {
+                out.push_str(&render_stmt(s, indent + 1));
+            }
+            writeln!(out, "{}}}\n", pad).unwrap();
+            out
+        }
         CStmt::Free(expr) => {
             format!("{}free({});\n", pad, render_expr(expr))
         }

@@ -353,8 +353,77 @@ pub fn validate_system_model(model: &SystemModel) -> Result<(), String> {
                 model.id, behavior.id
             ));
         }
+
+        if let Invocation::Rest { path, .. } = &behavior.invocation {
+            if path.contains('*') {
+                return Err(format!(
+                    "system model '{}.{}' REST path '{}' uses wildcard '*' segments; use named placeholders like '{{project_id}}'",
+                    model.id, behavior.id, path
+                ));
+            }
+
+            let placeholders = rest_path_placeholders(path).map_err(|error| {
+                format!(
+                    "system model '{}.{}' has invalid REST path '{}': {}",
+                    model.id, behavior.id, path, error
+                )
+            })?;
+
+            for placeholder in placeholders {
+                let Some(input) = behavior
+                    .inputs
+                    .iter()
+                    .find(|input| input.name == placeholder)
+                else {
+                    return Err(format!(
+                        "system model '{}.{}' REST path placeholder '{}' has no matching behavior input",
+                        model.id, behavior.id, placeholder
+                    ));
+                };
+                if !input.required {
+                    return Err(format!(
+                        "system model '{}.{}' REST path placeholder '{}' must map to a required input",
+                        model.id, behavior.id, placeholder
+                    ));
+                }
+            }
+        }
     }
     Ok(())
+}
+
+fn rest_path_placeholders(path: &str) -> Result<BTreeSet<String>, String> {
+    let mut placeholders = BTreeSet::new();
+    let mut i = 0usize;
+    let bytes = path.as_bytes();
+    while i < bytes.len() {
+        if bytes[i] == b'{' {
+            let Some(end) = path[i + 1..].find('}') else {
+                return Err("missing closing '}' for placeholder".to_string());
+            };
+            let end_index = i + 1 + end;
+            let raw_name = &path[i + 1..end_index];
+            if raw_name.is_empty() {
+                return Err("empty placeholder '{}' is not allowed".to_string());
+            }
+            if !raw_name
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+            {
+                return Err(format!(
+                    "invalid placeholder '{raw_name}' (expected [A-Za-z0-9_]+)"
+                ));
+            }
+            placeholders.insert(raw_name.to_string());
+            i = end_index + 1;
+            continue;
+        }
+        if bytes[i] == b'}' {
+            return Err("unmatched closing '}' in path".to_string());
+        }
+        i += 1;
+    }
+    Ok(placeholders)
 }
 
 /// Ensure the system dependency graph is acyclic.
@@ -1206,6 +1275,130 @@ mod tests {
             err.contains("mismatch for 'get_object'"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn validate_system_model_rejects_rest_wildcard_paths() {
+        let model = SystemModel::new(
+            "provider.rest",
+            "Provider Rest",
+            SystemKind::RestApi,
+            "v1",
+            "test provider",
+        )
+        .with_behaviors(vec![Behavior::new(
+            "get_item",
+            "Get item",
+            Invocation::Rest {
+                method: "GET".to_string(),
+                path: "/v1/projects/*/items/{item_id}".to_string(),
+                docs: "test".to_string(),
+            },
+        )
+        .with_inputs(vec![
+            BehaviorInput::required("project_id", InputType::TypeId(TypeId::from("String"))),
+            BehaviorInput::required("item_id", InputType::TypeId(TypeId::from("String"))),
+        ])
+        .with_outputs(vec![BehaviorOutput::new(
+            "item",
+            OutputType::TypeId(TypeId::from("Json")),
+        )])]);
+
+        let err = validate_system_model(&model).expect_err("wildcard path should fail");
+        assert!(err.contains("wildcard"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn validate_system_model_rejects_unbound_rest_placeholders() {
+        let model = SystemModel::new(
+            "provider.rest",
+            "Provider Rest",
+            SystemKind::RestApi,
+            "v1",
+            "test provider",
+        )
+        .with_behaviors(vec![Behavior::new(
+            "get_item",
+            "Get item",
+            Invocation::Rest {
+                method: "GET".to_string(),
+                path: "/v1/projects/{project_id}/items/{item_id}".to_string(),
+                docs: "test".to_string(),
+            },
+        )
+        .with_inputs(vec![BehaviorInput::required(
+            "project_id",
+            InputType::TypeId(TypeId::from("String")),
+        )])
+        .with_outputs(vec![BehaviorOutput::new(
+            "item",
+            OutputType::TypeId(TypeId::from("Json")),
+        )])]);
+
+        let err = validate_system_model(&model).expect_err("missing path input should fail");
+        assert!(err.contains("item_id"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn validate_system_model_rejects_optional_path_placeholders() {
+        let model = SystemModel::new(
+            "provider.rest",
+            "Provider Rest",
+            SystemKind::RestApi,
+            "v1",
+            "test provider",
+        )
+        .with_behaviors(vec![Behavior::new(
+            "get_item",
+            "Get item",
+            Invocation::Rest {
+                method: "GET".to_string(),
+                path: "/v1/projects/{project_id}/items/{item_id}".to_string(),
+                docs: "test".to_string(),
+            },
+        )
+        .with_inputs(vec![
+            BehaviorInput::required("project_id", InputType::TypeId(TypeId::from("String"))),
+            BehaviorInput::optional("item_id", InputType::TypeId(TypeId::from("String"))),
+        ])
+        .with_outputs(vec![BehaviorOutput::new(
+            "item",
+            OutputType::TypeId(TypeId::from("Json")),
+        )])]);
+
+        let err = validate_system_model(&model).expect_err("optional path input should fail");
+        assert!(err.contains("required input"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn validate_system_model_accepts_bound_rest_placeholders() {
+        let model = SystemModel::new(
+            "provider.rest",
+            "Provider Rest",
+            SystemKind::RestApi,
+            "v1",
+            "test provider",
+        )
+        .with_behaviors(vec![Behavior::new(
+            "get_item",
+            "Get item",
+            Invocation::Rest {
+                method: "GET".to_string(),
+                path: "/v1/projects/{project_id}/items/{item_id}".to_string(),
+                docs: "test".to_string(),
+            },
+        )
+        .with_inputs(vec![
+            BehaviorInput::required("project_id", InputType::TypeId(TypeId::from("String"))),
+            BehaviorInput::required("item_id", InputType::TypeId(TypeId::from("String"))),
+            BehaviorInput::optional("verbose", InputType::TypeId(TypeId::from("Bool"))),
+        ])
+        .with_outputs(vec![BehaviorOutput::new(
+            "item",
+            OutputType::TypeId(TypeId::from("Json")),
+        )])]);
+
+        validate_system_model(&model).expect("placeholder-bound REST model should validate");
     }
 
     // Model-specific behavior tests (GCP, AWS, transport) moved to owning crates:

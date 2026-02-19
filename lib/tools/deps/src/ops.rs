@@ -259,7 +259,7 @@ fn execute_generate_scripts(
 
     // Use platform from DAG input (acquired at boundary)
     let platform_str = require_str(&inputs, "res:platform")?;
-    let platform = Platform::parse(platform_str);
+    let platform = Platform::parse(platform_str).map_err(ExecError::new)?;
     if strict_dry_run_enabled() && platform == Platform::Unknown {
         return Err(ExecError::new(
             "strict dry-run requires explicit platform wiring/mocks; refusing Platform::Unknown",
@@ -756,7 +756,7 @@ verify = "echo test"
             let err = execute_generate_scripts(inputs).expect_err("strict mode should fail");
             assert!(err
                 .to_string()
-                .contains("strict dry-run requires explicit platform"));
+                .contains("unknown os: unknown"));
         });
     }
 

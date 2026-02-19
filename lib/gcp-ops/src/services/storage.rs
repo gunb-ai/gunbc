@@ -83,7 +83,7 @@ pub const GET_BUCKET_IAM_POLICY_META: MethodMeta = MethodMeta {
 
 /// Metadata for `create_bucket`.
 pub const CREATE_BUCKET_META: MethodMeta = MethodMeta {
-    endpoint: "/storage/v1/b?project={project}",
+    endpoint: "/storage/v1/b",
     http_method: HttpMethod::Post,
     idempotent: true,
     read_only: false,
@@ -111,33 +111,20 @@ pub struct StorageRest {
     auth: Option<Credential>,
 }
 
-impl StorageRest {
-    /// Create a new REST client with the given auth credential.
-    pub fn new(auth: Credential) -> Self {
-        Self { auth: Some(auth) }
-    }
-
-    /// Create a new REST client without auth (for testing).
-    pub fn unauthenticated() -> Self {
-        Self { auth: None }
-    }
-}
-
+super::impl_gcp_rest_client_constructors!(StorageRest);
 super::impl_gcp_rest_client!(StorageRest, STORAGE);
 
 impl StorageService for StorageRest {
     fn list_buckets(&self, project: &str) -> RestRequest {
-        self.authed_get("/storage/v1/b").query("project", project)
+        self.request_from_meta(&LIST_BUCKETS_META, &[], &[("project", project)])
     }
 
     fn get_bucket(&self, bucket: &str) -> RestRequest {
-        let path = format!("/storage/v1/b/{}", bucket);
-        self.authed_get(&path)
+        self.request_from_meta(&GET_BUCKET_META, &[("bucket", bucket)], &[])
     }
 
     fn get_bucket_iam_policy(&self, bucket: &str) -> RestRequest {
-        let path = format!("/storage/v1/b/{}/iam", bucket);
-        self.authed_get(&path)
+        self.request_from_meta(&GET_BUCKET_IAM_POLICY_META, &[("bucket", bucket)], &[])
     }
 
     fn create_bucket(
@@ -147,8 +134,7 @@ impl StorageService for StorageRest {
         location: &str,
         storage_class: &str,
     ) -> RestRequest {
-        self.authed_post("/storage/v1/b")
-            .query("project", project)
+        self.request_from_meta(&CREATE_BUCKET_META, &[], &[("project", project)])
             .json(serde_json::json!({
                 "name": bucket,
                 "location": location,
@@ -157,8 +143,7 @@ impl StorageService for StorageRest {
     }
 
     fn set_bucket_iam_policy(&self, bucket: &str, policy: serde_json::Value) -> RestRequest {
-        let path = format!("/storage/v1/b/{}/iam", bucket);
-        self.authed_put(&path)
+        self.request_from_meta(&SET_BUCKET_IAM_POLICY_META, &[("bucket", bucket)], &[])
             .json(serde_json::json!({ "policy": policy }))
     }
 }
@@ -171,13 +156,27 @@ impl StorageService for StorageRest {
 mod tests {
     use super::*;
 
+    fn assert_request_matches_meta(
+        req: &RestRequest,
+        meta: &MethodMeta,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) {
+        let expected = meta.build_request(STORAGE, path_params, query_params);
+        assert_eq!(req.method, expected.method);
+        assert_eq!(req.url, expected.url);
+    }
+
     #[test]
     fn test_list_buckets_url() {
         let svc = StorageRest::unauthenticated();
         let req = svc.list_buckets("my-project");
         assert!(req.url.contains("/storage/v1/b"));
-        assert!(req.query.contains_key("project"));
-        assert_eq!(req.query["project"], "my-project");
+        // `build_request` appends query params to the URL instead of the `RestRequest.query` map.
+        assert!(
+            req.url.ends_with("?project=my-project") || req.url.contains("?project=my-project&")
+        );
+        assert_request_matches_meta(&req, &LIST_BUCKETS_META, &[], &[("project", "my-project")]);
     }
 
     #[test]
@@ -185,6 +184,7 @@ mod tests {
         let svc = StorageRest::unauthenticated();
         let req = svc.get_bucket("my-bucket");
         assert!(req.url.contains("/storage/v1/b/my-bucket"));
+        assert_request_matches_meta(&req, &GET_BUCKET_META, &[("bucket", "my-bucket")], &[]);
     }
 
     #[test]
@@ -192,6 +192,12 @@ mod tests {
         let svc = StorageRest::unauthenticated();
         let req = svc.get_bucket_iam_policy("my-bucket");
         assert!(req.url.contains("/storage/v1/b/my-bucket/iam"));
+        assert_request_matches_meta(
+            &req,
+            &GET_BUCKET_IAM_POLICY_META,
+            &[("bucket", "my-bucket")],
+            &[],
+        );
     }
 
     #[test]
@@ -200,11 +206,15 @@ mod tests {
         let req = svc.create_bucket("my-project", "my-bucket", "US", "STANDARD");
         assert_eq!(req.method, HttpMethod::Post);
         assert!(req.url.contains("/storage/v1/b"));
-        assert_eq!(req.query.get("project"), Some(&"my-project".to_string()));
-        let body = req.body.expect("request should include json body");
+        // `build_request` appends query params to the URL instead of the `RestRequest.query` map.
+        assert!(
+            req.url.ends_with("?project=my-project") || req.url.contains("?project=my-project&")
+        );
+        let body = req.body.as_ref().expect("request should include json body");
         assert_eq!(body["name"], "my-bucket");
         assert_eq!(body["location"], "US");
         assert_eq!(body["storageClass"], "STANDARD");
+        assert_request_matches_meta(&req, &CREATE_BUCKET_META, &[], &[("project", "my-project")]);
     }
 
     #[test]
@@ -221,7 +231,13 @@ mod tests {
         );
         assert_eq!(req.method, HttpMethod::Put);
         assert!(req.url.contains("/storage/v1/b/my-bucket/iam"));
-        let body = req.body.expect("request should include json body");
+        let body = req.body.as_ref().expect("request should include json body");
         assert!(body.get("policy").is_some());
+        assert_request_matches_meta(
+            &req,
+            &SET_BUCKET_IAM_POLICY_META,
+            &[("bucket", "my-bucket")],
+            &[],
+        );
     }
 }

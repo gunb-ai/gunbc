@@ -16,10 +16,12 @@
 //!
 //! **Owned by**: Task 11 (dsl-codegen-tasks.md)
 
+use crate::transport_analysis::{body_has_transport_calls, expr_is_transport_call};
 use gunbc_ir::code_ir::c_ir::*;
 use gunbc_ir::code_ir::lower::LowerError;
-use crate::transport_analysis::{body_has_transport_calls, expr_is_transport_call};
-use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Item, SourceFile, Stmt};
+use gunbc_ir::code_ir::{
+    BindIntent, BindTarget, CallObligation, Expr, FnDef, Item, SourceFile, Stmt,
+};
 
 /// Configuration for C lowering.
 #[derive(Debug, Clone)]
@@ -237,23 +239,63 @@ fn lower_stmt_into(out: &mut Vec<CStmt>, stmt: &Stmt, in_fallible_fn: bool, conf
 
             if is_transport && in_fallible_fn {
                 let rc_name = "__rc".to_string();
-                out.push(CStmt::Decl {
-                    name: rc_name.clone(),
-                    ty: CType::Int(CIntKind::Int),
-                    init: Some(c_expr),
-                });
-                out.push(CStmt::If {
-                    cond: CExpr::BinOp {
-                        left: Box::new(CExpr::Var(rc_name)),
-                        op: "!=".to_string(),
-                        right: Box::new(CExpr::IntLit(0)),
+                out.push(CStmt::BlockScope(vec![
+                    CStmt::Decl {
+                        name: rc_name.clone(),
+                        ty: CType::Int(CIntKind::Int),
+                        init: Some(c_expr),
                     },
-                    then_body: vec![CStmt::Return(Some(CExpr::IntLit(-1)))],
-                    else_body: None,
-                });
+                    CStmt::If {
+                        cond: CExpr::BinOp {
+                            left: Box::new(CExpr::Var(rc_name)),
+                            op: "!=".to_string(),
+                            right: Box::new(CExpr::IntLit(0)),
+                        },
+                        then_body: vec![CStmt::Return(Some(CExpr::IntLit(-1)))],
+                        else_body: None,
+                    },
+                ]));
             } else {
                 out.push(CStmt::Expr(c_expr));
             }
+        }
+        Stmt::Bind {
+            targets,
+            intent,
+            expr,
+        } => {
+            let c_expr = lower_expr(expr, config);
+            match (intent, targets.as_slice()) {
+                (BindIntent::Declare, [BindTarget::Name(name)]) => {
+                    out.push(CStmt::Decl {
+                        name: name.clone(),
+                        ty: infer_c_type(expr),
+                        init: Some(c_expr),
+                    });
+                }
+                (BindIntent::Assign, [BindTarget::Name(name)]) => {
+                    out.push(CStmt::Assign {
+                        lhs: CExpr::Var(name.clone()),
+                        rhs: c_expr,
+                    });
+                }
+                _ => {
+                    // CStyleIR has no tuple/discard bind semantics; preserve side effects.
+                    out.push(CStmt::Expr(c_expr));
+                }
+            }
+        }
+        Stmt::Assign { dest, value } => {
+            let lhs = lower_expr(dest, config);
+            let rhs = lower_expr(value, config);
+            out.push(CStmt::Assign { lhs, rhs });
+        }
+        Stmt::BlockScope(body) => {
+            let mut c_body = Vec::new();
+            for s in body {
+                lower_stmt_into(&mut c_body, s, in_fallible_fn, config);
+            }
+            out.push(CStmt::BlockScope(c_body));
         }
         Stmt::Comment(text) => {
             out.push(CStmt::Comment(text.clone()));
@@ -767,6 +809,53 @@ mod tests {
         assert!(
             matches!(main_fn.return_type, CType::Void),
             "pure function should be void"
+        );
+    }
+
+    #[test]
+    fn repeated_transport_expression_statements_are_scoped() {
+        let source = make_abstract_main(vec![
+            Stmt::Expr(Expr::call_with_obligation(
+                "execute_file_read",
+                vec![Expr::var("request_a")],
+                CallObligation::ServiceTransportExecute,
+            )),
+            Stmt::Expr(Expr::call_with_obligation(
+                "execute_file_read",
+                vec![Expr::var("request_b")],
+                CallObligation::ServiceTransportExecute,
+            )),
+        ]);
+
+        let config = CConfig::default();
+        let lowered = lower_to_c(&source, &config).unwrap();
+
+        let main_fn = lowered
+            .items
+            .iter()
+            .find_map(|item| match item {
+                CItem::FnDef(f) if f.name == "main" => Some(f),
+                _ => None,
+            })
+            .expect("should have fn main");
+
+        let rc_scope_count = main_fn
+            .body
+            .iter()
+            .filter(|stmt| {
+                matches!(
+                    stmt,
+                    CStmt::BlockScope(inner)
+                        if matches!(
+                            inner.first(),
+                            Some(CStmt::Decl { name, .. }) if name == "__rc"
+                        )
+                )
+            })
+            .count();
+        assert_eq!(
+            rc_scope_count, 2,
+            "each transport expression statement should isolate __rc in its own block scope"
         );
     }
 

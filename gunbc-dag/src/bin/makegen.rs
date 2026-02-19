@@ -141,7 +141,7 @@ fn main() {
         );
         mocks.set_value(
             "execute_makegen_transport",
-            "makegen_response",
+            "response",
             Value::Response(TransportResponse::File(FileResponse {
                 path: path.clone(),
                 operation: FileOp::Write,

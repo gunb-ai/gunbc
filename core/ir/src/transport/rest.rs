@@ -78,6 +78,19 @@ impl RestRequest {
         }
     }
 
+    /// Create a new PATCH request.
+    pub fn patch(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            method: HttpMethod::Patch,
+            headers: HashMap::new(),
+            body: None,
+            auth: None,
+            query: HashMap::new(),
+            timeout_ms: None,
+        }
+    }
+
     /// Create a new DELETE request.
     pub fn delete(url: impl Into<String>) -> Self {
         Self {

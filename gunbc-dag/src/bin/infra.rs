@@ -14,6 +14,7 @@ use gunbc_exec::{
     ExecutionMode,
 };
 use gunbc_ir::transport::cloud::CloudRuntimeKind;
+use gunbc_ir::types::{value_backing_for_type_id, value_compatible_with_type_id, ValueBacking};
 use gunbc_ir::{detect_entrypoints, Dag, Value};
 use gunbc_lib_cloud_ops::project_spec::{
     RotationHandler, SecretRequirement, SecretStatus, GUNBAI_SECRETS,
@@ -301,18 +302,105 @@ fn build_entrypoint_input_mocks<T>(
 }
 
 fn parse_input_value(type_id: &str, raw: &str) -> Result<Value, String> {
-    match type_id {
-        "Bool" => match raw.trim().to_ascii_lowercase().as_str() {
+    let backing = value_backing_for_type_id(type_id);
+
+    let parsed = match backing {
+        ValueBacking::String => Ok(Value::Str(raw.to_string())),
+        ValueBacking::Bool => match raw.trim().to_ascii_lowercase().as_str() {
             "true" | "1" => Ok(Value::Bool(true)),
             "false" | "0" => Ok(Value::Bool(false)),
-            _ => Err(format!("invalid Bool input value '{raw}'")),
+            _ => Err(format!(
+                "invalid Bool input value '{raw}' for type {type_id} (expected true/false)"
+            )),
         },
-        "Int" | "i64" | "I64" => raw
+        ValueBacking::Int => raw
             .trim()
             .parse::<i64>()
             .map(Value::Int)
-            .map_err(|_| format!("invalid Int input value '{raw}'")),
-        _ => Ok(Value::Str(raw.to_string())),
+            .map_err(|_| format!("invalid Int input value '{raw}' for type {type_id}")),
+        ValueBacking::Float => Err(format!(
+            "unsupported Float backing for {type_id}: CLI does not currently parse float inputs"
+        )),
+        ValueBacking::Json => {
+            let json_val = parse_json_input(type_id, raw)?;
+            Ok(Value::Json(json_val))
+        }
+        ValueBacking::Map => {
+            let json_val = parse_json_input(type_id, raw)?;
+            let object = json_val.as_object().ok_or_else(|| {
+                format!("invalid input for {type_id}: expected JSON object, got {json_val}")
+            })?;
+            let mut tree = std::collections::BTreeMap::new();
+            for (k, v) in object {
+                tree.insert(k.clone(), json_to_ir_value(v.clone()));
+            }
+            Ok(Value::Map(tree))
+        }
+        ValueBacking::List => {
+            let json_val = parse_json_input(type_id, raw)?;
+            let array = json_val.as_array().ok_or_else(|| {
+                format!("invalid input for {type_id}: expected JSON array, got {json_val}")
+            })?;
+            Ok(Value::List(
+                array.iter().cloned().map(json_to_ir_value).collect(),
+            ))
+        }
+        ValueBacking::Set => {
+            let json_val = parse_json_input(type_id, raw)?;
+            let array = json_val.as_array().ok_or_else(|| {
+                format!("invalid input for {type_id}: expected JSON array, got {json_val}")
+            })?;
+            Ok(Value::set(
+                array.iter().cloned().map(json_to_ir_value).collect(),
+            ))
+        }
+        ValueBacking::Unit => match raw.trim().to_ascii_lowercase().as_str() {
+            "" | "unit" | "null" => Ok(Value::Unit),
+            _ => Err(format!(
+                "invalid Unit input value '{raw}' for type {type_id} (expected empty, unit, or null)"
+            )),
+        }
+        ValueBacking::Bytes => Err(format!(
+            "unsupported Bytes backing for {type_id}: CLI cannot accept raw byte buffers"
+        )),
+    }?;
+
+    if value_compatible_with_type_id(type_id, &parsed) {
+        Ok(parsed)
+    } else {
+        Err(format!(
+            "input for {type_id} is incompatible with runtime value kind {}",
+            parsed.kind().type_name()
+        ))
+    }
+}
+
+fn parse_json_input(type_id: &str, raw: &str) -> Result<serde_json::Value, String> {
+    serde_json::from_str(raw).map_err(|e| format!("failed to parse JSON input for {type_id}: {e}"))
+}
+
+fn json_to_ir_value(val: serde_json::Value) -> Value {
+    match val {
+        serde_json::Value::Null => Value::Unit,
+        serde_json::Value::Bool(b) => Value::Bool(b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Int(i)
+            } else {
+                Value::Json(serde_json::Value::Number(n))
+            }
+        }
+        serde_json::Value::String(s) => Value::Str(s),
+        serde_json::Value::Array(arr) => {
+            Value::List(arr.into_iter().map(json_to_ir_value).collect())
+        }
+        serde_json::Value::Object(obj) => {
+            let mut tree = std::collections::BTreeMap::new();
+            for (k, v) in obj {
+                tree.insert(k, json_to_ir_value(v));
+            }
+            Value::Map(tree)
+        }
     }
 }
 
@@ -654,6 +742,61 @@ mod tests {
             Value::Bool(true)
         );
         assert_eq!(parse_input_value("Int", "42").unwrap(), Value::Int(42));
+    }
+
+    #[test]
+    fn parse_input_value_handles_structured_types() {
+        assert_eq!(
+            parse_input_value("String", "abc").unwrap(),
+            Value::Str("abc".to_string())
+        );
+        assert_eq!(
+            parse_input_value("List<String>", "[\"a\",\"b\"]").unwrap(),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string())
+            ])
+        );
+
+        let mut expected_map = std::collections::BTreeMap::new();
+        expected_map.insert("count".to_string(), Value::Int(1));
+        assert_eq!(
+            parse_input_value("Map<String,Int>", "{\"count\":1}").unwrap(),
+            Value::Map(expected_map)
+        );
+
+        assert_eq!(
+            parse_input_value("Set<String>", "[\"a\",\"a\",\"b\"]").unwrap(),
+            Value::set(vec![
+                Value::Str("a".to_string()),
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string())
+            ])
+        );
+        assert_eq!(
+            parse_input_value("Json", "{\"k\":[1,true]}").unwrap(),
+            Value::Json(serde_json::json!({ "k": [1, true] }))
+        );
+    }
+
+    #[test]
+    fn parse_input_value_fails_closed_for_incompatible_or_unsupported_types() {
+        let err = parse_input_value("List<String>", "{\"count\":1}")
+            .expect_err("list type should reject object input");
+        assert!(err.contains("expected JSON array"));
+
+        let err =
+            parse_input_value("Map<String,Int>", "[1,2]").expect_err("map type should reject list");
+        assert!(err.contains("expected JSON object"));
+
+        let err = parse_input_value("Bool", "maybe").expect_err("invalid bool should fail");
+        assert!(err.contains("invalid Bool"));
+
+        let err = parse_input_value("Float", "1.5").expect_err("float should be unsupported");
+        assert!(err.contains("unsupported Float"));
+
+        let err = parse_input_value("Bytes", "abc").expect_err("bytes should be unsupported");
+        assert!(err.contains("unsupported Bytes"));
     }
 
     #[test]

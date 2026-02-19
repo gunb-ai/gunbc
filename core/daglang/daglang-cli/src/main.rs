@@ -19,7 +19,7 @@
 use std::path::PathBuf;
 
 use daglang_cli::compile::{
-    build_context, check_from_context, compile_from_context_with_options,
+    build_context, check_from_module_graph, compile_from_context_with_options,
     compile_resolve_execute_from_context, makegen_check_mode_transport_mocks,
     makegen_dry_run_transport_mocks, makegen_entrypoint_mocks, render_expand,
     render_manifest_with_format, render_obligations, render_triplets, CompileOptions,

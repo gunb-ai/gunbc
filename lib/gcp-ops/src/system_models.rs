@@ -28,7 +28,8 @@ pub fn build_gcp_secret_manager_model() -> SystemModel {
             "Access one secret version payload",
             Invocation::Rest {
                 method: "GET".to_string(),
-                path: "/v1/projects/*/secrets/*/versions/*:access".to_string(),
+                path: "/v1/projects/{project_id}/secrets/{secret_id}/versions/{version}:access"
+                    .to_string(),
                 docs: "https://cloud.google.com/secret-manager/docs".to_string(),
             },
         )
@@ -47,7 +48,7 @@ pub fn build_gcp_secret_manager_model() -> SystemModel {
             "List available secrets in a project",
             Invocation::Rest {
                 method: "GET".to_string(),
-                path: "/v1/projects/*/secrets".to_string(),
+                path: "/v1/projects/{project_id}/secrets".to_string(),
                 docs: "https://cloud.google.com/secret-manager/docs".to_string(),
             },
         )
@@ -59,7 +60,7 @@ pub fn build_gcp_secret_manager_model() -> SystemModel {
             "Create or update a secret payload",
             Invocation::Rest {
                 method: "POST".to_string(),
-                path: "/v1/projects/*/secrets".to_string(),
+                path: "/v1/projects/{project_id}/secrets/{secret_id}".to_string(),
                 docs: "https://cloud.google.com/secret-manager/docs".to_string(),
             },
         )
@@ -198,7 +199,7 @@ pub fn build_gcp_gcs_model() -> SystemModel {
             "Read one object from bucket",
             Invocation::Rest {
                 method: "GET".to_string(),
-                path: "/storage/v1/b/*/o/*".to_string(),
+                path: "/storage/v1/b/{bucket}/o/{object}".to_string(),
                 docs: "https://cloud.google.com/storage/docs/json_api".to_string(),
             },
         )
@@ -213,7 +214,7 @@ pub fn build_gcp_gcs_model() -> SystemModel {
             "Write object to bucket",
             Invocation::Rest {
                 method: "PUT".to_string(),
-                path: "/upload/storage/v1/b/*/o".to_string(),
+                path: "/upload/storage/v1/b/{bucket}/o/{object}".to_string(),
                 docs: "https://cloud.google.com/storage/docs/json_api/v1/how-tos/upload"
                     .to_string(),
             },
@@ -230,7 +231,7 @@ pub fn build_gcp_gcs_model() -> SystemModel {
             "List bucket objects",
             Invocation::Rest {
                 method: "GET".to_string(),
-                path: "/storage/v1/b/*/o".to_string(),
+                path: "/storage/v1/b/{bucket}/o".to_string(),
                 docs: "https://cloud.google.com/storage/docs/json_api".to_string(),
             },
         )
@@ -242,7 +243,7 @@ pub fn build_gcp_gcs_model() -> SystemModel {
             "Delete object from bucket",
             Invocation::Rest {
                 method: "DELETE".to_string(),
-                path: "/storage/v1/b/*/o/*".to_string(),
+                path: "/storage/v1/b/{bucket}/o/{object}".to_string(),
                 docs: "https://cloud.google.com/storage/docs/json_api".to_string(),
             },
         )

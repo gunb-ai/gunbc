@@ -14,59 +14,103 @@
 - **Active Docs invariant**: every path in the task sheet must exist; no doc under
   `TODO/TODONE/` may appear in active sections.
 
+### Design Decision Status
+
+| Decision | Status | Notes |
+|---|---|---|
+| Backend semantics encoded in IR | Resolved | Applied in `R3`-`R6` (now done). |
+| External system semantics typed | Resolved | Applied in `R7`-`R12` (now done). |
+| DeferredCallableOp elimination strategy | Resolved (impl pending) | Contract resolved; implementation tracked by `P6`/`P12`. |
+| Runtime environment | Resolved | Local-first CLI, env creds + CI/cloud WIF path. |
+| Abstract review model | Resolved | Four-dimension typed model with criteria-driven opt-in. |
+| Workflow minimum unit + exclusive coordination | Resolved | Canonicalized in WF design docs (`WF1-D`..`WF4-D`). |
+| Control-token model | Resolved (strict default) | Keep completion-gated control; require explicit success guards for fail-fast functional paths. |
+| Cached `result` persistence | Resolved (strict/minimal default) | Persist typed summary/reference by default; optional full payload in CAS. |
+| Changed-input routing authority | Resolved (strict correctness) | Optimization hint only; non-authoritative for soundness. |
+| Conflict commutativity exceptions | Resolved (strict default) | No commutativity exceptions in current phase. |
+
+### Tonight Handoff Lanes (Open Work)
+
+Use these lanes to assign workers with minimal overlap and clear stop conditions.
+
+| Lane | Task IDs | Preconditions | Primary Files/Areas | Done When | Verify |
+|---|---|---|---|---|---|
+| A: Resolver de-stringing | `P12` -> `P6` | none (`P12` first) | `resolve.rs`, `daglang-lower`, runtime resolver/dispatch | no string-prefix op resolution; no deferred passthrough fallback for migrated modules | `cargo test --workspace`, resolver golden tests |
+| B: Workflow planner core | `WF1` -> `WF2` -> `WF3` -> `WF4` -> `WF5` | `WF1-D`..`WF4-D` reviewed | `gunbc-dag` workflow schema/planner/ledger/executor, workflow docs | deterministic typed plan, claim-safe admission, key/rehydration correctness, plan explainability | `cargo test --workspace`, `cargo run -p gunbc-dag --bin gunbc-workflow -- --plan ci` |
+| C: Workflow cutover/perf | `WF6` -> `WF7` -> `WF8` -> `WF9` | Lane B complete | workflow entrypoints + `Makefile` wrappers + CI wiring | `make ci`/`make test-all` use planner path with SLO telemetry | `make ci`, `make test-all`, CI dry run |
+| D: Modeling hardening graph/runtime | `M8` -> `M9` -> `M16` and `M10` -> `M11` | corresponding `-D` tasks approved | IR type DAG/system-model/transport + runtime resource/dry-run paths | metadata inertness, typed dependency markers, strict dry-run enforced | targeted model tests + `cargo test --workspace` |
+| E: Security/install/process drift | `M7`, `M15`, `M13` -> `M14`, `M17` -> `M18` -> `M19` | corresponding `-D` tasks approved | value redaction, installer model, registry/make/CLI contracts, proof harness | no accidental secret leak path; typed PM policy; no projection drift; invariants testable | test suites for each module + planner invariant suite |
+
+Handoff rules:
+
+1. One worker owns one lane at a time.
+2. Every PR title begins with primary task ID (example: `[WF3] ...`).
+3. Any behavioral change must include/adjust at least one regression test.
+4. If a lane hits unresolved design ambiguity, open/update the matching `*-D` task first.
+5. Do not start an implementation task before its `-D` pair is reviewed.
+
 ---
 
 ## Sprint 2: Review Findings + Polish
 
 ### Review Findings
 
-Bugs surfaced by automated review. Both are real but latent (not causing test failures yet).
+Bug surfaced by automated review. This is real but latent (not causing test failures yet).
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **R1** | **Makegen transport port name mismatch**: content-upsert lowering wires edge from port `response` (`daglang-lower/src/lib.rs:2928`), but output port-filtering renames it to `makegen_response` (`daglang-lower/src/lib.rs:2526`). Exec-runtime emitter also hardcodes `makegen_response` (`rust_exec_runtime.rs:615,626`). Fix: align edge wiring and port-filter to use the same port name, or remove the filter. | — | S |
 | **R2** | **[STARTED 2026-02-19]** **Wildcard resource semantics deferred**: remove generated/injected `res:file:*` usage for now (coarsen to `res:file`), treat coarse `file` as conflicting with any specific `file:<path>` lock in admission control, and normalize wildcard IDs to coarse `file` in resource accounting. Track full glob semantics as design work in `backlog.md` before enabling pattern-aware admission control. | — | M |
 
 ### Code TODOs & DSL Compiler Polish
 
-#### Design Decision: Node Metadata Classification (blocks P1-P3)
+#### Design Decision (Resolved 2026-02-19): Backend Semantics Must Be Encoded in IR (not naming conventions)
 
-P1-P3 all replace string heuristics in `daglang-derive/src/lib.rs` with structural
-classification on `LoweredOp`. The shared design question is: **what fields on
-`LoweredOp::Callable` carry the metadata that `daglang-derive` currently extracts
-from name strings?**
+Recent emitter bugs (Go/C redeclaration, MIPS early-return epilogue bypass, MIPS temp
+clobber) show a shared issue: backend lowering currently relies on string/name conventions
+in places where the IR should carry the semantic constraints.
 
-Current heuristics and their structural replacements:
+For this track, prefer **model enrichment first**:
+- Add/extend IR nodes so correctness is enforced by construction.
+- Lowerers and renderers should consume explicit modeled semantics, not infer behavior
+  from hardcoded names.
+- Validation passes are still useful, but treated as guardrails, not the primary design.
+- Tactical wrappers are acceptable only as interim mitigations; final state must encode
+  declaration/scope/return semantics explicitly in IR.
 
-| Derive function | Current heuristic | Available structural data | Missing |
-|----------------|-------------------|--------------------------|---------|
-| `derive_capture_modes()` (line 485) | Hardcoded `CaptureMode::Captured` for all nodes | `obligation: ObligationCategory` distinguishes transport (`ServiceTransport*`) from pure | `is_interactive` flag (for `Passthrough` mode); streaming marker (for `Streamed` mode) |
-| `derive_interactive_nodes()` (line 495) | `name.contains("@interactive")` | Nothing — interactivity only exists as a name substring | `is_interactive: bool` on `LoweredOp::Callable` |
-| `derive_resources()` (line 512) | Three `strip_prefix()` calls: `resource_lifecycle::acquire::`, `resource_lifecycle::release::`, `resource_provide::` | `obligation` already has `ResourceAcquire`, `ResourceRelease`, `ResourceProvide` variants | Resource name / binding name as a dedicated field (currently encoded in `name` string suffix) |
+| ID | Task | Deps | Size | Source |
+|----|------|------|------|--------|
+| **R3** | **[DONE 2026-02-19]** **Backend modeling enrichment RFC + IR schema update**: define and land minimal IR/API extensions needed for correctness-by-construction across these bugs. Scope: (a) Go binding intent in IR (short-declare vs assign, not encoded via synthetic names like `_, err`), (b) C lexical scope block statement for temporary-lifetime isolation, (c) MIPS explicit return terminator + epilogue destination contract (single-exit semantics), (d) fallible temp allocation API for register pressure, and (e) scope-aware local tracking notes for C->MIPS block lowering. Include migration notes for lowerers/renderers/tests. **Acceptance**: changed IR types compile across emit crate; Go emit path can express declaration vs assignment without string parsing; C/MIPS lowering can represent scoped temps without hardcoded unique names; return/epilogue flow is representable without raw `jr $ra` in lowering logic. | — | M | review synthesis |
+| **R4** | **[DONE 2026-02-19]** **Go + C lowerer migration to modeled semantics**: migrate transport-call statement lowering to the new IR contracts. Go must avoid repeated `:=` redeclare failures by construction; C must avoid same-scope `__rc` redefinition by construction (scoped block or equivalent modeled mechanism). **Acceptance**: add regressions with 2+ transport expression statements in one function; generated Go/C compile cleanly; tests assert structural IR behavior (not string fragments only). Interim `Expr::Block` wrapping is acceptable as a stop-gap, but completion requires bind-intent modeling from R3 to be exercised in tests. | R3 | M | review synthesis |
+| **R5** | **[DONE 2026-02-19]** **MIPS control-flow + allocator fail-closed migration**: implement single-exit return lowering (all returns route through epilogue path), make temp allocation fail with explicit `LowerError` on exhaustion instead of wrapping/clobbering, and define handling for C block-scope locals during C->MIPS lowering (scope stack or equivalent non-leaking strategy). **Acceptance**: framed functions do not contain body-level direct `JumpReg(Register::Ra)` for lowered returns; deep-expression/register-pressure test fails closed with explicit lowering error, not silent corruption; scoped temps from nested blocks do not alias/leak incorrectly in generated MIPS. | R3 | M | review synthesis |
+| **R6** | **[DONE 2026-02-19]** **Holistic backend correctness harness**: add cross-backend adversarial fixtures + smoke compilation checks for generated artifacts (Go/C compile, MIPS assembly structure checks), plus invariant checks that encode the modeled contracts. **Acceptance**: old buggy patterns are caught by tests; new modeled path passes; CI command includes this harness. | R4, R5 | M | review synthesis |
 
-**Approach**: Extend `LoweredOp::Callable` with two fields during lowering:
+#### Design Decision (Resolved 2026-02-19): External System Semantics Must Not Be Stringly-Typed
 
-```rust
-Callable {
-    module: String,
-    kind: String,
-    name: String,
-    obligation: ObligationCategory,
-    service_metadata: Option<ServiceMetadata>,
-    is_interactive: bool,          // NEW — parsed from DSL `@interactive` attr
-    resource_target: Option<String>, // NEW — resource name for lifecycle/provide nodes
-}
-```
+The same modeling-first rule applies to infra/GCP code: endpoint contracts, IAM policy
+shape, boundary input parsing, and mock seeding should be typed and validated by
+construction, with string heuristics only as explicit transitional compatibility paths.
 
-Then all three derive functions become enum matches on `obligation` + field reads,
-following the established `classify_obligation()` pattern in `daglang-lower:179`.
-No string parsing in the derive phase.
+| ID | Task | Deps | Size | Source |
+|----|------|------|------|--------|
+| **R7** | **[DONE 2026-02-19]** **Typed IAM policy domain model**: replace ad-hoc `serde_json::Value` mutation in IAM binding ops with typed structs (e.g., `IamPolicy`, `IamBinding`) + safe mutation helpers (`ensure_member(role, member)`). Preserve and round-trip `etag`, dedupe members, and support both direct-policy and envelope-policy transport shapes via typed decode adapters. **Acceptance**: `CheckAndPrepareIamBinding` and `CheckAndPrepareSaIamBinding` no longer manually push JSON strings into `bindings`; typed tests cover existing, missing, and duplicate-member cases; `etag` retained in generated setIamPolicy request bodies. | — | M | architecture review |
+| **R8** | **[DONE 2026-02-19]** **`MethodMeta` as execution source-of-truth**: add shared request-construction utilities that expand endpoint templates from `MethodMeta` + typed params/query map, and migrate service impls to use this path (not duplicated `format!` URLs). **Acceptance**: service methods stop hardcoding endpoint paths already represented by `*_META`; parity tests enforce constructed URL/method equivalence to metadata; drift between metadata and request wiring is caught by tests. | R7 | M | architecture review |
+| **R9** | **[DONE 2026-02-19]** **Fail-closed CLI entrypoint input parsing**: replace fallback `Value::Str` parsing in infra CLI with type-driven parsing based on `TypeId` + `ValueBacking` / compatibility helpers. Unsupported complex carriers should error explicitly with guidance instead of silently coercing to string. **Acceptance**: `parse_input_value` errors for incompatible inputs; list/map/json/basic scalar parsing covered; no silent string fallback for non-string target types. | — | S | architecture review |
+| **R10** | **[DONE 2026-02-19]** **Typed REST path-variable binding in `SystemModel`**: move `Invocation::Rest.path` from wildcard `*` style to named placeholders (`{project_id}`, etc.) and extend `validate_system_model` to verify placeholder↔`BehaviorInput` coverage (no unbound placeholders, no missing required path vars). **Acceptance**: GCP models validate with named variables; validator rejects mismatched path vars; tests cover both valid and invalid models. | R8 | M | architecture review |
+| **R11** | **[DONE 2026-02-19]** **Strict platform parsing at boundaries**: introduce strict parse APIs (`try_parse`/`FromStr` with real errors) for `Arch`/`Vendor`/`Os`/`AbiEnv`/`ExecutionEnv` at user-config boundaries while keeping best-effort detection paths for host introspection. **Acceptance**: config/CLI parse points can fail closed on unknown tokens; host detect remains tolerant; tests cover strict-reject and tolerant-detect behavior split. | — | S | architecture review |
+| **R12** | **[DONE 2026-02-19]** **Mock-default seeding by semantic kind, not port-name heuristics**: migrate GCP mock defaults away from raw port-name matching toward typed semantic hints (`SemanticCarrierKind` and/or refined type aliases). Keep name-based fallback only behind an explicit compatibility path. **Acceptance**: mock seeding still works when ports are renamed but type semantics are preserved; tests demonstrate semantic seeding for audience/project/service-account style inputs without relying on exact port names. | R9 | M | architecture review |
 
-#### Design Decision: DeferredCallableOp Elimination Strategy (blocks P6)
+#### Design Decision (Resolved; implementation pending): DeferredCallableOp Elimination Strategy (blocks P6)
 
 P6 replaces `DeferredCallableOp` (identity passthrough) with per-tool domain ops.
-The design question is: **what concrete `Executable` impl replaces each deferred
-callable, and how should dry-run mode work without a passthrough fallback?**
+Resolution:
+
+1. each deferred callable is replaced by a module-scoped typed `*Op` enum variant
+   with an explicit `Executable` implementation,
+2. dry-run behavior is implemented inside each typed op via
+   `ExecutionMode::DryRun` and returns typed deterministic outputs (no identity passthrough),
+3. unknown callables fail closed (`Err(unknown_callable(...))`) once module
+   migration is complete, and
+4. resolver behavior is exhaustive typed dispatch (`P12`), not string-prefix inference.
 
 Current deferred callables (from `resolve.rs` + `rust_exec_runtime.rs:306`):
 
@@ -90,16 +134,7 @@ catch-all `_ => Ok(deferred_callable(...))` on line 872 becomes
 
 | ID | Task | Deps | Size | Source |
 |----|------|------|------|--------|
-| **P1** | `daglang-derive:485` — Derive capture mode from `obligation` + `is_interactive` field on `LoweredOp::Callable`, not hardcoded. Three modes: `ServiceTransport*` → `Captured`, `is_interactive` → `Passthrough`, streaming TBD. | — | M | `TODO(Phase 3)` |
-| **P2** | `daglang-derive:495` — Replace `name.contains("@interactive")` with `is_interactive: bool` field on `LoweredOp::Callable`, parsed from DSL `@interactive` attribute during lowering in `daglang-lower`. | P1 | S | `TODO(Phase 3)` |
-| **P3** | `daglang-derive:512` — Replace three `strip_prefix()` calls (`resource_lifecycle::acquire/release::`, `resource_provide::`) with `obligation` enum match + `resource_target: Option<String>` field. The `ObligationCategory::Resource*` variants already exist. | P1 | S | `TODO(Phase 3)` |
-| **P4** | `daglang-cli/commands.rs:147` — Deduplicate `check_from_context` re-discovery/re-parse/re-typecheck with cached pipeline state | — | M | `TODO` |
-| **P5** | `lib/gcp-ops/src/ops.rs:568` — Wire token expiry into output if callers need it | — | S | `TODO` |
 | **P6** | `DeferredCallableOp` → per-module domain ops: implement `*Op` enums for each deferred module (see table above), replace catch-all passthrough with `Err(unknown_callable(...))`. Dry-run via `ExecutionMode` check inside each op, not via identity passthrough. ~15 modules, ~25 callables total. (`resolve.rs`, `rust_exec_runtime.rs:306`) | — | L | PR review |
-| **P8** | Consolidate repeated GCP service client constructors (`new`/`unauthenticated`) into a shared helper/macro across `lib/gcp-ops/src/services/*`. | — | S | PR review |
-| **P9** | Deduplicate `content_upsert` source wiring in `core/daglang/daglang-lower/src/lib.rs` (content/path branches share nearly identical param/source edge logic). | — | M | PR review |
-| **P10** | Consolidate makegen compile test setup/cleanup in `core/daglang/daglang-cli/src/compile/tests.rs` (temp output creation + teardown helpers) to reduce repetition and cleanup leaks. | — | S | PR review |
-| **P11** | Pure/impure split for `build_workspace_dag()`: extract `build_workspace_dag_from_discovery(tool_names, pipeline_names) -> Dag<DynOp>` pure core from the impure wrapper that does `fs::read_dir` discovery. The `add_discovered_tool_subdags` / `add_discovered_pipeline_subdags` helpers are already pure — just need a public entry point that takes pre-discovered names. (`gunbc-dag/src/workspace/subdags/mod.rs`) | — | S | PR review |
 | **P12** | Move `resolve_infrastructure()` string-prefix matching up to lowering: lowerer should emit typed `LoweredOp` variants (e.g., `LoweredOp::Primitive(PrepareFileWrite)`) instead of encoding op identity in callable name strings. Resolver becomes exhaustive enum match, not prefix scan. 9 golden tests already cover current behavior. (`resolve.rs:758-842`, `daglang-lower`) | — | M | PR review |
 
 ---
@@ -119,7 +154,7 @@ Daily roadmap (GitHub issues / TODO)
 The infrastructure (DSL, executor, credentials, transport) is built. This sprint
 wires it into a usable end-to-end flow.
 
-### Design Decision: Runtime Environment
+### Design Decision (Resolved 2026-02-19): Runtime Environment
 
 The pipeline runs **locally** as a CLI tool. Credential resolution supports both:
 - **Local dev**: `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` from env vars
@@ -141,7 +176,7 @@ end-to-end outside of test harness.
 | **W2** | **Credential smoke test**: Run `gunbc review` locally with `ANTHROPIC_API_KEY` set, feeding a small diff. Verify: credential resolves, HTTP request goes out, response parses, findings are structured. Fix any issues found. | W1 | S |
 | **W3** | **Multi-provider support**: Verify `gunbc review --provider openai` and `--provider anthropic` both work. Test credential policy override via `GUNBC_CREDENTIAL_POLICY_JSON` for switching between providers without changing env vars. | W2 | S |
 
-### Design Decision: Abstract Review Model
+### Design Decision (Resolved 2026-02-19): Abstract Review Model
 
 The review pipeline is **domain-agnostic**. Four abstract dimensions, each with
 its own **criteria input port** and **depth port** (Fermi size: XS/S/M/L/XL).
@@ -301,9 +336,135 @@ that bypass the type system will get out of hand fast.
 
 Better informed after W1-W8 reveal which deferred callables are actually exercised.
 
+Execution note:
+
+1. `P6` is defined in Sprint 2 with full scope/acceptance; schedule execution after `W4` to prioritize exercised callables first.
+2. Use `P12` as prerequisite cleanup to eliminate resolver string-prefix ambiguity before broad `P6` migration.
+
+---
+
+## Sprint 5: Workflow Minimal Execution Model (CI/Test-All)
+
+**Goal**: make `make ci` and `make test-all` warm-path behavior complete in seconds by
+construction, with no redundant work and no implicit fallback paths.
+
+### Design Decision (Resolved 2026-02-19): Minimum Unit of Work + Exclusive Coordination
+
+Workflow execution must be modeled as typed, composable **minimum work units** (not command
+chains). Every unit must declare:
+
+1. explicit typed inputs and outputs,
+2. deterministic materialization key inputs,
+3. exclusive resource claims (or declared shared capacity), and
+4. downstream coordination contracts (what can run only after this unit commits).
+
+This makes work naturally mutually exclusive where needed and deterministically coordinated for
+downstream nodes.
+
+Reference design doc: `docs/design/workflow-minimal-execution-model.md`.
+
+### Design Decision (Resolved 2026-02-19): Control/Dataflow Semantics
+
+For WF1-WF4 scope, orchestration uses **completion-gated control**:
+
+1. control readiness gates are based on upstream `commit` (completion), not domain success,
+2. domain success/failure is carried on typed `result` dataflow payloads,
+3. report/aggregate behavior is fail-late by construction (consumes committed results),
+4. success-gated branching must be modeled explicitly via typed guard units over `result`
+   (no implicit "success-only control edge" semantics in this phase), and
+5. node readiness requires both control prerequisites and required dataflow inputs to be materialized.
+
+Strict default wiring policy:
+
+1. functional units must be success-guarded unless explicitly exempted,
+2. report/aggregation units remain commit-gated for failure completeness.
+
+### Design-First Gate (Required)
+
+For modeling tasks in this sprint, implementation is blocked until a concrete
+design artifact is reviewed:
+
+1. each design doc must include concrete DAG structure (`Dag<...>` node list,
+   typed edges including `EdgeKind`, and resource/input/output contracts),
+2. each design doc must include invalidation and admission rules (no ambient
+   dependencies), and
+3. task implementation IDs must depend on corresponding `-D` design IDs.
+
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **P6** | Per-module domain ops (see design decision above) | W4 | L |
+| **WF1-D** | **Workflow schema design spec**: author concrete design for `WorkflowSpec` as `Dag<WorkflowUnit>` wrapper, typed IDs (`NodeId`, `PortName`), and op semantics without parallel graph structures. **Design doc**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Sections 2-4). **Acceptance**: design doc includes concrete DAG skeletons for `ci` and `test-all`, typed interface contracts, explicit no-fallback guarantees, and a `ProcessUnitRef -> ProcessSpec semantic-version/digest` contract used for `op_version` derivation in keying. | — | S |
+| **WF1** | **Minimum work-unit schema**: implement approved `WF1-D` design (typed units over existing DAG primitives, no untyped shell fallback nodes). **Acceptance**: no planner node can be created from an untyped shell string; each unit has stable ID and explicit IO contract; schema docs landed. | WF1-D | M |
+| **WF2-D** | **Mutual-exclusion/admission design spec**: define concurrency model using typed resource identities + access modes and derive admission behavior from declared resource ports/claims. **Design doc**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Section 5). **Acceptance**: conflict matrix, fairness/tie-break rules, and control-edge sequencing model documented with concrete DAG examples. | WF1-D | S |
+| **WF2** | **Mutual-exclusion claim model**: implement approved `WF2-D` admission model so conflicting units cannot co-run. **Acceptance**: planner/executor rejects unsatisfied/conflicting claims fail-closed; conflict diagnostics include both unit IDs + claim IDs; tests cover read/read allowed and write/write denied cases. | WF1, WF2-D | M |
+| **WF3-D** | **Key/ledger causality design spec**: define canonical key payload structure, typed miss-reason ADT, and ledger-state ADT with atomic persistence semantics. **Design doc**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Section 6). **Acceptance**: no ambient env/toolchain probing in key computation; miss causes are structurally diffable from payloads; fan-in contributors for multi-producer ports are preserved deterministically in key payloads; key encoding/versioning contract is explicit (`key_format_version` + canonical serializer rules); cached-hit output rehydration contract (CAS-backed) is documented, including typed `result` payload materialization; crash-safe write pattern documented. | WF1-D | S |
+| **WF3** | **Deterministic materialization keys + miss reasons**: implement approved `WF3-D` key/ledger model. **Acceptance**: same repo state yields identical keys; key drift is explained by explicit miss reason; no mtime-only freshness path in planner core; cached-hit nodes rehydrate declared outputs (including `result` when consumed) before downstream dataflow. | WF1, WF3-D | M |
+| **WF4-D** | **Downstream coordination design spec**: define readiness/commit boundaries with typed graph semantics (`EdgeKind::Control` where appropriate), including failure/skip propagation rules. **Design doc**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Section 7). **Acceptance**: concrete DAGs prove downstream nodes block on uncommitted prerequisites without implicit make-order dependence; dependency gate uses commit/output-availability semantics (not domain-success semantics); dataflow/readiness interaction is explicit (required data inputs must exist before run). | WF1-D, WF2-D | S |
+| **WF4** | **Downstream coordination contract**: implement approved `WF4-D` coordination model so downstream units execute only after upstream commit/output availability. **Acceptance**: planner proves topological + contract consistency before execution; downstream units are blocked on uncommitted prerequisites with explicit reason output; domain-failure results still reach report/aggregate nodes. | WF1, WF2, WF4-D | M |
+| **WF5** | **Planner dry-run + execution plan explainability**: add a planner mode that prints execute-set, cache-hit/miss set, and critical path before running. **Acceptance**: `gunbc-workflow --plan ci` and `--plan test-all` produce deterministic node lists and miss reasons; tests pin output stability for a fixed fixture repo state. | WF2, WF3, WF4 | S |
+| **WF6** | **Port `ci` to workflow planner**: implement `gunbc-workflow ci` using the new unit model and planner/executor, with behavior parity to current `gunbc-ci`. **Acceptance**: CI path no longer composes redundant prerequisite chains; all `ci` steps execute via typed units with claims + keys; parity tests validate outputs and failure semantics. | WF5 | M |
+| **WF7** | **Port `test-all` to workflow planner**: implement `gunbc-workflow test-all` with minimal dirty-closure execution and shared artifacts with `ci` flow. **Acceptance**: warm no-op executes zero functional units; single-input edits execute only transitive dirty closure; regression tests assert no duplicate generator/build unit execution in one run. | WF5 | M |
+| **WF8** | **Makefile thinning + strict mode cutover**: convert `make ci`/`make test-all` into thin wrappers over `gunbc-workflow`; remove redundant legacy chaining for these targets; keep explicit strict-mode failures for unmapped/deprecated paths. **Acceptance**: Make targets are transport-only wrappers; removed duplicate orchestration for these commands; CI gate asserts planner path is used. | WF6, WF7 | S |
+| **WF9** | **Latency SLO instrumentation + guardrails**: add run-ledger timing metrics and CI assertions for warm-path budgets (seconds-scale), plus “top slow units” reporting. **Acceptance**: logs expose total units/hits/misses/critical path; failing SLO budgets fail CI with actionable slow-unit breakdown. | WF6, WF7 | S |
+
+### Modeling Intake
+
+Additional semantic-erasure/modeling hardening items from 2026-02-19 feedback are
+tracked in `TODO/modeling.md` and should be promoted into sprint lanes as they are
+prioritized.
+
+### Resolved Strict Defaults (Locked 2026-02-19)
+
+| ID | Decision | Chosen Default | Deps | Size |
+|---|---|---|---|---|
+| **WF10-D** | Control-token model beyond fail-late default (`done`/`ok` split) | Keep completion-gated control + explicit typed success guards (no dual-token expansion in current phase). | WF4-D | S |
+| **WF11-D** | Cached `result` persistence strategy (full payload vs typed summary/reference) | Typed summary/reference is mandatory baseline; full payload persistence is optional per-unit policy. | WF3-D | S |
+| **WF12-D** | Changed-input routing authority boundary | Routing remains optimization hint only; never authoritative for correctness in current phase. | WF3-D | S |
+| **WF13-D** | Conflict commutativity policy for resource claims | No commutativity exceptions; conflicting claims require explicit ordering. | WF2-D | S |
+
+Additional active open items:
+
+1. Resource wildcard pattern semantics remain explicitly deferred (`R2` + `backlog.md`).
+2. Deferred-callable migration is implementation-open but design-resolved (`P6`, `P12`).
+
+---
+
+## Sprint 6: Modeling Hardening (Design-First)
+
+**Goal**: eliminate remaining semantic erasure across system-model metadata,
+resource declarations, dry-run behavior, secret handling, installer modeling,
+transport-contract surfaces, and cross-workflow non-redundancy proof gaps.
+
+### Design-First Gate (Required)
+
+For every task in this sprint:
+
+1. implementation is blocked on the matching `-D` design task,
+2. design must satisfy the corresponding checklist in `TODO/modeling.md`, and
+3. design review must include concrete DAG/typed-contract structures where runtime
+   behavior or orchestration is affected.
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **M7-D** | **Secret redaction design spec**: define secret capability boundary model, explicit plaintext extraction API, and enforcement points (formatting + lint guardrails) per `TODO/modeling.md` M7 checklist. | — | S |
+| **M7** | **Secret redaction by default**: implement approved `M7-D` model so secret-bearing values are redacted by default in all display/debug paths and plaintext extraction is transport-boundary-only. | M7-D | M |
+| **M8-D** | **`TypeOp::Meta` design spec**: define inert metadata payload model, migration plan from metadata-over-`Validate(Custom(...))`, and erasure-invariance test contract per `TODO/modeling.md` M8 checklist. | — | S |
+| **M8** | **Semantically inert metadata op**: implement approved `M8-D` model (`TypeOp::Meta`) and migrate system-model metadata/property encoding off validation nodes. | M8-D | M |
+| **M9-D** | **Typed dependency marker design spec**: define typed dependency identity/edges and migration from string marker conventions per `TODO/modeling.md` M9 checklist. | M8-D | S |
+| **M9** | **Typed dependency markers**: implement approved `M9-D` model and remove string-prefix dependency semantics from runtime/validator logic. | M8, M9-D | S |
+| **M10-D** | **Resource declaration + auto-wiring design spec**: define mandatory effectful-resource declaration rule, auto-wiring policy, and admission derivation model per `TODO/modeling.md` M10 checklist. | WF2-D | M |
+| **M10** | **Mandatory resource declarations + auto-wiring**: implement approved `M10-D` model and enforce fail-closed behavior for undeclared effectful I/O. | WF2, M10-D | L |
+| **M11-D** | **Strict dry-run poisoning design spec**: define strict/lenient dry-run semantics, poison/unset propagation, and fail-fast trace behavior per `TODO/modeling.md` M11 checklist. | M10-D | S |
+| **M11** | **Strict dry-run mode**: implement approved `M11-D` model and wire strict mode into CI/testgen/integration paths. | M10, M11-D | M |
+| **M15-D** | **Typed package-manager design spec**: define strict `PackageManagerId`, explicit selection policy, and compatibility boundary per `TODO/modeling.md` M15 checklist. | — | S |
+| **M15** | **Typed install planning**: implement approved `M15-D` model across installer and tool-upsert bridging with fail-closed unknown PM handling. | M15-D | M |
+| **M16-D** | **SystemModel/TransportBehavior unification design spec**: define shared invocation contract and parity-test model per `TODO/modeling.md` M16 checklist. | M8-D, R8, R10 | M |
+| **M16** | **SystemModel/TransportBehavior unification**: implement approved `M16-D` shared contract model and remove/guard duplicate spec surfaces. | M8, M9, M16-D | M |
+| **M17-D** | **Global flattening + context-free identity design spec**: define flatten-before-execute contract, `WorkIdentity` semantics independent of workflow node names, and cross-workflow dedup behavior per `TODO/modeling.md` M17 checklist. | WF3-D, WF4-D | M |
+| **M17** | **Global flattening + context-free identity**: implement approved `M17-D` model so equivalent work across `ci`/`test-all` is unified and executed once per equivalent key payload. | WF3, WF4, M17-D | L |
+| **M18-D** | **Single semantic authority/projection design spec**: define canonical model + generated/validated projection boundaries (Make/CLI/report) per `TODO/modeling.md` M18 checklist. | M17-D | M |
+| **M18** | **Projection-only surfaces + drift enforcement**: implement approved `M18-D` model so wrapper surfaces cannot introduce divergent dependency/effect semantics. | M17, M18-D | M |
+| **M19-D** | **Formal non-redundancy proof design spec**: define invariant suite + diagnostic model for at-most-once, minimal closure, and single-writer ordering per `TODO/modeling.md` M19 checklist. | M17-D, M18-D | M |
+| **M19** | **Formal non-redundancy proof harness**: implement approved `M19-D` invariants and CI gates over planner preflight + execution/ledger traces. | M17, M18, M19-D | M |
 
 ---
 
@@ -314,11 +475,12 @@ SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
          │
     ─────┤ (Sprint 2: review fixes + polish)
          │
-         ├─ R1, R2                 (review findings: port name, wildcard resources)
-         ├─ P8, P10               (mechanical: GCP macro, test helpers)
-         ├─ P9                     (lowerer source wiring dedup)
-         ├─ P1→P2,P3              (LoweredOp metadata fields → structural classify)
-         ├─ P4, P5                (CLI caching, GCP token expiry)
+         ├─ R2                     (review finding: wildcard resources)
+         ├─ R3→(R4, R5)→R6         (modeled backend correctness hardening)
+         ├─ R7→R8→R10              (typed GCP/service-model semantics)
+         ├─ R9→R12                 (typed CLI boundary + semantic mock seeding)
+         ├─ R11                    (strict platform parsing boundaries)
+         ├─ P12                    (resolve_infrastructure typed-lowering migration)
          │
     ─────┤ (Sprint 3: dev pipeline — real workflow)
          │
@@ -329,12 +491,32 @@ SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
     ─────┤ (Sprint 4: cleanup informed by real usage)
          │
          └─ P6                     (per-module domain ops, L)
+         │
+    ─────┤ (Sprint 5: minimal workflow execution model)
+         │
+         └─ WF1-D→(WF2-D,WF3-D)→WF4-D→WF1→WF2→WF3→WF4→WF5→(WF6,WF7)→WF8→WF9
+         │
+    ─────┤ (Sprint 6: modeling hardening, design-first)
+         │
+         ├─ M7-D→M7                (secret redaction by construction)
+         ├─ M8-D→M8→M9-D→M9        (metadata + dependency typing)
+         ├─ M10-D→M10→M11-D→M11    (resource declarations + strict dry-run)
+         ├─ M15-D→M15              (typed package-manager modeling)
+         ├─ M16-D→M16              (SystemModel/TransportBehavior unification)
+         └─ M17-D→M17→M18-D→M18→M19-D→M19
+                                   (global flattening + anti-duplicate-modeling proofs)
 ```
 
-**Sprint 2**: R1, R2 + polish. Zero design risk.
+**Sprint 2**: R2 + R3/R4/R5/R6 backend modeling hardening + R7/R8/R9/R10/R11/R12
+external-system modeling hardening + remaining integration fixes.
 **Sprint 3**: W1 (`gunbc review` CLI) is the critical path — first real end-to-end
 execution. W4 (abstract review DAG with 4 dimensions) is the design centerpiece.
 By end of sprint: `gunbc pipeline --pr 123` runs coherence + quality + requirements
 + aspirational review with CI context, outputs must-fix / defer / accept findings.
 **Sprint 4**: P6 informed by which deferred callables real execution exercises.
+**Sprint 5**: WF track now gates implementation behind reviewed DAG-first design
+artifacts (`WF1-D`..`WF4-D`), then lands typed minimum units + exclusive claims +
+downstream coordination contracts before porting `ci`/`test-all`.
+**Sprint 6**: M track is now promoted with explicit paired design/implementation
+tasks (`M7-D`..`M19-D`) and checklist-based review gates from `TODO/modeling.md`.
 **Backlog**: XL features and migration work in `backlog.md`.

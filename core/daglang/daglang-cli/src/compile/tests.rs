@@ -50,12 +50,30 @@ fn workspace_single_file_context(relative_path: &str) -> PipelineContext {
     }
 }
 
-fn makegen_context_with_output(name: &str) -> (PipelineContext, PathBuf, BoundaryMocks) {
-    let context = workspace_single_file_context("tools/makegen.dag");
-    let output_path = unique_temp_output_file(name, "mk");
-    let output_path_str = output_path.to_string_lossy().to_string();
-    let input_mocks = makegen_entrypoint_mocks(&output_path_str);
-    (context, output_path, input_mocks)
+struct MakegenOutputFixture {
+    context: PipelineContext,
+    output_path: PathBuf,
+    input_mocks: BoundaryMocks,
+}
+
+impl MakegenOutputFixture {
+    fn new(name: &str) -> Self {
+        let context = workspace_single_file_context("tools/makegen.dag");
+        let output_path = unique_temp_output_file(name, "mk");
+        let output_path_str = output_path.to_string_lossy().to_string();
+        let input_mocks = makegen_entrypoint_mocks(&output_path_str);
+        Self {
+            context,
+            output_path,
+            input_mocks,
+        }
+    }
+}
+
+impl Drop for MakegenOutputFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.output_path);
+    }
 }
 
 /// Create a unique temp directory with a `sample/` subdirectory for fixture files.
@@ -460,6 +478,8 @@ fn resolve_lowered_dag_defers_unknown_callable_module() {
             name: "unknown".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
 
@@ -502,35 +522,35 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
         },
     ));
 
-    // Pipeline nodes resolve to DeferredCallableOp (passthrough for dry-run compat).
-    let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve as deferred");
+    // Pipeline nodes resolve to typed UnsupportedOp placeholders.
+    let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
-    assert!(debug.contains("DeferredCallableOp"));
+    assert!(debug.contains("UnsupportedOp"), "unexpected op debug: {debug}");
     let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
         panic!("pipeline fixture should not contain subdag nodes")
     };
-    let outputs = op
+    let error = op
         .execute(HashMap::new())
-        .expect("deferred pipeline callable should pass through");
-    assert!(
-        outputs.contains_key("out"),
-        "deferred callable should populate declared output ports"
-    );
+        .expect_err("unsupported pipeline callable should fail at execution");
+    assert!(error.to_string().contains("unsupported operation"));
 }
 
 #[test]
 fn compile_resolve_execute_makegen_real_mode_writes_output() {
-    let (context, output_path, input_mocks) = makegen_context_with_output("makegen_real_run");
+    let fixture = MakegenOutputFixture::new("makegen_real_run");
 
-    let log =
-        compile_resolve_execute_from_context(&context, ExecutionMode::Real, Some(&input_mocks))
-            .expect("real execution should succeed");
+    let log = compile_resolve_execute_from_context(
+        &fixture.context,
+        ExecutionMode::Real,
+        Some(&fixture.input_mocks),
+    )
+    .expect("real execution should succeed");
     assert!(
-        output_path.exists(),
+        fixture.output_path.exists(),
         "real execution should write requested output path"
     );
-    let content = std::fs::read_to_string(&output_path)
+    let content = std::fs::read_to_string(&fixture.output_path)
         .expect("real execution should emit readable output file");
     assert!(content.contains(".PHONY"));
     assert!(content.contains("makegen"));
@@ -542,22 +562,26 @@ fn compile_resolve_execute_makegen_real_mode_writes_output() {
         Some(&gunbc_ir::Value::Bool(true)),
         "first real run should report written=true"
     );
-
-    std::fs::remove_file(output_path).expect("failed to cleanup makegen output");
 }
 
 #[test]
 fn compile_resolve_execute_makegen_real_mode_reports_not_written_when_fresh() {
-    let (context, output_path, input_mocks) =
-        makegen_context_with_output("makegen_real_idempotent");
+    let fixture = MakegenOutputFixture::new("makegen_real_idempotent");
 
-    compile_resolve_execute_from_context(&context, ExecutionMode::Real, Some(&input_mocks))
+    compile_resolve_execute_from_context(
+        &fixture.context,
+        ExecutionMode::Real,
+        Some(&fixture.input_mocks),
+    )
         .expect("first real execution should succeed");
     let first_content =
-        std::fs::read_to_string(&output_path).expect("first run should write output");
-    let second =
-        compile_resolve_execute_from_context(&context, ExecutionMode::Real, Some(&input_mocks))
-            .expect("second real execution should succeed");
+        std::fs::read_to_string(&fixture.output_path).expect("first run should write output");
+    let second = compile_resolve_execute_from_context(
+        &fixture.context,
+        ExecutionMode::Real,
+        Some(&fixture.input_mocks),
+    )
+    .expect("second real execution should succeed");
 
     let second_entry = second
         .get("tools.makegen::makegen")
@@ -567,30 +591,29 @@ fn compile_resolve_execute_makegen_real_mode_reports_not_written_when_fresh() {
         Some(&gunbc_ir::Value::Bool(false)),
         "second real run should report written=false when output is unchanged"
     );
-    let second_content =
-        std::fs::read_to_string(&output_path).expect("second run should leave output intact");
+    let second_content = std::fs::read_to_string(&fixture.output_path)
+        .expect("second run should leave output intact");
     assert_eq!(first_content, second_content);
     assert!(
-        output_path.exists(),
+        fixture.output_path.exists(),
         "real idempotence check should preserve generated output"
     );
-    std::fs::remove_file(output_path).expect("failed to cleanup makegen output");
 }
 
 #[test]
 fn compile_resolve_execute_makegen_dry_run_intercepts_and_skips_output_write() {
-    let (context, output_path, input_mocks) = makegen_context_with_output("makegen_dry_run");
-    let output_path_str = output_path.to_string_lossy();
+    let fixture = MakegenOutputFixture::new("makegen_dry_run");
+    let output_path_str = fixture.output_path.to_string_lossy();
     let dry_run_mocks = makegen_dry_run_transport_mocks(output_path_str.as_ref());
 
     let log = compile_resolve_execute_from_context(
-        &context,
+        &fixture.context,
         ExecutionMode::DryRun(dry_run_mocks),
-        Some(&input_mocks),
+        Some(&fixture.input_mocks),
     )
     .expect("dry-run execution should succeed");
     assert!(
-        !output_path.exists(),
+        !fixture.output_path.exists(),
         "dry-run execution should not write output file"
     );
     assert!(
@@ -686,6 +709,8 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
             }),
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -705,6 +730,8 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
             }),
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -724,6 +751,8 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
             }),
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_edge(Edge::new(
@@ -924,6 +953,8 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             name: "prepare".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -936,6 +967,8 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             name: "execute".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -948,6 +981,8 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             name: "parse_z".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -960,6 +995,8 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             name: "parse_a".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -972,6 +1009,8 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             name: "sink".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
 

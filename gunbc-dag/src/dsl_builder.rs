@@ -3,6 +3,7 @@
 use daglang_driver::{compile_from_context, DriverContext};
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
+use std::collections::HashSet;
 
 use crate::resolve_lowered_dag;
 
@@ -34,9 +35,34 @@ fn compile_lowered(relative_module: &str) -> Result<Dag<daglang_lower::LoweredOp
     Ok(output.lowered_dag)
 }
 
+fn strip_pipeline_nodes(
+    mut dag: Dag<daglang_lower::LoweredOp>,
+) -> Dag<daglang_lower::LoweredOp> {
+    let pipeline_ids: HashSet<String> = dag
+        .nodes
+        .iter()
+        .filter_map(|node| match &node.body {
+            gunbc_ir::node::NodeBody::Opaque(daglang_lower::LoweredOp::Pipeline { .. }) => {
+                Some(node.id.0.clone())
+            }
+            _ => None,
+        })
+        .collect();
+
+    if pipeline_ids.is_empty() {
+        return dag;
+    }
+
+    dag.nodes.retain(|node| !pipeline_ids.contains(&node.id.0));
+    dag.edges.retain(|edge| {
+        !pipeline_ids.contains(&edge.from_node.0) && !pipeline_ids.contains(&edge.to_node.0)
+    });
+    dag
+}
+
 /// Compile a DSL module and resolve lowered ops into `Dag<DynOp>`.
 pub(crate) fn build_dsl_graph(relative_module: &str) -> Result<Dag<DynOp>, BuilderError> {
-    let lowered = compile_lowered(relative_module)?;
+    let lowered = strip_pipeline_nodes(compile_lowered(relative_module)?);
     resolve_lowered_dag(&lowered).map_err(|error| {
         BuilderError::InternalInvariant(format!(
             "failed to resolve lowered DAG for `{relative_module}`: {error}"
@@ -116,5 +142,9 @@ mod tests {
     fn builds_ci_dsl_graph() {
         let dag = build_ci_graph_dsl().expect("ci DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
+        assert!(
+            !dag.nodes.iter().any(|node| node.id.0 == "pipelines.ci::ci"),
+            "runtime CI graph should not include pipeline metadata nodes"
+        );
     }
 }

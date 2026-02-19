@@ -753,6 +753,10 @@ pub fn semantic_carrier_kind_for_type_id(type_id: &str) -> SemanticCarrierKind {
         // Refined primitives.
         | "NonEmptyString" | "Url" | "FilePath" | "Path" | "Email"
         | "PositiveInt" | "NonNegativeInt"
+        // Refined GCP identity/resource aliases.
+        | "OidcAudience" | "WifAudience"
+        | "GcpProjectId" | "GcpSecretId" | "GcpSecretVersion"
+        | "GcpServiceAccountEmail" | "GcpSubjectToken" | "OidcSubjectToken"
         // Common wrappers/container aliases.
         | "OptionalString" | "OptionalInt" | "OptionalBool" | "OptionalJson"
         | "OptionalUrl"
@@ -879,6 +883,15 @@ pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
                 "Platform" | "FilePath" | "Path" | "Url" | "Email" | "NonEmptyString" => {
                     ValueBacking::String
                 }
+                // Refined GCP aliases (all currently string-backed values).
+                "OidcAudience"
+                | "WifAudience"
+                | "GcpProjectId"
+                | "GcpSecretId"
+                | "GcpSecretVersion"
+                | "GcpServiceAccountEmail"
+                | "GcpSubjectToken"
+                | "OidcSubjectToken" => ValueBacking::String,
                 // Legacy list aliases
                 s if s.ends_with("List") => ValueBacking::List,
                 // Legacy set aliases
@@ -1183,6 +1196,14 @@ mod tests {
             SemanticCarrierKind::Structural
         );
         assert_eq!(
+            semantic_carrier_kind_for_type_id("GcpProjectId"),
+            SemanticCarrierKind::Structural
+        );
+        assert_eq!(
+            semantic_carrier_kind_for_type_id("GcpServiceAccountEmail"),
+            SemanticCarrierKind::Structural
+        );
+        assert_eq!(
             semantic_carrier_kind_for_type_id("TransportRequest"),
             SemanticCarrierKind::TransportRequest
         );
@@ -1246,6 +1267,14 @@ mod tests {
         assert_eq!(value_backing_for_type_id("Set<String>"), ValueBacking::Set);
         assert_eq!(
             value_backing_for_type_id("Optional<String>"),
+            ValueBacking::String
+        );
+        assert_eq!(
+            value_backing_for_type_id("GcpProjectId"),
+            ValueBacking::String
+        );
+        assert_eq!(
+            value_backing_for_type_id("GcpSubjectToken"),
             ValueBacking::String
         );
     }

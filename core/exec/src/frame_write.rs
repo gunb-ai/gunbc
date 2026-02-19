@@ -96,22 +96,46 @@ fn render_frame_common<M: OutputMedium<Output = String>>(
     is_tty: bool,
     last_frame_lines: &mut usize,
 ) -> std::io::Result<()> {
-    // Cursor-up then clear-to-end-of-screen to overwrite the previous frame.
-    // This matches gunb.ai's approach: \x1b[NA\r moves up N lines, then
-    // \x1b[J clears everything from the cursor to the end of the screen.
-    // This is simpler and more robust than per-line clearing.
-    if is_tty && *last_frame_lines > 0 && frame.cursor_action == CursorAction::Overwrite {
-        write!(sink, "\x1b[{}A\r\x1b[J", *last_frame_lines)?;
-    }
-
+    let overwrite = is_tty && frame.cursor_action == CursorAction::Overwrite;
     let num_lines = frame.lines.len();
 
-    // Render each line (no per-line clearing needed — \x1b[J already cleared)
-    for line in &frame.lines {
-        let rendered = medium.render_line(line);
-        writeln!(sink, "{}", rendered)?;
+    // Buffer the entire frame so it's written as a single atomic chunk.
+    // Rust's stderr is unbuffered — without this, each write!() is a separate
+    // syscall and the terminal renders intermediate states (visible flicker).
+    let mut buf: Vec<u8> = Vec::with_capacity(4096);
+
+    // Move cursor up to the start of the previous frame.
+    if overwrite && *last_frame_lines > 0 {
+        write!(buf, "\x1b[{}A\r", *last_frame_lines)?;
     }
 
+    // Render each line with per-line clearing (matches gunb.ai).
+    // \x1b[2K clears the current line before writing, so old content is
+    // overwritten in-place with no visible gap between frames.
+    for line in &frame.lines {
+        let rendered = medium.render_line(line);
+        if overwrite {
+            write!(buf, "\x1b[2K")?;
+        }
+        writeln!(buf, "{}", rendered)?;
+    }
+
+    // If the new frame is shorter than the previous one, clear leftover lines
+    // so stale content doesn't remain below the new frame.
+    if overwrite {
+        let leftover = last_frame_lines.saturating_sub(num_lines);
+        for _ in 0..leftover {
+            writeln!(buf, "\x1b[2K")?;
+        }
+        // After clearing leftover lines, move cursor back up to the end of the
+        // actual frame content so the next overwrite starts from the right place.
+        if leftover > 0 {
+            write!(buf, "\x1b[{}A", leftover)?;
+        }
+    }
+
+    // Single atomic write — terminal processes the entire frame at once.
+    sink.write_all(&buf)?;
     sink.flush()?;
     *last_frame_lines = num_lines;
     Ok(())
@@ -261,14 +285,22 @@ mod tests {
         let frame1 = make_frame(vec!["first"], CursorAction::Overwrite);
         writer.write_frame(&frame1, &mut buf).unwrap();
 
-        // Second frame should cursor-up and clear-to-end
+        // Second frame should cursor-up and per-line clear
         let frame2 = make_frame(vec!["second"], CursorAction::Overwrite);
         writer.write_frame(&frame2, &mut buf).unwrap();
 
         let output = String::from_utf8(buf).unwrap();
         assert!(
-            output.contains("\x1b[1A\r\x1b[J"),
-            "TTY should contain cursor-up + clear-to-end"
+            output.contains("\x1b[1A\r"),
+            "TTY should contain cursor-up: {output}"
+        );
+        assert!(
+            output.contains("\x1b[2K"),
+            "TTY should contain per-line clear: {output}"
+        );
+        assert!(
+            !output.contains("\x1b[J"),
+            "TTY should NOT contain bulk clear-to-end: {output}"
         );
         assert!(output.contains("second"));
     }
@@ -290,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_frame_shorter_frame_uses_clear_to_end() {
+    fn test_write_frame_shorter_frame_clears_leftover_lines() {
         let mut buf = Vec::new();
         let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, true);
 
@@ -298,15 +330,26 @@ mod tests {
         let frame1 = make_frame(vec!["a", "b", "c"], CursorAction::Overwrite);
         writer.write_frame(&frame1, &mut buf).unwrap();
 
-        // Second frame: 1 line — clear-to-end handles the leftover
+        // Second frame: 1 line — leftover lines are cleared individually
         let frame2 = make_frame(vec!["x"], CursorAction::Overwrite);
         writer.write_frame(&frame2, &mut buf).unwrap();
 
         let output = String::from_utf8(buf).unwrap();
-        // Should cursor-up 3 lines (previous frame height) then clear
+        // Should cursor-up 3 lines (previous frame height)
         assert!(
-            output.contains("\x1b[3A\r\x1b[J"),
-            "Should cursor-up 3 lines + clear-to-end"
+            output.contains("\x1b[3A\r"),
+            "Should cursor-up 3 lines: {output}"
+        );
+        // Should NOT use bulk clear-to-end
+        assert!(
+            !output.contains("\x1b[J"),
+            "Should NOT use bulk clear: {output}"
+        );
+        // Per-line clears for content (1) + leftover (2) = at least 3 \x1b[2K
+        let clear_count = output.matches("\x1b[2K").count();
+        assert!(
+            clear_count >= 3,
+            "Expected at least 3 per-line clears (1 content + 2 leftover), got {clear_count}"
         );
         assert!(output.contains("x\n"));
     }

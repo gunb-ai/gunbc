@@ -6,7 +6,8 @@
 //!
 //! Go-specific rendering conventions:
 //! - `Stmt::Let` → short variable declaration: `name := expr`
-//!   (multi-return convention: name contains ", " → rendered as-is)
+//! - `Stmt::Bind` → explicit multi-target declaration/assignment:
+//!   `a, err := expr` / `a, err = expr`
 //! - `Stmt::TailExpr` → explicit return (handled by lowering, but fallback here)
 //! - No semicolons after statements (Go doesn't use them)
 //! - `Item::Raw` rendered as-is (for package declaration, const iota blocks)
@@ -15,7 +16,8 @@
 //! **Owned by**: Task 13 (dsl-codegen-tasks.md)
 
 use gunbc_ir::code_ir::{
-    Assert, EnumDef, Expr, FnDef, ImplBlock, Import, Item, MatchArm, SourceFile, Stmt, StructDef,
+    Assert, BindIntent, BindTarget, EnumDef, Expr, FnDef, ImplBlock, Import, Item, MatchArm,
+    SourceFile, Stmt, StructDef,
 };
 use gunbc_ir::ValueExpr;
 use std::fmt::Write;
@@ -241,6 +243,33 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             // Go short variable declaration: `name := expr`
             format!("{}{} := {}\n", pad, name, render_expr(expr))
         }
+        Stmt::Bind {
+            targets,
+            intent,
+            expr,
+        } => {
+            let lhs = targets
+                .iter()
+                .map(render_bind_target)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let op = match intent {
+                BindIntent::Declare => ":=",
+                BindIntent::Assign => "=",
+            };
+            format!("{}{} {} {}\n", pad, lhs, op, render_expr(expr))
+        }
+        Stmt::Assign { dest, value } => {
+            format!("{}{} = {}\n", pad, render_expr(dest), render_expr(value))
+        }
+        Stmt::BlockScope(body) => {
+            let mut out = format!("{} {{\n", pad);
+            for s in body {
+                out.push_str(&render_stmt(s, indent + 1));
+            }
+            writeln!(out, "{}}}\n", pad).unwrap();
+            out
+        }
         Stmt::Expr(expr) => {
             format!("{}{}\n", pad, render_expr(expr))
         }
@@ -279,6 +308,13 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             out
         }
         Stmt::Item(item) => render_item(item, indent),
+    }
+}
+
+fn render_bind_target(target: &BindTarget) -> String {
+    match target {
+        BindTarget::Name(name) => name.clone(),
+        BindTarget::Discard => "_".to_string(),
     }
 }
 
@@ -531,9 +567,12 @@ mod tests {
             params: vec![("filePath".to_string(), "string".to_string())],
             return_type: Some("error".to_string()),
             body: vec![
-                Stmt::Let {
-                    name: "resp, err".to_string(),
-                    mutable: false,
+                Stmt::Bind {
+                    targets: vec![
+                        BindTarget::Name("resp".to_string()),
+                        BindTarget::Name("err".to_string()),
+                    ],
+                    intent: BindIntent::Declare,
                     expr: Expr::call("transport.Execute", vec![Expr::var("req")]),
                 },
                 Stmt::Return(Expr::var("nil")),
@@ -591,6 +630,20 @@ mod tests {
         let rendered = render_stmt(&stmt, 0);
         assert!(rendered.contains("if err != nil {"), "condition");
         assert!(rendered.contains("return err"), "return err");
+    }
+
+    #[test]
+    fn render_multi_target_assignment_bind() {
+        let stmt = Stmt::Bind {
+            targets: vec![
+                BindTarget::Name("resp".to_string()),
+                BindTarget::Name("err".to_string()),
+            ],
+            intent: BindIntent::Assign,
+            expr: Expr::call("transport.Execute", vec![Expr::var("req")]),
+        };
+        let rendered = render_stmt(&stmt, 0);
+        assert_eq!(rendered, "resp, err = transport.Execute(req)\n");
     }
 
     // -- C2.4: Import rendering --
@@ -676,9 +729,12 @@ mod tests {
                     params: vec![("filePath".to_string(), "string".to_string())],
                     return_type: Some("error".to_string()),
                     body: vec![
-                        Stmt::Let {
-                            name: "req, err".to_string(),
-                            mutable: false,
+                        Stmt::Bind {
+                            targets: vec![
+                                BindTarget::Name("req".to_string()),
+                                BindTarget::Name("err".to_string()),
+                            ],
+                            intent: BindIntent::Declare,
                             expr: Expr::call(
                                 "transport.NewFileReadRequest",
                                 vec![Expr::var("filePath")],

@@ -718,6 +718,8 @@ mod tests {
                 name: "load_registry".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -742,6 +744,8 @@ mod tests {
                 name: "render_makefile".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -772,6 +776,8 @@ mod tests {
                 name: "content_upsert::prepare_read_makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -799,6 +805,8 @@ mod tests {
                 name: "content_upsert::execute_read_makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -829,6 +837,8 @@ mod tests {
                 name: "content_upsert::compare_makegen_content".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -856,6 +866,8 @@ mod tests {
                 name: "content_upsert::prepare_write_makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -886,6 +898,8 @@ mod tests {
                 name: "content_upsert::execute_makegen_transport".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -913,6 +927,8 @@ mod tests {
                 name: "fs_env".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -934,6 +950,8 @@ mod tests {
                 name: "makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -955,6 +973,8 @@ mod tests {
                 name: "render_clippy".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -979,6 +999,8 @@ mod tests {
                 name: "render_allowlist".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1003,6 +1025,8 @@ mod tests {
                 name: "render_lint_policy".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1027,6 +1051,8 @@ mod tests {
                 name: "content_upsert::execute_read_clippy".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1054,6 +1080,8 @@ mod tests {
                 name: "content_upsert::compare_clippy_content".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1081,6 +1109,8 @@ mod tests {
                 name: "content_upsert::execute_clippy_transport".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1107,6 +1137,8 @@ mod tests {
                 name: "acquire_filesystem".into(),
                 obligation: ObligationCategory::ResourceAcquire,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1133,6 +1165,8 @@ mod tests {
                 name: "run_command".into(),
                 obligation: ObligationCategory::ServiceTransportExecute,
                 service_metadata: Some(meta),
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1168,6 +1202,8 @@ mod tests {
                 name: "list_repos".into(),
                 obligation: ObligationCategory::ServiceTransportExecute,
                 service_metadata: Some(meta),
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1200,6 +1236,8 @@ mod tests {
                 name: "prepare_list_repos".into(),
                 obligation: ObligationCategory::ServiceTransportPrepare,
                 service_metadata: Some(meta),
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let comp = classify_computation(&node).unwrap();

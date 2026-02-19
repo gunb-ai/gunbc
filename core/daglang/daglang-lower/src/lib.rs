@@ -38,6 +38,8 @@ pub enum LoweredOp {
         name: String,
         obligation: ObligationCategory,
         service_metadata: Option<ServiceCallMetadata>,
+        is_interactive: bool,
+        resource_target: Option<String>,
     },
     Collection {
         module: String,
@@ -247,10 +249,6 @@ impl<T: PartialEq> EndpointRegistry<T> {
                 }
             })
             .or_insert(Some(endpoint));
-    }
-
-    fn all_endpoints(&self) -> impl Iterator<Item = &T> {
-        self.by_key.values().filter_map(|v| v.as_ref())
     }
 }
 
@@ -619,13 +617,27 @@ fn lower_typed_project_with_callable_scope(
         let include_callables = callable_modules
             .map(|scope| scope.contains(&module_name))
             .unwrap_or(true);
+        let interactive_by_callable = module
+            .ast
+            .items
+            .iter()
+            .filter_map(|item| item_callable_interactive_flag(&item.node))
+            .map(|(name, is_interactive)| (name.to_string(), is_interactive))
+            .collect::<HashMap<_, _>>();
         for signature in &module.signatures {
             match signature {
                 TypedItemSignature::Fn(callable) => {
                     if !include_callables {
                         continue;
                     }
-                    let (node, endpoint) = lower_callable(callable, &module_name, CallableKind::Fn);
+                    let (node, endpoint) = lower_callable(
+                        callable,
+                        &module_name,
+                        CallableKind::Fn,
+                        *interactive_by_callable
+                            .get(callable.name.as_str())
+                            .unwrap_or(&false),
+                    );
                     register_endpoint(
                         &mut endpoints_by_full,
                         &mut endpoints_by_name,
@@ -639,8 +651,14 @@ fn lower_typed_project_with_callable_scope(
                     if !include_callables {
                         continue;
                     }
-                    let (node, endpoint) =
-                        lower_callable(callable, &module_name, CallableKind::Func);
+                    let (node, endpoint) = lower_callable(
+                        callable,
+                        &module_name,
+                        CallableKind::Func,
+                        *interactive_by_callable
+                            .get(callable.name.as_str())
+                            .unwrap_or(&false),
+                    );
                     register_endpoint(
                         &mut endpoints_by_full,
                         &mut endpoints_by_name,
@@ -654,8 +672,14 @@ fn lower_typed_project_with_callable_scope(
                     if !include_callables {
                         continue;
                     }
-                    let (node, endpoint) =
-                        lower_callable(callable, &module_name, CallableKind::Pattern);
+                    let (node, endpoint) = lower_callable(
+                        callable,
+                        &module_name,
+                        CallableKind::Pattern,
+                        *interactive_by_callable
+                            .get(callable.name.as_str())
+                            .unwrap_or(&false),
+                    );
                     register_endpoint(
                         &mut endpoints_by_full,
                         &mut endpoints_by_name,
@@ -711,6 +735,7 @@ fn lower_typed_project_with_callable_scope(
     add_service_call_edges(&mut builder, project, &endpoints_by_full, &service_registry)?;
     let resource_registry = add_resource_lifecycle_nodes(&mut builder, project, callable_modules);
     let known_uses_types = collect_known_uses_types(project);
+    let mut wired_release_targets = HashSet::new();
     add_used_resource_edges(
         &mut builder,
         project,
@@ -724,6 +749,7 @@ fn lower_typed_project_with_callable_scope(
         &endpoints_by_full,
         &resource_registry,
         &known_uses_types,
+        &mut wired_release_targets,
     )?;
     add_interface_contract_verification_nodes(&mut builder, project, &resource_registry);
 
@@ -1266,6 +1292,8 @@ mod parity {
             name: id.to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         })
     }
 
@@ -1329,6 +1357,8 @@ mod parity {
             name: id.to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         })
     }
 
@@ -1350,6 +1380,8 @@ mod parity {
             name: id.to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         })
     }
 
@@ -2527,7 +2559,7 @@ mod parity {
             }
             "execute_makegen_transport" => {
                 inputs.retain(|port| matches!(port.name.0.as_str(), "request" | "skip"));
-                outputs.retain(|port| port.name.0 == "makegen_response");
+                outputs.retain(|port| port.name.0 == "response");
                 for output in outputs.iter_mut() {
                     output.cardinality = Cardinality::ZERO_OR_ONE;
                 }
@@ -2575,6 +2607,7 @@ fn lower_callable(
     callable: &TypedCallableSignature,
     module_name: &str,
     kind: CallableKind,
+    is_interactive: bool,
 ) -> (Node<LoweredOp>, LoweredEndpoint) {
     let node_id = lowered_node_id(module_name, &callable.name);
     let mut inputs = callable
@@ -2615,6 +2648,8 @@ fn lower_callable(
                 name: callable.name.clone(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive,
+                resource_target: None,
             },
         ),
         LoweredEndpoint {
@@ -2848,6 +2883,8 @@ fn expand_single_content_upsert(
             name: format!("content_upsert::{prepare_read_id}"),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -2863,6 +2900,8 @@ fn expand_single_content_upsert(
             name: format!("content_upsert::{execute_read_id}"),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -2878,6 +2917,8 @@ fn expand_single_content_upsert(
             name: format!("content_upsert::{compare_id}"),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     builder.add_node(Node::opaque(
@@ -2893,6 +2934,8 @@ fn expand_single_content_upsert(
             name: format!("content_upsert::{prepare_write_id}"),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     let mut execute_transport_inputs = vec![
@@ -2916,6 +2959,8 @@ fn expand_single_content_upsert(
             name: format!("content_upsert::{execute_transport_id}"),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
 
@@ -2931,69 +2976,33 @@ fn expand_single_content_upsert(
     builder.add_edge(&compare_id, "skip", &execute_transport_id, "skip");
     builder.add_edge(&execute_transport_id, "response", &target.node_id, "__deps");
 
-    if let Some(source) = resolve_content_source(args, bound_callables, endpoints_by_name) {
-        builder.add_edge(
-            &source.node_id,
-            &source.primary_output,
-            &compare_id,
-            "expected_content",
-        );
-        builder.add_edge(
-            &source.node_id,
-            &source.primary_output,
-            &prepare_write_id,
-            "content",
-        );
-    } else if let Some(content_ident) = resolve_named_ident_arg(args, "content") {
-        if let Some(param_ty) = param_types.get(content_ident) {
-            let param_source = ensure_param_source_node(
-                builder,
-                module_name,
-                item_name,
-                content_ident,
-                param_ty.as_str(),
-            );
-            builder.add_edge(
-                param_source.as_str(),
-                content_ident,
-                &compare_id,
-                "expected_content",
-            );
-            builder.add_edge(
-                param_source.as_str(),
-                content_ident,
-                &prepare_write_id,
-                "content",
-            );
-        }
-    }
+    wire_resolved_or_param_source(
+        builder,
+        module_name,
+        item_name,
+        param_types,
+        resolve_content_source(args, bound_callables, endpoints_by_name),
+        resolve_named_ident_arg(args, "content"),
+        &[
+            (compare_id.as_str(), "expected_content"),
+            (prepare_write_id.as_str(), "content"),
+        ],
+    );
 
-    if let Some(source) = resolve_path_source(args, bound_callables, endpoints_by_name) {
-        builder.add_edge(
-            &source.node_id,
-            &source.primary_output,
-            &prepare_read_id,
-            "path",
-        );
-        builder.add_edge(
-            &source.node_id,
-            &source.primary_output,
-            &prepare_write_id,
-            "path",
-        );
-    } else if let Some(path_ident) = resolve_named_ident_arg(args, "path") {
-        if let Some(param_ty) = param_types.get(path_ident) {
-            let param_source = ensure_param_source_node(
-                builder,
-                module_name,
-                item_name,
-                path_ident,
-                param_ty.as_str(),
-            );
-            builder.add_edge(param_source.as_str(), path_ident, &prepare_read_id, "path");
-            builder.add_edge(param_source.as_str(), path_ident, &prepare_write_id, "path");
-        }
-    } else if let Some(literal) = resolve_path_literal(args) {
+    let wired_path = wire_resolved_or_param_source(
+        builder,
+        module_name,
+        item_name,
+        param_types,
+        resolve_path_source(args, bound_callables, endpoints_by_name),
+        resolve_named_ident_arg(args, "path"),
+        &[
+            (prepare_read_id.as_str(), "path"),
+            (prepare_write_id.as_str(), "path"),
+        ],
+    );
+    if !wired_path {
+        if let Some(literal) = resolve_path_literal(args) {
         let literal_source = ensure_literal_source_node(
             builder,
             module_name,
@@ -3005,6 +3014,57 @@ fn expand_single_content_upsert(
         );
         builder.add_edge(literal_source.as_str(), "path", &prepare_read_id, "path");
         builder.add_edge(literal_source.as_str(), "path", &prepare_write_id, "path");
+        }
+    }
+}
+
+fn wire_resolved_or_param_source(
+    builder: &mut DagBuilder,
+    module_name: &str,
+    item_name: &str,
+    param_types: &HashMap<String, String>,
+    resolved_source: Option<LoweredEndpoint>,
+    param_ident: Option<&str>,
+    destinations: &[(&str, &str)],
+) -> bool {
+    if let Some(source) = resolved_source {
+        wire_endpoint_output_to_destinations(builder, &source, destinations);
+        return true;
+    }
+
+    if let Some(ident) = param_ident {
+        if let Some(param_ty) = param_types.get(ident) {
+            let param_source =
+                ensure_param_source_node(builder, module_name, item_name, ident, param_ty.as_str());
+            wire_output_to_destinations(builder, param_source.as_str(), ident, destinations);
+            return true;
+        }
+    }
+
+    false
+}
+
+fn wire_endpoint_output_to_destinations(
+    builder: &mut DagBuilder,
+    source: &LoweredEndpoint,
+    destinations: &[(&str, &str)],
+) {
+    wire_output_to_destinations(
+        builder,
+        source.node_id.as_str(),
+        source.primary_output.as_str(),
+        destinations,
+    );
+}
+
+fn wire_output_to_destinations(
+    builder: &mut DagBuilder,
+    source_node: &str,
+    source_port: &str,
+    destinations: &[(&str, &str)],
+) {
+    for (dest_node, dest_port) in destinations {
+        builder.add_edge(source_node, source_port, dest_node, dest_port);
     }
 }
 
@@ -3110,6 +3170,8 @@ fn add_makegen_scaffolding(
                 name: "load_registry".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
     }
@@ -3140,6 +3202,8 @@ fn add_makegen_scaffolding(
                     name: "fs_env".to_string(),
                     obligation: ObligationCategory::None,
                     service_metadata: None,
+                    is_interactive: false,
+                    resource_target: None,
                 },
             ));
         }
@@ -3318,6 +3382,8 @@ fn add_service_transport_triplets(
                         ),
                         obligation: ObligationCategory::ServiceTransportPrepare,
                         service_metadata: Some(service_metadata.clone()),
+                        is_interactive: false,
+                        resource_target: None,
                     },
                 ));
                 builder.add_node(Node::opaque(
@@ -3333,6 +3399,8 @@ fn add_service_transport_triplets(
                         ),
                         obligation: ObligationCategory::ServiceTransportExecute,
                         service_metadata: Some(service_metadata.clone()),
+                        is_interactive: false,
+                        resource_target: None,
                     },
                 ));
                 let parse_outputs = if operation.outputs.is_empty() {
@@ -3364,6 +3432,8 @@ fn add_service_transport_triplets(
                         ),
                         obligation: ObligationCategory::ServiceTransportParse,
                         service_metadata: Some(service_metadata),
+                        is_interactive: false,
+                        resource_target: None,
                     },
                 ));
 
@@ -3688,6 +3758,8 @@ fn add_provided_resource_nodes(
                         name: format!("resource_provide::{}::{}", item_name, provided.binding),
                         obligation: ObligationCategory::ResourceProvide,
                         service_metadata: None,
+                        is_interactive: false,
+                        resource_target: Some(provided.binding.clone()),
                     },
                 ));
                 builder.add_edge(
@@ -3890,6 +3962,8 @@ fn add_resource_lifecycle_nodes(
                         name: format!("resource_lifecycle::acquire::{}", resource.name),
                         obligation: ObligationCategory::ResourceAcquire,
                         service_metadata: None,
+                        is_interactive: false,
+                        resource_target: Some(resource.name.clone()),
                     },
                 ));
                 has_acquire = true;
@@ -3905,6 +3979,8 @@ fn add_resource_lifecycle_nodes(
                         name: format!("resource_lifecycle::release::{}", resource.name),
                         obligation: ObligationCategory::ResourceRelease,
                         service_metadata: None,
+                        is_interactive: false,
+                        resource_target: Some(resource.name.clone()),
                     },
                 ));
                 has_release = true;
@@ -3976,6 +4052,8 @@ fn add_interface_contract_verification_nodes(
                         ),
                         obligation: ObligationCategory::InterfaceContractVerification,
                         service_metadata: None,
+                        is_interactive: false,
+                        resource_target: None,
                     },
                 ));
                 if let Some(acquire_node) = endpoint
@@ -4062,6 +4140,8 @@ fn ensure_param_source_node(
             name: format!("call_param_source::{callable}::{param}"),
             obligation: ObligationCategory::ServiceParamSource,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     node_id
@@ -4090,6 +4170,8 @@ fn ensure_literal_source_node(
             name: format!("call_literal_source::{}", encode_literal_for_name(literal)),
             obligation: ObligationCategory::ServiceParamSource,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     node_id
@@ -4118,6 +4200,15 @@ fn item_callable_body(item: &Item) -> Option<(&str, &[Stmt])> {
         Item::FnDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
         Item::FuncDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
         Item::PatternDef(def) => Some((def.name.as_str(), def.body.stmts.as_slice())),
+        _ => None,
+    }
+}
+
+fn item_callable_interactive_flag(item: &Item) -> Option<(&str, bool)> {
+    match item {
+        Item::FnDef(def) => Some((def.name.as_str(), false)),
+        Item::FuncDef(def) => Some((def.name.as_str(), has_annotation(&def.annotations, "interactive"))),
+        Item::PatternDef(def) => Some((def.name.as_str(), false)),
         _ => None,
     }
 }
@@ -6294,6 +6385,8 @@ func run() -> { ok: Bool } provides auth: AuthContext {
             name: "prepare_transport_sample".to_string(),
             obligation: ObligationCategory::ServiceTransportPrepare,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         };
         assert_eq!(
             classify_obligation(&op),
@@ -6312,6 +6405,35 @@ func run() -> { ok: Bool } provides auth: AuthContext {
             ],
         };
         assert_eq!(classify_obligation(&pipeline), ObligationCategory::None);
+    }
+
+    #[test]
+    fn interactive_func_annotation_sets_structural_callable_metadata() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/interactive.dag",
+            r#"module sample.ui
+@interactive
+func prompt() -> { ok: Bool } {
+  return { ok: true }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let op = dag
+            .nodes
+            .iter()
+            .find(|node| node.id.0 == "sample.ui::prompt")
+            .and_then(|node| match &node.body {
+                gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
+                gunbc_ir::node::NodeBody::SubDag(_) => None,
+            })
+            .expect("interactive callable node should exist");
+        assert!(matches!(
+            op,
+            LoweredOp::Callable {
+                is_interactive: true,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -6354,6 +6476,8 @@ func run() -> { ok: Bool } provides auth: AuthContext {
                 name: "execute_transport_sample".to_string(),
                 obligation: ObligationCategory::ServiceTransportExecute,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
 
@@ -6479,6 +6603,8 @@ func run() -> { ok: Bool } provides auth: AuthContext {
                 name: "render".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         let mut reference = Dag::new();
@@ -6512,6 +6638,8 @@ func run() -> { ok: Bool } provides auth: AuthContext {
                 name: "b".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         candidate.add_node(Node::opaque(
@@ -6524,6 +6652,8 @@ func run() -> { ok: Bool } provides auth: AuthContext {
                 name: "a".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         candidate.add_edge(Edge::new("a", "out", "b", "in"));
@@ -6631,7 +6761,7 @@ func run() -> { ok: Bool } provides auth: AuthContext {
                 Port::scalar("request", "TransportRequest"),
                 Port::scalar("skip", "Bool"),
             ],
-            vec![Port::scalar("makegen_response", "TransportResponse")],
+            vec![Port::scalar("response", "TransportResponse")],
             (),
         ));
         dag.add_node(Node::opaque(

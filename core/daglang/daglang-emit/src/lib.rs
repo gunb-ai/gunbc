@@ -52,6 +52,9 @@ pub mod render_rust;
 // Wave 5 (Task E3): test generation.
 pub mod test_gen;
 
+#[cfg(test)]
+mod backend_harness;
+
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
 use daglang_lower::{CallableKind, LoweredOp};
 use gunbc_ir::Dag;
@@ -648,6 +651,8 @@ mod tests {
                 name: "render_makefile".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -660,6 +665,8 @@ mod tests {
                 name: "makegen".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_edge(Edge::new(

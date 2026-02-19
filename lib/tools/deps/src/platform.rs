@@ -22,9 +22,13 @@ impl Platform {
         Self::from(runtime.host.os)
     }
 
-    /// Parse a platform from a string.
-    pub fn parse(s: &str) -> Self {
-        Self::from(Os::parse(s))
+    /// Strictly parse a platform from a string, failing on unknown.
+    pub fn parse(s: &str) -> Result<Self, String> {
+        let os = Os::parse(s)?;
+        match Self::from(os) {
+            Platform::Unknown => Err(format!("unknown or unsupported platform: {}", s)),
+            other => Ok(other),
+        }
     }
 
     /// Get the platform name as a string.
@@ -105,7 +109,7 @@ impl TryFrom<&Value> for Platform {
         let s = value
             .as_str()
             .ok_or_else(|| "expected string for Platform".to_string())?;
-        Ok(Platform::parse(s))
+        Platform::parse(s)
     }
 }
 
@@ -123,13 +127,13 @@ mod tests {
 
     #[test]
     fn test_parse_platform() {
-        assert_eq!(Platform::parse("linux"), Platform::Linux);
-        assert_eq!(Platform::parse("LINUX"), Platform::Linux);
-        assert_eq!(Platform::parse("macos"), Platform::Macos);
-        assert_eq!(Platform::parse("darwin"), Platform::Macos);
-        assert_eq!(Platform::parse("windows"), Platform::Windows);
-        assert_eq!(Platform::parse("win32"), Platform::Windows);
-        assert_eq!(Platform::parse("unknown"), Platform::Unknown);
+        assert_eq!(Platform::parse("linux").unwrap(), Platform::Linux);
+        assert_eq!(Platform::parse("LINUX").unwrap(), Platform::Linux);
+        assert_eq!(Platform::parse("macos").unwrap(), Platform::Macos);
+        assert_eq!(Platform::parse("darwin").unwrap(), Platform::Macos);
+        assert_eq!(Platform::parse("windows").unwrap(), Platform::Windows);
+        assert_eq!(Platform::parse("win32").unwrap(), Platform::Windows);
+        assert!(Platform::parse("unknown").is_err());
     }
 
     #[test]

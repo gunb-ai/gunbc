@@ -11,7 +11,8 @@
 //! **Owned by**: Task 12 (dsl-codegen-tasks.md)
 
 use gunbc_ir::code_ir::{
-    Assert, EnumDef, Expr, FnDef, ImplBlock, Import, Item, MatchArm, SourceFile, Stmt, StructDef,
+    Assert, BindIntent, BindTarget, EnumDef, Expr, FnDef, ImplBlock, Import, Item, MatchArm,
+    SourceFile, Stmt, StructDef,
 };
 use gunbc_ir::ValueExpr;
 use std::fmt::Write;
@@ -226,6 +227,28 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             let mut_kw = if *mutable { "mut " } else { "" };
             format!("{}let {}{} = {};\n", pad, mut_kw, name, render_expr(expr))
         }
+        Stmt::Bind {
+            targets,
+            intent,
+            expr,
+        } => {
+            let lhs = render_rust_bind_targets(targets);
+            match intent {
+                BindIntent::Declare => format!("{}let {} = {};\n", pad, lhs, render_expr(expr)),
+                BindIntent::Assign => format!("{}{} = {};\n", pad, lhs, render_expr(expr)),
+            }
+        }
+        Stmt::Assign { dest, value } => {
+            format!("{}{} = {};\n", pad, render_expr(dest), render_expr(value))
+        }
+        Stmt::BlockScope(body) => {
+            let mut out = format!("{} {{\n", pad);
+            for s in body {
+                out.push_str(&render_stmt(s, indent + 1));
+            }
+            writeln!(out, "{}}}\n", pad).unwrap();
+            out
+        }
         Stmt::Expr(expr) => {
             format!("{}{};\n", pad, render_expr(expr))
         }
@@ -262,6 +285,25 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             out
         }
         Stmt::Item(item) => render_item(item, indent),
+    }
+}
+
+fn render_rust_bind_targets(targets: &[BindTarget]) -> String {
+    if targets.len() == 1 {
+        return render_rust_bind_target(&targets[0]);
+    }
+    let rendered = targets
+        .iter()
+        .map(render_rust_bind_target)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("({rendered})")
+}
+
+fn render_rust_bind_target(target: &BindTarget) -> String {
+    match target {
+        BindTarget::Name(name) => name.clone(),
+        BindTarget::Discard => "_".to_string(),
     }
 }
 
