@@ -7,6 +7,7 @@ use crate::dag::{Edge, Port};
 use crate::node::Node;
 use crate::port_type::PortType;
 use crate::type_registry::TypeExprError;
+use crate::InvocationContract;
 use crate::Predicate;
 use crate::{Dag, TypeId, TypeOp, TypeRegistry, WrapperKind};
 use serde::{Deserialize, Serialize};
@@ -28,26 +29,7 @@ pub enum SystemKind {
 }
 
 /// Invocation style for a behavior.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Invocation {
-    Cli {
-        command: String,
-        docs: String,
-    },
-    Rest {
-        method: String,
-        path: String,
-        docs: String,
-    },
-    Sdk {
-        function: String,
-        docs: String,
-    },
-    Protocol {
-        protocol: String,
-        docs: String,
-    },
-}
+pub type Invocation = InvocationContract;
 
 /// Behavior properties relevant to contract/test generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -193,9 +175,53 @@ impl Behavior {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DependencyKind {
     /// Depends on another system model id.
-    System(String),
+    System(SystemDependencyId),
     /// Depends on an external secret/resource.
-    Secret(String),
+    Secret(SecretDependencyId),
+}
+
+/// Typed system-dependency identity.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SystemDependencyId(pub String);
+
+impl SystemDependencyId {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<&str> for SystemDependencyId {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for SystemDependencyId {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+/// Typed secret-dependency identity.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SecretDependencyId(pub String);
+
+impl SecretDependencyId {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<&str> for SecretDependencyId {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for SecretDependencyId {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
 }
 
 /// A dependency edge from one system model to another system/resource.
@@ -205,13 +231,13 @@ pub struct Dependency {
 }
 
 impl Dependency {
-    pub fn system(id: impl Into<String>) -> Self {
+    pub fn system(id: impl Into<SystemDependencyId>) -> Self {
         Self {
             kind: DependencyKind::System(id.into()),
         }
     }
 
-    pub fn secret(id: impl Into<String>) -> Self {
+    pub fn secret(id: impl Into<SecretDependencyId>) -> Self {
         Self {
             kind: DependencyKind::Secret(id.into()),
         }
@@ -439,12 +465,12 @@ pub fn validate_dependency_graph_acyclic(models: &[SystemModel]) -> Result<(), S
     for model in models {
         for dep in &model.dependencies {
             if let DependencyKind::System(target) = &dep.kind {
-                if indegree.contains_key(target) {
-                    *indegree.get_mut(target).expect("target indegree exists") += 1;
+                if indegree.contains_key(&target.0) {
+                    *indegree.get_mut(&target.0).expect("target indegree exists") += 1;
                     outgoing
                         .get_mut(&model.id)
                         .expect("source entry exists")
-                        .push(target.clone());
+                        .push(target.0.clone());
                 }
             }
         }
@@ -753,7 +779,11 @@ fn append_meta_step(
             format!("input_{}_{}", sanitize_ident(name), sanitize_ident(type_id))
         }
         crate::MetadataPayload::OutputContract { name, type_id } => {
-            format!("output_{}_{}", sanitize_ident(name), sanitize_ident(type_id))
+            format!(
+                "output_{}_{}",
+                sanitize_ident(name),
+                sanitize_ident(type_id)
+            )
         }
     };
     let node_id = format!("step_{}_{}", idx, sanitize_ident(&marker));
@@ -770,7 +800,8 @@ fn append_meta_step(
 
 fn validate_no_metadata_validate_custom(dag: &Dag<TypeOp>) -> Result<(), String> {
     for node in &dag.nodes {
-        if let crate::node::NodeBody::Opaque(TypeOp::Validate(Predicate::Custom(marker))) = &node.body
+        if let crate::node::NodeBody::Opaque(TypeOp::Validate(Predicate::Custom(marker))) =
+            &node.body
         {
             if marker.starts_with("meta:") || marker.starts_with("property:") {
                 return Err(format!(

@@ -61,6 +61,7 @@ pub mod dag_topology;
 pub mod effect;
 pub mod entrypoint;
 pub mod git;
+pub mod invocation_contract;
 pub mod language;
 pub mod layout;
 pub mod log_detail;
@@ -131,6 +132,7 @@ pub use dag_topology::{DagTopology, EdgeTopology, NodeTopology, PortTopology};
 pub use effect::Effect;
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};
 pub use git::GitConfig;
+pub use invocation_contract::InvocationContract;
 pub use layout::{
     compute_layout, compute_levels, ConnectorCell, DagLayout, EdgeLayout, EdgeOrientation,
     NodeLayout, OverflowState, OverflowStrategy, Viewport, ViewportUnit,
@@ -176,8 +178,8 @@ pub use system_model::{
     get_registered_system_model, iter_registered_system_models, render_contract_test_harness,
     validate_dependency_graph_acyclic, validate_store_behavior_mapping, validate_system_model,
     Behavior, BehaviorInput, BehaviorOutput, ContractTestSpec, Dependency, DependencyKind,
-    InputType, Invocation, OutputType, Property, SystemKind, SystemModel, SystemModelDef,
-    UpsertPhase,
+    InputType, Invocation, OutputType, Property, SecretDependencyId, SystemDependencyId,
+    SystemKind, SystemModel, SystemModelDef, UpsertPhase,
 };
 pub use transport::{
     default_transport_behaviors, AuthScheme, Credential, CredentialError, CredentialIntent,
