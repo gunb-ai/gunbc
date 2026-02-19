@@ -212,6 +212,13 @@ pub struct RunLedgerEntry {
 }
 ```
 
+`ProcessUnitRef` contract:
+
+1. it resolves via a typed process registry to a `ProcessSpec` unit definition,
+2. `CanonicalKeyPayload.op_version` for `InvokeProcessUnit(ProcessUnitRef)` is
+   derived from that resolved unit's semantic version/digest,
+3. semantic behavior changes in a process unit must change this semantic version/digest.
+
 Model invariants:
 
 1. `WorkflowSpec` wraps `Dag<WorkflowUnit>` and therefore reuses cycle checks,
@@ -283,18 +290,20 @@ For each node:
 
 Where:
 
-1. `canonical_inputs`: hashes from declared, wired input ports only.
-2. Variability from env/toolchain must enter via explicit input resources/ports,
+1. `op_version`: semantic identity of the resolved unit (for process-invocation
+   units, derived from resolved `ProcessSpec` semantic version/digest).
+2. `canonical_inputs`: hashes from declared, wired input ports only.
+3. Variability from env/toolchain must enter via explicit input resources/ports,
    not ambient OS probing inside key computation.
-3. `upstream_output_keys`: keyed by consuming input `PortName` (not upstream node
+4. `upstream_output_keys`: keyed by consuming input `PortName` (not upstream node
    names), so cross-workflow orchestration naming does not change cache identity.
-4. Multi-producer fan-in ports must preserve full contributor sets per port (no
+5. Multi-producer fan-in ports must preserve full contributor sets per port (no
    map overwrite). Contributor vectors are deterministically ordered.
-5. `policy_version`: workflow policy/planner version hash.
-6. `key_format_version`: canonical payload encoding version.
-7. Key serialization is canonical + versioned (stable map ordering, deterministic
+6. `policy_version`: workflow policy/planner version hash.
+7. `key_format_version`: canonical payload encoding version.
+8. Key serialization is canonical + versioned (stable map ordering, deterministic
    vector ordering, and fixed encoder config).
-8. Planning-time key computation is DAG-functional only: declared inputs +
+9. Planning-time key computation is DAG-functional only: declared inputs +
    upstream digests. Planner must not read mutable produced artifacts while
    computing keys.
 
@@ -359,6 +368,17 @@ Executor must satisfy all before starting a node:
 1. Dependencies committed (execution completed and required outputs/results are available).
 2. Required resources available by capacity/claim derived from resource ports.
 3. Node admitted by max concurrency budget.
+
+### 9.2 Readiness/Dataflow Axioms
+
+1. Control edges are completion gates (`commit`), not implicit success gates.
+2. Readiness requires both:
+   1. all required incoming control prerequisites committed, and
+   2. all required dataflow inputs materialized (executed or rehydrated).
+3. Missing required dataflow input at runtime after validation is an executor
+   invariant violation (fail-closed).
+4. Success-gated branching is explicit via typed guard units consuming `result`
+   (not implicit control-edge semantics in this phase).
 
 Execution/reporting semantic split:
 

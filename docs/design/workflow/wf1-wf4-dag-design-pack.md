@@ -39,6 +39,12 @@ Planner/orchestration units:
 2. `Aggregate*` units for reduction/summary.
 3. `Report` unit for terminal output.
 
+`ProcessUnitRef` semantic contract:
+
+1. each reference resolves to a typed process-unit spec in registry,
+2. resolved process-unit semantic version/digest defines `op_version` for keying,
+3. semantic changes to process behavior must update that semantic identity.
+
 Required ports for executable units:
 
 1. input `after` (control fan-in)
