@@ -166,7 +166,7 @@ impl<R> TryFrom<&Value> for ResourceHandle<R> {
 
         // Check capability marker (per-process secret prevents forgery)
         match map.get("cap") {
-            Some(Value::Secret(s)) if s.expose() == *PROCESS_SECRET => {}
+            Some(Value::Secret(s)) if s.expose_plaintext_for_transport() == *PROCESS_SECRET => {}
             _ => {
                 return Err(HandleParseError {
                     message: "Missing or invalid capability marker".to_string(),

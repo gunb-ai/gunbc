@@ -1143,7 +1143,7 @@ fn resolve_collection(kind: &CollectionOpKind) -> Result<DynOp, ResolveError> {
 fn value_as_string_or_default(value: Option<&Value>) -> String {
     match value {
         Some(Value::Str(s)) => s.clone(),
-        Some(Value::Secret(secret)) => secret.expose().to_string(),
+        Some(Value::Secret(secret)) => secret.expose_plaintext_for_transport().to_string(),
         _ => "(unresolved)".to_string(),
     }
 }
