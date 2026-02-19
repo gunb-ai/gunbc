@@ -1,6 +1,7 @@
 //! Workflow planner core modules (WF1+).
 
 pub mod admission;
+pub mod coordination;
 pub mod errors;
 pub mod key;
 pub mod ledger;
@@ -12,6 +13,7 @@ pub mod spec_builders;
 pub use admission::{
     validate_conflicting_claims, validate_required_claims, validate_workflow_admission,
 };
+pub use coordination::{coordination_status, BlockedReason, CoordinationStatus};
 pub use errors::WorkflowAdmissionError;
 pub use key::{
     derive_miss_reason, CanonicalKeyPayload, MaterializationDigest, MaterializationKey, MissReason,
@@ -23,7 +25,8 @@ pub use ledger::{
     RunLedgerEntry, WorkflowLedgerError, WorkflowLedgerPaths,
 };
 pub use planner::{
-    plan_workflow, NodePlan, PlanAction, PlannerInputs, WorkflowPlan, WorkflowPlannerError,
+    explain_plan, plan_workflow, NodePlan, PlanAction, PlanExplain, PlannerInputs, WorkflowPlan,
+    WorkflowPlannerError,
 };
 pub use process_registry::{
     default_process_unit_registry, ClaimId, ProcessId, ProcessUnitRef, ProcessUnitRegistry,

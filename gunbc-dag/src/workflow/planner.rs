@@ -6,6 +6,7 @@ use std::path::Path;
 use gunbc_exec::topo_sort;
 use gunbc_ir::{canonical_edge_order, NodeBody, NodeId, PortName, Value};
 
+use super::coordination::{coordination_status, BlockedReason, CoordinationStatus};
 use super::key::{
     derive_miss_reason, CanonicalKeyPayload, MaterializationDigest, MaterializationKey, MissReason,
     WorkIdentity,
@@ -42,6 +43,18 @@ pub struct NodePlan {
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkflowPlan {
     pub nodes: Vec<NodePlan>,
+    pub coordination: CoordinationStatus,
+}
+
+/// Explainability projection for `--plan` output.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanExplain {
+    pub execute_set: Vec<NodeId>,
+    pub cache_hit_set: Vec<NodeId>,
+    pub miss_reasons: BTreeMap<NodeId, MissReason>,
+    pub blocked: BTreeMap<NodeId, Vec<BlockedReason>>,
+    pub ready: Vec<NodeId>,
+    pub critical_path: Vec<NodeId>,
 }
 
 /// Planner errors for WF3 key/ledger path.
@@ -186,7 +199,17 @@ pub fn plan_workflow(
         });
     }
 
-    Ok(WorkflowPlan { nodes: plans })
+    let provided_inputs = planner_inputs
+        .iter()
+        .map(|(node, ports)| (node.clone(), ports.keys().cloned().collect()))
+        .collect::<BTreeMap<NodeId, std::collections::BTreeSet<PortName>>>();
+    let coordination =
+        coordination_status(spec, &std::collections::HashSet::new(), &provided_inputs);
+
+    Ok(WorkflowPlan {
+        nodes: plans,
+        coordination,
+    })
 }
 
 fn previous_run_id(entry: &RunLedgerEntry) -> String {
@@ -251,6 +274,90 @@ fn collect_upstream_keys(
         digests.sort();
     }
     upstream
+}
+
+/// Produce deterministic explainability sets from a computed workflow plan.
+pub fn explain_plan(spec: &WorkflowSpec, plan: &WorkflowPlan) -> PlanExplain {
+    let mut execute_set = Vec::new();
+    let mut cache_hit_set = Vec::new();
+    let mut miss_reasons = BTreeMap::new();
+    for node in &plan.nodes {
+        match &node.action {
+            PlanAction::CachedHit { .. } => cache_hit_set.push(node.node_id.clone()),
+            PlanAction::Execute { miss_reason } => {
+                execute_set.push(node.node_id.clone());
+                miss_reasons.insert(node.node_id.clone(), miss_reason.clone());
+            }
+        }
+    }
+    execute_set.sort();
+    cache_hit_set.sort();
+    let critical_path = critical_path(spec);
+
+    PlanExplain {
+        execute_set,
+        cache_hit_set,
+        miss_reasons,
+        blocked: plan.coordination.blocked.clone(),
+        ready: plan.coordination.ready.clone(),
+        critical_path,
+    }
+}
+
+fn critical_path(spec: &WorkflowSpec) -> Vec<NodeId> {
+    let order = topo_sort(&spec.dag);
+    let mut parents: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+    for node in &spec.dag.nodes {
+        parents.insert(node.id.clone(), Vec::new());
+    }
+    for edge in &spec.dag.edges {
+        parents
+            .entry(edge.to_node.clone())
+            .or_default()
+            .push(edge.from_node.clone());
+    }
+
+    let mut distance: HashMap<NodeId, usize> = HashMap::new();
+    let mut predecessor: HashMap<NodeId, Option<NodeId>> = HashMap::new();
+    for node in &order {
+        let mut best_dist = 0usize;
+        let mut best_pred: Option<NodeId> = None;
+        if let Some(node_parents) = parents.get(node) {
+            for parent in node_parents {
+                let parent_dist = distance.get(parent).copied().unwrap_or(0) + 1;
+                let replace = match best_pred.as_ref() {
+                    None => true,
+                    Some(current_pred) => {
+                        parent_dist > best_dist
+                            || (parent_dist == best_dist && parent < current_pred)
+                    }
+                };
+                if replace {
+                    best_dist = parent_dist;
+                    best_pred = Some(parent.clone());
+                }
+            }
+        }
+        distance.insert(node.clone(), best_dist);
+        predecessor.insert(node.clone(), best_pred);
+    }
+
+    let Some(end) = order.iter().cloned().max_by(|left, right| {
+        let left_dist = distance.get(left).copied().unwrap_or(0);
+        let right_dist = distance.get(right).copied().unwrap_or(0);
+        left_dist.cmp(&right_dist).then_with(|| right.cmp(left))
+    }) else {
+        return Vec::new();
+    };
+
+    let mut path = Vec::new();
+    let mut cursor = Some(end);
+    while let Some(node) = cursor {
+        path.push(node.clone());
+        cursor = predecessor.get(&node).cloned().flatten();
+    }
+    path.reverse();
+    path
 }
 
 #[cfg(test)]
