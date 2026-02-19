@@ -107,6 +107,14 @@ impl ProcessUnitSpec {
             required_claims,
         }
     }
+
+    /// Context-free work identity projection for cross-workflow dedup.
+    pub fn canonical_work_identity(&self) -> (ProcessId, NodeId) {
+        (
+            ProcessId::new("process-unit"),
+            canonicalize_unit_id(&self.reference.unit_id),
+        )
+    }
 }
 
 /// Registry for all workflow process-unit references.
@@ -269,6 +277,14 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     registry
 }
 
+fn canonicalize_unit_id(unit_id: &NodeId) -> NodeId {
+    if let Some((_, suffix)) = unit_id.0.split_once('.') {
+        NodeId::from(suffix)
+    } else {
+        unit_id.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,5 +305,20 @@ mod tests {
         assert!(spec.required_claims.iter().any(
             |claim| claim.claim_id.0 == "file:target" && claim.access_mode == AccessMode::Write
         ));
+    }
+
+    #[test]
+    fn canonical_work_identity_is_context_free_across_workflows() {
+        let registry = default_process_unit_registry();
+        let ci = registry
+            .get(&ProcessUnitRef::new("ci", "ci.codegen"))
+            .expect("ci.codegen");
+        let test_all = registry
+            .get(&ProcessUnitRef::new("test_all", "test_all.codegen"))
+            .expect("test_all.codegen");
+        assert_eq!(
+            ci.canonical_work_identity(),
+            test_all.canonical_work_identity()
+        );
     }
 }

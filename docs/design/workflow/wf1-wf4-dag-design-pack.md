@@ -33,6 +33,13 @@ WF1/WF2/WF3/WF4/WF5 planner foundations now have an initial typed implementation
    - `gunbc-dag/tests/workflow_key_ledger_contracts.rs`
    - `gunbc-dag/tests/workflow_plan_cli_contracts.rs`
 
+Related modeling hardening follow-ups landed with the planner:
+
+- M17: global flattening and context-free work identity via
+  `workflow/global_plan.rs` + canonicalized `ProcessUnitSpec::canonical_work_identity`.
+- M18: projection drift enforcement via `workflow/projection.rs`.
+- M19: non-redundancy invariant harness via `workflow/proof.rs`.
+
 ## 1. Read This First
 
 This pack is consolidated with the canonical model:

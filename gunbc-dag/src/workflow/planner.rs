@@ -122,14 +122,22 @@ pub fn plan_workflow(
 
         let (work_id, op_version) = match op {
             WorkflowOp::InvokeProcessUnit(process_ref) => {
-                let op_version = registry
-                    .get(process_ref)
-                    .map(|spec| spec.op_version)
-                    .unwrap_or(1);
-                (
-                    WorkIdentity::new(process_ref.process_id.clone(), process_ref.unit_id.clone()),
-                    op_version,
-                )
+                if let Some(process_spec) = registry.get(process_ref) {
+                    let (canonical_process, canonical_unit) =
+                        process_spec.canonical_work_identity();
+                    (
+                        WorkIdentity::new(canonical_process, canonical_unit),
+                        process_spec.op_version,
+                    )
+                } else {
+                    (
+                        WorkIdentity::new(
+                            process_ref.process_id.clone(),
+                            process_ref.unit_id.clone(),
+                        ),
+                        1,
+                    )
+                }
             }
             WorkflowOp::Aggregate(_) => (
                 WorkIdentity::new(

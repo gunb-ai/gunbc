@@ -3,10 +3,13 @@
 pub mod admission;
 pub mod coordination;
 pub mod errors;
+pub mod global_plan;
 pub mod key;
 pub mod ledger;
 pub mod planner;
 pub mod process_registry;
+pub mod projection;
+pub mod proof;
 pub mod schema;
 pub mod spec_builders;
 
@@ -15,6 +18,10 @@ pub use admission::{
 };
 pub use coordination::{coordination_status, BlockedReason, CoordinationStatus};
 pub use errors::WorkflowAdmissionError;
+pub use global_plan::{
+    plan_global_workflows, GlobalExecutionVertex, GlobalWorkflowPlan, PlannerInputsByWorkflow,
+    WorkflowNodeRef,
+};
 pub use key::{
     derive_miss_reason, CanonicalKeyPayload, MaterializationDigest, MaterializationKey, MissReason,
     WorkIdentity,
@@ -32,6 +39,10 @@ pub use process_registry::{
     default_process_unit_registry, ClaimId, ProcessId, ProcessUnitRef, ProcessUnitRegistry,
     ProcessUnitSpec, UnitClaim,
 };
+pub use projection::{
+    project_execute_set, validate_projection_equivalence, ExecuteProjection, ProjectionDrift,
+};
+pub use proof::{prove_non_redundancy, InvariantViolation};
 pub use schema::{
     has_required_unit_contract, required_input_contract, required_output_contract, AggregateSpec,
     ReportSpec, WorkflowId, WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_AFTER, PORT_COMMIT,
