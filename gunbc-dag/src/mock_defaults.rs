@@ -325,13 +325,17 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
         // (e.g. `stdout`, `stderr` from TransportOps::Execute) are internal
         // implementation details and should not have matchers.
         //
-        // Fallback: if the minimal trial produced no reliable ports (typical for
-        // DeferredCallableOp / identity passthroughs at SubDag boundaries), add
-        // NonEmpty matchers for all declared output ports. These nodes forward
-        // inputs as outputs, so the passthrough inputs added in Step 4 below
-        // will produce the outputs. This ensures the observability invariant
+        // Fallback: if no reliable port matches a declared output port name
+        // (typical for IdentityCallableOp / DeferredCallableOp passthroughs),
+        // add NonEmpty matchers for all declared output ports. These nodes
+        // forward inputs as outputs, so the passthrough inputs added in Step 4
+        // below will produce the outputs. This ensures the observability invariant
         // (every terminal reachable from a probe has an OutputMatcher) holds.
-        let use_fallback = reliable_ports.is_empty() && !node.outputs.is_empty();
+        let has_matching_reliable = node
+            .outputs
+            .iter()
+            .any(|p| reliable_ports.contains(&p.name.0));
+        let use_fallback = !has_matching_reliable && !node.outputs.is_empty();
         let mut example = NodeExample::new(node.id.0.as_str());
         for port in &node.outputs {
             if !use_fallback && !reliable_ports.contains(&port.name.0) {
@@ -374,35 +378,6 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
         }
 
         spec = spec.node_example(example);
-    }
-
-    // Also add OutputMatchers for terminal nodes in the *original* (pre-lowered)
-    // DAG. SubDag boundary nodes (e.g., `tools.bootstrap::bootstrap`) are terminal
-    // in the original DAG but get expanded away during lowering. The observability
-    // invariant checks the original DAG's topology, so these need matchers too.
-    let lowered_node_ids: HashSet<&str> =
-        lowered.dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
-    let original_has_outgoing: HashSet<&NodeId> =
-        dag.edges.iter().map(|e| &e.from_node).collect();
-    for node in &dag.nodes {
-        if original_has_outgoing.contains(&node.id) {
-            continue;
-        }
-        // Skip nodes that exist in the lowered DAG (already handled above).
-        if lowered_node_ids.contains(node.id.0.as_str()) {
-            continue;
-        }
-        let mut example = NodeExample::new(node.id.0.as_str());
-        for port in &node.outputs {
-            example = example.output(port.name.0.as_str(), OutputMatcher::NonEmpty);
-            example = example.input(
-                port.name.0.as_str(),
-                default_value_for_type(port.type_id.0.as_str()),
-            );
-        }
-        if !example.outputs.is_empty() {
-            spec = spec.node_example(example);
-        }
     }
 
     spec

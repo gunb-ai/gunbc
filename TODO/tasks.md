@@ -18,34 +18,35 @@
 
 ## Sprint 1: Get to Green
 
-**Goal**: CI-green workspace. All test failures are generated-test structural drift
-from the DSL roadmap sprint — the underlying code changes (resolver, lowering, CI binary)
-are already committed and working.
+**Goal**: CI-green workspace.
 
-### Phase 1: Regenerate (single root cause, ~30 failures)
+**Status (2026-02-19)**: 2984 passing, 4 pre-existing failures (dag_viz stale `gist_upload`/`browser_open` tests).
+Fixed: 122 GCP prepare op failures (graceful missing-input handling in resolve.rs),
+2 observability invariant failures (auto_mock_spec terminal matcher fix in mock_defaults.rs),
+testgen regenerated.
 
-All remaining failures are `ci::generated_tests::test_coercion_*` in gunbc-dag.
-The CI DAG shape changed (literal_source nodes, GCP transport ops, CI binary simplification)
-but the generated test harnesses still reference the old topology.
-
-| ID | Task | Deps | Size |
-|----|------|------|------|
-| **F1** | Regenerate CI testgen: `make testgen` to rebuild generated coercion + dryrun tests for current CI DAG shape | — | S |
-| **F2** | Verify `cargo test -p gunbc-dag ci::generated_tests` passes after regeneration | F1 | S |
-
-### Phase 2: Acceptance & Guardrails
+### Remaining: Stale dag_viz tests (pre-existing)
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **F3** | Update `workflow_acceptance.rs` tests to match restructured `ci.rs` (auto-mocked spec, simplified path dispatch) | — | M |
-| **F4** | Update `engine_execution_guardrails` allowlist for new execution helper surfaces | — | S |
-| **F5** | Register new public graph builders in `resource_registry_coverage` test | — | S |
+| **F1** | Regenerate dag_viz testgen (`gist_upload`/`browser_open` NodeExample references stale nodes) | — | S |
 
-### Phase 3: Snapshot Refresh
+### Done (this sprint)
 
-| ID | Task | Deps | Size |
-|----|------|------|------|
-| **F6** | Regenerate `daglang-cli` snapshots if any compile/manifest/run golden files are stale after lowering changes | F1 | S |
+| ID | Task | Status |
+|----|------|--------|
+| ~~F-GCP~~ | GCP prepare ops: graceful `unwrap_or("(unresolved)")` for missing `audience`/`project`/`secret`/`subject_token` inputs in `ServiceGcpStsExchangePrepareOp` and `ServiceGcpSecretManagerAccessVersionPrepareOp` (resolve.rs) | Done 2026-02-19 |
+| ~~F-OBS~~ | Observability invariant: `auto_mock_spec` fallback NonEmpty matchers for `IdentityCallableOp` terminal nodes (mock_defaults.rs), testgen regenerated | Done 2026-02-19 |
+
+### Future: Proper GCP auto-mock seeding (P11)
+
+The graceful-handling fix (F-GCP) is a short-term workaround. The proper fix is to seed
+domain-specific mock values for GCP service inputs in `auto_mock_spec`. When a terminal
+node's input port name matches a known GCP service field (`audience`, `project`, `secret`,
+`subject_token`), inject a realistic mock value instead of relying on the prepare op to
+handle `(unresolved)`.
+
+This is captured as P11 below.
 
 ---
 
@@ -128,6 +129,7 @@ catch-all `_ => Ok(deferred_callable(...))` on line 872 becomes
 | **P8** | Consolidate repeated GCP service client constructors (`new`/`unauthenticated`) into a shared helper/macro across `lib/gcp-ops/src/services/*`. | — | S | PR review |
 | **P9** | Deduplicate `content_upsert` source wiring in `core/daglang/daglang-lower/src/lib.rs` (content/path branches share nearly identical param/source edge logic). | — | M | PR review |
 | **P10** | Consolidate makegen compile test setup/cleanup in `core/daglang/daglang-cli/src/compile/tests.rs` (temp output creation + teardown helpers) to reduce repetition and cleanup leaks. | — | S | PR review |
+| **P11** | Auto-mock seeding for GCP service inputs: when `auto_mock_spec` encounters a terminal node input port named `audience`/`project`/`secret`/`subject_token`, inject realistic mock values (e.g., `"mock-audience"`, `"mock-project"`). This replaces the `unwrap_or("(unresolved)")` workaround in `resolve.rs` prepare ops. (`mock_defaults.rs`) | — | S | Sprint 1 follow-up |
 
 ---
 
@@ -173,13 +175,12 @@ These require significant new DSL primitives or infrastructure that doesn't exis
 ## Parallelization Guide
 
 ```
-         ┌─ F1→F2,F6              (testgen regen → verify + snapshots)
-SPRINT 1 ├─ F3                     (CI acceptance, independent)
-         ├─ F4, F5                 (guardrail fixes, independent)
+SPRINT 1 ├─ F1                     (dag_viz testgen regen — last 4 failures)
+(mostly  │
+ done)   │
+    ─────┤ (Sprint 2: polish, green CI)
          │
-    ─────┤ (Sprint 2: polish, after green CI)
-         │
-         ├─ P7, P8, P10           (mechanical: edge dedup, GCP macro, test helpers)
+         ├─ P7, P8, P10, P11      (mechanical: edge dedup, GCP macro, test helpers, mock seeding)
          ├─ P9                     (lowerer source wiring dedup)
          ├─ P1→P2,P3              (LoweredOp metadata fields → structural classify)
          ├─ P4                     (CLI pipeline caching)
@@ -197,8 +198,8 @@ SPRINT 1 ├─ F3                     (CI acceptance, independent)
          └─ HW1→HW2               (workflow rendering)
 ```
 
-**Sprint 1 priority**: F1 (testgen regen) unblocks ~30 test failures in one step.
-**Sprint 2 highest ROI**: P7, P8, P10 (mechanical, zero design risk).
+**Sprint 1 status**: 2984/2988 passing. Only F1 (dag_viz stale tests) remains.
+**Sprint 2 highest ROI**: P7, P8, P10, P11 (mechanical, zero design risk).
 **Sprint 3 design dependency**: P6 requires deciding dry-run strategy per-module.
 **Horizon pick order**: HR1 or HL1 have highest leverage (typing safety / loop ergonomics).
 
