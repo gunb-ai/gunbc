@@ -707,12 +707,14 @@ fn lower_typed_project_with_callable_scope(
     add_service_call_edges(&mut builder, project, &endpoints_by_full, &service_registry)?;
     let resource_registry = add_resource_lifecycle_nodes(&mut builder, project, callable_modules);
     let known_uses_types = collect_known_uses_types(project);
+    let mut wired_release_targets = HashSet::<(String, String)>::new();
     add_used_resource_edges(
         &mut builder,
         project,
         &endpoints_by_full,
         &resource_registry,
         &known_uses_types,
+        &mut wired_release_targets,
     )?;
     add_provided_resource_nodes(
         &mut builder,
@@ -720,6 +722,7 @@ fn lower_typed_project_with_callable_scope(
         &endpoints_by_full,
         &resource_registry,
         &known_uses_types,
+        &mut wired_release_targets,
     )?;
     add_interface_contract_verification_nodes(&mut builder, project, &resource_registry);
 
@@ -3553,6 +3556,7 @@ fn add_used_resource_edges(
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     resource_registry: &ResourceLifecycleRegistry,
     known_uses_types: &HashSet<String>,
+    wired_release_targets: &mut HashSet<(String, String)>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -3606,12 +3610,15 @@ fn add_used_resource_edges(
                     );
                 }
                 if let Some(release_node) = endpoint.release_node {
-                    builder.add_edge(
-                        target.node_id.as_str(),
-                        target.primary_output.as_str(),
-                        release_node.as_str(),
-                        "resource_handle",
-                    );
+                    let key = (release_node.clone(), "resource_handle".to_string());
+                    if wired_release_targets.insert(key) {
+                        builder.add_edge(
+                            target.node_id.as_str(),
+                            target.primary_output.as_str(),
+                            release_node.as_str(),
+                            "resource_handle",
+                        );
+                    }
                 }
             }
         }
@@ -3625,6 +3632,7 @@ fn add_provided_resource_nodes(
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     resource_registry: &ResourceLifecycleRegistry,
     known_uses_types: &HashSet<String>,
+    wired_release_targets: &mut HashSet<(String, String)>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -3693,15 +3701,17 @@ fn add_provided_resource_nodes(
                 );
                 if let Some(endpoint) = endpoint {
                     if let Some(release_node) = endpoint.release_node {
-                        builder.add_edge(
-                            provider_node_id.as_str(),
-                            provided.binding.as_str(),
-                            release_node.as_str(),
-                            "resource_handle",
-                        );
+                        let key = (release_node.clone(), "resource_handle".to_string());
+                        if wired_release_targets.insert(key) {
+                            builder.add_edge(
+                                provider_node_id.as_str(),
+                                provided.binding.as_str(),
+                                release_node.as_str(),
+                                "resource_handle",
+                            );
+                        }
                     }
                 }
-            }
         }
     }
     Ok(())

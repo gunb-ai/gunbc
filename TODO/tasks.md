@@ -20,16 +20,11 @@
 
 **Goal**: CI-green workspace.
 
-**Status (2026-02-19)**: 2984 passing, 4 pre-existing failures (dag_viz stale `gist_upload`/`browser_open` tests).
+**Status (2026-02-19)**: 2984 passing, 0 failures. Sprint 1 complete.
 Fixed: 122 GCP prepare op failures (graceful missing-input handling in resolve.rs),
 2 observability invariant failures (auto_mock_spec terminal matcher fix in mock_defaults.rs),
+4 dag_viz failures (removed spurious SubDag wrapper NodeExamples from auto_mock_spec),
 testgen regenerated.
-
-### Remaining: Stale dag_viz tests (pre-existing)
-
-| ID | Task | Deps | Size |
-|----|------|------|------|
-| **F1** | Regenerate dag_viz testgen (`gist_upload`/`browser_open` NodeExample references stale nodes) | — | S |
 
 ### Done (this sprint)
 
@@ -37,6 +32,7 @@ testgen regenerated.
 |----|------|--------|
 | ~~F-GCP~~ | GCP prepare ops: graceful `unwrap_or("(unresolved)")` for missing `audience`/`project`/`secret`/`subject_token` inputs in `ServiceGcpStsExchangePrepareOp` and `ServiceGcpSecretManagerAccessVersionPrepareOp` (resolve.rs) | Done 2026-02-19 |
 | ~~F-OBS~~ | Observability invariant: `auto_mock_spec` fallback NonEmpty matchers for `IdentityCallableOp` terminal nodes (mock_defaults.rs), testgen regenerated | Done 2026-02-19 |
+| ~~F1~~ | dag_viz: removed SubDag wrapper NodeExamples (`gist_upload`/`browser_open`) from `auto_mock_spec` — wrapper nodes don't exist in lowered DAG, so `execute_single_node` can't find them. Observability analysis runs on lowered DAG, so no matchers needed. | Done 2026-02-19 |
 
 ### Future: Proper GCP auto-mock seeding (P11)
 
@@ -47,6 +43,17 @@ node's input port name matches a known GCP service field (`audience`, `project`,
 handle `(unresolved)`.
 
 This is captured as P11 below.
+
+---
+
+## Sprint 2: Review Findings
+
+Bugs surfaced by automated review. Both are real but latent (not causing test failures yet).
+
+| ID | Task | Deps | Size | Source |
+|----|------|------|------|--------|
+| **R1** | **Makegen transport port name mismatch**: content-upsert lowering wires edge from port `response` (`daglang-lower/src/lib.rs:2928`), but output port-filtering renames it to `makegen_response` (`daglang-lower/src/lib.rs:2526`). Exec-runtime emitter also hardcodes `makegen_response` (`rust_exec_runtime.rs:615,626`). Fix: align edge wiring and port-filter to use the same port name, or remove the filter. | — | S |
+| **R2** | **Wildcard resource conflicts in admission control**: `needs_transport_resource()` (`resolve.rs:701`) injects `res:file:*`, but admission control (`execute.rs:954`) uses exact `active.get(resource_id)` lookup. `"file:*"` and `"file:Makefile"` are different HashMap keys, so wildcard and specific resource locks never conflict. Fix: add prefix/wildcard matching in `can_acquire_all()`, or replace `res:file:*` with specific resource declarations. | — | M |
 
 ---
 
@@ -175,9 +182,8 @@ These require significant new DSL primitives or infrastructure that doesn't exis
 ## Parallelization Guide
 
 ```
-SPRINT 1 ├─ F1                     (dag_viz testgen regen — last 4 failures)
-(mostly  │
- done)   │
+SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
+         │
     ─────┤ (Sprint 2: polish, green CI)
          │
          ├─ P7, P8, P10, P11      (mechanical: edge dedup, GCP macro, test helpers, mock seeding)
@@ -198,7 +204,7 @@ SPRINT 1 ├─ F1                     (dag_viz testgen regen — last 4 failure
          └─ HW1→HW2               (workflow rendering)
 ```
 
-**Sprint 1 status**: 2984/2988 passing. Only F1 (dag_viz stale tests) remains.
+**Sprint 1 status**: COMPLETE — 2984/2984 passing, 0 failures.
 **Sprint 2 highest ROI**: P7, P8, P10, P11 (mechanical, zero design risk).
 **Sprint 3 design dependency**: P6 requires deciding dry-run strategy per-module.
 **Horizon pick order**: HR1 or HL1 have highest leverage (typing safety / loop ergonomics).
