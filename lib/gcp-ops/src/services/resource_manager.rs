@@ -90,18 +90,7 @@ pub struct ResourceManagerRest {
     auth: Option<Credential>,
 }
 
-impl ResourceManagerRest {
-    /// Create a new REST client with the given auth credential.
-    pub fn new(auth: Credential) -> Self {
-        Self { auth: Some(auth) }
-    }
-
-    /// Create a new REST client without auth (for testing).
-    pub fn unauthenticated() -> Self {
-        Self { auth: None }
-    }
-}
-
+super::impl_gcp_rest_client_constructors!(ResourceManagerRest);
 super::impl_gcp_rest_client!(ResourceManagerRest, RESOURCE_MANAGER);
 
 impl ResourceManagerService for ResourceManagerRest {

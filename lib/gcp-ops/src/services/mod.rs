@@ -140,6 +140,24 @@ macro_rules! impl_gcp_rest_client {
 
 pub(crate) use impl_gcp_rest_client;
 
+macro_rules! impl_gcp_rest_client_constructors {
+    ($ty:ty) => {
+        impl $ty {
+            /// Create a new REST client with the given auth credential.
+            pub fn new(auth: Credential) -> Self {
+                Self { auth: Some(auth) }
+            }
+
+            /// Create a new REST client without auth (for testing).
+            pub fn unauthenticated() -> Self {
+                Self { auth: None }
+            }
+        }
+    };
+}
+
+pub(crate) use impl_gcp_rest_client_constructors;
+
 /// GCP API base URLs.
 pub mod base_urls {
     /// Secret Manager API.

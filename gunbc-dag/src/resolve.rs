@@ -1331,6 +1331,8 @@ mod tests {
                 name: name.to_string(),
                 obligation,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         )
     }
@@ -1515,6 +1517,8 @@ mod tests {
                 name: "call_literal_source::strhex:637261746573".to_string(),
                 obligation: ObligationCategory::ServiceParamSource,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let result = resolve_node(&node).expect("literal source should resolve");
@@ -1540,6 +1544,8 @@ mod tests {
                 name: "call_param_source::makegen::path".to_string(),
                 obligation: ObligationCategory::ServiceParamSource,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let result = resolve_node(&node).expect("param source should resolve");
@@ -1565,6 +1571,8 @@ mod tests {
                 name: "call_literal_source::strhex:zz".to_string(),
                 obligation: ObligationCategory::ServiceParamSource,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         );
         let result =

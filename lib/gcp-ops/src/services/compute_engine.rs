@@ -152,18 +152,7 @@ pub struct ComputeEngineRest {
     auth: Option<Credential>,
 }
 
-impl ComputeEngineRest {
-    /// Create a new REST client with the given auth credential.
-    pub fn new(auth: Credential) -> Self {
-        Self { auth: Some(auth) }
-    }
-
-    /// Create a new REST client without auth (for testing).
-    pub fn unauthenticated() -> Self {
-        Self { auth: None }
-    }
-}
-
+super::impl_gcp_rest_client_constructors!(ComputeEngineRest);
 super::impl_gcp_rest_client!(ComputeEngineRest, COMPUTE);
 
 impl ComputeEngineService for ComputeEngineRest {

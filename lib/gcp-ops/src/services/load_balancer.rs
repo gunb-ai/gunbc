@@ -149,18 +149,7 @@ pub struct LoadBalancerRest {
     auth: Option<Credential>,
 }
 
-impl LoadBalancerRest {
-    /// Create a new REST client with the given auth credential.
-    pub fn new(auth: Credential) -> Self {
-        Self { auth: Some(auth) }
-    }
-
-    /// Create a new REST client without auth (for testing).
-    pub fn unauthenticated() -> Self {
-        Self { auth: None }
-    }
-}
-
+super::impl_gcp_rest_client_constructors!(LoadBalancerRest);
 super::impl_gcp_rest_client!(LoadBalancerRest, COMPUTE);
 
 impl LoadBalancerService for LoadBalancerRest {

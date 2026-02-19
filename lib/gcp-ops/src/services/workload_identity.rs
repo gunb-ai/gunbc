@@ -175,18 +175,7 @@ pub struct WorkloadIdentityRest {
     auth: Option<Credential>,
 }
 
-impl WorkloadIdentityRest {
-    /// Create a new REST client with the given auth credential.
-    pub fn new(auth: Credential) -> Self {
-        Self { auth: Some(auth) }
-    }
-
-    /// Create a new REST client without auth (for testing).
-    pub fn unauthenticated() -> Self {
-        Self { auth: None }
-    }
-}
-
+super::impl_gcp_rest_client_constructors!(WorkloadIdentityRest);
 super::impl_gcp_rest_client!(WorkloadIdentityRest, IAM);
 
 impl WorkloadIdentityService for WorkloadIdentityRest {

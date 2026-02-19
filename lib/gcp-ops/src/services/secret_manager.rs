@@ -110,18 +110,7 @@ pub struct SecretManagerRest {
     auth: Option<Credential>,
 }
 
-impl SecretManagerRest {
-    /// Create a new REST client with the given auth credential.
-    pub fn new(auth: Credential) -> Self {
-        Self { auth: Some(auth) }
-    }
-
-    /// Create a new REST client without auth (for testing).
-    pub fn unauthenticated() -> Self {
-        Self { auth: None }
-    }
-}
-
+super::impl_gcp_rest_client_constructors!(SecretManagerRest);
 super::impl_gcp_rest_client!(SecretManagerRest, SECRET_MANAGER);
 
 impl SecretManagerService for SecretManagerRest {

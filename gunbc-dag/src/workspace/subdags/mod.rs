@@ -42,19 +42,27 @@ use std::path::PathBuf;
 /// └── (more tools as they're migrated)
 /// ```
 pub fn build_workspace_dag() -> Result<Dag<WorkspaceOp>, BuilderError> {
-    let mut dag = Dag::new();
-
-    // Hard-cut discovery: workspace composition is sourced directly from DSL.
     let tool_names = discover_dsl_tool_names()?;
     let pipeline_names = discover_dsl_pipeline_names()?;
+    build_workspace_dag_from_discovery(&tool_names, &pipeline_names)
+}
+
+/// Build a workspace DAG from already-discovered tool and pipeline module names.
+///
+/// This entrypoint is pure and deterministic for a fixed discovery set.
+pub fn build_workspace_dag_from_discovery(
+    tool_names: &BTreeSet<String>,
+    pipeline_names: &BTreeSet<String>,
+) -> Result<Dag<WorkspaceOp>, BuilderError> {
+    let mut dag = Dag::new();
     let required_tools = required_dsl_tool_modules();
     let required_pipelines = required_dsl_pipeline_modules();
-    validate_required("tool", &tool_names, &required_tools)?;
-    validate_required("pipeline", &pipeline_names, &required_pipelines)?;
-    validate_coverage("tool", &tool_names, &required_tools)?;
-    validate_coverage("pipeline", &pipeline_names, &required_pipelines)?;
-    add_discovered_tool_subdags(&mut dag, &tool_names)?;
-    add_discovered_pipeline_subdags(&mut dag, &pipeline_names)?;
+    validate_required("tool", tool_names, &required_tools)?;
+    validate_required("pipeline", pipeline_names, &required_pipelines)?;
+    validate_coverage("tool", tool_names, &required_tools)?;
+    validate_coverage("pipeline", pipeline_names, &required_pipelines)?;
+    add_discovered_tool_subdags(&mut dag, tool_names)?;
+    add_discovered_pipeline_subdags(&mut dag, pipeline_names)?;
 
     // Language subdags are repo-level orchestration and are always present.
     dag.add_node(languages::build_languages_subdag());
@@ -307,6 +315,35 @@ mod tests {
         assert!(node_ids.contains(&"gist"));
         assert!(node_ids.contains(&"pragma"));
         assert!(node_ids.contains(&"testgen"));
+    }
+
+    #[test]
+    fn test_build_workspace_dag_from_discovery_is_pure() {
+        let tool_names: BTreeSet<String> = [
+            "build",
+            "makegen",
+            "clippy",
+            "deps",
+            "bootstrap",
+            "codegen",
+            "dag_viz",
+            "docgen",
+            "gist",
+            "pragma",
+            "testgen",
+        ]
+        .into_iter()
+        .map(|name| name.to_string())
+        .collect();
+        let pipeline_names: BTreeSet<String> =
+            ["ci"].into_iter().map(|name| name.to_string()).collect();
+
+        let dag = build_workspace_dag_from_discovery(&tool_names, &pipeline_names)
+            .expect("pure workspace dag composition should succeed");
+        let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
+        assert!(node_ids.contains(&"build"));
+        assert!(node_ids.contains(&"ci"));
+        assert!(node_ids.contains(&"languages"));
     }
 
     #[test]

@@ -125,16 +125,6 @@ pub struct CloudRunRest {
 }
 
 impl CloudRunRest {
-    /// Create a new REST client with the given auth credential.
-    pub fn new(auth: Credential) -> Self {
-        Self { auth: Some(auth) }
-    }
-
-    /// Create a new REST client without auth (for testing).
-    pub fn unauthenticated() -> Self {
-        Self { auth: None }
-    }
-
     fn service_template_body(
         image: &str,
         service_account: &str,
@@ -156,6 +146,7 @@ impl CloudRunRest {
     }
 }
 
+super::impl_gcp_rest_client_constructors!(CloudRunRest);
 super::impl_gcp_rest_client!(CloudRunRest, RUN);
 
 impl CloudRunService for CloudRunRest {

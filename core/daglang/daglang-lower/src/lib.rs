@@ -2976,69 +2976,33 @@ fn expand_single_content_upsert(
     builder.add_edge(&compare_id, "skip", &execute_transport_id, "skip");
     builder.add_edge(&execute_transport_id, "response", &target.node_id, "__deps");
 
-    if let Some(source) = resolve_content_source(args, bound_callables, endpoints_by_name) {
-        builder.add_edge(
-            &source.node_id,
-            &source.primary_output,
-            &compare_id,
-            "expected_content",
-        );
-        builder.add_edge(
-            &source.node_id,
-            &source.primary_output,
-            &prepare_write_id,
-            "content",
-        );
-    } else if let Some(content_ident) = resolve_named_ident_arg(args, "content") {
-        if let Some(param_ty) = param_types.get(content_ident) {
-            let param_source = ensure_param_source_node(
-                builder,
-                module_name,
-                item_name,
-                content_ident,
-                param_ty.as_str(),
-            );
-            builder.add_edge(
-                param_source.as_str(),
-                content_ident,
-                &compare_id,
-                "expected_content",
-            );
-            builder.add_edge(
-                param_source.as_str(),
-                content_ident,
-                &prepare_write_id,
-                "content",
-            );
-        }
-    }
+    wire_resolved_or_param_source(
+        builder,
+        module_name,
+        item_name,
+        param_types,
+        resolve_content_source(args, bound_callables, endpoints_by_name),
+        resolve_named_ident_arg(args, "content"),
+        &[
+            (compare_id.as_str(), "expected_content"),
+            (prepare_write_id.as_str(), "content"),
+        ],
+    );
 
-    if let Some(source) = resolve_path_source(args, bound_callables, endpoints_by_name) {
-        builder.add_edge(
-            &source.node_id,
-            &source.primary_output,
-            &prepare_read_id,
-            "path",
-        );
-        builder.add_edge(
-            &source.node_id,
-            &source.primary_output,
-            &prepare_write_id,
-            "path",
-        );
-    } else if let Some(path_ident) = resolve_named_ident_arg(args, "path") {
-        if let Some(param_ty) = param_types.get(path_ident) {
-            let param_source = ensure_param_source_node(
-                builder,
-                module_name,
-                item_name,
-                path_ident,
-                param_ty.as_str(),
-            );
-            builder.add_edge(param_source.as_str(), path_ident, &prepare_read_id, "path");
-            builder.add_edge(param_source.as_str(), path_ident, &prepare_write_id, "path");
-        }
-    } else if let Some(literal) = resolve_path_literal(args) {
+    let wired_path = wire_resolved_or_param_source(
+        builder,
+        module_name,
+        item_name,
+        param_types,
+        resolve_path_source(args, bound_callables, endpoints_by_name),
+        resolve_named_ident_arg(args, "path"),
+        &[
+            (prepare_read_id.as_str(), "path"),
+            (prepare_write_id.as_str(), "path"),
+        ],
+    );
+    if !wired_path {
+        if let Some(literal) = resolve_path_literal(args) {
         let literal_source = ensure_literal_source_node(
             builder,
             module_name,
@@ -3050,6 +3014,57 @@ fn expand_single_content_upsert(
         );
         builder.add_edge(literal_source.as_str(), "path", &prepare_read_id, "path");
         builder.add_edge(literal_source.as_str(), "path", &prepare_write_id, "path");
+        }
+    }
+}
+
+fn wire_resolved_or_param_source(
+    builder: &mut DagBuilder,
+    module_name: &str,
+    item_name: &str,
+    param_types: &HashMap<String, String>,
+    resolved_source: Option<LoweredEndpoint>,
+    param_ident: Option<&str>,
+    destinations: &[(&str, &str)],
+) -> bool {
+    if let Some(source) = resolved_source {
+        wire_endpoint_output_to_destinations(builder, &source, destinations);
+        return true;
+    }
+
+    if let Some(ident) = param_ident {
+        if let Some(param_ty) = param_types.get(ident) {
+            let param_source =
+                ensure_param_source_node(builder, module_name, item_name, ident, param_ty.as_str());
+            wire_output_to_destinations(builder, param_source.as_str(), ident, destinations);
+            return true;
+        }
+    }
+
+    false
+}
+
+fn wire_endpoint_output_to_destinations(
+    builder: &mut DagBuilder,
+    source: &LoweredEndpoint,
+    destinations: &[(&str, &str)],
+) {
+    wire_output_to_destinations(
+        builder,
+        source.node_id.as_str(),
+        source.primary_output.as_str(),
+        destinations,
+    );
+}
+
+fn wire_output_to_destinations(
+    builder: &mut DagBuilder,
+    source_node: &str,
+    source_port: &str,
+    destinations: &[(&str, &str)],
+) {
+    for (dest_node, dest_port) in destinations {
+        builder.add_edge(source_node, source_port, dest_node, dest_port);
     }
 }
 
