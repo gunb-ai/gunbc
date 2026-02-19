@@ -118,7 +118,10 @@ fn execute_generate_makefile(
     let registry = ToolRegistry::default_registry();
     let makefile = render_makefile(&registry);
 
-    OutputMap::new().str("makefile_content", makefile).ok()
+    OutputMap::new()
+        .str("makefile_content", makefile.clone())
+        .str("return", makefile)
+        .ok()
 }
 
 /// Generate .gitignore content using the makegen renderer.
@@ -136,7 +139,10 @@ fn execute_generate_gitignore(
     let config = default_build_config();
     let gitignore = render_gitignore(&config);
 
-    OutputMap::new().str("gitignore_content", gitignore).ok()
+    OutputMap::new()
+        .str("gitignore_content", gitignore.clone())
+        .str("return", gitignore)
+        .ok()
 }
 
 // Mockable implementation for test generation

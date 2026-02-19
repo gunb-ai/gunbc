@@ -4,7 +4,7 @@
 //! for project management and project-level IAM policies.
 
 use super::base_urls::RESOURCE_MANAGER;
-use super::MethodMeta;
+use super::{GcpRestClient, MethodMeta};
 use gunbc_ir::transport::credential::Credential;
 use gunbc_ir::transport::http::HttpMethod;
 use gunbc_ir::transport::rest::RestRequest;
@@ -100,25 +100,9 @@ impl ResourceManagerRest {
     pub fn unauthenticated() -> Self {
         Self { auth: None }
     }
-
-    fn authed_get(&self, path: &str) -> RestRequest {
-        let url = format!("{}{}", RESOURCE_MANAGER, path);
-        let mut req = RestRequest::get(url);
-        if let Some(ref auth) = self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
-    }
-
-    fn authed_post(&self, path: &str) -> RestRequest {
-        let url = format!("{}{}", RESOURCE_MANAGER, path);
-        let mut req = RestRequest::post(url);
-        if let Some(ref auth) = self.auth {
-            req = req.credential(auth.clone());
-        }
-        req
-    }
 }
+
+super::impl_gcp_rest_client!(ResourceManagerRest, RESOURCE_MANAGER);
 
 impl ResourceManagerService for ResourceManagerRest {
     fn list_projects(&self) -> RestRequest {

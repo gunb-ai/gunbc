@@ -2327,10 +2327,20 @@ fn infer_expr_type(
                 _ => ValueType::Unknown,
             }
         }
-        Expr::For(_, iterable, body) => {
+        Expr::For(binding, iterable, passthrough, body) => {
             let (_, iter_errors) = infer_expr_type(iterable, local_bindings, infer_context);
             errors.extend(iter_errors);
-            let (_, body_errors) = infer_expr_type(body, local_bindings, infer_context);
+            let mut loop_scope = local_bindings.clone();
+            // Element type inference is not modeled yet; make loop binding available in body.
+            loop_scope.insert(binding.clone(), ValueType::Unknown);
+            for name in passthrough {
+                let passthrough_ty = local_bindings
+                    .get(name)
+                    .cloned()
+                    .unwrap_or(ValueType::Unknown);
+                loop_scope.insert(name.clone(), passthrough_ty);
+            }
+            let (_, body_errors) = infer_expr_type(body, &loop_scope, infer_context);
             errors.extend(body_errors);
             ValueType::Unknown
         }

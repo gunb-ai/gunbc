@@ -7,6 +7,7 @@
 //! 4. Converting to runtime `CloudSecretConfig`
 
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 use gunbc_ir::transport::cloud::{
     CloudConfigSpec, CloudNamespace, CloudProviderKind, CloudRuntimeKind, CloudSecretConfig,
@@ -41,6 +42,7 @@ impl fmt::Display for ConfigError {
 
 const ENV_CONFIG_JSON: &str = "GUNBC_CLOUD_CONFIG_JSON";
 const ENV_CONFIG_TOML: &str = "GUNBC_CLOUD_CONFIG_TOML";
+const ENV_CONFIG_PATH: &str = "GUNBC_CLOUD_CONFIG_PATH";
 const ENV_PROFILE: &str = "GUNBC_CLOUD_PROFILE";
 const ENV_NAMESPACE: &str = "GUNBC_CLOUD_NAMESPACE";
 const ENV_SECRET_VERSION: &str = "GUNBC_CLOUD_SECRET_VERSION";
@@ -51,6 +53,48 @@ const LEGACY_ENV_SECRETS_PROJECT: &str = "GCP_SECRETS_PROJECT";
 const LEGACY_ENV_SECRETS_PREFIX: &str = "GCP_SECRETS_PREFIX";
 const LEGACY_ENV_SECRETS_SA: &str = "GCP_SECRETS_SA";
 const LEGACY_ENV_IMPERSONATE_SA: &str = "GCP_SECRETS_IMPERSONATE_SA";
+
+/// Context inputs for deterministic cloud-config resolution.
+///
+/// Precedence order is:
+/// 1. explicit (`explicit_*`)
+/// 2. environment (`GUNBC_CLOUD_CONFIG_JSON` / `GUNBC_CLOUD_CONFIG_TOML` / legacy)
+/// 3. profile file (`profile_config_path`)
+/// 4. fallback defaults (handled by `graph_cloud_config` when not required)
+#[derive(Debug, Clone, Default)]
+pub struct ResolveContext {
+    /// Explicit JSON config payload (highest precedence).
+    pub explicit_config_json: Option<String>,
+    /// Explicit TOML config payload (highest precedence).
+    pub explicit_config_toml: Option<String>,
+    /// Explicit config file path (highest precedence).
+    pub explicit_config_path: Option<PathBuf>,
+    /// Explicit namespace override for TOML/path sources.
+    pub explicit_namespace: Option<String>,
+    /// Explicit profile override for TOML/path sources.
+    pub explicit_profile: Option<String>,
+    /// File-backed profile path (lower precedence than env sources).
+    pub profile_config_path: Option<PathBuf>,
+}
+
+impl ResolveContext {
+    /// Build a resolve context from environment conventions.
+    pub fn from_env() -> Self {
+        let explicit_config_path = env_nonempty(ENV_CONFIG_PATH).map(PathBuf::from);
+        let profile_selection = env_nonempty(ENV_NAMESPACE).or_else(|| env_nonempty(ENV_PROFILE));
+        let profile_config_path =
+            profile_selection.map(|profile| PathBuf::from(format!(".gunbc/config-{profile}.toml")));
+
+        Self {
+            explicit_config_json: None,
+            explicit_config_toml: None,
+            explicit_config_path,
+            explicit_namespace: None,
+            explicit_profile: None,
+            profile_config_path,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // TOML parser (minimal, avoids pulling in toml crate)
@@ -174,58 +218,41 @@ pub fn detect_runtime() -> CloudRuntimeKind {
 /// Resolve graph cloud config using deterministic precedence.
 ///
 /// Precedence:
-/// 1) `GUNBC_CLOUD_CONFIG_JSON` (serialized `CloudSecretConfig`)
-/// 2) `GUNBC_CLOUD_CONFIG_TOML` (+ namespace/profile selection)
-/// 3) Legacy env model (`GCP_*`)
+/// 1) Explicit context (`ResolveContext`) if present (`GUNBC_CLOUD_CONFIG_PATH` from env context)
+/// 2) Environment config (`GUNBC_CLOUD_CONFIG_JSON`, `GUNBC_CLOUD_CONFIG_TOML`, legacy `GCP_*`)
+/// 3) File-backed profile (`.gunbc/config-<profile>.toml`)
 ///
 /// Returns `ConfigError::NotConfigured` when no config source is set at all,
 /// and `ConfigError::Invalid` when a source is present but malformed or
 /// references an unknown namespace.
 pub fn resolve_graph_cloud_config() -> Result<CloudSecretConfig, ConfigError> {
-    if let Some(raw_json) = env_nonempty(ENV_CONFIG_JSON) {
-        let mut config: CloudSecretConfig = serde_json::from_str(&raw_json).map_err(|e| {
-            ConfigError::Invalid(format!(
-                "{ENV_CONFIG_JSON} must contain valid CloudSecretConfig JSON: {e}"
-            ))
-        })?;
-        if let Some(version) = env_nonempty(ENV_SECRET_VERSION) {
-            config.secret.version = Some(version);
-        }
-        return Ok(config);
+    resolve_graph_cloud_config_with_context(&ResolveContext::from_env())
+}
+
+/// Resolve graph cloud config with an explicit resolution context.
+///
+/// Source precedence:
+/// 1. context explicit inputs
+/// 2. environment-backed config
+/// 3. profile file path from context
+pub fn resolve_graph_cloud_config_with_context(
+    context: &ResolveContext,
+) -> Result<CloudSecretConfig, ConfigError> {
+    if let Some(config) = resolve_explicit_context_config(context)? {
+        return Ok(apply_secret_version_override(config));
     }
 
-    if let Some(raw_toml) = env_nonempty(ENV_CONFIG_TOML) {
-        let spec = parse_config_toml(&raw_toml)
-            .map_err(|e| ConfigError::Invalid(format!("failed to parse {ENV_CONFIG_TOML}: {e}")))?;
-        let runtime = runtime_with_override();
-        let namespace = env_nonempty(ENV_NAMESPACE)
-            .or_else(|| env_nonempty(ENV_PROFILE))
-            .or_else(|| spec.default_namespace.clone())
-            .ok_or_else(|| {
-                ConfigError::Invalid(format!(
-                    "{ENV_CONFIG_TOML} is set but no namespace/profile resolved; set {ENV_NAMESPACE} or {ENV_PROFILE}, or include default_namespace"
-                ))
-            })?;
-
-        let mut config = spec
-            .to_secret_config(&namespace, runtime, "")
-            .ok_or_else(|| {
-                ConfigError::Invalid(format!(
-                    "namespace '{namespace}' could not be resolved from config"
-                ))
-            })?;
-        if let Some(version) = env_nonempty(ENV_SECRET_VERSION) {
-            config.secret.version = Some(version);
-        }
-        return Ok(config);
+    if let Some(config) = resolve_env_config()? {
+        return Ok(apply_secret_version_override(config));
     }
 
-    if let Some(config) = resolve_legacy_gcp_env_config() {
-        return Ok(config);
+    if let Some(profile_path) = context.profile_config_path.as_ref() {
+        let config = resolve_profile_file_config(profile_path, context)?;
+        return Ok(apply_secret_version_override(config));
     }
 
     Err(ConfigError::NotConfigured(format!(
-        "no cloud config source found (expected {ENV_CONFIG_JSON} or {ENV_CONFIG_TOML}, or legacy {LEGACY_ENV_SECRETS_PROJECT}/{LEGACY_ENV_SECRETS_PREFIX})"
+        "no cloud config source found (expected explicit context, {ENV_CONFIG_JSON}, {ENV_CONFIG_TOML}, or profile/legacy sources)"
     )))
 }
 
@@ -274,6 +301,146 @@ fn runtime_with_override() -> CloudRuntimeKind {
     env_nonempty("CLOUD_RUNTIME")
         .and_then(|v| CloudRuntimeKind::parse(&v))
         .unwrap_or_else(detect_runtime)
+}
+
+fn apply_secret_version_override(mut config: CloudSecretConfig) -> CloudSecretConfig {
+    if let Some(version) = env_nonempty(ENV_SECRET_VERSION) {
+        config.secret.version = Some(version);
+    }
+    config
+}
+
+fn resolve_namespace_for_toml(
+    spec: &CloudConfigSpec,
+    source_label: &str,
+    explicit_namespace: Option<&str>,
+    explicit_profile: Option<&str>,
+) -> Result<String, ConfigError> {
+    explicit_namespace
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            env_nonempty(ENV_NAMESPACE)
+                .or_else(|| explicit_profile.map(str::to_string))
+                .or_else(|| env_nonempty(ENV_PROFILE))
+                .or_else(|| spec.default_namespace.clone())
+        })
+        .ok_or_else(|| {
+            ConfigError::Invalid(format!(
+                "{source_label} is set but no namespace/profile resolved; set {ENV_NAMESPACE} or {ENV_PROFILE}, or include default_namespace"
+            ))
+        })
+}
+
+fn resolve_toml_source(
+    raw_toml: &str,
+    source_label: &str,
+    explicit_namespace: Option<&str>,
+    explicit_profile: Option<&str>,
+) -> Result<CloudSecretConfig, ConfigError> {
+    let spec = parse_config_toml(raw_toml)
+        .map_err(|e| ConfigError::Invalid(format!("failed to parse {source_label}: {e}")))?;
+    let runtime = runtime_with_override();
+    let namespace =
+        resolve_namespace_for_toml(&spec, source_label, explicit_namespace, explicit_profile)?;
+    spec.to_secret_config(&namespace, runtime, "")
+        .ok_or_else(|| {
+            ConfigError::Invalid(format!(
+                "namespace '{namespace}' could not be resolved from config"
+            ))
+        })
+}
+
+#[allow(clippy::disallowed_methods)] // Config loading reads from well-known file paths at startup.
+fn resolve_explicit_context_config(
+    context: &ResolveContext,
+) -> Result<Option<CloudSecretConfig>, ConfigError> {
+    if let Some(raw_json) = context.explicit_config_json.as_ref() {
+        let config: CloudSecretConfig = serde_json::from_str(raw_json).map_err(|e| {
+            ConfigError::Invalid(format!(
+                "explicit cloud config json must contain valid CloudSecretConfig JSON: {e}"
+            ))
+        })?;
+        return Ok(Some(config));
+    }
+
+    if let Some(raw_toml) = context.explicit_config_toml.as_ref() {
+        let config = resolve_toml_source(
+            raw_toml,
+            "explicit cloud config toml",
+            context.explicit_namespace.as_deref(),
+            context.explicit_profile.as_deref(),
+        )?;
+        return Ok(Some(config));
+    }
+
+    if let Some(path) = context.explicit_config_path.as_ref() {
+        let raw_toml = std::fs::read_to_string(path).map_err(|e| {
+            ConfigError::Invalid(format!(
+                "failed to read explicit config path '{}': {}",
+                path.display(),
+                e
+            ))
+        })?;
+        let config = resolve_toml_source(
+            &raw_toml,
+            &format!("explicit config path {}", path.display()),
+            context.explicit_namespace.as_deref(),
+            context.explicit_profile.as_deref(),
+        )?;
+        return Ok(Some(config));
+    }
+
+    Ok(None)
+}
+
+fn resolve_env_config() -> Result<Option<CloudSecretConfig>, ConfigError> {
+    if let Some(raw_json) = env_nonempty(ENV_CONFIG_JSON) {
+        let config: CloudSecretConfig = serde_json::from_str(&raw_json).map_err(|e| {
+            ConfigError::Invalid(format!(
+                "{ENV_CONFIG_JSON} must contain valid CloudSecretConfig JSON: {e}"
+            ))
+        })?;
+        return Ok(Some(config));
+    }
+
+    if let Some(raw_toml) = env_nonempty(ENV_CONFIG_TOML) {
+        let config = resolve_toml_source(&raw_toml, ENV_CONFIG_TOML, None, None)?;
+        return Ok(Some(config));
+    }
+
+    if let Some(config) = resolve_legacy_gcp_env_config() {
+        return Ok(Some(config));
+    }
+
+    Ok(None)
+}
+
+#[allow(clippy::disallowed_methods)] // Config loading reads from well-known file paths at startup.
+fn resolve_profile_file_config(
+    path: &Path,
+    context: &ResolveContext,
+) -> Result<CloudSecretConfig, ConfigError> {
+    if !path.exists() {
+        return Err(ConfigError::Invalid(format!(
+            "profile config path '{}' does not exist",
+            path.display()
+        )));
+    }
+
+    let raw_toml = std::fs::read_to_string(path).map_err(|e| {
+        ConfigError::Invalid(format!(
+            "failed to read profile config path '{}': {}",
+            path.display(),
+            e
+        ))
+    })?;
+    resolve_toml_source(
+        &raw_toml,
+        &format!("profile config path {}", path.display()),
+        context.explicit_namespace.as_deref(),
+        context.explicit_profile.as_deref(),
+    )
 }
 
 fn resolve_legacy_gcp_env_config() -> Option<CloudSecretConfig> {
@@ -499,6 +666,78 @@ service_account = "gunbai-prod-secrets@gunbai-secrets.iam.gserviceaccount.com"
     }
 
     #[test]
+    #[allow(clippy::disallowed_methods)] // Test-only filesystem operations for cache/config fixtures.
+    fn resolve_graph_cloud_config_precedence_explicit_over_env_over_profile() {
+        with_env_lock(|| {
+            with_temp_workdir(|root| {
+                // Profile source (lowest among these three)
+                write_profile_config(root, "dev", "profile-project");
+                std::env::set_var(ENV_PROFILE, "dev");
+
+                // Env source should beat profile.
+                let env_config = CloudSecretConfig {
+                    provider: CloudProviderKind::Gcp,
+                    runtime: CloudRuntimeKind::LocalDev,
+                    audience: "env-audience".to_string(),
+                    project_or_account: "env-project".to_string(),
+                    secret: CloudSecretRef {
+                        prefix: "env-".to_string(),
+                        name: String::new(),
+                        delimiter: String::new(),
+                        version: None,
+                    },
+                    service_account_or_role: Some("env-sa@example".to_string()),
+                    impersonate_account_or_role: None,
+                };
+                std::env::set_var(
+                    ENV_CONFIG_JSON,
+                    serde_json::to_string(&env_config).expect("serialize env config"),
+                );
+
+                // Explicit file source should beat env.
+                let explicit_path = root.join("explicit-cloud-config.toml");
+                std::fs::write(&explicit_path, profile_toml_for_project("explicit-project"))
+                    .expect("write explicit config");
+                std::env::set_var(ENV_CONFIG_PATH, explicit_path);
+
+                let resolved =
+                    resolve_graph_cloud_config().expect("explicit source should resolve");
+                assert_eq!(resolved.project_or_account, "explicit-project");
+                assert_eq!(resolved.secret.prefix, "dev-");
+            });
+        });
+    }
+
+    #[test]
+    fn resolve_graph_cloud_config_uses_profile_file_when_env_sources_absent() {
+        with_env_lock(|| {
+            with_temp_workdir(|root| {
+                write_profile_config(root, "dev", "profile-project");
+                std::env::set_var(ENV_PROFILE, "dev");
+
+                let resolved = resolve_graph_cloud_config().expect("profile source should resolve");
+                assert_eq!(resolved.project_or_account, "profile-project");
+                assert_eq!(resolved.secret.prefix, "dev-");
+            });
+        });
+    }
+
+    #[test]
+    fn resolve_graph_cloud_config_profile_file_requires_existing_path() {
+        with_env_lock(|| {
+            with_temp_workdir(|_root| {
+                std::env::set_var(ENV_PROFILE, "missing");
+                let err =
+                    resolve_graph_cloud_config().expect_err("missing profile path should error");
+                assert!(
+                    matches!(err, ConfigError::Invalid(ref msg) if msg.contains("does not exist")),
+                    "expected invalid missing-profile error, got: {err}"
+                );
+            });
+        });
+    }
+
+    #[test]
     fn resolve_graph_cloud_config_uses_toml_profile_when_present() {
         with_env_lock(|| {
             std::env::set_var(ENV_CONFIG_TOML, SAMPLE_TOML);
@@ -591,6 +830,7 @@ service_account = "gunbai-prod-secrets@gunbai-secrets.iam.gserviceaccount.com"
         for key in [
             ENV_CONFIG_JSON,
             ENV_CONFIG_TOML,
+            ENV_CONFIG_PATH,
             ENV_PROFILE,
             ENV_NAMESPACE,
             ENV_SECRET_VERSION,
@@ -605,5 +845,53 @@ service_account = "gunbai-prod-secrets@gunbai-secrets.iam.gserviceaccount.com"
         ] {
             std::env::remove_var(key);
         }
+    }
+
+    #[allow(clippy::disallowed_methods)] // Test-only filesystem operations for cache/config fixtures.
+    fn with_temp_workdir<F>(f: F)
+    where
+        F: FnOnce(&Path) + std::panic::UnwindSafe,
+    {
+        let original = std::env::current_dir().expect("read cwd");
+        let unique = format!(
+            "gunbc-cloud-config-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(&root).expect("create temp root");
+        std::env::set_current_dir(&root).expect("set temp cwd");
+
+        let result = std::panic::catch_unwind(|| f(&root));
+
+        std::env::set_current_dir(&original).expect("restore cwd");
+        let _ = std::fs::remove_dir_all(&root);
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    #[allow(clippy::disallowed_methods)] // Test-only filesystem operations for cache/config fixtures.
+    fn write_profile_config(root: &Path, profile: &str, project: &str) {
+        let gunbc_dir = root.join(".gunbc");
+        std::fs::create_dir_all(&gunbc_dir).expect("create .gunbc");
+        let profile_path = gunbc_dir.join(format!("config-{profile}.toml"));
+        std::fs::write(profile_path, profile_toml_for_project(project)).expect("write profile");
+    }
+
+    fn profile_toml_for_project(project: &str) -> String {
+        format!(
+            r#"default_namespace = "dev"
+
+[[namespaces]]
+name = "dev"
+provider = "gcp"
+secrets_project = "{project}"
+wif_provider = "projects/314501921854/locations/global/workloadIdentityPools/github-pool/providers/github"
+service_account = "gunbc-dev-secrets@{project}.iam.gserviceaccount.com"
+"#
+        )
     }
 }

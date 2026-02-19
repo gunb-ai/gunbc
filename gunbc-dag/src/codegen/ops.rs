@@ -14,7 +14,7 @@ use gunbc_ir::resource::{
 };
 use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_STAMP_PATH};
+use gunbc_ir::WorkspaceLayout;
 use gunbc_lib_transport::TransportIo;
 use std::collections::{HashMap, HashSet};
 
@@ -24,7 +24,8 @@ pub enum CodegenOp {
     /// Prepare a file glob request that checks for generated CLI files.
     PrepareCodegenExists,
     /// Parse the exists check response (file-glob response, with shell fallback).
-    ParseCodegenExists(ExecMode),
+    /// Reads `check_mode` input to determine verify vs ensure behavior.
+    ParseCodegenExists,
     /// Prepare the codegen shell command.
     PrepareCodegenCommand,
     /// Parse the codegen command response.
@@ -37,7 +38,7 @@ impl Executable for CodegenOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             CodegenOp::PrepareCodegenExists => execute_prepare_codegen_exists(inputs),
-            CodegenOp::ParseCodegenExists(mode) => execute_parse_codegen_exists(*mode, inputs),
+            CodegenOp::ParseCodegenExists => execute_parse_codegen_exists(inputs),
             CodegenOp::PrepareCodegenCommand => execute_prepare_codegen_command(inputs),
             CodegenOp::ParseCodegenResult => execute_parse_codegen_result(inputs),
             CodegenOp::PrepareStampWrite => execute_prepare_stamp_write(inputs),
@@ -48,7 +49,7 @@ impl Executable for CodegenOp {
 fn execute_prepare_codegen_exists(
     _inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let pattern = format!("{}/**/main.rs", CODEGEN_BIN_DIR);
+    let pattern = format!("{}/**/main.rs", codegen_bin_dir());
     let request = TransportRequest::File(FileRequest::glob(pattern));
 
     OutputMap::new()
@@ -58,12 +59,21 @@ fn execute_prepare_codegen_exists(
 }
 
 fn execute_parse_codegen_exists(
-    mode: ExecMode,
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     if let Some(result) = propagate_skipped(&inputs, "response", &["codegen_needed"]) {
         return result;
     }
+
+    let check_mode = inputs
+        .get("check_mode")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let mode = if check_mode {
+        ExecMode::Verify
+    } else {
+        ExecMode::Ensure
+    };
 
     let response = require_response(&inputs, "response")?;
     let output_exists = codegen_outputs_exist(response)?;
@@ -72,7 +82,7 @@ fn execute_parse_codegen_exists(
 
     if mode == ExecMode::Verify {
         match &manifest_result {
-            ManifestFreshness::Fresh => {}
+            ManifestFreshness::Fresh | ManifestFreshness::FreshWithDiagnostic(_) => {}
             ManifestFreshness::Stale(reason) => {
                 return Err(ExecError::new(format!(
                     "Generated code is stale: {} (run with --mode=ensure to fix)",
@@ -95,7 +105,7 @@ fn execute_parse_codegen_exists(
     }
 
     let codegen_needed = match manifest_result {
-        ManifestFreshness::Fresh => false,
+        ManifestFreshness::Fresh | ManifestFreshness::FreshWithDiagnostic(_) => false,
         ManifestFreshness::Stale(_) => true,
         ManifestFreshness::Missing => !output_exists,
         ManifestFreshness::Error(_) => !output_exists,
@@ -284,7 +294,7 @@ fn execute_prepare_stamp_write(
     }
 
     let content = "codegen ok\n";
-    let request = TransportRequest::File(FileRequest::write(CODEGEN_STAMP_PATH, content));
+    let request = TransportRequest::File(FileRequest::write(codegen_stamp_path(), content));
 
     OutputMap::new()
         .request("request", request)
@@ -293,11 +303,34 @@ fn execute_prepare_stamp_write(
 }
 
 fn expected_codegen_paths() -> Vec<String> {
+    let bin_dir = codegen_bin_dir();
     derive_tool_defs()
         .into_iter()
         .filter(|tool| tool.invocation.is_some())
-        .map(|tool| format!("{}/{}/main.rs", CODEGEN_BIN_DIR, tool.meta.tool_name))
+        .map(|tool| format!("{}/{}/main.rs", bin_dir, tool.meta.tool_name))
         .collect()
+}
+
+fn codegen_bin_dir() -> String {
+    workspace_layout_or_none()
+        .map(|layout| normalize_path(layout.codegen_bin_dir()))
+        .unwrap_or_else(|| "target/codegen/bin".to_string())
+}
+
+fn codegen_stamp_path() -> String {
+    workspace_layout_or_none()
+        .map(|layout| normalize_path(layout.codegen_stamp_path()))
+        .unwrap_or_else(|| "target/codegen/.codegen-stamp".to_string())
+}
+
+fn workspace_layout_or_none() -> Option<WorkspaceLayout> {
+    WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .ok()
+}
+
+fn normalize_path(path: std::path::PathBuf) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 #[cfg(test)]
@@ -308,8 +341,9 @@ mod tests {
     #[test]
     fn test_codegen_outputs_exist_from_glob_response() {
         let expected = expected_codegen_paths();
+        let bin_dir = codegen_bin_dir();
         let response = TransportResponse::File(FileResponse::glob_result(
-            format!("{}/**/main.rs", CODEGEN_BIN_DIR),
+            format!("{}/**/main.rs", bin_dir),
             expected,
         ));
         assert!(codegen_outputs_exist(&response).expect("glob response should parse"));
@@ -324,7 +358,8 @@ mod tests {
     #[test]
     fn test_expected_paths_non_empty() {
         let paths = expected_codegen_paths();
+        let bin_dir = codegen_bin_dir();
         assert!(!paths.is_empty());
-        assert!(paths.iter().all(|p| p.starts_with(CODEGEN_BIN_DIR)));
+        assert!(paths.iter().all(|p| p.starts_with(&bin_dir)));
     }
 }

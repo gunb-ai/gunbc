@@ -15,8 +15,10 @@ use gunbc_ir::resource::{
     load_manifest_default, save_manifest_default, ContentHash, ManagedResource, ManifestEntry,
     ResourceDef, ResourceError, ResourceIo, ResourceManifest, ResourceState,
 };
+use gunbc_ir::transport::ci::{detect_provider_strict, is_ci, CiProvider, WorkflowCommand};
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::ResourceId;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -33,6 +35,21 @@ const PREFLIGHT_SKIP_BINARIES: &[&str] = &[
     "gunbc-pragma",
     "gunbc-makegen",
 ];
+
+/// Fast-path freshness cache persisted between preflight runs.
+const LINT_FAST_PATH_CACHE: &str = "target/.lint-preflight-signal.json";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GitFreshnessSignal {
+    head_sha: String,
+    dirty: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LintFastPathState {
+    signal: GitFreshnessSignal,
+    manifest_key: String,
+}
 
 /// Ensure lint is fresh (run lint-upsert if stale/missing).
 pub fn ensure_lint_upsert() -> Result<(), String> {
@@ -94,12 +111,17 @@ fn upsert_lint_manifest_entry(
         .map_err(|e| format!("preflight: failed to compute lint key: {}", e))?;
     let file_list: Vec<String> = files
         .iter()
-        .map(|p| p.to_string_lossy().to_string())
+        .map(|p| p.to_string_lossy().into_owned())
         .collect();
     manifest.insert(
         resource.resource_id().clone(),
         ManifestEntry::new(key, file_list.len()).with_input_files(file_list),
     );
+    if let Some(entry) = manifest.get(resource.resource_id()) {
+        // Best-effort cache write for fast-path freshness. Failure here should not
+        // fail preflight; fallback checks remain available.
+        let _ = persist_lint_fast_path_state(io, entry);
+    }
     Ok(())
 }
 
@@ -114,7 +136,7 @@ fn should_skip_preflight() -> bool {
 fn current_binary_name() -> Option<String> {
     let from_exe = std::env::current_exe()
         .ok()
-        .and_then(|path| path.file_stem().map(|s| s.to_string_lossy().to_string()));
+        .and_then(|path| path.file_stem().map(|s| s.to_string_lossy().into_owned()));
     if from_exe.is_some() {
         return from_exe;
     }
@@ -122,7 +144,7 @@ fn current_binary_name() -> Option<String> {
     std::env::args().next().and_then(|arg0| {
         Path::new(&arg0)
             .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
+            .map(|s| s.to_string_lossy().into_owned())
     })
 }
 
@@ -164,6 +186,23 @@ impl ManagedResource for LintResource {
             None => return ResourceState::Missing,
         };
 
+        if let Ok(signal) = git_freshness_signal(io) {
+            if signal.dirty {
+                return ResourceState::stale(
+                    "git working tree dirty",
+                    entry.key.clone(),
+                    ContentHash::empty(),
+                );
+            }
+
+            if let Ok(Some(cached)) = load_lint_fast_path_state(io) {
+                let manifest_key = String::from(&entry.key);
+                if cached.signal == signal && cached.manifest_key == manifest_key {
+                    return ResourceState::Fresh;
+                }
+            }
+        }
+
         let files = match list_tracked_files(io) {
             Ok(f) if !f.is_empty() => f,
             Ok(_) => {
@@ -177,7 +216,7 @@ impl ManagedResource for LintResource {
         if let Some(prev_files) = &entry.input_files {
             let curr_files: Vec<String> = files
                 .iter()
-                .map(|p| p.to_string_lossy().to_string())
+                .map(|p| p.to_string_lossy().into_owned())
                 .collect();
             if &curr_files != prev_files {
                 return ResourceState::stale(
@@ -239,7 +278,7 @@ impl ManagedResource for LintResource {
         let key = compute_lint_key(io, &files)?;
         let file_list: Vec<String> = files
             .iter()
-            .map(|p| p.to_string_lossy().to_string())
+            .map(|p| p.to_string_lossy().into_owned())
             .collect();
         Ok(ManifestEntry::new(key, file_list.len()).with_input_files(file_list))
     }
@@ -247,7 +286,7 @@ impl ManagedResource for LintResource {
 
 fn list_tracked_files(io: &dyn ResourceIo) -> Result<Vec<PathBuf>, ResourceError> {
     let root = repo_root(io)?;
-    let root_str = root.to_string_lossy().to_string();
+    let root_str = root.to_string_lossy().into_owned();
 
     let args = vec![
         "-C".to_string(),
@@ -304,6 +343,113 @@ fn repo_root(io: &dyn ResourceIo) -> Result<PathBuf, ResourceError> {
     Ok(PathBuf::from(root))
 }
 
+fn lint_fast_path_cache_path(io: &dyn ResourceIo) -> Result<PathBuf, ResourceError> {
+    Ok(repo_root(io)?.join(LINT_FAST_PATH_CACHE))
+}
+
+fn git_freshness_signal(io: &dyn ResourceIo) -> Result<GitFreshnessSignal, ResourceError> {
+    let root = repo_root(io)?;
+    let root_str = root.to_string_lossy().into_owned();
+
+    let head = io.command_output(
+        "git",
+        &[
+            "-C".to_string(),
+            root_str.clone(),
+            "rev-parse".to_string(),
+            "HEAD".to_string(),
+        ],
+    )?;
+    let head_sha = String::from_utf8(head)
+        .map_err(|e| ResourceError::Io(std::io::Error::other(e.to_string())))?
+        .trim()
+        .to_string();
+
+    let dirty = io.command_output(
+        "git",
+        &[
+            "-C".to_string(),
+            root_str,
+            "status".to_string(),
+            "--porcelain".to_string(),
+            "--untracked-files=no".to_string(),
+        ],
+    )?;
+
+    Ok(GitFreshnessSignal {
+        head_sha,
+        dirty: !dirty.is_empty(),
+    })
+}
+
+fn load_lint_fast_path_state(
+    io: &dyn ResourceIo,
+) -> Result<Option<LintFastPathState>, ResourceError> {
+    let path = lint_fast_path_cache_path(io)?;
+    if !io.file_exists(&path)? {
+        return Ok(None);
+    }
+
+    let bytes = io.read_file(&path)?;
+    let state = parse_lint_fast_path_state(&bytes)?;
+    Ok(Some(state))
+}
+
+fn persist_lint_fast_path_state(
+    io: &dyn ResourceIo,
+    entry: &ManifestEntry,
+) -> Result<(), ResourceError> {
+    let signal = git_freshness_signal(io)?;
+    if signal.dirty {
+        return Ok(());
+    }
+
+    let path = lint_fast_path_cache_path(io)?;
+    let state = LintFastPathState {
+        signal,
+        manifest_key: String::from(&entry.key),
+    };
+    let payload = lint_fast_path_state_to_bytes(&state)?;
+    io.write_file(&path, &payload)
+}
+
+fn parse_lint_fast_path_state(bytes: &[u8]) -> Result<LintFastPathState, ResourceError> {
+    let value: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|e| ResourceError::Io(std::io::Error::other(e.to_string())))?;
+    let signal = value
+        .get("signal")
+        .ok_or_else(|| ResourceError::Io(std::io::Error::other("missing signal field")))?;
+    let head_sha = signal
+        .get("head_sha")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ResourceError::Io(std::io::Error::other("missing signal.head_sha")))?
+        .to_string();
+    let dirty = signal
+        .get("dirty")
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| ResourceError::Io(std::io::Error::other("missing signal.dirty")))?;
+    let manifest_key = value
+        .get("manifest_key")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ResourceError::Io(std::io::Error::other("missing manifest_key")))?
+        .to_string();
+    Ok(LintFastPathState {
+        signal: GitFreshnessSignal { head_sha, dirty },
+        manifest_key,
+    })
+}
+
+fn lint_fast_path_state_to_bytes(state: &LintFastPathState) -> Result<Vec<u8>, ResourceError> {
+    serde_json::to_vec_pretty(&serde_json::json!({
+        "signal": {
+            "head_sha": state.signal.head_sha,
+            "dirty": state.signal.dirty,
+        },
+        "manifest_key": state.manifest_key,
+    }))
+    .map_err(|e| ResourceError::Io(std::io::Error::other(e.to_string())))
+}
+
 fn compute_lint_key(io: &dyn ResourceIo, files: &[PathBuf]) -> Result<ContentHash, ResourceError> {
     let mut hash_builder = gunbc_ir::resource::HashBuilder::new();
     hash_builder = hash_builder.update(b"lint-upsert\0");
@@ -341,7 +487,84 @@ fn compute_lint_key(io: &dyn ResourceIo, files: &[PathBuf]) -> Result<ContentHas
     Ok(hash_builder.finalize())
 }
 
+struct PreflightCi {
+    provider: Box<dyn CiProvider>,
+    group_stack: Vec<String>,
+}
+
+impl PreflightCi {
+    fn detect() -> Option<Self> {
+        let env: HashMap<String, String> = std::env::vars().collect();
+        if !is_ci(&env) {
+            return None;
+        }
+        let provider = detect_provider_strict(&env).ok()?;
+        if provider.id() == "plain" {
+            return None;
+        }
+        Some(Self {
+            provider,
+            group_stack: Vec::new(),
+        })
+    }
+
+    fn start_group(&mut self, name: impl Into<String>, collapsed: bool) {
+        let name = name.into();
+        let cmd = if collapsed {
+            WorkflowCommand::group_start_collapsed(name.clone())
+        } else {
+            WorkflowCommand::group_start(name.clone())
+        };
+        println!("{}", self.provider.format(&cmd));
+        self.group_stack.push(name);
+    }
+
+    fn end_group(&mut self) {
+        if let Some(name) = self.group_stack.pop() {
+            println!(
+                "{}",
+                self.provider.format(&WorkflowCommand::group_end(name))
+            );
+        }
+    }
+
+    fn error(&self, title: &str, message: &str) {
+        let cmd = WorkflowCommand::Annotation {
+            level: gunbc_ir::transport::ci::AnnotationLevel::Error,
+            message: message.to_string(),
+            title: Some(title.to_string()),
+            location: None,
+        };
+        println!("{}", self.provider.format(&cmd));
+    }
+
+    fn close_all_groups(&mut self) {
+        while !self.group_stack.is_empty() {
+            self.end_group();
+        }
+    }
+}
+
+impl Drop for PreflightCi {
+    fn drop(&mut self) {
+        self.close_all_groups();
+    }
+}
+
+fn structured_preflight_error(step: &str, error: &ResourceError) -> String {
+    format!(
+        "phase=preflight step={} error={}",
+        step,
+        error.to_string().replace('\n', " | ")
+    )
+}
+
 fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
+    let mut ci = PreflightCi::detect();
+    if let Some(ci) = ci.as_mut() {
+        ci.start_group("preflight/lint-upsert", true);
+    }
+
     let steps: &[(&str, CargoCommand)] = &[
         (
             "codegen-dag",
@@ -362,13 +585,27 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
 
     let total = steps.len() + 2; // +1 for clippy, +1 for test gate
     for (i, (label, cmd)) in steps.iter().enumerate() {
+        if let Some(ci) = ci.as_mut() {
+            ci.start_group(format!("preflight/{}", label), true);
+        }
         eprint!("  [{}/{}] {}...", i + 1, total, label);
         let _ = std::io::Write::flush(&mut std::io::stderr());
         let start = std::time::Instant::now();
         let result = run_cargo_command(resource_id, cmd);
         let elapsed = start.elapsed();
         eprintln!(" {:.1}s", elapsed.as_secs_f64());
-        result?;
+        if let Some(ci) = ci.as_mut() {
+            ci.end_group();
+        }
+        if let Err(error) = result {
+            if let Some(ci) = ci.as_ref() {
+                ci.error(
+                    "Preflight step failed",
+                    &structured_preflight_error(label, &error),
+                );
+            }
+            return Err(error);
+        }
     }
 
     // clippy check: cargo clippy -- -D warnings
@@ -376,6 +613,9 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     let clippy_step = total - 1;
     eprint!("  [{}/{}] clippy...", clippy_step, total);
     let _ = std::io::Write::flush(&mut std::io::stderr());
+    if let Some(ci) = ci.as_mut() {
+        ci.start_group("preflight/clippy", true);
+    }
     let clippy_outcome: Result<(), ResourceError> = (|| {
         let clippy_start = std::time::Instant::now();
         let clippy_check = CargoCommand::new(Subcommand::Clippy).warnings(Warnings::Deny);
@@ -414,7 +654,18 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
         }
         Ok(())
     })();
-    clippy_outcome?;
+    if let Some(ci) = ci.as_mut() {
+        ci.end_group();
+    }
+    if let Err(error) = clippy_outcome {
+        if let Some(ci) = ci.as_ref() {
+            ci.error(
+                "Preflight step failed",
+                &structured_preflight_error("clippy", &error),
+            );
+        }
+        return Err(error);
+    }
 
     // Test gate: compile all workspace lib test targets without executing
     // them. This catches contract/compile mismatches (including stale
@@ -424,7 +675,23 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     let _ = std::io::Write::flush(&mut std::io::stderr());
     let test_start = std::time::Instant::now();
     let test_cmd = preflight_test_gate_command();
-    run_cargo_command_with_env(resource_id, &test_cmd, &[("GUNBC_TEST_MAX_COST", "S")])?;
+    if let Some(ci) = ci.as_mut() {
+        ci.start_group("preflight/test-gate", true);
+    }
+    let test_result =
+        run_cargo_command_with_env(resource_id, &test_cmd, &[("GUNBC_TEST_MAX_COST", "S")]);
+    if let Some(ci) = ci.as_mut() {
+        ci.end_group();
+    }
+    if let Err(error) = test_result {
+        if let Some(ci) = ci.as_ref() {
+            ci.error(
+                "Preflight step failed",
+                &structured_preflight_error("test-gate", &error),
+            );
+        }
+        return Err(error);
+    }
     let elapsed = test_start.elapsed();
     eprintln!(" {:.1}s", elapsed.as_secs_f64());
 
@@ -646,6 +913,25 @@ mod tests {
         ]
     }
 
+    fn git_head_args(repo_root: &str) -> Vec<String> {
+        vec![
+            "-C".to_string(),
+            repo_root.to_string(),
+            "rev-parse".to_string(),
+            "HEAD".to_string(),
+        ]
+    }
+
+    fn git_dirty_args(repo_root: &str) -> Vec<String> {
+        vec![
+            "-C".to_string(),
+            repo_root.to_string(),
+            "status".to_string(),
+            "--porcelain".to_string(),
+            "--untracked-files=no".to_string(),
+        ]
+    }
+
     fn configured_fake_io() -> FakeIo {
         let mut io = FakeIo::default();
         io.insert_command_output(
@@ -724,7 +1010,7 @@ mod tests {
         let key = compute_lint_key(&io, &files).expect("compute key");
         let file_list: Vec<String> = files
             .iter()
-            .map(|path| path.to_string_lossy().to_string())
+            .map(|path| path.to_string_lossy().into_owned())
             .collect();
 
         let mut manifest = ResourceManifest::new();
@@ -796,6 +1082,78 @@ mod tests {
         assert_eq!(
             cmd.env(),
             vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())]
+        );
+    }
+
+    #[test]
+    fn check_state_uses_fast_path_when_signal_and_manifest_key_match() {
+        let mut io = FakeIo::default();
+        let resource = LintResource::new();
+        let key = ContentHash::from_bytes(b"fast-path-key");
+        let manifest_key = String::from(&key);
+
+        io.insert_command_output(
+            "git",
+            &string_args(&["rev-parse", "--show-toplevel"]),
+            b"/repo\n",
+        );
+        io.insert_command_output("git", &git_head_args("/repo"), b"deadbeef\n");
+        io.insert_command_output("git", &git_dirty_args("/repo"), b"");
+
+        let cache = LintFastPathState {
+            signal: GitFreshnessSignal {
+                head_sha: "deadbeef".to_string(),
+                dirty: false,
+            },
+            manifest_key,
+        };
+        let cache_bytes = lint_fast_path_state_to_bytes(&cache).expect("serialize cache state");
+        io.insert_file(
+            "/repo/target/.lint-preflight-signal.json",
+            &cache_bytes,
+            UNIX_EPOCH + Duration::from_millis(10_000),
+        );
+
+        let mut manifest = ResourceManifest::new();
+        manifest.insert(
+            resource.resource_id().clone(),
+            ManifestEntry::new(key, 0).with_timestamp(10_000),
+        );
+
+        let state = resource.check_state(&manifest, &io);
+        assert!(
+            state.is_fresh(),
+            "fast-path signal should mark state fresh, got: {}",
+            state
+        );
+    }
+
+    #[test]
+    fn check_state_marks_stale_when_git_tree_is_dirty() {
+        let mut io = FakeIo::default();
+        let resource = LintResource::new();
+        let key = ContentHash::from_bytes(b"dirty-key");
+
+        io.insert_command_output(
+            "git",
+            &string_args(&["rev-parse", "--show-toplevel"]),
+            b"/repo\n",
+        );
+        io.insert_command_output("git", &git_head_args("/repo"), b"deadbeef\n");
+        io.insert_command_output("git", &git_dirty_args("/repo"), b" M src/main.rs\n");
+
+        let mut manifest = ResourceManifest::new();
+        manifest.insert(
+            resource.resource_id().clone(),
+            ManifestEntry::new(key, 0).with_timestamp(10_000),
+        );
+
+        let state = resource.check_state(&manifest, &io);
+        assert!(!state.is_fresh(), "dirty git tree should force stale state");
+        assert!(
+            state.to_string().contains("git working tree dirty"),
+            "expected dirty-tree stale reason, got: {}",
+            state
         );
     }
 }

@@ -69,6 +69,12 @@ pub struct ToolRegistration {
     /// Whether this tool has a runnable binary (generates a CargoInvocation).
     /// When false, the tool is library-only or a sub-DAG component.
     pub has_invocation: bool,
+    /// DSL module name (file stem in `dsl/tools/` or `dsl/pipelines/`).
+    ///
+    /// When set, this tool is derived from the named `.dag` file.
+    /// Multiple tools can share a DSL module (e.g., "gist" → gist, gist-diff, gist-recent).
+    /// Used by codegen and makegen to validate DSL coverage without hardcoded lists.
+    pub dsl_module: Option<&'static str>,
 }
 
 impl ToolRegistration {
@@ -92,4 +98,19 @@ inventory::collect!(ToolRegistration);
 /// Iterate over all registered tool targets.
 pub fn iter_tool_targets() -> impl Iterator<Item = &'static ToolRegistration> {
     inventory::iter::<ToolRegistration>.into_iter()
+}
+
+/// Collect DSL module → tool target name mappings from the registry.
+///
+/// Returns a map from DSL module name to the set of tool target names
+/// derived from that module. Only includes tools with `dsl_module` set.
+pub fn dsl_module_to_targets() -> std::collections::BTreeMap<&'static str, Vec<&'static str>> {
+    let mut map: std::collections::BTreeMap<&'static str, Vec<&'static str>> =
+        std::collections::BTreeMap::new();
+    for reg in iter_tool_targets() {
+        if let Some(module) = reg.dsl_module {
+            map.entry(module).or_default().push(reg.tool_name);
+        }
+    }
+    map
 }

@@ -18,13 +18,15 @@ fn mock_net_handle() -> Value {
 /// Mock spec for GCP GitHub Actions WIF + Secret Manager.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "gcp-wif-secret-github",
-    builder = "crate::graph::build_gcp_secret_manager_credential_graph_github()"
+    builder = "crate::graph::build_gcp_secret_manager_credential_graph_github()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gcp-wif-secret-github",
     output = "lib/gcp-ops/src/generated_tests.rs",
     module = "gcp_wif_secret_generated_tests",
     builder = "crate::graph::build_gcp_secret_manager_credential_graph_github()",
+    returns_result,
     no_boundary_tests
 )]
 pub fn gcp_github_mock_spec() -> MockSpec {
@@ -300,13 +302,15 @@ pub fn gcp_local_mock_spec() -> MockSpec {
 /// Mock spec for GCP GitHub Actions WIF + Secret Manager upsert.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "gcp-wif-secret-upsert-github",
-    builder = "crate::graph::build_gcp_secret_manager_upsert_graph_github()"
+    builder = "crate::graph::build_gcp_secret_manager_upsert_graph_github()",
+    returns_result
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gcp-wif-secret-upsert-github",
     output = "lib/gcp-ops/src/generated_tests_upsert.rs",
     module = "gcp_wif_secret_upsert_generated_tests",
     builder = "crate::graph::build_gcp_secret_manager_upsert_graph_github()",
+    returns_result,
     no_boundary_tests
 )]
 pub fn gcp_github_upsert_mock_spec() -> MockSpec {

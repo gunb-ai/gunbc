@@ -1,54 +1,36 @@
 //! Bootstrap SubDag builder.
 //!
-//! Wraps the bootstrap tool as a SubDag node using WorkspaceOp.
+//! Wraps the bootstrap tool as a SubDag node using `DynOp`.
 
 use crate::bootstrap::BootstrapOp;
 use crate::workspace::WorkspaceOp;
+use gunbc_exec::DynOp;
 use gunbc_ir::build::*;
 use gunbc_ir::{BuilderError, DagBuilder, Node};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::PrepareFileWriteOp;
 
 /// Build the bootstrap SubDag node.
-///
-/// This wraps the bootstrap workflow as a `Node<WorkspaceOp>` that can be
-/// composed into the Workspace DAG.
-///
-/// # I/O Interface
-///
-/// Inputs: None (scans workspace automatically)
-///
-/// Outputs:
-/// - `makefile_response`: TransportResponse
-/// - `makefile_written_path`: String
-/// - `makefile_content`: String
-/// - `gitignore_response`: TransportResponse
-/// - `gitignore_written_path`: String
-/// - `gitignore_content`: String
-/// - `crate_count`: Int
 pub fn build_bootstrap_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
     let mut builder: DagBuilder<WorkspaceOp> = DagBuilder::new();
 
-    // Node: PrepareScanWorkspace (PURE)
     let prepare_scan = builder.add_root_node(Node::opaque(
         "prepare_scan_workspace",
         vec![],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        WorkspaceOp::Bootstrap(BootstrapOp::PrepareScanWorkspace),
+        DynOp::new(BootstrapOp::PrepareScanWorkspace),
     ))?;
 
-    // Node: Execute scan (BOUNDARY)
     let execute_scan = builder.add_node_after(
         Node::opaque(
             "execute_scan_workspace",
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
-            WorkspaceOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_scan,
     )?;
 
-    // Node: ParseScanResult (PURE)
     let scan_workspace = builder.add_node_after(
         Node::opaque(
             "parse_scan_result",
@@ -57,19 +39,17 @@ pub fn build_bootstrap_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
                 port("crate_count", "Int"),
                 list("crate_names", "StringList"),
             ],
-            WorkspaceOp::Bootstrap(BootstrapOp::ParseScanResult),
+            DynOp::new(BootstrapOp::ParseScanResult),
         ),
         &execute_scan,
     )?;
-
-    // === Makefile write chain ===
 
     let generate_makefile = builder.add_node_after(
         Node::opaque(
             "generate_makefile",
             vec![list("crate_names", "StringList")],
             vec![port("makefile_content", "String")],
-            WorkspaceOp::Bootstrap(BootstrapOp::GenerateMakefile),
+            DynOp::new(BootstrapOp::GenerateMakefile),
         ),
         &scan_workspace,
     )?;
@@ -79,7 +59,7 @@ pub fn build_bootstrap_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
             "prepare_makefile_write",
             vec![port("path", "String"), port("content", "String")],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
+            DynOp::new(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
                 PrepareFileWriteOp,
             )),
         ),
@@ -95,19 +75,17 @@ pub fn build_bootstrap_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
                 port("makefile_written_path", "String"),
                 port("makefile_content", "String"),
             ],
-            WorkspaceOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_makefile,
     )?;
-
-    // === Gitignore write chain ===
 
     let generate_gitignore = builder.add_node_after(
         Node::opaque(
             "generate_gitignore",
             vec![list("crate_names", "StringList")],
             vec![port("gitignore_content", "String")],
-            WorkspaceOp::Bootstrap(BootstrapOp::GenerateGitignore),
+            DynOp::new(BootstrapOp::GenerateGitignore),
         ),
         &scan_workspace,
     )?;
@@ -117,14 +95,14 @@ pub fn build_bootstrap_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
             "prepare_gitignore_write",
             vec![port("path", "String"), port("content", "String")],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
+            DynOp::new(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
                 PrepareFileWriteOp,
             )),
         ),
         &generate_gitignore,
     )?;
 
-    let _execute_gitignore = builder.add_node_after(
+    let execute_gitignore = builder.add_node_after(
         Node::opaque(
             "execute_gitignore_transport",
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
@@ -133,12 +111,11 @@ pub fn build_bootstrap_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
                 port("gitignore_written_path", "String"),
                 port("gitignore_content", "String"),
             ],
-            WorkspaceOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_gitignore,
     )?;
 
-    // Wire up the ScanWorkspace chain
     builder.add_edge(prepare_scan.out("request"), execute_scan.in_port("request"))?;
     builder.add_edge(prepare_scan.out("skip"), execute_scan.in_port("skip"))?;
     builder.add_edge(
@@ -146,7 +123,6 @@ pub fn build_bootstrap_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
         scan_workspace.in_port("response"),
     )?;
 
-    // Wire up the Makefile chain
     builder.add_edge(
         scan_workspace.out("crate_names"),
         generate_makefile.in_port("crate_names"),
@@ -164,7 +140,6 @@ pub fn build_bootstrap_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
         execute_makefile.in_port("skip"),
     )?;
 
-    // Wire up the Gitignore chain
     builder.add_edge(
         scan_workspace.out("crate_names"),
         generate_gitignore.in_port("crate_names"),
@@ -175,15 +150,14 @@ pub fn build_bootstrap_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
     )?;
     builder.add_edge(
         prepare_gitignore.out("request"),
-        _execute_gitignore.in_port("request"),
+        execute_gitignore.in_port("request"),
     )?;
     builder.add_edge(
         prepare_gitignore.out("skip"),
-        _execute_gitignore.in_port("skip"),
+        execute_gitignore.in_port("skip"),
     )?;
 
     let inner_dag = builder.build();
-
     Ok(Node::subdag("bootstrap", inner_dag))
 }
 

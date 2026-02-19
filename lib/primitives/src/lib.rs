@@ -31,6 +31,7 @@
 //! 4. All primitives are pure - no direct I/O
 
 #![deny(dead_code)]
+pub mod browser;
 pub mod collection;
 pub mod control;
 pub mod data;
@@ -39,9 +40,12 @@ pub mod filename;
 pub mod io;
 pub mod network;
 
+pub use browser::browser_open_request;
 pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, SetOp, SortOp};
 pub use control::{BranchOp, LoopOp};
-pub use data::{ConcatOp, ExtractOp, FormatMapOp, FormatOp, ParseOp, SplitOp, StableHashOp};
+pub use data::{
+    ConcatOp, DeduplicateOp, ExtractOp, FormatMapOp, FormatOp, ParseOp, SplitOp, StableHashOp,
+};
 pub use env::{ClockEnv, FsEnv, NetEnv};
 pub use io::{
     EmbeddedFileExistsOp, EmbeddedShellOp, HttpRequestOp, PrepareDirectoryListOp,
@@ -65,6 +69,7 @@ pub enum PrimitiveOp {
     Concat(ConcatOp),
     Split(SplitOp),
     StableHash(StableHashOp),
+    Deduplicate(DeduplicateOp),
 
     // Collection primitives
     Map(MapOp),
@@ -103,6 +108,7 @@ impl Executable for PrimitiveOp {
             PrimitiveOp::Concat(op) => op.execute(inputs),
             PrimitiveOp::Split(op) => op.execute(inputs),
             PrimitiveOp::StableHash(op) => op.execute(inputs),
+            PrimitiveOp::Deduplicate(op) => op.execute(inputs),
 
             // Collection
             PrimitiveOp::Map(op) => op.execute(inputs),

@@ -134,7 +134,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
             Expr::Value(v) => self.render_value(v),
             Expr::Var(name) => name.clone(),
             Expr::Str(s) => format!("\"{}\"", escape_rust_str(s)),
-            Expr::Call { func, args } => {
+            Expr::Call { func, args, .. } => {
                 let func_str = self.render_expr(func);
                 let args_str: Vec<String> = args.iter().map(|a| self.render_expr(a)).collect();
                 format!("{}({})", func_str, args_str.join(", "))
@@ -544,7 +544,9 @@ impl<M: TextMedium> RustCodeRenderer<M> {
                 _ => None,
             },
             "gunbc_ir::transport::ShellRequest" => match field {
-                "cwd" | "stdin" => Some(format!("{}: {}", field, self.render_option_value(value))),
+                "cwd" | "stdin" | "timeout_ms" => {
+                    Some(format!("{}: {}", field, self.render_option_value(value)))
+                }
                 _ => None,
             },
             "gunbc_ir::transport::TcpRequest" => match field {

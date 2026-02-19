@@ -15,7 +15,8 @@
 //! **Owned by**: Task 9 (dsl-codegen-tasks.md)
 
 use gunbc_ir::code_ir::lower::LowerError;
-use gunbc_ir::code_ir::{Expr, FnDef, Import, Item, SourceFile, Stmt};
+use crate::transport_analysis::{body_has_transport_calls, expr_is_transport_call};
+use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Import, Item, SourceFile, Stmt};
 
 /// Configuration for Rust lowering.
 #[derive(Debug, Clone)]
@@ -172,34 +173,49 @@ fn lower_stmt(stmt: &Stmt, in_fallible_fn: bool, config: &RustConfig) -> Stmt {
 fn lower_expr(expr: &Expr, in_fallible_fn: bool, config: &RustConfig) -> Expr {
     match expr {
         // B2.5: Rewrite abstract transport calls to concrete Rust runtime calls.
-        Expr::Call { func, args } => {
+        Expr::Call {
+            func,
+            args,
+            obligation,
+        } => {
             let lowered_func = lower_expr(func, in_fallible_fn, config);
             let lowered_args: Vec<Expr> = args
                 .iter()
                 .map(|a| lower_expr(a, in_fallible_fn, config))
                 .collect();
 
-            let call = if let Expr::Var(name) = &lowered_func {
-                if let Some(rust_fn) = rewrite_transport_call(name, config) {
-                    Expr::Call {
-                        func: Box::new(Expr::Var(rust_fn)),
-                        args: lower_transport_args(&lowered_args, name, config),
+            let call = if obligation.is_some_and(CallObligation::is_runtime_call) {
+                if let Expr::Var(name) = &lowered_func {
+                    if let Some(rust_fn) = rewrite_transport_call(name, config) {
+                        Expr::Call {
+                            func: Box::new(Expr::Var(rust_fn)),
+                            args: lower_transport_args(&lowered_args, name, config),
+                            obligation: *obligation,
+                        }
+                    } else {
+                        Expr::Call {
+                            func: Box::new(lowered_func),
+                            args: lowered_args,
+                            obligation: *obligation,
+                        }
                     }
                 } else {
                     Expr::Call {
                         func: Box::new(lowered_func),
                         args: lowered_args,
+                        obligation: *obligation,
                     }
                 }
             } else {
                 Expr::Call {
                     func: Box::new(lowered_func),
                     args: lowered_args,
+                    obligation: *obligation,
                 }
             };
 
             // B2.1: Add ? operator for transport calls in fallible functions.
-            if in_fallible_fn && is_transport_call(&call) {
+            if in_fallible_fn && expr_is_transport_call(&call) {
                 // Wrap with .expect() → in real codegen this would be `?`.
                 // Since code_ir doesn't have a Try/QuestionMark expression,
                 // we use a MacroCall or a method call pattern.
@@ -327,68 +343,6 @@ fn lower_transport_args(args: &[Expr], _fn_name: &str, _config: &RustConfig) -> 
     args.to_vec()
 }
 
-/// Check if an expression is a transport-related call.
-fn is_transport_call(expr: &Expr) -> bool {
-    if let Expr::Call { func, .. } = expr {
-        if let Expr::Var(name) = func.as_ref() {
-            return name.starts_with("execute_transport")
-                || name.starts_with("FileRequest::")
-                || name.starts_with("ShellRequest::")
-                || name.starts_with("RestRequest::")
-                || name == "acquire_resource_handle";
-        }
-    }
-    false
-}
-
-/// Check if any statement in a function body contains transport calls.
-fn body_has_transport_calls(stmts: &[Stmt]) -> bool {
-    stmts.iter().any(stmt_has_transport)
-}
-
-fn stmt_has_transport(stmt: &Stmt) -> bool {
-    match stmt {
-        Stmt::Let { expr, .. } => expr_has_transport(expr),
-        Stmt::Expr(expr) | Stmt::Return(expr) | Stmt::TailExpr(expr) => expr_has_transport(expr),
-        Stmt::For { body, .. } => body_has_transport_calls(body),
-        _ => false,
-    }
-}
-
-fn expr_has_transport(expr: &Expr) -> bool {
-    match expr {
-        Expr::Call { func, args } => {
-            if let Expr::Var(name) = func.as_ref() {
-                if name.starts_with("prepare_") || name.starts_with("execute_") {
-                    return true;
-                }
-            }
-            args.iter().any(expr_has_transport)
-        }
-        Expr::MethodCall { receiver, args, .. } => {
-            expr_has_transport(receiver) || args.iter().any(expr_has_transport)
-        }
-        Expr::BinOp { left, right, .. } => expr_has_transport(left) || expr_has_transport(right),
-        Expr::UnaryOp { expr, .. } => expr_has_transport(expr),
-        Expr::If {
-            cond,
-            then_body,
-            else_body,
-        } => {
-            expr_has_transport(cond)
-                || body_has_transport_calls(then_body)
-                || else_body
-                    .as_ref()
-                    .is_some_and(|b| body_has_transport_calls(b))
-        }
-        Expr::Block(stmts) => body_has_transport_calls(stmts),
-        Expr::Field(inner, _) | Expr::Deref(inner) | Expr::Ref(inner) | Expr::RefMut(inner) => {
-            expr_has_transport(inner)
-        }
-        _ => false,
-    }
-}
-
 // ===========================================================================
 // B2.3: Import analysis
 // ===========================================================================
@@ -446,7 +400,7 @@ fn body_uses_json(stmts: &[Stmt]) -> bool {
 fn expr_uses_json(expr: &Expr) -> bool {
     match expr {
         Expr::Value(gunbc_ir::ValueExpr::Json(_)) => true,
-        Expr::Call { func, args } => expr_uses_json(func) || args.iter().any(expr_uses_json),
+        Expr::Call { func, args, .. } => expr_uses_json(func) || args.iter().any(expr_uses_json),
         Expr::MethodCall { receiver, args, .. } => {
             expr_uses_json(receiver) || args.iter().any(expr_uses_json)
         }
@@ -529,11 +483,19 @@ mod tests {
             Stmt::comment("step 1: transport"),
             Stmt::let_bind(
                 "request",
-                Expr::call("prepare_file_read", vec![Expr::var("path")]),
+                Expr::call_with_obligation(
+                    "prepare_file_read",
+                    vec![Expr::var("path")],
+                    CallObligation::ServiceTransportPrepare,
+                ),
             ),
             Stmt::let_bind(
                 "response",
-                Expr::call("execute_file_read", vec![Expr::var("request")]),
+                Expr::call_with_obligation(
+                    "execute_file_read",
+                    vec![Expr::var("request")],
+                    CallObligation::ServiceTransportExecute,
+                ),
             ),
         ]);
 
@@ -670,7 +632,11 @@ mod tests {
     fn imports_generated_for_transport_calls() {
         let source = make_abstract_main(vec![Stmt::let_bind(
             "resp",
-            Expr::call("execute_file_read", vec![Expr::var("req")]),
+            Expr::call_with_obligation(
+                "execute_file_read",
+                vec![Expr::var("req")],
+                CallObligation::ServiceTransportExecute,
+            ),
         )]);
 
         let config = RustConfig::default();
@@ -756,11 +722,19 @@ mod tests {
         let source = make_abstract_main(vec![
             Stmt::let_bind(
                 "req",
-                Expr::call("prepare_file_read", vec![Expr::var("path")]),
+                Expr::call_with_obligation(
+                    "prepare_file_read",
+                    vec![Expr::var("path")],
+                    CallObligation::ServiceTransportPrepare,
+                ),
             ),
             Stmt::let_bind(
                 "resp",
-                Expr::call("execute_file_read", vec![Expr::var("req")]),
+                Expr::call_with_obligation(
+                    "execute_file_read",
+                    vec![Expr::var("req")],
+                    CallObligation::ServiceTransportExecute,
+                ),
             ),
         ]);
 
@@ -784,10 +758,52 @@ mod tests {
     }
 
     #[test]
-    fn transport_calls_preserved_in_standalone_mode() {
+    fn transport_named_call_without_obligation_is_not_treated_as_runtime() {
         let source = make_abstract_main(vec![Stmt::let_bind(
             "req",
             Expr::call("prepare_file_read", vec![Expr::var("path")]),
+        )]);
+
+        let config = RustConfig::default();
+        let lowered = lower_to_rust(&source, &config).unwrap();
+
+        let use_items: Vec<&Import> = lowered
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Use(import) => Some(import),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            use_items.is_empty(),
+            "call names alone should not trigger runtime imports"
+        );
+
+        let main_fn = lowered
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Fn(f) if f.name == "main" => Some(f),
+                _ => None,
+            })
+            .expect("should have fn main");
+        assert_eq!(main_fn.return_type, None);
+
+        let body_debug = format!("{:?}", main_fn.body);
+        assert!(body_debug.contains("prepare_file_read"));
+        assert!(!body_debug.contains("FileRequest::read"));
+    }
+
+    #[test]
+    fn transport_calls_preserved_in_standalone_mode() {
+        let source = make_abstract_main(vec![Stmt::let_bind(
+            "req",
+            Expr::call_with_obligation(
+                "prepare_file_read",
+                vec![Expr::var("path")],
+                CallObligation::ServiceTransportPrepare,
+            ),
         )]);
 
         let config = RustConfig {
@@ -836,12 +852,20 @@ mod tests {
                     Stmt::comment("step 2: prepare_read"),
                     Stmt::let_bind(
                         "read_request",
-                        Expr::call("prepare_file_read", vec![Expr::var("path")]),
+                        Expr::call_with_obligation(
+                            "prepare_file_read",
+                            vec![Expr::var("path")],
+                            CallObligation::ServiceTransportPrepare,
+                        ),
                     ),
                     Stmt::comment("step 3: execute_read"),
                     Stmt::let_bind(
                         "read_response",
-                        Expr::call("execute_file_read", vec![Expr::var("read_request")]),
+                        Expr::call_with_obligation(
+                            "execute_file_read",
+                            vec![Expr::var("read_request")],
+                            CallObligation::ServiceTransportExecute,
+                        ),
                     ),
                     Stmt::Blank,
                     Stmt::comment("step 4: compare"),
@@ -860,14 +884,16 @@ mod tests {
                         then_body: vec![
                             Stmt::let_bind(
                                 "write_req",
-                                Expr::call(
+                                Expr::call_with_obligation(
                                     "prepare_file_write",
                                     vec![Expr::var("path"), Expr::var("content")],
+                                    CallObligation::ServiceTransportPrepare,
                                 ),
                             ),
-                            Stmt::Expr(Expr::call(
+                            Stmt::Expr(Expr::call_with_obligation(
                                 "execute_file_write",
                                 vec![Expr::var("write_req")],
+                                CallObligation::ServiceTransportExecute,
                             )),
                         ],
                         else_body: None,

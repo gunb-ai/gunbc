@@ -8,8 +8,8 @@ pub mod ops;
 pub mod graph_mock;
 
 pub use graph::{
-    build_ci_graph, build_ci_graph_with_mode, ci_integrations, ci_signature, ci_workflow_config,
-    ci_workflow_permissions, CIGraphOp,
+    build_ci_graph, ci_integrations, ci_signature, ci_workflow_config, ci_workflow_permissions,
+    CIGraphOp,
 };
 pub use gunbc_ir::transport::github_actions::WorkflowConfig;
 pub use gunbc_primitives::EmbeddedFileExistsOp;

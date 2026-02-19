@@ -39,6 +39,7 @@
 //! └── anthropic.rs (Anthropic conversions)
 //! ```
 
+pub mod behavior;
 pub mod ci;
 pub mod cli;
 pub mod cloud;
@@ -59,6 +60,7 @@ pub mod scope;
 pub mod tcp;
 pub mod tool;
 
+pub use behavior::{default_transport_behaviors, FieldRouteSpec, TransportBehavior, TransportKind};
 pub use ci::{
     detect_provider, detect_provider_strict, is_ci, AnnotationLevel, CiProvider, FileLocation,
     GitHubActionsProvider, GitLabCiProvider, GitLabRunner, PlainTextProvider, Runner,

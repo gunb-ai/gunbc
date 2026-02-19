@@ -231,10 +231,10 @@ fn compile_target_or_exit_with_compile_options(
 #[allow(clippy::disallowed_methods)]
 fn write_emitted_files(
     cwd: &std::path::Path,
-    out_dir: &str,
+    out_dir: &std::path::Path,
     files: &[daglang_emit::EmittedFile],
 ) -> Result<Vec<PathBuf>, String> {
-    let out_root = path_utils::normalize_cli_path(cwd, &PathBuf::from(out_dir));
+    let out_root = path_utils::normalize_cli_path(cwd, out_dir);
     let mut written = Vec::with_capacity(files.len());
     for file in files {
         let destination = out_root.join(&file.path);

@@ -23,6 +23,7 @@ pub use ops::BootstrapOp;
     mock_spec = "gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec()",
     package = "dag",
     binary = "bootstrap",
+    dsl_module = "bootstrap",
     has_invocation,
     returns_result
 )]

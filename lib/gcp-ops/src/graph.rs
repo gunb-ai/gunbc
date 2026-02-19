@@ -1,29 +1,14 @@
 //! DAGs for GCP WIF + Secret Manager.
 
 use crate::ops::{GcpOps, GcpRuntimeKind};
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::DynOp;
 use gunbc_ir::build::{list, optional, port, resource, AccessMode};
-use gunbc_ir::{Dag, DagBuilder, Edge, Node, NodeRef, Value, RESOURCE_API_NETWORK};
+use gunbc_ir::builder::BuilderError;
+use gunbc_ir::{Dag, DagBuilder, Edge, Node, NodeRef, RESOURCE_API_NETWORK};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::NetEnv;
-use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-pub enum GcpSecretManagerGraphOp {
-    Gcp(GcpOps),
-    NetEnv(NetEnv),
-    Transport(TransportOps),
-}
-
-impl Executable for GcpSecretManagerGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            GcpSecretManagerGraphOp::Gcp(op) => op.execute(inputs),
-            GcpSecretManagerGraphOp::NetEnv(op) => op.execute(inputs),
-            GcpSecretManagerGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
-}
+pub type GcpSecretManagerGraphOp = DynOp;
 
 /// Build a GCP Secret Manager credential acquisition graph for the given runtime.
 ///
@@ -45,17 +30,15 @@ impl Executable for GcpSecretManagerGraphOp {
 /// - `credential`: Credential capability
 pub fn build_gcp_secret_manager_credential_graph(
     runtime: GcpRuntimeKind,
-) -> Dag<GcpSecretManagerGraphOp> {
+) -> Result<Dag<GcpSecretManagerGraphOp>, BuilderError> {
     let mut builder: DagBuilder<GcpSecretManagerGraphOp> = DagBuilder::new();
 
-    let net_env = builder
-        .add_root_node(Node::opaque(
-            "net_env",
-            vec![],
-            vec![port(NetEnv::PORT, "NetworkHandle")],
-            GcpSecretManagerGraphOp::NetEnv(NetEnv),
-        ))
-        .expect("net_env");
+    let net_env = builder.add_root_node(Node::opaque(
+        "net_env",
+        vec![],
+        vec![port(NetEnv::PORT, "NetworkHandle")],
+        DynOp::new(NetEnv),
+    ))?;
 
     // ---------------------------------------------------------------------
     // Base access token acquisition
@@ -66,118 +49,90 @@ pub fn build_gcp_secret_manager_credential_graph(
             // OIDC subject token acquisition
             let subject_token_node = match runtime {
                 GcpRuntimeKind::GitHubActions => {
-                    let prepare = builder
-                        .add_root_node(Node::opaque(
-                            "prepare_github_oidc",
+                    let prepare = builder.add_root_node(Node::opaque(
+                        "prepare_github_oidc",
+                        vec![
+                            port("audience", "String"),
+                            optional("request_url", "OptionalString"),
+                            optional("request_token", "OptionalString"),
+                        ],
+                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        DynOp::new(GcpOps::PrepareGitHubOidcRequest),
+                    ))?;
+
+                    let execute = builder.add_node_after(
+                        Node::opaque(
+                            "execute_github_oidc",
                             vec![
-                                port("audience", "String"),
-                                optional("request_url", "OptionalString"),
-                                optional("request_token", "OptionalString"),
+                                port("request", "TransportRequest"),
+                                port("skip", "Bool"),
+                                resource("api:network", "NetworkHandle", AccessMode::Read),
                             ],
-                            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGitHubOidcRequest),
-                        ))
-                        .expect("prepare_github_oidc");
+                            vec![port("response", "TransportResponse")],
+                            DynOp::new(TransportOps::Execute),
+                        ),
+                        &prepare,
+                    )?;
 
-                    let execute = builder
-                        .add_node_after(
-                            Node::opaque(
-                                "execute_github_oidc",
-                                vec![
-                                    port("request", "TransportRequest"),
-                                    port("skip", "Bool"),
-                                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                                ],
-                                vec![port("response", "TransportResponse")],
-                                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                            ),
-                            &prepare,
-                        )
-                        .expect("execute_github_oidc");
+                    let parse = builder.add_node_after(
+                        Node::opaque(
+                            "parse_github_oidc",
+                            vec![port("response", "TransportResponse")],
+                            vec![port("subject_token", "String")],
+                            DynOp::new(GcpOps::ParseGitHubOidcResponse),
+                        ),
+                        &execute,
+                    )?;
 
-                    let parse = builder
-                        .add_node_after(
-                            Node::opaque(
-                                "parse_github_oidc",
-                                vec![port("response", "TransportResponse")],
-                                vec![port("subject_token", "String")],
-                                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGitHubOidcResponse),
-                            ),
-                            &execute,
-                        )
-                        .expect("parse_github_oidc");
-
-                    builder
-                        .add_edge(prepare.out("request"), execute.in_port("request"))
-                        .expect("prepare_github_oidc.request -> execute_github_oidc.request");
-                    builder
-                        .add_edge(prepare.out("skip"), execute.in_port("skip"))
-                        .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
-                    builder
-                        .add_edge(
-                            net_env.out(NetEnv::PORT),
-                            execute.in_port(RESOURCE_API_NETWORK),
-                        )
-                        .expect("net_env -> execute_github_oidc.res:api:network");
-                    builder
-                        .add_edge(execute.out("response"), parse.in_port("response"))
-                        .expect("execute_github_oidc.response -> parse_github_oidc.response");
+                    builder.add_edge(prepare.out("request"), execute.in_port("request"))?;
+                    builder.add_edge(prepare.out("skip"), execute.in_port("skip"))?;
+                    builder.add_edge(
+                        net_env.out(NetEnv::PORT),
+                        execute.in_port(RESOURCE_API_NETWORK),
+                    )?;
+                    builder.add_edge(execute.out("response"), parse.in_port("response"))?;
 
                     parse
                 }
                 GcpRuntimeKind::GcpMetadata => {
-                    let prepare = builder
-                        .add_root_node(Node::opaque(
-                            "prepare_metadata_oidc",
-                            vec![port("audience", "String")],
-                            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareMetadataOidcRequest),
-                        ))
-                        .expect("prepare_metadata_oidc");
+                    let prepare = builder.add_root_node(Node::opaque(
+                        "prepare_metadata_oidc",
+                        vec![port("audience", "String")],
+                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        DynOp::new(GcpOps::PrepareMetadataOidcRequest),
+                    ))?;
 
-                    let execute = builder
-                        .add_node_after(
-                            Node::opaque(
-                                "execute_metadata_oidc",
-                                vec![
-                                    port("request", "TransportRequest"),
-                                    port("skip", "Bool"),
-                                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                                ],
-                                vec![port("response", "TransportResponse")],
-                                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                            ),
-                            &prepare,
-                        )
-                        .expect("execute_metadata_oidc");
+                    let execute = builder.add_node_after(
+                        Node::opaque(
+                            "execute_metadata_oidc",
+                            vec![
+                                port("request", "TransportRequest"),
+                                port("skip", "Bool"),
+                                resource("api:network", "NetworkHandle", AccessMode::Read),
+                            ],
+                            vec![port("response", "TransportResponse")],
+                            DynOp::new(TransportOps::Execute),
+                        ),
+                        &prepare,
+                    )?;
 
-                    let parse = builder
-                        .add_node_after(
-                            Node::opaque(
-                                "parse_metadata_oidc",
-                                vec![port("response", "TransportResponse")],
-                                vec![port("subject_token", "String")],
-                                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseMetadataOidcResponse),
-                            ),
-                            &execute,
-                        )
-                        .expect("parse_metadata_oidc");
+                    let parse = builder.add_node_after(
+                        Node::opaque(
+                            "parse_metadata_oidc",
+                            vec![port("response", "TransportResponse")],
+                            vec![port("subject_token", "String")],
+                            DynOp::new(GcpOps::ParseMetadataOidcResponse),
+                        ),
+                        &execute,
+                    )?;
 
-                    builder
-                        .add_edge(prepare.out("request"), execute.in_port("request"))
-                        .expect("prepare_metadata_oidc.request -> execute_metadata_oidc.request");
-                    builder
-                        .add_edge(prepare.out("skip"), execute.in_port("skip"))
-                        .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
-                    builder
-                        .add_edge(
-                            net_env.out(NetEnv::PORT),
-                            execute.in_port(RESOURCE_API_NETWORK),
-                        )
-                        .expect("net_env -> execute_metadata_oidc.res:api:network");
-                    builder
-                        .add_edge(execute.out("response"), parse.in_port("response"))
-                        .expect("execute_metadata_oidc.response -> parse_metadata_oidc.response");
+                    builder.add_edge(prepare.out("request"), execute.in_port("request"))?;
+                    builder.add_edge(prepare.out("skip"), execute.in_port("skip"))?;
+                    builder.add_edge(
+                        net_env.out(NetEnv::PORT),
+                        execute.in_port(RESOURCE_API_NETWORK),
+                    )?;
+                    builder.add_edge(execute.out("response"), parse.in_port("response"))?;
 
                     parse
                 }
@@ -185,67 +140,51 @@ pub fn build_gcp_secret_manager_credential_graph(
             };
 
             // STS exchange (subject_token -> access_token)
-            let prepare_sts = builder
-                .add_node_after(
-                    Node::opaque(
-                        "prepare_sts",
-                        vec![port("audience", "String"), port("subject_token", "String")],
-                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareStsExchange),
-                    ),
-                    &subject_token_node,
-                )
-                .expect("prepare_sts");
+            let prepare_sts = builder.add_node_after(
+                Node::opaque(
+                    "prepare_sts",
+                    vec![port("audience", "String"), port("subject_token", "String")],
+                    vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                    DynOp::new(GcpOps::PrepareStsExchange),
+                ),
+                &subject_token_node,
+            )?;
 
-            let execute_sts = builder
-                .add_node_after(
-                    Node::opaque(
-                        "execute_sts",
-                        vec![
-                            port("request", "TransportRequest"),
-                            port("skip", "Bool"),
-                            resource("api:network", "NetworkHandle", AccessMode::Read),
-                        ],
-                        vec![port("response", "TransportResponse")],
-                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                    ),
-                    &prepare_sts,
-                )
-                .expect("execute_sts");
+            let execute_sts = builder.add_node_after(
+                Node::opaque(
+                    "execute_sts",
+                    vec![
+                        port("request", "TransportRequest"),
+                        port("skip", "Bool"),
+                        resource("api:network", "NetworkHandle", AccessMode::Read),
+                    ],
+                    vec![port("response", "TransportResponse")],
+                    DynOp::new(TransportOps::Execute),
+                ),
+                &prepare_sts,
+            )?;
 
-            let parse_sts = builder
-                .add_node_after(
-                    Node::opaque(
-                        "parse_sts",
-                        vec![port("response", "TransportResponse")],
-                        vec![port("access_token", "String"), port("expires_in", "Int")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseStsExchange),
-                    ),
-                    &execute_sts,
-                )
-                .expect("parse_sts");
+            let parse_sts = builder.add_node_after(
+                Node::opaque(
+                    "parse_sts",
+                    vec![port("response", "TransportResponse")],
+                    vec![port("access_token", "String"), port("expires_in", "Int")],
+                    DynOp::new(GcpOps::ParseStsExchange),
+                ),
+                &execute_sts,
+            )?;
 
-            builder
-                .add_edge(
-                    subject_token_node.out("subject_token"),
-                    prepare_sts.in_port("subject_token"),
-                )
-                .expect("subject_token -> prepare_sts.subject_token");
-            builder
-                .add_edge(prepare_sts.out("request"), execute_sts.in_port("request"))
-                .expect("prepare_sts.request -> execute_sts.request");
-            builder
-                .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
-                .expect("prepare_sts.skip -> execute_sts.skip");
-            builder
-                .add_edge(
-                    net_env.out(NetEnv::PORT),
-                    execute_sts.in_port(RESOURCE_API_NETWORK),
-                )
-                .expect("net_env -> execute_sts.res:api:network");
-            builder
-                .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
-                .expect("execute_sts.response -> parse_sts.response");
+            builder.add_edge(
+                subject_token_node.out("subject_token"),
+                prepare_sts.in_port("subject_token"),
+            )?;
+            builder.add_edge(prepare_sts.out("request"), execute_sts.in_port("request"))?;
+            builder.add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))?;
+            builder.add_edge(
+                net_env.out(NetEnv::PORT),
+                execute_sts.in_port(RESOURCE_API_NETWORK),
+            )?;
+            builder.add_edge(execute_sts.out("response"), parse_sts.in_port("response"))?;
 
             parse_sts
         }
@@ -253,251 +192,215 @@ pub fn build_gcp_secret_manager_credential_graph(
             // Use the canonical upsert sub-DAG for local auth
             // (check -> create[guarded] -> resolve)
 
-            builder
-                .add_root_node(Node::subdag(
-                    "local_auth_upsert",
-                    build_local_auth_upsert_dag(),
-                ))
-                .expect("local_auth_upsert")
+            builder.add_root_node(Node::subdag(
+                "local_auth_upsert",
+                build_local_auth_upsert_dag(),
+            ))?
         }
     };
 
     // Ensure SA has required IAM roles before impersonation (local dev only).
-    add_ensure_iam_nodes(&mut builder, &net_env, &access_token_node, runtime);
+    add_ensure_iam_nodes(&mut builder, &net_env, &access_token_node, runtime)?;
 
     // ---------------------------------------------------------------------
     // Service Account impersonation
     // ---------------------------------------------------------------------
 
-    let should_impersonate = builder
-        .add_node_after(
-            Node::opaque(
-                "should_impersonate",
-                vec![port("service_account", "String")],
-                vec![port("should", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ShouldImpersonate),
-            ),
-            &access_token_node,
-        )
-        .expect("should_impersonate");
+    let should_impersonate = builder.add_node_after(
+        Node::opaque(
+            "should_impersonate",
+            vec![
+                port("service_account", "String"),
+                optional("allow_impersonation", "OptionalBool"),
+            ],
+            vec![port("should", "Bool")],
+            DynOp::new(GcpOps::ShouldImpersonate),
+        ),
+        &access_token_node,
+    )?;
 
-    let prepare_impersonate = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_impersonate",
-                vec![
-                    port("access_token", "String"),
-                    port("service_account", "String"),
-                    optional("lifetime_seconds", "OptionalInt"),
-                    optional("should_impersonate", "OptionalBool"),
-                ],
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareImpersonate),
-            ),
-            &should_impersonate,
-        )
-        .expect("prepare_impersonate");
+    let prepare_impersonate = builder.add_node_after(
+        Node::opaque(
+            "prepare_impersonate",
+            vec![
+                port("access_token", "String"),
+                port("service_account", "String"),
+                optional("lifetime_seconds", "OptionalInt"),
+                optional("should_impersonate", "OptionalBool"),
+            ],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            DynOp::new(GcpOps::PrepareImpersonate),
+        ),
+        &should_impersonate,
+    )?;
 
-    let execute_impersonate = builder
-        .add_node_after(
-            Node::opaque(
-                "execute_impersonate",
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                ],
-                vec![port("response", "TransportResponse")],
-                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-            ),
-            &prepare_impersonate,
-        )
-        .expect("execute_impersonate");
+    let execute_impersonate = builder.add_node_after(
+        Node::opaque(
+            "execute_impersonate",
+            vec![
+                port("request", "TransportRequest"),
+                port("skip", "Bool"),
+                resource("api:network", "NetworkHandle", AccessMode::Read),
+            ],
+            vec![port("response", "TransportResponse")],
+            DynOp::new(TransportOps::Execute),
+        ),
+        &prepare_impersonate,
+    )?;
 
-    let parse_impersonate = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_impersonate",
-                vec![
-                    port("response", "TransportResponse"),
-                    optional("base_access_token", "OptionalString"),
-                ],
-                vec![port("access_token", "String")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseImpersonate),
-            ),
-            &execute_impersonate,
-        )
-        .expect("parse_impersonate");
+    let parse_impersonate = builder.add_node_after(
+        Node::opaque(
+            "parse_impersonate",
+            vec![
+                port("response", "TransportResponse"),
+                optional("base_access_token", "OptionalString"),
+            ],
+            vec![port("access_token", "String")],
+            DynOp::new(GcpOps::ParseImpersonate),
+        ),
+        &execute_impersonate,
+    )?;
 
-    builder
-        .add_edge(
-            access_token_node.out("access_token"),
-            prepare_impersonate.in_port("access_token"),
-        )
-        .expect("access_token_node.access_token -> prepare_impersonate.access_token");
-    builder
-        .add_edge(
-            should_impersonate.out("should"),
-            prepare_impersonate.in_port("should_impersonate"),
-        )
-        .expect("should_impersonate.should -> prepare_impersonate.should_impersonate");
-    builder
-        .add_edge(
-            prepare_impersonate.out("request"),
-            execute_impersonate.in_port("request"),
-        )
-        .expect("prepare_impersonate.request -> execute_impersonate.request");
-    builder
-        .add_edge(
-            prepare_impersonate.out("skip"),
-            execute_impersonate.in_port("skip"),
-        )
-        .expect("prepare_impersonate.skip -> execute_impersonate.skip");
-    builder
-        .add_edge(
-            net_env.out(NetEnv::PORT),
-            execute_impersonate.in_port(RESOURCE_API_NETWORK),
-        )
-        .expect("net_env -> execute_impersonate.res:api:network");
-    builder
-        .add_edge(
-            execute_impersonate.out("response"),
-            parse_impersonate.in_port("response"),
-        )
-        .expect("execute_impersonate.response -> parse_impersonate.response");
-    builder
-        .add_edge(
-            access_token_node.out("access_token"),
-            parse_impersonate.in_port("base_access_token"),
-        )
-        .expect("access_token_node.access_token -> parse_impersonate.base_access_token");
+    builder.add_edge(
+        access_token_node.out("access_token"),
+        prepare_impersonate.in_port("access_token"),
+    )?;
+    builder.add_edge(
+        should_impersonate.out("should"),
+        prepare_impersonate.in_port("should_impersonate"),
+    )?;
+    builder.add_edge(
+        prepare_impersonate.out("request"),
+        execute_impersonate.in_port("request"),
+    )?;
+    builder.add_edge(
+        prepare_impersonate.out("skip"),
+        execute_impersonate.in_port("skip"),
+    )?;
+    builder.add_edge(
+        net_env.out(NetEnv::PORT),
+        execute_impersonate.in_port(RESOURCE_API_NETWORK),
+    )?;
+    builder.add_edge(
+        execute_impersonate.out("response"),
+        parse_impersonate.in_port("response"),
+    )?;
+    builder.add_edge(
+        access_token_node.out("access_token"),
+        parse_impersonate.in_port("base_access_token"),
+    )?;
 
     // ---------------------------------------------------------------------
     // Secret Manager access
     // ---------------------------------------------------------------------
 
-    let prepare_secret = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_secret_access",
-                vec![
-                    port("access_token", "String"),
-                    port("project", "String"),
-                    port("secret", "String"),
-                    optional("version", "OptionalString"),
-                ],
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareSecretAccess),
-            ),
-            &parse_impersonate,
-        )
-        .expect("prepare_secret_access");
+    let prepare_secret = builder.add_node_after(
+        Node::opaque(
+            "prepare_secret_access",
+            vec![
+                port("access_token", "String"),
+                port("project", "String"),
+                port("secret", "String"),
+                optional("version", "OptionalString"),
+            ],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            DynOp::new(GcpOps::PrepareSecretAccess),
+        ),
+        &parse_impersonate,
+    )?;
 
-    let execute_secret = builder
-        .add_node_after(
-            Node::opaque(
-                "execute_secret_access",
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                ],
-                vec![port("response", "TransportResponse")],
-                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-            ),
-            &prepare_secret,
-        )
-        .expect("execute_secret_access");
+    let execute_secret = builder.add_node_after(
+        Node::opaque(
+            "execute_secret_access",
+            vec![
+                port("request", "TransportRequest"),
+                port("skip", "Bool"),
+                resource("api:network", "NetworkHandle", AccessMode::Read),
+            ],
+            vec![port("response", "TransportResponse")],
+            DynOp::new(TransportOps::Execute),
+        ),
+        &prepare_secret,
+    )?;
 
-    let parse_secret = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_secret_access",
-                vec![port("response", "TransportResponse")],
-                vec![port("secret", "String")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseSecretAccess),
-            ),
-            &execute_secret,
-        )
-        .expect("parse_secret_access");
+    let parse_secret = builder.add_node_after(
+        Node::opaque(
+            "parse_secret_access",
+            vec![port("response", "TransportResponse")],
+            vec![port("secret", "String")],
+            DynOp::new(GcpOps::ParseSecretAccess),
+        ),
+        &execute_secret,
+    )?;
 
-    builder
-        .add_edge(
-            parse_impersonate.out("access_token"),
-            prepare_secret.in_port("access_token"),
-        )
-        .expect("parse_impersonate.access_token -> prepare_secret.access_token");
-    builder
-        .add_edge(
-            prepare_secret.out("request"),
-            execute_secret.in_port("request"),
-        )
-        .expect("prepare_secret.request -> execute_secret.request");
-    builder
-        .add_edge(prepare_secret.out("skip"), execute_secret.in_port("skip"))
-        .expect("prepare_secret.skip -> execute_secret.skip");
-    builder
-        .add_edge(
-            net_env.out(NetEnv::PORT),
-            execute_secret.in_port(RESOURCE_API_NETWORK),
-        )
-        .expect("net_env -> execute_secret_access.res:api:network");
-    builder
-        .add_edge(
-            execute_secret.out("response"),
-            parse_secret.in_port("response"),
-        )
-        .expect("execute_secret.response -> parse_secret.response");
+    builder.add_edge(
+        parse_impersonate.out("access_token"),
+        prepare_secret.in_port("access_token"),
+    )?;
+    builder.add_edge(
+        prepare_secret.out("request"),
+        execute_secret.in_port("request"),
+    )?;
+    builder.add_edge(prepare_secret.out("skip"), execute_secret.in_port("skip"))?;
+    builder.add_edge(
+        net_env.out(NetEnv::PORT),
+        execute_secret.in_port(RESOURCE_API_NETWORK),
+    )?;
+    builder.add_edge(
+        execute_secret.out("response"),
+        parse_secret.in_port("response"),
+    )?;
 
     // ---------------------------------------------------------------------
     // Credential assembly
     // ---------------------------------------------------------------------
 
-    let build_credential = builder
-        .add_node_after(
-            Node::opaque(
-                "build_credential",
-                vec![
-                    port("secret", "String"),
-                    port("scheme", "String"),
-                    optional("header_name", "OptionalString"),
-                    port("source_id", "String"),
-                    list("required_scopes", "String"),
-                ],
-                vec![port("credential", "Credential")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::BuildCredential),
-            ),
-            &parse_secret,
-        )
-        .expect("build_credential");
+    let build_credential = builder.add_node_after(
+        Node::opaque(
+            "build_credential",
+            vec![
+                port("secret", "String"),
+                port("scheme", "String"),
+                optional("header_name", "OptionalString"),
+                port("source_id", "String"),
+                list("required_scopes", "String"),
+            ],
+            vec![port("credential", "Credential")],
+            DynOp::new(GcpOps::BuildCredential),
+        ),
+        &parse_secret,
+    )?;
 
-    builder
-        .add_edge(
-            parse_secret.out("secret"),
-            build_credential.in_port("secret"),
-        )
-        .expect("parse_secret.secret -> build_credential.secret");
+    builder.add_edge(
+        parse_secret.out("secret"),
+        build_credential.in_port("secret"),
+    )?;
 
-    builder.build()
+    Ok(builder.build())
 }
 
-pub fn build_gcp_secret_manager_credential_graph_github() -> Dag<GcpSecretManagerGraphOp> {
+pub fn build_gcp_secret_manager_credential_graph_github(
+) -> Result<Dag<GcpSecretManagerGraphOp>, BuilderError> {
     build_gcp_secret_manager_credential_graph(GcpRuntimeKind::GitHubActions)
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "gcp-wif-secret-metadata",
-    builder = "build_gcp_secret_manager_credential_graph_metadata()"
+    builder = "build_gcp_secret_manager_credential_graph_metadata()",
+    returns_result
 )]
-pub fn build_gcp_secret_manager_credential_graph_metadata() -> Dag<GcpSecretManagerGraphOp> {
+pub fn build_gcp_secret_manager_credential_graph_metadata(
+) -> Result<Dag<GcpSecretManagerGraphOp>, BuilderError> {
     build_gcp_secret_manager_credential_graph(GcpRuntimeKind::GcpMetadata)
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "gcp-wif-secret-local",
-    builder = "build_gcp_secret_manager_credential_graph_local()"
+    builder = "build_gcp_secret_manager_credential_graph_local()",
+    returns_result
 )]
-pub fn build_gcp_secret_manager_credential_graph_local() -> Dag<GcpSecretManagerGraphOp> {
+pub fn build_gcp_secret_manager_credential_graph_local(
+) -> Result<Dag<GcpSecretManagerGraphOp>, BuilderError> {
     build_gcp_secret_manager_credential_graph(GcpRuntimeKind::LocalDev)
 }
 
@@ -518,17 +421,15 @@ pub fn build_gcp_secret_manager_credential_graph_local() -> Dag<GcpSecretManager
 /// - `version`: created secret version name
 pub fn build_gcp_secret_manager_upsert_graph(
     runtime: GcpRuntimeKind,
-) -> Dag<GcpSecretManagerGraphOp> {
+) -> Result<Dag<GcpSecretManagerGraphOp>, BuilderError> {
     let mut builder: DagBuilder<GcpSecretManagerGraphOp> = DagBuilder::new();
 
-    let net_env = builder
-        .add_root_node(Node::opaque(
-            "net_env",
-            vec![],
-            vec![port(NetEnv::PORT, "NetworkHandle")],
-            GcpSecretManagerGraphOp::NetEnv(NetEnv),
-        ))
-        .expect("net_env");
+    let net_env = builder.add_root_node(Node::opaque(
+        "net_env",
+        vec![],
+        vec![port(NetEnv::PORT, "NetworkHandle")],
+        DynOp::new(NetEnv),
+    ))?;
 
     // ---------------------------------------------------------------------
     // Base access token acquisition
@@ -539,118 +440,90 @@ pub fn build_gcp_secret_manager_upsert_graph(
             // OIDC subject token acquisition
             let subject_token_node = match runtime {
                 GcpRuntimeKind::GitHubActions => {
-                    let prepare = builder
-                        .add_root_node(Node::opaque(
-                            "prepare_github_oidc",
+                    let prepare = builder.add_root_node(Node::opaque(
+                        "prepare_github_oidc",
+                        vec![
+                            port("audience", "String"),
+                            optional("request_url", "OptionalString"),
+                            optional("request_token", "OptionalString"),
+                        ],
+                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        DynOp::new(GcpOps::PrepareGitHubOidcRequest),
+                    ))?;
+
+                    let execute = builder.add_node_after(
+                        Node::opaque(
+                            "execute_github_oidc",
                             vec![
-                                port("audience", "String"),
-                                optional("request_url", "OptionalString"),
-                                optional("request_token", "OptionalString"),
+                                port("request", "TransportRequest"),
+                                port("skip", "Bool"),
+                                resource("api:network", "NetworkHandle", AccessMode::Read),
                             ],
-                            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGitHubOidcRequest),
-                        ))
-                        .expect("prepare_github_oidc");
+                            vec![port("response", "TransportResponse")],
+                            DynOp::new(TransportOps::Execute),
+                        ),
+                        &prepare,
+                    )?;
 
-                    let execute = builder
-                        .add_node_after(
-                            Node::opaque(
-                                "execute_github_oidc",
-                                vec![
-                                    port("request", "TransportRequest"),
-                                    port("skip", "Bool"),
-                                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                                ],
-                                vec![port("response", "TransportResponse")],
-                                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                            ),
-                            &prepare,
-                        )
-                        .expect("execute_github_oidc");
+                    let parse = builder.add_node_after(
+                        Node::opaque(
+                            "parse_github_oidc",
+                            vec![port("response", "TransportResponse")],
+                            vec![port("subject_token", "String")],
+                            DynOp::new(GcpOps::ParseGitHubOidcResponse),
+                        ),
+                        &execute,
+                    )?;
 
-                    let parse = builder
-                        .add_node_after(
-                            Node::opaque(
-                                "parse_github_oidc",
-                                vec![port("response", "TransportResponse")],
-                                vec![port("subject_token", "String")],
-                                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGitHubOidcResponse),
-                            ),
-                            &execute,
-                        )
-                        .expect("parse_github_oidc");
-
-                    builder
-                        .add_edge(prepare.out("request"), execute.in_port("request"))
-                        .expect("prepare_github_oidc.request -> execute_github_oidc.request");
-                    builder
-                        .add_edge(prepare.out("skip"), execute.in_port("skip"))
-                        .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
-                    builder
-                        .add_edge(
-                            net_env.out(NetEnv::PORT),
-                            execute.in_port(RESOURCE_API_NETWORK),
-                        )
-                        .expect("net_env -> execute_github_oidc.res:api:network");
-                    builder
-                        .add_edge(execute.out("response"), parse.in_port("response"))
-                        .expect("execute_github_oidc.response -> parse_github_oidc.response");
+                    builder.add_edge(prepare.out("request"), execute.in_port("request"))?;
+                    builder.add_edge(prepare.out("skip"), execute.in_port("skip"))?;
+                    builder.add_edge(
+                        net_env.out(NetEnv::PORT),
+                        execute.in_port(RESOURCE_API_NETWORK),
+                    )?;
+                    builder.add_edge(execute.out("response"), parse.in_port("response"))?;
 
                     parse
                 }
                 GcpRuntimeKind::GcpMetadata => {
-                    let prepare = builder
-                        .add_root_node(Node::opaque(
-                            "prepare_metadata_oidc",
-                            vec![port("audience", "String")],
-                            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareMetadataOidcRequest),
-                        ))
-                        .expect("prepare_metadata_oidc");
+                    let prepare = builder.add_root_node(Node::opaque(
+                        "prepare_metadata_oidc",
+                        vec![port("audience", "String")],
+                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        DynOp::new(GcpOps::PrepareMetadataOidcRequest),
+                    ))?;
 
-                    let execute = builder
-                        .add_node_after(
-                            Node::opaque(
-                                "execute_metadata_oidc",
-                                vec![
-                                    port("request", "TransportRequest"),
-                                    port("skip", "Bool"),
-                                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                                ],
-                                vec![port("response", "TransportResponse")],
-                                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                            ),
-                            &prepare,
-                        )
-                        .expect("execute_metadata_oidc");
+                    let execute = builder.add_node_after(
+                        Node::opaque(
+                            "execute_metadata_oidc",
+                            vec![
+                                port("request", "TransportRequest"),
+                                port("skip", "Bool"),
+                                resource("api:network", "NetworkHandle", AccessMode::Read),
+                            ],
+                            vec![port("response", "TransportResponse")],
+                            DynOp::new(TransportOps::Execute),
+                        ),
+                        &prepare,
+                    )?;
 
-                    let parse = builder
-                        .add_node_after(
-                            Node::opaque(
-                                "parse_metadata_oidc",
-                                vec![port("response", "TransportResponse")],
-                                vec![port("subject_token", "String")],
-                                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseMetadataOidcResponse),
-                            ),
-                            &execute,
-                        )
-                        .expect("parse_metadata_oidc");
+                    let parse = builder.add_node_after(
+                        Node::opaque(
+                            "parse_metadata_oidc",
+                            vec![port("response", "TransportResponse")],
+                            vec![port("subject_token", "String")],
+                            DynOp::new(GcpOps::ParseMetadataOidcResponse),
+                        ),
+                        &execute,
+                    )?;
 
-                    builder
-                        .add_edge(prepare.out("request"), execute.in_port("request"))
-                        .expect("prepare_metadata_oidc.request -> execute_metadata_oidc.request");
-                    builder
-                        .add_edge(prepare.out("skip"), execute.in_port("skip"))
-                        .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
-                    builder
-                        .add_edge(
-                            net_env.out(NetEnv::PORT),
-                            execute.in_port(RESOURCE_API_NETWORK),
-                        )
-                        .expect("net_env -> execute_metadata_oidc.res:api:network");
-                    builder
-                        .add_edge(execute.out("response"), parse.in_port("response"))
-                        .expect("execute_metadata_oidc.response -> parse_metadata_oidc.response");
+                    builder.add_edge(prepare.out("request"), execute.in_port("request"))?;
+                    builder.add_edge(prepare.out("skip"), execute.in_port("skip"))?;
+                    builder.add_edge(
+                        net_env.out(NetEnv::PORT),
+                        execute.in_port(RESOURCE_API_NETWORK),
+                    )?;
+                    builder.add_edge(execute.out("response"), parse.in_port("response"))?;
 
                     parse
                 }
@@ -658,67 +531,51 @@ pub fn build_gcp_secret_manager_upsert_graph(
             };
 
             // STS exchange (subject_token -> access_token)
-            let prepare_sts = builder
-                .add_node_after(
-                    Node::opaque(
-                        "prepare_sts",
-                        vec![port("audience", "String"), port("subject_token", "String")],
-                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareStsExchange),
-                    ),
-                    &subject_token_node,
-                )
-                .expect("prepare_sts");
+            let prepare_sts = builder.add_node_after(
+                Node::opaque(
+                    "prepare_sts",
+                    vec![port("audience", "String"), port("subject_token", "String")],
+                    vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                    DynOp::new(GcpOps::PrepareStsExchange),
+                ),
+                &subject_token_node,
+            )?;
 
-            let execute_sts = builder
-                .add_node_after(
-                    Node::opaque(
-                        "execute_sts",
-                        vec![
-                            port("request", "TransportRequest"),
-                            port("skip", "Bool"),
-                            resource("api:network", "NetworkHandle", AccessMode::Read),
-                        ],
-                        vec![port("response", "TransportResponse")],
-                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                    ),
-                    &prepare_sts,
-                )
-                .expect("execute_sts");
+            let execute_sts = builder.add_node_after(
+                Node::opaque(
+                    "execute_sts",
+                    vec![
+                        port("request", "TransportRequest"),
+                        port("skip", "Bool"),
+                        resource("api:network", "NetworkHandle", AccessMode::Read),
+                    ],
+                    vec![port("response", "TransportResponse")],
+                    DynOp::new(TransportOps::Execute),
+                ),
+                &prepare_sts,
+            )?;
 
-            let parse_sts = builder
-                .add_node_after(
-                    Node::opaque(
-                        "parse_sts",
-                        vec![port("response", "TransportResponse")],
-                        vec![port("access_token", "String"), port("expires_in", "Int")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseStsExchange),
-                    ),
-                    &execute_sts,
-                )
-                .expect("parse_sts");
+            let parse_sts = builder.add_node_after(
+                Node::opaque(
+                    "parse_sts",
+                    vec![port("response", "TransportResponse")],
+                    vec![port("access_token", "String"), port("expires_in", "Int")],
+                    DynOp::new(GcpOps::ParseStsExchange),
+                ),
+                &execute_sts,
+            )?;
 
-            builder
-                .add_edge(
-                    subject_token_node.out("subject_token"),
-                    prepare_sts.in_port("subject_token"),
-                )
-                .expect("subject_token -> prepare_sts.subject_token");
-            builder
-                .add_edge(prepare_sts.out("request"), execute_sts.in_port("request"))
-                .expect("prepare_sts.request -> execute_sts.request");
-            builder
-                .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
-                .expect("prepare_sts.skip -> execute_sts.skip");
-            builder
-                .add_edge(
-                    net_env.out(NetEnv::PORT),
-                    execute_sts.in_port(RESOURCE_API_NETWORK),
-                )
-                .expect("net_env -> execute_sts.res:api:network");
-            builder
-                .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
-                .expect("execute_sts.response -> parse_sts.response");
+            builder.add_edge(
+                subject_token_node.out("subject_token"),
+                prepare_sts.in_port("subject_token"),
+            )?;
+            builder.add_edge(prepare_sts.out("request"), execute_sts.in_port("request"))?;
+            builder.add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))?;
+            builder.add_edge(
+                net_env.out(NetEnv::PORT),
+                execute_sts.in_port(RESOURCE_API_NETWORK),
+            )?;
+            builder.add_edge(execute_sts.out("response"), parse_sts.in_port("response"))?;
 
             parse_sts
         }
@@ -726,347 +583,283 @@ pub fn build_gcp_secret_manager_upsert_graph(
             // Use the canonical upsert sub-DAG for local auth
             // (check -> create[guarded] -> resolve)
 
-            builder
-                .add_root_node(Node::subdag(
-                    "local_auth_upsert",
-                    build_local_auth_upsert_dag(),
-                ))
-                .expect("local_auth_upsert")
+            builder.add_root_node(Node::subdag(
+                "local_auth_upsert",
+                build_local_auth_upsert_dag(),
+            ))?
         }
     };
 
     // Ensure SA has required IAM roles before impersonation (local dev only).
-    add_ensure_iam_nodes(&mut builder, &net_env, &access_token_node, runtime);
+    add_ensure_iam_nodes(&mut builder, &net_env, &access_token_node, runtime)?;
 
     // ---------------------------------------------------------------------
     // Service Account impersonation
     // ---------------------------------------------------------------------
 
-    let should_impersonate = builder
-        .add_node_after(
-            Node::opaque(
-                "should_impersonate",
-                vec![port("service_account", "String")],
-                vec![port("should", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ShouldImpersonate),
-            ),
-            &access_token_node,
-        )
-        .expect("should_impersonate");
+    let should_impersonate = builder.add_node_after(
+        Node::opaque(
+            "should_impersonate",
+            vec![
+                port("service_account", "String"),
+                optional("allow_impersonation", "OptionalBool"),
+            ],
+            vec![port("should", "Bool")],
+            DynOp::new(GcpOps::ShouldImpersonate),
+        ),
+        &access_token_node,
+    )?;
 
-    let prepare_impersonate = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_impersonate",
-                vec![
-                    port("access_token", "String"),
-                    port("service_account", "String"),
-                    optional("lifetime_seconds", "OptionalInt"),
-                    optional("should_impersonate", "OptionalBool"),
-                ],
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareImpersonate),
-            ),
-            &should_impersonate,
-        )
-        .expect("prepare_impersonate");
+    let prepare_impersonate = builder.add_node_after(
+        Node::opaque(
+            "prepare_impersonate",
+            vec![
+                port("access_token", "String"),
+                port("service_account", "String"),
+                optional("lifetime_seconds", "OptionalInt"),
+                optional("should_impersonate", "OptionalBool"),
+            ],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            DynOp::new(GcpOps::PrepareImpersonate),
+        ),
+        &should_impersonate,
+    )?;
 
-    let execute_impersonate = builder
-        .add_node_after(
-            Node::opaque(
-                "execute_impersonate",
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                ],
-                vec![port("response", "TransportResponse")],
-                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-            ),
-            &prepare_impersonate,
-        )
-        .expect("execute_impersonate");
+    let execute_impersonate = builder.add_node_after(
+        Node::opaque(
+            "execute_impersonate",
+            vec![
+                port("request", "TransportRequest"),
+                port("skip", "Bool"),
+                resource("api:network", "NetworkHandle", AccessMode::Read),
+            ],
+            vec![port("response", "TransportResponse")],
+            DynOp::new(TransportOps::Execute),
+        ),
+        &prepare_impersonate,
+    )?;
 
-    let parse_impersonate = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_impersonate",
-                vec![
-                    port("response", "TransportResponse"),
-                    optional("base_access_token", "OptionalString"),
-                ],
-                vec![port("access_token", "String")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseImpersonate),
-            ),
-            &execute_impersonate,
-        )
-        .expect("parse_impersonate");
+    let parse_impersonate = builder.add_node_after(
+        Node::opaque(
+            "parse_impersonate",
+            vec![
+                port("response", "TransportResponse"),
+                optional("base_access_token", "OptionalString"),
+            ],
+            vec![port("access_token", "String")],
+            DynOp::new(GcpOps::ParseImpersonate),
+        ),
+        &execute_impersonate,
+    )?;
 
-    builder
-        .add_edge(
-            access_token_node.out("access_token"),
-            prepare_impersonate.in_port("access_token"),
-        )
-        .expect("access_token_node.access_token -> prepare_impersonate.access_token");
-    builder
-        .add_edge(
-            should_impersonate.out("should"),
-            prepare_impersonate.in_port("should_impersonate"),
-        )
-        .expect("should_impersonate.should -> prepare_impersonate.should_impersonate");
-    builder
-        .add_edge(
-            prepare_impersonate.out("request"),
-            execute_impersonate.in_port("request"),
-        )
-        .expect("prepare_impersonate.request -> execute_impersonate.request");
-    builder
-        .add_edge(
-            prepare_impersonate.out("skip"),
-            execute_impersonate.in_port("skip"),
-        )
-        .expect("prepare_impersonate.skip -> execute_impersonate.skip");
-    builder
-        .add_edge(
-            net_env.out(NetEnv::PORT),
-            execute_impersonate.in_port(RESOURCE_API_NETWORK),
-        )
-        .expect("net_env -> execute_impersonate.res:api:network");
-    builder
-        .add_edge(
-            execute_impersonate.out("response"),
-            parse_impersonate.in_port("response"),
-        )
-        .expect("execute_impersonate.response -> parse_impersonate.response");
-    builder
-        .add_edge(
-            access_token_node.out("access_token"),
-            parse_impersonate.in_port("base_access_token"),
-        )
-        .expect("access_token_node.access_token -> parse_impersonate.base_access_token");
+    builder.add_edge(
+        access_token_node.out("access_token"),
+        prepare_impersonate.in_port("access_token"),
+    )?;
+    builder.add_edge(
+        should_impersonate.out("should"),
+        prepare_impersonate.in_port("should_impersonate"),
+    )?;
+    builder.add_edge(
+        prepare_impersonate.out("request"),
+        execute_impersonate.in_port("request"),
+    )?;
+    builder.add_edge(
+        prepare_impersonate.out("skip"),
+        execute_impersonate.in_port("skip"),
+    )?;
+    builder.add_edge(
+        net_env.out(NetEnv::PORT),
+        execute_impersonate.in_port(RESOURCE_API_NETWORK),
+    )?;
+    builder.add_edge(
+        execute_impersonate.out("response"),
+        parse_impersonate.in_port("response"),
+    )?;
+    builder.add_edge(
+        access_token_node.out("access_token"),
+        parse_impersonate.in_port("base_access_token"),
+    )?;
 
     // ---------------------------------------------------------------------
     // Secret Manager upsert: check -> create -> addVersion
     // ---------------------------------------------------------------------
 
-    let prepare_get = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_secret_get",
-                vec![
-                    port("access_token", "String"),
-                    port("project", "String"),
-                    port("secret", "String"),
-                ],
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareSecretGet),
-            ),
-            &parse_impersonate,
-        )
-        .expect("prepare_secret_get");
+    let prepare_get = builder.add_node_after(
+        Node::opaque(
+            "prepare_secret_get",
+            vec![
+                port("access_token", "String"),
+                port("project", "String"),
+                port("secret", "String"),
+            ],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            DynOp::new(GcpOps::PrepareSecretGet),
+        ),
+        &parse_impersonate,
+    )?;
 
-    let execute_get = builder
-        .add_node_after(
-            Node::opaque(
-                "execute_secret_get",
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                ],
-                vec![port("response", "TransportResponse")],
-                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-            ),
-            &prepare_get,
-        )
-        .expect("execute_secret_get");
+    let execute_get = builder.add_node_after(
+        Node::opaque(
+            "execute_secret_get",
+            vec![
+                port("request", "TransportRequest"),
+                port("skip", "Bool"),
+                resource("api:network", "NetworkHandle", AccessMode::Read),
+            ],
+            vec![port("response", "TransportResponse")],
+            DynOp::new(TransportOps::Execute),
+        ),
+        &prepare_get,
+    )?;
 
-    let parse_get = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_secret_get",
-                vec![port("response", "TransportResponse")],
-                vec![port("exists", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseSecretGet),
-            ),
-            &execute_get,
-        )
-        .expect("parse_secret_get");
+    let parse_get = builder.add_node_after(
+        Node::opaque(
+            "parse_secret_get",
+            vec![port("response", "TransportResponse")],
+            vec![port("exists", "Bool")],
+            DynOp::new(GcpOps::ParseSecretGet),
+        ),
+        &execute_get,
+    )?;
 
-    builder
-        .add_edge(
-            parse_impersonate.out("access_token"),
-            prepare_get.in_port("access_token"),
-        )
-        .expect("parse_impersonate.access_token -> prepare_secret_get.access_token");
-    builder
-        .add_edge(prepare_get.out("request"), execute_get.in_port("request"))
-        .expect("prepare_secret_get.request -> execute_secret_get.request");
-    builder
-        .add_edge(prepare_get.out("skip"), execute_get.in_port("skip"))
-        .expect("prepare_secret_get.skip -> execute_secret_get.skip");
-    builder
-        .add_edge(
-            net_env.out(NetEnv::PORT),
-            execute_get.in_port(RESOURCE_API_NETWORK),
-        )
-        .expect("net_env -> execute_secret_get.res:api:network");
-    builder
-        .add_edge(execute_get.out("response"), parse_get.in_port("response"))
-        .expect("execute_secret_get.response -> parse_secret_get.response");
+    builder.add_edge(
+        parse_impersonate.out("access_token"),
+        prepare_get.in_port("access_token"),
+    )?;
+    builder.add_edge(prepare_get.out("request"), execute_get.in_port("request"))?;
+    builder.add_edge(prepare_get.out("skip"), execute_get.in_port("skip"))?;
+    builder.add_edge(
+        net_env.out(NetEnv::PORT),
+        execute_get.in_port(RESOURCE_API_NETWORK),
+    )?;
+    builder.add_edge(execute_get.out("response"), parse_get.in_port("response"))?;
 
-    let prepare_create = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_secret_create",
-                vec![
-                    port("access_token", "String"),
-                    port("project", "String"),
-                    port("secret", "String"),
-                    port("exists", "Bool"),
-                ],
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareSecretCreate),
-            ),
-            &parse_get,
-        )
-        .expect("prepare_secret_create");
+    let prepare_create = builder.add_node_after(
+        Node::opaque(
+            "prepare_secret_create",
+            vec![
+                port("access_token", "String"),
+                port("project", "String"),
+                port("secret", "String"),
+                port("exists", "Bool"),
+            ],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            DynOp::new(GcpOps::PrepareSecretCreate),
+        ),
+        &parse_get,
+    )?;
 
-    let execute_create = builder
-        .add_node_after(
-            Node::opaque(
-                "execute_secret_create",
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                ],
-                vec![port("response", "TransportResponse"), port("skip", "Bool")],
-                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-            ),
-            &prepare_create,
-        )
-        .expect("execute_secret_create");
+    let execute_create = builder.add_node_after(
+        Node::opaque(
+            "execute_secret_create",
+            vec![
+                port("request", "TransportRequest"),
+                port("skip", "Bool"),
+                resource("api:network", "NetworkHandle", AccessMode::Read),
+            ],
+            vec![port("response", "TransportResponse"), port("skip", "Bool")],
+            DynOp::new(TransportOps::Execute),
+        ),
+        &prepare_create,
+    )?;
 
-    builder
-        .add_edge(
-            parse_impersonate.out("access_token"),
-            prepare_create.in_port("access_token"),
-        )
-        .expect("parse_impersonate.access_token -> prepare_secret_create.access_token");
-    builder
-        .add_edge(parse_get.out("exists"), prepare_create.in_port("exists"))
-        .expect("parse_secret_get.exists -> prepare_secret_create.exists");
-    builder
-        .add_edge(
-            prepare_create.out("request"),
-            execute_create.in_port("request"),
-        )
-        .expect("prepare_secret_create.request -> execute_secret_create.request");
-    builder
-        .add_edge(prepare_create.out("skip"), execute_create.in_port("skip"))
-        .expect("prepare_secret_create.skip -> execute_secret_create.skip");
-    builder
-        .add_edge(
-            net_env.out(NetEnv::PORT),
-            execute_create.in_port(RESOURCE_API_NETWORK),
-        )
-        .expect("net_env -> execute_secret_create.res:api:network");
+    builder.add_edge(
+        parse_impersonate.out("access_token"),
+        prepare_create.in_port("access_token"),
+    )?;
+    builder.add_edge(parse_get.out("exists"), prepare_create.in_port("exists"))?;
+    builder.add_edge(
+        prepare_create.out("request"),
+        execute_create.in_port("request"),
+    )?;
+    builder.add_edge(prepare_create.out("skip"), execute_create.in_port("skip"))?;
+    builder.add_edge(
+        net_env.out(NetEnv::PORT),
+        execute_create.in_port(RESOURCE_API_NETWORK),
+    )?;
 
-    let prepare_add = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_secret_add_version",
-                vec![
-                    port("access_token", "String"),
-                    port("project", "String"),
-                    port("secret", "String"),
-                    port("secret_value", "Secret"),
-                    optional("create_done", "OptionalBool"),
-                ],
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareSecretAddVersion),
-            ),
-            &execute_create,
-        )
-        .expect("prepare_secret_add_version");
+    let prepare_add = builder.add_node_after(
+        Node::opaque(
+            "prepare_secret_add_version",
+            vec![
+                port("access_token", "String"),
+                port("project", "String"),
+                port("secret", "String"),
+                port("secret_value", "Secret"),
+                optional("create_done", "OptionalBool"),
+            ],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            DynOp::new(GcpOps::PrepareSecretAddVersion),
+        ),
+        &execute_create,
+    )?;
 
-    let execute_add = builder
-        .add_node_after(
-            Node::opaque(
-                "execute_secret_add_version",
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                ],
-                vec![port("response", "TransportResponse")],
-                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-            ),
-            &prepare_add,
-        )
-        .expect("execute_secret_add_version");
+    let execute_add = builder.add_node_after(
+        Node::opaque(
+            "execute_secret_add_version",
+            vec![
+                port("request", "TransportRequest"),
+                port("skip", "Bool"),
+                resource("api:network", "NetworkHandle", AccessMode::Read),
+            ],
+            vec![port("response", "TransportResponse")],
+            DynOp::new(TransportOps::Execute),
+        ),
+        &prepare_add,
+    )?;
 
-    let parse_add = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_secret_add_version",
-                vec![port("response", "TransportResponse")],
-                vec![port("version", "String")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseSecretAddVersion),
-            ),
-            &execute_add,
-        )
-        .expect("parse_secret_add_version");
+    let parse_add = builder.add_node_after(
+        Node::opaque(
+            "parse_secret_add_version",
+            vec![port("response", "TransportResponse")],
+            vec![port("version", "String")],
+            DynOp::new(GcpOps::ParseSecretAddVersion),
+        ),
+        &execute_add,
+    )?;
 
-    builder
-        .add_edge(
-            parse_impersonate.out("access_token"),
-            prepare_add.in_port("access_token"),
-        )
-        .expect("parse_impersonate.access_token -> prepare_secret_add_version.access_token");
-    builder
-        .add_edge(
-            execute_create.out("skip"),
-            prepare_add.in_port("create_done"),
-        )
-        .expect("execute_secret_create.skip -> prepare_secret_add_version.create_done");
-    builder
-        .add_edge(prepare_add.out("request"), execute_add.in_port("request"))
-        .expect("prepare_secret_add_version.request -> execute_secret_add_version.request");
-    builder
-        .add_edge(prepare_add.out("skip"), execute_add.in_port("skip"))
-        .expect("prepare_secret_add_version.skip -> execute_secret_add_version.skip");
-    builder
-        .add_edge(
-            net_env.out(NetEnv::PORT),
-            execute_add.in_port(RESOURCE_API_NETWORK),
-        )
-        .expect("net_env -> execute_secret_add_version.res:api:network");
-    builder
-        .add_edge(execute_add.out("response"), parse_add.in_port("response"))
-        .expect("execute_secret_add_version.response -> parse_secret_add_version.response");
+    builder.add_edge(
+        parse_impersonate.out("access_token"),
+        prepare_add.in_port("access_token"),
+    )?;
+    builder.add_edge(
+        execute_create.out("skip"),
+        prepare_add.in_port("create_done"),
+    )?;
+    builder.add_edge(prepare_add.out("request"), execute_add.in_port("request"))?;
+    builder.add_edge(prepare_add.out("skip"), execute_add.in_port("skip"))?;
+    builder.add_edge(
+        net_env.out(NetEnv::PORT),
+        execute_add.in_port(RESOURCE_API_NETWORK),
+    )?;
+    builder.add_edge(execute_add.out("response"), parse_add.in_port("response"))?;
 
-    builder.build()
+    Ok(builder.build())
 }
 
-pub fn build_gcp_secret_manager_upsert_graph_github() -> Dag<GcpSecretManagerGraphOp> {
+pub fn build_gcp_secret_manager_upsert_graph_github(
+) -> Result<Dag<GcpSecretManagerGraphOp>, BuilderError> {
     build_gcp_secret_manager_upsert_graph(GcpRuntimeKind::GitHubActions)
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "gcp-wif-secret-upsert-metadata",
-    builder = "build_gcp_secret_manager_upsert_graph_metadata()"
+    builder = "build_gcp_secret_manager_upsert_graph_metadata()",
+    returns_result
 )]
-pub fn build_gcp_secret_manager_upsert_graph_metadata() -> Dag<GcpSecretManagerGraphOp> {
+pub fn build_gcp_secret_manager_upsert_graph_metadata(
+) -> Result<Dag<GcpSecretManagerGraphOp>, BuilderError> {
     build_gcp_secret_manager_upsert_graph(GcpRuntimeKind::GcpMetadata)
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "gcp-wif-secret-upsert-local",
-    builder = "build_gcp_secret_manager_upsert_graph_local()"
+    builder = "build_gcp_secret_manager_upsert_graph_local()",
+    returns_result
 )]
-pub fn build_gcp_secret_manager_upsert_graph_local() -> Dag<GcpSecretManagerGraphOp> {
+pub fn build_gcp_secret_manager_upsert_graph_local(
+) -> Result<Dag<GcpSecretManagerGraphOp>, BuilderError> {
     build_gcp_secret_manager_upsert_graph(GcpRuntimeKind::LocalDev)
 }
 
@@ -1079,18 +872,18 @@ pub fn build_local_auth_upsert_dag_pub() -> Dag<GcpSecretManagerGraphOp> {
     build_local_auth_upsert_dag()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+enum EnsureIamBindingMode {
+    ProjectPolicy,
+    ServiceAccountPolicy,
+}
+
 /// Add IAM ensure nodes to a graph builder (local dev only).
 ///
 /// Uses REST API (getIamPolicy + setIamPolicy) to ensure the SA has
 /// `roles/secretmanager.secretAccessor` on the secrets project.
 /// Fast in the common case (binding exists = single REST call, ~1s).
-///
-/// Flow:
-/// 1. `prepare_ensure_iam` — builds getIamPolicy REST request
-/// 2. `execute_get_iam` — executes getIamPolicy
-/// 3. `check_iam_binding` — checks policy, outputs setIamPolicy request if missing
-/// 4. `execute_set_iam` — executes setIamPolicy (skipped if binding exists)
-/// 5. `parse_set_iam` — validates result
 ///
 /// Tolerates PERMISSION_DENIED gracefully.
 fn add_ensure_iam_nodes(
@@ -1098,174 +891,216 @@ fn add_ensure_iam_nodes(
     net_env: &NodeRef<GcpSecretManagerGraphOp>,
     access_token_node: &NodeRef<GcpSecretManagerGraphOp>,
     runtime: GcpRuntimeKind,
-) {
+) -> Result<(), BuilderError> {
+    add_ensure_iam_nodes_with_mode(
+        builder,
+        net_env,
+        access_token_node,
+        runtime,
+        EnsureIamBindingMode::ProjectPolicy,
+    )
+}
+
+/// Add SA-level IAM binding ensure nodes to a graph builder (local dev only).
+///
+/// This path uses `roles/iam.workloadIdentityUser` policy checks against the
+/// service-account IAM policy and expects an additional `member` input.
+#[allow(dead_code)]
+pub fn add_ensure_sa_iam_nodes(
+    builder: &mut DagBuilder<GcpSecretManagerGraphOp>,
+    net_env: &NodeRef<GcpSecretManagerGraphOp>,
+    access_token_node: &NodeRef<GcpSecretManagerGraphOp>,
+    runtime: GcpRuntimeKind,
+) -> Result<(), BuilderError> {
+    add_ensure_iam_nodes_with_mode(
+        builder,
+        net_env,
+        access_token_node,
+        runtime,
+        EnsureIamBindingMode::ServiceAccountPolicy,
+    )
+}
+
+fn add_ensure_iam_nodes_with_mode(
+    builder: &mut DagBuilder<GcpSecretManagerGraphOp>,
+    net_env: &NodeRef<GcpSecretManagerGraphOp>,
+    access_token_node: &NodeRef<GcpSecretManagerGraphOp>,
+    runtime: GcpRuntimeKind,
+    mode: EnsureIamBindingMode,
+) -> Result<(), BuilderError> {
     if !matches!(runtime, GcpRuntimeKind::LocalDev) {
-        return;
+        return Ok(());
     }
 
-    // Step 1: Prepare getIamPolicy request
-    let prepare_ensure_iam = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_ensure_iam",
-                vec![
-                    port("access_token", "String"),
-                    port("project", "String"),
-                    port("service_account", "String"),
-                ],
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    port("service_account", "String"),
-                    port("project", "String"),
-                ],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareEnsureIamBinding),
-            ),
-            access_token_node,
-        )
-        .expect("prepare_ensure_iam");
+    let (
+        prepare_node_id,
+        execute_get_node_id,
+        check_node_id,
+        execute_set_node_id,
+        parse_node_id,
+        prepare_op,
+        check_op,
+        parse_op,
+        include_member_port,
+    ) = match mode {
+        EnsureIamBindingMode::ProjectPolicy => (
+            "prepare_ensure_iam",
+            "execute_get_iam",
+            "check_iam_binding",
+            "execute_set_iam",
+            "parse_set_iam",
+            GcpOps::PrepareEnsureIamBinding,
+            GcpOps::CheckAndPrepareIamBinding,
+            GcpOps::ParseSetIamBinding,
+            false,
+        ),
+        EnsureIamBindingMode::ServiceAccountPolicy => (
+            "prepare_ensure_sa_iam",
+            "execute_get_sa_iam",
+            "check_sa_iam_binding",
+            "execute_set_sa_iam",
+            "parse_set_sa_iam",
+            GcpOps::PrepareEnsureSaIamBinding,
+            GcpOps::CheckAndPrepareSaIamBinding,
+            GcpOps::ParseSetSaIamBinding,
+            true,
+        ),
+    };
 
-    // Step 2: Execute getIamPolicy
-    let execute_get_iam = builder
-        .add_node_after(
-            Node::opaque(
-                "execute_get_iam",
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                ],
-                vec![port("response", "TransportResponse")],
-                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-            ),
-            &prepare_ensure_iam,
-        )
-        .expect("execute_get_iam");
+    let mut prepare_inputs = vec![
+        port("access_token", "String"),
+        port("project", "String"),
+        port("service_account", "String"),
+    ];
+    let mut prepare_outputs = vec![
+        port("request", "TransportRequest"),
+        port("skip", "Bool"),
+        port("service_account", "String"),
+        port("project", "String"),
+    ];
+    let mut check_inputs = vec![
+        port("response", "TransportResponse"),
+        port("access_token", "String"),
+        port("project", "String"),
+        port("service_account", "String"),
+    ];
+    if include_member_port {
+        prepare_inputs.push(port("member", "String"));
+        prepare_outputs.push(port("member", "String"));
+        check_inputs.push(port("member", "String"));
+    }
 
-    // Step 3: Check binding and prepare setIamPolicy if needed
-    let check_iam = builder
-        .add_node_after(
-            Node::opaque(
-                "check_iam_binding",
-                vec![
-                    port("response", "TransportResponse"),
-                    port("access_token", "String"),
-                    port("project", "String"),
-                    port("service_account", "String"),
-                ],
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::CheckAndPrepareIamBinding),
-            ),
-            &execute_get_iam,
-        )
-        .expect("check_iam_binding");
+    let prepare_ensure_iam = builder.add_node_after(
+        Node::opaque(
+            prepare_node_id,
+            prepare_inputs,
+            prepare_outputs,
+            DynOp::new(prepare_op),
+        ),
+        access_token_node,
+    )?;
 
-    // Step 4: Execute setIamPolicy (skipped if binding already exists)
-    let execute_set_iam = builder
-        .add_node_after(
-            Node::opaque(
-                "execute_set_iam",
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    resource("api:network", "NetworkHandle", AccessMode::Read),
-                ],
-                vec![port("response", "TransportResponse")],
-                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-            ),
-            &check_iam,
-        )
-        .expect("execute_set_iam");
+    let execute_get_iam = builder.add_node_after(
+        Node::opaque(
+            execute_get_node_id,
+            vec![
+                port("request", "TransportRequest"),
+                port("skip", "Bool"),
+                resource("api:network", "NetworkHandle", AccessMode::Read),
+            ],
+            vec![port("response", "TransportResponse")],
+            DynOp::new(TransportOps::Execute),
+        ),
+        &prepare_ensure_iam,
+    )?;
 
-    // Step 5: Parse setIamPolicy result
-    let parse_set_iam = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_set_iam",
-                vec![port("response", "TransportResponse")],
-                vec![port("ok", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseSetIamBinding),
-            ),
-            &execute_set_iam,
-        )
-        .expect("parse_set_iam");
+    let check_iam = builder.add_node_after(
+        Node::opaque(
+            check_node_id,
+            check_inputs,
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            DynOp::new(check_op),
+        ),
+        &execute_get_iam,
+    )?;
 
-    // Wire: prepare -> execute_get_iam
-    builder
-        .add_edge(
-            prepare_ensure_iam.out("request"),
-            execute_get_iam.in_port("request"),
-        )
-        .expect("prepare_ensure_iam.request -> execute_get_iam.request");
-    builder
-        .add_edge(
-            prepare_ensure_iam.out("skip"),
-            execute_get_iam.in_port("skip"),
-        )
-        .expect("prepare_ensure_iam.skip -> execute_get_iam.skip");
-    builder
-        .add_edge(
-            net_env.out(NetEnv::PORT),
-            execute_get_iam.in_port(RESOURCE_API_NETWORK),
-        )
-        .expect("net_env -> execute_get_iam.res:api:network");
+    let execute_set_iam = builder.add_node_after(
+        Node::opaque(
+            execute_set_node_id,
+            vec![
+                port("request", "TransportRequest"),
+                port("skip", "Bool"),
+                resource("api:network", "NetworkHandle", AccessMode::Read),
+            ],
+            vec![port("response", "TransportResponse")],
+            DynOp::new(TransportOps::Execute),
+        ),
+        &check_iam,
+    )?;
 
-    // Wire: execute_get_iam -> check_iam_binding
-    builder
-        .add_edge(
-            execute_get_iam.out("response"),
-            check_iam.in_port("response"),
-        )
-        .expect("execute_get_iam.response -> check_iam_binding.response");
-    // Pass through access_token, project, service_account
-    builder
-        .add_edge(
-            prepare_ensure_iam.out("service_account"),
-            check_iam.in_port("service_account"),
-        )
-        .expect("prepare_ensure_iam.sa -> check_iam_binding.sa");
-    builder
-        .add_edge(
-            prepare_ensure_iam.out("project"),
-            check_iam.in_port("project"),
-        )
-        .expect("prepare_ensure_iam.project -> check_iam_binding.project");
+    let parse_set_iam = builder.add_node_after(
+        Node::opaque(
+            parse_node_id,
+            vec![port("response", "TransportResponse")],
+            vec![port("ok", "Bool")],
+            DynOp::new(parse_op),
+        ),
+        &execute_set_iam,
+    )?;
 
-    // Wire: check_iam_binding -> execute_set_iam
-    builder
-        .add_edge(check_iam.out("request"), execute_set_iam.in_port("request"))
-        .expect("check_iam_binding.request -> execute_set_iam.request");
-    builder
-        .add_edge(check_iam.out("skip"), execute_set_iam.in_port("skip"))
-        .expect("check_iam_binding.skip -> execute_set_iam.skip");
-    builder
-        .add_edge(
-            net_env.out(NetEnv::PORT),
-            execute_set_iam.in_port(RESOURCE_API_NETWORK),
-        )
-        .expect("net_env -> execute_set_iam.res:api:network");
+    builder.add_edge(
+        prepare_ensure_iam.out("request"),
+        execute_get_iam.in_port("request"),
+    )?;
+    builder.add_edge(
+        prepare_ensure_iam.out("skip"),
+        execute_get_iam.in_port("skip"),
+    )?;
+    builder.add_edge(
+        net_env.out(NetEnv::PORT),
+        execute_get_iam.in_port(RESOURCE_API_NETWORK),
+    )?;
 
-    // Wire: execute_set_iam -> parse_set_iam
-    builder
-        .add_edge(
-            execute_set_iam.out("response"),
-            parse_set_iam.in_port("response"),
-        )
-        .expect("execute_set_iam.response -> parse_set_iam.response");
+    builder.add_edge(
+        execute_get_iam.out("response"),
+        check_iam.in_port("response"),
+    )?;
+    builder.add_edge(
+        prepare_ensure_iam.out("service_account"),
+        check_iam.in_port("service_account"),
+    )?;
+    builder.add_edge(
+        prepare_ensure_iam.out("project"),
+        check_iam.in_port("project"),
+    )?;
+    if include_member_port {
+        builder.add_edge(
+            prepare_ensure_iam.out("member"),
+            check_iam.in_port("member"),
+        )?;
+    }
 
-    // Wire access_token from the auth step to the IAM ensure nodes
-    builder
-        .add_edge(
-            access_token_node.out("access_token"),
-            prepare_ensure_iam.in_port("access_token"),
-        )
-        .expect("access_token_node -> prepare_ensure_iam.access_token");
-    builder
-        .add_edge(
-            access_token_node.out("access_token"),
-            check_iam.in_port("access_token"),
-        )
-        .expect("access_token_node -> check_iam_binding.access_token");
+    builder.add_edge(check_iam.out("request"), execute_set_iam.in_port("request"))?;
+    builder.add_edge(check_iam.out("skip"), execute_set_iam.in_port("skip"))?;
+    builder.add_edge(
+        net_env.out(NetEnv::PORT),
+        execute_set_iam.in_port(RESOURCE_API_NETWORK),
+    )?;
+
+    builder.add_edge(
+        execute_set_iam.out("response"),
+        parse_set_iam.in_port("response"),
+    )?;
+
+    builder.add_edge(
+        access_token_node.out("access_token"),
+        prepare_ensure_iam.in_port("access_token"),
+    )?;
+    builder.add_edge(
+        access_token_node.out("access_token"),
+        check_iam.in_port("access_token"),
+    )?;
+    Ok(())
 }
 
 /// Build the local auth upsert sub-DAG using ADC + OAuth2 REST.
@@ -1299,7 +1134,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "net_env",
         vec![],
         vec![port(NetEnv::PORT, "NetworkHandle")],
-        GcpSecretManagerGraphOp::NetEnv(NetEnv),
+        DynOp::new(NetEnv),
     ));
 
     // ========================================================================
@@ -1310,7 +1145,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "prepare_check",
         vec![],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareCheckAdc),
+        DynOp::new(GcpOps::PrepareCheckAdc),
     ));
 
     dag.add_node(Node::opaque(
@@ -1321,14 +1156,14 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     dag.add_node(Node::opaque(
         "parse_check",
         vec![port("response", "TransportResponse")],
         vec![port("exists", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseCheckAdc),
+        DynOp::new(GcpOps::ParseCheckAdc),
     ));
 
     // Check edges
@@ -1361,7 +1196,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "prepare_read_adc",
         vec![port("exists", "Bool")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareReadAdc),
+        DynOp::new(GcpOps::PrepareReadAdc),
     ));
 
     dag.add_node(Node::opaque(
@@ -1372,7 +1207,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     // Step 2: Parse ADC credentials
@@ -1384,7 +1219,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             port("client_secret", "String"),
             port("refresh_token", "String"),
         ],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseAdcCredentials),
+        DynOp::new(GcpOps::ParseAdcCredentials),
     ));
 
     // Step 3: Prepare OAuth2 token refresh
@@ -1396,7 +1231,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             port("refresh_token", "String"),
         ],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareOAuth2Refresh),
+        DynOp::new(GcpOps::PrepareOAuth2Refresh),
     ));
 
     // Step 4: Execute OAuth2 refresh
@@ -1408,7 +1243,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     // Step 5: Try-parse — catches auth errors as needs_reauth instead of failing
@@ -1420,7 +1255,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             optional("access_token", "OptionalString"),
             optional("expires_in", "OptionalInt"),
         ],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseTryRefresh),
+        DynOp::new(GcpOps::ParseTryRefresh),
     ));
 
     // Try-refresh edges
@@ -1509,7 +1344,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "prepare_gcloud_auth",
         vec![port("needs_reauth", "Bool")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGcloudAuth),
+        DynOp::new(GcpOps::PrepareGcloudAuth),
     ));
 
     dag.add_node(Node::opaque(
@@ -1520,14 +1355,14 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     dag.add_node(Node::opaque(
         "parse_gcloud_auth",
         vec![port("response", "TransportResponse")],
         vec![port("ok", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGcloudAuth),
+        DynOp::new(GcpOps::ParseGcloudAuth),
     ));
 
     // Re-auth edges
@@ -1568,7 +1403,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "prepare_reread_adc",
         vec![port("exists", "Bool")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareReadAdc),
+        DynOp::new(GcpOps::PrepareReadAdc),
     ));
 
     dag.add_node(Node::opaque(
@@ -1579,7 +1414,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     dag.add_node(Node::opaque(
@@ -1590,7 +1425,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             port("client_secret", "String"),
             port("refresh_token", "String"),
         ],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseAdcCredentials),
+        DynOp::new(GcpOps::ParseAdcCredentials),
     ));
 
     // Re-read edges (gcloud auth ok -> treat as "exists" for PrepareReadAdc)
@@ -1634,7 +1469,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             port("refresh_token", "String"),
         ],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareOAuth2Refresh),
+        DynOp::new(GcpOps::PrepareOAuth2Refresh),
     ));
 
     dag.add_node(Node::opaque(
@@ -1645,7 +1480,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
 
     dag.add_node(Node::opaque(
@@ -1655,7 +1490,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             optional("access_token", "OptionalString"),
             optional("expires_in", "OptionalInt"),
         ],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseOAuth2Refresh),
+        DynOp::new(GcpOps::ParseOAuth2Refresh),
     ));
 
     // Retry edges
@@ -1715,7 +1550,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             optional("retry_expires_in", "OptionalInt"),
         ],
         vec![port("access_token", "String"), port("expires_in", "Int")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::MergeAuthResult),
+        DynOp::new(GcpOps::MergeAuthResult),
     ));
 
     // Merge edges: try-refresh outputs
@@ -1746,4 +1581,94 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     ));
 
     dag
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_builder_with_net_and_access_token() -> (
+        DagBuilder<GcpSecretManagerGraphOp>,
+        NodeRef<GcpSecretManagerGraphOp>,
+        NodeRef<GcpSecretManagerGraphOp>,
+    ) {
+        let mut builder: DagBuilder<GcpSecretManagerGraphOp> = DagBuilder::new();
+        let net_env = builder
+            .add_root_node(Node::opaque(
+                "net_env",
+                vec![],
+                vec![port(NetEnv::PORT, "NetworkHandle")],
+                DynOp::new(NetEnv),
+            ))
+            .expect("net_env");
+        let access_token = builder
+            .add_root_node(Node::opaque(
+                "access_token_source",
+                vec![],
+                vec![port("access_token", "String")],
+                DynOp::new(GcpOps::ResolveRuntime),
+            ))
+            .expect("access_token_source");
+        (builder, net_env, access_token)
+    }
+
+    #[test]
+    fn add_ensure_sa_iam_nodes_wires_member_port_chain() {
+        let (mut builder, net_env, access_token) = test_builder_with_net_and_access_token();
+        add_ensure_sa_iam_nodes(
+            &mut builder,
+            &net_env,
+            &access_token,
+            GcpRuntimeKind::LocalDev,
+        )
+        .unwrap();
+        let dag = builder.build();
+
+        let prepare = dag
+            .nodes
+            .iter()
+            .find(|n| n.id.0 == "prepare_ensure_sa_iam")
+            .expect("prepare_ensure_sa_iam node should be present");
+        assert!(
+            prepare.inputs.iter().any(|p| p.name.0 == "member"),
+            "prepare_ensure_sa_iam should expose member input"
+        );
+        let check = dag
+            .nodes
+            .iter()
+            .find(|n| n.id.0 == "check_sa_iam_binding")
+            .expect("check_sa_iam_binding node should be present");
+        assert!(
+            check.inputs.iter().any(|p| p.name.0 == "member"),
+            "check_sa_iam_binding should consume member input"
+        );
+        assert!(
+            dag.edges.iter().any(|edge| {
+                edge.from_node.0 == "prepare_ensure_sa_iam"
+                    && edge.from_port.0 == "member"
+                    && edge.to_node.0 == "check_sa_iam_binding"
+                    && edge.to_port.0 == "member"
+            }),
+            "member passthrough edge should exist for SA IAM ensure chain"
+        );
+    }
+
+    #[test]
+    fn add_ensure_sa_iam_nodes_is_noop_for_non_local_runtime() {
+        let (mut builder, net_env, access_token) = test_builder_with_net_and_access_token();
+        add_ensure_sa_iam_nodes(
+            &mut builder,
+            &net_env,
+            &access_token,
+            GcpRuntimeKind::GitHubActions,
+        )
+        .unwrap();
+        let dag = builder.build();
+        assert!(
+            dag.nodes
+                .iter()
+                .all(|node| !node.id.0.starts_with("prepare_ensure_sa_iam")),
+            "non-local runtimes should not add ensure_sa_iam nodes"
+        );
+    }
 }

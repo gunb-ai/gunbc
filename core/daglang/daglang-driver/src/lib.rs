@@ -3,7 +3,7 @@ use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 use daglang_derive::{derive_artifacts, DerivedArtifacts};
-use daglang_emit::rust_exec_runtime::emit_exec_runtime;
+use daglang_emit::rust_exec_runtime::emit_exec_runtime_with_output_dir;
 use daglang_emit::{
     emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle,
     EmissionSummary,
@@ -73,11 +73,20 @@ pub struct CheckOutput {
     pub parsed_files: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CompileOptions {
     pub emit_collection_nodes: bool,
     pub target: CodegenTarget,
     pub layer: CodegenLayer,
+    /// Optional output directory for emitted files.
+    ///
+    /// Used by emitters that need to derive relative paths in generated
+    /// artifacts (for example Cargo.toml workspace path dependencies).
+    pub output_dir: Option<PathBuf>,
+    /// Pre-computed makegen Makefile content. When set, Go/C/MIPS backends
+    /// embed this instead of the default stub, and Rust Layer 1 writes it as
+    /// `src/embedded_makefile.txt`.
+    pub makegen_content_override: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -198,12 +207,18 @@ fn emit_with_options(
                 CompileError::from(format!("rust emit backend failed: {error}"))
             })
         }
-        (CodegenTarget::Go, CodegenLayer::Native) => emit_go_bundle(dag, derived)
-            .map_err(|error| CompileError::from(format!("go emit backend failed: {error}"))),
-        (CodegenTarget::C, CodegenLayer::Native) => emit_c_bundle(dag, derived)
-            .map_err(|error| CompileError::from(format!("c emit backend failed: {error}"))),
-        (CodegenTarget::Mips, CodegenLayer::Native) => emit_mips_bundle(dag, derived)
-            .map_err(|error| CompileError::from(format!("mips emit backend failed: {error}"))),
+        (CodegenTarget::Go, CodegenLayer::Native) => {
+            emit_go_bundle(dag, derived, options.makegen_content_override.as_deref())
+                .map_err(|error| CompileError::from(format!("go emit backend failed: {error}")))
+        }
+        (CodegenTarget::C, CodegenLayer::Native) => {
+            emit_c_bundle(dag, derived, options.makegen_content_override.as_deref())
+                .map_err(|error| CompileError::from(format!("c emit backend failed: {error}")))
+        }
+        (CodegenTarget::Mips, CodegenLayer::Native) => {
+            emit_mips_bundle(dag, derived, options.makegen_content_override.as_deref())
+                .map_err(|error| CompileError::from(format!("mips emit backend failed: {error}")))
+        }
         (CodegenTarget::Rust, CodegenLayer::ExecRuntime) => {
             let module_name = derived
                 .tool_metadata
@@ -211,7 +226,8 @@ fn emit_with_options(
                 .first()
                 .map(|module| module.module.as_str())
                 .unwrap_or("daglang.generated");
-            let files = emit_exec_runtime(dag, module_name).map_err(|error| {
+            let files = emit_exec_runtime_with_output_dir(dag, module_name, options.output_dir.as_deref())
+                .map_err(|error| {
                 CompileError::from(format!("rust exec-runtime emit failed: {error}"))
             })?;
             let callable_count = dag.nodes.len();
@@ -563,7 +579,7 @@ fn validate_module_path_consistency(
             for component in relative.components() {
                 use std::path::Component;
                 if let Component::Normal(part) = component {
-                    inferred_segments.push(part.to_string_lossy().to_string());
+                    inferred_segments.push(part.to_string_lossy().into_owned());
                 }
             }
             if let Some(last) = inferred_segments.last_mut() {
@@ -1249,5 +1265,4 @@ fn run() -> Bool {
             "Cargo.toml should have sanitized crate name"
         );
     }
-
 }

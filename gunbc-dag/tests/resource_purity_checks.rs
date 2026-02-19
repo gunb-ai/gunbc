@@ -15,13 +15,11 @@ use gunbc_testgen_registry::iter_resource_tests;
 use std::path::Path;
 
 // Force-link crates with `#[resource_test_target]` registrations used by CI/tooling.
-use gunbc_clippy as _;
-use gunbc_deps as _;
-use gunbc_gist as _;
+//
+// Most crates are force-linked via explicit symbol touches below; cloud-ops has
+// no mock symbol touched in this file, so keep the import to retain its
+// registration objects.
 use gunbc_lib_cloud_ops as _;
-use gunbc_lib_gcp_ops as _;
-use gunbc_lib_llm_ops as _;
-use gunbc_lib_review as _;
 
 #[test]
 fn resource_purity_registry_wide() {

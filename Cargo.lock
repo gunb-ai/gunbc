@@ -140,11 +140,11 @@ dependencies = [
  "daglang-derive",
  "daglang-driver",
  "daglang-emit",
- "daglang-exec-bridge",
  "daglang-lower",
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
+ "gunbc-dag",
  "gunbc-exec",
  "gunbc-ir",
  "serde",
@@ -189,17 +189,6 @@ dependencies = [
  "daglang-derive",
  "daglang-lower",
  "gunbc-ir",
- "serde_json",
-]
-
-[[package]]
-name = "daglang-exec-bridge"
-version = "0.1.0"
-dependencies = [
- "daglang-lower",
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-transport",
  "serde_json",
 ]
 
@@ -370,10 +359,13 @@ name = "gunbc-dag"
 version = "0.1.0"
 dependencies = [
  "cargo_metadata",
+ "daglang-driver",
+ "daglang-lower",
  "glob",
  "gunbc-cli",
  "gunbc-clippy",
  "gunbc-codegen",
+ "gunbc-delegate-macros",
  "gunbc-deps",
  "gunbc-exec",
  "gunbc-gist",
@@ -399,10 +391,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-delegate-macros"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-test",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
+]
+
+[[package]]
 name = "gunbc-deps"
 version = "0.1.0"
 dependencies = [
  "gunbc-cli",
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-transport",
@@ -466,6 +471,7 @@ version = "0.1.0"
 dependencies = [
  "glob",
  "gunbc-infra",
+ "inventory",
  "proptest",
  "serde",
  "serde_json",
@@ -476,6 +482,7 @@ dependencies = [
 name = "gunbc-lib-aws-ops"
 version = "0.1.0"
 dependencies = [
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-test",
@@ -489,6 +496,7 @@ dependencies = [
 name = "gunbc-lib-azure-ops"
 version = "0.1.0"
 dependencies = [
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-test",
@@ -515,6 +523,7 @@ dependencies = [
 name = "gunbc-lib-cloud-ops"
 version = "0.1.0"
 dependencies = [
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-aws-ops",
@@ -532,6 +541,7 @@ dependencies = [
 name = "gunbc-lib-gcp-ops"
 version = "0.1.0"
 dependencies = [
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-transport",
@@ -569,6 +579,7 @@ dependencies = [
 name = "gunbc-lib-llm-ops"
 version = "0.1.0"
 dependencies = [
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-cloud-ops",
@@ -594,6 +605,7 @@ name = "gunbc-lib-review"
 version = "0.1.0"
 dependencies = [
  "gunbc-cli",
+ "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-blob",

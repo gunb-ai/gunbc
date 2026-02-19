@@ -5,15 +5,14 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::codegen::build_codegen_graph_with_mode;
-use gunbc_dag::CODEGEN_STAMP_PATH;
-use gunbc_exec::{
-    execute_and_display, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
+use gunbc_dag::codegen::build_codegen_graph;
+use gunbc_dag::{
+    print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions, CODEGEN_STAMP_PATH,
 };
+use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, ExecutionMode};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
-use std::io::IsTerminal;
 use std::process;
 
 fn main() {
@@ -26,7 +25,7 @@ fn main() {
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
 
     // Build the graph
-    let dag = match build_codegen_graph_with_mode(resource_mode) {
+    let dag = match build_codegen_graph() {
         Ok(d) => d,
         Err(e) => {
             print_attention(AttentionLevel::Error, "Graph build failed", &e.to_string());
@@ -43,6 +42,9 @@ fn main() {
                 1, "missing",
             )))
         };
+
+        // Resource environment: filesystem handle used by write transports.
+        wire_fs_env_write_mock(&dag, &mut mocks);
 
         // Simulate missing codegen outputs so the codegen step runs.
         mocks.set_value("execute_codegen_exists", "response", missing_shell());
@@ -71,15 +73,21 @@ fn main() {
         ExecutionMode::Real
     };
 
-    // Print header
-    println!("codegen");
-    println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
-    println!("  resource_mode: {}", resource_mode);
-    println!();
-
-    // Execute and display (progress or classic based on terminal)
-    let animated = std::io::stdout().is_terminal();
-    execute_and_display(&dag, mode, animated, Some("prep_success"), None);
+    print_tool_header(
+        "codegen",
+        &[
+            ("mode", if dry_run { "dry-run" } else { "real" }.to_string()),
+            ("resource_mode", resource_mode.to_string()),
+        ],
+    );
+    run_tool(
+        dag,
+        mode,
+        RunToolOptions {
+            success_port: Some("prep_success"),
+            ..RunToolOptions::default()
+        },
+    );
 }
 
 fn print_help() {

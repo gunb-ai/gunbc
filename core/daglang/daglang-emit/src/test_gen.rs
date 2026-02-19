@@ -608,23 +608,44 @@ mod tests {
         };
         let rendered = emit_rust_tests(&spec);
         assert!(rendered.contains("#[test]"), "has test attr");
-        assert!(rendered.contains("fn test_dry_run_completion()"), "dry-run fn: got {rendered}");
-        assert!(rendered.contains("makegen_dry_run()"), "calls fn: got {rendered}");
+        assert!(
+            rendered.contains("fn test_dry_run_completion()"),
+            "dry-run fn: got {rendered}"
+        );
+        assert!(
+            rendered.contains("makegen_dry_run()"),
+            "calls fn: got {rendered}"
+        );
     }
 
     #[test]
     fn rust_spec_transport() {
         let rendered = emit_rust_tests(&sample_spec());
-        assert!(rendered.contains("fn test_transport_makegen_execute_read()"), "transport fn: got {rendered}");
-        assert!(rendered.contains("execute_file_read(mock_response)"), "call: got {rendered}");
+        assert!(
+            rendered.contains("fn test_transport_makegen_execute_read()"),
+            "transport fn: got {rendered}"
+        );
+        assert!(
+            rendered.contains("execute_file_read(mock_response)"),
+            "call: got {rendered}"
+        );
     }
 
     #[test]
     fn rust_spec_pure() {
         let rendered = emit_rust_tests(&sample_spec());
-        assert!(rendered.contains("fn test_pure_render_makefile()"), "pure fn: got {rendered}");
-        assert!(rendered.contains("render_makefile(registry)"), "call: got {rendered}");
-        assert!(rendered.contains("assert_eq!(result.result, 42"), "assert: got {rendered}");
+        assert!(
+            rendered.contains("fn test_pure_render_makefile()"),
+            "pure fn: got {rendered}"
+        );
+        assert!(
+            rendered.contains("render_makefile(registry)"),
+            "call: got {rendered}"
+        );
+        assert!(
+            rendered.contains("assert_eq!(result.result, 42"),
+            "assert: got {rendered}"
+        );
     }
 
     #[test]
@@ -636,23 +657,41 @@ mod tests {
             pure_nodes: vec![],
         };
         let rendered = emit_go_tests(&spec);
-        assert!(rendered.contains("func TestDryRunCompletion(t *testing.T)"), "Go fn: got {rendered}");
+        assert!(
+            rendered.contains("func TestDryRunCompletion(t *testing.T)"),
+            "Go fn: got {rendered}"
+        );
         assert!(rendered.contains("MakegenDryRun()"), "call: got {rendered}");
     }
 
     #[test]
     fn go_spec_transport() {
         let rendered = emit_go_tests(&sample_spec());
-        assert!(rendered.contains("func TestTransportExecuteRead(t *testing.T)"), "Go transport: got {rendered}");
-        assert!(rendered.contains("executeFileRead(mockResponse)"), "call: got {rendered}");
+        assert!(
+            rendered.contains("func TestTransportExecuteRead(t *testing.T)"),
+            "Go transport: got {rendered}"
+        );
+        assert!(
+            rendered.contains("executeFileRead(mockResponse)"),
+            "call: got {rendered}"
+        );
     }
 
     #[test]
     fn go_spec_pure() {
         let rendered = emit_go_tests(&sample_spec());
-        assert!(rendered.contains("func TestPureRenderMakefile(t *testing.T)"), "Go pure: got {rendered}");
-        assert!(rendered.contains("RenderMakefile(registry)"), "call: got {rendered}");
-        assert!(rendered.contains("result.Result != 42"), "assert: got {rendered}");
+        assert!(
+            rendered.contains("func TestPureRenderMakefile(t *testing.T)"),
+            "Go pure: got {rendered}"
+        );
+        assert!(
+            rendered.contains("RenderMakefile(registry)"),
+            "call: got {rendered}"
+        );
+        assert!(
+            rendered.contains("result.Result != 42"),
+            "assert: got {rendered}"
+        );
     }
 
     #[test]
@@ -664,42 +703,83 @@ mod tests {
             pure_nodes: vec![],
         };
         let rendered = emit_c_tests(&spec);
-        assert!(rendered.contains("void test_dry_run_completion(void)"), "C fn: got {rendered}");
-        assert!(rendered.contains("makegen_dry_run()"), "call: got {rendered}");
+        assert!(
+            rendered.contains("void test_dry_run_completion(void)"),
+            "C fn: got {rendered}"
+        );
+        assert!(
+            rendered.contains("makegen_dry_run()"),
+            "call: got {rendered}"
+        );
         assert!(rendered.contains("ASSERT_OK"), "macro: got {rendered}");
     }
 
     #[test]
     fn c_spec_transport() {
         let rendered = emit_c_tests(&sample_spec());
-        assert!(rendered.contains("void test_transport_makegen_execute_read(void)"), "C transport: got {rendered}");
-        assert!(rendered.contains("execute_file_read(mock_response)"), "call: got {rendered}");
+        assert!(
+            rendered.contains("void test_transport_makegen_execute_read(void)"),
+            "C transport: got {rendered}"
+        );
+        assert!(
+            rendered.contains("execute_file_read(mock_response)"),
+            "call: got {rendered}"
+        );
     }
 
     #[test]
     fn c_spec_pure() {
         let rendered = emit_c_tests(&sample_spec());
-        assert!(rendered.contains("void test_pure_render_makefile(void)"), "C pure: got {rendered}");
-        assert!(rendered.contains("render_makefile(registry)"), "call: got {rendered}");
-        assert!(rendered.contains("ASSERT_EQ(result, 42"), "assert: got {rendered}");
+        assert!(
+            rendered.contains("void test_pure_render_makefile(void)"),
+            "C pure: got {rendered}"
+        );
+        assert!(
+            rendered.contains("render_makefile(registry)"),
+            "call: got {rendered}"
+        );
+        assert!(
+            rendered.contains("ASSERT_EQ(result, 42"),
+            "assert: got {rendered}"
+        );
     }
 
     #[test]
     fn c_test_runner() {
         let rendered = emit_c_tests(&sample_spec());
         assert!(rendered.contains("int main(void)"), "main");
-        assert!(rendered.contains("test_dry_run_completion();"), "calls dry-run");
-        assert!(rendered.contains("test_transport_makegen_execute_read();"), "calls transport");
-        assert!(rendered.contains("test_pure_render_makefile();"), "calls pure");
+        assert!(
+            rendered.contains("test_dry_run_completion();"),
+            "calls dry-run"
+        );
+        assert!(
+            rendered.contains("test_transport_makegen_execute_read();"),
+            "calls transport"
+        );
+        assert!(
+            rendered.contains("test_pure_render_makefile();"),
+            "calls pure"
+        );
         assert!(rendered.contains("All tests passed."), "success msg");
     }
 
     #[test]
     fn c_assert_macros() {
-        let spec = TestSpec { module_name: "x".into(), dry_run: false, transport_nodes: vec![], pure_nodes: vec![] };
+        let spec = TestSpec {
+            module_name: "x".into(),
+            dry_run: false,
+            transport_nodes: vec![],
+            pure_nodes: vec![],
+        };
         let rendered = emit_c_tests(&spec);
-        assert!(rendered.contains("#define ASSERT_EQ(a, b, msg)"), "ASSERT_EQ");
-        assert!(rendered.contains("#define ASSERT_STR_EQ(a, b, msg)"), "ASSERT_STR_EQ");
+        assert!(
+            rendered.contains("#define ASSERT_EQ(a, b, msg)"),
+            "ASSERT_EQ"
+        );
+        assert!(
+            rendered.contains("#define ASSERT_STR_EQ(a, b, msg)"),
+            "ASSERT_STR_EQ"
+        );
         assert!(rendered.contains("#define ASSERT_OK(rc, msg)"), "ASSERT_OK");
     }
 

@@ -212,27 +212,20 @@ fn analyze_edges<T>(dag: &Dag<T>) -> Vec<EdgeTypeInfo> {
     let registry = TypeRegistry::with_core_types();
 
     for edge in &dag.edges {
-        let from_node = dag.get_node(&edge.from_node);
-        let to_node = dag.get_node(&edge.to_node);
+        let Some(ports) = dag.resolve_edge_ports(edge) else {
+            continue;
+        };
+        let compatible = types_compatible(ports.from.type_id(), ports.to.type_id(), &registry);
 
-        if let (Some(from), Some(to)) = (from_node, to_node) {
-            let from_port = from.outputs.iter().find(|p| p.name == edge.from_port);
-            let to_port = to.inputs.iter().find(|p| p.name == edge.to_port);
-
-            if let (Some(fp), Some(tp)) = (from_port, to_port) {
-                let compatible = types_compatible(&fp.type_id, &tp.type_id, &registry);
-
-                results.push(EdgeTypeInfo {
-                    from_node: edge.from_node.0.clone(),
-                    from_port: edge.from_port.0.clone(),
-                    to_node: edge.to_node.0.clone(),
-                    to_port: edge.to_port.0.clone(),
-                    from_type: fp.type_id.clone(),
-                    to_type: tp.type_id.clone(),
-                    compatible,
-                });
-            }
-        }
+        results.push(EdgeTypeInfo {
+            from_node: edge.from_node.0.clone(),
+            from_port: edge.from_port.0.clone(),
+            to_node: edge.to_node.0.clone(),
+            to_port: edge.to_port.0.clone(),
+            from_type: ports.from.type_id().clone(),
+            to_type: ports.to.type_id().clone(),
+            compatible,
+        });
     }
 
     results

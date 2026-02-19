@@ -23,6 +23,22 @@ use crate::builder::{BuilderError, DagBuilder, NodeRef};
 use crate::dag::{Dag, Edge, Port};
 use crate::node::Node;
 
+/// Request/response type names used for transport triplet wiring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransportPortTypes {
+    pub request: &'static str,
+    pub response: &'static str,
+}
+
+impl TransportPortTypes {
+    pub const GENERIC: Self = Self::new("TransportRequest", "TransportResponse");
+    pub const TCP: Self = Self::new("TcpRequest", "TcpResponse");
+
+    pub const fn new(request: &'static str, response: &'static str) -> Self {
+        Self { request, response }
+    }
+}
+
 /// Add a non-skippable transport triplet as a **SubDag**: prepare → execute → parse.
 ///
 /// Creates an internal DAG with three opaque nodes wired together, then wraps
@@ -45,6 +61,34 @@ pub fn add_transport_triplet<T>(
     transport_op: T,
     after: Option<&NodeRef<T>>,
 ) -> Result<NodeRef<T>, BuilderError> {
+    add_transport_triplet_typed(
+        builder,
+        name,
+        TransportPortTypes::GENERIC,
+        prepare_inputs,
+        execute_resource_inputs,
+        parse_outputs,
+        prepare_op,
+        parse_op,
+        transport_op,
+        after,
+    )
+}
+
+/// Add a non-skippable transport triplet with explicit request/response types.
+#[allow(clippy::too_many_arguments)]
+pub fn add_transport_triplet_typed<T>(
+    builder: &mut DagBuilder<T>,
+    name: &str,
+    port_types: TransportPortTypes,
+    prepare_inputs: Vec<Port>,
+    execute_resource_inputs: Vec<Port>,
+    parse_outputs: Vec<Port>,
+    prepare_op: T,
+    parse_op: T,
+    transport_op: T,
+    after: Option<&NodeRef<T>>,
+) -> Result<NodeRef<T>, BuilderError> {
     let prepare_name = format!("prepare_{name}");
     let execute_name = format!("execute_{name}");
     let parse_name = format!("parse_{name}");
@@ -55,22 +99,22 @@ pub fn add_transport_triplet<T>(
     inner.add_node(Node::opaque(
         prepare_name.as_str(),
         prepare_inputs,
-        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        vec![port("request", port_types.request), port("skip", "Bool")],
         prepare_op,
     ));
 
-    let mut exec_inputs = vec![port("request", "TransportRequest"), port("skip", "Bool")];
+    let mut exec_inputs = vec![port("request", port_types.request), port("skip", "Bool")];
     exec_inputs.extend(execute_resource_inputs);
     inner.add_node(Node::opaque(
         execute_name.as_str(),
         exec_inputs,
-        vec![port("response", "TransportResponse")],
+        vec![port("response", port_types.response)],
         transport_op,
     ));
 
     inner.add_node(Node::opaque(
         parse_name.as_str(),
-        vec![port("response", "TransportResponse")],
+        vec![port("response", port_types.response)],
         parse_outputs,
         parse_op,
     ));
@@ -128,6 +172,34 @@ pub fn add_skippable_transport_triplet<T>(
     transport_op: T,
     after: &NodeRef<T>,
 ) -> Result<NodeRef<T>, BuilderError> {
+    add_skippable_transport_triplet_typed(
+        builder,
+        name,
+        TransportPortTypes::GENERIC,
+        prepare_inputs,
+        execute_resource_inputs,
+        parse_outputs,
+        prepare_op,
+        parse_op,
+        transport_op,
+        after,
+    )
+}
+
+/// Add a skippable transport triplet with explicit request/response types.
+#[allow(clippy::too_many_arguments)]
+pub fn add_skippable_transport_triplet_typed<T>(
+    builder: &mut DagBuilder<T>,
+    name: &str,
+    port_types: TransportPortTypes,
+    prepare_inputs: Vec<Port>,
+    execute_resource_inputs: Vec<Port>,
+    parse_outputs: Vec<Port>,
+    prepare_op: T,
+    parse_op: T,
+    transport_op: T,
+    after: &NodeRef<T>,
+) -> Result<NodeRef<T>, BuilderError> {
     let prepare_name = format!("prepare_{name}");
     let execute_name = format!("execute_{name}");
     let parse_name = format!("parse_{name}");
@@ -139,7 +211,7 @@ pub fn add_skippable_transport_triplet<T>(
         prepare_name.as_str(),
         prepare_inputs,
         vec![
-            optional("request", "TransportRequest"),
+            optional("request", port_types.request),
             port("skip", "Bool"),
             optional("skip_reason", "OptionalString"),
         ],
@@ -147,7 +219,7 @@ pub fn add_skippable_transport_triplet<T>(
     ));
 
     let mut exec_inputs = vec![
-        optional("request", "TransportRequest"),
+        optional("request", port_types.request),
         port("skip", "Bool"),
     ];
     exec_inputs.extend(execute_resource_inputs);
@@ -155,7 +227,7 @@ pub fn add_skippable_transport_triplet<T>(
         execute_name.as_str(),
         exec_inputs,
         vec![
-            optional("response", "TransportResponse"),
+            optional("response", port_types.response),
             port("skip", "Bool"),
             optional("skip_reason", "OptionalString"),
         ],
@@ -165,7 +237,7 @@ pub fn add_skippable_transport_triplet<T>(
     inner.add_node(Node::opaque(
         parse_name.as_str(),
         vec![
-            optional("response", "TransportResponse"),
+            optional("response", port_types.response),
             port("skip", "Bool"),
             optional("skip_reason", "OptionalString"),
         ],
@@ -232,10 +304,46 @@ pub fn add_transport_triplet_named_with_passthrough<T>(
     transport_op: T,
     after: Option<&NodeRef<T>>,
 ) -> Result<NodeRef<T>, BuilderError> {
+    add_transport_triplet_named_with_passthrough_typed(
+        builder,
+        name,
+        prepare_name,
+        execute_name,
+        parse_name,
+        TransportPortTypes::GENERIC,
+        prepare_inputs,
+        execute_resource_inputs,
+        passthrough,
+        parse_outputs,
+        prepare_op,
+        parse_op,
+        transport_op,
+        after,
+    )
+}
+
+/// Add a non-skippable named transport triplet with explicit request/response types.
+#[allow(clippy::too_many_arguments)]
+pub fn add_transport_triplet_named_with_passthrough_typed<T>(
+    builder: &mut DagBuilder<T>,
+    name: &str,
+    prepare_name: &str,
+    execute_name: &str,
+    parse_name: &str,
+    port_types: TransportPortTypes,
+    prepare_inputs: Vec<Port>,
+    execute_resource_inputs: Vec<Port>,
+    passthrough: Vec<Port>,
+    parse_outputs: Vec<Port>,
+    prepare_op: T,
+    parse_op: T,
+    transport_op: T,
+    after: Option<&NodeRef<T>>,
+) -> Result<NodeRef<T>, BuilderError> {
     // Build internal DAG ---------------------------------------------------
     let mut inner = Dag::new();
 
-    let mut prepare_outputs = vec![port("request", "TransportRequest"), port("skip", "Bool")];
+    let mut prepare_outputs = vec![port("request", port_types.request), port("skip", "Bool")];
     prepare_outputs.extend(passthrough.clone());
     inner.add_node(Node::opaque(
         prepare_name,
@@ -244,16 +352,16 @@ pub fn add_transport_triplet_named_with_passthrough<T>(
         prepare_op,
     ));
 
-    let mut exec_inputs = vec![port("request", "TransportRequest"), port("skip", "Bool")];
+    let mut exec_inputs = vec![port("request", port_types.request), port("skip", "Bool")];
     exec_inputs.extend(execute_resource_inputs);
     inner.add_node(Node::opaque(
         execute_name,
         exec_inputs,
-        vec![port("response", "TransportResponse")],
+        vec![port("response", port_types.response)],
         transport_op,
     ));
 
-    let mut parse_inputs = vec![port("response", "TransportResponse")];
+    let mut parse_inputs = vec![port("response", port_types.response)];
     parse_inputs.extend(passthrough.clone());
     inner.add_node(Node::opaque(
         parse_name,
@@ -436,5 +544,72 @@ mod tests {
 
         let _ = trip.in_port("path");
         let _ = trip.out("ok");
+    }
+
+    #[test]
+    fn test_typed_triplet_uses_custom_request_response_port_types() {
+        let mut builder: DagBuilder<TestOp> = DagBuilder::new();
+
+        add_transport_triplet_typed(
+            &mut builder,
+            "tcp_ping",
+            TransportPortTypes::TCP,
+            vec![port("host", "String"), port("port", "Int")],
+            vec![],
+            vec![port("connected", "Bool")],
+            TestOp::Prepare,
+            TestOp::Parse,
+            TestOp::Execute,
+            None,
+        )
+        .unwrap();
+
+        let dag = builder.build();
+        let node = dag
+            .get_node(&"tcp_ping".into())
+            .expect("subdag node exists");
+        if let NodeBody::SubDag(ref inner) = node.body {
+            let prepare = inner
+                .get_node(&"prepare_tcp_ping".into())
+                .expect("prepare exists");
+            let execute = inner
+                .get_node(&"execute_tcp_ping".into())
+                .expect("execute exists");
+            let parse = inner
+                .get_node(&"parse_tcp_ping".into())
+                .expect("parse exists");
+            assert_eq!(
+                prepare
+                    .outputs
+                    .iter()
+                    .find(|p| p.name.0 == "request")
+                    .expect("prepare request output")
+                    .type_id
+                    .0,
+                "TcpRequest"
+            );
+            assert_eq!(
+                execute
+                    .outputs
+                    .iter()
+                    .find(|p| p.name.0 == "response")
+                    .expect("execute response output")
+                    .type_id
+                    .0,
+                "TcpResponse"
+            );
+            assert_eq!(
+                parse
+                    .inputs
+                    .iter()
+                    .find(|p| p.name.0 == "response")
+                    .expect("parse response input")
+                    .type_id
+                    .0,
+                "TcpResponse"
+            );
+        } else {
+            panic!("Expected SubDag");
+        }
     }
 }

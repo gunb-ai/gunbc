@@ -1,5 +1,7 @@
 # Consolidation Plan
 
+> **Status**: Streams 1-2 partially done. Remaining work tracked in [`TODO/tasks.md`](../TODO/tasks.md).
+
 > **Goal**: Close the gap between the handbook's intended patterns and the
 > codebase's actual state. Every item here was surfaced by cross-reading the
 > handbook against the code (February 2026 reconciliation).

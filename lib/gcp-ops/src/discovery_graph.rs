@@ -14,37 +14,13 @@
 //! ```
 
 use crate::discovery_ops::GcpDiscoveryOps;
-use crate::graph::GcpSecretManagerGraphOp;
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::DynOp;
 use gunbc_ir::build::{port, resource, AccessMode};
-use gunbc_ir::{Dag, Edge, Node, Value, RESOURCE_API_NETWORK};
+use gunbc_ir::{Dag, Edge, Node, RESOURCE_API_NETWORK};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::NetEnv;
-use std::collections::HashMap;
 
-/// Union op type for the discovery DAG.
-#[derive(Debug, Clone)]
-pub enum GcpDiscoveryGraphOp {
-    /// Discovery-specific ops (list/parse/assemble).
-    Discovery(GcpDiscoveryOps),
-    /// Reused GCP ops (for local auth sub-DAG).
-    Gcp(GcpSecretManagerGraphOp),
-    /// Transport execution.
-    Transport(TransportOps),
-    /// Network environment.
-    NetEnv(NetEnv),
-}
-
-impl Executable for GcpDiscoveryGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            GcpDiscoveryGraphOp::Discovery(op) => op.execute(inputs),
-            GcpDiscoveryGraphOp::Gcp(op) => op.execute(inputs),
-            GcpDiscoveryGraphOp::Transport(op) => op.execute(inputs),
-            GcpDiscoveryGraphOp::NetEnv(op) => op.execute(inputs),
-        }
-    }
-}
+pub type GcpDiscoveryGraphOp = DynOp;
 
 /// Build the infra discovery DAG.
 ///
@@ -66,13 +42,13 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         "net_env",
         vec![],
         vec![port(NetEnv::PORT, "NetworkHandle")],
-        GcpDiscoveryGraphOp::NetEnv(NetEnv),
+        DynOp::new(NetEnv),
     ));
 
     // Local auth sub-DAG (provides access_token)
     dag.add_node(Node::subdag(
         "local_auth",
-        crate::graph::build_local_auth_upsert_dag_pub().map_ops(&mut GcpDiscoveryGraphOp::Gcp),
+        crate::graph::build_local_auth_upsert_dag_pub(),
     ));
 
     // =========================================================================
@@ -85,7 +61,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         "prepare_list_projects",
         vec![port("access_token", "String")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::PrepareListProjects),
+        DynOp::new(GcpDiscoveryOps::PrepareListProjects),
     ));
     dag.add_node(Node::opaque(
         "execute_list_projects",
@@ -95,13 +71,13 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
     dag.add_node(Node::opaque(
         "parse_list_projects",
         vec![port("response", "TransportResponse")],
         vec![port("projects", "Json")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::ParseListProjects),
+        DynOp::new(GcpDiscoveryOps::ParseListProjects),
     ));
     dag.add_edge(Edge::new(
         "local_auth",
@@ -139,7 +115,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         "prepare_list_wif_pools",
         vec![port("access_token", "String"), port("project", "String")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::PrepareListWifPools),
+        DynOp::new(GcpDiscoveryOps::PrepareListWifPools),
     ));
     dag.add_node(Node::opaque(
         "execute_list_wif_pools",
@@ -149,13 +125,13 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
     dag.add_node(Node::opaque(
         "parse_list_wif_pools",
         vec![port("response", "TransportResponse")],
         vec![port("wif_pools", "Json")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::ParseListWifPools),
+        DynOp::new(GcpDiscoveryOps::ParseListWifPools),
     ));
     dag.add_edge(Edge::new(
         "local_auth",
@@ -193,7 +169,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         "prepare_list_sa",
         vec![port("access_token", "String"), port("project", "String")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::PrepareListServiceAccounts),
+        DynOp::new(GcpDiscoveryOps::PrepareListServiceAccounts),
     ));
     dag.add_node(Node::opaque(
         "execute_list_sa",
@@ -203,13 +179,13 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
     dag.add_node(Node::opaque(
         "parse_list_sa",
         vec![port("response", "TransportResponse")],
         vec![port("service_accounts", "Json")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::ParseListServiceAccounts),
+        DynOp::new(GcpDiscoveryOps::ParseListServiceAccounts),
     ));
     dag.add_edge(Edge::new(
         "local_auth",
@@ -247,7 +223,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         "prepare_list_secrets",
         vec![port("access_token", "String"), port("project", "String")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::PrepareListSecrets),
+        DynOp::new(GcpDiscoveryOps::PrepareListSecrets),
     ));
     dag.add_node(Node::opaque(
         "execute_list_secrets",
@@ -257,13 +233,13 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
     dag.add_node(Node::opaque(
         "parse_list_secrets",
         vec![port("response", "TransportResponse")],
         vec![port("secrets", "Json")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::ParseListSecrets),
+        DynOp::new(GcpDiscoveryOps::ParseListSecrets),
     ));
     dag.add_edge(Edge::new(
         "local_auth",
@@ -301,7 +277,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         "prepare_list_buckets",
         vec![port("access_token", "String"), port("project", "String")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::PrepareListBuckets),
+        DynOp::new(GcpDiscoveryOps::PrepareListBuckets),
     ));
     dag.add_node(Node::opaque(
         "execute_list_buckets",
@@ -311,13 +287,13 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
     dag.add_node(Node::opaque(
         "parse_list_buckets",
         vec![port("response", "TransportResponse")],
         vec![port("buckets", "Json")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::ParseListBuckets),
+        DynOp::new(GcpDiscoveryOps::ParseListBuckets),
     ));
     dag.add_edge(Edge::new(
         "local_auth",
@@ -355,7 +331,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         "prepare_get_iam_policy",
         vec![port("access_token", "String"), port("project", "String")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::PrepareGetIamPolicy),
+        DynOp::new(GcpDiscoveryOps::PrepareGetIamPolicy),
     ));
     dag.add_node(Node::opaque(
         "execute_get_iam_policy",
@@ -365,7 +341,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
             resource("api:network", "NetworkHandle", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
-        GcpDiscoveryGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(TransportOps::Execute),
     ));
     dag.add_node(Node::opaque(
         "parse_get_iam_policy",
@@ -374,7 +350,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
             port("project", "String"),
         ],
         vec![port("iam_policies", "Json")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::ParseGetIamPolicy),
+        DynOp::new(GcpDiscoveryOps::ParseGetIamPolicy),
     ));
     dag.add_edge(Edge::new(
         "local_auth",
@@ -424,7 +400,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
             port("iam_policies", "Json"),
         ],
         vec![port("infra_spec", "Json")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::AssembleInfraSpec),
+        DynOp::new(GcpDiscoveryOps::AssembleInfraSpec),
     ));
 
     // Wire parse outputs -> assemble inputs
@@ -473,7 +449,7 @@ pub fn build_infra_discovery_dag() -> Dag<GcpDiscoveryGraphOp> {
         "generate_config_spec",
         vec![port("infra_spec", "Json")],
         vec![port("config_toml", "String"), port("config_spec", "Json")],
-        GcpDiscoveryGraphOp::Discovery(GcpDiscoveryOps::GenerateConfigSpec),
+        DynOp::new(GcpDiscoveryOps::GenerateConfigSpec),
     ));
 
     dag.add_edge(Edge::new(

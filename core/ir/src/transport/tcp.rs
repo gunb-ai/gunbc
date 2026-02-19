@@ -11,8 +11,11 @@ pub struct TcpRequest {
     pub port: u16,
     /// Data to send
     pub data: Option<String>,
-    /// Connection timeout in milliseconds
-    pub connect_timeout_ms: Option<u64>,
+    /// Write timeout in milliseconds.
+    ///
+    /// Note: prior versions exposed this as `connect_timeout_ms`.
+    #[serde(alias = "connect_timeout_ms")]
+    pub write_timeout_ms: Option<u64>,
     /// Read timeout in milliseconds
     pub read_timeout_ms: Option<u64>,
 }
@@ -39,7 +42,7 @@ impl TcpRequest {
             host: host.into(),
             port,
             data: None,
-            connect_timeout_ms: Some(30000),
+            write_timeout_ms: Some(30000),
             read_timeout_ms: Some(30000),
         }
     }
@@ -50,10 +53,18 @@ impl TcpRequest {
         self
     }
 
-    /// Set the connection timeout.
-    pub fn connect_timeout(mut self, ms: u64) -> Self {
-        self.connect_timeout_ms = Some(ms);
+    /// Set the write timeout.
+    pub fn write_timeout(mut self, ms: u64) -> Self {
+        self.write_timeout_ms = Some(ms);
         self
+    }
+
+    /// Backward-compatible alias for [`Self::write_timeout`].
+    ///
+    /// Kept to preserve existing callsites while transport decomposition
+    /// migrates to explicit `write_timeout_ms` naming.
+    pub fn connect_timeout(self, ms: u64) -> Self {
+        self.write_timeout(ms)
     }
 
     /// Set the read timeout.
@@ -100,12 +111,12 @@ mod tests {
     fn test_tcp_request_builder() {
         let req = TcpRequest::new("localhost", 8080)
             .data("PING\n")
-            .connect_timeout(5000)
+            .write_timeout(5000)
             .read_timeout(10000);
 
         assert_eq!(req.host, "localhost");
         assert_eq!(req.port, 8080);
         assert_eq!(req.data, Some("PING\n".to_string()));
-        assert_eq!(req.connect_timeout_ms, Some(5000));
+        assert_eq!(req.write_timeout_ms, Some(5000));
     }
 }

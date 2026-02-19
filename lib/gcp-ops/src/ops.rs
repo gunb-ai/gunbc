@@ -9,10 +9,12 @@ use gunbc_ir::transport::rest::RestRequest;
 use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::{AuthScheme, Credential, Secret, SecretSource, Value};
 
+use crate::services::iam::{IamRest, IamService};
 use crate::services::local_auth::{GcloudCli, GcloudLoginOptions, LocalAuthService};
 use crate::services::resource_manager::{ResourceManagerRest, ResourceManagerService};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Runtime environment used to acquire OIDC tokens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +130,17 @@ pub enum GcpOps {
     ///
     /// Outputs `ok: Bool`.
     ParseSetIamBinding,
+    /// Prepare a REST request to read IAM policy for a specific service account.
+    ///
+    /// Accepts `access_token`, `project`, `service_account`, and `member`.
+    /// Skips when any required input is empty.
+    PrepareEnsureSaIamBinding,
+    /// Check service-account IAM policy and output setIamPolicy request if missing.
+    ///
+    /// Ensures `member` has `roles/iam.workloadIdentityUser` on the target SA.
+    CheckAndPrepareSaIamBinding,
+    /// Parse the result of service-account `setIamPolicy` (or handle skip).
+    ParseSetSaIamBinding,
 }
 
 impl Executable for GcpOps {
@@ -802,11 +815,14 @@ impl Executable for GcpOps {
                 OutputMap::new().value("credential", cred.into()).ok()
             }
             GcpOps::ShouldImpersonate => {
-                let should = inputs
+                let allow_impersonation =
+                    optional_bool_strict(&inputs, "allow_impersonation")?.unwrap_or(true);
+                let has_service_account = inputs
                     .get("service_account")
                     .and_then(Value::as_str)
                     .map(|s| !s.trim().is_empty())
                     .unwrap_or(false);
+                let should = allow_impersonation && has_service_account;
                 OutputMap::new().bool("should", should).ok()
             }
             GcpOps::ComposeSecretName => {
@@ -947,10 +963,7 @@ impl Executable for GcpOps {
 
                 if service_account.is_empty() || project.is_empty() {
                     return OutputMap::new()
-                        .request(
-                            "request",
-                            RestRequest::get("about:blank".to_string()).into(),
-                        )
+                        .value("request", Value::Skipped)
                         .bool("skip", true)
                         .str("service_account", service_account)
                         .str("project", project)
@@ -973,10 +986,7 @@ impl Executable for GcpOps {
                 let response = match inputs.get("response") {
                     Some(Value::Skipped) => {
                         return OutputMap::new()
-                            .request(
-                                "request",
-                                RestRequest::get("about:blank".to_string()).into(),
-                            )
+                            .value("request", Value::Skipped)
                             .bool("skip", true)
                             .ok();
                     }
@@ -1003,10 +1013,7 @@ impl Executable for GcpOps {
                 // the set step — the SA may already have the role.
                 if !rest.is_success() {
                     return OutputMap::new()
-                        .request(
-                            "request",
-                            RestRequest::get("about:blank".to_string()).into(),
-                        )
+                        .value("request", Value::Skipped)
                         .bool("skip", true)
                         .ok();
                 }
@@ -1032,10 +1039,7 @@ impl Executable for GcpOps {
 
                 if already_bound {
                     return OutputMap::new()
-                        .request(
-                            "request",
-                            RestRequest::get("about:blank".to_string()).into(),
-                        )
+                        .value("request", Value::Skipped)
                         .bool("skip", true)
                         .ok();
                 }
@@ -1111,6 +1115,162 @@ impl Executable for GcpOps {
                 }
                 OutputMap::new().bool("ok", true).ok()
             }
+            GcpOps::PrepareEnsureSaIamBinding => {
+                let access_token = require_str(&inputs, "access_token")?;
+                let project = require_str(&inputs, "project")?;
+                let service_account = require_str(&inputs, "service_account")?;
+                let member = require_str(&inputs, "member")?;
+
+                if project.is_empty() || service_account.is_empty() || member.is_empty() {
+                    return OutputMap::new()
+                        .value("request", Value::Skipped)
+                        .bool("skip", true)
+                        .str("project", project)
+                        .str("service_account", service_account)
+                        .str("member", member)
+                        .ok();
+                }
+
+                let cred = Credential::new(Secret::static_value(access_token), AuthScheme::Bearer);
+                let svc = IamRest::new(cred);
+                let req = svc.get_service_account_iam_policy(project, service_account);
+
+                OutputMap::new()
+                    .request("request", req.into())
+                    .bool("skip", false)
+                    .str("project", project)
+                    .str("service_account", service_account)
+                    .str("member", member)
+                    .ok()
+            }
+            GcpOps::CheckAndPrepareSaIamBinding => {
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => {
+                        return OutputMap::new()
+                            .value("request", Value::Skipped)
+                            .bool("skip", true)
+                            .ok();
+                    }
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
+                let rest = match response {
+                    TransportResponse::Rest(r) => r,
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "expected REST response, got {:?}",
+                            other
+                        )));
+                    }
+                };
+
+                let access_token = require_str(&inputs, "access_token")?;
+                let project = require_str(&inputs, "project")?;
+                let service_account = require_str(&inputs, "service_account")?;
+                let member = require_str(&inputs, "member")?;
+                let role = "roles/iam.workloadIdentityUser";
+
+                if !rest.is_success() {
+                    return OutputMap::new()
+                        .value("request", Value::Skipped)
+                        .bool("skip", true)
+                        .ok();
+                }
+
+                // getIamPolicy may return either a direct policy object or
+                // an envelope with `policy` depending on transport adapter.
+                let policy = rest
+                    .body
+                    .get("policy")
+                    .cloned()
+                    .unwrap_or_else(|| rest.body.clone());
+                let bindings = policy
+                    .get("bindings")
+                    .and_then(|b| b.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+
+                let already_bound = bindings.iter().any(|binding| {
+                    binding.get("role").and_then(|r| r.as_str()) == Some(role)
+                        && binding
+                            .get("members")
+                            .and_then(|m| m.as_array())
+                            .map(|members| members.iter().any(|m| m.as_str() == Some(member)))
+                            .unwrap_or(false)
+                });
+
+                if already_bound {
+                    return OutputMap::new()
+                        .value("request", Value::Skipped)
+                        .bool("skip", true)
+                        .ok();
+                }
+
+                let mut new_bindings = bindings;
+                let mut found_role = false;
+                for binding in &mut new_bindings {
+                    if binding.get("role").and_then(|r| r.as_str()) == Some(role) {
+                        if let Some(members) = binding.get_mut("members") {
+                            if let Some(arr) = members.as_array_mut() {
+                                arr.push(serde_json::Value::String(member.to_string()));
+                            }
+                        }
+                        found_role = true;
+                        break;
+                    }
+                }
+                if !found_role {
+                    new_bindings.push(serde_json::json!({
+                        "role": role,
+                        "members": [member]
+                    }));
+                }
+
+                let mut new_policy = policy.clone();
+                new_policy["bindings"] = serde_json::Value::Array(new_bindings);
+
+                let cred = Credential::new(Secret::static_value(access_token), AuthScheme::Bearer);
+                let svc = IamRest::new(cred);
+                let req = svc.set_service_account_iam_policy(project, service_account, new_policy);
+
+                OutputMap::new()
+                    .request("request", req.into())
+                    .bool("skip", false)
+                    .ok()
+            }
+            GcpOps::ParseSetSaIamBinding => {
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => {
+                        return OutputMap::new().bool("ok", true).ok();
+                    }
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
+                let rest = match response {
+                    TransportResponse::Rest(r) => r,
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "expected REST response, got {:?}",
+                            other
+                        )));
+                    }
+                };
+
+                if !rest.is_success() {
+                    let details = impersonation_error_summary(&rest.body);
+                    if details.contains("PERMISSION_DENIED")
+                        || details.contains("403")
+                        || details.contains("does not have")
+                    {
+                        return OutputMap::new().bool("ok", true).ok();
+                    }
+                    return Err(ExecError::new(format!(
+                        "setServiceAccountIamPolicy failed (status {}): {}",
+                        rest.status, details
+                    )));
+                }
+                OutputMap::new().bool("ok", true).ok()
+            }
             GcpOps::MergeAuthResult => {
                 // Try the "try" path first (direct refresh succeeded).
                 if let Some(token) = inputs.get("try_access_token") {
@@ -1179,15 +1339,20 @@ pub(crate) fn adc_file_path() -> String {
     if let Ok(path) = std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
         return path;
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| {
-        // Fallback for minimal container environments (e.g., distroless, scratch)
-        // where $HOME is unset. Only safe when running as root.
-        "/root".to_string()
-    });
-    format!(
-        "{}/.config/gcloud/application_default_credentials.json",
-        home
-    )
+    let home = std::env::var("HOME")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var("USERPROFILE")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+        })
+        .unwrap_or_else(|| PathBuf::from("."));
+    home.join(".config/gcloud/application_default_credentials.json")
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn url_encode_component(input: &str) -> String {
@@ -1595,6 +1760,32 @@ mod tests {
             outputs.get("access_token").and_then(|v| v.as_str()),
             Some("ya29.impersonated")
         );
+    }
+
+    #[test]
+    fn should_impersonate_requires_service_account_by_default() {
+        let mut inputs = HashMap::new();
+        inputs.insert("service_account".to_string(), Value::Str(String::new()));
+
+        let outputs = GcpOps::ShouldImpersonate
+            .execute(inputs)
+            .expect("should_impersonate should evaluate");
+        assert_eq!(outputs.get("should"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn should_impersonate_respects_allow_impersonation_flag() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "service_account".to_string(),
+            Value::Str("svc@p.iam.gserviceaccount.com".to_string()),
+        );
+        inputs.insert("allow_impersonation".to_string(), Value::Bool(false));
+
+        let outputs = GcpOps::ShouldImpersonate
+            .execute(inputs)
+            .expect("should_impersonate should evaluate");
+        assert_eq!(outputs.get("should"), Some(&Value::Bool(false)));
     }
 
     #[test]
@@ -2069,6 +2260,166 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("response".to_string(), Value::Skipped);
         let outputs = GcpOps::ParseSetIamBinding
+            .execute(inputs)
+            .expect("should handle skipped");
+        assert_eq!(outputs.get("ok"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn prepare_ensure_sa_iam_builds_rest_request() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "access_token".to_string(),
+            Value::Str("mock-token".to_string()),
+        );
+        inputs.insert("project".to_string(), Value::Str("project".to_string()));
+        inputs.insert(
+            "service_account".to_string(),
+            Value::Str("sa@project.iam.gserviceaccount.com".to_string()),
+        );
+        inputs.insert(
+            "member".to_string(),
+            Value::Str("principalSet://iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc".to_string()),
+        );
+        let outputs = GcpOps::PrepareEnsureSaIamBinding
+            .execute(inputs)
+            .expect("should succeed");
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(false)));
+        match outputs.get("request") {
+            Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(r))) => {
+                assert!(
+                    r.url.contains(":getIamPolicy"),
+                    "expected service-account getIamPolicy request"
+                );
+            }
+            other => panic!("expected REST request, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn prepare_ensure_sa_iam_skips_when_member_empty() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "access_token".to_string(),
+            Value::Str("mock-token".to_string()),
+        );
+        inputs.insert("project".to_string(), Value::Str("project".to_string()));
+        inputs.insert(
+            "service_account".to_string(),
+            Value::Str("sa@project.iam.gserviceaccount.com".to_string()),
+        );
+        inputs.insert("member".to_string(), Value::Str(String::new()));
+        let outputs = GcpOps::PrepareEnsureSaIamBinding
+            .execute(inputs)
+            .expect("should succeed");
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn check_sa_iam_binding_skips_when_already_bound() {
+        use gunbc_ir::transport::rest::RestResponse;
+        let policy = serde_json::json!({
+            "policy": {
+                "bindings": [{
+                    "role": "roles/iam.workloadIdentityUser",
+                    "members": ["principalSet://iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc"]
+                }],
+                "etag": "abc123"
+            }
+        });
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::ok(policy))),
+        );
+        inputs.insert(
+            "access_token".to_string(),
+            Value::Str("mock-token".to_string()),
+        );
+        inputs.insert("project".to_string(), Value::Str("project".to_string()));
+        inputs.insert(
+            "service_account".to_string(),
+            Value::Str("sa@project.iam.gserviceaccount.com".to_string()),
+        );
+        inputs.insert(
+            "member".to_string(),
+            Value::Str("principalSet://iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc".to_string()),
+        );
+        let outputs = GcpOps::CheckAndPrepareSaIamBinding
+            .execute(inputs)
+            .expect("should succeed");
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn check_sa_iam_binding_builds_set_request_when_missing() {
+        use gunbc_ir::transport::rest::RestResponse;
+        let policy = serde_json::json!({
+            "bindings": [],
+            "etag": "abc123"
+        });
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::ok(policy))),
+        );
+        inputs.insert(
+            "access_token".to_string(),
+            Value::Str("mock-token".to_string()),
+        );
+        inputs.insert("project".to_string(), Value::Str("project".to_string()));
+        inputs.insert(
+            "service_account".to_string(),
+            Value::Str("sa@project.iam.gserviceaccount.com".to_string()),
+        );
+        inputs.insert(
+            "member".to_string(),
+            Value::Str("principalSet://iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/github-pool/attribute.repository/gunb-ai/gunbc".to_string()),
+        );
+        let outputs = GcpOps::CheckAndPrepareSaIamBinding
+            .execute(inputs)
+            .expect("should succeed");
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(false)));
+        match outputs.get("request") {
+            Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(r))) => {
+                assert!(
+                    r.url.contains(":setIamPolicy"),
+                    "expected service-account setIamPolicy request"
+                );
+                let body = r
+                    .body
+                    .clone()
+                    .expect("setIamPolicy request should include policy body");
+                assert!(
+                    body.to_string().contains("roles/iam.workloadIdentityUser"),
+                    "policy body should include workloadIdentityUser role"
+                );
+            }
+            other => panic!("expected REST request, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_set_sa_iam_binding_succeeds_on_ok() {
+        use gunbc_ir::transport::rest::RestResponse;
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::ok(
+                serde_json::json!({"bindings": []}),
+            ))),
+        );
+        let outputs = GcpOps::ParseSetSaIamBinding
+            .execute(inputs)
+            .expect("should succeed");
+        assert_eq!(outputs.get("ok"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn parse_set_sa_iam_binding_handles_skipped() {
+        let mut inputs = HashMap::new();
+        inputs.insert("response".to_string(), Value::Skipped);
+        let outputs = GcpOps::ParseSetSaIamBinding
             .execute(inputs)
             .expect("should handle skipped");
         assert_eq!(outputs.get("ok"), Some(&Value::Bool(true)));

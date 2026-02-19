@@ -64,7 +64,7 @@ pub struct DagSpecDef {
 }
 
 impl DagSpecDef {
-    /// Convert this registration into a TestgenTargetDef (owned strings).
+    /// Convert this registration into a TestgenTargetDef.
     pub fn to_def(&self) -> TestgenTargetDef {
         fn to_crate_path(path: &str, origin: &str) -> String {
             // module_path! uses the crate identifier form (hyphens -> underscores).
@@ -79,11 +79,11 @@ impl DagSpecDef {
 
         let mut def =
             TestgenTargetDef::new(self.name, self.meta.output_path, self.meta.module_name);
-        def.dag_builder_call = to_crate_path(self.dag_builder_call, self.origin_crate);
-        def.mock_spec_path = to_crate_path(self.mock_spec_path, self.origin_crate);
+        def.dag_builder_call = to_crate_path(self.dag_builder_call, self.origin_crate).into();
+        def.mock_spec_path = to_crate_path(self.mock_spec_path, self.origin_crate).into();
         def.signature_path = self
             .signature_path
-            .map(|s| to_crate_path(s, self.origin_crate));
+            .map(|s| to_crate_path(s, self.origin_crate).into());
         def.boundary_tests = self.testgen.boundary_tests;
         def.chain_tests = self.testgen.chain_tests;
         def.flow_tests = self.testgen.flow_tests;
@@ -115,7 +115,7 @@ impl DagSpecDef {
                 .map(|group| group.iter().map(|s| s.to_string()).collect())
                 .collect()
         });
-        def.tool_name = self.meta.tool_name.map(|s| s.to_string());
+        def.tool_name = self.meta.tool_name.map(Into::into);
         def
     }
 }
@@ -199,18 +199,21 @@ pub fn generate_target<T: Executable + Clone>(
     let mut generator = TestGenerator::new(&dag)
         .with_config(test_config)
         .with_mock_spec(spec)
-        .with_mock_spec_fn(&config.mock_spec_path);
+        .with_mock_spec_fn(config.mock_spec_path.as_ref());
     if let Some(signature_fn) = &config.signature_path {
-        generator = generator.with_signature_fn(signature_fn);
+        generator = generator.with_signature_fn(signature_fn.as_ref());
     }
 
     // Look up CLI entrypoints for contract test generation.
     if let Some(tool_name) = &config.tool_name {
         let tools = gunbc_codegen::derive_tool_defs();
-        if let Some(tool) = tools.iter().find(|t| t.meta.tool_name == *tool_name) {
+        if let Some(tool) = tools
+            .iter()
+            .find(|t| t.meta.tool_name.as_ref() == tool_name.as_ref())
+        {
             if !tool.entrypoints.is_empty() {
                 generator =
-                    generator.with_cli_entrypoints(tool_name.clone(), tool.entrypoints.clone());
+                    generator.with_cli_entrypoints(tool_name.to_string(), tool.entrypoints.clone());
             }
         }
     }

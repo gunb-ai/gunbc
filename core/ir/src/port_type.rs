@@ -98,6 +98,16 @@ impl std::fmt::Display for PortType {
 /// Parse a `TypeId` string into a structural `PortType`.
 ///
 /// Returns `PortType::Any` for unrecognized type strings (fail-open).
+///
+/// This is an intentional forward-compatibility choice at the type-parsing
+/// boundary: domain-specific types like `"TransportRequest"`, `"ToolRegistry"`,
+/// etc. are opaque to structural port typing and map to `Any` so that port
+/// wiring doesn't fail on types that only the runtime understands. The
+/// tradeoff is that typos in type strings won't be caught here — they
+/// silently become `Any` and pass compatibility checks.
+///
+/// See also: `value_backing_for_type_id()` in `types.rs` which adds a
+/// second layer of domain-specific recognition for `PortType::Any` types.
 impl From<&TypeId> for PortType {
     fn from(type_id: &TypeId) -> Self {
         parse_port_type(&type_id.0)

@@ -1,11 +1,13 @@
 use super::*;
 use crate::pipeline::PipelineContext;
+use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
-use gunbc_exec::ExecutionMode;
-use gunbc_ir::{Dag, Edge, Node, Port};
+use gunbc_exec::{BoundaryMocks, Executable, ExecutionMode};
+use gunbc_ir::{node::NodeBody, Dag, Edge, Node, Port};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -46,6 +48,42 @@ fn workspace_single_file_context(relative_path: &str) -> PipelineContext {
         roots: vec![root.clone()],
         target_file: Some(root.join(relative_path)),
     }
+}
+
+fn makegen_context_with_output(name: &str) -> (PipelineContext, PathBuf, BoundaryMocks) {
+    let context = workspace_single_file_context("tools/makegen.dag");
+    let output_path = unique_temp_output_file(name, "mk");
+    let output_path_str = output_path.to_string_lossy().to_string();
+    let input_mocks = makegen_entrypoint_mocks(&output_path_str);
+    (context, output_path, input_mocks)
+}
+
+/// Create a unique temp directory with a `sample/` subdirectory for fixture files.
+fn unique_temp_root(name: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "daglang_compile_{name}_{}_{}",
+        std::process::id(),
+        nanos
+    ));
+    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    root
+}
+
+/// Create a temp directory, write `content` to `sample/main.dag`, and return a
+/// directory-mode `PipelineContext` (no target file) plus the root path for cleanup.
+fn temp_dag_context(name: &str, content: &str) -> (PipelineContext, PathBuf) {
+    let root = unique_temp_root(name);
+    std::fs::write(root.join("sample/main.dag"), content)
+        .expect("failed to write dag fixture");
+    let context = PipelineContext {
+        roots: vec![root.clone()],
+        target_file: None,
+    };
+    (context, root)
 }
 
 fn assert_typecheck_stage_error(error: &CompileError) {
@@ -368,21 +406,29 @@ fn compile_single_file_makegen_produces_non_empty_outputs() {
 }
 
 #[test]
-fn resolve_lowered_dag_maps_makegen_nodes_to_resolved_ops() {
+fn resolve_lowered_dag_maps_makegen_nodes_to_dyn_ops() {
     let context = workspace_single_file_context("tools/makegen.dag");
     let output = compile_from_context(&context).expect("compile should succeed");
 
     let resolved = resolve_lowered_dag(&output.lowered_dag).expect("makegen dag should resolve");
-    assert_eq!(resolved.nodes.len(), output.lowered_dag.nodes.len());
-    assert_eq!(resolved.edges.len(), output.lowered_dag.edges.len());
+    // Resolved DAG may have additional nodes/edges from resource wiring
+    // (e.g., fs_env resource edges for transport execute nodes).
+    assert!(
+        resolved.nodes.len() >= output.lowered_dag.nodes.len(),
+        "resolved DAG should have at least as many nodes as lowered DAG"
+    );
+    assert!(
+        resolved.edges.len() >= output.lowered_dag.edges.len(),
+        "resolved DAG should have at least as many edges as lowered DAG"
+    );
 
-    let resolved_op_for = |node_id: &str| {
+    let debug_op_for = |node_id: &str| {
         resolved
             .nodes
             .iter()
             .find(|node| node.id.0 == node_id)
             .map(|node| match &node.body {
-                gunbc_ir::node::NodeBody::Opaque(op) => op,
+                gunbc_ir::node::NodeBody::Opaque(op) => format!("{:?}", op),
                 gunbc_ir::node::NodeBody::SubDag(_) => {
                     panic!("makegen fixture should not contain subdag nodes")
                 }
@@ -390,43 +436,19 @@ fn resolve_lowered_dag_maps_makegen_nodes_to_resolved_ops() {
             .expect("expected node to exist in resolved dag")
     };
 
-    assert!(matches!(
-        resolved_op_for("load_registry"),
-        ResolvedOp::LoadRegistry
-    ));
-    assert!(matches!(resolved_op_for("fs_env"), ResolvedOp::FsEnv));
-    assert!(matches!(
-        resolved_op_for("tools.makegen::render_makefile"),
-        ResolvedOp::RenderMakefile
-    ));
-    assert!(matches!(
-        resolved_op_for("prepare_read_makegen"),
-        ResolvedOp::PrepareReadContent
-    ));
-    assert!(matches!(
-        resolved_op_for("execute_read_makegen"),
-        ResolvedOp::ExecuteReadContent
-    ));
-    assert!(matches!(
-        resolved_op_for("prepare_write_makegen"),
-        ResolvedOp::PrepareWriteContent
-    ));
-    assert!(matches!(
-        resolved_op_for("compare_makegen_content"),
-        ResolvedOp::CompareContent
-    ));
-    assert!(matches!(
-        resolved_op_for("execute_makegen_transport"),
-        ResolvedOp::ExecuteTransport
-    ));
-    assert!(matches!(
-        resolved_op_for("tools.makegen::makegen"),
-        ResolvedOp::MakegenEntrypoint
-    ));
+    assert!(debug_op_for("load_registry").contains("LoadRegistry"));
+    assert!(debug_op_for("fs_env").contains("FsEnv"));
+    assert!(debug_op_for("tools.makegen::render_makefile").contains("RenderMakefile"));
+    assert!(debug_op_for("prepare_read_makegen").contains("PrepareFileRead"));
+    assert!(debug_op_for("execute_read_makegen").contains("Execute"));
+    assert!(debug_op_for("prepare_write_makegen").contains("PrepareFileWrite"));
+    assert!(debug_op_for("compare_makegen_content").contains("CompareContent"));
+    assert!(debug_op_for("execute_makegen_transport").contains("Execute"));
+    assert!(debug_op_for("tools.makegen::makegen").contains("Entrypoint"));
 }
 
 #[test]
-fn resolve_lowered_dag_rejects_unknown_callable_module() {
+fn resolve_lowered_dag_defers_unknown_callable_module() {
     let mut dag = Dag::new();
     dag.add_node(Node::opaque(
         "sample::unknown",
@@ -441,15 +463,28 @@ fn resolve_lowered_dag_rejects_unknown_callable_module() {
         },
     ));
 
-    let error = resolve_lowered_dag(&dag).expect_err("resolver should reject unknown module");
-    assert_eq!(error.node_id, "sample::unknown");
-    assert!(error
-        .reason
-        .contains("unsupported callable `sample.module.unknown`"));
+    let resolved = resolve_lowered_dag(&dag).expect("unknown modules should defer");
+    assert_eq!(resolved.nodes.len(), 1);
+    let debug = format!("{:?}", resolved.nodes[0].body);
+    assert!(
+        debug.contains("DeferredCallableOp"),
+        "expected deferred callable fallback, got {debug}"
+    );
+    // Deferred callables are passthrough: inputs forwarded, output ports populated.
+    let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
+        panic!("unknown callable fixture should not contain subdag nodes")
+    };
+    let outputs = op
+        .execute(HashMap::new())
+        .expect("deferred callable should pass through");
+    assert!(
+        outputs.contains_key("out"),
+        "deferred callable should populate declared output ports"
+    );
 }
 
 #[test]
-fn resolve_lowered_dag_rejects_pipeline_nodes() {
+fn resolve_lowered_dag_defers_pipeline_nodes() {
     let mut dag = Dag::new();
     dag.add_node(Node::opaque(
         "pipeline::ci",
@@ -467,17 +502,26 @@ fn resolve_lowered_dag_rejects_pipeline_nodes() {
         },
     ));
 
-    let error = resolve_lowered_dag(&dag).expect_err("resolver should reject pipeline nodes");
-    assert_eq!(error.node_id, "pipeline::ci");
-    assert!(error.reason.contains("unsupported pipeline"));
+    // Pipeline nodes resolve to DeferredCallableOp (passthrough for dry-run compat).
+    let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve as deferred");
+    assert_eq!(resolved.nodes.len(), 1);
+    let debug = format!("{:?}", resolved.nodes[0].body);
+    assert!(debug.contains("DeferredCallableOp"));
+    let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
+        panic!("pipeline fixture should not contain subdag nodes")
+    };
+    let outputs = op
+        .execute(HashMap::new())
+        .expect("deferred pipeline callable should pass through");
+    assert!(
+        outputs.contains_key("out"),
+        "deferred callable should populate declared output ports"
+    );
 }
 
 #[test]
 fn compile_resolve_execute_makegen_real_mode_writes_output() {
-    let context = workspace_single_file_context("tools/makegen.dag");
-    let output_path = unique_temp_output_file("makegen_real_run", "mk");
-    let output_path_str = output_path.to_string_lossy().to_string();
-    let input_mocks = makegen_entrypoint_mocks(&output_path_str);
+    let (context, output_path, input_mocks) = makegen_context_with_output("makegen_real_run");
 
     let log =
         compile_resolve_execute_from_context(&context, ExecutionMode::Real, Some(&input_mocks))
@@ -504,10 +548,8 @@ fn compile_resolve_execute_makegen_real_mode_writes_output() {
 
 #[test]
 fn compile_resolve_execute_makegen_real_mode_reports_not_written_when_fresh() {
-    let context = workspace_single_file_context("tools/makegen.dag");
-    let output_path = unique_temp_output_file("makegen_real_idempotent", "mk");
-    let output_path_str = output_path.to_string_lossy().to_string();
-    let input_mocks = makegen_entrypoint_mocks(&output_path_str);
+    let (context, output_path, input_mocks) =
+        makegen_context_with_output("makegen_real_idempotent");
 
     compile_resolve_execute_from_context(&context, ExecutionMode::Real, Some(&input_mocks))
         .expect("first real execution should succeed");
@@ -537,11 +579,9 @@ fn compile_resolve_execute_makegen_real_mode_reports_not_written_when_fresh() {
 
 #[test]
 fn compile_resolve_execute_makegen_dry_run_intercepts_and_skips_output_write() {
-    let context = workspace_single_file_context("tools/makegen.dag");
-    let output_path = unique_temp_output_file("makegen_dry_run", "mk");
-    let output_path_str = output_path.to_string_lossy().to_string();
-    let input_mocks = makegen_entrypoint_mocks(&output_path_str);
-    let dry_run_mocks = makegen_dry_run_transport_mocks(&output_path_str);
+    let (context, output_path, input_mocks) = makegen_context_with_output("makegen_dry_run");
+    let output_path_str = output_path.to_string_lossy();
+    let dry_run_mocks = makegen_dry_run_transport_mocks(output_path_str.as_ref());
 
     let log = compile_resolve_execute_from_context(
         &context,
@@ -600,7 +640,7 @@ fn render_triplets_json_includes_makegen_transport_nodes() {
     let context = workspace_single_file_context("tools/makegen.dag");
     let output = compile_from_context(&context).expect("compile should succeed");
 
-    let rendered = render_triplets(&output.lowered_dag, OutputFormat::Json);
+    let rendered = render_triplets(&output.derived, OutputFormat::Json);
     let parsed: Value = serde_json::from_str(&rendered).expect("triplets json should parse");
     let triplets = parsed
         .get("triplets")
@@ -699,7 +739,8 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
         "response",
     ));
 
-    let rendered = render_triplets(&dag, OutputFormat::Json);
+    let derived = derive_artifacts(&dag).expect("triplet derivation should succeed");
+    let rendered = render_triplets(&derived, OutputFormat::Json);
     let parsed: Value = serde_json::from_str(&rendered).expect("triplets json should parse");
     let triplets = parsed
         .get("triplets")
@@ -728,9 +769,68 @@ fn render_triplets_text_is_deterministic() {
     let context = workspace_single_file_context("tools/makegen.dag");
     let output = compile_from_context(&context).expect("compile should succeed");
 
-    let first = render_triplets(&output.lowered_dag, OutputFormat::Text);
-    let second = render_triplets(&output.lowered_dag, OutputFormat::Text);
+    let first = render_triplets(&output.derived, OutputFormat::Text);
+    let second = render_triplets(&output.derived, OutputFormat::Text);
     assert_eq!(first, second, "triplet rendering should be deterministic");
+}
+
+#[test]
+fn workspace_tool_transport_triplet_audit_preserves_prepare_execute_parse_structure() {
+    let tool_files = [
+        ("tools/build.dag", 1usize),
+        ("tools/bootstrap.dag", 1usize),
+        ("tools/codegen.dag", 1usize),
+        ("tools/deps.dag", 1usize),
+        ("tools/docgen.dag", 1usize),
+        ("tools/gist.dag", 1usize),
+        ("tools/makegen.dag", 1usize),
+        ("tools/pragma.dag", 1usize),
+        ("tools/testgen.dag", 0usize),
+    ];
+
+    let mut total_triplets = 0usize;
+
+    for (relative_path, min_triplets) in tool_files {
+        let context = workspace_single_file_context(relative_path);
+        let output = compile_from_context(&context).expect("tool compile should succeed");
+        let triplets = &output.derived.transport_triplets;
+        assert!(
+            triplets.len() >= min_triplets,
+            "expected at least {min_triplets} transport triplets in {relative_path}"
+        );
+        total_triplets += triplets.len();
+
+        for triplet in triplets {
+            assert!(
+                output.lowered_dag.edges.iter().any(|edge| {
+                    edge.from_node.0 == triplet.prepare_node
+                        && edge.from_port.0 == "request"
+                        && edge.to_node.0 == triplet.execute_node
+                        && edge.to_port.0 == "request"
+                }),
+                "missing prepare->execute request edge for triplet {:?} in {relative_path}",
+                triplet
+            );
+
+            for parse_node in &triplet.parse_nodes {
+                assert!(
+                    output.lowered_dag.edges.iter().any(|edge| {
+                        edge.from_node.0 == triplet.execute_node
+                            && edge.from_port.0 == "response"
+                            && edge.to_node.0 == *parse_node
+                            && edge.to_port.0 == "response"
+                    }),
+                    "missing execute->parse response edge for triplet {:?} in {relative_path}",
+                    triplet
+                );
+            }
+        }
+    }
+
+    assert!(
+        total_triplets >= 16,
+        "expected substantial tool triplet coverage across workspace DSL tools"
+    );
 }
 
 #[test]
@@ -1025,30 +1125,12 @@ func run(path: String) -> { body: String } {
 
 #[test]
 fn compile_directory_unresolved_service_call_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_unresolved_service_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("unresolved_service_dir", r#"module sample.main
 func run(path: String) -> { body: String } {
   let response = MissingStorage.read(path: path)
   return { body: response.body }
 }
-"#,
-    )
-    .expect("failed to write unresolved service-call source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1096,18 +1178,7 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
 
 #[test]
 fn compile_directory_uses_bound_resource_capability_call_succeeds() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_resource_bound_service_call_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("resource_bound_service_call_dir", r#"module sample.main
 resource Filesystem {
   capability read {
     input { path: String }
@@ -1118,14 +1189,7 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
   let response = fs.read(path: path)
   return { body: response.body }
 }
-"#,
-    )
-    .expect("failed to write resource-bound capability source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1166,29 +1230,11 @@ func run() -> { ok: Bool } uses fs: MissingResource {
 
 #[test]
 fn compile_directory_unresolved_uses_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_unresolved_uses_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("unresolved_uses_dir", r#"module sample.main
 func run() -> { ok: Bool } uses fs: MissingResource {
   return { ok: true }
 }
-"#,
-    )
-    .expect("failed to write unresolved uses source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1230,30 +1276,12 @@ func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
 
 #[test]
 fn compile_directory_uses_resource_with_runtime_config_suffix_succeeds() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_uses_config_suffix_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("uses_config_suffix_dir", r#"module sample.main
 resource Filesystem {}
 func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
   return { ok: true }
 }
-"#,
-    )
-    .expect("failed to write configured uses source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1294,29 +1322,11 @@ func run() -> { ok: Bool } provides out: MissingResource {
 
 #[test]
 fn compile_directory_unresolved_provides_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_unresolved_provides_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("unresolved_provides_dir", r#"module sample.main
 func run() -> { ok: Bool } provides out: MissingResource {
   return { ok: true }
 }
-"#,
-    )
-    .expect("failed to write unresolved provides source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1362,18 +1372,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
 
 #[test]
 fn compile_directory_provides_resource_with_runtime_config_suffix_succeeds() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_provides_config_suffix_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("provides_config_suffix_dir", r#"module sample.main
 resource ArtifactStore {
   release {
     let done = true
@@ -1382,14 +1381,7 @@ resource ArtifactStore {
 func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
   return { ok: true }
 }
-"#,
-    )
-    .expect("failed to write configured provides source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1429,28 +1421,10 @@ fn run() -> Unit {}
 
 #[test]
 fn compile_directory_unresolved_import_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_unresolved_import_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("unresolved_import_dir", r#"module sample.main
 import missing.dep
 fn run() -> Unit {}
-"#,
-    )
-    .expect("failed to write unresolved import source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1491,29 +1465,11 @@ fn run() -> Unit {
 
 #[test]
 fn compile_directory_unresolved_call_target_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_unresolved_call_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("unresolved_call_dir", r#"module sample.main
 fn run() -> Unit {
   missing()
 }
-"#,
-    )
-    .expect("failed to write unresolved callable source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1525,18 +1481,7 @@ fn run() -> Unit {
 
 #[test]
 fn compile_directory_collection_intrinsics_typecheck_in_strict_mode() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_collection_intrinsics_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("collection_intrinsics_dir", r#"module sample.main
 type Stage {
   success: Bool,
   skipped: Bool,
@@ -1548,14 +1493,7 @@ fn summarize(stages: List<Stage>) -> Int {
   let done = labels |> ends_with("ok")
   passed
 }
-"#,
-    )
-    .expect("failed to write collection intrinsic source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1567,30 +1505,12 @@ fn summarize(stages: List<Stage>) -> Int {
 
 #[test]
 fn compile_directory_collection_option_emits_collection_nodes() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_collection_option_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("collection_option_dir", r#"module sample.main
 fn run(values: List<String>) -> String {
   rendered = values |> map(v => v) |> join(",")
   return rendered
 }
-"#,
-    )
-    .expect("failed to write collection option source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
     let output = compile_from_context_with_options(
         &context,
         CompileOptions {
@@ -1623,29 +1543,11 @@ fn run(values: List<String>) -> String {
 
 #[test]
 fn compile_directory_function_typed_parameter_calls_typecheck_in_strict_mode() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_fn_typed_param_calls_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("fn_typed_param_calls_dir", r#"module sample.main
 fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
   callback(value)
 }
-"#,
-    )
-    .expect("failed to write callback source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1657,18 +1559,7 @@ fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
 
 #[test]
 fn compile_directory_sum_variant_constructor_calls_typecheck_in_strict_mode() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_sum_variant_constructor_calls_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("sum_variant_constructor_calls_dir", r#"module sample.main
 type CloudConfig
   = GcpConfig { project: String, region: String }
   | AwsConfig { region: String }
@@ -1676,14 +1567,7 @@ type CloudConfig
 fn make_gcp() -> CloudConfig {
   GcpConfig(project: "gunbc", region: "us-central1")
 }
-"#,
-    )
-    .expect("failed to write constructor source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1695,30 +1579,12 @@ fn make_gcp() -> CloudConfig {
 
 #[test]
 fn compile_directory_zero_arity_variant_identifier_returns_typecheck_in_strict_mode() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_zero_arity_variant_identifier_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("zero_arity_variant_identifier_dir", r#"module sample.main
 type Environment = Dev | Ci
 fn env() -> Environment {
   Dev
 }
-"#,
-    )
-    .expect("failed to write zero-arity variant source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1730,18 +1596,7 @@ fn env() -> Environment {
 
 #[test]
 fn compile_directory_lossy_match_fn_body_does_not_fail_missing_tail_mismatch() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_lossy_match_body_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("lossy_match_body_dir", r#"module sample.main
 type CloudConfig
   = GcpConfig { project: String }
   | AwsConfig { account: String }
@@ -1753,14 +1608,7 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
     AwsConfig { ... } => Aws
   }
 }
-"#,
-    )
-    .expect("failed to write lossy match source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1772,15 +1620,7 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
 
 #[test]
 fn compile_directory_std_helper_intrinsics_typecheck_in_strict_mode() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_std_helper_intrinsics_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let root = unique_temp_root("std_helper_intrinsics_dir");
     std::fs::write(
         root.join("sample/main.dag"),
         r#"module sample.main
@@ -1866,18 +1706,7 @@ func run(path: String) -> { body: String } {
 
 #[test]
 fn compile_directory_duplicate_service_reports_ambiguous_service_call() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_duplicate_service_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("duplicate_service_dir", r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -1894,14 +1723,7 @@ func run(path: String) -> { body: String } {
   let response = FsStorage.read(path: path)
   return { body: response.body }
 }
-"#,
-    )
-    .expect("failed to write duplicate service source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1942,29 +1764,11 @@ fn run() -> String { helper() }
 
 #[test]
 fn compile_directory_duplicate_callable_reports_ambiguous_call_target() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_duplicate_callable_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("duplicate_callable_dir", r#"module sample.main
 fn helper() -> String { "a" }
 fn helper() -> String { "b" }
 fn run() -> String { helper() }
-"#,
-    )
-    .expect("failed to write duplicate callable source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2005,29 +1809,11 @@ func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
 
 #[test]
 fn compile_directory_duplicate_resource_uses_reports_ambiguous_used_type() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_duplicate_resource_uses_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("duplicate_resource_uses_dir", r#"module sample.main
 resource SharedResource {}
 resource SharedResource {}
 func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
-"#,
-    )
-    .expect("failed to write duplicate resource-uses source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2068,29 +1854,11 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
 
 #[test]
 fn compile_directory_duplicate_resource_provides_reports_ambiguous_provided_type() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_duplicate_resource_provides_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("duplicate_resource_provides_dir", r#"module sample.main
 resource SharedResource {}
 resource SharedResource {}
 func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
-"#,
-    )
-    .expect("failed to write duplicate resource-provides source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2161,29 +1929,11 @@ resource Disk implements MissingStorage {
 
 #[test]
 fn compile_directory_unresolved_service_interface_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_unresolved_service_interface_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("unresolved_service_interface_dir", r#"module sample.main
 service FsStorage implements MissingStorage {
   operation read(path: String) -> { body: String }
 }
-"#,
-    )
-    .expect("failed to write unresolved service-interface source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2194,32 +1944,14 @@ service FsStorage implements MissingStorage {
 
 #[test]
 fn compile_directory_unresolved_resource_interface_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_unresolved_resource_interface_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("unresolved_resource_interface_dir", r#"module sample.main
 resource Disk implements MissingStorage {
   capability read {
     input { path: String }
     output { body: String }
   }
 }
-"#,
-    )
-    .expect("failed to write unresolved resource-interface source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2271,18 +2003,7 @@ service FsStorage implements Storage {
 
 #[test]
 fn compile_directory_duplicate_interface_reports_ambiguous_implements() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_duplicate_interface_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("duplicate_interface_dir", r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -2298,14 +2019,7 @@ interface Storage {
 service FsStorage implements Storage {
   operation read(path: String) -> { body: String }
 }
-"#,
-    )
-    .expect("failed to write duplicate-interface source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2346,29 +2060,11 @@ fn run() -> Unit {
 
 #[test]
 fn compile_directory_unit_return_without_tail_expression_succeeds() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_unit_without_tail_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("unit_without_tail_dir", r#"module sample.main
 fn run() -> Unit {
   let x = 42
 }
-"#,
-    )
-    .expect("failed to write Unit-return source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -2408,29 +2104,11 @@ fn run() -> String {
 
 #[test]
 fn compile_directory_missing_tail_non_unit_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_non_unit_without_tail_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("non_unit_without_tail_dir", r#"module sample.main
 fn run() -> String {
   let x = 42
 }
-"#,
-    )
-    .expect("failed to write non-Unit return source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2855,27 +2533,9 @@ fn run(values: Box<String, Int>) -> String { values }
 
 #[test]
 fn compile_directory_undefined_type_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_undefined_type_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("undefined_type_dir", r#"module sample.main
 fn run(input: MissingType) -> String { "ok" }
-"#,
-    )
-    .expect("failed to write undefined-type source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2886,27 +2546,9 @@ fn run(input: MissingType) -> String { "ok" }
 
 #[test]
 fn compile_directory_type_mismatch_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_type_mismatch_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("type_mismatch_dir", r#"module sample.main
 fn run() -> String { return 42 }
-"#,
-    )
-    .expect("failed to write type-mismatch source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2917,27 +2559,9 @@ fn run() -> String { return 42 }
 
 #[test]
 fn compile_directory_implicit_return_type_mismatch_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_implicit_return_mismatch_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("implicit_return_mismatch_dir", r#"module sample.main
 fn run() -> String { 42 }
-"#,
-    )
-    .expect("failed to write implicit-return mismatch source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2948,30 +2572,12 @@ fn run() -> String { 42 }
 
 #[test]
 fn compile_directory_no_such_field_record_literal_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_no_such_field_record_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("no_such_field_record_dir", r#"module sample.main
 func run() -> { body: String } {
   let payload = { body: "ok" }
   return { body: payload.missing }
 }
-"#,
-    )
-    .expect("failed to write no-such-field record-literal source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2982,28 +2588,10 @@ func run() -> { body: String } {
 
 #[test]
 fn compile_directory_no_such_field_named_record_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_no_such_field_named_record_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("no_such_field_named_record_dir", r#"module sample.main
 type Payload { body: String }
 fn run(input: Payload) -> String { input.missing }
-"#,
-    )
-    .expect("failed to write no-such-field named-record source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3014,27 +2602,9 @@ fn run(input: Payload) -> String { input.missing }
 
 #[test]
 fn compile_directory_unsatisfiable_refinement_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_unsatisfiable_refinement_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("unsatisfiable_refinement_dir", r#"module sample.main
 fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
-"#,
-    )
-    .expect("failed to write unsatisfiable-refinement source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3045,27 +2615,9 @@ fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
 
 #[test]
 fn compile_directory_generic_arity_mismatch_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_generic_arity_mismatch_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("generic_arity_mismatch_dir", r#"module sample.main
 fn run(values: Map<String>) -> Int { 1 }
-"#,
-    )
-    .expect("failed to write generic-arity mismatch source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3076,28 +2628,10 @@ fn run(values: Map<String>) -> Int { 1 }
 
 #[test]
 fn compile_directory_user_defined_generic_arity_mismatch_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_user_defined_generic_arity_mismatch_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("user_defined_generic_arity_mismatch_dir", r#"module sample.main
 type Box<T> = T
 fn run(values: Box<String, Int>) -> String { values }
-"#,
-    )
-    .expect("failed to write user-defined generic-arity mismatch source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3108,28 +2642,10 @@ fn run(values: Box<String, Int>) -> String { values }
 
 #[test]
 fn compile_directory_call_arity_mismatch_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_call_arity_mismatch_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("call_arity_mismatch_dir", r#"module sample.main
 fn fmt(value: String) -> String { value }
 fn run() -> String { fmt() }
-"#,
-    )
-    .expect("failed to write call-arity mismatch source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3141,28 +2657,10 @@ fn run() -> String { fmt() }
 
 #[test]
 fn compile_directory_call_with_defaulted_params_succeeds() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_call_defaults_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("call_defaults_dir", r#"module sample.main
 fn greet(name: String, punctuation: String = "!") -> String { name }
 fn run() -> String { greet(name: "hi") }
-"#,
-    )
-    .expect("failed to write defaulted callable source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -3174,18 +2672,7 @@ fn run() -> String { greet(name: "hi") }
 
 #[test]
 fn compile_directory_pattern_call_with_extra_named_wiring_args_succeeds() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_pattern_wiring_args_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("pattern_wiring_args_dir", r#"module sample.main
 pattern ensure(should_act: Bool = true) -> { acted: Bool } {
   return { acted: should_act }
 }
@@ -3193,14 +2680,7 @@ fn run() -> Bool {
   let result = ensure(check: true, action: false)
   result.acted
 }
-"#,
-    )
-    .expect("failed to write pattern wiring source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -3212,32 +2692,14 @@ fn run() -> Bool {
 
 #[test]
 fn compile_directory_generic_fn_type_params_typecheck_in_strict_mode() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_generic_fn_type_params_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("generic_fn_type_params_dir", r#"module sample.main
 fn identity<T>(value: T) -> T {
   value
 }
 fn relay<T>(value: T) -> T {
   identity(value: value)
 }
-"#,
-    )
-    .expect("failed to write generic fn source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -3249,18 +2711,7 @@ fn relay<T>(value: T) -> T {
 
 #[test]
 fn compile_directory_generic_pattern_type_params_typecheck_in_strict_mode() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_generic_pattern_type_params_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("generic_pattern_type_params_dir", r#"module sample.main
 pattern passthrough<T: Serializable>(value: T) -> { value: T } {
   return { value: value }
 }
@@ -3268,14 +2719,7 @@ fn relay<T>(value: T) -> T {
   let result = passthrough(value: value)
   result.value
 }
-"#,
-    )
-    .expect("failed to write generic pattern source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -3287,18 +2731,7 @@ fn relay<T>(value: T) -> T {
 
 #[test]
 fn compile_directory_named_record_literal_return_succeeds_in_strict_mode() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_named_record_literal_return_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("named_record_literal_return_dir", r#"module sample.main
 type StageResult {
   success: Bool,
   skipped: Bool
@@ -3306,14 +2739,7 @@ type StageResult {
 fn result() -> StageResult {
   { success: true, skipped: false }
 }
-"#,
-    )
-    .expect("failed to write named record literal source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -3325,18 +2751,7 @@ fn result() -> StageResult {
 
 #[test]
 fn compile_directory_resource_config_named_return_succeeds_in_strict_mode() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_resource_config_named_return_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("resource_config_named_return_dir", r#"module sample.main
 resource GcsBucket {
   config {
     name: String,
@@ -3346,14 +2761,7 @@ resource GcsBucket {
 fn gcp_dev_storage() -> GcsBucket.Config {
   { name: "gunbc-dev-artifacts", project: "gunbai-auto" }
 }
-"#,
-    )
-    .expect("failed to write resource config source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -3365,28 +2773,10 @@ fn gcp_dev_storage() -> GcsBucket.Config {
 
 #[test]
 fn compile_directory_unknown_named_call_argument_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_unknown_named_call_arg_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("unknown_named_call_arg_dir", r#"module sample.main
 fn fmt(value: String) -> String { value }
 fn run() -> String { fmt(text: "ok") }
-"#,
-    )
-    .expect("failed to write unknown named-call argument source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3398,28 +2788,10 @@ fn run() -> String { fmt(text: "ok") }
 
 #[test]
 fn compile_directory_duplicate_named_call_argument_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_duplicate_named_call_arg_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("duplicate_named_call_arg_dir", r#"module sample.main
 fn fmt(value: String) -> String { value }
 fn run() -> String { fmt(value: "a", value: "b") }
-"#,
-    )
-    .expect("failed to write duplicate named-call argument source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3431,18 +2803,7 @@ fn run() -> String { fmt(value: "a", value: "b") }
 
 #[test]
 fn compile_directory_service_call_arity_mismatch_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_service_call_arity_mismatch_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("service_call_arity_mismatch_dir", r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -3456,14 +2817,7 @@ func run() -> { body: String } {
   let response = FsStorage.read()
   return { body: response.body }
 }
-"#,
-    )
-    .expect("failed to write service call-arity mismatch source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3475,18 +2829,7 @@ func run() -> { body: String } {
 
 #[test]
 fn compile_directory_service_call_with_defaulted_inputs_succeeds() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_service_call_defaults_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("service_call_defaults_dir", r#"module sample.main
 interface Storage {
   capability read {
     input {
@@ -3503,14 +2846,7 @@ func run() -> { ok: Bool } {
   let response = FsStorage.read(path: "/tmp")
   return { ok: response.ok }
 }
-"#,
-    )
-    .expect("failed to write defaulted service-call source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -3522,18 +2858,7 @@ func run() -> { ok: Bool } {
 
 #[test]
 fn compile_directory_unknown_named_service_argument_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_unknown_named_service_arg_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("unknown_named_service_arg_dir", r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -3547,14 +2872,7 @@ func run() -> { body: String } {
   let response = FsStorage.read(name: "README.md")
   return { body: response.body }
 }
-"#,
-    )
-    .expect("failed to write unknown named service-argument source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3566,18 +2884,7 @@ func run() -> { body: String } {
 
 #[test]
 fn compile_directory_duplicate_named_service_argument_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_duplicate_named_service_arg_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("duplicate_named_service_arg_dir", r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -3591,14 +2898,7 @@ func run() -> { body: String } {
   let response = FsStorage.read(path: "a", path: "b")
   return { body: response.body }
 }
-"#,
-    )
-    .expect("failed to write duplicate named service-argument source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3897,27 +3197,9 @@ resource Disk implements Storage {
 
 #[test]
 fn compile_directory_duplicate_parameter_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_duplicate_parameter_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("duplicate_parameter_dir", r#"module sample.main
 fn run(a: String, a: Int) -> String { a }
-"#,
-    )
-    .expect("failed to write duplicate-parameter source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3928,27 +3210,9 @@ fn run(a: String, a: Int) -> String { a }
 
 #[test]
 fn compile_directory_duplicate_output_field_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_duplicate_output_field_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("duplicate_output_field_dir", r#"module sample.main
 func run() -> { ok: Bool, ok: String } { return { ok: true } }
-"#,
-    )
-    .expect("failed to write duplicate-output source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3959,28 +3223,10 @@ func run() -> { ok: Bool, ok: String } { return { ok: true } }
 
 #[test]
 fn compile_directory_duplicate_uses_binding_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_duplicate_uses_binding_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("duplicate_uses_binding_dir", r#"module sample.main
 interface Storage { capability read { input { path: String } output { body: String } } }
 func run() -> { ok: Bool } uses fs: Storage uses fs: Storage { return { ok: true } }
-"#,
-    )
-    .expect("failed to write duplicate-uses source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3991,28 +3237,10 @@ func run() -> { ok: Bool } uses fs: Storage uses fs: Storage { return { ok: true
 
 #[test]
 fn compile_directory_duplicate_provides_binding_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_duplicate_provides_binding_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("duplicate_provides_binding_dir", r#"module sample.main
 interface Storage { capability read { input { path: String } output { body: String } } }
 func run() -> { ok: Bool } provides out: Storage provides out: Storage { return { ok: true } }
-"#,
-    )
-    .expect("failed to write duplicate-provides source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -4023,28 +3251,10 @@ func run() -> { ok: Bool } provides out: Storage provides out: Storage { return 
 
 #[test]
 fn compile_directory_use_provide_binding_conflict_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_use_provide_binding_conflict_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("use_provide_binding_conflict_dir", r#"module sample.main
 interface Storage { capability read { input { path: String } output { body: String } } }
 func run() -> { ok: Bool } uses io: Storage provides io: Storage { return { ok: true } }
-"#,
-    )
-    .expect("failed to write use/provide conflict source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -4055,18 +3265,7 @@ func run() -> { ok: Bool } uses io: Storage provides io: Storage { return { ok: 
 
 #[test]
 fn compile_directory_missing_resource_capability_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_missing_resource_capability_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("missing_resource_capability_dir", r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -4083,14 +3282,7 @@ resource Disk implements Storage {
     output { body: String }
   }
 }
-"#,
-    )
-    .expect("failed to write missing-resource-capability source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -4101,18 +3293,7 @@ resource Disk implements Storage {
 
 #[test]
 fn compile_directory_missing_service_operation_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_missing_service_operation_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("missing_service_operation_dir", r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -4126,14 +3307,7 @@ interface Storage {
 service FsStorage implements Storage {
   operation read(path: String) -> { body: String }
 }
-"#,
-    )
-    .expect("failed to write missing-service-operation source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -4146,18 +3320,7 @@ service FsStorage implements Storage {
 
 #[test]
 fn compile_directory_service_interface_signature_mismatch_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_service_signature_mismatch_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("service_signature_mismatch_dir", r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -4167,14 +3330,7 @@ interface Storage {
 service FsStorage implements Storage {
   operation read(path: Int) -> { body: String }
 }
-"#,
-    )
-    .expect("failed to write service-signature-mismatch source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -4186,18 +3342,7 @@ service FsStorage implements Storage {
 
 #[test]
 fn compile_directory_resource_interface_signature_mismatch_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_resource_signature_mismatch_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
-    std::fs::write(
-        root.join("sample/main.dag"),
-        r#"module sample.main
+    let (context, root) = temp_dag_context("resource_signature_mismatch_dir", r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -4210,14 +3355,7 @@ resource Disk implements Storage {
     output { body: String }
   }
 }
-"#,
-    )
-    .expect("failed to write resource-signature-mismatch source");
-
-    let context = PipelineContext {
-        roots: vec![root.clone()],
-        target_file: None,
-    };
+"#);
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -4229,15 +3367,7 @@ resource Disk implements Storage {
 
 #[test]
 fn compile_directory_ambiguous_interface_reference_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_ambiguous_interface_reference_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let root = unique_temp_root("ambiguous_interface_reference_dir");
     std::fs::write(
             root.join("sample/first.dag"),
             "module sample.first\ninterface Storage { capability read { input { path: String } output { body: String } } }",
@@ -4268,15 +3398,7 @@ fn compile_directory_ambiguous_interface_reference_fails_in_typecheck_stage() {
 
 #[test]
 fn compile_directory_ambiguous_resource_interface_reference_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_ambiguous_resource_interface_reference_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let root = unique_temp_root("ambiguous_resource_interface_reference_dir");
     std::fs::write(
             root.join("sample/first.dag"),
             "module sample.first\ninterface Storage { capability read { input { path: String } output { body: String } } }",
@@ -4307,15 +3429,7 @@ fn compile_directory_ambiguous_resource_interface_reference_fails_in_typecheck_s
 
 #[test]
 fn compile_directory_ambiguous_uses_resource_type_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_ambiguous_uses_resource_type_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let root = unique_temp_root("ambiguous_uses_resource_type_dir");
     std::fs::write(
         root.join("sample/one.dag"),
         "module sample.one\nresource SharedResource {}",
@@ -4346,15 +3460,7 @@ fn compile_directory_ambiguous_uses_resource_type_fails_in_typecheck_stage() {
 
 #[test]
 fn compile_directory_ambiguous_provides_resource_type_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_ambiguous_provides_resource_type_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let root = unique_temp_root("ambiguous_provides_resource_type_dir");
     std::fs::write(
         root.join("sample/one.dag"),
         "module sample.one\nresource SharedResource {}",
@@ -4385,15 +3491,7 @@ fn compile_directory_ambiguous_provides_resource_type_fails_in_typecheck_stage()
 
 #[test]
 fn compile_directory_ambiguous_service_call_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_ambiguous_service_call_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let root = unique_temp_root("ambiguous_service_call_dir");
     std::fs::write(
         root.join("sample/first.dag"),
         r#"module sample.first
@@ -4434,15 +3532,7 @@ func run(path: String) -> { body: String } {
 
 #[test]
 fn compile_directory_ambiguous_callable_target_fails_in_typecheck_stage() {
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_ambiguous_callable_target_dir_{}_{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
+    let root = unique_temp_root("ambiguous_callable_target_dir");
     std::fs::write(
         root.join("sample/one.dag"),
         "module sample.one\nfn render(value: String) -> String { value }",

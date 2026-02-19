@@ -24,6 +24,7 @@
 use crate::installer::Installer;
 use crate::manifest::PlatformInstall;
 use gunbc_ir::transport::tool::{InstallInputs, InstallOption, ToolDef};
+use gunbc_ir::Os;
 use std::collections::HashSet;
 use std::fmt::Write;
 
@@ -149,12 +150,12 @@ verify = "{}"
 
     // Map PM -> platform for install sections
     // This is a simplified mapping; a more complete implementation would use PlatformRegistry
-    let pm_to_platform = |pm: &str| -> Option<&str> {
+    let pm_to_platform = |pm: &str| -> Option<String> {
         match pm {
-            "apt" => Some("linux"),
-            "brew" => Some("macos"),
-            "apk" => Some("alpine"),
-            "cargo" => Some("any"), // cargo works on all platforms with rust
+            "apt" => Some(Os::Linux.as_token().to_string()),
+            "brew" => Some(Os::Macos.as_token().to_string()),
+            "apk" => Some(Os::Other("alpine".to_string()).as_token().to_string()),
+            "cargo" => Some("any".to_string()), // cargo works on all platforms with rust
             _ => None,
         }
     };
@@ -167,7 +168,8 @@ verify = "{}"
 [dependency.install.{}]
 method = "{}"
 "#,
-                platform, opt.via
+                platform.as_str(),
+                opt.via
             )
             .unwrap();
 

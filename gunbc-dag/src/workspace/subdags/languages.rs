@@ -1,34 +1,41 @@
 //! Languages SubDag builder.
 //!
-//! Wraps the languages DAG as a SubDag node using WorkspaceOp.
+//! Wraps the languages DAG as a SubDag node using `DynOp`.
 
 use crate::workspace::convert::convert_node;
 use crate::workspace::WorkspaceOp;
+use gunbc_exec::{DynOp, ExecError, Executable};
 use gunbc_ir::language::{
     build_comment_prefix_subdag, build_config_format_subdag, build_gitignore_subdag,
     build_glob_subdag, build_makefile_subdag, build_naming_conventions_subdag, build_regex_subdag,
     build_rust_subdag, build_turing_complete_subdag, build_type_system_mapping_subdag,
     build_variable_syntax_subdag, LanguageOp,
 };
-use gunbc_ir::{Dag, Node};
+use gunbc_ir::{Dag, Node, Value};
+use std::collections::HashMap;
+
+#[derive(Debug, Clone)]
+struct LanguageExecOp {
+    inner: LanguageOp,
+}
+
+impl Executable for LanguageExecOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        Err(ExecError::new(format!(
+            "LanguageOp::{:?} is compile-time metadata and must not be executed at runtime",
+            self.inner
+        )))
+    }
+}
 
 fn convert_language_op(op: LanguageOp) -> WorkspaceOp {
-    WorkspaceOp::Language(op)
+    DynOp::new(LanguageExecOp { inner: op })
 }
 
 /// Build the languages SubDag node.
-///
-/// This wraps the Languages DAG as a `Node<WorkspaceOp>` containing all
-/// language, format, and pattern SubDags.
-///
-/// # I/O Interface
-///
-/// The Languages SubDag is primarily a model DAG with no I/O.
-/// Its child SubDags provide language characteristics like:
-/// - Comment syntax
-/// - Naming conventions
-/// - Type mappings
-/// - File patterns
 pub fn build_languages_subdag() -> Node<WorkspaceOp> {
     let mut inner: Dag<WorkspaceOp> = Dag::new();
 
@@ -69,12 +76,7 @@ pub fn build_languages_subdag() -> Node<WorkspaceOp> {
     inner.add_node(convert_node(build_gitignore_subdag(), &convert_language_op));
     inner.add_node(convert_node(build_makefile_subdag(), &convert_language_op));
 
-    // Wrap as SubDag with explicit interface
-    Node::subdag(
-        "languages",
-        // No outputs - accessed via child SubDags
-        inner,
-    )
+    Node::subdag("languages", inner)
 }
 
 #[cfg(test)]

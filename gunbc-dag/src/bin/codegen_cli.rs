@@ -25,7 +25,7 @@ use cargo_metadata::MetadataCommand;
 use gunbc_cli::BinaryArgs;
 use gunbc_codegen::{core_outputs, generate_cli_with_import, FileWriter, ToolDef};
 use gunbc_dag::WorkspaceBinary;
-use gunbc_exec::run_freshness_steps;
+use gunbc_exec::{print_attention, run_freshness_steps, AttentionLevel};
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default,
     update_resource_manifest, FreshnessOptions, ManagedResource, ManifestEntry, ManifestFreshness,
@@ -34,7 +34,7 @@ use gunbc_ir::resource::{
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
-use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
+use gunbc_ir::WorkspaceLayout;
 use gunbc_lib_transport::TransportIo;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::env;
@@ -51,7 +51,11 @@ fn main() {
     let parsed = match BinaryArgs::new().parse(&args) {
         Ok(parsed) => parsed,
         Err(e) => {
-            eprintln!("error: {}", e);
+            print_attention(
+                AttentionLevel::Error,
+                "Argument parsing failed",
+                &e.to_string(),
+            );
             std::process::exit(1);
         }
     };
@@ -63,15 +67,23 @@ fn main() {
     let command = match parse_command_arg(&args) {
         Ok(command) => command,
         Err(e) => {
-            eprintln!("error: {}", e);
-            eprintln!("Run 'gunbc-codegen --help' for usage");
+            print_attention(AttentionLevel::Error, "Invalid command", &e);
+            print_attention(
+                AttentionLevel::Info,
+                "Usage",
+                "Run 'gunbc-codegen --help' for usage",
+            );
             std::process::exit(1);
         }
     };
 
     if let Some(steps) = gunbc_lib_transport::check_and_plan_freshness() {
         if let Err(e) = run_freshness_steps(&steps) {
-            eprintln!("{e}");
+            print_attention(
+                AttentionLevel::Error,
+                "Freshness check failed",
+                &e.to_string(),
+            );
             std::process::exit(1);
         }
     }
@@ -82,8 +94,16 @@ fn main() {
         "codegen" => cmd_codegen(dry_run),
         "cigen" => cmd_cigen(dry_run),
         _ => {
-            eprintln!("Unknown command: {}", command);
-            eprintln!("Run 'gunbc-codegen --help' for usage");
+            print_attention(
+                AttentionLevel::Error,
+                "Unknown command",
+                &format!("Unknown command: {command}"),
+            );
+            print_attention(
+                AttentionLevel::Info,
+                "Usage",
+                "Run 'gunbc-codegen --help' for usage",
+            );
             std::process::exit(1);
         }
     }
@@ -117,7 +137,11 @@ fn cmd_commit(dry_run: bool) {
     // Step 1: Generate CLIs
     println!("[1/3] Generating CLIs...");
     if !codegen_clis(dry_run, &io) {
-        eprintln!("Codegen failed");
+        print_attention(
+            AttentionLevel::Error,
+            "Codegen failed",
+            "CLI generation returned errors",
+        );
         std::process::exit(1);
     }
 
@@ -130,7 +154,7 @@ fn cmd_commit(dry_run: bool) {
         match run_cargo_build(&io) {
             Ok(()) => println!("  cargo build: success"),
             Err(e) => {
-                eprintln!("Cargo build failed: {}", e);
+                print_attention(AttentionLevel::Error, "Cargo build failed", &e.to_string());
                 std::process::exit(1);
             }
         }
@@ -144,8 +168,16 @@ fn cmd_commit(dry_run: bool) {
         match setup_bin_directory(&io) {
             Ok(()) => println!("  bin -> target/debug (symlink or copy)"),
             Err(e) => {
-                eprintln!("Warning: Could not setup bin directory: {}", e);
-                eprintln!("         Binaries are available at target/debug/");
+                print_attention(
+                    AttentionLevel::Warning,
+                    "Could not setup bin directory",
+                    &e.to_string(),
+                );
+                print_attention(
+                    AttentionLevel::Info,
+                    "Fallback",
+                    "Binaries are available at target/debug/",
+                );
                 // Non-fatal - binaries are still built
             }
         }
@@ -183,8 +215,8 @@ fn setup_bin_link(
 ) -> Result<(), ResourceError> {
     let args = vec![
         "-s".to_string(),
-        target_path.to_string_lossy().into_owned(),
-        bin_path.to_string_lossy().into_owned(),
+        target_path.display().to_string(),
+        bin_path.display().to_string(),
     ];
     io.command_output("ln", &args)?;
     Ok(())
@@ -218,7 +250,7 @@ fn remove_path(io: &dyn ResourceIo, path: &Path) -> Result<(), ResourceError> {
 
     #[cfg(windows)]
     {
-        let path_str = path.to_string_lossy().into_owned();
+        let path_str = path.display().to_string();
         let _ = io.command_output(
             "cmd",
             &[
@@ -244,7 +276,7 @@ fn remove_path(io: &dyn ResourceIo, path: &Path) -> Result<(), ResourceError> {
 
     #[cfg(not(windows))]
     {
-        let args = vec!["-rf".to_string(), path.to_string_lossy().into_owned()];
+        let args = vec!["-rf".to_string(), path.display().to_string()];
         io.command_output("rm", &args)?;
         Ok(())
     }
@@ -258,8 +290,8 @@ fn cmd_rollback(dry_run: bool) {
     println!();
 
     let mut targets: Vec<String> = core_outputs().into_iter().map(|s| s.to_string()).collect();
-    targets.push(CODEGEN_BIN_DIR.to_string());
-    targets.push(CODEGEN_LIB_DIR.to_string());
+    targets.push(normalize_path(&codegen_bin_dir()));
+    targets.push(normalize_path(&codegen_lib_dir()));
     targets.sort();
     targets.dedup();
     let mut errors = Vec::new();
@@ -305,7 +337,11 @@ fn cmd_codegen(dry_run: bool) {
     }
 
     if !codegen_clis(dry_run, &io) {
-        eprintln!("Codegen failed");
+        print_attention(
+            AttentionLevel::Error,
+            "Codegen failed",
+            "CLI generation returned errors",
+        );
         std::process::exit(1);
     }
 
@@ -357,20 +393,29 @@ fn cmd_cigen(dry_run: bool) {
         .with_permissions(ci_perms)
         .with_secrets_env(ci_secrets);
 
-    let outputs: Vec<(&str, String, String)> = vec![
+    let outputs: Vec<(&str, CiTemplateKind, String, String)> = vec![
         (
             "GitHub Actions",
+            CiTemplateKind::GitHubActions,
             generate_github_actions_template(&config),
             github_provider.output_path("ci"),
         ),
         (
             "GitLab CI",
+            CiTemplateKind::GitLabCi,
             generate_gitlab_ci_template(&config),
             gitlab_provider.output_path("ci"),
         ),
     ];
 
-    for (label, yaml, path) in &outputs {
+    let mut had_errors = false;
+    for (label, kind, yaml, path) in &outputs {
+        if let Err(error) = validate_generated_ci_template(*kind, yaml) {
+            eprintln!("  [ci] {} validation ERROR: {}", label, error);
+            had_errors = true;
+            continue;
+        }
+
         match writer.write_if_changed(Path::new(path), yaml) {
             Ok(result) => {
                 let status = if dry_run {
@@ -384,12 +429,75 @@ fn cmd_cigen(dry_run: bool) {
             }
             Err(e) => {
                 eprintln!("  [ci] {} ERROR: {}", label, e);
+                had_errors = true;
             }
         }
     }
 
+    if had_errors {
+        std::process::exit(1);
+    }
+
     println!();
     println!("Generated: {} CI files", outputs.len());
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CiTemplateKind {
+    GitHubActions,
+    GitLabCi,
+}
+
+fn validate_generated_ci_template(kind: CiTemplateKind, yaml: &str) -> Result<(), String> {
+    match kind {
+        CiTemplateKind::GitHubActions => validate_github_actions_template(yaml),
+        CiTemplateKind::GitLabCi => validate_gitlab_ci_template(yaml),
+    }
+}
+
+fn validate_required_sections(yaml: &str, required: &[&str]) -> Result<(), String> {
+    for section in required {
+        if !yaml.contains(section) {
+            return Err(format!("missing required section: {section}"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_github_actions_template(yaml: &str) -> Result<(), String> {
+    validate_required_sections(
+        yaml,
+        &[
+            "name:",
+            "on:",
+            "permissions:",
+            "env:",
+            "jobs:",
+            "runs-on:",
+            "steps:",
+        ],
+    )?;
+
+    // Basic interpolation sanity check to catch malformed template insertion.
+    let opens = yaml.matches("${{").count();
+    let closes = yaml.matches("}}").count();
+    if opens != closes {
+        return Err(format!(
+            "unbalanced GitHub interpolation markers: {} opening vs {} closing",
+            opens, closes
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_gitlab_ci_template(yaml: &str) -> Result<(), String> {
+    validate_required_sections(
+        yaml,
+        &["image:", "variables:", "stages:", "cache:", "script:"],
+    )?;
+
+    Ok(())
 }
 
 /// Generate GitHub Actions YAML template.
@@ -693,27 +801,27 @@ fn parse_tool_target_block(
     })?;
 
     let mut tool = ToolDef::new(
-        &crate_name,
-        &name,
-        &description,
-        &builder,
-        parsed.builder_args.as_deref().unwrap_or(""),
+        crate_name.clone(),
+        name.clone(),
+        description.clone(),
+        builder.clone(),
+        parsed.builder_args.clone().unwrap_or_default(),
     );
 
     if parsed.returns_result {
         tool = tool.returns_result();
     }
     if let Some(port) = parsed.success_port {
-        tool = tool.check_success(&port);
+        tool = tool.check_success(port);
     }
     if parsed.enable_step_mode {
         tool = tool.enable_step_mode();
     }
     if let Some(import) = parsed.custom_import {
-        tool = tool.import(&import);
+        tool = tool.import(import);
     }
     if let Some(mock_spec) = parsed.mock_spec {
-        tool = tool.mock_spec_call(&mock_spec);
+        tool = tool.mock_spec_call(mock_spec);
     }
     if let Some(entrypoints) = parsed.entrypoints_json {
         if !entrypoints.is_empty() {
@@ -786,7 +894,10 @@ fn collect_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
             })?;
             let path = entry.path();
             if path.is_dir() {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default();
                 if matches!(name, "target" | "buck-out" | ".git") {
                     continue;
                 }
@@ -802,13 +913,15 @@ fn collect_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 #[allow(clippy::disallowed_methods)] // Build-time source discovery for generator tooling.
-fn discover_tool_defs_from_workspace_sources(workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
+fn discover_tool_defs_from_workspace_sources(
+    workspace_root: &Path,
+) -> Result<Vec<ToolDef>, String> {
     let mut by_name: BTreeMap<String, ToolDef> = BTreeMap::new();
     for path in collect_rust_files(workspace_root)? {
         let content = fs::read_to_string(&path)
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         for tool in parse_tool_defs_from_file(&path, &content)? {
-            let name = tool.meta.tool_name.clone();
+            let name = tool.meta.tool_name.to_string();
             if let Some(prev) = by_name.insert(name.clone(), tool) {
                 return Err(format!(
                     "duplicate tool_target name `{}` discovered (existing crate `{}`, new file `{}`)",
@@ -848,12 +961,15 @@ fn discover_dsl_module_names(root: &Path, module_kind: &str) -> Result<BTreeSet<
         if path.extension().and_then(|ext| ext.to_str()) != Some("dag") {
             continue;
         }
-        let stem = path.file_stem().and_then(|stem| stem.to_str()).ok_or_else(|| {
-            format!(
-                "failed to parse UTF-8 module stem for DSL {module_kind} file {}",
-                path.display()
-            )
-        })?;
+        let stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| {
+                format!(
+                    "failed to parse UTF-8 module stem for DSL {module_kind} file {}",
+                    path.display()
+                )
+            })?;
         modules.insert(stem.to_string());
     }
     Ok(modules)
@@ -863,27 +979,39 @@ fn validate_required_dsl_modules_for_codegen(
     tool_modules: &BTreeSet<String>,
     pipeline_modules: &BTreeSet<String>,
 ) -> Result<(), String> {
-    const REQUIRED_TOOLS: &[&str] = &[
-        "build",
-        "bootstrap",
-        "clippy",
-        "codegen",
-        "dag_viz",
-        "deps",
-        "docgen",
-        "gist",
-        "makegen",
-        "pragma",
-        "testgen",
-    ];
-    const REQUIRED_PIPELINES: &[&str] = &["ci"];
+    // Derive required tool modules from the tool registry (dsl_module field)
+    // and WorkspaceBinary (which covers manual/internal tools without registrations).
+    let registry_modules: BTreeSet<&str> = gunbc_tool_registry::dsl_module_to_targets()
+        .keys()
+        .copied()
+        .collect();
+    let binary_tool_modules: BTreeSet<&str> = WorkspaceBinary::all()
+        .iter()
+        .copied()
+        .filter(|binary| binary.is_dsl_tool_module())
+        .map(WorkspaceBinary::tool_name)
+        .collect();
 
-    let missing_tools: Vec<&str> = REQUIRED_TOOLS
+    // Required tools = union of registry dsl_module names and workspace binary tool modules.
+    let required_tools: BTreeSet<&str> = registry_modules
+        .union(&binary_tool_modules)
+        .copied()
+        .collect();
+
+    // Required pipelines: workspace binaries that map to DSL pipeline modules.
+    let required_pipelines: BTreeSet<&str> = WorkspaceBinary::all()
+        .iter()
+        .copied()
+        .filter(|binary| binary.is_dsl_pipeline_module())
+        .map(WorkspaceBinary::tool_name)
+        .collect();
+
+    let missing_tools: Vec<&str> = required_tools
         .iter()
         .copied()
         .filter(|name| !tool_modules.contains(*name))
         .collect();
-    let missing_pipelines: Vec<&str> = REQUIRED_PIPELINES
+    let missing_pipelines: Vec<&str> = required_pipelines
         .iter()
         .copied()
         .filter(|name| !pipeline_modules.contains(*name))
@@ -911,74 +1039,81 @@ fn validate_codegen_dsl_coverage(
     tool_modules: &BTreeSet<String>,
     pipeline_modules: &BTreeSet<String>,
 ) -> Result<(), String> {
-    const TOOL_MODULE_TO_TARGETS: &[(&str, &[&str])] = &[
-        ("bootstrap", &["bootstrap"]),
-        ("clippy", &["clippy"]),
-        ("dag_viz", &["dag-viz", "dag-viz-diff", "dag-viz-recent", "dag-snapshot"]),
-        ("deps", &["deps"]),
-        ("gist", &["gist", "gist-diff", "gist-recent"]),
-        ("makegen", &["makegen"]),
-    ];
-    const TOOL_MODULE_EXCLUDED: &[&str] = &["build", "codegen", "docgen", "pragma", "testgen"];
-    const PIPELINE_MODULE_EXCLUDED: &[&str] = &["ci"];
+    // Derive module→targets mapping from the tool registry's dsl_module field.
+    // Modules not in this map must be explicitly known as workspace-binary
+    // modules; otherwise they are unmapped and should fail closed.
+    let module_to_targets = gunbc_tool_registry::dsl_module_to_targets();
+    let known_tool_modules: BTreeSet<&str> = module_to_targets
+        .keys()
+        .copied()
+        .chain(
+            WorkspaceBinary::all()
+                .iter()
+                .copied()
+                .filter(|binary| binary.is_dsl_tool_module())
+                .map(WorkspaceBinary::tool_name),
+        )
+        .collect();
+    let known_pipeline_modules: BTreeSet<&str> = WorkspaceBinary::all()
+        .iter()
+        .copied()
+        .filter(|binary| binary.is_dsl_pipeline_module())
+        .map(WorkspaceBinary::tool_name)
+        .collect();
 
-    let tool_name_set: BTreeSet<&str> = tools.iter().map(|tool| tool.meta.tool_name.as_str()).collect();
+    let unknown_tools: Vec<String> = tool_modules
+        .iter()
+        .filter(|module| !known_tool_modules.contains(module.as_str()))
+        .cloned()
+        .collect();
+    let unknown_pipelines: Vec<String> = pipeline_modules
+        .iter()
+        .filter(|module| !known_pipeline_modules.contains(module.as_str()))
+        .cloned()
+        .collect();
+    if !unknown_tools.is_empty() || !unknown_pipelines.is_empty() {
+        let mut parts = Vec::new();
+        if !unknown_tools.is_empty() {
+            parts.push(format!(
+                "unmapped DSL tool modules: {}",
+                unknown_tools.join(", ")
+            ));
+        }
+        if !unknown_pipelines.is_empty() {
+            parts.push(format!(
+                "unmapped DSL pipeline modules: {}",
+                unknown_pipelines.join(", ")
+            ));
+        }
+        return Err(format!(
+            "codegen DSL coverage validation failed: {}",
+            parts.join("; ")
+        ));
+    }
 
-    let mut unknown_tool_modules = Vec::new();
+    let tool_name_set: BTreeSet<&str> = tools
+        .iter()
+        .map(|tool| tool.meta.tool_name.as_ref())
+        .collect();
+
     let mut missing_targets = Vec::new();
     for module in tool_modules {
-        if let Some((_, targets)) = TOOL_MODULE_TO_TARGETS
-            .iter()
-            .find(|(mapped_module, _)| mapped_module == &module.as_str())
-        {
-            for target in *targets {
+        if let Some(targets) = module_to_targets.get(module.as_str()) {
+            for target in targets {
                 if !tool_name_set.contains(target) {
                     missing_targets.push(format!("{module}->{target}"));
                 }
             }
-            continue;
         }
-        if TOOL_MODULE_EXCLUDED.contains(&module.as_str()) {
-            continue;
-        }
-        unknown_tool_modules.push(module.clone());
     }
 
-    let unknown_pipeline_modules: Vec<String> = pipeline_modules
-        .iter()
-        .filter(|module| !PIPELINE_MODULE_EXCLUDED.contains(&module.as_str()))
-        .cloned()
-        .collect();
-
-    if unknown_tool_modules.is_empty()
-        && missing_targets.is_empty()
-        && unknown_pipeline_modules.is_empty()
-    {
+    if missing_targets.is_empty() {
         return Ok(());
     }
 
-    let mut parts = Vec::new();
-    if !unknown_tool_modules.is_empty() {
-        parts.push(format!(
-            "unmapped DSL tool modules: {}",
-            unknown_tool_modules.join(", ")
-        ));
-    }
-    if !missing_targets.is_empty() {
-        parts.push(format!(
-            "missing generated targets for mapped DSL modules: {}",
-            missing_targets.join(", ")
-        ));
-    }
-    if !unknown_pipeline_modules.is_empty() {
-        parts.push(format!(
-            "unmapped DSL pipeline modules: {}",
-            unknown_pipeline_modules.join(", ")
-        ));
-    }
     Err(format!(
-        "codegen DSL coverage validation failed: {}",
-        parts.join("; ")
+        "codegen DSL coverage validation failed: missing generated targets for mapped DSL modules: {}",
+        missing_targets.join(", ")
     ))
 }
 
@@ -995,7 +1130,7 @@ fn discover_codegen_tools(workspace_root: &Path) -> Result<Vec<ToolDef>, String>
 /// Generate CLI main.rs files for all tools and register binary targets.
 fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     let writer = FileWriter::new(dry_run, io);
-    let output_dir = CODEGEN_BIN_DIR;
+    let output_dir = codegen_bin_dir();
 
     struct BinRegistration {
         tool_name: String,
@@ -1071,14 +1206,13 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
             }
         };
 
-        let bin_abs_path = workspace_root
-            .join(CODEGEN_BIN_DIR)
-            .join(&tool.meta.tool_name)
+        let bin_abs_path = output_dir
+            .join(tool.meta.tool_name.as_ref())
             .join("main.rs");
         let rel_path = normalize_path(&relative_path(crate_dir, &bin_abs_path));
 
         registrations.push(BinRegistration {
-            tool_name: tool.meta.tool_name.clone(),
+            tool_name: tool.meta.tool_name.to_string(),
             bin_name: inv.binary.clone(),
             cargo_toml_path,
             doc,
@@ -1096,7 +1230,7 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     for tool in &tools {
         let code =
             generate_cli_with_import(&tool.meta, &tool.entrypoints, tool.custom_import.as_deref());
-        let tool_dir = Path::new(output_dir).join(&tool.meta.tool_name);
+        let tool_dir = output_dir.join(tool.meta.tool_name.as_ref());
         let main_path = tool_dir.join("main.rs");
 
         match writer.write_if_changed(&main_path, &code) {
@@ -1207,10 +1341,7 @@ impl CodegenResource {
     fn new() -> Self {
         Self {
             def: codegen_resource_def(),
-            outputs: vec![
-                PathBuf::from(CODEGEN_BIN_DIR),
-                PathBuf::from(CODEGEN_LIB_DIR),
-            ],
+            outputs: vec![codegen_bin_dir(), codegen_lib_dir()],
         }
     }
 }
@@ -1238,7 +1369,11 @@ fn should_skip_codegen(io: &dyn ResourceIo) -> bool {
         Ok(m) if m.is_empty() => return false,
         Ok(m) => m,
         Err(e) => {
-            eprintln!("  Warning: could not load resource manifest: {}", e);
+            print_attention(
+                AttentionLevel::Warning,
+                "Could not load resource manifest",
+                &e.to_string(),
+            );
             return false;
         }
     };
@@ -1257,13 +1392,24 @@ fn should_skip_codegen(io: &dyn ResourceIo) -> bool {
             println!("  Codegen outputs are fresh (manifest + outputs). Skipping.");
             true
         }
+        ManifestFreshness::FreshWithDiagnostic(note) => {
+            println!(
+                "  Codegen outputs are fresh (manifest + outputs). Skipping. [{}]",
+                note
+            );
+            true
+        }
         ManifestFreshness::Stale(reason) => {
             println!("  Codegen outputs are stale: {}", reason);
             false
         }
         ManifestFreshness::Missing => false,
         ManifestFreshness::Error(err) => {
-            eprintln!("  Warning: could not verify codegen freshness: {}", err);
+            print_attention(
+                AttentionLevel::Warning,
+                "Could not verify codegen freshness",
+                &err,
+            );
             false
         }
     }
@@ -1278,7 +1424,7 @@ fn codegen_outputs_exist(io: &dyn ResourceIo) -> bool {
     let tools = match discover_codegen_tools(&workspace_root) {
         Ok(tools) => tools,
         Err(e) => {
-            eprintln!("  Warning: codegen tool discovery failed: {e}");
+            print_attention(AttentionLevel::Warning, "Codegen tool discovery failed", &e);
             return false;
         }
     };
@@ -1288,8 +1434,8 @@ fn codegen_outputs_exist(io: &dyn ResourceIo) -> bool {
             continue;
         }
         paths.push(
-            Path::new(CODEGEN_BIN_DIR)
-                .join(&tool.meta.tool_name)
+            codegen_bin_dir()
+                .join(tool.meta.tool_name.as_ref())
                 .join("main.rs"),
         );
     }
@@ -1301,6 +1447,24 @@ fn codegen_outputs_exist(io: &dyn ResourceIo) -> bool {
     paths
         .iter()
         .all(|path| io.file_exists(path).unwrap_or(false))
+}
+
+fn workspace_layout_or_none() -> Option<WorkspaceLayout> {
+    WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .ok()
+}
+
+fn codegen_bin_dir() -> PathBuf {
+    workspace_layout_or_none()
+        .map(|layout| layout.codegen_bin_dir())
+        .unwrap_or_else(|| PathBuf::from("target/codegen/bin"))
+}
+
+fn codegen_lib_dir() -> PathBuf {
+    workspace_layout_or_none()
+        .map(|layout| layout.codegen_lib_dir())
+        .unwrap_or_else(|| PathBuf::from("target/codegen/lib"))
 }
 
 /// Update the resource manifest after successful codegen.
@@ -1318,19 +1482,40 @@ fn update_manifest_after_codegen(dry_run: bool, io: &dyn ResourceIo) {
             println!("  Updated resource manifest: target/.resource-manifest.json");
         }
         Err(ManifestUpdateError::Load(e)) => {
-            eprintln!("  ERROR: Could not load manifest: {}", e);
-            eprintln!("  Codegen outputs exist but freshness cannot be verified.");
-            eprintln!("  CI --mode=verify will fail until manifest is written.");
+            print_attention(
+                AttentionLevel::Error,
+                "Could not load manifest",
+                &e.to_string(),
+            );
+            print_attention(
+                AttentionLevel::Warning,
+                "Freshness verification unavailable",
+                "Codegen outputs exist but freshness cannot be verified. CI --mode=verify will fail until manifest is written.",
+            );
         }
         Err(ManifestUpdateError::Save(e)) => {
-            eprintln!("  ERROR: Could not write manifest: {}", e);
-            eprintln!("  Codegen outputs exist but freshness cannot be verified.");
-            eprintln!("  CI --mode=verify will fail until manifest is written.");
+            print_attention(
+                AttentionLevel::Error,
+                "Could not write manifest",
+                &e.to_string(),
+            );
+            print_attention(
+                AttentionLevel::Warning,
+                "Freshness verification unavailable",
+                "Codegen outputs exist but freshness cannot be verified. CI --mode=verify will fail until manifest is written.",
+            );
         }
         Err(ManifestUpdateError::Acquire(e)) => {
-            eprintln!("  ERROR: Could not update manifest: {}", e);
-            eprintln!("  Codegen outputs exist but freshness cannot be verified.");
-            eprintln!("  CI --mode=verify will fail until manifest is written.");
+            print_attention(
+                AttentionLevel::Error,
+                "Could not update manifest",
+                &e.to_string(),
+            );
+            print_attention(
+                AttentionLevel::Warning,
+                "Freshness verification unavailable",
+                "Codegen outputs exist but freshness cannot be verified. CI --mode=verify will fail until manifest is written.",
+            );
         }
     }
 }
@@ -1361,9 +1546,11 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        discover_codegen_tools, parse_command_arg, parse_tool_defs_from_file,
-        validate_codegen_dsl_coverage,
+        discover_codegen_tools, generate_github_actions_template, generate_gitlab_ci_template,
+        parse_command_arg, parse_tool_defs_from_file, validate_codegen_dsl_coverage,
+        validate_generated_ci_template, CiTemplateKind, WorkspaceBinary,
     };
+    use gunbc_ir::transport::ci::{CacheConfig, RenderConfig};
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
 
@@ -1388,6 +1575,54 @@ mod tests {
         let args = argv(&["gunbc-codegen", "commit", "rollback"]);
         let err = parse_command_arg(&args).unwrap_err();
         assert!(err.contains("unexpected extra positional arguments"));
+    }
+
+    #[test]
+    fn github_template_passes_static_validation() {
+        let codegen = WorkspaceBinary::Codegen.invocation();
+        let config = RenderConfig::new("ci", WorkspaceBinary::Ci.invocation())
+            .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
+            .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
+            .with_cargo_env(gunbc_ir::CargoEnv::ci())
+            .with_cache(CacheConfig::rust())
+            .with_permissions(vec![
+                ("contents".to_string(), "read".to_string()),
+                ("id-token".to_string(), "write".to_string()),
+            ]);
+
+        let yaml = generate_github_actions_template(&config);
+        validate_generated_ci_template(CiTemplateKind::GitHubActions, &yaml)
+            .expect("generated GitHub Actions template should validate");
+    }
+
+    #[test]
+    fn github_template_validation_rejects_missing_sections() {
+        let malformed = "name: ci\njobs:\n";
+        let err = validate_generated_ci_template(CiTemplateKind::GitHubActions, malformed)
+            .expect_err("malformed GitHub template should fail validation");
+        assert!(err.contains("missing required section"));
+    }
+
+    #[test]
+    fn gitlab_template_passes_static_validation() {
+        let codegen = WorkspaceBinary::Codegen.invocation();
+        let config = RenderConfig::new("ci", WorkspaceBinary::Ci.invocation())
+            .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
+            .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
+            .with_cargo_env(gunbc_ir::CargoEnv::ci())
+            .with_cache(CacheConfig::rust());
+
+        let yaml = generate_gitlab_ci_template(&config);
+        validate_generated_ci_template(CiTemplateKind::GitLabCi, &yaml)
+            .expect("generated GitLab CI template should validate");
+    }
+
+    #[test]
+    fn gitlab_template_validation_rejects_missing_sections() {
+        let malformed = "image: rust:latest\n";
+        let err = validate_generated_ci_template(CiTemplateKind::GitLabCi, malformed)
+            .expect_err("malformed GitLab template should fail validation");
+        assert!(err.contains("missing required section"));
     }
 
     #[test]
@@ -1434,7 +1669,7 @@ pub fn sample_tool() {}
             .to_path_buf();
         let tools = discover_codegen_tools(&workspace_root)
             .expect("source discovery should return tool defs");
-        let names: BTreeSet<String> = tools.iter().map(|t| t.meta.tool_name.clone()).collect();
+        let names: BTreeSet<String> = tools.iter().map(|t| t.meta.tool_name.to_string()).collect();
 
         for required in [
             "bootstrap",
@@ -1486,8 +1721,12 @@ pub fn sample_tool() {}
         .collect();
         // Ensure deterministic assertion error path.
         tool_modules.insert("unknown_new_tool".to_string());
-        let pipeline_modules: BTreeSet<String> =
-            ["ci"].into_iter().map(|name| name.to_string()).collect();
+        let pipeline_modules: BTreeSet<String> = WorkspaceBinary::all()
+            .iter()
+            .copied()
+            .filter(|binary| binary.is_dsl_pipeline_module())
+            .map(|binary| binary.tool_name().to_string())
+            .collect();
 
         let err = validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)
             .expect_err("unknown tool module must fail coverage validation");

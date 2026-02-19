@@ -45,11 +45,9 @@ pub fn classify_value(value: &Value) -> ValueCategory {
             ValueCategory::Shared
         }
         Value::Json(_) | Value::Secret(_) => ValueCategory::Shared,
-        Value::Map(_)
-        | Value::Set(_)
-        | Value::Request(_)
-        | Value::Response(_)
-        | Value::Skipped => ValueCategory::GunbcOnly,
+        Value::Map(_) | Value::Set(_) | Value::Request(_) | Value::Response(_) | Value::Skipped => {
+            ValueCategory::GunbcOnly
+        }
     }
 }
 
@@ -107,9 +105,7 @@ pub fn from_bridge_json(json: &serde_json::Value) -> Value {
                 Value::Json(json.clone())
             }
         }
-        serde_json::Value::Array(arr) => {
-            Value::List(arr.iter().map(from_bridge_json).collect())
-        }
+        serde_json::Value::Array(arr) => Value::List(arr.iter().map(from_bridge_json).collect()),
         serde_json::Value::Object(_) => Value::Json(json.clone()),
     }
 }
@@ -128,10 +124,7 @@ mod tests {
             ValueCategory::Shared
         );
         assert_eq!(classify_value(&Value::Int(42)), ValueCategory::Shared);
-        assert_eq!(
-            classify_value(&Value::List(vec![])),
-            ValueCategory::Shared
-        );
+        assert_eq!(classify_value(&Value::List(vec![])), ValueCategory::Shared);
         assert_eq!(
             classify_value(&Value::Json(serde_json::json!({}))),
             ValueCategory::Shared
@@ -162,11 +155,7 @@ mod tests {
         for val in cases {
             let json = to_bridge_json(&val).expect("should convert");
             let back = from_bridge_json(&json);
-            assert_eq!(
-                format!("{val:?}"),
-                format!("{back:?}"),
-                "round-trip failed"
-            );
+            assert_eq!(format!("{val:?}"), format!("{back:?}"), "round-trip failed");
         }
     }
 

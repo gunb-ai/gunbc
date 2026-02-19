@@ -23,7 +23,9 @@ use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::transport::{ShellRequest, TransportRequest};
 use gunbc_ir::PlainStructuredRenderer;
 use gunbc_ir::Value;
-use gunbc_ir::{CargoCommand, Subcommand, Warnings};
+use gunbc_ir::{
+    CargoCommand, Subcommand, Warnings, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,
+};
 use gunbc_testgen_registry::iter_dag_specs;
 use std::collections::HashMap;
 
@@ -181,7 +183,15 @@ fn execute_parse_deps_exists(
     if let Some(result) = propagate_skipped(
         &inputs,
         "response",
-        &["deps_exists", "deps_checked", "deps_installed", "message"],
+        &[
+            "deps_exists",
+            "deps_checked",
+            "deps_installed",
+            "message",
+            "success",
+            "error_summary",
+            "detail",
+        ],
     ) {
         return result;
     }
@@ -204,6 +214,7 @@ fn execute_parse_deps_exists(
         .bool("deps_checked", true)
         .int("deps_installed", 0)
         .str("message", message)
+        .status(true, "", message)
         .ok()
 }
 
@@ -834,8 +845,11 @@ fn execute_parse_verify_result(
     inputs: HashMap<String, Value>,
     success_key: &str,
     stderr_key: &str,
+    stdout_key: &str,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) = propagate_skipped(&inputs, "response", &[success_key, stderr_key]) {
+    if let Some(result) =
+        propagate_skipped(&inputs, "response", &[success_key, stderr_key, stdout_key])
+    {
         return result;
     }
 
@@ -848,6 +862,7 @@ fn execute_parse_verify_result(
         return OutputMap::new()
             .bool(success_key, false)
             .str(stderr_key, reason)
+            .str(stdout_key, "")
             .ok();
     }
 
@@ -857,6 +872,7 @@ fn execute_parse_verify_result(
             return OutputMap::new()
                 .bool(success_key, false)
                 .str(stderr_key, "missing response")
+                .str(stdout_key, "")
                 .ok();
         }
     };
@@ -864,6 +880,7 @@ fn execute_parse_verify_result(
     OutputMap::new()
         .bool(success_key, shell.success())
         .str(stderr_key, shell.stderr.clone())
+        .str(stdout_key, shell.stdout.clone())
         .ok()
 }
 
@@ -871,7 +888,12 @@ fn execute_parse_verify_result(
 fn execute_parse_verify_makegen_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    execute_parse_verify_result(inputs, "verify_makegen_success", "verify_makegen_stderr")
+    execute_parse_verify_result(
+        inputs,
+        "verify_makegen_success",
+        "verify_makegen_stderr",
+        "verify_makegen_stdout",
+    )
 }
 
 /// Parse the deps-config verify shell response (pure).
@@ -882,6 +904,7 @@ fn execute_parse_verify_deps_config_result(
         inputs,
         "verify_deps_config_success",
         "verify_deps_config_stderr",
+        "verify_deps_config_stdout",
     )
 }
 
@@ -893,6 +916,7 @@ fn execute_parse_verify_bootstrap_result(
         inputs,
         "verify_bootstrap_success",
         "verify_bootstrap_stderr",
+        "verify_bootstrap_stdout",
     )
 }
 
@@ -900,14 +924,24 @@ fn execute_parse_verify_bootstrap_result(
 fn execute_parse_verify_testgen_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    execute_parse_verify_result(inputs, "verify_testgen_success", "verify_testgen_stderr")
+    execute_parse_verify_result(
+        inputs,
+        "verify_testgen_success",
+        "verify_testgen_stderr",
+        "verify_testgen_stdout",
+    )
 }
 
 /// Parse the pragma verify shell response (pure).
 fn execute_parse_verify_pragma_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    execute_parse_verify_result(inputs, "verify_pragma_success", "verify_pragma_stderr")
+    execute_parse_verify_result(
+        inputs,
+        "verify_pragma_success",
+        "verify_pragma_stderr",
+        "verify_pragma_stdout",
+    )
 }
 
 /// Aggregate per-check verify results into report-friendly outputs.
@@ -915,26 +949,49 @@ fn execute_aggregate_verify_results(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let checks = [
-        ("makegen", "verify_makegen_success", "verify_makegen_stderr"),
+        (
+            "makegen",
+            "verify_makegen_success",
+            "verify_makegen_stderr",
+            "verify_makegen_stdout",
+        ),
         (
             "deps-config",
             "verify_deps_config_success",
             "verify_deps_config_stderr",
+            "verify_deps_config_stdout",
         ),
         (
             "bootstrap",
             "verify_bootstrap_success",
             "verify_bootstrap_stderr",
+            "verify_bootstrap_stdout",
         ),
-        ("testgen", "verify_testgen_success", "verify_testgen_stderr"),
-        ("pragma", "verify_pragma_success", "verify_pragma_stderr"),
+        (
+            "testgen",
+            "verify_testgen_success",
+            "verify_testgen_stderr",
+            "verify_testgen_stdout",
+        ),
+        (
+            "pragma",
+            "verify_pragma_success",
+            "verify_pragma_stderr",
+            "verify_pragma_stdout",
+        ),
     ];
 
     let mut verify_success = true;
     let mut failure_messages: Vec<String> = Vec::new();
+    let mut verify_stdout_parts: Vec<String> = Vec::new();
 
-    for (name, success_key, stderr_key) in checks {
+    for (name, success_key, stderr_key, stdout_key) in checks {
         let success = require_bool_or_skipped(&inputs, success_key, true)?;
+        if let Some(stdout) = optional_str_strict(&inputs, stdout_key)? {
+            if !stdout.trim().is_empty() {
+                verify_stdout_parts.push(format!("{name}:\n{stdout}"));
+            }
+        }
         if success {
             continue;
         }
@@ -943,7 +1000,7 @@ fn execute_aggregate_verify_results(
         let stderr = optional_str_strict(&inputs, stderr_key)?;
         let message = match stderr {
             Some(stderr) if !stderr.trim().is_empty() => format!("{name}: {stderr}"),
-            _ => format!("{name}: verify check failed"),
+            _ => format!("{name}: verify check failed (see stdout output)"),
         };
         failure_messages.push(message);
     }
@@ -954,9 +1011,26 @@ fn execute_aggregate_verify_results(
         failure_messages.join("\n\n")
     };
 
+    let verify_stdout = verify_stdout_parts.join("\n\n");
+    let verify_detail = if verify_success {
+        "All verify checks passed".to_string()
+    } else {
+        verify_stderr.clone()
+    };
+
     OutputMap::new()
         .bool("verify_success", verify_success)
+        .str("verify_stdout", verify_stdout)
         .str("verify_stderr", verify_stderr)
+        .status(
+            verify_success,
+            if verify_success {
+                ""
+            } else {
+                "One or more verify checks failed"
+            },
+            verify_detail,
+        )
         .ok()
 }
 
@@ -1012,10 +1086,16 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
     for block in &blocks {
         report.push_str(&renderer.render_block(block));
     }
+    let status_summary = if overall_success {
+        ""
+    } else {
+        "One or more CI stages failed"
+    };
 
     OutputMap::new()
         .bool("overall_success", overall_success)
-        .str("report", report)
+        .str("report", report.clone())
+        .status(overall_success, status_summary, report)
         .ok()
 }
 
@@ -1082,13 +1162,14 @@ fn build_report_blocks(
     let bootstrap_stdout = optional_str_strict(inputs, "bootstrap_stdout")?.unwrap_or("");
     let pragma_stdout = optional_str_strict(inputs, "pragma_stdout")?.unwrap_or("");
     let guardrail_stdout = optional_str_strict(inputs, "guardrail_stdout")?.unwrap_or("");
+    let verify_stdout = optional_str_strict(inputs, "verify_stdout")?.unwrap_or("");
 
     let stages = [
         StageResult::new("Build", build_success, build_stdout, build_stderr)
-            .with_extractor(extract_build_errors),
+            .with_extractor(extract_build_stage),
         StageResult::new("Test", test_success, test_stdout, test_stderr),
         StageResult::new("Lint", lint_success, lint_stdout, lint_stderr)
-            .with_extractor(extract_lint_warnings),
+            .with_extractor(extract_lint_stage),
         StageResult::new("Testgen", testgen_success, testgen_stdout, testgen_stderr),
         StageResult::new(
             "Bootstrap",
@@ -1103,7 +1184,8 @@ fn build_report_blocks(
             guardrail_stdout,
             guardrail_stderr,
         ),
-        StageResult::new("Verify", verify_success, "", verify_stderr),
+        StageResult::new("Verify", verify_success, verify_stdout, verify_stderr)
+            .with_extractor(extract_verify_failures),
     ];
 
     for stage in &stages {
@@ -1143,48 +1225,18 @@ fn build_report_blocks(
 }
 
 /// Maximum lines per stderr/stdout section in the CI report.
-const MAX_REPORT_SECTION_LINES: usize = 60;
+const MAX_REPORT_SECTION_LINES: usize = HUMAN_TEXT_MAX_LINES;
 /// Maximum characters per line before truncation.
-const MAX_REPORT_LINE_WIDTH: usize = 500;
+const MAX_REPORT_LINE_WIDTH: usize = HUMAN_TEXT_MAX_LINE_WIDTH;
 
 /// Truncate verbose output for the CI report.
 ///
 /// - Individual lines longer than [`MAX_REPORT_LINE_WIDTH`] are truncated
 ///   (catches massive linker commands with hundreds of `.rlib` paths).
-/// - If the total exceeds [`MAX_REPORT_SECTION_LINES`], the middle is
-///   replaced with a marker keeping the first 10 and last 50 lines.
+/// - Uses the same shared truncation policy as terminal display output.
 fn truncate_for_report(text: &str) -> String {
-    let raw_lines: Vec<&str> = text.lines().collect();
-
-    // Truncate individual long lines
-    let lines: Vec<String> = raw_lines
-        .iter()
-        .map(|line| {
-            if line.len() > MAX_REPORT_LINE_WIDTH {
-                format!(
-                    "{}... ({} more chars)",
-                    &line[..MAX_REPORT_LINE_WIDTH],
-                    line.len() - MAX_REPORT_LINE_WIDTH
-                )
-            } else {
-                (*line).to_string()
-            }
-        })
-        .collect();
-
-    if lines.len() <= MAX_REPORT_SECTION_LINES {
-        return lines.join("\n");
-    }
-
-    let head = 10;
-    let tail = MAX_REPORT_SECTION_LINES - head;
-    let omitted = lines.len() - head - tail;
-
-    let mut result = Vec::with_capacity(head + 1 + tail);
-    result.extend_from_slice(&lines[..head]);
-    result.push(format!("... ({omitted} lines omitted) ..."));
-    result.extend_from_slice(&lines[lines.len() - tail..]);
-    result.join("\n")
+    Value::Str(text.to_string())
+        .display_redacted_truncated(MAX_REPORT_SECTION_LINES, MAX_REPORT_LINE_WIDTH)
 }
 
 /// Extract `error[E...]` lines + context from build stderr.
@@ -1238,6 +1290,33 @@ fn extract_lint_warnings(stderr: &str) -> Option<String> {
     }
 }
 
+fn extract_verify_failures(stdout: &str, stderr: &str) -> Option<String> {
+    let mut sections = Vec::new();
+
+    let check_summary = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !check_summary.is_empty() {
+        sections.push(format!("failed checks:\n{check_summary}"));
+    }
+
+    if !stdout.trim().is_empty() {
+        let stdout_tail = extract_tail_summary(stdout, 40).unwrap_or_default();
+        if !stdout_tail.trim().is_empty() {
+            sections.push(format!("verify output:\n{stdout_tail}"));
+        }
+    }
+
+    if sections.is_empty() {
+        None
+    } else {
+        Some(sections.join("\n\n"))
+    }
+}
+
 /// Generic fallback: last N lines of text.
 fn extract_tail_summary(text: &str, max_lines: usize) -> Option<String> {
     let lines: Vec<&str> = text.lines().collect();
@@ -1254,7 +1333,7 @@ struct StageResult<'a> {
     success: bool,
     stdout: &'a str,
     stderr: &'a str,
-    extractor: Option<fn(&str) -> Option<String>>,
+    extractor: Option<fn(&str, &str) -> Option<String>>,
 }
 
 impl<'a> StageResult<'a> {
@@ -1268,10 +1347,18 @@ impl<'a> StageResult<'a> {
         }
     }
 
-    fn with_extractor(mut self, f: fn(&str) -> Option<String>) -> Self {
+    fn with_extractor(mut self, f: fn(&str, &str) -> Option<String>) -> Self {
         self.extractor = Some(f);
         self
     }
+}
+
+fn extract_build_stage(_stdout: &str, stderr: &str) -> Option<String> {
+    extract_build_errors(stderr)
+}
+
+fn extract_lint_stage(_stdout: &str, stderr: &str) -> Option<String> {
+    extract_lint_warnings(stderr)
 }
 
 /// Unified helper for formatting a stage failure section.
@@ -1282,11 +1369,11 @@ fn format_stage_failure(
     name: &str,
     stdout: &str,
     stderr: &str,
-    extractor: Option<fn(&str) -> Option<String>>,
+    extractor: Option<fn(&str, &str) -> Option<String>>,
 ) -> Option<String> {
-    // Try the specialized extractor on stderr first
+    // Try the specialized extractor first (stage-specific).
     if let Some(extract) = extractor {
-        if let Some(extracted) = extract(stderr) {
+        if let Some(extracted) = extract(stdout, stderr) {
             let summary = truncate_for_report(&extracted);
             return Some(format!("\n--- {name} errors ---\n{summary}\n"));
         }
@@ -1459,6 +1546,7 @@ impl Mockable for CIOp {
             CIOp::ParseVerifyMakegenResult => OutputMap::new()
                 .bool("verify_makegen_success", true)
                 .str("verify_makegen_stderr", "")
+                .str("verify_makegen_stdout", "")
                 .build(),
             CIOp::PrepareVerifyDepsConfigCheck => {
                 let config = BuildConfig::cargo();
@@ -1471,6 +1559,7 @@ impl Mockable for CIOp {
             CIOp::ParseVerifyDepsConfigResult => OutputMap::new()
                 .bool("verify_deps_config_success", true)
                 .str("verify_deps_config_stderr", "")
+                .str("verify_deps_config_stdout", "")
                 .build(),
             CIOp::PrepareVerifyBootstrapCheck => {
                 let config = BuildConfig::cargo();
@@ -1483,6 +1572,7 @@ impl Mockable for CIOp {
             CIOp::ParseVerifyBootstrapResult => OutputMap::new()
                 .bool("verify_bootstrap_success", true)
                 .str("verify_bootstrap_stderr", "")
+                .str("verify_bootstrap_stdout", "")
                 .build(),
             CIOp::PrepareVerifyTestgenCheck => {
                 let config = BuildConfig::cargo();
@@ -1495,6 +1585,7 @@ impl Mockable for CIOp {
             CIOp::ParseVerifyTestgenResult => OutputMap::new()
                 .bool("verify_testgen_success", true)
                 .str("verify_testgen_stderr", "")
+                .str("verify_testgen_stdout", "")
                 .build(),
             CIOp::PrepareVerifyPragmaCheck => {
                 let config = BuildConfig::cargo();
@@ -1507,9 +1598,11 @@ impl Mockable for CIOp {
             CIOp::ParseVerifyPragmaResult => OutputMap::new()
                 .bool("verify_pragma_success", true)
                 .str("verify_pragma_stderr", "")
+                .str("verify_pragma_stdout", "")
                 .build(),
             CIOp::AggregateVerifyResults => OutputMap::new()
                 .bool("verify_success", true)
+                .str("verify_stdout", "")
                 .str("verify_stderr", "")
                 .build(),
             CIOp::Report => OutputMap::new()
@@ -1524,6 +1617,14 @@ impl Mockable for CIOp {
 mod tests {
     use super::*;
     use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportRequest};
+
+    fn normalize_report(report: &str) -> String {
+        report
+            .lines()
+            .map(str::trim_start)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[test]
     fn test_parse_deps_exists_true() {
@@ -1547,6 +1648,11 @@ mod tests {
         assert_eq!(
             result.get("deps_exists").and_then(|v| v.as_bool()),
             Some(true)
+        );
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            result.get("error_summary").and_then(|v| v.as_str()),
+            Some("")
         );
     }
 
@@ -1572,6 +1678,11 @@ mod tests {
         assert_eq!(
             result.get("deps_exists").and_then(|v| v.as_bool()),
             Some(false)
+        );
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            result.get("detail").and_then(|v| v.as_str()),
+            Some("No deps.toml found, skipping dependency check")
         );
     }
 
@@ -1631,6 +1742,112 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_verify_result_captures_stdout_and_stderr() {
+        let mut inputs = HashMap::new();
+        inputs.insert("skip".to_string(), Value::Bool(false));
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(
+                ShellResponse {
+                    exit_code: 1,
+                    stdout: "verify details".to_string(),
+                    stderr: "verify error".to_string(),
+                }
+                .into(),
+            ),
+        );
+
+        let result = execute_parse_verify_makegen_result(inputs).expect("parse should succeed");
+        assert_eq!(
+            result
+                .get("verify_makegen_success")
+                .and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            result.get("verify_makegen_stdout").and_then(|v| v.as_str()),
+            Some("verify details")
+        );
+        assert_eq!(
+            result.get("verify_makegen_stderr").and_then(|v| v.as_str()),
+            Some("verify error")
+        );
+    }
+
+    #[test]
+    fn test_aggregate_verify_results_uses_stdout_fallback_for_failure_message() {
+        let mut inputs = HashMap::new();
+        inputs.insert("verify_makegen_success".to_string(), Value::Bool(false));
+        inputs.insert(
+            "verify_makegen_stderr".to_string(),
+            Value::Str(String::new()),
+        );
+        inputs.insert(
+            "verify_makegen_stdout".to_string(),
+            Value::Str("stdout-only failure".to_string()),
+        );
+
+        inputs.insert("verify_deps_config_success".to_string(), Value::Bool(true));
+        inputs.insert(
+            "verify_deps_config_stderr".to_string(),
+            Value::Str(String::new()),
+        );
+        inputs.insert(
+            "verify_deps_config_stdout".to_string(),
+            Value::Str(String::new()),
+        );
+
+        inputs.insert("verify_bootstrap_success".to_string(), Value::Bool(true));
+        inputs.insert(
+            "verify_bootstrap_stderr".to_string(),
+            Value::Str(String::new()),
+        );
+        inputs.insert(
+            "verify_bootstrap_stdout".to_string(),
+            Value::Str(String::new()),
+        );
+
+        inputs.insert("verify_testgen_success".to_string(), Value::Bool(true));
+        inputs.insert(
+            "verify_testgen_stderr".to_string(),
+            Value::Str(String::new()),
+        );
+        inputs.insert(
+            "verify_testgen_stdout".to_string(),
+            Value::Str(String::new()),
+        );
+
+        inputs.insert("verify_pragma_success".to_string(), Value::Bool(true));
+        inputs.insert(
+            "verify_pragma_stderr".to_string(),
+            Value::Str(String::new()),
+        );
+        inputs.insert(
+            "verify_pragma_stdout".to_string(),
+            Value::Str(String::new()),
+        );
+
+        let result = execute_aggregate_verify_results(inputs).expect("aggregation should succeed");
+        assert_eq!(
+            result.get("verify_success").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            result.get("verify_stderr").and_then(|v| v.as_str()),
+            Some("makegen: verify check failed (see stdout output)")
+        );
+        assert_eq!(
+            result.get("verify_stdout").and_then(|v| v.as_str()),
+            Some("makegen:\nstdout-only failure")
+        );
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(
+            result.get("error_summary").and_then(|v| v.as_str()),
+            Some("One or more verify checks failed")
+        );
+    }
+
+    #[test]
     fn test_report_all_pass() {
         let mut inputs = HashMap::new();
         inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -1647,6 +1864,19 @@ mod tests {
             result.get("overall_success").and_then(|v| v.as_bool()),
             Some(true)
         );
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            result.get("error_summary").and_then(|v| v.as_str()),
+            Some("")
+        );
+        let normalized = normalize_report(
+            result
+                .get("report")
+                .and_then(|v| v.as_str())
+                .expect("report text"),
+        );
+        let expected = "\nCI Report\n=========\nBuild: PASS\nTest:  PASS\nLint:  PASS\nTestgen: PASS\nBootstrap: PASS\nPragma: PASS\nVerify: PASS\nGuardrails: PASS\n---------\nOverall: SUCCESS";
+        assert_eq!(normalized.trim_end(), expected);
     }
 
     #[test]
@@ -1674,6 +1904,49 @@ mod tests {
             result.get("overall_success").and_then(|v| v.as_bool()),
             Some(false)
         );
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(
+            result.get("error_summary").and_then(|v| v.as_str()),
+            Some("One or more CI stages failed")
+        );
+        let normalized = normalize_report(
+            result
+                .get("report")
+                .and_then(|v| v.as_str())
+                .expect("report text"),
+        );
+        assert!(
+            normalized.contains("\n--- Build errors ---\nerror: compilation failed"),
+            "expected build failure section in report, got:\n{normalized}"
+        );
+    }
+
+    #[test]
+    fn test_report_verify_failure_includes_verify_stdout() {
+        let mut inputs = HashMap::new();
+        inputs.insert("build_success".to_string(), Value::Bool(true));
+        inputs.insert("test_success".to_string(), Value::Bool(true));
+        inputs.insert("lint_success".to_string(), Value::Bool(true));
+        inputs.insert("testgen_success".to_string(), Value::Bool(true));
+        inputs.insert("bootstrap_success".to_string(), Value::Bool(true));
+        inputs.insert("pragma_success".to_string(), Value::Bool(true));
+        inputs.insert("guardrail_success".to_string(), Value::Bool(true));
+        inputs.insert("verify_success".to_string(), Value::Bool(false));
+        inputs.insert(
+            "verify_stdout".to_string(),
+            Value::Str("verify output details".to_string()),
+        );
+        inputs.insert("verify_stderr".to_string(), Value::Str(String::new()));
+
+        let result = execute_report(inputs).expect("report should succeed");
+        let report = result
+            .get("report")
+            .and_then(|v| v.as_str())
+            .expect("report text");
+        assert_eq!(result.get("success").and_then(|v| v.as_bool()), Some(false));
+        assert!(report.contains("Verify errors"));
+        assert!(report.contains("verify output:"));
+        assert!(report.contains("verify output details"));
     }
 
     #[test]
@@ -1687,7 +1960,7 @@ mod tests {
         let long_line = "x".repeat(600);
         let result = truncate_for_report(&long_line);
         assert!(result.len() < long_line.len());
-        assert!(result.contains("more chars)"));
+        assert!(result.ends_with("..."));
     }
 
     #[test]
@@ -1699,10 +1972,10 @@ mod tests {
         // Should be capped at MAX_REPORT_SECTION_LINES + 1 (truncation marker)
         assert!(result_lines.len() <= MAX_REPORT_SECTION_LINES + 1);
         assert!(result.contains("lines omitted"));
-        // First 10 lines preserved
+        // First head lines preserved
         assert!(result.contains("line 0"));
-        assert!(result.contains("line 9"));
-        // Last 50 lines preserved
+        assert!(result.contains("line 4"));
+        // Tail lines preserved
         assert!(result.contains("line 199"));
     }
 
@@ -1782,7 +2055,7 @@ mod tests {
     #[test]
     fn test_format_stage_failure_with_extractor() {
         let stderr = "error[E0308]: mismatched types\n  --> src/lib.rs:42:5";
-        let result = format_stage_failure("Build", "", stderr, Some(extract_build_errors));
+        let result = format_stage_failure("Build", "", stderr, Some(extract_build_stage));
         assert!(result.is_some());
         let section = result.unwrap();
         assert!(section.contains("Build errors"));
@@ -1799,8 +2072,19 @@ mod tests {
 
     #[test]
     fn test_format_stage_failure_empty() {
-        let result = format_stage_failure("Build", "", "", Some(extract_build_errors));
+        let result = format_stage_failure("Build", "", "", Some(extract_build_stage));
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_verify_failures_includes_stderr_and_stdout() {
+        let stdout = "makegen:\ncheck details\n\npragma:\nmore detail";
+        let stderr = "makegen: failed\npragma: failed";
+        let extracted = extract_verify_failures(stdout, stderr).expect("expected extraction");
+        assert!(extracted.contains("failed checks"));
+        assert!(extracted.contains("verify output"));
+        assert!(extracted.contains("makegen: failed"));
+        assert!(extracted.contains("check details"));
     }
 
     #[test]

@@ -22,18 +22,32 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::build_ci_graph_with_mode;
-use gunbc_exec::{
-    compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
-    CiContext, ExecutionMode,
-};
+use gunbc_dag::ci::build_ci_graph;
+use gunbc_dag::{print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions};
+use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, CiContext, ExecutionMode};
 use gunbc_ir::resource::ExecMode;
-use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
-use gunbc_ir::Value;
-use gunbc_ir::CODEGEN_STAMP_PATH;
-use gunbc_primitives::{filename, FsEnv};
-use std::io::IsTerminal;
+use gunbc_ir::{detect_entrypoints, Value};
+use gunbc_testgen_registry::iter_dag_specs;
 use std::process;
+
+fn ci_generated_tests_path() -> Option<&'static str> {
+    iter_dag_specs()
+        .find(|spec| spec.name == "ci")
+        .map(|spec| spec.meta.output_path)
+}
+
+fn ci_path_for_node(node_id: &str) -> Option<&'static str> {
+    if node_id.contains("Find_ListDirs") {
+        Some("crates")
+    } else if node_id.contains("render_and_upsert")
+        || node_id == "std.patterns::content_upsert"
+        || node_id == "std.patterns::file_content_matches"
+    {
+        ci_generated_tests_path()
+    } else {
+        None
+    }
+}
 
 fn main() {
     let parsed = BinaryArgs::new().with_mode().parse_env();
@@ -50,8 +64,8 @@ fn main() {
     let dry_run = parsed.dry_run;
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
 
-    // Build the CI graph with the exec mode embedded in the inlined codegen DAG
-    let dag = match build_ci_graph_with_mode(resource_mode) {
+    // Build the CI graph from DSL
+    let dag = match build_ci_graph() {
         Ok(d) => d,
         Err(e) => {
             print_attention(
@@ -63,102 +77,59 @@ fn main() {
         }
     };
 
+    // Set up entrypoint inputs for lower-time content_upsert/service args that
+    // are still injected by tool frontends.
+    let mut input_mocks = BoundaryMocks::new();
+    let mut unresolved_path_nodes = Vec::<String>::new();
+    let entrypoints = detect_entrypoints(&dag);
+    for (node_id, port_name, _) in &entrypoints.entrypoint_ports {
+        match port_name.0.as_str() {
+            "check_mode" => {
+                input_mocks.set_input(
+                    node_id.0.clone(),
+                    port_name.0.clone(),
+                    Value::Bool(resource_mode == ExecMode::Verify),
+                );
+            }
+            "path" => {
+                if let Some(path) = ci_path_for_node(&node_id.0) {
+                    input_mocks.set_input(
+                        node_id.0.clone(),
+                        port_name.0.clone(),
+                        Value::Str(path.to_string()),
+                    );
+                } else {
+                    unresolved_path_nodes.push(node_id.0.clone());
+                }
+            }
+            "max_depth" if node_id.0.contains("Find_ListDirs") => {
+                input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Int(1));
+            }
+            "min_depth" if node_id.0.contains("Find_ListDirs") => {
+                input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Int(1));
+            }
+            _ => {}
+        }
+    }
+    if !unresolved_path_nodes.is_empty() {
+        unresolved_path_nodes.sort();
+        unresolved_path_nodes.dedup();
+        print_attention(
+            AttentionLevel::Error,
+            "CI entrypoint path wiring is incomplete",
+            &format!(
+                "unmapped path entrypoints: {}",
+                unresolved_path_nodes.join(", ")
+            ),
+        );
+        process::exit(1);
+    }
+
     // Set up execution mode
     let mode = if dry_run {
-        let mut mocks = BoundaryMocks::new();
-
-        // Resource environment: filesystem handle used by transport executors.
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        mocks.set_value("fs_env", FsEnv::WRITE_PORT, fs.into());
-
-        // Transport execution nodes need properly-typed Response mocks.
-        // The default mock is Value::Str("<DRY-RUN>"), but downstream parse
-        // nodes call v.as_response() which only matches Value::Response.
-
-        // execute_deps_exists: file exists check for deps.toml
-        mocks.set_value(
-            "execute_deps_exists",
-            "response",
-            Value::Response(
-                FileResponse {
-                    path: "deps.toml".to_string(),
-                    operation: FileOp::Exists,
-                    success: true,
-                    content: None,
-                    exists: Some(false),
-                    error: None,
-                }
-                .into(),
-            ),
-        );
-
-        // execute_codegen_exists: shell exists check
-        mocks.set_value(
-            "execute_codegen_exists",
-            "response",
-            Value::Response(ShellResponse::ok("").into()),
-        );
-
-        // execute_codegen: shell command (skipped when codegen exists)
-        mocks.set_value(
-            "execute_codegen",
-            "response",
-            Value::Response(ShellResponse::ok("").into()),
-        );
-        mocks.set_value("execute_codegen", "skip", Value::Bool(true));
-
-        // execute_stamp_write: file write (codegen prep succeeded)
-        mocks.set_value(
-            "execute_stamp_write",
-            "response",
-            Value::Response(
-                FileResponse {
-                    path: CODEGEN_STAMP_PATH.to_string(),
-                    operation: FileOp::Write,
-                    success: true,
-                    content: None,
-                    exists: None,
-                    error: None,
-                }
-                .into(),
-            ),
-        );
-        mocks.set_value("execute_stamp_write", "skip", Value::Bool(false));
-
-        let mut set_skippable_shell = |node: &str| {
-            mocks.set_value(
-                node,
-                "response",
-                Value::Response(ShellResponse::ok("<DRY-RUN>").into()),
-            );
-            mocks.set_value(node, "skip", Value::Bool(false));
-            mocks.set_value(node, "skip_reason", Value::Str(String::new()));
-        };
-
-        // Main CI stage transports (skippable triplets).
-        for node in [
-            "execute_testgen",
-            "execute_bootstrap",
-            "execute_pragma",
-            "execute_build",
-            "execute_test",
-            "execute_clippy_lint",
-            "execute_guardrail_check",
-        ] {
-            set_skippable_shell(node);
-        }
-
-        // Verify checks: per-generator --mode=verify commands (skippable triplets).
-        for node in [
-            "execute_verify_makegen_check",
-            "execute_verify_deps_config_check",
-            "execute_verify_bootstrap_check",
-            "execute_verify_testgen_check",
-            "execute_verify_pragma_check",
-        ] {
-            set_skippable_shell(node);
-        }
-
+        // Keep dry-run mocks in sync with the latest lowered CI graph shape.
+        let mut mocks = gunbc_dag::ci::graph_mock::ci_mock_spec().to_boundary_mocks();
+        wire_fs_env_write_mock(&dag, &mut mocks);
         ExecutionMode::DryRun(mocks)
     } else {
         ExecutionMode::Real
@@ -168,27 +139,32 @@ fn main() {
     let ci = CiContext::detect();
     let is_ci = ci.provider_id() != "plain";
 
-    // Print header
-    println!("{}", gunbc_ir::cargo::name("ci"));
-    println!("  exec: {}", if dry_run { "dry-run" } else { "real" });
-    println!(
-        "  resource_mode: {}",
-        match resource_mode {
-            ExecMode::Verify => "verify (fail on stale)",
-            ExecMode::Ensure => "ensure (fix stale)",
-        }
-    );
+    let mut metadata = vec![
+        ("exec", if dry_run { "dry-run" } else { "real" }.to_string()),
+        (
+            "resource_mode",
+            match resource_mode {
+                ExecMode::Verify => "verify (fail on stale)",
+                ExecMode::Ensure => "ensure (fix stale)",
+            }
+            .to_string(),
+        ),
+    ];
     if is_ci {
-        println!("  ci: {}", ci.provider_name());
+        metadata.push(("ci", ci.provider_name().to_string()));
     }
-    println!();
+    let tool_name = gunbc_ir::cargo::name("ci");
+    print_tool_header(&tool_name, &metadata);
 
-    // Shared execution/display path: CI grouping, local progress, and classic mode
-    // are selected internally based on the animated flag and CI environment.
-    let animated = std::io::stdout().is_terminal();
-    let steps = gunbc_lib_transport::check_and_plan_freshness();
-    let dag = compose_with_freshness(dag, steps);
-    execute_and_display(&dag, mode, animated, Some("overall_success"), None);
+    run_tool(
+        dag,
+        mode,
+        RunToolOptions {
+            success_port: Some("overall_success"),
+            with_freshness: true,
+            input_mocks: Some(&input_mocks),
+        },
+    );
 }
 
 fn print_help() {

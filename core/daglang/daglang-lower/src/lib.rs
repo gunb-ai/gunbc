@@ -26,7 +26,7 @@ use daglang_syntax::ast_utils::{
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::resource::AccessMode;
-use gunbc_ir::{Cardinality, Dag, Edge, Node, Port};
+use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, Node, Port};
 use serde::Serialize;
 
 /// Lowered operation payload for daglang graph nodes.
@@ -158,20 +158,6 @@ pub struct ServiceCallMetadata {
     pub permissions: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuntimeOpId {
-    MakegenLoadRegistry,
-    MakegenFsEnv,
-    MakegenRenderMakefile,
-    MakegenEntrypoint,
-    MakegenPrepareReadContent,
-    MakegenExecuteReadContent,
-    MakegenPrepareWriteContent,
-    MakegenCompareContent,
-    MakegenExecuteTransport,
-    Collection(CollectionOpKind),
-}
-
 impl LoweredOp {
     pub fn obligation_category(&self) -> ObligationCategory {
         match self {
@@ -194,43 +180,40 @@ pub fn classify_obligation(op: &LoweredOp) -> ObligationCategory {
     op.obligation_category()
 }
 
+/// Map lowered obligation categories to canonical parity-kind strings.
+///
+/// Returns `None` for unconstrained callables; callers can fall back to
+/// shape/name-derived classification in those cases.
+pub fn canonical_kind_for_obligation(obligation: ObligationCategory) -> Option<&'static str> {
+    match obligation {
+        ObligationCategory::None => None,
+        ObligationCategory::ServiceTransportExecute => Some("transport"),
+        ObligationCategory::ServiceTransportPrepare
+        | ObligationCategory::ServiceTransportParse
+        | ObligationCategory::ServiceParamSource
+        | ObligationCategory::ResourceProvide
+        | ObligationCategory::ResourceAcquire
+        | ObligationCategory::ResourceRelease
+        | ObligationCategory::InterfaceContractVerification => Some("pattern-expanded"),
+    }
+}
+
 pub fn classify_service_transport(op: &LoweredOp) -> Option<ServiceTransportClass> {
     op.service_call_metadata()
         .map(|metadata| metadata.transport)
 }
 
-pub fn classify_runtime_op(op: &LoweredOp) -> Option<RuntimeOpId> {
-    match op {
-        LoweredOp::Collection { kind, .. } => Some(RuntimeOpId::Collection(*kind)),
-        LoweredOp::Pipeline { .. } => None,
-        LoweredOp::Callable { module, name, .. } => {
-            if module != "tools.makegen" {
-                return None;
-            }
-            match name.as_str() {
-                "load_registry" => Some(RuntimeOpId::MakegenLoadRegistry),
-                "fs_env" => Some(RuntimeOpId::MakegenFsEnv),
-                "render_makefile" => Some(RuntimeOpId::MakegenRenderMakefile),
-                "makegen" => Some(RuntimeOpId::MakegenEntrypoint),
-                "content_upsert::prepare_read_makegen" => {
-                    Some(RuntimeOpId::MakegenPrepareReadContent)
-                }
-                "content_upsert::execute_read_makegen" => {
-                    Some(RuntimeOpId::MakegenExecuteReadContent)
-                }
-                "content_upsert::prepare_write_makegen" => {
-                    Some(RuntimeOpId::MakegenPrepareWriteContent)
-                }
-                "content_upsert::compare_makegen_content" => {
-                    Some(RuntimeOpId::MakegenCompareContent)
-                }
-                "content_upsert::execute_makegen_transport" => {
-                    Some(RuntimeOpId::MakegenExecuteTransport)
-                }
-                _ => None,
-            }
+/// Extract DAG topology with canonical obligation-kind metadata on each node.
+///
+/// This is the preferred topology form for renderers (e.g. Mermaid) that need
+/// stable semantic classes without depending on fragile node-id prefixes.
+pub fn topology_with_obligation_kinds(dag: &Dag<LoweredOp>) -> DagTopology {
+    dag.topology_with_kind(|node| match &node.body {
+        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { obligation, .. }) => {
+            canonical_kind_for_obligation(*obligation).map(str::to_string)
         }
-    }
+        gunbc_ir::node::NodeBody::Opaque(_) | gunbc_ir::node::NodeBody::SubDag(_) => None,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -264,6 +247,10 @@ impl<T: PartialEq> EndpointRegistry<T> {
                 }
             })
             .or_insert(Some(endpoint));
+    }
+
+    fn all_endpoints(&self) -> impl Iterator<Item = &T> {
+        self.by_key.values().filter_map(|v| v.as_ref())
     }
 }
 
@@ -1074,13 +1061,19 @@ mod parity {
         match &node.body {
             gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { .. }) => {
-                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, true)
+                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, true, None)
             }
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection { kind, .. }) => {
                 collection_kind_node_label(*kind).to_string()
             }
-            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { .. }) => {
-                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { obligation, .. }) => {
+                canonical_kind_from_shape(
+                    &node.id.0,
+                    &node.inputs,
+                    &node.outputs,
+                    false,
+                    Some(*obligation),
+                )
             }
         }
     }
@@ -1093,7 +1086,7 @@ mod parity {
         match &node.body {
             gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
             gunbc_ir::node::NodeBody::Opaque(_) => {
-                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false)
+                canonical_kind_from_shape(&node.id.0, &node.inputs, &node.outputs, false, None)
             }
         }
     }
@@ -1114,6 +1107,7 @@ mod parity {
         inputs: &[Port],
         outputs: &[Port],
         pipeline_hint: bool,
+        obligation: Option<ObligationCategory>,
     ) -> String {
         if pipeline_hint
             || outputs
@@ -1128,6 +1122,12 @@ mod parity {
         {
             return "transport".to_string();
         }
+        if let Some(kind) = obligation.and_then(canonical_kind_for_obligation) {
+            return kind.to_string();
+        }
+        // Fallback: name-based heuristics for parity canonical graphs where
+        // obligation is ObligationCategory::None. Real lowered DAGs always
+        // have obligation set; this only fires for parity comparison fixtures.
         let looks_expanded = node_id.starts_with("prepare_")
             || node_id.starts_with("compare_")
             || node_id.starts_with("execute_transport_")
@@ -1359,7 +1359,16 @@ mod parity {
             .iter()
             .map(|node| node.id.0.clone())
             .collect::<HashSet<_>>();
-        build_ci_canonical_graph(&reference_ids, |_| ())
+        // When the reference comes from DSL compilation (build_ci_graph_dsl),
+        // its node IDs are lowered DSL IDs, not canonical IDs. Apply the same
+        // marker-based mapping used for the candidate.
+        let mut canonical_nodes = HashSet::<String>::new();
+        for (canonical, marker) in ci_candidate_markers() {
+            if reference_ids.contains(marker) || reference_ids.contains(canonical) {
+                canonical_nodes.insert((*canonical).to_string());
+            }
+        }
+        build_ci_canonical_graph(&canonical_nodes, |_| ())
     }
 
     fn build_ci_canonical_graph<T>(
@@ -2651,6 +2660,23 @@ fn add_dependency_edges(
 ) {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
+        let param_types_by_callable = module
+            .signatures
+            .iter()
+            .filter_map(|signature| match signature {
+                TypedItemSignature::Fn(callable)
+                | TypedItemSignature::Func(callable)
+                | TypedItemSignature::Pattern(callable) => Some((
+                    callable.name.clone(),
+                    callable
+                        .params
+                        .iter()
+                        .map(|param| (param.name.clone(), param.ty.clone()))
+                        .collect::<HashMap<_, _>>(),
+                )),
+                _ => None,
+            })
+            .collect::<HashMap<_, _>>();
         for item in &module.ast.items {
             let Some((item_name, stmts)) = item_callable_body(&item.node) else {
                 continue;
@@ -2659,6 +2685,10 @@ fn add_dependency_edges(
             else {
                 continue;
             };
+            let param_types = param_types_by_callable
+                .get(item_name)
+                .cloned()
+                .unwrap_or_default();
 
             let mut calls = BTreeSet::new();
             collect_calls_from_stmts(stmts, &mut calls);
@@ -2684,6 +2714,7 @@ fn add_dependency_edges(
                 stmts,
                 target,
                 endpoints_by_name,
+                &param_types,
             );
             if emit_collection_nodes {
                 add_collection_pipeline_nodes(builder, &module_name, stmts, target);
@@ -2718,6 +2749,7 @@ fn expand_content_upsert_patterns(
     stmts: &[Stmt],
     target: &LoweredEndpoint,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    param_types: &HashMap<String, String>,
 ) {
     let mut bound_callables = HashMap::<String, String>::new();
     let mut expansion_count = 0usize;
@@ -2738,6 +2770,7 @@ fn expand_content_upsert_patterns(
                             target,
                             &bound_callables,
                             endpoints_by_name,
+                            param_types,
                         );
                     }
                 }
@@ -2765,6 +2798,7 @@ fn expand_content_upsert_patterns(
                         target,
                         &bound_callables,
                         endpoints_by_name,
+                        param_types,
                     );
                 }
             }
@@ -2788,6 +2822,7 @@ fn expand_single_content_upsert(
     target: &LoweredEndpoint,
     bound_callables: &HashMap<String, String>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    param_types: &HashMap<String, String>,
 ) {
     let suffix = expansion_suffix(item_name, expansion_count);
     let prepare_read_id = format!("prepare_read_{suffix}");
@@ -2803,7 +2838,10 @@ fn expand_single_content_upsert(
             Port::scalar("path", "String"),
             Port::scalar("res:file:Makefile", "FilesystemHandle"),
         ],
-        vec![Port::scalar("request", "TransportRequest")],
+        vec![
+            Port::scalar("request", "TransportRequest"),
+            Port::scalar("skip", "Bool"),
+        ],
         LoweredOp::Callable {
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
@@ -2814,7 +2852,10 @@ fn expand_single_content_upsert(
     ));
     builder.add_node(Node::opaque(
         execute_read_id.clone(),
-        vec![Port::scalar("request", "TransportRequest")],
+        vec![
+            Port::scalar("request", "TransportRequest"),
+            Port::scalar("skip", "Bool"),
+        ],
         vec![Port::scalar("response", "TransportResponse")],
         LoweredOp::Callable {
             module: module_name.to_string(),
@@ -2860,7 +2901,7 @@ fn expand_single_content_upsert(
     ];
     if is_makegen_expansion {
         execute_transport_inputs.push(Port::resource(
-            "file:*",
+            "file",
             "FilesystemHandle",
             AccessMode::Write,
         ));
@@ -2868,7 +2909,7 @@ fn expand_single_content_upsert(
     builder.add_node(Node::opaque(
         execute_transport_id.clone(),
         execute_transport_inputs,
-        vec![Port::scalar("makegen_response", "TransportResponse")],
+        vec![Port::scalar("response", "TransportResponse")],
         LoweredOp::Callable {
             module: module_name.to_string(),
             kind: CallableKind::Pattern,
@@ -2879,6 +2920,7 @@ fn expand_single_content_upsert(
     ));
 
     builder.add_edge(&prepare_read_id, "request", &execute_read_id, "request");
+    builder.add_edge(&prepare_read_id, "skip", &execute_read_id, "skip");
     builder.add_edge(&execute_read_id, "response", &compare_id, "response");
     builder.add_edge(
         &prepare_write_id,
@@ -2887,12 +2929,7 @@ fn expand_single_content_upsert(
         "request",
     );
     builder.add_edge(&compare_id, "skip", &execute_transport_id, "skip");
-    builder.add_edge(
-        &execute_transport_id,
-        "makegen_response",
-        &target.node_id,
-        "__deps",
-    );
+    builder.add_edge(&execute_transport_id, "response", &target.node_id, "__deps");
 
     if let Some(source) = resolve_content_source(args, bound_callables, endpoints_by_name) {
         builder.add_edge(
@@ -2907,6 +2944,67 @@ fn expand_single_content_upsert(
             &prepare_write_id,
             "content",
         );
+    } else if let Some(content_ident) = resolve_named_ident_arg(args, "content") {
+        if let Some(param_ty) = param_types.get(content_ident) {
+            let param_source = ensure_param_source_node(
+                builder,
+                module_name,
+                item_name,
+                content_ident,
+                param_ty.as_str(),
+            );
+            builder.add_edge(
+                param_source.as_str(),
+                content_ident,
+                &compare_id,
+                "expected_content",
+            );
+            builder.add_edge(
+                param_source.as_str(),
+                content_ident,
+                &prepare_write_id,
+                "content",
+            );
+        }
+    }
+
+    if let Some(source) = resolve_path_source(args, bound_callables, endpoints_by_name) {
+        builder.add_edge(
+            &source.node_id,
+            &source.primary_output,
+            &prepare_read_id,
+            "path",
+        );
+        builder.add_edge(
+            &source.node_id,
+            &source.primary_output,
+            &prepare_write_id,
+            "path",
+        );
+    } else if let Some(path_ident) = resolve_named_ident_arg(args, "path") {
+        if let Some(param_ty) = param_types.get(path_ident) {
+            let param_source = ensure_param_source_node(
+                builder,
+                module_name,
+                item_name,
+                path_ident,
+                param_ty.as_str(),
+            );
+            builder.add_edge(param_source.as_str(), path_ident, &prepare_read_id, "path");
+            builder.add_edge(param_source.as_str(), path_ident, &prepare_write_id, "path");
+        }
+    } else if let Some(literal) = resolve_path_literal(args) {
+        let literal_source = ensure_literal_source_node(
+            builder,
+            module_name,
+            item_name,
+            "path",
+            "String",
+            &literal,
+            format!("content_upsert_path_{suffix}").as_str(),
+        );
+        builder.add_edge(literal_source.as_str(), "path", &prepare_read_id, "path");
+        builder.add_edge(literal_source.as_str(), "path", &prepare_write_id, "path");
     }
 }
 
@@ -2918,7 +3016,43 @@ fn resolve_content_source(
     let (_, content_expr) = args
         .iter()
         .find(|(name, _)| matches!(name.as_deref(), Some("content")))?;
-    let source_name = match content_expr {
+    resolve_source_expr(content_expr, bound_callables, endpoints_by_name)
+}
+
+fn resolve_path_source(
+    args: &[(Option<String>, Expr)],
+    bound_callables: &HashMap<String, String>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+) -> Option<LoweredEndpoint> {
+    let (_, path_expr) = args
+        .iter()
+        .find(|(name, _)| matches!(name.as_deref(), Some("path")))?;
+    resolve_source_expr(path_expr, bound_callables, endpoints_by_name)
+}
+
+fn resolve_path_literal(args: &[(Option<String>, Expr)]) -> Option<ServiceCallArgLiteral> {
+    let (_, path_expr) = args
+        .iter()
+        .find(|(name, _)| matches!(name.as_deref(), Some("path")))?;
+    service_call_literal_arg(path_expr)
+}
+
+fn resolve_named_ident_arg<'a>(args: &'a [(Option<String>, Expr)], name: &str) -> Option<&'a str> {
+    let (_, expr) = args
+        .iter()
+        .find(|(arg_name, _)| arg_name.as_deref() == Some(name))?;
+    match expr {
+        Expr::Ident(ident) => Some(ident.as_str()),
+        _ => None,
+    }
+}
+
+fn resolve_source_expr(
+    expr: &Expr,
+    bound_callables: &HashMap<String, String>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+) -> Option<LoweredEndpoint> {
+    let source_name = match expr {
         Expr::Ident(name) => bound_callables
             .get(name)
             .cloned()
@@ -3020,7 +3154,7 @@ fn add_makegen_scaffolding(
                 "fs_env",
                 "FilesystemHandle",
                 "execute_makegen_transport",
-                "res:file:*",
+                "res:file",
             );
         }
     }
@@ -3330,9 +3464,11 @@ fn add_service_call_edges(
                 .iter()
                 .map(|param| (param.name.clone(), type_expr_to_string(&param.ty)))
                 .collect::<HashMap<_, _>>();
+            let bound_callable_sources =
+                collect_bound_callable_sources(module_name.as_str(), stmts, endpoints_by_full);
             let mut service_calls = Vec::<ServiceCallSite>::new();
             collect_service_calls_from_stmts(stmts, &mut service_calls);
-            for call in service_calls {
+            for (call_index, call) in service_calls.into_iter().enumerate() {
                 let Some(source) = resolve_service_endpoint(&call.path, service_registry) else {
                     if call
                         .path
@@ -3353,12 +3489,6 @@ fn add_service_call_edges(
                     "__deps",
                 );
                 for (index, arg) in call.args.iter().enumerate() {
-                    let Some(arg_ident) = arg.ident.as_deref() else {
-                        continue;
-                    };
-                    let Some(param_ty) = param_types.get(arg_ident) else {
-                        continue;
-                    };
                     let Some(prepare_input) = arg
                         .name
                         .as_deref()
@@ -3366,16 +3496,51 @@ fn add_service_call_edges(
                     else {
                         continue;
                     };
-                    let param_source = ensure_param_source_node(
+                    if let Some(arg_ident) = arg.ident.as_deref() {
+                        let Some(param_ty) = param_types.get(arg_ident) else {
+                            continue;
+                        };
+                        let param_source = ensure_param_source_node(
+                            builder,
+                            module_name.as_str(),
+                            item_name,
+                            arg_ident,
+                            param_ty.as_str(),
+                        );
+                        builder.add_edge(
+                            param_source.as_str(),
+                            arg_ident,
+                            source.prepare_node_id.as_str(),
+                            prepare_input,
+                        );
+                        continue;
+                    }
+                    if let Some((base_ident, field_name)) = arg.field_access.as_ref() {
+                        if let Some(source_endpoint) = bound_callable_sources.get(base_ident) {
+                            builder.add_edge(
+                                source_endpoint.node_id.as_str(),
+                                field_name.as_str(),
+                                source.prepare_node_id.as_str(),
+                                prepare_input,
+                            );
+                            continue;
+                        }
+                    }
+                    let Some(literal) = arg.literal.as_ref() else {
+                        continue;
+                    };
+                    let literal_source = ensure_literal_source_node(
                         builder,
                         module_name.as_str(),
                         item_name,
-                        arg_ident,
-                        param_ty.as_str(),
+                        prepare_input,
+                        "Any",
+                        literal,
+                        format!("{call_index}_{index}").as_str(),
                     );
                     builder.add_edge(
-                        param_source.as_str(),
-                        arg_ident,
+                        literal_source.as_str(),
+                        prepare_input,
                         source.prepare_node_id.as_str(),
                         prepare_input,
                     );
@@ -3464,6 +3629,7 @@ fn add_provided_resource_nodes(
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     resource_registry: &ResourceLifecycleRegistry,
     known_uses_types: &HashSet<String>,
+    wired_release_targets: &mut HashSet<(String, String)>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -3532,12 +3698,15 @@ fn add_provided_resource_nodes(
                 );
                 if let Some(endpoint) = endpoint {
                     if let Some(release_node) = endpoint.release_node {
-                        builder.add_edge(
-                            provider_node_id.as_str(),
-                            provided.binding.as_str(),
-                            release_node.as_str(),
-                            "resource_handle",
-                        );
+                        let key = (release_node.clone(), "resource_handle".to_string());
+                        if wired_release_targets.insert(key) {
+                            builder.add_edge(
+                                provider_node_id.as_str(),
+                                provided.binding.as_str(),
+                                release_node.as_str(),
+                                "resource_handle",
+                            );
+                        }
                     }
                 }
             }
@@ -3885,7 +4054,7 @@ fn ensure_param_source_node(
     );
     builder.add_node(Node::opaque(
         node_id.clone(),
-        vec![],
+        vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
         vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
         LoweredOp::Callable {
             module: module_name.to_string(),
@@ -3896,6 +4065,52 @@ fn ensure_param_source_node(
         },
     ));
     node_id
+}
+
+fn ensure_literal_source_node(
+    builder: &mut DagBuilder,
+    module_name: &str,
+    callable: &str,
+    param: &str,
+    ty: &str,
+    literal: &ServiceCallArgLiteral,
+    disambiguator: &str,
+) -> String {
+    let node_id = format!(
+        "literal_source_{}",
+        sanitize_identifier(&format!("{module_name}_{callable}_{param}_{disambiguator}"))
+    );
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        vec![],
+        vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
+        LoweredOp::Callable {
+            module: module_name.to_string(),
+            kind: CallableKind::Pattern,
+            name: format!("call_literal_source::{}", encode_literal_for_name(literal)),
+            obligation: ObligationCategory::ServiceParamSource,
+            service_metadata: None,
+        },
+    ));
+    node_id
+}
+
+fn encode_literal_for_name(literal: &ServiceCallArgLiteral) -> String {
+    match literal {
+        ServiceCallArgLiteral::String(value) => format!("strhex:{}", hex_encode(value.as_bytes())),
+        ServiceCallArgLiteral::Int(value) => format!("int:{value}"),
+        ServiceCallArgLiteral::Bool(value) => format!("bool:{value}"),
+        ServiceCallArgLiteral::None => "none".to_string(),
+    }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write;
+        let _ = write!(encoded, "{byte:02x}");
+    }
+    encoded
 }
 
 fn item_callable_body(item: &Item) -> Option<(&str, &[Stmt])> {
@@ -3936,12 +4151,22 @@ fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut BTreeSet<String>) {
 struct ServiceCallArgSite {
     name: Option<String>,
     ident: Option<String>,
+    field_access: Option<(String, String)>,
+    literal: Option<ServiceCallArgLiteral>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ServiceCallSite {
     path: Vec<String>,
     args: Vec<ServiceCallArgSite>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ServiceCallArgLiteral {
+    String(String),
+    Int(i64),
+    Bool(bool),
+    None,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4079,11 +4304,61 @@ fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallS
                             Expr::Ident(ident) => Some(ident.clone()),
                             _ => None,
                         },
+                        field_access: match arg {
+                            Expr::FieldAccess(base, field) => match base.as_ref() {
+                                Expr::Ident(base_ident) => {
+                                    Some((base_ident.clone(), field.clone()))
+                                }
+                                _ => None,
+                            },
+                            _ => None,
+                        },
+                        literal: service_call_literal_arg(arg),
                     })
                     .collect::<Vec<_>>(),
             });
         }
     });
+}
+
+fn service_call_literal_arg(arg: &Expr) -> Option<ServiceCallArgLiteral> {
+    match arg {
+        Expr::Literal(Literal::String(value)) => Some(ServiceCallArgLiteral::String(value.clone())),
+        Expr::Literal(Literal::Int(value)) => Some(ServiceCallArgLiteral::Int(*value)),
+        Expr::Literal(Literal::Bool(value)) => Some(ServiceCallArgLiteral::Bool(*value)),
+        Expr::Literal(Literal::None) => Some(ServiceCallArgLiteral::None),
+        _ => None,
+    }
+}
+
+fn collect_bound_callable_sources(
+    module_name: &str,
+    stmts: &[Stmt],
+    endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
+) -> HashMap<String, LoweredEndpoint> {
+    let mut bound = HashMap::<String, LoweredEndpoint>::new();
+    let module_key = module_name.to_string();
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(binding, expr) | Stmt::Assign(binding, expr) => match expr {
+                Expr::Call(name, _) => {
+                    if let Some(endpoint) =
+                        endpoints_by_full.get(&(module_key.clone(), name.clone()))
+                    {
+                        bound.insert(binding.clone(), endpoint.clone());
+                    }
+                }
+                Expr::Ident(source) => {
+                    if let Some(endpoint) = bound.get(source).cloned() {
+                        bound.insert(binding.clone(), endpoint);
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    bound
 }
 
 #[cfg(test)]
@@ -4477,7 +4752,7 @@ fn run(values: List<String>) -> String {
     fn gcp_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
         let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
-        let reference = build_gcp_secret_manager_credential_graph_github();
+        let reference = build_gcp_secret_manager_credential_graph_github().unwrap();
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);
@@ -4543,7 +4818,7 @@ fn run(values: List<String>) -> String {
     fn gcp_credential_normalized_parity_can_reach_exact_match() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
         let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
-        let reference = build_gcp_secret_manager_credential_graph_github();
+        let reference = build_gcp_secret_manager_credential_graph_github().unwrap();
         let report = compare_gcp_credential_topology(&dag, &reference);
         assert!(
             report.is_exact_match(),
@@ -4555,7 +4830,7 @@ fn run(values: List<String>) -> String {
     fn gcp_credential_normalized_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
         let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
-        let reference = build_gcp_secret_manager_credential_graph_github();
+        let reference = build_gcp_secret_manager_credential_graph_github().unwrap();
         let report_a = compare_gcp_credential_topology(&dag, &reference);
         let report_b = compare_gcp_credential_topology(&dag, &reference);
         assert_eq!(
@@ -4672,7 +4947,8 @@ fn run(values: List<String>) -> String {
     fn aws_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.aws.credential");
         let dag = lower_target_module_with_dependency_scope(&typed, "cloud.aws.credential");
-        let reference = build_aws_secrets_manager_credential_graph();
+        let reference = build_aws_secrets_manager_credential_graph()
+            .expect("aws credential graph should build");
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);
@@ -4685,7 +4961,8 @@ fn run(values: List<String>) -> String {
     fn azure_credential_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("cloud.azure.credential");
         let dag = lower_target_module_with_dependency_scope(&typed, "cloud.azure.credential");
-        let reference = build_azure_key_vault_credential_graph();
+        let reference =
+            build_azure_key_vault_credential_graph().expect("azure credential graph should build");
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);
@@ -4813,8 +5090,8 @@ fn run(values: List<String>) -> String {
 
         assert_eq!(
             dag.nodes.len(),
-            9,
-            "expected callable + content_upsert chain + source scaffold nodes"
+            10,
+            "expected callable + content_upsert chain + source scaffold nodes + param path source"
         );
         let required_edges = [
             (
@@ -4822,6 +5099,12 @@ fn run(values: List<String>) -> String {
                 "request",
                 "execute_read_makegen",
                 "request",
+            ),
+            (
+                "prepare_read_makegen",
+                "skip",
+                "execute_read_makegen",
+                "skip",
             ),
             (
                 "execute_read_makegen",
@@ -4843,7 +5126,7 @@ fn run(values: List<String>) -> String {
             ),
             (
                 "execute_makegen_transport",
-                "makegen_response",
+                "response",
                 "tools.makegen::makegen",
                 "__deps",
             ),
@@ -4871,6 +5154,23 @@ fn run(values: List<String>) -> String {
                 "missing edge {from_node}.{from_port} -> {to_node}.{to_port}"
             );
         }
+        let param_source_node = dag
+            .nodes
+            .iter()
+            .find(|node| node.id.0 == "param_source_tools_makegen_makegen_path")
+            .expect("param source node should be present for content_upsert path");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node == param_source_node.id
+                && edge.from_port.0 == "path"
+                && edge.to_node.0 == "prepare_read_makegen"
+                && edge.to_port.0 == "path"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node == param_source_node.id
+                && edge.from_port.0 == "path"
+                && edge.to_node.0 == "prepare_write_makegen"
+                && edge.to_port.0 == "path"
+        }));
     }
 
     #[test]
@@ -5143,6 +5443,77 @@ func run(path: String) -> { body: String } {
         let dag = lower_typed_project(&typed).expect("lowering should succeed");
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == "param_source_sample_services_run_path"
+                && edge.from_port.0 == "path"
+                && edge.to_node.0 == "prepare_transport_sample_services_FsStorage_read"
+                && edge.to_port.0 == "path"
+        }));
+    }
+
+    #[test]
+    fn literal_service_call_args_wire_to_prepare_inputs() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/storage_calls_literal.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func run() -> { body: String } {
+  let response = FsStorage.read(path: "crates")
+  return { body: response.body }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let literal_node = dag
+            .nodes
+            .iter()
+            .find(|node| {
+                matches!(
+                    &node.body,
+                    gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { name, .. })
+                        if name.starts_with("call_literal_source::strhex:")
+                )
+            })
+            .expect("literal source node should be present");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node == literal_node.id
+                && edge.from_port.0 == "path"
+                && edge.to_node.0 == "prepare_transport_sample_services_FsStorage_read"
+                && edge.to_port.0 == "path"
+        }));
+    }
+
+    #[test]
+    fn field_access_service_call_args_wire_to_prepare_inputs() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/storage_calls_field_access.dag",
+            r#"module sample.services
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+func make_path() -> { path: String } {
+  return { path: "crates" }
+}
+func run() -> { body: String } {
+  let req = make_path()
+  let response = FsStorage.read(path: req.path)
+  return { body: response.body }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.services::make_path"
                 && edge.from_port.0 == "path"
                 && edge.to_node.0 == "prepare_transport_sample_services_FsStorage_read"
                 && edge.to_port.0 == "path"
@@ -5943,6 +6314,54 @@ func run() -> { ok: Bool } provides auth: AuthContext {
         assert_eq!(classify_obligation(&pipeline), ObligationCategory::None);
     }
 
+    #[test]
+    fn canonical_kind_for_obligation_maps_categories() {
+        assert_eq!(
+            canonical_kind_for_obligation(ObligationCategory::None),
+            None
+        );
+        assert_eq!(
+            canonical_kind_for_obligation(ObligationCategory::ServiceTransportExecute),
+            Some("transport")
+        );
+
+        for obligation in [
+            ObligationCategory::ServiceTransportPrepare,
+            ObligationCategory::ServiceTransportParse,
+            ObligationCategory::ServiceParamSource,
+            ObligationCategory::ResourceProvide,
+            ObligationCategory::ResourceAcquire,
+            ObligationCategory::ResourceRelease,
+            ObligationCategory::InterfaceContractVerification,
+        ] {
+            assert_eq!(
+                canonical_kind_for_obligation(obligation),
+                Some("pattern-expanded")
+            );
+        }
+    }
+
+    #[test]
+    fn topology_with_obligation_kinds_populates_canonical_kind_metadata() {
+        let mut dag: Dag<LoweredOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "execute_transport_sample",
+            vec![],
+            vec![],
+            LoweredOp::Callable {
+                module: "sample.services".to_string(),
+                kind: CallableKind::Pattern,
+                name: "execute_transport_sample".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: None,
+            },
+        ));
+
+        let topo = topology_with_obligation_kinds(&dag);
+        assert_eq!(topo.nodes.len(), 1);
+        assert_eq!(topo.nodes[0].canonical_kind.as_deref(), Some("transport"));
+    }
+
     // Test infrastructure: filesystem access for test fixtures
     #[allow(clippy::disallowed_methods)]
     #[test]
@@ -6215,6 +6634,12 @@ func run() -> { ok: Bool } provides auth: AuthContext {
             vec![Port::scalar("makegen_response", "TransportResponse")],
             (),
         ));
+        dag.add_node(Node::opaque(
+            "param_source_tools_makegen_makegen_path",
+            vec![Port::scalar("path", "String")],
+            vec![Port::scalar("path", "String")],
+            (),
+        ));
 
         dag.add_edge(Edge::new(
             "load_registry",
@@ -6257,6 +6682,18 @@ func run() -> { ok: Bool } provides auth: AuthContext {
             "skip",
             "execute_makegen_transport",
             "skip",
+        ));
+        dag.add_edge(Edge::new(
+            "param_source_tools_makegen_makegen_path",
+            "path",
+            "prepare_read_makegen",
+            "path",
+        ));
+        dag.add_edge(Edge::new(
+            "param_source_tools_makegen_makegen_path",
+            "path",
+            "prepare_write_makegen",
+            "path",
         ));
         dag
     }

@@ -1,38 +1,21 @@
 //! Clippy SubDag builder.
 //!
-//! Wraps the clippy tool as a SubDag node using WorkspaceOp.
+//! Wraps the clippy tool as a SubDag node using `DynOp`.
 
-use crate::workspace::convert::convert_node;
+use crate::workspace::convert::convert_dag;
 use crate::workspace::WorkspaceOp;
-use gunbc_clippy::build_clippy_upsert;
-use gunbc_ir::transport::cli::CliToolOp;
+use gunbc_clippy::build_clippy_graph;
+use gunbc_exec::DynOp;
 use gunbc_ir::Node;
 
-fn convert_clippy_op(op: CliToolOp) -> WorkspaceOp {
-    WorkspaceOp::Clippy(op)
-}
-
 /// Build the clippy SubDag node with custom arguments.
-///
-/// This wraps the clippy upsert workflow as a `Node<WorkspaceOp>` that can be
-/// composed into the Workspace DAG.
-///
-/// # Arguments
-///
-/// * `args` - Arguments to pass to clippy (e.g., `["--all-targets"]`)
-///
-/// # I/O Interface
-///
-/// The upsert pattern provides:
-/// - Inputs: None (self-contained)
-/// - Outputs: success, stdout, stderr from the run step
 pub fn build_clippy_subdag(args: &[&str]) -> Node<WorkspaceOp> {
-    convert_node(build_clippy_upsert(args), &convert_clippy_op)
+    let original = build_clippy_graph(args);
+    let converted = convert_dag(original, &|op| DynOp::new(op));
+    Node::subdag("clippy", converted)
 }
 
 /// Build the clippy lint-all SubDag with standard flags.
-///
-/// Uses `--all-targets -- -D warnings` for comprehensive linting.
 pub fn build_clippy_lint_all_subdag() -> Node<WorkspaceOp> {
     build_clippy_subdag(&["--all-targets", "--", "-D", "warnings"])
 }

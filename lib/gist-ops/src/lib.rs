@@ -16,17 +16,21 @@
 #![deny(dead_code)]
 use gunbc_exec::{
     optional_int_strict, optional_str_list_strict, optional_str_strict, propagate_skipped,
-    require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
+    require_response, require_str, DynOp, ExecError, Executable, IntoExecResult, OutputMap,
 };
 use gunbc_ir::build::{list, optional, port, resource, scalar, AccessMode};
+use gunbc_ir::builder::BuilderError;
 use gunbc_ir::dag::{Dag, Edge};
 use gunbc_ir::node::Node;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
-use gunbc_ir::{Timestamp, Value};
+use gunbc_ir::{
+    validate_authenticate_bindings, AuthenticatePhase, AuthenticatePhaseBinding, Timestamp, Value,
+};
 use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_from_config, CloudOps, CloudSecretManagerGraphOp,
+    bind_credential_intent_policy, build_cloud_secret_manager_credential_graph_from_config,
+    policy_allows_impersonation, CloudOps, CloudSecretManagerGraphOp,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::filename;
@@ -408,10 +412,14 @@ impl Executable for GistUploadOp {
 fn execute_gist_resolve_auth(
     _inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let intent = GistRequest::new().credential_intent();
-    intent
+    let fallback_intent = GistRequest::new().credential_intent();
+    fallback_intent
         .validate()
         .map_err(|e| ExecError::new(format!("invalid gist credential contract: {e}")))?;
+    let bound = bind_credential_intent_policy("github.gist.create", &fallback_intent)
+        .map_err(|e| ExecError::new(format!("credential policy binding failed: {e}")))?;
+    let allow_impersonation = policy_allows_impersonation(bound.impersonation.as_ref());
+    let intent = bound.intent;
 
     let mut out = OutputMap::new()
         .str("service", intent.service)
@@ -419,6 +427,7 @@ fn execute_gist_resolve_auth(
         .str("header_name", intent.header_name)
         .str_list("required_scopes", intent.required_scopes)
         .bool("interactive_allowed", intent.interactive_allowed)
+        .bool("allow_impersonation", allow_impersonation)
         .int("lifetime_seconds", 3600);
 
     if let Some(secret_name) = intent.secret_name {
@@ -456,7 +465,13 @@ fn execute_gist_resolve_auth(
 /// The credential chain is fully self-contained — consumers don't need to
 /// understand cloud credentials at all. They just wire `markdown` in and get
 /// `url` out.
-pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<GistUploadOp> {
+pub fn build_gist_upload_subdag(
+    config: CloudSecretConfig,
+    public: bool,
+) -> Result<Dag<GistUploadOp>, BuilderError> {
+    validate_authenticate_bindings(&gist_authenticate_bindings())
+        .expect("gist credential flow must follow canonical authenticate pattern");
+
     let mut dag = Dag::new();
 
     // ========================================================================
@@ -485,11 +500,9 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
             optional("request_url", "OptionalString"),
             optional("request_token", "OptionalString"),
         ],
-        GistUploadOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-            CloudOps::ConstCloudConfig {
-                config: config.clone(),
-            },
-        )),
+        GistUploadOp::Cloud(DynOp::new(CloudOps::ConstCloudConfig {
+            config: config.clone(),
+        })),
     ));
 
     dag.add_node(Node::opaque(
@@ -498,6 +511,7 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
         vec![
             port("service", "String"),
             optional("secret_name", "OptionalString"),
+            optional("allow_impersonation", "OptionalBool"),
             port("scheme", "String"),
             port("header_name", "String"),
             list("required_scopes", "String"),
@@ -519,10 +533,10 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
             optional("secret_name", "OptionalString"),
         ],
         vec![port("config", "CloudSecretConfig")],
-        GistUploadOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
+        GistUploadOp::Cloud(DynOp::new(CloudOps::BindSecretName)),
     ));
 
-    let cloud_subdag = build_cloud_secret_manager_credential_graph_from_config(&config)
+    let cloud_subdag = build_cloud_secret_manager_credential_graph_from_config(&config)?
         .map_ops(&mut GistUploadOp::Cloud);
     dag.add_node(Node::subdag("cloud_credential", cloud_subdag));
 
@@ -530,7 +544,7 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
         "scope_preflight",
         vec![list("required_scopes", "String")],
         vec![scalar("scope_verified", "Bool")],
-        GistUploadOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ScopePreflight)),
+        GistUploadOp::Cloud(DynOp::new(CloudOps::ScopePreflight)),
     ));
 
     // ========================================================================
@@ -603,6 +617,12 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
         "service",
         "cloud_credential",
         "source_id",
+    ));
+    dag.add_edge(Edge::new(
+        "resolve_auth",
+        "allow_impersonation",
+        "cloud_credential",
+        "allow_impersonation",
     ));
     dag.add_edge(Edge::new(
         "resolve_auth",
@@ -717,7 +737,18 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
         "response",
     ));
 
-    dag
+    Ok(dag)
+}
+
+fn gist_authenticate_bindings() -> Vec<AuthenticatePhaseBinding> {
+    vec![
+        AuthenticatePhaseBinding::new(AuthenticatePhase::ResolveContext, "cloud_env"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::SelectFlow, "resolve_auth"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::AcquireBaseIdentity, "cloud_credential"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::ExchangeOrDerive, "cloud_credential"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::MaybeImpersonate, "cloud_credential"),
+        AuthenticatePhaseBinding::new(AuthenticatePhase::FinalizeCredential, "scope_preflight"),
+    ]
 }
 
 // ============================================================================
@@ -727,6 +758,49 @@ pub fn build_gist_upload_subdag(config: CloudSecretConfig, public: bool) -> Dag<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_lib_cloud_ops::{ENV_CREDENTIAL_POLICY_JSON, ENV_CREDENTIAL_POLICY_PROFILE};
+    use std::sync::{Mutex, OnceLock};
+
+    #[test]
+    fn gist_authenticate_bindings_follow_canonical_chain() {
+        assert!(validate_authenticate_bindings(&gist_authenticate_bindings()).is_ok());
+    }
+
+    #[test]
+    fn gist_resolve_auth_applies_policy_secret_binding() {
+        with_env_lock(|| {
+            std::env::set_var(
+                ENV_CREDENTIAL_POLICY_JSON,
+                r#"{
+                    "version": 0,
+                    "profiles": [{
+                        "name": "prod",
+                        "defaults": {
+                            "provider": "Gcp",
+                            "runtime": "GitHubActions"
+                        },
+                        "intents": [{
+                            "intent": "github.gist.create",
+                            "secret": { "name": "prod-github-token" },
+                            "required_scopes": ["gist:write"]
+                        }]
+                    }]
+                }"#,
+            );
+            std::env::set_var(ENV_CREDENTIAL_POLICY_PROFILE, "prod");
+
+            let outputs = execute_gist_resolve_auth(HashMap::new()).expect("resolve auth");
+            assert_eq!(
+                outputs.get("secret_name"),
+                Some(&Value::Str("prod-github-token".to_string()))
+            );
+            assert_eq!(
+                outputs.get("required_scopes"),
+                Some(&Value::str_list(vec!["gist:write".to_string()]))
+            );
+            assert_eq!(outputs.get("allow_impersonation"), Some(&Value::Bool(true)));
+        });
+    }
 
     fn request_filename(req: &gunbc_ir::transport::rest::RestRequest) -> String {
         let body = req.body.as_ref().expect("request body should exist");
@@ -748,6 +822,28 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string()
+    }
+
+    fn with_env_lock<F>(f: F)
+    where
+        F: FnOnce() + std::panic::UnwindSafe,
+    {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        clear_policy_env();
+        let result = std::panic::catch_unwind(f);
+        clear_policy_env();
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    fn clear_policy_env() {
+        std::env::remove_var(ENV_CREDENTIAL_POLICY_JSON);
+        std::env::remove_var(ENV_CREDENTIAL_POLICY_PROFILE);
     }
 
     #[test]

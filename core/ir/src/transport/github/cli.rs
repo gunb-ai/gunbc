@@ -25,6 +25,7 @@
 
 use std::fmt::Write;
 
+use crate::platform::Os;
 use crate::transport::tool::{InstallInputs, InstallOption, ToolDef};
 use crate::transport::ShellRequest;
 
@@ -78,10 +79,10 @@ pub enum InstallMethod {
 /// Installation instructions for gh CLI per platform.
 ///
 /// This is the authoritative source; deps.toml entries are generated from this.
-pub fn gh_install_methods() -> Vec<(&'static str, InstallMethod)> {
+pub fn gh_install_methods() -> Vec<(Os, InstallMethod)> {
     vec![
-        ("linux", InstallMethod::Apt { packages: &["gh"] }),
-        ("macos", InstallMethod::Brew { packages: &["gh"] }),
+        (Os::Linux, InstallMethod::Apt { packages: &["gh"] }),
+        (Os::Macos, InstallMethod::Brew { packages: &["gh"] }),
         // Windows could use: winget install GitHub.cli
         // or: scoop install gh
     ]
@@ -174,6 +175,7 @@ verify = "{}"
     );
 
     for (platform, method) in gh_install_methods() {
+        let platform_token = platform.as_token();
         match method {
             InstallMethod::Apt { packages } => {
                 let packages_str: Vec<_> = packages.iter().map(|p| format!("\"{}\"", p)).collect();
@@ -184,7 +186,7 @@ verify = "{}"
 method = "apt"
 packages = [{}]
 "#,
-                    platform,
+                    platform_token,
                     packages_str.join(", ")
                 )
                 .unwrap();
@@ -198,7 +200,7 @@ packages = [{}]
 method = "brew"
 packages = [{}]
 "#,
-                    platform,
+                    platform_token,
                     packages_str.join(", ")
                 )
                 .unwrap();
@@ -211,7 +213,7 @@ packages = [{}]
 method = "script"
 script = {:?}
 "#,
-                    platform, script
+                    platform_token, script
                 )
                 .unwrap();
             }
@@ -224,7 +226,7 @@ script = {:?}
 method = "cargo"
 packages = [{}]
 "#,
-                    platform,
+                    platform_token,
                     packages_str.join(", ")
                 )
                 .unwrap();
@@ -237,7 +239,7 @@ packages = [{}]
 method = "github_release"
 url = {:?}
 "#,
-                    platform, url_template
+                    platform_token, url_template
                 )
                 .unwrap();
             }
@@ -258,12 +260,12 @@ mod tests {
         assert!(methods.len() >= 2);
 
         // Check linux uses apt
-        let linux = methods.iter().find(|(p, _)| *p == "linux");
+        let linux = methods.iter().find(|(p, _)| *p == Os::Linux);
         assert!(linux.is_some());
         assert!(matches!(linux.unwrap().1, InstallMethod::Apt { .. }));
 
         // Check macos uses brew
-        let macos = methods.iter().find(|(p, _)| *p == "macos");
+        let macos = methods.iter().find(|(p, _)| *p == Os::Macos);
         assert!(macos.is_some());
         assert!(matches!(macos.unwrap().1, InstallMethod::Brew { .. }));
     }

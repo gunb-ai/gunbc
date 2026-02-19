@@ -70,7 +70,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let format = parse_output_format("show-triplets", args)
                 .unwrap_or_else(|usage| exit_usage(&usage));
             let output = compile_target_or_exit(cwd, args.get(2));
-            println!("{}", render_triplets(&output.lowered_dag, format));
+            println!("{}", render_triplets(&output.derived, format));
         }
         "modules" => {
             let (root_arg, format) =
@@ -144,6 +144,10 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 }
                 std::process::exit(1);
             }
+            // TODO: `check_from_context` re-discovers, re-parses, and re-type-checks
+            // all files — work already done by the pipeline Build stage above.
+            // Consider extracting the file count from PipelineResult::Build to
+            // avoid the redundant second pass.
             match check_from_context(&context) {
                 Ok(output) => {
                     println!("OK: checked {} file(s)", output.parsed_files);
@@ -162,14 +166,26 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 false,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
+            let normalized_out_dir = parsed
+                .out_dir
+                .as_ref()
+                .map(|out_dir| path_utils::normalize_cli_path(cwd, &PathBuf::from(out_dir)));
+            let makegen_content = compute_makegen_content();
             let options = CompileOptions {
                 emit_collection_nodes: parsed.emit_collection_nodes,
                 target: parsed.target.unwrap_or_default(),
                 layer: parsed.layer.unwrap_or_default(),
+                output_dir: normalized_out_dir.clone(),
+                makegen_content_override: Some(makegen_content),
             };
-            let output =
-                compile_target_or_exit_with_compile_options(cwd, parsed.input.as_ref(), options);
-            let written_files = if let Some(out_dir) = parsed.out_dir.as_ref() {
+            let mut output = compile_target_or_exit_with_compile_options(
+                cwd,
+                parsed.input.as_ref(),
+                options.clone(),
+            );
+            // For Layer 1 exec-runtime: embed pre-computed handler data files.
+            embed_layer1_handler_data(&options, &mut output);
+            let written_files = if let Some(out_dir) = normalized_out_dir.as_ref() {
                 match write_emitted_files(cwd, out_dir, &output.emitted.files) {
                     Ok(files) => files,
                     Err(error) => {
@@ -207,7 +223,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             });
             let normalized_output_path =
                 path_utils::normalize_cli_path(cwd, &PathBuf::from(&parsed.output_path));
-            let output_path_str = normalized_output_path.to_string_lossy().to_string();
+            let output_path_str = normalized_output_path.to_string_lossy().into_owned();
             let input_mocks = makegen_entrypoint_mocks(&output_path_str);
             let mode = match parsed.mode {
                 RunMode::Real => ExecutionMode::Real,
@@ -258,4 +274,38 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             exit_usage("<command> [args...]");
         }
     }
+}
+
+/// For Layer 1 exec-runtime compilation, embed pre-computed handler data
+/// as additional files in the generated crate. This avoids adding `gunbc-dag`
+/// as a runtime dependency of the generated binary (which would pull in the
+/// entire workspace dep tree and be fragile to in-flight changes).
+fn embed_layer1_handler_data(options: &CompileOptions, output: &mut CompileOutput) {
+    use daglang_driver::CodegenLayer;
+
+    if options.layer != CodegenLayer::ExecRuntime {
+        return;
+    }
+    let module_name = output
+        .derived
+        .tool_metadata
+        .modules
+        .first()
+        .map(|module| module.module.as_str())
+        .unwrap_or("");
+    if module_name == "tools.makegen" {
+        let makefile_content = options
+            .makegen_content_override
+            .clone()
+            .unwrap_or_else(compute_makegen_content);
+        output.emitted.files.push(daglang_emit::EmittedFile {
+            path: "src/embedded_makefile.txt".to_string(),
+            content: makefile_content,
+        });
+    }
+}
+
+fn compute_makegen_content() -> String {
+    let registry = gunbc_dag::makegen::registry::ToolRegistry::default_registry();
+    gunbc_dag::render_makefile(&registry)
 }

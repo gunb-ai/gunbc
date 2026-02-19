@@ -73,6 +73,7 @@ pub use policy::{CratePolicy, CrateRole};
     builder = "build_clippy_graph_lint_all",
     import = "use gunbc_clippy::build_clippy_graph_lint_all;",
     mock_spec = "gunbc_clippy::graph_mock::clippy_mock_spec()",
+    dsl_module = "clippy",
     returns_result
 )]
 pub fn clippy_tool() {}

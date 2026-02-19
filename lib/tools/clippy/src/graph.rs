@@ -10,43 +10,14 @@
 //! containing a sub-DAG. When the executor encounters this node, it executes
 //! the entire sub-DAG (check → install → run) as a unit.
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::DynOp;
 use gunbc_ir::node::Node;
 use gunbc_ir::transport::cli::{self, build_cli_upsert, CliToolOp};
-use gunbc_ir::Value;
 use gunbc_ir::{Dag, NodeBody};
-use gunbc_lib_transport::cli::execute_cli_tool_op_with_inputs;
-use gunbc_lib_transport::TransportOps;
-use std::collections::HashMap;
+use gunbc_lib_transport::cli::CliToolOpExec;
 
-/// Executable op wrapper for clippy graphs.
-///
-/// This lets clippy graphs run in isolation (testgen + DryRun) while
-/// reusing the underlying `CliToolOp` execution.
-#[derive(Debug, Clone)]
-pub enum ClippyGraphOp {
-    CliTool(CliToolOp),
-    Transport(TransportOps),
-}
-
-impl From<CliToolOp> for ClippyGraphOp {
-    fn from(op: CliToolOp) -> Self {
-        match op {
-            CliToolOp::Transport => ClippyGraphOp::Transport(TransportOps::Execute),
-            other => ClippyGraphOp::CliTool(other),
-        }
-    }
-}
-
-impl Executable for ClippyGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            ClippyGraphOp::CliTool(op) => execute_cli_tool_op_with_inputs(op, &inputs)
-                .map_err(|e| ExecError::new(e.to_string())),
-            ClippyGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
-}
+/// Runtime op type for clippy graphs.
+pub type ClippyGraphOp = DynOp;
 
 /// Build a Clippy upsert sub-DAG node with custom arguments.
 ///
@@ -103,7 +74,7 @@ pub fn build_clippy_graph(args: &[&str]) -> Dag<ClippyGraphOp> {
             inputs: n.inputs,
             outputs: n.outputs,
             body: match n.body {
-                NodeBody::Opaque(op) => NodeBody::Opaque(ClippyGraphOp::from(op)),
+                NodeBody::Opaque(op) => NodeBody::Opaque(DynOp::new(CliToolOpExec(op))),
                 NodeBody::SubDag(_) => panic!("unexpected nested SubDag in clippy upsert"),
             },
             examples: n.examples,

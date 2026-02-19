@@ -6,13 +6,10 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::build::build_build_graph;
-use gunbc_exec::{
-    compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
-    ExecutionMode,
-};
+use gunbc_dag::{print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions};
+use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
-use std::io::IsTerminal;
 use std::process;
 
 fn main() {
@@ -36,6 +33,7 @@ fn main() {
     let mode = if dry_run {
         let mut mocks = BoundaryMocks::new();
         let ok_shell = || Value::Response(TransportResponse::Shell(ShellResponse::ok("")));
+        wire_fs_env_write_mock(&dag, &mut mocks);
 
         // Build transport
         mocks.set_value("execute_build", "response", ok_shell());
@@ -43,26 +41,31 @@ fn main() {
         // Test transport
         mocks.set_value("execute_test", "response", ok_shell());
         mocks.set_value("execute_test", "skip", Value::Bool(false));
+        mocks.set_value("execute_test", "skip_reason", Value::Str(String::new()));
 
         // Clippy transport
         mocks.set_value("execute_clippy", "response", ok_shell());
         mocks.set_value("execute_clippy", "skip", Value::Bool(false));
+        mocks.set_value("execute_clippy", "skip_reason", Value::Str(String::new()));
 
         ExecutionMode::DryRun(mocks)
     } else {
         ExecutionMode::Real
     };
 
-    // Print header
-    println!("build");
-    println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
-    println!();
-
-    // Execute and display (progress or classic based on terminal)
-    let animated = std::io::stdout().is_terminal();
-    let steps = gunbc_lib_transport::check_and_plan_freshness();
-    let dag = compose_with_freshness(dag, steps);
-    execute_and_display(&dag, mode, animated, Some("overall_success"), None);
+    print_tool_header(
+        "build",
+        &[("mode", if dry_run { "dry-run" } else { "real" }.to_string())],
+    );
+    run_tool(
+        dag,
+        mode,
+        RunToolOptions {
+            success_port: Some("overall_success"),
+            with_freshness: true,
+            ..RunToolOptions::default()
+        },
+    );
 }
 
 fn print_help() {

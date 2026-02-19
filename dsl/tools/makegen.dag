@@ -27,8 +27,8 @@ fn render_makefile(registry: ToolRegistry) -> String {
   "{header}\n{targets}"
 }
 
-func makegen(registry: ToolRegistry) -> { written: Bool } {
+func makegen(registry: ToolRegistry, path: String) -> { written: Bool } {
   content = render_makefile(registry: registry)
-  result = content_upsert(content: content, path: "Makefile")
+  result = content_upsert(content: content, path: path)
   return { written: result.written }
 }

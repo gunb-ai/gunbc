@@ -9,7 +9,7 @@
 //! [`RestRequest`] and participate in the DAG as a [`Resource`].
 
 use crate::resource::{
-    capability_marker, ensure_capability_marker, AccessMode, Resource, ResourceKind,
+    capability_marker, ensure_capability_marker, AccessMode, DagResource, Resource, ResourceKind,
 };
 use crate::transport::rest::RestRequest;
 use crate::value::{SecretString, Value};
@@ -328,6 +328,10 @@ impl Resource for Credential {
     fn kind(&self) -> ResourceKind {
         ResourceKind::Capability
     }
+}
+
+impl DagResource for Credential {
+    const TYPE_ID: &'static str = "Credential";
 }
 
 // ---------------------------------------------------------------------------

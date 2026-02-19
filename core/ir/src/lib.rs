@@ -68,20 +68,24 @@ pub mod makefile_render;
 pub mod node;
 pub mod patterns;
 pub mod plain_render;
+pub mod platform;
 pub mod port_type;
 pub mod render_ir;
 pub mod resource;
 pub mod signature;
 pub mod symbols;
+pub mod system_model;
 pub mod transport;
 pub mod type_lib;
 pub mod type_op;
 pub mod type_registry;
+pub mod typed_io;
 pub mod types;
 pub mod validate;
 pub mod value;
 pub mod value_bridge;
 pub mod value_expr;
+pub mod workspace_layout;
 
 // ── DSL codegen IR tiers (dsl-codegen-tasks.md) ────────────────────
 pub mod c_ir; // Task 5: C-level AST types (CStyleIR)
@@ -110,11 +114,15 @@ pub use code_ir::{
 };
 pub use codegen_bridge::{BridgeEnum, BridgeField, BridgeFunction, BridgeModule, BridgeStruct};
 pub use coerce::{
-    classify_coercion, detect_coercions, validate_coercions, CardinalityCoercion, CoercionError,
-    CoercionKind, CoercionReport,
+    audit_cardinality_drift, classify_coercion, detect_coercions, validate_coercions,
+    AppliedCoercion, CardinalityCoercion, CardinalityDrift, CoercionError, CoercionKind,
+    CoercionReport,
 };
 pub use contract::{BoundaryWitness, TypeContract};
-pub use dag::{build, canonical_edge_order, edges_to_port, Dag, Edge, EdgeKind, Port};
+pub use dag::{
+    build, canonical_edge_order, edges_to_port, Dag, DagEdgePorts, DagInputPort, DagOutputPort,
+    Edge, EdgeKind, Port,
+};
 pub use dag_diff::{diff_topologies, DagDiffResult, NodeChangeSummary, NodeDiffStatus, PortChange};
 pub use dag_mermaid::{
     render_changelog, to_mermaid_expanded_diff, to_mermaid_overview_diff, to_mermaid_snapshot,
@@ -131,15 +139,22 @@ pub use log_detail::LogDetailLevel;
 pub use makefile_render::MakefileStructuredRenderer;
 pub use node::{Node, NodeBody, NodeIoExample};
 pub use patterns::{
+    canonical_authenticate_chain,
     content_upsert::{add_content_upsert_chain, ContentUpsertChain},
     transport_triplet::{
-        add_skippable_transport_triplet, add_transport_triplet,
-        add_transport_triplet_named_with_passthrough,
+        add_skippable_transport_triplet, add_skippable_transport_triplet_typed,
+        add_transport_triplet, add_transport_triplet_named_with_passthrough,
+        add_transport_triplet_named_with_passthrough_typed, add_transport_triplet_typed,
+        TransportPortTypes,
     },
-    AtomicBuilder, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder, RepeatPolicy,
-    ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
+    validate_authenticate_bindings, validate_authenticate_chain, AtomicBuilder, AuthenticatePhase,
+    AuthenticatePhaseBinding, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder,
+    RepeatPolicy, ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
 };
 pub use plain_render::PlainStructuredRenderer;
+pub use platform::{
+    AbiEnv, Arch, ExecutionEnv, Os, RuntimePlatform, TargetTriple, ToolchainCommands, Vendor,
+};
 pub use port_type::PortType;
 pub use render_ir::{
     AnsiText, Block, Category, CodeRenderer, CursorAction, DataNode, DataValue, Document,
@@ -149,30 +164,50 @@ pub use render_ir::{
 };
 pub use resource::{
     derive_resource_accesses, detect_resource_conflicts, normalize_resource_id, resource_api_port,
-    resource_file_port, resource_port, resource_target_port, AccessMode, Resource, ResourceAccess,
-    ResourceAccessError, ResourceConflict, ResourceId, ResourceKind, Timestamp,
+    resource_file_port, resource_port, resource_target_port, AccessMode, DagResource, Resource,
+    ResourceAccess, ResourceAccessError, ResourceConflict, ResourceId, ResourceKind, Timestamp,
     API_NETWORK_HANDLE_PORT, FILE_HANDLE_READ_PORT, FILE_HANDLE_WRITE_PORT, RESOURCE_API_NETWORK,
     RESOURCE_FILE, RESOURCE_FILE_PREFIX, RESOURCE_PORT_PREFIX, RESOURCE_REPO, RESOURCE_TARGET,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};
+pub use system_model::{
+    default_system_models, derive_contract_test_specs, generate_contract_test_harnesses,
+    get_registered_system_model, iter_registered_system_models, render_contract_test_harness,
+    validate_dependency_graph_acyclic, validate_store_behavior_mapping, validate_system_model,
+    Behavior, BehaviorInput, BehaviorOutput, ContractTestSpec, Dependency, DependencyKind,
+    InputType, Invocation, OutputType, Property, SystemKind, SystemModel, SystemModelDef,
+    UpsertPhase,
+};
 pub use transport::{
-    AuthScheme, Credential, CredentialError, CredentialIntent, ScopeContract, ScopeContractError,
-    Secret, SecretSource, TransportRequest, TransportResponse,
+    default_transport_behaviors, AuthScheme, Credential, CredentialError, CredentialIntent,
+    FieldRouteSpec, ScopeContract, ScopeContractError, Secret, SecretSource, TransportBehavior,
+    TransportKind, TransportRequest, TransportResponse,
 };
 pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
+pub use typed_io::{
+    typed_input, typed_output, typed_port, AnyTag, CredentialTag, FilePathTag, FilesystemHandleTag,
+    ListTag, NetworkHandleTag, NonEmptyListTag, OptionalTag, PlatformTag, PortTypeTag, SecretTag,
+    TimestampTag, ToolHandleTag, TransportRequestTag, TransportResponseTag, TypedInput,
+    TypedOutput, TypedPort, UrlTag,
+};
 pub use types::{
-    boundary_label, seed_placeholder_policy_for_type_id, Cardinality, CardinalityMismatch, NodeId,
-    PortName, SeedPlaceholderPolicy, TypeId,
+    boundary_label, parse_map_type_id, seed_placeholder_policy_for_type_id,
+    semantic_carrier_class_for_type_id, semantic_carrier_compatible,
+    semantic_carrier_kind_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
+    value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy, NodeId,
+    PortName, SeedPlaceholderPolicy, SemanticCarrierClass, SemanticCarrierKind, TypeId,
+    ValueBacking,
 };
 pub use validate::{
     validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,
     PortDirection, SubDagError, UnwiredResource,
 };
-pub use value::{SecretString, Value};
+pub use value::{SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH};
 pub use value_bridge::{classify_value, from_bridge_json, to_bridge_json, ValueCategory};
 pub use value_expr::ValueExpr;
+pub use workspace_layout::{WorkspaceLayout, WorkspaceLayoutError};
 
 // Re-exports from language module for common use
 pub use language::{

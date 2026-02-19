@@ -3,12 +3,10 @@ use std::path::PathBuf;
 use crate::path_utils;
 use crate::pipeline::PipelineContext;
 use daglang_driver::DriverContext;
-use gunbc_exec::{BoundaryMocks, ExecutionLog, ExecutionMode};
+use gunbc_exec::{BoundaryMocks, DynOp, ExecutionLog, ExecutionMode};
 use gunbc_ir::Dag;
 
-use super::{
-    resolve_lowered_dag, CheckOutput, CompileError, CompileOptions, CompileOutput, ResolvedOp,
-};
+use super::{resolve_lowered_dag, CheckOutput, CompileError, CompileOptions, CompileOutput};
 
 /// Builds compile pipeline context from CLI input.
 ///
@@ -56,11 +54,11 @@ pub fn check_from_context(context: &PipelineContext) -> Result<CheckOutput, Comp
 }
 
 pub fn execute_resolved_dag(
-    dag: &Dag<ResolvedOp>,
+    dag: &Dag<DynOp>,
     mode: ExecutionMode,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<ExecutionLog, CompileError> {
-    daglang_exec_bridge::execute_resolved_dag(dag, mode, input_mocks)
+    gunbc_exec::execute_with_mode_and_inputs(dag, mode, input_mocks)
         .map_err(|error| CompileError::from(format!("execution error: {error}")))
 }
 

@@ -30,7 +30,9 @@ use crate::{
 };
 use gunbc_ir::layout::compute_layout;
 use gunbc_ir::symbols::{SemanticColor, SymbolId, Tier, STANDARD};
-use gunbc_ir::{detect_boundaries, Dag, NodeId, Value};
+use gunbc_ir::{
+    detect_boundaries, Dag, NodeId, Value, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,
+};
 use std::collections::HashMap;
 use std::io::{self, IsTerminal, Write};
 use std::process;
@@ -75,6 +77,49 @@ pub enum AttentionLevel {
     Info,
     Warning,
     Error,
+}
+
+/// Display surface mode for DAG execution output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayMode {
+    Animated,
+    Plain,
+    CiPlain,
+}
+
+/// Display verbosity level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayVerbosity {
+    Normal,
+    Verbose,
+}
+
+/// Unified display configuration across all execution paths.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DisplayConfig {
+    pub mode: DisplayMode,
+    pub verbosity: DisplayVerbosity,
+}
+
+impl DisplayConfig {
+    /// Resolve display configuration from runtime hints.
+    pub fn from_runtime(animated_hint: bool) -> Self {
+        Self::from_surface(animated_hint, is_ci_environment())
+    }
+
+    fn from_surface(animated_hint: bool, ci_environment: bool) -> Self {
+        let mode = if animated_hint {
+            DisplayMode::Animated
+        } else if ci_environment {
+            DisplayMode::CiPlain
+        } else {
+            DisplayMode::Plain
+        };
+        Self {
+            mode,
+            verbosity: DisplayVerbosity::Normal,
+        }
+    }
 }
 
 /// Preamble header displayed before DAG execution begins.
@@ -169,7 +214,8 @@ pub fn execute_and_display<T: Executable + Clone + Send + 'static>(
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) {
-    match execute_and_display_with_result(dag, mode, animated, success_port, input_mocks) {
+    let config = DisplayConfig::from_runtime(animated);
+    match execute_and_display_with_result_config(dag, mode, config, success_port, input_mocks) {
         Ok(result) => {
             if result.should_fail {
                 print_attention(
@@ -208,10 +254,23 @@ pub fn execute_and_display_with_result<T: Executable + Clone + Send + 'static>(
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<DisplayResult, ExecError> {
-    if animated {
-        run_with_progress(dag, mode, success_port, input_mocks)
-    } else {
-        run_plain(dag, mode, success_port, input_mocks)
+    let config = DisplayConfig::from_runtime(animated);
+    execute_and_display_with_result_config(dag, mode, config, success_port, input_mocks)
+}
+
+/// Execute a DAG through the shared display path using an explicit display config.
+pub fn execute_and_display_with_result_config<T: Executable + Clone + Send + 'static>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    config: DisplayConfig,
+    success_port: Option<&str>,
+    input_mocks: Option<&BoundaryMocks>,
+) -> Result<DisplayResult, ExecError> {
+    match config.mode {
+        DisplayMode::Animated => run_with_progress(dag, mode, config, success_port, input_mocks),
+        DisplayMode::Plain | DisplayMode::CiPlain => {
+            run_plain(dag, mode, config, success_port, input_mocks)
+        }
     }
 }
 
@@ -223,6 +282,7 @@ pub fn execute_and_display_with_result<T: Executable + Clone + Send + 'static>(
 fn run_plain<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
+    config: DisplayConfig,
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<DisplayResult, ExecError> {
@@ -231,7 +291,7 @@ fn run_plain<T: Executable + Clone + Send>(
 
     let mut status_observer = NonTtyProgressObserver::default();
 
-    let is_ci = is_ci_environment();
+    let is_ci = matches!(config.mode, DisplayMode::CiPlain);
 
     let log = if is_ci {
         // CI groups require sequential execution (groups must nest properly).
@@ -318,6 +378,7 @@ impl Drop for CiConcurrencyGuard {
 fn run_with_progress<T: Executable + Clone + Send + 'static>(
     dag: &Dag<T>,
     mode: ExecutionMode,
+    _config: DisplayConfig,
     success_port: Option<&str>,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<DisplayResult, ExecError> {
@@ -803,26 +864,27 @@ fn render_progress_frame(
 /// for rendering values. Port-name-specific formatting (suppressing empty
 /// stderr/stdout, short string inline) is layered on top.
 pub fn print_value(port: &str, value: &Value) {
+    if let Some(rendered) = render_value_for_port(port, value) {
+        println!("  {}: {}", port, rendered);
+    }
+}
+
+fn render_value_for_port(port: &str, value: &Value) -> Option<String> {
     match value {
-        Value::Skipped | Value::Unit => {}
+        Value::Skipped | Value::Unit => None,
         Value::Str(s) => {
             // Suppress empty stderr/stdout
             if (port.ends_with("stderr") || port.ends_with("stdout")) && s.is_empty() {
-                return;
+                return None;
             }
             // Short single-line strings inline
             if !s.contains('\n') && s.len() < 120 {
-                println!("  {}: {}", port, value.display_redacted());
-                return;
+                return Some(value.display_redacted());
             }
             // Everything else through the truncating chokepoint
-            let rendered = value.display_redacted_truncated(MAX_LOG_VALUE_LINES, MAX_LINE_WIDTH);
-            println!("  {}: {}", port, rendered);
+            Some(value.display_redacted_truncated(MAX_LOG_VALUE_LINES, MAX_LINE_WIDTH))
         }
-        _ => {
-            let rendered = value.display_redacted();
-            println!("  {}: {}", port, rendered);
-        }
+        _ => Some(value.display_redacted()),
     }
 }
 
@@ -935,10 +997,10 @@ pub fn print_attention(level: AttentionLevel, title: &str, body: &str) {
 }
 
 /// Maximum lines to display for a single port value in log output.
-const MAX_LOG_VALUE_LINES: usize = 40;
+const MAX_LOG_VALUE_LINES: usize = HUMAN_TEXT_MAX_LINES;
 
 /// Maximum characters per line before truncation.
-const MAX_LINE_WIDTH: usize = 500;
+const MAX_LINE_WIDTH: usize = HUMAN_TEXT_MAX_LINE_WIDTH;
 
 /// Maximum lines to show for a single failure detail in NonTty mode.
 const FAILURE_DETAIL_LINES: usize = 30;
@@ -947,6 +1009,27 @@ const FAILURE_DETAIL_LINES: usize = 30;
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct SharedBufferWriter {
+        buf: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl Write for SharedBufferWriter {
+        fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+            self.buf
+                .lock()
+                .expect("shared buffer lock")
+                .extend_from_slice(data);
+            Ok(data.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn test_non_tty_observer_counts_track_states() {
@@ -1018,6 +1101,34 @@ mod tests {
         );
         assert!(line.starts_with("✗ progress: 2/5 done, 1 failed, 2 skipped"));
         assert!(line.contains("[850ms]"));
+    }
+
+    #[test]
+    fn test_non_tty_summary_snapshot_success() {
+        let line = format_non_tty_summary_line(
+            NonTtyProgressCounts {
+                total: 3,
+                completed: 3,
+                ..Default::default()
+            },
+            Duration::from_millis(250),
+        );
+        assert_eq!(line, "✓ progress: 3/3 done, 0 skipped [250ms]");
+    }
+
+    #[test]
+    fn test_non_tty_summary_snapshot_failure() {
+        let line = format_non_tty_summary_line(
+            NonTtyProgressCounts {
+                total: 4,
+                completed: 2,
+                failed: 1,
+                skipped: 1,
+                ..Default::default()
+            },
+            Duration::from_secs(2),
+        );
+        assert_eq!(line, "✗ progress: 2/4 done, 1 failed, 1 skipped [2.0s]");
     }
 
     // -------------------------------------------------------------------
@@ -1122,5 +1233,59 @@ mod tests {
         assert_eq!(observer.failures.len(), 1);
         assert_eq!(observer.failures[0].0, "A");
         assert_eq!(observer.failures[0].1, "error line 1");
+    }
+
+    #[test]
+    fn test_display_config_mode_resolution() {
+        let animated = DisplayConfig::from_surface(true, true);
+        assert_eq!(animated.mode, DisplayMode::Animated);
+        assert_eq!(animated.verbosity, DisplayVerbosity::Normal);
+
+        let ci_plain = DisplayConfig::from_surface(false, true);
+        assert_eq!(ci_plain.mode, DisplayMode::CiPlain);
+
+        let plain = DisplayConfig::from_surface(false, false);
+        assert_eq!(plain.mode, DisplayMode::Plain);
+    }
+
+    #[test]
+    fn test_render_value_for_port_redacts_secrets() {
+        let value = Value::Secret(gunbc_ir::SecretString::new("top-secret-token"));
+        let rendered = render_value_for_port("api_key", &value).expect("rendered secret");
+        assert_eq!(rendered, "***");
+    }
+
+    #[test]
+    fn test_mask_secrets_in_log_emits_mask_command_without_plaintext_secret() {
+        let buf = Arc::new(Mutex::new(Vec::new()));
+        let writer = SharedBufferWriter { buf: buf.clone() };
+        let mut ci = crate::CiContext::new(Box::new(gunbc_ir::transport::ci::PlainTextProvider))
+            .with_writer(Box::new(writer));
+        let secret = "top-secret-token";
+        let log = crate::ExecutionLog {
+            entries: vec![crate::LogEntry {
+                node_id: "node".to_string(),
+                inputs: None,
+                outputs: HashMap::from([(
+                    "secret".to_string(),
+                    Value::Secret(gunbc_ir::SecretString::new(secret)),
+                )]),
+                was_intercepted: false,
+                coercions_applied: vec![],
+            }],
+        };
+
+        mask_secrets_in_log(&mut ci, &log);
+
+        let output = String::from_utf8(buf.lock().expect("shared buffer lock").clone())
+            .expect("utf8 output");
+        assert!(
+            output.contains("[masked value]"),
+            "expected mask command output, got: {output}"
+        );
+        assert!(
+            !output.contains(secret),
+            "secret plaintext must not be emitted in CI output"
+        );
     }
 }

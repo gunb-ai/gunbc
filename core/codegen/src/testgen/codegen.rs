@@ -21,7 +21,10 @@
 //! Only obligations that are Unknown or RuntimeOnly produce tests.
 
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
-use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
+use crate::testgen::obligation::{
+    collect_obligations, DischargeStatus, Obligation, ObligationSet, ObligationSource,
+    ProofObligation,
+};
 use crate::testgen::probe_observer::{
     analyze_probe_observers, observability_report, ProbeObserverAnalysis,
 };
@@ -36,8 +39,9 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
-    contract, seed_placeholder_policy_for_type_id, Cardinality, Dag, NodeId, PortName,
-    SecretString, SeedPlaceholderPolicy, TypeRegistry, Value, ValueExpr,
+    contract, parse_map_type_id, semantic_carrier_class_for_type_id, value_compatible_with_type_id,
+    value_kind_name, Cardinality, Dag, NodeId, Os, PortName, SecretString, SeedPlaceholderPolicy,
+    SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -45,22 +49,76 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 
 type SeedPolicy = SeedPlaceholderPolicy;
+type SeedClass = SemanticCarrierClass;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SeedContext {
-    RealSingleNodeRequiredInput,
+    RealSingleNode,
+    Scenario,
+    LiveFlow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SeedMatrix {
+    structural_policy: SeedPolicy,
+    semantic_policy: SeedPolicy,
+}
+
+const STRICT_REAL_SINGLE_NODE_SEED_MATRIX: SeedMatrix = SeedMatrix {
+    structural_policy: SeedPolicy::Generated,
+    semantic_policy: SeedPolicy::ExplicitSeedRequired,
+};
+
+const STRICT_SCENARIO_SEED_MATRIX: SeedMatrix = SeedMatrix {
+    structural_policy: SeedPolicy::Generated,
+    semantic_policy: SeedPolicy::ExplicitSeedRequired,
+};
+
+const STRICT_LIVE_FLOW_SEED_MATRIX: SeedMatrix = SeedMatrix {
+    structural_policy: SeedPolicy::Generated,
+    semantic_policy: SeedPolicy::ExplicitSeedRequired,
+};
+
+fn seed_matrix_for_context(context: SeedContext) -> SeedMatrix {
+    match context {
+        SeedContext::RealSingleNode => STRICT_REAL_SINGLE_NODE_SEED_MATRIX,
+        SeedContext::Scenario => STRICT_SCENARIO_SEED_MATRIX,
+        SeedContext::LiveFlow => STRICT_LIVE_FLOW_SEED_MATRIX,
+    }
+}
+
+fn seed_class_for_type(type_id: &str) -> SeedClass {
+    semantic_carrier_class_for_type_id(type_id)
 }
 
 fn seed_policy_for_type(type_id: &str) -> SeedPolicy {
-    seed_placeholder_policy_for_type_id(type_id)
+    match seed_class_for_type(type_id) {
+        SeedClass::StructuralGeneratable => SeedPolicy::Generated,
+        SeedClass::SemanticCarrier => SeedPolicy::ExplicitSeedRequired,
+    }
+}
+
+fn seed_policy_for_context(type_id: &str, context: SeedContext) -> SeedPolicy {
+    let matrix = seed_matrix_for_context(context);
+    match seed_policy_for_type(type_id) {
+        SeedPolicy::Generated => matrix.structural_policy,
+        SeedPolicy::ExplicitSeedRequired => matrix.semantic_policy,
+    }
 }
 
 fn requires_explicit_seed(type_id: &str, context: SeedContext) -> bool {
-    match context {
-        SeedContext::RealSingleNodeRequiredInput => {
-            seed_policy_for_type(type_id) == SeedPolicy::ExplicitSeedRequired
-        }
-    }
+    seed_policy_for_context(type_id, context) == SeedPolicy::ExplicitSeedRequired
+}
+
+/// Returns the canonical type-name string for a Value's kind.
+/// Thin wrapper around `Value::kind().type_name()` — kept as a private helper
+/// so callers don't repeat the two-step chain.
+fn mock_value_kind_name(value: &Value) -> &'static str {
+    value_kind_name(value)
+}
+
+fn mock_types_compatible(port_type: &str, value: &Value) -> bool {
+    value_compatible_with_type_id(port_type, value)
 }
 
 /// Configuration for test generation.
@@ -497,7 +555,21 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
-        let obligations = collect_obligations(self.dag, None, None);
+        let mut obligations = collect_obligations(self.dag, None, None);
+        if let Some((tool_name, entrypoints)) = &self.cli_entrypoints {
+            if !entrypoints.is_empty() {
+                obligations.all.push(ProofObligation::runtime(
+                    Obligation::CliContractRoundTrip {
+                        tool_name: tool_name.clone(),
+                    },
+                    format!(
+                        "Tool '{}' CLI arguments must round-trip through parse and --print-inputs json",
+                        tool_name
+                    ),
+                    ObligationSource::Contract,
+                ));
+            }
+        }
         let probe_observer_bundle = self.build_probe_observer_bundle(&analysis);
 
         let mut file = self.generate_test_file(
@@ -645,90 +717,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         spec: &MockSpec,
         lowered_dag: Option<&Dag<T>>,
     ) -> Vec<(String, String, String, String)> {
-        use gunbc_ir::Value;
-
         let mut mismatches = Vec::new();
-
-        // Helper to get type name from a Value
-        let value_type_name = |v: &Value| -> &'static str {
-            match v {
-                Value::Unit => "Unit",
-                Value::Bool(_) => "Bool",
-                Value::Str(_) => "String",
-                Value::Int(_) => "Int",
-                Value::List(_) => "List",
-                Value::Set(_) => "Set",
-                Value::Map(_) => "Map",
-                Value::Json(_) => "Json",
-                Value::Request(_) => "TransportRequest",
-                Value::Response(_) => "TransportResponse",
-                Value::Secret(_) => "Secret",
-                Value::Skipped => "Skipped", // Skipped is compatible with anything
-            }
-        };
-
-        // Helper to check type compatibility
-        // NOTE: This must match MockRequirements::types_compatible in gunbc-test
-        let types_compatible = |port_type: &str, value_type: &str| -> bool {
-            // Exact match
-            if port_type == value_type {
-                return true;
-            }
-            // Any matches anything
-            if port_type == "Any" || value_type == "Any" {
-                return true;
-            }
-            // Optional types accept the inner type or Unit (none)
-            if let Some(inner) = port_type.strip_prefix("Optional") {
-                if value_type == inner || value_type == "Unit" {
-                    return true;
-                }
-            }
-            // Skipped is a control flow value, compatible with any type
-            if value_type == "Skipped" {
-                return true;
-            }
-            // Json is flexible - can hold structured data that might be typed differently
-            // NOTE: This is intentionally permissive; consider tightening if type drift is a concern
-            if port_type == "Json" || value_type == "Json" {
-                return true;
-            }
-            // List-backed types (StringList, NonEmptyStringList, etc.)
-            if value_type == "List" && port_type.ends_with("List") {
-                return true;
-            }
-            // Set-backed types (StringSet, etc.)
-            if value_type == "Set" && port_type.ends_with("Set") {
-                return true;
-            }
-            // Map-backed types: ToolHandle, Credential, FilesystemHandle, NetworkHandle, CliResult
-            // These types serialize to/from Map when stored as Value
-            if value_type == "Map" {
-                let map_backed_types = [
-                    "ToolHandle",
-                    "Credential",
-                    "FilesystemHandle",
-                    "NetworkHandle",
-                    "CliResult",
-                ];
-                if map_backed_types.contains(&port_type) {
-                    return true;
-                }
-            }
-            // Int-backed types: Timestamp stores milliseconds as Int
-            if value_type == "Int" && port_type == "Timestamp" {
-                return true;
-            }
-            // String-backed types: Platform serializes as String
-            if value_type == "String" && port_type == "Platform" {
-                return true;
-            }
-            // Map can also represent Platform (for structured platform info)
-            if value_type == "Map" && port_type == "Platform" {
-                return true;
-            }
-            false
-        };
 
         // Check transport mocks
         for tm in &spec.transport_mocks {
@@ -739,8 +728,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if let Some(node) = node {
                 if let Some(port) = node.outputs.iter().find(|p| p.name.0 == tm.port) {
                     let expected = &port.type_id.0;
-                    let actual = value_type_name(&tm.value);
-                    if !types_compatible(expected, actual) {
+                    let actual = mock_value_kind_name(&tm.value);
+                    if !mock_types_compatible(expected, &tm.value) {
                         mismatches.push((
                             tm.node.clone(),
                             tm.port.clone(),
@@ -761,11 +750,33 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if let Some(node) = node {
                 if let Some(port) = node.outputs.iter().find(|p| p.name.0 == bm.port) {
                     let expected = &port.type_id.0;
-                    let actual = value_type_name(&bm.value);
-                    if !types_compatible(expected, actual) {
+                    let actual = mock_value_kind_name(&bm.value);
+                    if !mock_types_compatible(expected, &bm.value) {
                         mismatches.push((
                             bm.node.clone(),
                             bm.port.clone(),
+                            expected.clone(),
+                            actual.to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check input mocks against input port type definitions
+        for im in &spec.input_mocks {
+            let node = self
+                .dag
+                .get_node(&NodeId(im.node.clone()))
+                .or_else(|| lowered_dag.and_then(|dag| dag.get_node(&NodeId(im.node.clone()))));
+            if let Some(node) = node {
+                if let Some(port) = node.inputs.iter().find(|p| p.name.0 == im.port) {
+                    let expected = &port.type_id.0;
+                    let actual = mock_value_kind_name(&im.value);
+                    if !mock_types_compatible(expected, &im.value) {
+                        mismatches.push((
+                            im.node.clone(),
+                            im.port.clone(),
                             expected.clone(),
                             actual.to_string(),
                         ));
@@ -842,6 +853,39 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                             format!(
                                 "port does not exist on node (available: {})",
                                 node.outputs
+                                    .iter()
+                                    .map(|p| p.name.0.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check input mocks (must reference existing input ports)
+        for im in &spec.input_mocks {
+            let node = self
+                .dag
+                .get_node(&NodeId(im.node.clone()))
+                .or_else(|| lowered_dag.and_then(|dag| dag.get_node(&NodeId(im.node.clone()))));
+            match node {
+                None => {
+                    unknown.push((
+                        im.node.clone(),
+                        im.port.clone(),
+                        "node does not exist".to_string(),
+                    ));
+                }
+                Some(node) => {
+                    if !node.inputs.iter().any(|p| p.name.0 == im.port) {
+                        unknown.push((
+                            im.node.clone(),
+                            im.port.clone(),
+                            format!(
+                                "input port does not exist on node (available: {})",
+                                node.inputs
                                     .iter()
                                     .map(|p| p.name.0.as_str())
                                     .collect::<Vec<_>>()
@@ -1198,7 +1242,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
-        if let Some(section) = self.build_cli_contract_section() {
+        if let Some(section) = self.build_cli_contract_section(obligations) {
             // CLI contract tests need gunbc_cli imports
             file.imports.push(Import {
                 path: vec!["gunbc_cli".to_string()],
@@ -1383,7 +1427,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 Self::record_ident(name, used);
             }
             Expr::Str(_) | Expr::IntLit(_) | Expr::BoolLit(_) => {}
-            Expr::Call { func, args } => {
+            Expr::Call { func, args, .. } => {
                 Self::collect_idents_from_expr(func, used);
                 for arg in args {
                     Self::collect_idents_from_expr(arg, used);
@@ -1592,6 +1636,176 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     "accidentally perform real I/O.".to_string(),
                 ],
                 body,
+            });
+
+            tests.push(TestFn {
+                name: "test_transport_behavior_specs_cover_core_families".to_string(),
+                doc: vec![
+                    "Transport behavior specs cover all core executor families.".to_string(),
+                    String::new(),
+                    "Proves: testgen is wired to the shared transport behavior catalog".to_string(),
+                    "used to drive behavioral transport contract checks.".to_string(),
+                ],
+                body: vec![
+                    Stmt::let_bind(
+                        "specs",
+                        Expr::RawCode("gunbc_ir::default_transport_behaviors()".to_string()),
+                    ),
+                    Stmt::Expr(Expr::call(
+                        "assert_eq!",
+                        vec![
+                            Expr::RawCode("specs.len()".to_string()),
+                            Expr::IntLit(5),
+                            Expr::Str(
+                                "transport behavior catalog should cover tcp/http/rest/file/shell"
+                                    .to_string(),
+                            ),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "specs.iter().any(|s| matches!(s.transport, gunbc_ir::TransportKind::Tcp))"
+                                    .to_string(),
+                            ),
+                            Expr::Str("missing tcp transport behavior spec".to_string()),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "specs.iter().any(|s| matches!(s.transport, gunbc_ir::TransportKind::Http))"
+                                    .to_string(),
+                            ),
+                            Expr::Str("missing http transport behavior spec".to_string()),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "specs.iter().any(|s| matches!(s.transport, gunbc_ir::TransportKind::Rest))"
+                                    .to_string(),
+                            ),
+                            Expr::Str("missing rest transport behavior spec".to_string()),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "specs.iter().any(|s| matches!(s.transport, gunbc_ir::TransportKind::File))"
+                                    .to_string(),
+                            ),
+                            Expr::Str("missing file transport behavior spec".to_string()),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "specs.iter().any(|s| matches!(s.transport, gunbc_ir::TransportKind::Shell))"
+                                    .to_string(),
+                            ),
+                            Expr::Str("missing shell transport behavior spec".to_string()),
+                        ],
+                    )),
+                    Stmt::let_bind(
+                        "tcp",
+                        Expr::RawCode(
+                            "specs.iter().find(|s| matches!(s.transport, gunbc_ir::TransportKind::Tcp)).expect(\"tcp behavior spec should exist\")"
+                                .to_string(),
+                        ),
+                    ),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "tcp.field_routes.iter().any(|route| route.request_field == \"read_timeout_ms\" && route.operation == \"set_read_timeout\")"
+                                    .to_string(),
+                            ),
+                            Expr::Str(
+                                "tcp behavior spec should pin read_timeout_ms routing".to_string(),
+                            ),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "tcp.field_routes.iter().any(|route| route.request_field == \"write_timeout_ms\" && route.operation == \"set_write_timeout\")"
+                                    .to_string(),
+                            ),
+                            Expr::Str(
+                                "tcp behavior spec should pin write_timeout_ms routing".to_string(),
+                            ),
+                        ],
+                    )),
+                    Stmt::let_bind(
+                        "models",
+                        Expr::RawCode("gunbc_ir::default_system_models()".to_string()),
+                    ),
+                    Stmt::let_bind(
+                        "contract_specs",
+                        Expr::RawCode("gunbc_ir::derive_contract_test_specs(&models)".to_string()),
+                    ),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode("!contract_specs.is_empty()".to_string()),
+                            Expr::Str(
+                                "system model contract specs should derive at least one test spec"
+                                    .to_string(),
+                            ),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "contract_specs.iter().any(|s| matches!(s.phase, gunbc_ir::UpsertPhase::Check))"
+                                    .to_string(),
+                            ),
+                            Expr::Str(
+                                "derived contract specs should include check-phase coverage"
+                                    .to_string(),
+                            ),
+                        ],
+                    )),
+                    Stmt::let_bind(
+                        "harnesses",
+                        Expr::RawCode(
+                            "gunbc_ir::generate_contract_test_harnesses(&contract_specs)"
+                                .to_string(),
+                        ),
+                    ),
+                    Stmt::Expr(Expr::call(
+                        "assert_eq!",
+                        vec![
+                            Expr::RawCode("harnesses.len()".to_string()),
+                            Expr::RawCode("contract_specs.len()".to_string()),
+                            Expr::Str(
+                                "each contract test spec should render a harness signature"
+                                    .to_string(),
+                            ),
+                        ],
+                    )),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::RawCode(
+                                "harnesses.iter().all(|h| h.starts_with(\"fn contract_\"))"
+                                    .to_string(),
+                            ),
+                            Expr::Str(
+                                "rendered harnesses should be generated contract function signatures"
+                                    .to_string(),
+                            ),
+                        ],
+                    )),
+                ],
             });
         }
 
@@ -1886,14 +2100,43 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         ),
                         String::new(),
                         format!(
-                            "Proves: engine correctly applies {} coercion at this edge.",
-                            kind_label
+                            "Proves: engine correctly applies {} coercion at this edge and delivers the expected input shape at {}.{}.",
+                            kind_label, to_node.0, to_port.0
                         ),
                     ],
                     body: vec![
                         Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                         Stmt::let_bind("mocks", mocks_expr),
-                        Stmt::let_bind("_log", exec),
+                        Stmt::let_bind("log", exec),
+                        // Raw because: coercion assertion sequence requires chained
+                        // let-bindings with complex match/assert shapes that have no
+                        // Code IR statement equivalent.
+                        Stmt::Item(Item::Raw(format!(
+                            "let target_entry = log.entries.iter().rev().find(|entry| entry.node_id == \"{}\").expect(\"coercion target entry missing for {}.{}\");",
+                            to_node.0, to_node.0, to_port.0
+                        ))),
+                        Stmt::Item(Item::Raw(format!(
+                            "let target_inputs = target_entry.inputs.as_ref().expect(\"coercion target {}.{} should capture inputs\");",
+                            to_node.0, to_port.0
+                        ))),
+                        Stmt::Item(Item::Raw(format!(
+                            "let received = target_inputs.get(\"{}\").expect(\"coercion target {}.{} should receive coerced value\");",
+                            to_port.0, to_node.0, to_port.0
+                        ))),
+                        Stmt::Item(Item::Raw(match kind {
+                            gunbc_ir::coerce::CoercionKind::WrapScalar => format!(
+                                "assert!(matches!(received, Value::List(values) if !values.is_empty()), \"WrapScalar should deliver non-empty list to {}.{}; got {{:?}}\", received);",
+                                to_node.0, to_port.0
+                            ),
+                            gunbc_ir::coerce::CoercionKind::OptionalToList => format!(
+                                "assert!(matches!(received, Value::List(_)), \"OptionalToList should deliver list to {}.{}; got {{:?}}\", received);",
+                                to_node.0, to_port.0
+                            ),
+                            gunbc_ir::coerce::CoercionKind::Widen => format!(
+                                "assert!(matches!(received, Value::List(_)), \"Widen should preserve list shape at {}.{}; got {{:?}}\", received);",
+                                to_node.0, to_port.0
+                            ),
+                        })),
                     ],
                 });
             }
@@ -2150,10 +2393,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if port.name.0 == "skip" && port.type_id.0 == "Bool" {
                 continue;
             }
-            if !requires_explicit_seed(
-                port.type_id.0.as_str(),
-                SeedContext::RealSingleNodeRequiredInput,
-            ) {
+            if !requires_explicit_seed(port.type_id.0.as_str(), SeedContext::RealSingleNode) {
                 continue;
             }
             if !base_inputs.contains_key(&port.name.0)
@@ -2188,6 +2428,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         obligations: &ObligationSet,
         graph_builder_fn: &str,
     ) -> Option<TestSection> {
+        let _seed_matrix = seed_matrix_for_context(SeedContext::Scenario);
         let bucket = obligations.bucket_c();
         if bucket.is_empty() {
             return None;
@@ -3287,7 +3528,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 Expr::var("spec").method("to_boundary_mocks", vec![]),
             ),
             Stmt::let_bind(
-                "log",
+                if spec.expected_outputs.is_empty() {
+                    "_log"
+                } else {
+                    "log"
+                },
                 Expr::call(
                     "execute_with_mode",
                     vec![
@@ -3364,6 +3609,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         if !self.config.live_flow_tests {
             return None;
         }
+        let _seed_matrix = seed_matrix_for_context(SeedContext::LiveFlow);
 
         let has_satisfies = spec
             .live_expected_outputs
@@ -3842,7 +4088,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     "matchers",
                     Expr::call("HashMap::new", vec![]),
                 ),
-                // Insert only chain-safe (input-independent) matchers at runtime.
+                // Raw because: runtime for-loop filter+insert patterns have no Code IR
+                // equivalent — these iterate spec data to populate matcher maps.
                 Stmt::Item(Item::Raw(format!(
                     "for ex in spec.node_examples.iter().filter(|e| e.node_id == \"{}\") {{\n\
                         for (port, matcher) in &ex.outputs {{\n\
@@ -4519,17 +4766,29 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     ///
     /// This verifies that `gunbc_cli::parse()` handles the tool's CLI schema
     /// correctly by parsing sample arguments and checking the results.
-    fn build_cli_contract_section(&self) -> Option<TestSection> {
+    fn build_cli_contract_section(&self, obligations: &ObligationSet) -> Option<TestSection> {
         let (tool_name, entrypoints) = self.cli_entrypoints.as_ref()?;
+        let has_cli_contract_obligation = obligations.cli_contract_obligations().iter().any(|o| {
+            matches!(
+                &o.kind,
+                Obligation::CliContractRoundTrip {
+                    tool_name: obligation_tool
+                } if obligation_tool == tool_name
+            )
+        });
+        if !has_cli_contract_obligation {
+            return None;
+        }
 
-        let test_name = format!("test_cli_contract_{}", tool_name.replace('-', "_"));
+        let parse_test_name = format!("test_cli_contract_{}", tool_name.replace('-', "_"));
+        let print_inputs_test_name = format!(
+            "test_cli_contract_print_inputs_{}",
+            tool_name.replace('-', "_")
+        );
 
-        // Build the entire test body as raw code to avoid Stmt::Expr semicolons
-        // interfering with multi-line constructs like vec![...].
-        let mut code = String::new();
-
-        // Schema
-        code.push_str("let schema = vec![\n");
+        // Shared schema body for both generated tests.
+        let mut schema_code = String::new();
+        schema_code.push_str("let schema = vec![\n");
         for ep in entrypoints {
             let type_expr = match ep.type_id {
                 ParamType::Str => "ParamType::Str",
@@ -4537,25 +4796,25 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 ParamType::Bool => "ParamType::Bool",
             };
             write!(
-                code,
+                schema_code,
                 "    CliParam::new(\"{}\", {})",
                 ep.port_name, type_expr
             )
             .unwrap();
             if ep.cardinality.allows_many() {
-                code.push_str(".with_cardinality(Cardinality::ZERO_OR_MORE)");
+                schema_code.push_str(".with_cardinality(Cardinality::ZERO_OR_MORE)");
             }
             if let Some(c) = ep.short_flag {
-                write!(code, ".short('{}')", c).unwrap();
+                write!(schema_code, ".short('{}')", c).unwrap();
             }
             if let Some(ref d) = ep.default_value {
-                write!(code, ".default(\"{}\")", cli_escape(d)).unwrap();
+                write!(schema_code, ".default(\"{}\")", cli_escape(d)).unwrap();
             }
-            code.push_str(",\n");
+            schema_code.push_str(",\n");
         }
-        code.push_str("];\n");
+        schema_code.push_str("];\n");
 
-        // Build argv and assertions
+        // Build argv and shared assertions.
         let mut argv_parts: Vec<String> =
             vec![format!("\"{}\"", tool_name), "\"--dry-run\"".to_string()];
         let mut assertions: Vec<String> = Vec::new();
@@ -4604,29 +4863,105 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         }
         assertions.push("assert!(result.dry_run, \"dry_run should be true\");\n".to_string());
 
+        // Parse contract test body.
+        let mut parse_code = String::new();
+        parse_code.push_str(&schema_code);
         let argv_str = argv_parts.join(", ");
         writeln!(
-            code,
+            parse_code,
             "let argv: Vec<String> = [{}].iter().map(|s| s.to_string()).collect();",
             argv_str
         )
         .unwrap();
-        code.push_str("let result = parse(&argv, &schema).expect(\"parse should succeed\");\n");
+        parse_code
+            .push_str("let result = parse(&argv, &schema).expect(\"parse should succeed\");\n");
         for assertion in &assertions {
-            code.push_str(assertion);
+            parse_code.push_str(assertion);
         }
+
+        // --print-inputs json round-trip contract test body.
+        let mut print_inputs_code = String::new();
+        print_inputs_code.push_str(&schema_code);
+        let mut full_argv_parts: Vec<String> = vec![
+            format!("\"{}\"", tool_name),
+            "\"--dry-run\"".to_string(),
+            "\"--print-inputs\"".to_string(),
+            "\"json\"".to_string(),
+        ];
+        full_argv_parts.extend(argv_parts.iter().skip(2).cloned());
+        writeln!(
+            print_inputs_code,
+            "let full_argv: Vec<String> = [{}].iter().map(|s| s.to_string()).collect();",
+            full_argv_parts.join(", ")
+        )
+        .unwrap();
+        print_inputs_code
+            .push_str("let mut parse_args: Vec<String> = Vec::with_capacity(full_argv.len());\n");
+        print_inputs_code.push_str("if let Some(program) = full_argv.first() {\n");
+        print_inputs_code.push_str("    parse_args.push(program.clone());\n");
+        print_inputs_code.push_str("}\n");
+        print_inputs_code.push_str("let mut print_inputs_json = false;\n");
+        print_inputs_code.push_str("let mut raw_idx = 1usize;\n");
+        print_inputs_code.push_str("while raw_idx < full_argv.len() {\n");
+        print_inputs_code.push_str("    let arg = &full_argv[raw_idx];\n");
+        print_inputs_code.push_str("    if arg == \"--print-inputs\" {\n");
+        print_inputs_code.push_str("        raw_idx += 1;\n");
+        print_inputs_code.push_str("        assert!(raw_idx < full_argv.len(), \"--print-inputs should include a format value\");\n");
+        print_inputs_code.push_str("        assert_eq!(full_argv[raw_idx], \"json\", \"--print-inputs only supports json\");\n");
+        print_inputs_code.push_str("        print_inputs_json = true;\n");
+        print_inputs_code
+            .push_str("    } else if let Some(format) = arg.strip_prefix(\"--print-inputs=\") {\n");
+        print_inputs_code.push_str(
+            "        assert_eq!(format, \"json\", \"--print-inputs only supports json\");\n",
+        );
+        print_inputs_code.push_str("        print_inputs_json = true;\n");
+        print_inputs_code.push_str("    } else {\n");
+        print_inputs_code.push_str("        parse_args.push(arg.clone());\n");
+        print_inputs_code.push_str("    }\n");
+        print_inputs_code.push_str("    raw_idx += 1;\n");
+        print_inputs_code.push_str("}\n");
+        print_inputs_code.push_str(
+            "assert!(print_inputs_json, \"expected --print-inputs json to be detected\");\n",
+        );
+        print_inputs_code.push_str(
+            "let result = parse(&parse_args, &schema).expect(\"parse should succeed\");\n",
+        );
+        for assertion in &assertions {
+            print_inputs_code.push_str(assertion);
+        }
+        print_inputs_code.push_str("let mut ordered_inputs = std::collections::BTreeMap::new();\n");
+        print_inputs_code.push_str("for (port, value) in &result.values {\n");
+        print_inputs_code.push_str("    ordered_inputs.insert(port.clone(), value.clone());\n");
+        print_inputs_code.push_str("}\n");
+        print_inputs_code
+            .push_str("let json = gunbc_ir::to_bridge_json(&Value::Map(ordered_inputs))\n");
+        print_inputs_code
+            .push_str("    .expect(\"to_bridge_json should serialize parsed inputs\");\n");
+        print_inputs_code.push_str(
+            "assert!(json.is_object(), \"--print-inputs json should be a JSON object\");\n",
+        );
 
         // Wrap entire body in a single TailExpr to avoid extra semicolons.
         // The raw code already has its own semicolons where needed.
-        let body = vec![Stmt::TailExpr(Expr::raw(code.trim_end()))];
+        let parse_body = vec![Stmt::TailExpr(Expr::raw(parse_code.trim_end()))];
+        let print_inputs_body = vec![Stmt::TailExpr(Expr::raw(print_inputs_code.trim_end()))];
 
-        let test = TestFn {
-            name: test_name,
+        let parse_test = TestFn {
+            name: parse_test_name,
             doc: vec![format!(
                 "CLI contract: verify gunbc_cli::parse() handles '{}' arguments.",
                 tool_name
             )],
-            body,
+            body: parse_body,
+        };
+
+        let print_inputs_test = TestFn {
+            name: print_inputs_test_name,
+            doc: vec![format!(
+                "CLI contract: verify '{}' supports --print-inputs json round-trip.",
+                tool_name
+            )],
+            body: print_inputs_body,
         };
 
         Some(TestSection {
@@ -4634,8 +4969,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             notes: vec![
                 "Verifies CLI argument parsing for this tool's entrypoints.".to_string(),
                 "Uses gunbc_cli::parse() for in-process validation (no subprocess).".to_string(),
+                "Also validates --print-inputs json preprocessing and JSON serialization."
+                    .to_string(),
             ],
-            tests: vec![test],
+            tests: vec![parse_test, print_inputs_test],
         })
     }
 }
@@ -4848,6 +5185,16 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Vec<S
 }
 
 fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
+    if let Some((key_type, value_type)) = parse_map_type_id(type_id) {
+        if key_type != "String" {
+            return None;
+        }
+        let value = try_mock_element_value(&value_type, index)?;
+        let mut map = BTreeMap::new();
+        map.insert("mock_key".to_string(), value);
+        return Some(Value::Map(map));
+    }
+
     let value = match type_id {
         "String" => match index {
             Some(1) | None => Value::Str("<MOCK>".to_string()),
@@ -4870,7 +5217,7 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
         "S" => Value::Str("<MOCK>".to_string()),
         "Path" | "FilePath" => Value::Str("/tmp/mock".to_string()),
         "SourceIR" => Value::Str("<SOURCE_IR>".to_string()),
-        "Platform" => Value::Str("linux".to_string()),
+        "Platform" => Value::Str(platform_mock_token(index)),
         "Error" => Value::Str("<ERROR>".to_string()),
         "Tier" => Value::Str("Ascii".to_string()),
         "Unknown" => Value::Json(JsonValue::Null),
@@ -5138,13 +5485,23 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         "Unit" => ValueExpr::Unit,
         "Json" | "OptionalJson" | "JsonList" => ValueExpr::Json(JsonValue::Null),
         "CloudSecretConfig" => ValueExpr::Json(mock_cloud_secret_config_json()),
+        ty if parse_map_type_id(ty).is_some() => {
+            let (key_type, value_type) = parse_map_type_id(ty).expect("already checked");
+            if key_type != "String" {
+                panic!("unsupported map key type '{}'; only String keys are supported", key_type);
+            }
+            ValueExpr::Map(vec![(
+                "mock_key".to_string(),
+                mock_element_expr(&value_type, index),
+            )])
+        }
         "Map" => ValueExpr::Map(vec![]),
         "Secret" => ValueExpr::Secret("<MOCK_SECRET>".to_string()),
         "Any" => ValueExpr::Json(JsonValue::Null),
         "S" => ValueExpr::Str("<MOCK>".to_string()),
         "Path" | "FilePath" => ValueExpr::Str("/tmp/mock".to_string()),
         "SourceIR" => ValueExpr::Str("<SOURCE_IR>".to_string()),
-        "Platform" => ValueExpr::Str("linux".to_string()),
+        "Platform" => ValueExpr::Str(platform_mock_token(index)),
         "Error" => ValueExpr::Str("<ERROR>".to_string()),
         // Container aliases: element value derives from the inner type.
         "Tier" => ValueExpr::Str("Ascii".to_string()),
@@ -5188,6 +5545,8 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
                 ("env".to_string(), ValueExpr::Map(vec![])),
                 ("cwd".to_string(), ValueExpr::Unit),
                 ("stdin".to_string(), ValueExpr::Unit),
+                ("timeout_ms".to_string(), ValueExpr::Unit),
+                ("passthrough".to_string(), ValueExpr::Bool(false)),
             ],
         },
         "TransportResponse" => ValueExpr::Struct {
@@ -5207,6 +5566,26 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
             type_id
         ),
     }
+}
+
+fn platform_mock_variants() -> Vec<String> {
+    // Use a fixed ordering for determinism across machines. The default
+    // (index 0) is always "linux" regardless of the host OS, which avoids
+    // golden-file churn and "works on my machine" test instability.
+    vec![
+        Os::Linux.as_token().to_string(),
+        Os::Macos.as_token().to_string(),
+        Os::Windows.as_token().to_string(),
+    ]
+}
+
+fn platform_mock_token(index: Option<u32>) -> String {
+    let variants = platform_mock_variants();
+    let idx = match index {
+        Some(i) if i > 0 => ((i - 1) as usize) % variants.len(),
+        _ => 0,
+    };
+    variants[idx].clone()
 }
 
 /// Generate a wrong-typed value for the given type_id.
@@ -5430,6 +5809,28 @@ mod tests {
     use gunbc_ir::{build, build::*, Cardinality, Dag, Node, Value, ValueExpr};
 
     #[test]
+    fn test_platform_mock_token_includes_host_and_variants() {
+        let variants = platform_mock_variants();
+        // Default (index 0) is always "linux" for determinism across machines.
+        assert_eq!(variants.first(), Some(&"linux".to_string()));
+        assert!(variants.iter().any(|v| v == "linux"));
+        assert!(variants.iter().any(|v| v == "macos"));
+        assert!(variants.iter().any(|v| v == "windows"));
+    }
+
+    #[test]
+    fn test_platform_mock_token_cycles_variants() {
+        let variants = platform_mock_variants();
+        assert_eq!(platform_mock_token(None), variants[0]);
+        assert_eq!(platform_mock_token(Some(1)), variants[0]);
+        assert_eq!(platform_mock_token(Some(2)), variants[1 % variants.len()]);
+        assert_eq!(
+            platform_mock_token(Some((variants.len() as u32) + 1)),
+            variants[0]
+        );
+    }
+
+    #[test]
     fn test_generate_test_module() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
@@ -5555,6 +5956,74 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_cli_contract_section_when_entrypoints_present() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("in", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in"));
+
+        let spec = MockSpec::new("cli_contract")
+            .boundary("sink", "result", Value::Str("<MOCK>".into()))
+            .skip_node_example("source")
+            .skip_node_example("sink");
+
+        let entrypoints = vec![crate::cli_gen::CliEntrypoint::new(
+            "workspace",
+            gunbc_cli::ParamType::Str,
+        )];
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()")
+            .with_cli_entrypoints("gunbc-demo".to_string(), entrypoints);
+
+        let code = generator.generate_test_module("cli_contract", "build_cli_contract_graph()");
+        assert!(code.contains("CLI Contract Tests"));
+        assert!(code.contains("test_cli_contract_gunbc_demo"));
+        assert!(code.contains("test_cli_contract_print_inputs_gunbc_demo"));
+        assert!(code.contains("--print-inputs json"));
+    }
+
+    #[test]
+    fn test_generate_skips_cli_contract_section_without_entrypoints() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("in", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in"));
+
+        let spec = MockSpec::new("cli_contract")
+            .boundary("sink", "result", Value::Str("<MOCK>".into()))
+            .skip_node_example("source")
+            .skip_node_example("sink");
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+
+        let code = generator.generate_test_module("cli_contract", "build_cli_contract_graph()");
+        assert!(!code.contains("CLI Contract Tests"));
+        assert!(!code.contains("test_cli_contract_"));
+    }
+
+    #[test]
     fn test_generate_with_resources() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
@@ -5633,6 +6102,10 @@ mod tests {
 
         // Should have transport interception test
         assert!(code.contains("test_transport_interception"));
+        assert!(code.contains("test_transport_behavior_specs_cover_core_families"));
+        assert!(code.contains("default_system_models()"));
+        assert!(code.contains("derive_contract_test_specs(&models)"));
+        assert!(code.contains("generate_contract_test_harnesses(&contract_specs)"));
 
         // Should have scenario tests
         assert!(code.contains("test_scenario_all_succeed"));
@@ -5944,6 +6417,51 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Mock value type mismatch")]
+    fn test_input_mock_type_mismatch_detected() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "transform",
+            vec![port("count", "Int")],
+            vec![port("output", "String")],
+            (),
+        ));
+
+        // Input mock provides String for Int input port.
+        let spec = MockSpec::new("test")
+            .input_mock("transform", "count", Value::Str("wrong type".into()))
+            .boundary("transform", "output", Value::Str("ok".into()))
+            .skip_node_example("transform");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let _ = generator.generate_test_module("test", "build_test_graph()");
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown mock slots")]
+    fn test_input_mock_unknown_port_detected() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "transform",
+            vec![port("count", "Int")],
+            vec![port("output", "String")],
+            (),
+        ));
+
+        let spec = MockSpec::new("test")
+            .input_mock("transform", "unknown_input", Value::Int(1))
+            .boundary("transform", "output", Value::Str("ok".into()))
+            .skip_node_example("transform");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let _ = generator.generate_test_module("test", "build_test_graph()");
+    }
+
+    #[test]
     fn test_mock_type_compatibility_accepts_skipped() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
@@ -6122,6 +6640,50 @@ mod tests {
     }
 
     #[test]
+    fn test_coercion_coverage_asserts_target_input_shape() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![port("input", "String")],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![list("in_items", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in_items"));
+
+        let spec = MockSpec::new("coerce")
+            .boundary("sink", "result", Value::Str("ok".into()))
+            .skip_node_example("source")
+            .skip_node_example("sink");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let code = generator.generate_test_module("coerce", "build_coerce_graph()");
+
+        assert!(
+            code.contains("coercion target entry missing for sink.in_items"),
+            "coercion tests should assert target entry presence: {}",
+            code
+        );
+        assert!(
+            code.contains("let received = target_inputs.get(\"in_items\")"),
+            "coercion tests should inspect target input port shape: {}",
+            code
+        );
+        assert!(
+            code.contains("WrapScalar should deliver non-empty list to sink.in_items"),
+            "coercion tests should verify WrapScalar list shape: {}",
+            code
+        );
+    }
+
+    #[test]
     fn test_optional_inputs_use_mockspec_input_mocks_for_required_ports() {
         use gunbc_ir::transport::{RestResponse, TransportResponse};
 
@@ -6197,10 +6759,18 @@ mod tests {
         assert_eq!(seed_policy_for_type("Int"), SeedPolicy::Generated);
         assert_eq!(seed_policy_for_type("Bool"), SeedPolicy::Generated);
         assert_eq!(
+            seed_policy_for_type("Map<String,String>"),
+            SeedPolicy::Generated
+        );
+        assert_eq!(
             seed_policy_for_type("OptionalString"),
             SeedPolicy::Generated
         );
         assert_eq!(seed_policy_for_type("StringList"), SeedPolicy::Generated);
+        assert_eq!(
+            seed_policy_for_type("Map<String,Credential>"),
+            SeedPolicy::ExplicitSeedRequired
+        );
 
         // Fail-closed: unknown/new types default to ExplicitSeedRequired.
         assert_eq!(
@@ -6216,12 +6786,83 @@ mod tests {
 
         assert!(requires_explicit_seed(
             "TransportResponse",
-            SeedContext::RealSingleNodeRequiredInput
+            SeedContext::RealSingleNode
         ));
         assert!(!requires_explicit_seed(
             "String",
-            SeedContext::RealSingleNodeRequiredInput
+            SeedContext::RealSingleNode
         ));
+    }
+
+    #[test]
+    fn test_seed_matrix_scenario_context() {
+        assert_eq!(
+            seed_policy_for_context("TransportResponse", SeedContext::Scenario),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(
+            seed_policy_for_context("String", SeedContext::Scenario),
+            SeedPolicy::Generated
+        );
+        assert!(requires_explicit_seed("Credential", SeedContext::Scenario));
+        assert!(!requires_explicit_seed(
+            "OptionalString",
+            SeedContext::Scenario
+        ));
+    }
+
+    #[test]
+    fn test_seed_matrix_live_flow_context() {
+        assert_eq!(
+            seed_policy_for_context("TransportRequest", SeedContext::LiveFlow),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(
+            seed_policy_for_context("Map<String,String>", SeedContext::LiveFlow),
+            SeedPolicy::Generated
+        );
+        assert!(requires_explicit_seed("Secret", SeedContext::LiveFlow));
+        assert!(!requires_explicit_seed("StringList", SeedContext::LiveFlow));
+    }
+
+    #[test]
+    fn test_seed_matrix_enforcement_consistent_across_contexts() {
+        let contexts = [
+            SeedContext::RealSingleNode,
+            SeedContext::Scenario,
+            SeedContext::LiveFlow,
+        ];
+
+        for context in contexts {
+            assert!(
+                requires_explicit_seed("TransportResponse", context),
+                "semantic carrier must require explicit seed in {:?}",
+                context
+            );
+            assert!(
+                !requires_explicit_seed("String", context),
+                "structural type should not require explicit seed in {:?}",
+                context
+            );
+            assert!(
+                requires_explicit_seed("SomeNewCarrierType", context),
+                "unknown types must fail closed in {:?}",
+                context
+            );
+        }
+    }
+
+    #[test]
+    fn test_try_mock_element_value_supports_parametric_string_map() {
+        let value = try_mock_element_value("Map<String,String>", Some(1))
+            .expect("parametric map mock should generate");
+        match value {
+            Value::Map(entries) => {
+                assert_eq!(entries.len(), 1);
+                assert!(matches!(entries.get("mock_key"), Some(Value::Str(_))));
+            }
+            other => panic!("expected Value::Map, got {other:?}"),
+        }
     }
 
     #[test]

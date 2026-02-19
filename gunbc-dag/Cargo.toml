@@ -13,6 +13,10 @@ gunbc-exec = { path = "../core/exec" }
 gunbc-codegen = { path = "../core/codegen" }
 gunbc-test = { path = "../core/test" }
 
+# DSL compilation
+daglang-driver = { path = "../core/daglang/daglang-driver" }
+daglang-lower = { path = "../core/daglang/daglang-lower" }
+
 # Libraries
 gunbc-primitives = { path = "../lib/primitives" }
 gunbc-lib-transport = { path = "../lib/transport" }
@@ -32,6 +36,7 @@ gunbc-testgen-registry = { path = "../core/testgen-registry" }
 gunbc-testgen-registry-macros = { path = "../core/testgen-registry-macros" }
 gunbc-tool-registry = { path = "../core/tool-registry" }
 gunbc-tool-registry-macros = { path = "../core/tool-registry-macros" }
+gunbc-delegate-macros = { path = "../core/delegate-macros" }
 gunbc-lib-review = { path = "../lib/review" }
 gunbc-cli = { path = "../core/cli" }
 
@@ -84,6 +89,7 @@ path = "src/bin/docgen.rs"
 name = "gunbc-deps-config"
 path = "src/bin/deps_config.rs"
 
+
 [[bin]]
 name = "gunbc-dag-viz"
 path = "../target/codegen/bin/dag-viz/main.rs"
@@ -99,3 +105,7 @@ path = "../target/codegen/bin/dag-viz-recent/main.rs"
 [[bin]]
 name = "gunbc-dag-snapshot"
 path = "../target/codegen/bin/dag-snapshot/main.rs"
+
+[[bin]]
+name = "gunbc-infra"
+path = "src/bin/infra.rs"

@@ -33,6 +33,7 @@ use gunbc_exec::{
 use gunbc_ir::transport::llm::{self, ChatMessage, ChatRequest, MessageContent, Role};
 use gunbc_ir::transport::{ScopeContract, TransportRequest};
 use gunbc_ir::Value;
+use gunbc_lib_cloud_ops::{bind_credential_intent_policy, policy_allows_impersonation};
 use std::collections::HashMap;
 
 /// LLM operations for use in DAG nodes.
@@ -47,10 +48,12 @@ pub enum LlmOps {
     ///
     /// Outputs:
     /// - `service`: String - canonical provider/service ID
+    /// - `secret_name`: OptionalString - policy-bound secret override
     /// - `scheme`: String - auth scheme ("bearer" or "header")
     /// - `header_name`: String - header name for "header" scheme (e.g., "x-api-key"), empty for "bearer"
     /// - `required_scopes`: List<String> - required capability scopes for this request class
     /// - `interactive_allowed`: Bool - whether interactive recovery is allowed
+    /// - `allow_impersonation`: Bool - policy gate for SA impersonation branch
     ResolveAuth,
     /// Build a chat completion REST request from inputs.
     ///
@@ -142,21 +145,30 @@ fn execute_resolve_auth(
         }
     };
     let provider_id = provider.id.clone();
-    let intent = llm::LlmScopeContract::new(provider_id.clone()).credential_intent();
+    let fallback_intent = llm::LlmScopeContract::new(provider_id.clone()).credential_intent();
+    let intent_key = format!("llm.{}.chat_completion", provider_id);
+    let bound = bind_credential_intent_policy(&intent_key, &fallback_intent)
+        .or_else(|_| bind_credential_intent_policy("llm.chat_completion", &fallback_intent))
+        .map_err(|e| ExecError::new(format!("credential policy binding failed: {e}")))?;
+    let allow_impersonation = policy_allows_impersonation(bound.impersonation.as_ref());
+    let intent = bound.intent;
     intent.validate().map_err(|e| {
         ExecError::new(format!(
             "invalid llm credential contract for '{}': {e}",
             provider_id
         ))
     })?;
-
-    OutputMap::new()
+    let mut out = OutputMap::new()
         .str("service", provider_id)
         .str("scheme", scheme)
         .str("header_name", header_name)
         .str_list("required_scopes", intent.required_scopes)
-        .bool("interactive_allowed", true)
-        .ok()
+        .bool("interactive_allowed", intent.interactive_allowed)
+        .bool("allow_impersonation", allow_impersonation);
+    if let Some(secret_name) = intent.secret_name {
+        out = out.str("secret_name", secret_name);
+    }
+    out.ok()
 }
 
 /// Build a `ChatRequest` from DAG inputs and convert it to a `RestRequest`.
@@ -426,6 +438,8 @@ pub fn code_generation_request(
 mod tests {
     use super::*;
     use gunbc_ir::transport::TransportResponse;
+    use gunbc_lib_cloud_ops::{ENV_CREDENTIAL_POLICY_JSON, ENV_CREDENTIAL_POLICY_PROFILE};
+    use std::sync::{Mutex, OnceLock};
 
     #[test]
     fn test_prepare_chat_request_openai() {
@@ -592,6 +606,7 @@ mod tests {
             Some(&Value::str_list(vec!["llm:chat_completion".to_string()]))
         );
         assert_eq!(result.get("interactive_allowed"), Some(&Value::Bool(true)));
+        assert_eq!(result.get("allow_impersonation"), Some(&Value::Bool(true)));
     }
 
     #[test]
@@ -612,6 +627,78 @@ mod tests {
             result.get("required_scopes"),
             Some(&Value::str_list(vec!["llm:chat_completion".to_string()]))
         );
+    }
+
+    #[test]
+    fn test_resolve_auth_applies_policy_secret_binding() {
+        with_env_lock(|| {
+            std::env::set_var(
+                ENV_CREDENTIAL_POLICY_JSON,
+                serde_json::json!({
+                    "version": 0,
+                    "profiles": [{
+                        "name": "prod",
+                        "defaults": {
+                            "provider": "Gcp",
+                            "runtime": "GitHubActions"
+                        },
+                        "intents": [{
+                            "intent": "llm.openai.chat_completion",
+                            "secret": { "name": "prod-openai-token" },
+                            "required_scopes": ["llm:chat_completion"]
+                        }]
+                    }]
+                })
+                .to_string(),
+            );
+            std::env::set_var(ENV_CREDENTIAL_POLICY_PROFILE, "prod");
+
+            let mut inputs = HashMap::new();
+            inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
+            let result = LlmOps::ResolveAuth.execute(inputs).expect("resolve auth");
+
+            assert_eq!(
+                result.get("secret_name"),
+                Some(&Value::Str("prod-openai-token".to_string()))
+            );
+            assert_eq!(
+                result.get("required_scopes"),
+                Some(&Value::str_list(vec!["llm:chat_completion".to_string()]))
+            );
+            assert_eq!(result.get("allow_impersonation"), Some(&Value::Bool(true)));
+        });
+    }
+
+    #[test]
+    fn test_resolve_auth_policy_never_disables_impersonation() {
+        with_env_lock(|| {
+            std::env::set_var(
+                ENV_CREDENTIAL_POLICY_JSON,
+                serde_json::json!({
+                    "version": 0,
+                    "profiles": [{
+                        "name": "prod",
+                        "defaults": {
+                            "provider": "Gcp",
+                            "runtime": "GitHubActions"
+                        },
+                        "intents": [{
+                            "intent": "llm.openai.chat_completion",
+                            "secret": { "name": "prod-openai-token" },
+                            "required_scopes": ["llm:chat_completion"],
+                            "impersonation": { "mode": "never" }
+                        }]
+                    }]
+                })
+                .to_string(),
+            );
+            std::env::set_var(ENV_CREDENTIAL_POLICY_PROFILE, "prod");
+
+            let mut inputs = HashMap::new();
+            inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
+            let result = LlmOps::ResolveAuth.execute(inputs).expect("resolve auth");
+            assert_eq!(result.get("allow_impersonation"), Some(&Value::Bool(false)));
+        });
     }
 
     #[test]
@@ -652,6 +739,28 @@ mod tests {
 
         let err = parse_messages_from_json(&json).unwrap_err();
         assert!(err.0.contains("invalid role"));
+    }
+
+    fn with_env_lock<F>(f: F)
+    where
+        F: FnOnce() + std::panic::UnwindSafe,
+    {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        clear_policy_env();
+        let result = std::panic::catch_unwind(f);
+        clear_policy_env();
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    fn clear_policy_env() {
+        std::env::remove_var(ENV_CREDENTIAL_POLICY_JSON);
+        std::env::remove_var(ENV_CREDENTIAL_POLICY_PROFILE);
     }
 
     #[test]

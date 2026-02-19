@@ -32,11 +32,11 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::resource::{
-    capability_marker, ensure_capability_marker, AccessMode, ContentHash, Resource, ResourceHandle,
-    ResourceId, ResourceKind,
+    capability_marker, ensure_capability_marker, AccessMode, ContentHash, DagResource, Resource,
+    ResourceHandle, ResourceId, ResourceKind,
 };
 
 /// Definition of a CLI tool for the upsert pattern.
@@ -167,7 +167,7 @@ impl ToolHandle {
     }
 
     /// Get the resolved path to the tool binary.
-    pub fn path(&self) -> &PathBuf {
+    pub fn path(&self) -> &Path {
         &self.path
     }
 
@@ -310,7 +310,11 @@ impl Resource for ToolHandle {
     }
 }
 
-fn tool_resource_handle(tool: &'static CliToolDef, path: &PathBuf) -> ResourceHandle<ToolResource> {
+impl DagResource for ToolHandle {
+    const TYPE_ID: &'static str = "ToolHandle";
+}
+
+fn tool_resource_handle(tool: &'static CliToolDef, path: &Path) -> ResourceHandle<ToolResource> {
     let key = ContentHash::from_path(path);
     ResourceHandle::acquire(tool.resource_id(), key)
 }
@@ -1087,7 +1091,7 @@ mod tests {
         let handle = TEST_TOOL_GIT.acquire("/path/to/git");
 
         assert_eq!(handle.id(), "git");
-        assert_eq!(handle.path(), &PathBuf::from("/path/to/git"));
+        assert_eq!(handle.path(), Path::new("/path/to/git"));
         // A real acquired handle has a real path
         assert!(!handle.path().to_string_lossy().starts_with("/mock/"));
     }

@@ -252,42 +252,36 @@ fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
 /// Strategy: Build a stage for each "level" of the DAG based on dependencies.
 fn compute_stages(steps: &[SharedStep]) -> Vec<String> {
     let mut stages = Vec::new();
+    let mut seen = HashSet::new();
     let mut seen_checkout = false;
 
     for step in steps {
         match step {
             SharedStep::Checkout(_) => {
                 if !seen_checkout {
-                    stages.push("prepare".to_string());
+                    let name = "prepare".to_string();
+                    seen.insert(name.clone());
+                    stages.push(name);
                     seen_checkout = true;
                 }
             }
             SharedStep::DagStep {
                 node_id,
-                depends_on,
+                depends_on: _,
                 ..
             } => {
-                // If no dependencies (other than checkout), it's a "build" stage
-                // Otherwise, determine stage based on depth
-                let stage_name = if depends_on.is_empty() {
-                    node_id.0.clone()
-                } else {
-                    // Use the node id as stage name for simplicity
-                    // A more sophisticated impl would compute DAG levels
-                    node_id.0.clone()
-                };
-                if !stages.contains(&stage_name) {
-                    stages.push(stage_name);
+                if seen.insert(node_id.0.clone()) {
+                    stages.push(node_id.0.clone());
                 }
             }
             SharedStep::DagRun { tool } => {
                 let stage = format!("{}-run", NamingCase::SnakeCase.apply(&tool.binary));
-                if !stages.contains(&stage) {
+                if seen.insert(stage.clone()) {
                     stages.push(stage);
                 }
             }
             SharedStep::Run { name, .. } => {
-                if !stages.contains(name) {
+                if seen.insert(name.clone()) {
                     stages.push(name.clone());
                 }
             }

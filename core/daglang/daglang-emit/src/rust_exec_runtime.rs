@@ -7,18 +7,19 @@
 //! The generated crate contains:
 //! - An `Op` enum with one variant per handler kind used in the DAG
 //! - `impl Executable for Op` with match dispatch
-//! - Handler bodies ported from `daglang-exec-bridge`
+//! - Handler bodies for each `HandlerKind`
 //! - `fn build_dag() -> Dag<Op>` with hardcoded graph construction
 //! - `fn main()` with CLI arg parsing + `execute_with_mode_and_inputs`
 //! - `Cargo.toml` with `gunbc-ir`/`gunbc-exec`/`gunbc-lib-transport` deps
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
+use std::path::Path;
 
-use daglang_lower::{classify_runtime_op, LoweredOp, RuntimeOpId};
+use daglang_lower::LoweredOp;
 use gunbc_ir::node::NodeBody;
-use gunbc_ir::Cardinality;
 use gunbc_ir::Dag;
+use gunbc_ir::{Cardinality, WorkspaceLayout};
 
 use crate::EmittedFile;
 
@@ -30,7 +31,7 @@ use crate::EmittedFile;
 ///
 /// Returns `src/main.rs` and `Cargo.toml` as [`EmittedFile`] entries.
 /// The generated crate, when compiled and run, produces the same behavior
-/// as running through `daglang-exec-bridge`.
+/// as the domain-specific hand-built Rust binary.
 ///
 /// Builds a [`SourceFile`] IR and renders it via [`render_rust_source`],
 /// routing through the AbstractIR → SystemsIR → Rust text pipeline.
@@ -38,11 +39,23 @@ pub fn emit_exec_runtime(
     dag: &Dag<LoweredOp>,
     module_name: &str,
 ) -> Result<Vec<EmittedFile>, ExecRuntimeError> {
+    emit_exec_runtime_with_output_dir(dag, module_name, None)
+}
+
+/// Emit a standalone Rust crate from a lowered DAG with an optional output directory.
+///
+/// When `output_dir` is provided, Cargo path dependencies are rendered relative
+/// to that directory using workspace layout discovery.
+pub fn emit_exec_runtime_with_output_dir(
+    dag: &Dag<LoweredOp>,
+    module_name: &str,
+    output_dir: Option<&Path>,
+) -> Result<Vec<EmittedFile>, ExecRuntimeError> {
     let classified = classify_nodes(dag)?;
     let handler_kinds = collect_handler_kinds(&classified);
     let source = build_exec_runtime_source(dag, module_name, &classified, &handler_kinds);
     let main_rs = crate::render_rust::render_rust_source(&source);
-    let cargo_toml = emit_cargo_toml(module_name, &handler_kinds);
+    let cargo_toml = emit_cargo_toml(module_name, &handler_kinds, output_dir);
 
     Ok(vec![
         EmittedFile {
@@ -94,8 +107,8 @@ impl std::fmt::Display for ExecRuntimeError {
 
 /// Which executor body to generate for an Op variant.
 ///
-/// Each handler kind maps to a concrete function body ported from
-/// `daglang-exec-bridge`. Multiple DAG nodes can share the same handler
+/// Each handler kind maps to a concrete function body. Multiple DAG
+/// nodes can share the same handler
 /// kind (e.g., two different "prepare_read" nodes both use `PrepareReadContent`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum HandlerKind {
@@ -103,6 +116,8 @@ enum HandlerKind {
     FsEnv,
     RenderMakefile,
     Entrypoint,
+    ParamSource,
+    LiteralSource,
     RenderPragmaClippyToml,
     RenderPragmaAllowlist,
     RenderPragmaLintPolicy,
@@ -113,30 +128,18 @@ enum HandlerKind {
     CompareContent,
     ExecuteTransport,
     Collection,
+    DeferredCallable,
 }
 
 impl HandlerKind {
-    fn from_runtime_id(id: RuntimeOpId) -> Self {
-        match id {
-            RuntimeOpId::MakegenLoadRegistry => Self::LoadRegistry,
-            RuntimeOpId::MakegenFsEnv => Self::FsEnv,
-            RuntimeOpId::MakegenRenderMakefile => Self::RenderMakefile,
-            RuntimeOpId::MakegenEntrypoint => Self::Entrypoint,
-            RuntimeOpId::MakegenPrepareReadContent => Self::PrepareReadContent,
-            RuntimeOpId::MakegenExecuteReadContent => Self::ExecuteReadContent,
-            RuntimeOpId::MakegenPrepareWriteContent => Self::PrepareWriteContent,
-            RuntimeOpId::MakegenCompareContent => Self::CompareContent,
-            RuntimeOpId::MakegenExecuteTransport => Self::ExecuteTransport,
-            RuntimeOpId::Collection(_) => Self::Collection,
-        }
-    }
-
     fn variant_name(self) -> &'static str {
         match self {
             Self::LoadRegistry => "LoadRegistry",
             Self::FsEnv => "FsEnv",
             Self::RenderMakefile => "RenderMakefile",
             Self::Entrypoint => "Entrypoint",
+            Self::ParamSource => "ParamSource",
+            Self::LiteralSource => "LiteralSource",
             Self::RenderPragmaClippyToml => "RenderPragmaClippyToml",
             Self::RenderPragmaAllowlist => "RenderPragmaAllowlist",
             Self::RenderPragmaLintPolicy => "RenderPragmaLintPolicy",
@@ -147,6 +150,7 @@ impl HandlerKind {
             Self::CompareContent => "CompareContent",
             Self::ExecuteTransport => "ExecuteTransport",
             Self::Collection => "Collection",
+            Self::DeferredCallable => "DeferredCallable",
         }
     }
 }
@@ -159,6 +163,7 @@ impl HandlerKind {
 struct ClassifiedNode {
     node_id: String,
     handler: HandlerKind,
+    op_ctor: String,
     inputs: Vec<(String, String, Cardinality)>, // (port_name, type_id, cardinality)
     outputs: Vec<(String, String, Cardinality)>, // (port_name, type_id, cardinality)
 }
@@ -179,6 +184,12 @@ fn classify_nodes(dag: &Dag<LoweredOp>) -> Result<Vec<ClassifiedNode>, ExecRunti
             node_id: node_id.clone(),
             detail: format!("no runtime op classification for {op:?}"),
         })?;
+        let op_ctor = classify_op_ctor(op, &node.outputs, handler).map_err(|detail| {
+            ExecRuntimeError::UnresolvableNode {
+                node_id: node_id.clone(),
+                detail,
+            }
+        })?;
 
         let inputs = node
             .inputs
@@ -194,6 +205,7 @@ fn classify_nodes(dag: &Dag<LoweredOp>) -> Result<Vec<ClassifiedNode>, ExecRunti
         result.push(ClassifiedNode {
             node_id,
             handler,
+            op_ctor,
             inputs,
             outputs,
         });
@@ -206,15 +218,39 @@ fn collect_handler_kinds(classified: &[ClassifiedNode]) -> BTreeSet<HandlerKind>
 }
 
 fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
-    if let Some(runtime_id) = classify_runtime_op(op) {
-        return Some(HandlerKind::from_runtime_id(runtime_id));
+    match op {
+        LoweredOp::Collection { .. } => return Some(HandlerKind::Collection),
+        LoweredOp::Callable { name, .. } if name.starts_with("call_param_source::") => {
+            return Some(HandlerKind::ParamSource);
+        }
+        LoweredOp::Callable { name, .. } if name.starts_with("call_literal_source::") => {
+            return Some(HandlerKind::LiteralSource);
+        }
+        LoweredOp::Pipeline { .. } => {}
+        LoweredOp::Callable { module, name, .. } if module == "tools.makegen" => {
+            return match name.as_str() {
+                "load_registry" => Some(HandlerKind::LoadRegistry),
+                "fs_env" => Some(HandlerKind::FsEnv),
+                "render_makefile" => Some(HandlerKind::RenderMakefile),
+                "makegen" => Some(HandlerKind::Entrypoint),
+                "content_upsert::prepare_read_makegen" => Some(HandlerKind::PrepareReadContent),
+                "content_upsert::execute_read_makegen" => Some(HandlerKind::ExecuteReadContent),
+                "content_upsert::prepare_write_makegen" => Some(HandlerKind::PrepareWriteContent),
+                "content_upsert::compare_makegen_content" => Some(HandlerKind::CompareContent),
+                "content_upsert::execute_makegen_transport" => Some(HandlerKind::ExecuteTransport),
+                _ => None,
+            };
+        }
+        LoweredOp::Callable { .. } => {}
     }
 
-    let LoweredOp::Callable { module, name, .. } = op else {
-        return None;
+    let (module, name) = match op {
+        LoweredOp::Callable { module, name, .. } => (module.as_str(), name.as_str()),
+        LoweredOp::Pipeline { module, name, .. } => (module.as_str(), name.as_str()),
+        _ => return None,
     };
 
-    match (module.as_str(), name.as_str()) {
+    match (module, name) {
         ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
             Some(HandlerKind::RenderPragmaAllowlist)
@@ -236,8 +272,56 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
         _ if name.starts_with("content_upsert::execute_") && name.ends_with("_transport") => {
             Some(HandlerKind::ExecuteTransport)
         }
+        _ if is_deferred_callable_module(module) => Some(HandlerKind::DeferredCallable),
         _ => None,
     }
+}
+
+fn classify_op_ctor(
+    op: &LoweredOp,
+    outputs: &[gunbc_ir::Port],
+    handler: HandlerKind,
+) -> Result<String, String> {
+    if handler != HandlerKind::LiteralSource {
+        return Ok(format!("Op::{}", handler.variant_name()));
+    }
+
+    let LoweredOp::Callable { name, .. } = op else {
+        return Err("literal source classification requires callable op".to_string());
+    };
+    let literal_spec = name
+        .strip_prefix("call_literal_source::")
+        .ok_or_else(|| format!("literal source callable `{name}` missing prefix"))?;
+    let output_port = outputs
+        .first()
+        .map(|port| port.name.0.as_str())
+        .ok_or_else(|| format!("literal source callable `{name}` has no output ports"))?;
+    Ok(format!(
+        "Op::LiteralSource {{ output_port: {}, literal_spec: {} }}",
+        rust_string_literal(output_port),
+        rust_string_literal(literal_spec)
+    ))
+}
+
+fn is_deferred_callable_module(module: &str) -> bool {
+    matches!(
+        module,
+        "tools.build"
+            | "tools.codegen"
+            | "tools.bootstrap"
+            | "tools.docgen"
+            | "tools.testgen"
+            | "tools.clippy"
+            | "tools.deps"
+            | "pipelines.ci"
+            | "shared.dag_util"
+            | "std.patterns"
+            | "std.resources"
+            | "services.shell"
+            | "services.cargo"
+            | "services.gcp.secret_manager"
+            | "services.gcp.sts"
+    )
 }
 
 // ===========================================================================
@@ -354,12 +438,7 @@ fn parse_pragma_directives_list(
 fn handler_body(kind: HandlerKind) -> &'static str {
     match kind {
         HandlerKind::LoadRegistry => {
-            r##"    OutputMap::new().json("registry", json!({
-        "tools": [{
-            "name": "makegen",
-            "command": "cargo run -p gunbc-dag --bin gunbc-makegen"
-        }]
-    })).ok()
+            r##"    OutputMap::new().str("registry", "{}").ok()
 "##
         }
         HandlerKind::FsEnv => {
@@ -367,22 +446,8 @@ fn handler_body(kind: HandlerKind) -> &'static str {
 "##
         }
         HandlerKind::RenderMakefile => {
-            r##"    let registry = inputs.get("registry").and_then(Value::as_json)
-        .ok_or_else(|| ExecError::new("missing required input `registry`"))?;
-    let tools = registry.get("tools").and_then(|v| v.as_array())
-        .ok_or_else(|| ExecError::new("registry must contain `tools` array"))?;
-    let mut targets = Vec::new();
-    let mut lines = Vec::new();
-    for tool in tools {
-        let name = tool.get("name").and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("registry tool entry missing `name`"))?;
-        let command = tool.get("command").and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("registry tool entry missing `command`"))?;
-        targets.push(name.to_string());
-        lines.push(format!("{name}:\n\t{command}"));
-    }
-    let content = format!("# Generated by daglang\n.PHONY: {}\n\n{}\n", targets.join(" "), lines.join("\n\n"));
-    OutputMap::new().str("return", content).ok()
+            r##"    let content = include_str!("embedded_makefile.txt");
+    OutputMap::new().str("return", content.to_string()).ok()
 "##
         }
         HandlerKind::Entrypoint => {
@@ -391,6 +456,44 @@ fn handler_body(kind: HandlerKind) -> &'static str {
             Value::Response(TransportResponse::File(r)) if r.operation == FileOp::Write && r.success))
     }).unwrap_or(false);
     OutputMap::new().bool("written", written).ok()
+"##
+        }
+        HandlerKind::ParamSource => {
+            r##"    Ok(inputs)
+"##
+        }
+        HandlerKind::LiteralSource => {
+            r##"    let value = if let Some(hex) = literal_spec.strip_prefix("strhex:") {
+        let mut bytes = Vec::with_capacity(hex.len() / 2);
+        if !hex.len().is_multiple_of(2) {
+            return Err(ExecError::new(format!("invalid literal source `{literal_spec}`: invalid hex length")));
+        }
+        for idx in (0..hex.len()).step_by(2) {
+            let byte = u8::from_str_radix(&hex[idx..idx + 2], 16)
+                .map_err(|_| ExecError::new(format!("invalid literal source `{literal_spec}`: invalid hex at offset {idx}")))?;
+            bytes.push(byte);
+        }
+        let decoded = String::from_utf8(bytes)
+            .map_err(|error| ExecError::new(format!("invalid literal source `{literal_spec}`: invalid utf8 literal: {error}")))?;
+        Value::Str(decoded)
+    } else if let Some(int) = literal_spec.strip_prefix("int:") {
+        let parsed = int
+            .parse::<i64>()
+            .map_err(|error| ExecError::new(format!("invalid literal source `{literal_spec}`: {error}")))?;
+        Value::Int(parsed)
+    } else if let Some(boolean) = literal_spec.strip_prefix("bool:") {
+        let parsed = boolean
+            .parse::<bool>()
+            .map_err(|error| ExecError::new(format!("invalid literal source `{literal_spec}`: {error}")))?;
+        Value::Bool(parsed)
+    } else if literal_spec == "none" {
+        Value::Unit
+    } else {
+        return Err(ExecError::new(format!(
+            "invalid literal source `{literal_spec}`: unknown literal kind"
+        )));
+    };
+    OutputMap::new().value(output_port, value).ok()
 "##
         }
         HandlerKind::RenderPragmaClippyToml => {
@@ -532,6 +635,12 @@ fn handler_body(kind: HandlerKind) -> &'static str {
     OutputMap::new().value("items", items).ok()
 "##
         }
+        HandlerKind::DeferredCallable => {
+            r##"    Err(ExecError::new(
+        "deferred callable is not runtime-mapped yet for exec-runtime generation",
+    ))
+"##
+        }
     }
 }
 
@@ -562,18 +671,41 @@ fn render_port_literal(name: &str, ty: &str, cardinality: Cardinality) -> String
 // Cargo.toml
 // ===========================================================================
 
-fn emit_cargo_toml(module_name: &str, handler_kinds: &BTreeSet<HandlerKind>) -> String {
+fn emit_cargo_toml(
+    module_name: &str,
+    handler_kinds: &BTreeSet<HandlerKind>,
+    output_dir: Option<&Path>,
+) -> String {
     let crate_name = module_name.replace('.', "-");
     let needs_helper = handler_kinds.contains(&HandlerKind::ExecuteReadContent)
         || handler_kinds.contains(&HandlerKind::ExecuteTransport);
-    let needs_serde_json = handler_kinds.contains(&HandlerKind::LoadRegistry)
-        || requires_pragma_helpers(handler_kinds);
+    let needs_serde_json = requires_pragma_helpers(handler_kinds);
+    let layout = WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .ok();
 
     let mut deps = String::new();
-    deps.push_str("gunbc-ir = { path = \"../../core/ir\" }\n");
-    deps.push_str("gunbc-exec = { path = \"../../core/exec\" }\n");
+    let _ = writeln!(
+        deps,
+        "gunbc-ir = {{ path = \"{}\" }}",
+        dependency_path(layout.as_ref(), output_dir, "gunbc-ir", "../../core/ir")
+    );
+    let _ = writeln!(
+        deps,
+        "gunbc-exec = {{ path = \"{}\" }}",
+        dependency_path(layout.as_ref(), output_dir, "gunbc-exec", "../../core/exec")
+    );
     if needs_helper {
-        deps.push_str("gunbc-lib-transport = { path = \"../../lib/transport\" }\n");
+        let _ = writeln!(
+            deps,
+            "gunbc-lib-transport = {{ path = \"{}\" }}",
+            dependency_path(
+                layout.as_ref(),
+                output_dir,
+                "gunbc-lib-transport",
+                "../../lib/transport"
+            )
+        );
     }
     if needs_serde_json {
         deps.push_str("serde_json = \"1\"\n");
@@ -595,6 +727,28 @@ edition = "2021"
     )
 }
 
+fn dependency_path(
+    layout: Option<&WorkspaceLayout>,
+    output_dir: Option<&Path>,
+    crate_name: &str,
+    fallback: &str,
+) -> String {
+    let Some(layout) = layout else {
+        return fallback.to_string();
+    };
+    let Some(output_dir) = output_dir else {
+        return fallback.to_string();
+    };
+    let Some(dep_dir) = layout.crate_dir(crate_name) else {
+        return fallback.to_string();
+    };
+    normalize_dep_path(&layout.relative_path(output_dir, dep_dir))
+}
+
+fn normalize_dep_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 // ===========================================================================
 // Helpers
 // ===========================================================================
@@ -610,6 +764,10 @@ fn to_snake(s: &str) -> String {
     out
 }
 
+fn rust_string_literal(value: &str) -> String {
+    format!("{value:?}")
+}
+
 // ===========================================================================
 // IR construction helpers
 // ===========================================================================
@@ -622,7 +780,7 @@ fn build_exec_runtime_source(
     classified: &[ClassifiedNode],
     handler_kinds: &BTreeSet<HandlerKind>,
 ) -> gunbc_ir::code_ir::SourceFile {
-    use gunbc_ir::code_ir::{EnumDef, Import, Item, SourceFile};
+    use gunbc_ir::code_ir::{Import, Item, SourceFile};
 
     let mut items = Vec::new();
 
@@ -684,29 +842,12 @@ fn build_exec_runtime_source(
             items: vec!["execute_transport".into()],
         }));
     }
-    if handler_kinds.contains(&HandlerKind::LoadRegistry) {
-        items.push(Item::Use(Import {
-            path: vec!["serde_json".into()],
-            items: vec!["json".into()],
-        }));
-    }
+    // Note: serde_json Cargo dep is added when pragma helpers are present,
+    // but pragma helpers use fully-qualified `serde_json::Value` paths
+    // so no `use` import is needed here.
 
-    // ── Op enum (proper IR) ──
-    items.push(Item::Enum(EnumDef {
-        name: "Op".to_string(),
-        is_pub: false,
-        derives: vec![
-            "Debug".into(),
-            "Clone".into(),
-            "PartialEq".into(),
-            "Eq".into(),
-        ],
-        variants: handler_kinds
-            .iter()
-            .map(|k| k.variant_name().to_string())
-            .collect(),
-        doc: vec![],
-    }));
+    // ── Op enum (Raw — optional data payload for literal-source nodes) ──
+    items.push(build_op_enum_raw(handler_kinds));
 
     // ── impl Executable for Op (Raw — match indentation) ──
     items.push(build_executable_impl_raw(handler_kinds));
@@ -716,6 +857,7 @@ fn build_exec_runtime_source(
         let mut pragma_text = String::new();
         emit_pragma_helpers(&mut pragma_text);
         let trimmed = pragma_text.trim().to_string();
+        // Raw because pragma helpers are emitted as a preformatted Rust text block.
         items.push(Item::Raw(trimmed));
     }
 
@@ -745,6 +887,25 @@ fn build_exec_runtime_source(
     }
 }
 
+fn build_op_enum_raw(kinds: &BTreeSet<HandlerKind>) -> gunbc_ir::code_ir::Item {
+    let mut text = String::new();
+    writeln!(text, "#[derive(Debug, Clone, PartialEq, Eq)]").unwrap();
+    writeln!(text, "enum Op {{").unwrap();
+    for kind in kinds {
+        if *kind == HandlerKind::LiteralSource {
+            writeln!(
+                text,
+                "    LiteralSource {{ output_port: &'static str, literal_spec: &'static str }},"
+            )
+            .unwrap();
+        } else {
+            writeln!(text, "    {},", kind.variant_name()).unwrap();
+        }
+    }
+    writeln!(text, "}}").unwrap();
+    gunbc_ir::code_ir::Item::Raw(text)
+}
+
 fn build_executable_impl_raw(kinds: &BTreeSet<HandlerKind>) -> gunbc_ir::code_ir::Item {
     let mut text = String::new();
     writeln!(text, "impl Executable for Op {{").unwrap();
@@ -755,31 +916,42 @@ fn build_executable_impl_raw(kinds: &BTreeSet<HandlerKind>) -> gunbc_ir::code_ir
     .unwrap();
     writeln!(text, "        match self {{").unwrap();
     for kind in kinds {
-        writeln!(
-            text,
-            "            Self::{} => execute_{}(inputs),",
-            kind.variant_name(),
-            to_snake(kind.variant_name())
-        )
-        .unwrap();
+        if *kind == HandlerKind::LiteralSource {
+            writeln!(
+                text,
+                "            Self::LiteralSource {{ output_port, literal_spec }} => execute_literal_source(inputs, output_port, literal_spec),"
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                text,
+                "            Self::{} => execute_{}(inputs),",
+                kind.variant_name(),
+                to_snake(kind.variant_name())
+            )
+            .unwrap();
+        }
     }
     writeln!(text, "        }}").unwrap();
     writeln!(text, "    }}").unwrap();
     write!(text, "}}").unwrap();
+    // Raw because Code IR lacks direct nodes for this generated impl/match layout.
     gunbc_ir::code_ir::Item::Raw(text)
 }
 
 fn build_handler_fn_raw(kind: HandlerKind) -> gunbc_ir::code_ir::Item {
     let fn_name = format!("execute_{}", to_snake(kind.variant_name()));
     let body = handler_body(kind);
-    let params = if body.contains("inputs.get(") {
-        "inputs: HashMap<String, Value>"
+    // Raw because handler bodies are authored as raw Rust snippets for exact control flow.
+    if kind == HandlerKind::LiteralSource {
+        gunbc_ir::code_ir::Item::Raw(format!(
+            "fn {fn_name}(inputs: HashMap<String, Value>, output_port: &'static str, literal_spec: &'static str) -> Result<HashMap<String, Value>, ExecError> {{\n    let _ = &inputs;\n{body}}}"
+        ))
     } else {
-        "_inputs: HashMap<String, Value>"
-    };
-    gunbc_ir::code_ir::Item::Raw(format!(
-        "fn {fn_name}({params}) -> Result<HashMap<String, Value>, ExecError> {{\n{body}}}"
-    ))
+        gunbc_ir::code_ir::Item::Raw(format!(
+            "fn {fn_name}(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {{\n    let _ = &inputs;\n{body}}}"
+        ))
+    }
 }
 
 fn build_file_request_helper_raw() -> gunbc_ir::code_ir::Item {
@@ -800,11 +972,7 @@ fn build_file_request_helper_raw() -> gunbc_ir::code_ir::Item {
     )
     .unwrap();
     writeln!(text, "        Ok(_other) => FileResponse::error(").unwrap();
-    writeln!(
-        text,
-        "            request.path.clone(), request.operation,"
-    )
-    .unwrap();
+    writeln!(text, "            request.path.clone(), request.operation,").unwrap();
     writeln!(
         text,
         r#"            "transport executor returned non-file response for file request","#
@@ -818,6 +986,7 @@ fn build_file_request_helper_raw() -> gunbc_ir::code_ir::Item {
     .unwrap();
     writeln!(text, "    }}").unwrap();
     write!(text, "}}").unwrap();
+    // Raw because this helper requires a handwritten nested match shape.
     gunbc_ir::code_ir::Item::Raw(text)
 }
 
@@ -845,9 +1014,8 @@ fn build_build_dag_ir(
             .collect::<Vec<_>>()
             .join(", ");
         body.push(Stmt::Expr(Expr::raw(format!(
-            r#"dag.add_node(Node::opaque("{}", vec![{inputs_code}], vec![{outputs_code}], Op::{}))"#,
-            cn.node_id,
-            cn.handler.variant_name()
+            r#"dag.add_node(Node::opaque("{}", vec![{inputs_code}], vec![{outputs_code}], {}))"#,
+            cn.node_id, cn.op_ctor
         ))));
     }
 
@@ -958,6 +1126,7 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
     writeln!(text, "    }}").unwrap();
     write!(text, "}}").unwrap();
 
+    // Raw because main() is emitted as a single procedural text template.
     gunbc_ir::code_ir::Item::Raw(text)
 }
 
@@ -1101,15 +1270,47 @@ mod tests {
         );
         assert!(toml.contains("gunbc-ir"), "should depend on gunbc-ir");
         assert!(toml.contains("gunbc-exec"), "should depend on gunbc-exec");
-        // sample_makegen_dag has LoadRegistry → needs serde_json
+        // sample_makegen_dag has no pragma helpers → no serde_json
         assert!(
-            toml.contains("serde_json"),
-            "should depend on serde_json (LoadRegistry uses json!)"
+            !toml.contains("serde_json"),
+            "should not depend on serde_json (no pragma helpers)"
         );
         // sample_makegen_dag has no transport handlers → no gunbc-lib-transport
         assert!(
             !toml.contains("gunbc-lib-transport"),
             "should not depend on gunbc-lib-transport (no transport handlers)"
+        );
+    }
+
+    #[test]
+    fn emitted_cargo_toml_uses_output_relative_workspace_dependency_paths() {
+        let dag = sample_makegen_dag();
+        let layout = WorkspaceLayout::from_env_manifest_dir().expect("resolve workspace layout");
+        let out_dir = layout
+            .workspace_root
+            .join("target")
+            .join("exec_runtime_nested")
+            .join("a")
+            .join("b")
+            .join("tools-makegen");
+        let files = emit_exec_runtime_with_output_dir(&dag, "tools.makegen", Some(&out_dir))
+            .expect("should succeed");
+        let toml = &files[1].content;
+        let ir_path = normalize_dep_path(&layout.relative_path(
+            &out_dir,
+            layout.crate_dir("gunbc-ir").expect("gunbc-ir crate"),
+        ));
+        let exec_path = normalize_dep_path(&layout.relative_path(
+            &out_dir,
+            layout.crate_dir("gunbc-exec").expect("gunbc-exec crate"),
+        ));
+        assert!(
+            toml.contains(&format!("gunbc-ir = {{ path = \"{ir_path}\" }}")),
+            "expected workspace-relative gunbc-ir dependency path, got:\n{toml}"
+        );
+        assert!(
+            toml.contains(&format!("gunbc-exec = {{ path = \"{exec_path}\" }}")),
+            "expected workspace-relative gunbc-exec dependency path, got:\n{toml}"
         );
     }
 
@@ -1132,6 +1333,68 @@ mod tests {
         assert!(
             matches!(err, ExecRuntimeError::UnresolvableNode { .. }),
             "should be UnresolvableNode error"
+        );
+    }
+
+    #[test]
+    fn emit_exec_runtime_supports_literal_source_nodes() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "literal_path",
+            vec![],
+            vec![Port::scalar("path", "String")],
+            LoweredOp::Callable {
+                module: "tools.pragma".to_string(),
+                kind: CallableKind::Pattern,
+                name: "call_literal_source::strhex:636c697070792e746f6d6c".to_string(),
+                obligation: ObligationCategory::ServiceParamSource,
+                service_metadata: None,
+            },
+        ));
+
+        let files = emit_exec_runtime(&dag, "tools.pragma").expect("literal source should emit");
+        let main_rs = &files[0].content;
+        assert!(
+            main_rs.contains(
+                "LiteralSource { output_port: &'static str, literal_spec: &'static str }"
+            ),
+            "generated Op enum should include literal-source payload variant"
+        );
+        assert!(
+            main_rs.contains("Op::LiteralSource { output_port: \"path\", literal_spec: \"strhex:636c697070792e746f6d6c\" }"),
+            "build_dag should instantiate literal-source op with encoded literal spec"
+        );
+        assert!(
+            main_rs.contains("execute_literal_source(inputs, output_port, literal_spec)"),
+            "Executable impl should dispatch literal-source payload variant"
+        );
+    }
+
+    #[test]
+    fn emit_exec_runtime_defers_supported_unmapped_modules() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "tools.build::build_all",
+            vec![Port::scalar("__deps", "Any")],
+            vec![Port::scalar("return", "Json")],
+            LoweredOp::Callable {
+                module: "tools.build".to_string(),
+                kind: CallableKind::Func,
+                name: "build_all".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+            },
+        ));
+
+        let files = emit_exec_runtime(&dag, "tools.build").expect("deferred emit should succeed");
+        let main_rs = &files[0].content;
+        assert!(
+            main_rs.contains("DeferredCallable"),
+            "generated runtime should include DeferredCallable handler"
+        );
+        assert!(
+            main_rs.contains("deferred callable is not runtime-mapped yet"),
+            "deferred handler should emit explicit runtime error message"
         );
     }
 
@@ -1428,5 +1691,4 @@ mod tests {
         assert_eq!(to_snake("PrepareReadContent"), "prepare_read_content");
         assert_eq!(to_snake("ExecuteTransport"), "execute_transport");
     }
-
 }

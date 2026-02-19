@@ -23,33 +23,34 @@ use gunbc_ir::code_ir::{Expr, FnDef, Import, Item, SourceFile, Stmt};
 use gunbc_ir::language::{rust_type as lang_rust_type, NamingCase};
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::Cardinality;
+use std::borrow::Cow;
 use std::fmt::Write;
 
 /// Metadata about a tool for CLI generation.
 #[derive(Debug, Clone)]
 pub struct ToolMeta {
     /// Crate name (e.g., "gunbc-gist")
-    pub crate_name: String,
+    pub crate_name: Cow<'static, str>,
     /// Tool name for display (e.g., "gist")
-    pub tool_name: String,
+    pub tool_name: Cow<'static, str>,
     /// Short description
-    pub description: String,
+    pub description: Cow<'static, str>,
     /// The graph builder function name (e.g., "build_gist_graph").
-    pub graph_builder_call: String,
+    pub graph_builder_call: Cow<'static, str>,
     /// Arguments to pass to graph builder (e.g., "extensions.clone(), public")
-    pub graph_builder_args: String,
+    pub graph_builder_args: Cow<'static, str>,
     /// Whether the graph builder returns Result<Dag, BuilderError>
     pub returns_result: bool,
     /// Output port to check for success (e.g., "overall_success" for CI).
     /// If this port is false, the CLI exits with code 1.
-    pub success_port: Option<String>,
+    pub success_port: Option<Cow<'static, str>>,
     /// Enable step mode - generates `step <node>` subcommand for CI providers.
     /// This allows executing individual DAG nodes for better CI visibility.
     pub enable_step_mode: bool,
     /// Rust expression that returns a MockSpec for dry-run boundary mocking.
     /// When set, the generated CLI calls this instead of using inline boundary values.
     /// Example: "gunbc_gist::graph_mock::gist_snapshot_mock_spec()"
-    pub mock_spec_call: Option<String>,
+    pub mock_spec_call: Option<Cow<'static, str>>,
 }
 
 /// An entrypoint that becomes a CLI flag.
@@ -280,12 +281,7 @@ pub fn generate_cli_with_import(
 // ============================================================================
 
 /// Build the import items for the generated CLI.
-fn build_cli_imports(
-    tool: &ToolMeta,
-    custom_import: Option<&str>,
-    step_mode: bool,
-    has_entrypoints: bool,
-) -> Vec<Item> {
+fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bool) -> Vec<Item> {
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
 
     // gunbc_exec imports
@@ -310,13 +306,11 @@ fn build_cli_imports(
         }),
         Item::Use(Import {
             path: vec!["gunbc_ir".to_string()],
-            items: {
-                let mut ir_items = vec!["detect_entrypoints".to_string()];
-                if has_entrypoints {
-                    ir_items.push("Value".to_string());
-                }
-                ir_items
-            },
+            items: vec![
+                "detect_entrypoints".to_string(),
+                "to_bridge_json".to_string(),
+                "Value".to_string(),
+            ],
         }),
     ];
 
@@ -331,6 +325,7 @@ fn build_cli_imports(
         Some(line) if !line.is_empty() => line.to_string(),
         _ => format!("use {}::build_{}_graph;", crate_module, tool.tool_name),
     };
+    // Raw because: tool imports vary per binary and can't be expressed as a fixed Use node.
     items.push(Item::Raw(tool_import));
 
     // std imports (HashMap only needed in step mode for env_dict/inputs)
@@ -424,8 +419,39 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     }
     code.push_str("];\n\n");
 
+    code.push_str("let mut parse_args: Vec<String> = Vec::with_capacity(args.len());\n");
+    code.push_str("if let Some(program) = args.first() {\n");
+    code.push_str("    parse_args.push(program.clone());\n");
+    code.push_str("}\n");
+    code.push_str("let mut print_inputs_json = false;\n");
+    code.push_str("let mut raw_idx = 1usize;\n");
+    code.push_str("while raw_idx < args.len() {\n");
+    code.push_str("    let arg = &args[raw_idx];\n");
+    code.push_str("    if arg == \"--print-inputs\" {\n");
+    code.push_str("        raw_idx += 1;\n");
+    code.push_str("        if raw_idx >= args.len() {\n");
+    code.push_str("            eprintln!(\"--print-inputs requires format: 'json'\");\n");
+    code.push_str("            process::exit(1);\n");
+    code.push_str("        }\n");
+    code.push_str("        if args[raw_idx].as_str() != \"json\" {\n");
+    code.push_str("            eprintln!(\"unsupported --print-inputs format '{}'; expected 'json'\", args[raw_idx]);\n");
+    code.push_str("            process::exit(1);\n");
+    code.push_str("        }\n");
+    code.push_str("        print_inputs_json = true;\n");
+    code.push_str("    } else if let Some(format) = arg.strip_prefix(\"--print-inputs=\") {\n");
+    code.push_str("        if format != \"json\" {\n");
+    code.push_str("            eprintln!(\"unsupported --print-inputs format '{}'; expected 'json'\", format);\n");
+    code.push_str("            process::exit(1);\n");
+    code.push_str("        }\n");
+    code.push_str("        print_inputs_json = true;\n");
+    code.push_str("    } else {\n");
+    code.push_str("        parse_args.push(arg.clone());\n");
+    code.push_str("    }\n");
+    code.push_str("    raw_idx += 1;\n");
+    code.push_str("}\n\n");
+
     // Parse
-    code.push_str("let parsed = gunbc_cli::parse(&args, &schema).unwrap_or_else(|e| {\n");
+    code.push_str("let parsed = gunbc_cli::parse(&parse_args, &schema).unwrap_or_else(|e| {\n");
     code.push_str("    eprintln!(\"{}\", e);\n");
     code.push_str("    process::exit(1);\n");
     code.push_str("});\n\n");
@@ -436,6 +462,18 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     // Extract dry_run and cli_inputs (take ownership of values map)
     code.push_str("let dry_run = parsed.dry_run;\n");
     code.push_str("let cli_inputs = parsed.values;\n");
+    code.push_str("if print_inputs_json {\n");
+    code.push_str("    let mut ordered_inputs = std::collections::BTreeMap::new();\n");
+    code.push_str("    for (port, value) in &cli_inputs {\n");
+    code.push_str("        ordered_inputs.insert(port.clone(), value.clone());\n");
+    code.push_str("    }\n");
+    code.push_str("    if let Some(json) = to_bridge_json(&Value::Map(ordered_inputs)) {\n");
+    code.push_str("        println!(\"{}\", json);\n");
+    code.push_str("    } else {\n");
+    code.push_str("        println!(\"{{}}\");\n");
+    code.push_str("    }\n");
+    code.push_str("    return;\n");
+    code.push_str("}\n");
 
     // Extract local variables from cli_inputs for graph_builder_args compatibility
     for ep in entrypoints {
@@ -492,7 +530,7 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
 }
 
 /// Generate the mock_spec dry-run setup expression.
-fn generate_mock_setup(mock_spec_call: &Option<String>) -> String {
+fn generate_mock_setup(mock_spec_call: &Option<Cow<'static, str>>) -> String {
     let call = mock_spec_call
         .as_deref()
         .expect("all tools must have mock_spec_call set");
@@ -625,7 +663,7 @@ fn build_cli_source_file(
     entrypoints: &[CliEntrypoint],
     custom_import: Option<&str>,
 ) -> SourceFile {
-    let imports = build_cli_imports(tool, custom_import, false, !entrypoints.is_empty());
+    let imports = build_cli_imports(tool, custom_import, false);
 
     let main_fn = build_main_fn(tool, entrypoints);
     let help_fn = build_help_fn(tool, entrypoints);
@@ -710,6 +748,7 @@ fn build_help_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          println!(\"OPTIONS:\");\n\
          {help_options}\
          println!(\"    -n, --dry-run        Don't perform actual I/O\");\n\
+         println!(\"    --print-inputs json  Print parsed inputs as JSON and exit\");\n\
          println!(\"    -h, --help           Print this help\");\n\
          println!();\n\
          println!(\"Progress display is automatic based on terminal capabilities.\");",
@@ -739,7 +778,7 @@ fn build_step_mode_source_file(
     entrypoints: &[CliEntrypoint],
     custom_import: Option<&str>,
 ) -> SourceFile {
-    let imports = build_cli_imports(tool, custom_import, true, !entrypoints.is_empty());
+    let imports = build_cli_imports(tool, custom_import, true);
 
     let main_fn = build_step_main_fn();
     let run_full_fn = build_run_full_dag_fn(tool, entrypoints);
@@ -1130,6 +1169,7 @@ fn build_step_help_fn(tool: &ToolMeta) -> FnDef {
          println!();\n\
          println!(\"OPTIONS:\");\n\
          println!(\"    -n, --dry-run    Don't perform actual I/O\");\n\
+         println!(\"    --print-inputs json  Print parsed inputs as JSON and exit\");\n\
          println!(\"    -h, --help       Print this help\");\n\
          println!();\n\
          println!(\"Progress display is automatic based on terminal capabilities.\");",
@@ -1165,15 +1205,15 @@ mod tests {
     #[test]
     fn test_generate_simple_cli() {
         let tool = ToolMeta {
-            crate_name: "gunbc-gist".to_string(),
-            tool_name: "gist".to_string(),
-            description: "Create gist from files".to_string(),
-            graph_builder_call: "build_gist_graph".to_string(),
-            graph_builder_args: "extensions.clone(), public".to_string(),
+            crate_name: "gunbc-gist".into(),
+            tool_name: "gist".into(),
+            description: "Create gist from files".into(),
+            graph_builder_call: "build_gist_graph".into(),
+            graph_builder_args: "extensions.clone(), public".into(),
             returns_result: false,
             success_port: None,
             enable_step_mode: false,
-            mock_spec_call: Some("gunbc_gist::graph_mock::gist_snapshot_mock_spec()".to_string()),
+            mock_spec_call: Some("gunbc_gist::graph_mock::gist_snapshot_mock_spec()".into()),
         };
 
         let entrypoints = vec![CliEntrypoint::new("repo_path", ParamType::Str)
@@ -1183,6 +1223,9 @@ mod tests {
         let code = generate_cli(&tool, &entrypoints);
         assert!(code.contains("--repo-path"));
         assert!(code.contains("--dry-run"));
+        assert!(code.contains("--print-inputs json"));
+        assert!(code.contains("let mut print_inputs_json = false;"));
+        assert!(code.contains("to_bridge_json(&Value::Map(ordered_inputs))"));
         assert!(code.contains("build_gist_graph"));
         assert!(code.contains("execute_and_display"));
         assert!(code.contains("print_preamble_auto"));
@@ -1192,15 +1235,15 @@ mod tests {
     #[test]
     fn test_generate_cli_uses_ir_imports() {
         let tool = ToolMeta {
-            crate_name: "gunbc-gist".to_string(),
-            tool_name: "gist".to_string(),
-            description: "Test".to_string(),
-            graph_builder_call: "build_gist_graph".to_string(),
-            graph_builder_args: String::new(),
+            crate_name: "gunbc-gist".into(),
+            tool_name: "gist".into(),
+            description: "Test".into(),
+            graph_builder_call: "build_gist_graph".into(),
+            graph_builder_args: "".into(),
             returns_result: false,
             success_port: None,
             enable_step_mode: false,
-            mock_spec_call: Some("mock_spec()".to_string()),
+            mock_spec_call: Some("mock_spec()".into()),
         };
         let entrypoints = vec![];
 
@@ -1218,15 +1261,15 @@ mod tests {
     #[test]
     fn test_generate_step_mode_cli() {
         let tool = ToolMeta {
-            crate_name: "gunbc-ci".to_string(),
-            tool_name: "ci".to_string(),
-            description: "CI pipeline".to_string(),
-            graph_builder_call: "build_ci_graph".to_string(),
-            graph_builder_args: String::new(),
+            crate_name: "gunbc-ci".into(),
+            tool_name: "ci".into(),
+            description: "CI pipeline".into(),
+            graph_builder_call: "build_ci_graph".into(),
+            graph_builder_args: "".into(),
             returns_result: true,
-            success_port: Some("overall_success".to_string()),
+            success_port: Some("overall_success".into()),
             enable_step_mode: true,
-            mock_spec_call: Some("ci_mock_spec()".to_string()),
+            mock_spec_call: Some("ci_mock_spec()".into()),
         };
         let entrypoints = vec![];
 
@@ -1240,6 +1283,7 @@ mod tests {
         assert!(code.contains("fn print_help()"));
         assert!(code.contains("gunbc_cli::parse_step_mode"));
         assert!(code.contains("gunbc_cli::StepModeSubcommand::Run"));
+        assert!(code.contains("--print-inputs json"));
         assert!(code.contains("execute_single_node"));
         assert!(code.contains("print_value"));
     }
@@ -1247,15 +1291,15 @@ mod tests {
     #[test]
     fn test_generate_cli_with_result_builder() {
         let tool = ToolMeta {
-            crate_name: "gunbc-ci".to_string(),
-            tool_name: "ci".to_string(),
-            description: "Test".to_string(),
-            graph_builder_call: "build_ci_graph".to_string(),
-            graph_builder_args: String::new(),
+            crate_name: "gunbc-ci".into(),
+            tool_name: "ci".into(),
+            description: "Test".into(),
+            graph_builder_call: "build_ci_graph".into(),
+            graph_builder_args: "".into(),
             returns_result: true,
             success_port: None,
             enable_step_mode: false,
-            mock_spec_call: Some("mock()".to_string()),
+            mock_spec_call: Some("mock()".into()),
         };
         let entrypoints = vec![];
 
@@ -1268,15 +1312,15 @@ mod tests {
     #[test]
     fn test_source_file_structure() {
         let tool = ToolMeta {
-            crate_name: "gunbc-gist".to_string(),
-            tool_name: "gist".to_string(),
-            description: "Test".to_string(),
-            graph_builder_call: "build_gist_graph".to_string(),
-            graph_builder_args: String::new(),
+            crate_name: "gunbc-gist".into(),
+            tool_name: "gist".into(),
+            description: "Test".into(),
+            graph_builder_call: "build_gist_graph".into(),
+            graph_builder_args: "".into(),
             returns_result: false,
             success_port: None,
             enable_step_mode: false,
-            mock_spec_call: Some("mock()".to_string()),
+            mock_spec_call: Some("mock()".into()),
         };
         let entrypoints = vec![];
 
@@ -1301,15 +1345,15 @@ mod tests {
     #[test]
     fn test_step_mode_source_file_structure() {
         let tool = ToolMeta {
-            crate_name: "gunbc-ci".to_string(),
-            tool_name: "ci".to_string(),
-            description: "CI".to_string(),
-            graph_builder_call: "build_ci_graph".to_string(),
-            graph_builder_args: String::new(),
+            crate_name: "gunbc-ci".into(),
+            tool_name: "ci".into(),
+            description: "CI".into(),
+            graph_builder_call: "build_ci_graph".into(),
+            graph_builder_args: "".into(),
             returns_result: true,
-            success_port: Some("overall_success".to_string()),
+            success_port: Some("overall_success".into()),
             enable_step_mode: true,
-            mock_spec_call: Some("mock()".to_string()),
+            mock_spec_call: Some("mock()".into()),
         };
         let entrypoints = vec![];
 

@@ -323,7 +323,7 @@ fn render_snapshot_contents(
             } else {
                 // Truncated SubDag
                 let count = children.total_node_count();
-                let class = snapshot_node_class(label, true);
+                let class = snapshot_node_class(node);
                 writeln!(
                     out,
                     "{}    {}[[\"{}\\n({} nodes)\"]]:::{}",
@@ -332,7 +332,7 @@ fn render_snapshot_contents(
                 .unwrap();
             }
         } else {
-            let class = snapshot_node_class(label, false);
+            let class = snapshot_node_class(node);
             let has_res = node.inputs.iter().any(|p| p.name.0.starts_with("res:"));
 
             if has_res {
@@ -406,18 +406,42 @@ fn render_snapshot_contents(
     writeln!(out, "{}end", indent).unwrap();
 }
 
-/// Classify a node by its name for snapshot coloring.
-fn snapshot_node_class(name: &str, is_subdag: bool) -> &'static str {
-    if is_subdag {
+/// Classify a node for snapshot coloring using canonical kind metadata.
+///
+/// When `canonical_kind` is populated (from obligation metadata), this is
+/// deterministic. Fallbacks are structural-first for DAGs that were
+/// constructed without obligation metadata (e.g. hand-built test DAGs).
+fn snapshot_node_class(node: &NodeTopology) -> &'static str {
+    if node.is_subdag() {
         return "subdag";
     }
-    // Environment / resource provider nodes
-    if name.ends_with("_env") || name == "resource_gate" || name.starts_with("cloud_env") {
+    if let Some(kind) = node.canonical_kind.as_deref() {
+        return match kind {
+            "transport" => "execute",
+            "pattern-expanded" => "env",
+            _ => "default",
+        };
+    }
+    // Fallback for DAGs without obligation metadata (hand-built tests, etc.)
+    // Resource-consumer nodes are execute boundaries; resource producers are env nodes.
+    if node
+        .inputs
+        .iter()
+        .any(|port| port.name.0.starts_with("res:"))
+    {
+        return "execute";
+    }
+    if node
+        .outputs
+        .iter()
+        .any(|port| port.name.0.starts_with("res:"))
+    {
         return "env";
     }
-    // Execute / transport boundary nodes
-    if name.starts_with("execute_") || name == "execute" || name.ends_with("_transport") {
-        return "execute";
+    // Legacy ID-based fallback for provider-like nodes without explicit res:* ports.
+    let name = node.id.0.as_str();
+    if name.ends_with("_env") || name == "resource_gate" || name.starts_with("cloud_env") {
+        return "env";
     }
     "default"
 }
@@ -729,6 +753,26 @@ mod tests {
         assert!(mermaid.contains("classDef execute"));
         assert!(mermaid.contains(":::env")); // fs_env node
         assert!(mermaid.contains(":::execute")); // execute_transport (has res: port)
+    }
+
+    #[test]
+    fn test_snapshot_prefers_canonical_kind_metadata() {
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque("custom_node", vec![], vec![], TestOp::A));
+
+        let topo = dag.topology_with_kind(|node| {
+            if node.id.0 == "custom_node" {
+                Some("transport".to_string())
+            } else {
+                None
+            }
+        });
+        let mermaid = to_mermaid_snapshot("tool", &topo);
+
+        // The node name does not match execute heuristics, so execute styling
+        // must come from canonical kind metadata.
+        assert!(mermaid.contains("custom_node"));
+        assert!(mermaid.contains(":::execute"));
     }
 
     #[test]

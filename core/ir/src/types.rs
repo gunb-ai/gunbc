@@ -37,10 +37,16 @@ pub struct Cardinality {
     pub max: Option<u32>,
 }
 
-impl Cardinality {
-    /// Default cap for test-case generation (prevents huge vectors in tests).
-    pub const TEST_CASE_CAP: u32 = 64;
+/// Sampling policy for cardinality-driven test case generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CardinalitySamplingStrategy {
+    /// Use only boundary-valid cases (`min`, optional `min+1`, optional `max`).
+    BoundaryOnly,
+    /// Use boundary-valid cases and clamp values above the given upper bound.
+    BoundaryWithUpperBound(u32),
+}
 
+impl Cardinality {
     /// ∅ — signal-only, no data.
     pub const ZERO: Self = Self {
         min: 0,
@@ -199,9 +205,17 @@ impl Cardinality {
         cases
     }
 
-    /// Default test cases used by generators (with a safe cap).
+    /// Default test cases used by generators (boundary-only sampling).
     pub fn test_cases_for_tests(&self) -> Vec<u32> {
-        self.test_cases_capped(Self::TEST_CASE_CAP)
+        self.test_cases_with_strategy(CardinalitySamplingStrategy::BoundaryOnly)
+    }
+
+    /// Returns test cases using an explicit sampling strategy.
+    pub fn test_cases_with_strategy(&self, strategy: CardinalitySamplingStrategy) -> Vec<u32> {
+        match strategy {
+            CardinalitySamplingStrategy::BoundaryOnly => self.test_cases(),
+            CardinalitySamplingStrategy::BoundaryWithUpperBound(max) => self.test_cases_capped(max),
+        }
     }
 
     /// Check if the given count is within this cardinality's interval.
@@ -292,6 +306,20 @@ impl Cardinality {
     // =========================================================================
     // Lattice algebra
     // =========================================================================
+
+    /// Interval sum (Minkowski sum): fan-in composition of independent sources.
+    ///
+    /// If one edge can contribute `[a,b]` elements and another `[c,d]`, the
+    /// combined fan-in can contribute `[a+c, b+d]`.
+    pub fn sum(self, other: Cardinality) -> Cardinality {
+        Cardinality {
+            min: self.min.saturating_add(other.min),
+            max: match (self.max, other.max) {
+                (None, _) | (_, None) => None,
+                (Some(a), Some(b)) => a.checked_add(b),
+            },
+        }
+    }
 
     /// Join (least upper bound): union of possibilities.
     ///
@@ -563,6 +591,34 @@ pub enum SeedPlaceholderPolicy {
     ExplicitSeedRequired,
 }
 
+/// Semantic carrier classification for seed-policy enforcement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SemanticCarrierClass {
+    /// Structural type where synthesized placeholders are valid.
+    StructuralGeneratable,
+    /// Semantically meaningful type requiring authored seeds in strict contexts.
+    SemanticCarrier,
+}
+
+/// Refined semantic carrier kind for strict compatibility checks.
+///
+/// `UnknownSemantic` is fail-closed: strict compatibility rejects it unless
+/// the call site opts into legacy structural-only behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SemanticCarrierKind {
+    Structural,
+    TransportRequest,
+    TransportResponse,
+    Credential,
+    Secret,
+    FilesystemHandle,
+    NetworkHandle,
+    ToolHandle,
+    Platform,
+    Timestamp,
+    UnknownSemantic,
+}
+
 impl TypeId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
@@ -575,13 +631,125 @@ impl TypeId {
     pub fn seed_placeholder_policy(&self) -> SeedPlaceholderPolicy {
         seed_placeholder_policy_for_type_id(&self.0)
     }
+
+    /// Classify this type into structural vs semantic-carrier seed class.
+    pub fn semantic_carrier_class(&self) -> SemanticCarrierClass {
+        semantic_carrier_class_for_type_id(&self.0)
+    }
+
+    /// Classify this type into a refined semantic-carrier kind.
+    pub fn semantic_carrier_kind(&self) -> SemanticCarrierKind {
+        semantic_carrier_kind_for_type_id(&self.0)
+    }
+}
+
+/// Parse a parametric map type-id of the form `Map<K,V>`.
+///
+/// Returns `(K, V)` when the type-id is syntactically valid.
+/// Supports nested generic values by splitting on the top-level comma.
+pub fn parse_map_type_id(type_id: &str) -> Option<(String, String)> {
+    let inner = type_id.strip_prefix("Map<")?.strip_suffix('>')?;
+    let mut depth = 0usize;
+    let mut split_idx: Option<usize> = None;
+    for (idx, ch) in inner.char_indices() {
+        match ch {
+            '<' => depth = depth.saturating_add(1),
+            '>' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                split_idx = Some(idx);
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    let comma = split_idx?;
+    let key = inner[..comma].trim();
+    let value = inner[comma + 1..].trim();
+    if key.is_empty() || value.is_empty() {
+        return None;
+    }
+    Some((key.to_string(), value.to_string()))
+}
+
+fn parse_unary_generic_type_id<'a>(type_id: &'a str, wrapper: &str) -> Option<&'a str> {
+    let rest = type_id.strip_prefix(wrapper)?;
+    let inner = rest.strip_prefix('<')?.strip_suffix('>')?.trim();
+    if inner.is_empty() {
+        None
+    } else {
+        Some(inner)
+    }
+}
+
+fn optional_inner_type_id(type_id: &str) -> Option<&str> {
+    if let Some(inner) = parse_unary_generic_type_id(type_id, "Optional") {
+        return Some(inner);
+    }
+    let inner = type_id.strip_prefix("Optional")?;
+    if inner.is_empty() {
+        None
+    } else {
+        Some(inner)
+    }
+}
+
+fn parse_container_alias_inner<'a>(type_id: &'a str, suffix: &str) -> Option<&'a str> {
+    let inner = type_id.strip_suffix(suffix)?;
+    if inner.is_empty() {
+        None
+    } else {
+        Some(inner)
+    }
 }
 
 /// Classify placeholder seed policy for a raw type ID.
 pub fn seed_placeholder_policy_for_type_id(type_id: &str) -> SeedPlaceholderPolicy {
+    match semantic_carrier_class_for_type_id(type_id) {
+        SemanticCarrierClass::StructuralGeneratable => SeedPlaceholderPolicy::Generated,
+        SemanticCarrierClass::SemanticCarrier => SeedPlaceholderPolicy::ExplicitSeedRequired,
+    }
+}
+
+/// Classify semantic-carrier class for a raw type ID.
+pub fn semantic_carrier_class_for_type_id(type_id: &str) -> SemanticCarrierClass {
+    match semantic_carrier_kind_for_type_id(type_id) {
+        SemanticCarrierKind::Structural => SemanticCarrierClass::StructuralGeneratable,
+        _ => SemanticCarrierClass::SemanticCarrier,
+    }
+}
+
+/// Refined semantic carrier kind for a raw type ID.
+pub fn semantic_carrier_kind_for_type_id(type_id: &str) -> SemanticCarrierKind {
+    if let Some((key_type, value_type)) = parse_map_type_id(type_id) {
+        if key_type == "String"
+            && semantic_carrier_kind_for_type_id(&value_type) == SemanticCarrierKind::Structural
+        {
+            return SemanticCarrierKind::Structural;
+        }
+        return SemanticCarrierKind::UnknownSemantic;
+    }
+
+    if let Some(inner) = optional_inner_type_id(type_id) {
+        return semantic_carrier_kind_for_type_id(inner);
+    }
+
+    if let Some(inner) = parse_unary_generic_type_id(type_id, "List")
+        .or_else(|| parse_unary_generic_type_id(type_id, "Set"))
+    {
+        return semantic_carrier_kind_for_type_id(inner);
+    }
+
+    if let Some(inner) = parse_container_alias_inner(type_id, "List")
+        .or_else(|| parse_container_alias_inner(type_id, "Set"))
+    {
+        return semantic_carrier_kind_for_type_id(inner);
+    }
+
     match type_id {
         // Primitives.
-        "String" | "Bool" | "Int" | "Unit" | "Json" | "Void"
+        "String" | "Bool" | "Int" | "Float" | "Bytes" | "Unit" | "Json" | "Void" | "Any"
+        | "Error"
         // Refined primitives.
         | "NonEmptyString" | "Url" | "FilePath" | "Path" | "Email"
         | "PositiveInt" | "NonNegativeInt"
@@ -591,9 +759,202 @@ pub fn seed_placeholder_policy_for_type_id(type_id: &str) -> SeedPlaceholderPoli
         | "StringList" | "IntList" | "BoolList" | "JsonList"
         | "UrlList" | "FilePathList"
         | "NonEmptyStringList" | "NonEmptyFilePathList"
-        => SeedPlaceholderPolicy::Generated,
-        _ => SeedPlaceholderPolicy::ExplicitSeedRequired,
+        => SemanticCarrierKind::Structural,
+        // Transport envelopes.
+        "TransportRequest" | "FileRequest" | "ShellRequest" | "RestRequest" | "HttpRequest"
+        | "TcpRequest" => SemanticCarrierKind::TransportRequest,
+        "TransportResponse" | "FileResponse" | "ShellResponse" | "RestResponse" | "HttpResponse"
+        | "TcpResponse" => SemanticCarrierKind::TransportResponse,
+        // Capability + secret carriers.
+        "Credential" => SemanticCarrierKind::Credential,
+        "Secret" | "SecretString" => SemanticCarrierKind::Secret,
+        "FilesystemHandle" => SemanticCarrierKind::FilesystemHandle,
+        "NetworkHandle" => SemanticCarrierKind::NetworkHandle,
+        "ToolHandle" => SemanticCarrierKind::ToolHandle,
+        "Platform" | "RuntimePlatform" => SemanticCarrierKind::Platform,
+        "Timestamp" => SemanticCarrierKind::Timestamp,
+        _ => SemanticCarrierKind::UnknownSemantic,
     }
+}
+
+/// Strict semantic carrier compatibility.
+///
+/// This is intentionally stricter than structural compatibility:
+/// - structural ↔ structural is allowed
+/// - known semantic carrier kinds must match exactly
+/// - unknown semantic kinds fail closed
+pub fn semantic_carrier_compatible(from: &TypeId, to: &TypeId) -> bool {
+    use SemanticCarrierKind as Kind;
+
+    let from_kind = semantic_carrier_kind_for_type_id(&from.0);
+    let to_kind = semantic_carrier_kind_for_type_id(&to.0);
+
+    match (from_kind, to_kind) {
+        (Kind::Structural, Kind::Structural) => true,
+        (Kind::UnknownSemantic, _) | (_, Kind::UnknownSemantic) => false,
+        (lhs, rhs) => lhs == rhs,
+    }
+}
+
+/// How a `TypeId` serializes into a `Value` variant at runtime.
+///
+/// Used by testgen to validate that mock values are compatible with port types
+/// without hardcoded lists of type names in codegen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueBacking {
+    String,
+    Bool,
+    Int,
+    Float,
+    Json,
+    Map,
+    List,
+    Set,
+    Unit,
+    Bytes,
+}
+
+impl ValueBacking {
+    /// Whether a [`ValueKind`] is compatible with this backing.
+    pub fn accepts_value_kind(&self, kind: crate::value::ValueKind) -> bool {
+        use crate::value::ValueKind;
+        match self {
+            ValueBacking::String => kind == ValueKind::String,
+            ValueBacking::Bool => kind == ValueKind::Bool,
+            ValueBacking::Int => kind == ValueKind::Int,
+            ValueBacking::Float => kind == ValueKind::Int, // Float can accept Int
+            ValueBacking::Json => true,                    // Json accepts anything
+            ValueBacking::Map => kind == ValueKind::Map,
+            ValueBacking::List => kind == ValueKind::List,
+            ValueBacking::Set => kind == ValueKind::Set,
+            ValueBacking::Unit => kind == ValueKind::Unit,
+            ValueBacking::Bytes => kind == ValueKind::List, // byte arrays are lists
+        }
+    }
+}
+
+/// Determine how a `TypeId` string serializes into a `Value` variant.
+///
+/// Uses `PortType` for structurally known types, then falls back to
+/// domain-specific knowledge for opaque types that map to `PortType::Any`.
+pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
+    use crate::port_type::PortType;
+
+    // Check for parametric Map<K,V> first
+    if parse_map_type_id(type_id).is_some() {
+        return ValueBacking::Map;
+    }
+
+    if parse_unary_generic_type_id(type_id, "Set").is_some() {
+        return ValueBacking::Set;
+    }
+
+    if parse_unary_generic_type_id(type_id, "List").is_some() {
+        return ValueBacking::List;
+    }
+
+    if let Some(inner) = optional_inner_type_id(type_id) {
+        return value_backing_for_type_id(inner);
+    }
+
+    let port_type = PortType::from(type_id);
+    match port_type {
+        PortType::String => ValueBacking::String,
+        PortType::Bool => ValueBacking::Bool,
+        PortType::Int => ValueBacking::Int,
+        PortType::Float => ValueBacking::Float,
+        PortType::Json => ValueBacking::Json,
+        PortType::Bytes => ValueBacking::Bytes,
+        PortType::Secret => ValueBacking::String,
+        PortType::List(_) => ValueBacking::List,
+        PortType::Any => {
+            // Domain-specific types that PortType doesn't know about
+            match type_id {
+                // Map-backed types (structured data stored as Value::Map)
+                "ToolHandle" | "Credential" | "FilesystemHandle" | "NetworkHandle"
+                | "CliResult" => ValueBacking::Map,
+                // Int-backed types
+                "Timestamp" => ValueBacking::Int,
+                // String-backed types (refined string primitives)
+                "Platform" | "FilePath" | "Path" | "Url" | "Email" | "NonEmptyString" => {
+                    ValueBacking::String
+                }
+                // Legacy list aliases
+                s if s.ends_with("List") => ValueBacking::List,
+                // Legacy set aliases
+                s if s.ends_with("Set") => ValueBacking::Set,
+                // Optional wrappers inherit inner type's backing
+                s if s.starts_with("Optional") => value_backing_for_type_id(&s["Optional".len()..]),
+                // Default: Json accepts anything
+                _ => ValueBacking::Json,
+            }
+        }
+    }
+}
+
+/// Canonical human-readable type label for a runtime value's kind.
+pub fn value_kind_name(value: &crate::value::Value) -> &'static str {
+    value.kind().type_name()
+}
+
+/// Whether a runtime value is compatible with a `TypeId` string.
+///
+/// This mirrors the compatibility rules used by testgen and typed mock
+/// requirements, centralized to avoid divergence.
+pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value) -> bool {
+    use crate::value::{Value, ValueKind};
+
+    let kind = value.kind();
+    let kind_name = kind.type_name();
+
+    // Exact match
+    if type_id == kind_name {
+        return true;
+    }
+
+    // Any matches anything
+    if type_id == "Any" {
+        return true;
+    }
+
+    // Optional<T> and OptionalT accept T or Unit
+    if let Some(inner) = optional_inner_type_id(type_id) {
+        if kind == ValueKind::Unit {
+            return true;
+        }
+        return value_compatible_with_type_id(inner, value);
+    }
+
+    // Skipped is compatible with any type
+    if kind == ValueKind::Skipped {
+        return true;
+    }
+
+    // Json is intentionally flexible
+    if type_id == "Json" || kind == ValueKind::Json {
+        return true;
+    }
+
+    // Parametric map types: Map<String, T>
+    if let Some((key_type, value_type)) = parse_map_type_id(type_id) {
+        if key_type != "String" {
+            return false;
+        }
+        if let Value::Map(entries) = value {
+            return entries
+                .values()
+                .all(|entry| value_compatible_with_type_id(&value_type, entry));
+        }
+        return false;
+    }
+
+    // Platform has dual backing (String or Map)
+    if type_id == "Platform" && (kind == ValueKind::String || kind == ValueKind::Map) {
+        return true;
+    }
+
+    // Default to structural backing compatibility
+    value_backing_for_type_id(type_id).accepts_value_kind(kind)
 }
 
 impl From<&str> for TypeId {
@@ -732,6 +1093,26 @@ mod tests {
     }
 
     #[test]
+    fn test_test_cases_with_strategy() {
+        let bounded = Cardinality::new(0, Some(1000));
+        assert_eq!(
+            bounded.test_cases_with_strategy(CardinalitySamplingStrategy::BoundaryOnly),
+            vec![0, 1, 1000]
+        );
+        assert_eq!(
+            bounded
+                .test_cases_with_strategy(CardinalitySamplingStrategy::BoundaryWithUpperBound(12)),
+            vec![0, 1, 12]
+        );
+    }
+
+    #[test]
+    fn test_test_cases_for_tests_uses_boundary_only_sampling() {
+        let bounded = Cardinality::new(0, Some(1000));
+        assert_eq!(bounded.test_cases_for_tests(), vec![0, 1, 1000]);
+    }
+
+    #[test]
     fn test_seed_placeholder_policy_known_types() {
         assert_eq!(
             seed_placeholder_policy_for_type_id("String"),
@@ -745,6 +1126,163 @@ mod tests {
             seed_placeholder_policy_for_type_id("TransportResponse"),
             SeedPlaceholderPolicy::ExplicitSeedRequired
         );
+    }
+
+    #[test]
+    fn test_semantic_carrier_class_known_types() {
+        assert_eq!(
+            semantic_carrier_class_for_type_id("String"),
+            SemanticCarrierClass::StructuralGeneratable
+        );
+        assert_eq!(
+            semantic_carrier_class_for_type_id("OptionalString"),
+            SemanticCarrierClass::StructuralGeneratable
+        );
+        assert_eq!(
+            semantic_carrier_class_for_type_id("TransportResponse"),
+            SemanticCarrierClass::SemanticCarrier
+        );
+        assert_eq!(
+            TypeId::from("ToolHandle").semantic_carrier_class(),
+            SemanticCarrierClass::SemanticCarrier
+        );
+        assert_eq!(
+            TypeId::from("Map<String,String>").semantic_carrier_class(),
+            SemanticCarrierClass::StructuralGeneratable
+        );
+        assert_eq!(
+            TypeId::from("Map<String,Credential>").semantic_carrier_class(),
+            SemanticCarrierClass::SemanticCarrier
+        );
+    }
+
+    #[test]
+    fn test_semantic_carrier_class_parametric_wrappers() {
+        assert_eq!(
+            semantic_carrier_class_for_type_id("Optional<String>"),
+            SemanticCarrierClass::StructuralGeneratable
+        );
+        assert_eq!(
+            semantic_carrier_class_for_type_id("List<Map<String,Int>>"),
+            SemanticCarrierClass::StructuralGeneratable
+        );
+        assert_eq!(
+            semantic_carrier_class_for_type_id("Set<Credential>"),
+            SemanticCarrierClass::SemanticCarrier
+        );
+        assert_eq!(
+            semantic_carrier_class_for_type_id("CredentialList"),
+            SemanticCarrierClass::SemanticCarrier
+        );
+    }
+
+    #[test]
+    fn test_semantic_carrier_kind_known_types() {
+        assert_eq!(
+            semantic_carrier_kind_for_type_id("String"),
+            SemanticCarrierKind::Structural
+        );
+        assert_eq!(
+            semantic_carrier_kind_for_type_id("TransportRequest"),
+            SemanticCarrierKind::TransportRequest
+        );
+        assert_eq!(
+            semantic_carrier_kind_for_type_id("RestResponse"),
+            SemanticCarrierKind::TransportResponse
+        );
+        assert_eq!(
+            semantic_carrier_kind_for_type_id("Credential"),
+            SemanticCarrierKind::Credential
+        );
+        assert_eq!(
+            semantic_carrier_kind_for_type_id("Map<String,Credential>"),
+            SemanticCarrierKind::UnknownSemantic
+        );
+    }
+
+    #[test]
+    fn test_semantic_carrier_compatibility_strict() {
+        assert!(semantic_carrier_compatible(
+            &TypeId::from("String"),
+            &TypeId::from("Any")
+        ));
+        assert!(semantic_carrier_compatible(
+            &TypeId::from("TransportResponse"),
+            &TypeId::from("RestResponse")
+        ));
+        assert!(!semantic_carrier_compatible(
+            &TypeId::from("Credential"),
+            &TypeId::from("Any")
+        ));
+        assert!(!semantic_carrier_compatible(
+            &TypeId::from("Credential"),
+            &TypeId::from("Secret")
+        ));
+        assert!(!semantic_carrier_compatible(
+            &TypeId::from("CustomAuthToken"),
+            &TypeId::from("Any")
+        ));
+    }
+
+    #[test]
+    fn test_parse_map_type_id() {
+        assert_eq!(
+            parse_map_type_id("Map<String,String>"),
+            Some(("String".to_string(), "String".to_string()))
+        );
+        assert_eq!(
+            parse_map_type_id("Map<String, Map<String,Int>>"),
+            Some(("String".to_string(), "Map<String,Int>".to_string()))
+        );
+        assert_eq!(parse_map_type_id("Map<String>"), None);
+    }
+
+    #[test]
+    fn test_value_backing_for_parametric_wrappers() {
+        assert_eq!(
+            value_backing_for_type_id("List<String>"),
+            ValueBacking::List
+        );
+        assert_eq!(value_backing_for_type_id("Set<String>"), ValueBacking::Set);
+        assert_eq!(
+            value_backing_for_type_id("Optional<String>"),
+            ValueBacking::String
+        );
+    }
+
+    #[test]
+    fn test_value_compatible_with_type_id() {
+        use crate::value::Value;
+        use std::collections::BTreeMap;
+
+        assert!(value_compatible_with_type_id(
+            "Optional<String>",
+            &Value::Unit
+        ));
+        assert!(value_compatible_with_type_id(
+            "Optional<String>",
+            &Value::Str("x".to_string())
+        ));
+        assert!(!value_compatible_with_type_id(
+            "Optional<String>",
+            &Value::Int(1)
+        ));
+
+        let mut map = BTreeMap::new();
+        map.insert("a".to_string(), Value::Int(1));
+        map.insert("b".to_string(), Value::Int(2));
+        assert!(value_compatible_with_type_id(
+            "Map<String,Int>",
+            &Value::Map(map)
+        ));
+
+        assert!(value_compatible_with_type_id(
+            "Platform",
+            &Value::Str("linux".into())
+        ));
+        assert!(value_compatible_with_type_id("Any", &Value::Skipped));
+
+        assert_eq!(value_kind_name(&Value::Int(7)), "Int");
     }
 
     #[test]
@@ -897,6 +1435,22 @@ mod tests {
         assert_eq!(ONE_OR_MORE.product(ONE), ONE_OR_MORE);
         assert_eq!(ZERO_OR_MORE.product(ONE_OR_MORE), ZERO_OR_MORE);
         assert_eq!(ONE.product(ZERO), ZERO);
+    }
+
+    #[test]
+    fn test_sum() {
+        assert_eq!(
+            Cardinality::ONE.sum(Cardinality::ZERO_OR_ONE),
+            Cardinality::new(1, Some(2))
+        );
+        assert_eq!(
+            Cardinality::ZERO_OR_MORE.sum(Cardinality::ONE),
+            Cardinality::ONE_OR_MORE
+        );
+        assert_eq!(
+            Cardinality::new(u32::MAX, Some(u32::MAX)).sum(Cardinality::ONE),
+            Cardinality::new(u32::MAX, None)
+        );
     }
 
     // --- Display tests ---

@@ -270,8 +270,14 @@ pub mod ast {
         Match(Box<Expr>, Vec<MatchArm>),
         /// If/else
         If(Box<Expr>, Box<Expr>, Option<Box<Expr>>),
-        /// For loop (map sugar): `for x in list { body }`
-        For(String, Box<Expr>, Box<Expr>),
+        /// For loop (map sugar): `for x in list with {ctx} { body }`
+        ///
+        /// Tuple fields:
+        /// 1. element binding variable name
+        /// 2. iterable expression
+        /// 3. passthrough bindings explicitly forwarded into body scope
+        /// 4. body expression
+        For(String, Box<Expr>, Vec<String>, Box<Expr>),
         /// Pipe: `expr |> fn`
         Pipe(Box<Expr>, Box<Expr>),
         /// Lambda (inline only, in |> chains): `x => x.name`

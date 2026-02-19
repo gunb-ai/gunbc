@@ -863,6 +863,7 @@ When multiple edges feed into a single port, the order of values in the resultin
 | **No silent defaults** | Don't substitute default values when something is missing — fail |
 | **No "best effort"** | Either it worked or it didn't. No partial success without explicit modeling |
 | **Fail fast** | Detect and report problems at the earliest possible point |
+| **Exceptions are explicit** | If compatibility fallback is required, it must be documented, observable, and covered by tests |
 
 **Example**:
 ```rust

@@ -1,13 +1,22 @@
 // Test infrastructure: filesystem access for test fixtures
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
+use gunbc_ir::WorkspaceLayout;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
+    static WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
+    WORKSPACE_ROOT
+        .get_or_init(|| {
+            WorkspaceLayout::from_env_manifest_dir()
+                .expect("resolve workspace layout")
+                .workspace_root
+        })
+        .clone()
 }
 
 fn daglang_bin() -> &'static str {
@@ -1144,7 +1153,7 @@ fn assert_compile_dag_extension_symlink_directory_variants() {
 /// Test absolute path variants for a single-target command using makegen.dag.
 fn assert_single_target_absolute_variants(command_name: &str, extra_args: &[&str]) {
     let root = workspace_root();
-    let canonical_target = makegen_file().to_string_lossy().into_owned();
+    let canonical_target = makegen_file().display().to_string();
 
     let variants: Vec<(&str, String)> = vec![
         (
@@ -1195,7 +1204,7 @@ fn assert_single_target_absolute_variants(command_name: &str, extra_args: &[&str
 fn assert_single_target_curdir_and_equiv_variants(command_name: &str, extra_args: &[&str]) {
     let root = workspace_root();
     let relative_target = "dsl/tools/makegen.dag";
-    let absolute_target = makegen_file().to_string_lossy().into_owned();
+    let absolute_target = makegen_file().display().to_string();
 
     // curdir_suffix
     assert_single_target_command_outputs_match_for_targets(
@@ -1294,7 +1303,7 @@ fn assert_single_target_dag_ext_directory_variants(command_name: &str, extra_arg
             );
 
             // Absolute
-            let abs_input = dag_dir.to_string_lossy().into_owned();
+            let abs_input = dag_dir.display().to_string();
             assert_single_target_command_treats_dag_directory_as_invalid_single_file_target_with_args(
                 command_name, &root, &abs_input, &dag_dir, None, extra_args,
             );
@@ -1371,7 +1380,7 @@ fn assert_single_target_dag_ext_symlink_fail_variants(command_name: &str, extra_
         assert!(!link_output.status.success(), "symlink variant should fail");
 
         // Relative and absolute equivalence for directory alias
-        let abs_dir = real_dir.to_string_lossy().into_owned();
+        let abs_dir = real_dir.display().to_string();
         let abs_dir_output = run_single_target_command(command_name, &root, &abs_dir, extra_args)
             .expect("failed to run abs directory variant");
         assert_eq!(
@@ -1384,7 +1393,7 @@ fn assert_single_target_dag_ext_symlink_fail_variants(command_name: &str, extra_
         );
 
         // Relative and absolute equivalence for symlink alias
-        let abs_link = link.to_string_lossy().into_owned();
+        let abs_link = link.display().to_string();
         let abs_link_output = run_single_target_command(command_name, &root, &abs_link, extra_args)
             .expect("failed to run abs symlink variant");
         assert_eq!(
@@ -6581,7 +6590,9 @@ fn run_command_rejects_duplicate_output_flags_with_usage() {
 }
 
 #[test]
-fn run_command_real_mode_propagates_write_failure() {
+fn run_command_real_mode_skips_write_when_content_is_fresh() {
+    // When the content upsert pattern detects fresh content (read matches
+    // expected), the write transport is skipped — even to an unwritable path.
     let output_path = "/proc/1/daglang_makegen_forbidden.mk";
     let output = Command::new(daglang_bin())
         .arg("run")
@@ -6592,13 +6603,16 @@ fn run_command_real_mode_propagates_write_failure() {
         .output()
         .expect("failed to run daglang run with unwritable output path");
 
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        !output.status.success(),
-        "run should fail when write transport cannot persist output"
+        output.status.success(),
+        "run should succeed when write is skipped due to fresh content: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("failed to write"));
-    assert!(stderr.contains(output_path));
+    assert!(
+        stdout.contains("written=false"),
+        "should report written=false when write is skipped"
+    );
 }
 
 #[test]
@@ -7056,7 +7070,9 @@ func run() -> { body: String } {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("service_param_source_targets: 0"));
+    // Literal args (e.g., path: "README.md") now lower to call_literal_source
+    // nodes with ServiceParamSource obligation, so the count is 1.
+    assert!(stdout.contains("service_param_source_targets: 1"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }

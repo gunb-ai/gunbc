@@ -10,10 +10,11 @@
 //! 1. Blob fetch (for non-inline sources)
 //! 2. LLM call
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::DynOp;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
-    add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, NodeRef, Value,
+    add_transport_triplet_named_with_passthrough, build::*, BuilderError, Dag, DagBuilder, Node,
+    NodeRef,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_cloud_ops::{
@@ -24,48 +25,10 @@ use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_llm_ops::LlmOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
-use std::collections::HashMap;
 
 use crate::{ReviewOps, ReviewPipelineConfig};
 
-// ============================================================================
-// Unified Operation Type
-// ============================================================================
-
-/// Operation type for review phase graphs.
-///
-/// Union of all ops needed for a complete review workflow.
-#[derive(Debug, Clone)]
-pub enum ReviewGraphOp {
-    /// Blob acquisition operations (PURE)
-    Blob(BlobOps),
-    /// Git operations (PURE)
-    Git(GitOps),
-    /// Review-specific operations (PURE)
-    Review(ReviewOps),
-    /// LLM chat operations (PURE)
-    Llm(LlmOps),
-    /// Filesystem environment (resource acquisition)
-    FsEnv(FsEnv),
-    /// Cloud credential flow (GCP/AWS/Azure graph)
-    Cloud(CloudSecretManagerGraphOp),
-    /// Transport execution (BOUNDARY - actual I/O)
-    Transport(TransportOps),
-}
-
-impl Executable for ReviewGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            ReviewGraphOp::Blob(op) => op.execute(inputs),
-            ReviewGraphOp::Git(op) => op.execute(inputs),
-            ReviewGraphOp::Review(op) => op.execute(inputs),
-            ReviewGraphOp::Llm(op) => op.execute(inputs),
-            ReviewGraphOp::FsEnv(op) => op.execute(inputs),
-            ReviewGraphOp::Cloud(op) => op.execute(inputs),
-            ReviewGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
-}
+pub type ReviewGraphOp = DynOp;
 
 // ---------------------------------------------------------------------------
 // Cloud credential wiring helpers
@@ -76,140 +39,109 @@ fn add_cloud_credential_chain(
     cloud_env: &NodeRef<ReviewGraphOp>,
     resolve_auth: &NodeRef<ReviewGraphOp>,
     cloud_config: &CloudSecretConfig,
-) -> NodeRef<ReviewGraphOp> {
-    let bind_secret = builder
-        .add_node_after_all(
-            Node::opaque(
-                "bind_secret",
-                vec![
-                    port("config", "CloudSecretConfig"),
-                    port("service", "String"),
-                    optional("secret_name", "OptionalString"),
-                ],
-                vec![port("config", "CloudSecretConfig")],
-                ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
-            ),
-            &[cloud_env, resolve_auth],
-        )
-        .expect("bind_secret node");
+) -> Result<NodeRef<ReviewGraphOp>, BuilderError> {
+    let bind_secret = builder.add_node_after_all(
+        Node::opaque(
+            "bind_secret",
+            vec![
+                port("config", "CloudSecretConfig"),
+                port("service", "String"),
+                optional("secret_name", "OptionalString"),
+            ],
+            vec![port("config", "CloudSecretConfig")],
+            DynOp::new(CloudOps::BindSecretName),
+        ),
+        &[cloud_env, resolve_auth],
+    )?;
 
-    builder
-        .add_edge(cloud_env.out("config"), bind_secret.in_port("config"))
-        .expect("cloud_env.config -> bind_secret.config");
-    builder
-        .add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))
-        .expect("resolve_auth.service -> bind_secret.service");
+    builder.add_edge(cloud_env.out("config"), bind_secret.in_port("config"))?;
+    builder.add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))?;
 
     let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(
         cloud_config,
-    ));
-    let cloud_credential = builder
-        .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)
-        .expect("cloud_credential node");
+    )?);
+    let cloud_credential =
+        builder.add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)?;
 
-    builder
-        .add_edge(
-            bind_secret.out("config"),
-            cloud_credential.in_port("config"),
-        )
-        .expect("bind_secret.config -> cloud_credential.config");
-    builder
-        .add_edge(
-            resolve_auth.out("service"),
-            cloud_credential.in_port("source_id"),
-        )
-        .expect("resolve_auth.service -> cloud_credential.source_id");
-    builder
-        .add_edge(
-            resolve_auth.out("scheme"),
-            cloud_credential.in_port("scheme"),
-        )
-        .expect("resolve_auth.scheme -> cloud_credential.scheme");
-    builder
-        .add_edge(
-            resolve_auth.out("header_name"),
-            cloud_credential.in_port("header_name"),
-        )
-        .expect("resolve_auth.header_name -> cloud_credential.header_name");
-    builder
-        .add_edge(
-            resolve_auth.out("interactive_allowed"),
-            cloud_credential.in_port("interactive_allowed"),
-        )
-        .expect("resolve_auth.interactive_allowed -> cloud_credential.interactive_allowed");
-    builder
-        .add_edge(
-            resolve_auth.out("required_scopes"),
-            cloud_credential.in_port("required_scopes"),
-        )
-        .expect("resolve_auth.required_scopes -> cloud_credential.required_scopes");
-    builder
-        .add_edge(
-            cloud_env.out("request_url"),
-            cloud_credential.in_port("request_url"),
-        )
-        .expect("cloud_env.request_url -> cloud_credential.request_url");
-    builder
-        .add_edge(
-            cloud_env.out("request_token"),
-            cloud_credential.in_port("request_token"),
-        )
-        .expect("cloud_env.request_token -> cloud_credential.request_token");
+    builder.add_edge(
+        bind_secret.out("config"),
+        cloud_credential.in_port("config"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("service"),
+        cloud_credential.in_port("source_id"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("scheme"),
+        cloud_credential.in_port("scheme"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("header_name"),
+        cloud_credential.in_port("header_name"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("interactive_allowed"),
+        cloud_credential.in_port("interactive_allowed"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("required_scopes"),
+        cloud_credential.in_port("required_scopes"),
+    )?;
+    builder.add_edge(
+        cloud_env.out("request_url"),
+        cloud_credential.in_port("request_url"),
+    )?;
+    builder.add_edge(
+        cloud_env.out("request_token"),
+        cloud_credential.in_port("request_token"),
+    )?;
 
-    cloud_credential
+    Ok(cloud_credential)
 }
 
 fn add_scope_preflight_chain(
     builder: &mut DagBuilder<ReviewGraphOp>,
     resolve_auth: &NodeRef<ReviewGraphOp>,
-) -> NodeRef<ReviewGraphOp> {
-    let scope_preflight = builder
-        .add_node_after(
-            Node::opaque(
-                "scope_preflight",
-                vec![list("required_scopes", "String")],
-                vec![port("scope_verified", "Bool")],
-                ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ScopePreflight)),
-            ),
-            resolve_auth,
-        )
-        .expect("scope_preflight node");
+) -> Result<NodeRef<ReviewGraphOp>, BuilderError> {
+    let scope_preflight = builder.add_node_after(
+        Node::opaque(
+            "scope_preflight",
+            vec![list("required_scopes", "String")],
+            vec![port("scope_verified", "Bool")],
+            DynOp::new(CloudOps::ScopePreflight),
+        ),
+        resolve_auth,
+    )?;
 
-    builder
-        .add_edge(
-            resolve_auth.out("required_scopes"),
-            scope_preflight.in_port("required_scopes"),
-        )
-        .expect("resolve_auth.required_scopes -> scope_preflight.required_scopes");
+    builder.add_edge(
+        resolve_auth.out("required_scopes"),
+        scope_preflight.in_port("required_scopes"),
+    )?;
 
-    scope_preflight
+    Ok(scope_preflight)
 }
 
 fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<ReviewGraphOp> {
-    dag.map_ops(&mut ReviewGraphOp::Cloud)
+    dag
 }
 
 /// Create the `cloud_env` root node using `ConstCloudConfig`.
 fn add_cloud_env_node(
     builder: &mut DagBuilder<ReviewGraphOp>,
     cloud_config: &CloudSecretConfig,
-) -> NodeRef<ReviewGraphOp> {
-    builder
-        .add_root_node(Node::opaque(
-            "cloud_env",
-            vec![],
-            vec![
-                port("config", "CloudSecretConfig"),
-                optional("request_url", "OptionalString"),
-                optional("request_token", "OptionalString"),
-            ],
-            ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-                CloudOps::ConstCloudConfig {
-                    config: cloud_config.clone(),
-                },
-            )),
-        ))
-        .expect("cloud_env node")
+) -> Result<NodeRef<ReviewGraphOp>, BuilderError> {
+    builder.add_root_node(Node::opaque(
+        "cloud_env",
+        vec![],
+        vec![
+            port("config", "CloudSecretConfig"),
+            optional("request_url", "OptionalString"),
+            optional("request_token", "OptionalString"),
+        ],
+        DynOp::new(CloudOps::ConstCloudConfig {
+            config: cloud_config.clone(),
+        }),
+    ))
 }
 
 // ============================================================================
@@ -246,129 +178,120 @@ fn add_cloud_env_node(
 /// The graph handles this with conditional execution.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "review-phase",
-    builder = "build_review_phase_graph()"
+    builder = "build_review_phase_graph()",
+    returns_result
 )]
-pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
+pub fn build_review_phase_graph() -> Result<Dag<ReviewGraphOp>, BuilderError> {
     build_review_phase_graph_with_config(graph_cloud_config())
 }
 
 /// Build a ReviewPhase DAG with an explicit cloud config.
-pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> Dag<ReviewGraphOp> {
+pub fn build_review_phase_graph_with_config(
+    cloud_config: CloudSecretConfig,
+) -> Result<Dag<ReviewGraphOp>, BuilderError> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
-    let fs_env = builder
-        .add_root_node(Node::opaque(
-            "fs_env",
-            vec![],
-            vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-            ReviewGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
-        ))
-        .expect("fs_env node");
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
+        DynOp::new(FsEnv::new(filename::Scope::Write)),
+    ))?;
 
     // Node 0: Cloud environment (config + OIDC request inputs)
-    let cloud_env = add_cloud_env_node(&mut builder, &cloud_config);
+    let cloud_env = add_cloud_env_node(&mut builder, &cloud_config)?;
 
     // ========================================================================
     // Blob Acquisition
     // ========================================================================
 
     // Node 1: PrepareFetch - builds request or returns inline data
-    let prepare_blob = builder
-        .add_root_node(Node::opaque(
-            "prepare_blob",
-            vec![port("source", "Json")],
-            vec![
-                port("request", "TransportRequest"),
-                port("skip_fetch", "Bool"),
-                port("skip", "Bool"),
-                port("handle", "Json"), // Present if inline
-                port("source", "Json"), // Echo for parse
-            ],
-            ReviewGraphOp::Blob(BlobOps::PrepareFetch),
-        ))
-        .expect("prepare_blob node");
+    let prepare_blob = builder.add_root_node(Node::opaque(
+        "prepare_blob",
+        vec![port("source", "Json")],
+        vec![
+            port("request", "TransportRequest"),
+            port("skip_fetch", "Bool"),
+            port("skip", "Bool"),
+            port("handle", "Json"), // Present if inline
+            port("source", "Json"), // Echo for parse
+        ],
+        DynOp::new(BlobOps::PrepareFetch),
+    ))?;
 
     // Node 2: Execute blob fetch (I/O boundary)
     // Note: This is skipped for inline sources (skip_fetch=true)
-    let execute_blob = builder
-        .add_node_after(
-            Node::opaque(
-                "execute_blob",
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    resource("file", "FilesystemHandle", AccessMode::Read),
-                ],
-                vec![port("response", "TransportResponse")],
-                ReviewGraphOp::Transport(TransportOps::Execute),
-            ),
-            &prepare_blob,
-        )
-        .expect("execute_blob node");
+    let execute_blob = builder.add_node_after(
+        Node::opaque(
+            "execute_blob",
+            vec![
+                port("request", "TransportRequest"),
+                port("skip", "Bool"),
+                resource("file", "FilesystemHandle", AccessMode::Read),
+            ],
+            vec![port("response", "TransportResponse")],
+            DynOp::new(TransportOps::Execute),
+        ),
+        &prepare_blob,
+    )?;
 
     // Node 3: ParseFetch - converts response to BlobHandle
-    let parse_blob = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_blob",
-                vec![
-                    port("source", "Json"),
-                    port("response", "TransportResponse"),
-                    optional("handle", "OptionalJson"),
-                    port("skip", "Bool"),
-                ],
-                vec![port("handle", "Json"), port("meta", "Json")],
-                ReviewGraphOp::Blob(BlobOps::ParseFetch),
-            ),
-            &execute_blob,
-        )
-        .expect("parse_blob node");
+    let parse_blob = builder.add_node_after(
+        Node::opaque(
+            "parse_blob",
+            vec![
+                port("source", "Json"),
+                port("response", "TransportResponse"),
+                optional("handle", "OptionalJson"),
+                port("skip", "Bool"),
+            ],
+            vec![port("handle", "Json"), port("meta", "Json")],
+            DynOp::new(BlobOps::ParseFetch),
+        ),
+        &execute_blob,
+    )?;
 
     // ========================================================================
     // Review Prompt Building
     // ========================================================================
 
     // Node 4: PrepareReviewPrompt - builds question from blob + criteria
-    let prepare_prompt = builder
-        .add_root_node(Node::opaque(
-            "prepare_prompt",
-            vec![
-                port("artifact", "String"),
-                port("criteria", "Json"),
-                optional("context", "OptionalString"),
-            ],
-            vec![port("question", "String"), port("system_prompt", "String")],
-            ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
-        ))
-        .expect("prepare_prompt node");
+    let prepare_prompt = builder.add_root_node(Node::opaque(
+        "prepare_prompt",
+        vec![
+            port("artifact", "String"),
+            port("criteria", "Json"),
+            optional("context", "OptionalString"),
+        ],
+        vec![port("question", "String"), port("system_prompt", "String")],
+        DynOp::new(ReviewOps::PrepareReviewPrompt),
+    ))?;
 
     // ========================================================================
     // LLM Interaction
     // ========================================================================
 
     // Resolve auth requirements (pure)
-    let resolve_auth = builder
-        .add_node_after(
-            Node::opaque(
-                "resolve_auth",
-                vec![port("provider", "String")],
-                vec![
-                    port("service", "String"),
-                    port("scheme", "String"),
-                    port("header_name", "String"),
-                    list("required_scopes", "String"),
-                    port("interactive_allowed", "Bool"),
-                ],
-                ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
-            ),
-            &prepare_prompt,
-        )
-        .expect("resolve_auth node");
+    let resolve_auth = builder.add_node_after(
+        Node::opaque(
+            "resolve_auth",
+            vec![port("provider", "String")],
+            vec![
+                port("service", "String"),
+                port("scheme", "String"),
+                port("header_name", "String"),
+                list("required_scopes", "String"),
+                port("interactive_allowed", "Bool"),
+            ],
+            DynOp::new(ReviewOps::ResolveAuthContract),
+        ),
+        &prepare_prompt,
+    )?;
 
     // Cloud credential acquisition (resolves provider credentials)
     let cloud_credential =
-        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
-    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
+        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config)?;
+    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth)?;
 
     // LLM triplet SubDag: prepare_llm → execute_llm → parse_llm
     let llm_triplet = add_transport_triplet_named_with_passthrough(
@@ -390,93 +313,66 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
         ],
         vec![port("provider", "String")],
         vec![port("answer", "String")],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-        ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-        ReviewGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(LlmOps::PrepareSimpleRequest),
+        DynOp::new(LlmOps::ParseSimpleResponse),
+        DynOp::new(TransportOps::Execute),
         Some(&cloud_credential),
-    )
-    .expect("llm triplet");
-    builder
-        .add_edge(
-            scope_preflight.out("scope_verified"),
-            llm_triplet.in_port("scope_verified"),
-        )
-        .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
+    )?;
+    builder.add_edge(
+        scope_preflight.out("scope_verified"),
+        llm_triplet.in_port("scope_verified"),
+    )?;
 
     // ========================================================================
     // Review Response Parsing
     // ========================================================================
 
     // ParseReviewResponse - converts answer to ReviewOutput
-    let parse_response = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_response",
-                vec![port("answer", "String"), port("criteria", "Json")],
-                vec![port("output", "Json"), port("errors", "Json")],
-                ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
-            ),
-            &llm_triplet,
-        )
-        .expect("parse_response node");
+    let parse_response = builder.add_node_after(
+        Node::opaque(
+            "parse_response",
+            vec![port("answer", "String"), port("criteria", "Json")],
+            vec![port("output", "Json"), port("errors", "Json")],
+            DynOp::new(ReviewOps::ParseReviewResponse),
+        ),
+        &llm_triplet,
+    )?;
 
     // ========================================================================
     // Edges
     // ========================================================================
 
     // Blob acquisition flow
-    builder
-        .add_edge(prepare_blob.out("request"), execute_blob.in_port("request"))
-        .expect("prepare_blob.request -> execute_blob.request");
-    builder
-        .add_edge(prepare_blob.out("skip"), execute_blob.in_port("skip"))
-        .expect("prepare_blob.skip -> execute_blob.skip");
-    builder
-        .add_edge(
-            fs_env.out(FsEnv::WRITE_PORT),
-            execute_blob.in_port("res:file"),
-        )
-        .expect("fs_env -> execute_blob.res:file");
-    builder
-        .add_edge(execute_blob.out("response"), parse_blob.in_port("response"))
-        .expect("execute_blob.response -> parse_blob.response");
-    builder
-        .add_edge(prepare_blob.out("source"), parse_blob.in_port("source"))
-        .expect("prepare_blob.source -> parse_blob.source");
-    builder
-        .add_edge(prepare_blob.out("handle"), parse_blob.in_port("handle"))
-        .expect("prepare_blob.handle -> parse_blob.handle");
-    builder
-        .add_edge(prepare_blob.out("skip"), parse_blob.in_port("skip"))
-        .expect("prepare_blob.skip -> parse_blob.skip");
+    builder.add_edge(prepare_blob.out("request"), execute_blob.in_port("request"))?;
+    builder.add_edge(prepare_blob.out("skip"), execute_blob.in_port("skip"))?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        execute_blob.in_port("res:file"),
+    )?;
+    builder.add_edge(execute_blob.out("response"), parse_blob.in_port("response"))?;
+    builder.add_edge(prepare_blob.out("source"), parse_blob.in_port("source"))?;
+    builder.add_edge(prepare_blob.out("handle"), parse_blob.in_port("handle"))?;
+    builder.add_edge(prepare_blob.out("skip"), parse_blob.in_port("skip"))?;
 
     // LLM flow
-    builder
-        .add_edge(
-            prepare_prompt.out("question"),
-            llm_triplet.in_port("question"),
-        )
-        .expect("prepare_prompt.question -> llm.question");
-    builder
-        .add_edge(
-            prepare_prompt.out("system_prompt"),
-            llm_triplet.in_port("system_prompt"),
-        )
-        .expect("prepare_prompt.system_prompt -> llm.system_prompt");
-    builder
-        .add_edge(
-            cloud_credential.out("credential"),
-            llm_triplet.in_port("res:credential"),
-        )
-        .expect("cloud_credential -> llm.res:credential");
+    builder.add_edge(
+        prepare_prompt.out("question"),
+        llm_triplet.in_port("question"),
+    )?;
+    builder.add_edge(
+        prepare_prompt.out("system_prompt"),
+        llm_triplet.in_port("system_prompt"),
+    )?;
+    builder.add_edge(
+        cloud_credential.out("credential"),
+        llm_triplet.in_port("res:credential"),
+    )?;
 
     // Response parsing
-    builder
-        .add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))
-        .expect("llm.answer -> parse_response.answer");
+    builder.add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))?;
     // criteria is an entrypoint, flows to both prepare_prompt and parse_response
 
-    builder.build()
+    Ok(builder.build())
 }
 
 /// Build a simplified ReviewPhase DAG for inline content.
@@ -492,56 +388,52 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
 /// ## Boundaries:
 /// - `parse_response.output`: Json — ReviewOutput
 /// - `parse_response.errors`: Json — Parse errors array
-pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
+pub fn build_inline_review_graph() -> Result<Dag<ReviewGraphOp>, BuilderError> {
     build_inline_review_graph_with_config(graph_cloud_config())
 }
 
 /// Build an inline review graph with explicit cloud config.
 pub fn build_inline_review_graph_with_config(
     cloud_config: CloudSecretConfig,
-) -> Dag<ReviewGraphOp> {
+) -> Result<Dag<ReviewGraphOp>, BuilderError> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
     // Node 0: Cloud environment (config + OIDC request inputs)
-    let cloud_env = add_cloud_env_node(&mut builder, &cloud_config);
+    let cloud_env = add_cloud_env_node(&mut builder, &cloud_config)?;
 
     // Node 1: PrepareReviewPrompt
-    let prepare_prompt = builder
-        .add_root_node(Node::opaque(
-            "prepare_prompt",
-            vec![
-                port("artifact", "String"),
-                port("criteria", "Json"),
-                optional("context", "OptionalString"),
-            ],
-            vec![port("question", "String"), port("system_prompt", "String")],
-            ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
-        ))
-        .expect("prepare_prompt node");
+    let prepare_prompt = builder.add_root_node(Node::opaque(
+        "prepare_prompt",
+        vec![
+            port("artifact", "String"),
+            port("criteria", "Json"),
+            optional("context", "OptionalString"),
+        ],
+        vec![port("question", "String"), port("system_prompt", "String")],
+        DynOp::new(ReviewOps::PrepareReviewPrompt),
+    ))?;
 
     // Resolve auth requirements (pure)
-    let resolve_auth = builder
-        .add_node_after(
-            Node::opaque(
-                "resolve_auth",
-                vec![port("provider", "String")],
-                vec![
-                    port("service", "String"),
-                    port("scheme", "String"),
-                    port("header_name", "String"),
-                    list("required_scopes", "String"),
-                    port("interactive_allowed", "Bool"),
-                ],
-                ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
-            ),
-            &prepare_prompt,
-        )
-        .expect("resolve_auth node");
+    let resolve_auth = builder.add_node_after(
+        Node::opaque(
+            "resolve_auth",
+            vec![port("provider", "String")],
+            vec![
+                port("service", "String"),
+                port("scheme", "String"),
+                port("header_name", "String"),
+                list("required_scopes", "String"),
+                port("interactive_allowed", "Bool"),
+            ],
+            DynOp::new(ReviewOps::ResolveAuthContract),
+        ),
+        &prepare_prompt,
+    )?;
 
     // Cloud credential acquisition (resolves provider credentials)
     let cloud_credential =
-        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
-    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
+        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config)?;
+    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth)?;
 
     // LLM triplet SubDag: prepare_llm → execute_llm → parse_llm
     let llm_triplet = add_transport_triplet_named_with_passthrough(
@@ -563,56 +455,43 @@ pub fn build_inline_review_graph_with_config(
         ],
         vec![port("provider", "String")],
         vec![port("answer", "String")],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-        ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-        ReviewGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(LlmOps::PrepareSimpleRequest),
+        DynOp::new(LlmOps::ParseSimpleResponse),
+        DynOp::new(TransportOps::Execute),
         Some(&cloud_credential),
-    )
-    .expect("llm triplet");
-    builder
-        .add_edge(
-            scope_preflight.out("scope_verified"),
-            llm_triplet.in_port("scope_verified"),
-        )
-        .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
+    )?;
+    builder.add_edge(
+        scope_preflight.out("scope_verified"),
+        llm_triplet.in_port("scope_verified"),
+    )?;
 
     // ParseReviewResponse
-    let parse_response = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_response",
-                vec![port("answer", "String"), port("criteria", "Json")],
-                vec![port("output", "Json"), port("errors", "Json")],
-                ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
-            ),
-            &llm_triplet,
-        )
-        .expect("parse_response node");
+    let parse_response = builder.add_node_after(
+        Node::opaque(
+            "parse_response",
+            vec![port("answer", "String"), port("criteria", "Json")],
+            vec![port("output", "Json"), port("errors", "Json")],
+            DynOp::new(ReviewOps::ParseReviewResponse),
+        ),
+        &llm_triplet,
+    )?;
 
     // Edges
-    builder
-        .add_edge(
-            prepare_prompt.out("question"),
-            llm_triplet.in_port("question"),
-        )
-        .expect("prepare_prompt.question -> llm.question");
-    builder
-        .add_edge(
-            prepare_prompt.out("system_prompt"),
-            llm_triplet.in_port("system_prompt"),
-        )
-        .expect("prepare_prompt.system_prompt -> llm.system_prompt");
-    builder
-        .add_edge(
-            cloud_credential.out("credential"),
-            llm_triplet.in_port("res:credential"),
-        )
-        .expect("cloud_credential -> llm.res:credential");
-    builder
-        .add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))
-        .expect("llm.answer -> parse_response.answer");
+    builder.add_edge(
+        prepare_prompt.out("question"),
+        llm_triplet.in_port("question"),
+    )?;
+    builder.add_edge(
+        prepare_prompt.out("system_prompt"),
+        llm_triplet.in_port("system_prompt"),
+    )?;
+    builder.add_edge(
+        cloud_credential.out("credential"),
+        llm_triplet.in_port("res:credential"),
+    )?;
+    builder.add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))?;
 
-    builder.build()
+    Ok(builder.build())
 }
 
 // ============================================================================
@@ -623,7 +502,7 @@ pub fn build_inline_review_graph_with_config(
 ///
 /// Uses `ReviewPipelineConfig::gunbc_default()` for provider, model, and criteria.
 /// See [`build_diff_review_graph_with`] for full documentation.
-pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
+pub fn build_diff_review_graph() -> Result<Dag<ReviewGraphOp>, BuilderError> {
     build_diff_review_graph_with(ReviewPipelineConfig::gunbc_default())
 }
 
@@ -661,7 +540,9 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 /// I/O Classification:
 /// - Two TransportOps::Execute calls: git diff (read), LLM (read)
 /// - Phase overall: Read-only
-pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
+pub fn build_diff_review_graph_with(
+    config: ReviewPipelineConfig,
+) -> Result<Dag<ReviewGraphOp>, BuilderError> {
     build_diff_review_graph_with_cloud_config(config, graph_cloud_config())
 }
 
@@ -669,20 +550,18 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
 pub fn build_diff_review_graph_with_cloud_config(
     config: ReviewPipelineConfig,
     cloud_config: CloudSecretConfig,
-) -> Dag<ReviewGraphOp> {
+) -> Result<Dag<ReviewGraphOp>, BuilderError> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
-    let fs_env = builder
-        .add_root_node(Node::opaque(
-            "fs_env",
-            vec![],
-            vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-            ReviewGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
-        ))
-        .expect("fs_env node");
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
+        DynOp::new(FsEnv::new(filename::Scope::Write)),
+    ))?;
 
     // Cloud environment (config + OIDC request inputs)
-    let cloud_env = add_cloud_env_node(&mut builder, &cloud_config);
+    let cloud_env = add_cloud_env_node(&mut builder, &cloud_config)?;
 
     let default_branch = config.default_branch.clone();
 
@@ -690,18 +569,16 @@ pub fn build_diff_review_graph_with_cloud_config(
     // Pipeline Config (zero-input node, emits constants)
     // ========================================================================
 
-    let config_node = builder
-        .add_root_node(Node::opaque(
-            "config",
-            vec![],
-            vec![
-                port("provider", "String"),
-                port("model", "String"),
-                port("criteria", "Json"),
-            ],
-            ReviewGraphOp::Review(ReviewOps::LoadPipelineConfig(config)),
-        ))
-        .expect("config node");
+    let config_node = builder.add_root_node(Node::opaque(
+        "config",
+        vec![],
+        vec![
+            port("provider", "String"),
+            port("model", "String"),
+            port("criteria", "Json"),
+        ],
+        DynOp::new(ReviewOps::LoadPipelineConfig(config)),
+    ))?;
 
     // ========================================================================
     // Git Diff Acquisition
@@ -723,77 +600,70 @@ pub fn build_diff_review_graph_with_cloud_config(
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![],
         vec![port("diff_files", "Map"), port("stats", "String")],
-        ReviewGraphOp::Git(GitOps::PrepareDiff {
+        DynOp::new(GitOps::PrepareDiff {
             base_ref: default_branch,
             extensions: vec![],
         }),
-        ReviewGraphOp::Git(GitOps::ParseDiff),
-        ReviewGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(GitOps::ParseDiff),
+        DynOp::new(TransportOps::Execute),
         Some(&fs_env),
-    )
-    .expect("diff triplet");
+    )?;
 
     // ========================================================================
     // Diff → Artifact Formatting
     // ========================================================================
 
-    let format_artifact = builder
-        .add_node_after(
-            Node::opaque(
-                "format_artifact",
-                vec![port("diff_files", "Map")],
-                vec![port("artifact", "String")],
-                ReviewGraphOp::Review(ReviewOps::FormatDiffArtifact),
-            ),
-            &diff_triplet,
-        )
-        .expect("format_artifact node");
+    let format_artifact = builder.add_node_after(
+        Node::opaque(
+            "format_artifact",
+            vec![port("diff_files", "Map")],
+            vec![port("artifact", "String")],
+            DynOp::new(ReviewOps::FormatDiffArtifact),
+        ),
+        &diff_triplet,
+    )?;
 
     // ========================================================================
     // Review Prompt Building
     // ========================================================================
 
-    let prepare_prompt = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_prompt",
-                vec![
-                    port("artifact", "String"),
-                    port("criteria", "Json"),
-                    optional("context", "OptionalString"),
-                ],
-                vec![port("question", "String"), port("system_prompt", "String")],
-                ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
-            ),
-            &format_artifact,
-        )
-        .expect("prepare_prompt node");
+    let prepare_prompt = builder.add_node_after(
+        Node::opaque(
+            "prepare_prompt",
+            vec![
+                port("artifact", "String"),
+                port("criteria", "Json"),
+                optional("context", "OptionalString"),
+            ],
+            vec![port("question", "String"), port("system_prompt", "String")],
+            DynOp::new(ReviewOps::PrepareReviewPrompt),
+        ),
+        &format_artifact,
+    )?;
 
     // ========================================================================
     // LLM Interaction
     // ========================================================================
 
-    let resolve_auth = builder
-        .add_node_after(
-            Node::opaque(
-                "resolve_auth",
-                vec![port("provider", "String")],
-                vec![
-                    port("service", "String"),
-                    port("scheme", "String"),
-                    port("header_name", "String"),
-                    list("required_scopes", "String"),
-                    port("interactive_allowed", "Bool"),
-                ],
-                ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
-            ),
-            &prepare_prompt,
-        )
-        .expect("resolve_auth node");
+    let resolve_auth = builder.add_node_after(
+        Node::opaque(
+            "resolve_auth",
+            vec![port("provider", "String")],
+            vec![
+                port("service", "String"),
+                port("scheme", "String"),
+                port("header_name", "String"),
+                list("required_scopes", "String"),
+                port("interactive_allowed", "Bool"),
+            ],
+            DynOp::new(ReviewOps::ResolveAuthContract),
+        ),
+        &prepare_prompt,
+    )?;
 
     let cloud_credential =
-        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
-    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
+        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config)?;
+    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth)?;
 
     // LLM triplet SubDag: prepare_llm → execute_llm → parse_llm
     let llm_triplet = add_transport_triplet_named_with_passthrough(
@@ -815,119 +685,88 @@ pub fn build_diff_review_graph_with_cloud_config(
         ],
         vec![port("provider", "String")],
         vec![port("answer", "String")],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-        ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-        ReviewGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(LlmOps::PrepareSimpleRequest),
+        DynOp::new(LlmOps::ParseSimpleResponse),
+        DynOp::new(TransportOps::Execute),
         Some(&cloud_credential),
-    )
-    .expect("llm triplet");
-    builder
-        .add_edge(
-            scope_preflight.out("scope_verified"),
-            llm_triplet.in_port("scope_verified"),
-        )
-        .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
+    )?;
+    builder.add_edge(
+        scope_preflight.out("scope_verified"),
+        llm_triplet.in_port("scope_verified"),
+    )?;
 
     // ========================================================================
     // Review Response Parsing
     // ========================================================================
 
-    let parse_response = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_response",
-                vec![port("answer", "String"), port("criteria", "Json")],
-                vec![port("output", "Json"), port("errors", "Json")],
-                ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
-            ),
-            &llm_triplet,
-        )
-        .expect("parse_response node");
+    let parse_response = builder.add_node_after(
+        Node::opaque(
+            "parse_response",
+            vec![port("answer", "String"), port("criteria", "Json")],
+            vec![port("output", "Json"), port("errors", "Json")],
+            DynOp::new(ReviewOps::ParseReviewResponse),
+        ),
+        &llm_triplet,
+    )?;
 
     // ========================================================================
     // Edges
     // ========================================================================
 
     // Config → downstream consumers
-    builder
-        .add_edge(config_node.out("provider"), llm_triplet.in_port("provider"))
-        .expect("config.provider -> llm.provider");
-    builder
-        .add_edge(config_node.out("model"), llm_triplet.in_port("model"))
-        .expect("config.model -> llm.model");
-    builder
-        .add_edge(
-            config_node.out("criteria"),
-            prepare_prompt.in_port("criteria"),
-        )
-        .expect("config.criteria -> prepare_prompt.criteria");
-    builder
-        .add_edge(
-            config_node.out("criteria"),
-            parse_response.in_port("criteria"),
-        )
-        .expect("config.criteria -> parse_response.criteria");
-    builder
-        .add_edge(
-            config_node.out("provider"),
-            resolve_auth.in_port("provider"),
-        )
-        .expect("config.provider -> resolve_auth.provider");
+    builder.add_edge(config_node.out("provider"), llm_triplet.in_port("provider"))?;
+    builder.add_edge(config_node.out("model"), llm_triplet.in_port("model"))?;
+    builder.add_edge(
+        config_node.out("criteria"),
+        prepare_prompt.in_port("criteria"),
+    )?;
+    builder.add_edge(
+        config_node.out("criteria"),
+        parse_response.in_port("criteria"),
+    )?;
+    builder.add_edge(
+        config_node.out("provider"),
+        resolve_auth.in_port("provider"),
+    )?;
 
     // Diff → artifact formatting
-    builder
-        .add_edge(
-            diff_triplet.out("diff_files"),
-            format_artifact.in_port("diff_files"),
-        )
-        .expect("diff.diff_files -> format_artifact.diff_files");
-    builder
-        .add_edge(
-            fs_env.out(FsEnv::WRITE_PORT),
-            diff_triplet.in_port("res:file"),
-        )
-        .expect("fs_env -> diff.res:file");
+    builder.add_edge(
+        diff_triplet.out("diff_files"),
+        format_artifact.in_port("diff_files"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        diff_triplet.in_port("res:file"),
+    )?;
 
     // Artifact → review prompt + LLM content
-    builder
-        .add_edge(
-            format_artifact.out("artifact"),
-            prepare_prompt.in_port("artifact"),
-        )
-        .expect("format_artifact.artifact -> prepare_prompt.artifact");
-    builder
-        .add_edge(
-            format_artifact.out("artifact"),
-            llm_triplet.in_port("content"),
-        )
-        .expect("format_artifact.artifact -> llm.content");
+    builder.add_edge(
+        format_artifact.out("artifact"),
+        prepare_prompt.in_port("artifact"),
+    )?;
+    builder.add_edge(
+        format_artifact.out("artifact"),
+        llm_triplet.in_port("content"),
+    )?;
 
     // LLM flow
-    builder
-        .add_edge(
-            prepare_prompt.out("question"),
-            llm_triplet.in_port("question"),
-        )
-        .expect("prepare_prompt.question -> llm.question");
-    builder
-        .add_edge(
-            prepare_prompt.out("system_prompt"),
-            llm_triplet.in_port("system_prompt"),
-        )
-        .expect("prepare_prompt.system_prompt -> llm.system_prompt");
-    builder
-        .add_edge(
-            cloud_credential.out("credential"),
-            llm_triplet.in_port("res:credential"),
-        )
-        .expect("cloud_credential -> llm.res:credential");
+    builder.add_edge(
+        prepare_prompt.out("question"),
+        llm_triplet.in_port("question"),
+    )?;
+    builder.add_edge(
+        prepare_prompt.out("system_prompt"),
+        llm_triplet.in_port("system_prompt"),
+    )?;
+    builder.add_edge(
+        cloud_credential.out("credential"),
+        llm_triplet.in_port("res:credential"),
+    )?;
 
     // Response parsing
-    builder
-        .add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))
-        .expect("llm.answer -> parse_response.answer");
+    builder.add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))?;
 
-    builder.build()
+    Ok(builder.build())
 }
 
 // ============================================================================
@@ -963,14 +802,17 @@ pub fn build_diff_review_graph_with_cloud_config(
 /// directly to the merge node without wrapper nodes.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "review-multi-source",
-    builder = "build_multi_source_review_graph()"
+    builder = "build_multi_source_review_graph()",
+    returns_result
 )]
-pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
+pub fn build_multi_source_review_graph() -> Result<Dag<ReviewGraphOp>, BuilderError> {
     build_multi_source_review_graph_with(ReviewPipelineConfig::gunbc_default())
 }
 
 /// Build a MultiSourceReviewPhase DAG with explicit pipeline config.
-pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
+pub fn build_multi_source_review_graph_with(
+    config: ReviewPipelineConfig,
+) -> Result<Dag<ReviewGraphOp>, BuilderError> {
     build_multi_source_review_graph_with_cloud_config(config, graph_cloud_config())
 }
 
@@ -978,70 +820,64 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
 pub fn build_multi_source_review_graph_with_cloud_config(
     config: ReviewPipelineConfig,
     cloud_config: CloudSecretConfig,
-) -> Dag<ReviewGraphOp> {
+) -> Result<Dag<ReviewGraphOp>, BuilderError> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
     // Cloud environment (config + OIDC request inputs)
-    let cloud_env = add_cloud_env_node(&mut builder, &cloud_config);
+    let cloud_env = add_cloud_env_node(&mut builder, &cloud_config)?;
 
     // ========================================================================
     // Pipeline Config
     // ========================================================================
 
-    let config_node = builder
-        .add_root_node(Node::opaque(
-            "config",
-            vec![],
-            vec![
-                port("provider", "String"),
-                port("model", "String"),
-                port("criteria", "Json"),
-            ],
-            ReviewGraphOp::Review(ReviewOps::LoadPipelineConfig(config)),
-        ))
-        .expect("config node");
+    let config_node = builder.add_root_node(Node::opaque(
+        "config",
+        vec![],
+        vec![
+            port("provider", "String"),
+            port("model", "String"),
+            port("criteria", "Json"),
+        ],
+        DynOp::new(ReviewOps::LoadPipelineConfig(config)),
+    ))?;
 
     // ========================================================================
     // LLM Review Source (source 1)
     // ========================================================================
 
-    let prepare_prompt = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_prompt",
-                vec![
-                    port("artifact", "String"),
-                    port("criteria", "Json"),
-                    optional("context", "OptionalString"),
-                ],
-                vec![port("question", "String"), port("system_prompt", "String")],
-                ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
-            ),
-            &config_node,
-        )
-        .expect("prepare_prompt node");
+    let prepare_prompt = builder.add_node_after(
+        Node::opaque(
+            "prepare_prompt",
+            vec![
+                port("artifact", "String"),
+                port("criteria", "Json"),
+                optional("context", "OptionalString"),
+            ],
+            vec![port("question", "String"), port("system_prompt", "String")],
+            DynOp::new(ReviewOps::PrepareReviewPrompt),
+        ),
+        &config_node,
+    )?;
 
-    let resolve_auth = builder
-        .add_node_after(
-            Node::opaque(
-                "resolve_auth",
-                vec![port("provider", "String")],
-                vec![
-                    port("service", "String"),
-                    port("scheme", "String"),
-                    port("header_name", "String"),
-                    list("required_scopes", "String"),
-                    port("interactive_allowed", "Bool"),
-                ],
-                ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
-            ),
-            &prepare_prompt,
-        )
-        .expect("resolve_auth node");
+    let resolve_auth = builder.add_node_after(
+        Node::opaque(
+            "resolve_auth",
+            vec![port("provider", "String")],
+            vec![
+                port("service", "String"),
+                port("scheme", "String"),
+                port("header_name", "String"),
+                list("required_scopes", "String"),
+                port("interactive_allowed", "Bool"),
+            ],
+            DynOp::new(ReviewOps::ResolveAuthContract),
+        ),
+        &prepare_prompt,
+    )?;
 
     let cloud_credential =
-        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
-    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
+        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config)?;
+    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth)?;
 
     // LLM triplet SubDag: prepare_llm → execute_llm → parse_llm
     let llm_triplet = add_transport_triplet_named_with_passthrough(
@@ -1063,106 +899,79 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         ],
         vec![port("provider", "String")],
         vec![port("answer", "String")],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-        ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-        ReviewGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(LlmOps::PrepareSimpleRequest),
+        DynOp::new(LlmOps::ParseSimpleResponse),
+        DynOp::new(TransportOps::Execute),
         Some(&cloud_credential),
-    )
-    .expect("llm triplet");
-    builder
-        .add_edge(
-            scope_preflight.out("scope_verified"),
-            llm_triplet.in_port("scope_verified"),
-        )
-        .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
+    )?;
+    builder.add_edge(
+        scope_preflight.out("scope_verified"),
+        llm_triplet.in_port("scope_verified"),
+    )?;
 
-    let parse_response = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_response",
-                vec![port("answer", "String"), port("criteria", "Json")],
-                vec![port("output", "Json"), port("errors", "Json")],
-                ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
-            ),
-            &llm_triplet,
-        )
-        .expect("parse_response node");
+    let parse_response = builder.add_node_after(
+        Node::opaque(
+            "parse_response",
+            vec![port("answer", "String"), port("criteria", "Json")],
+            vec![port("output", "Json"), port("errors", "Json")],
+            DynOp::new(ReviewOps::ParseReviewResponse),
+        ),
+        &llm_triplet,
+    )?;
 
     // ========================================================================
     // Merge (combines sources)
     // ========================================================================
 
-    let merge = builder
-        .add_node_after(
-            Node::opaque(
-                "merge",
-                vec![list("outputs", "JsonList")],
-                vec![port("bundle", "Json"), port("conflicts", "Json")],
-                ReviewGraphOp::Review(ReviewOps::MergeOutputs),
-            ),
-            &parse_response,
-        )
-        .expect("merge node");
+    let merge = builder.add_node_after(
+        Node::opaque(
+            "merge",
+            vec![list("outputs", "JsonList")],
+            vec![port("bundle", "Json"), port("conflicts", "Json")],
+            DynOp::new(ReviewOps::MergeOutputs),
+        ),
+        &parse_response,
+    )?;
 
     // ========================================================================
     // Edges
     // ========================================================================
 
     // Config → downstream consumers
-    builder
-        .add_edge(config_node.out("provider"), llm_triplet.in_port("provider"))
-        .expect("config.provider -> llm.provider");
-    builder
-        .add_edge(config_node.out("model"), llm_triplet.in_port("model"))
-        .expect("config.model -> llm.model");
-    builder
-        .add_edge(
-            config_node.out("criteria"),
-            prepare_prompt.in_port("criteria"),
-        )
-        .expect("config.criteria -> prepare_prompt.criteria");
-    builder
-        .add_edge(
-            config_node.out("criteria"),
-            parse_response.in_port("criteria"),
-        )
-        .expect("config.criteria -> parse_response.criteria");
-    builder
-        .add_edge(
-            config_node.out("provider"),
-            resolve_auth.in_port("provider"),
-        )
-        .expect("config.provider -> resolve_auth.provider");
+    builder.add_edge(config_node.out("provider"), llm_triplet.in_port("provider"))?;
+    builder.add_edge(config_node.out("model"), llm_triplet.in_port("model"))?;
+    builder.add_edge(
+        config_node.out("criteria"),
+        prepare_prompt.in_port("criteria"),
+    )?;
+    builder.add_edge(
+        config_node.out("criteria"),
+        parse_response.in_port("criteria"),
+    )?;
+    builder.add_edge(
+        config_node.out("provider"),
+        resolve_auth.in_port("provider"),
+    )?;
 
     // LLM review flow
-    builder
-        .add_edge(
-            prepare_prompt.out("question"),
-            llm_triplet.in_port("question"),
-        )
-        .expect("prepare_prompt.question -> llm.question");
-    builder
-        .add_edge(
-            prepare_prompt.out("system_prompt"),
-            llm_triplet.in_port("system_prompt"),
-        )
-        .expect("prepare_prompt.system_prompt -> llm.system_prompt");
-    builder
-        .add_edge(
-            cloud_credential.out("credential"),
-            llm_triplet.in_port("res:credential"),
-        )
-        .expect("cloud_credential -> llm.res:credential");
-    builder
-        .add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))
-        .expect("llm.answer -> parse_response.answer");
+    builder.add_edge(
+        prepare_prompt.out("question"),
+        llm_triplet.in_port("question"),
+    )?;
+    builder.add_edge(
+        prepare_prompt.out("system_prompt"),
+        llm_triplet.in_port("system_prompt"),
+    )?;
+    builder.add_edge(
+        cloud_credential.out("credential"),
+        llm_triplet.in_port("res:credential"),
+    )?;
+    builder.add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))?;
 
     // Review output → merge (list port collects fan-in automatically)
-    builder
-        .add_edge(parse_response.out("output"), merge.in_port("outputs"))
-        .expect("parse_response.output -> merge.outputs");
+    builder.add_edge(parse_response.out("output"), merge.in_port("outputs"))?;
 
-    builder.build()
+    Ok(builder.build())
 }
 
 // ============================================================================
@@ -1172,11 +981,13 @@ pub fn build_multi_source_review_graph_with_cloud_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_exec::Executable;
     use gunbc_ir::{detect_boundaries, detect_entrypoints};
+    use std::collections::HashMap;
 
     #[test]
     fn test_review_phase_graph_boundaries() {
-        let dag = build_review_phase_graph();
+        let dag = build_review_phase_graph().unwrap();
         let boundaries = detect_boundaries(&dag);
 
         // parse_response outputs are boundaries
@@ -1194,7 +1005,7 @@ mod tests {
 
     #[test]
     fn test_review_phase_graph_entrypoints() {
-        let dag = build_review_phase_graph();
+        let dag = build_review_phase_graph().unwrap();
         let entrypoints = detect_entrypoints(&dag);
 
         // prepare_blob.source is an entrypoint
@@ -1218,7 +1029,7 @@ mod tests {
 
     #[test]
     fn test_inline_review_graph_boundaries() {
-        let dag = build_inline_review_graph();
+        let dag = build_inline_review_graph().unwrap();
         let boundaries = detect_boundaries(&dag);
 
         assert!(
@@ -1229,7 +1040,7 @@ mod tests {
 
     #[test]
     fn test_inline_review_graph_entrypoints() {
-        let dag = build_inline_review_graph();
+        let dag = build_inline_review_graph().unwrap();
         let entrypoints = detect_entrypoints(&dag);
 
         // prepare_prompt.artifact and criteria are entrypoints
@@ -1249,13 +1060,13 @@ mod tests {
     fn test_review_graph_ops_execute() {
         // Test that all ops can be executed (basic smoke test)
         let ops = vec![
-            ReviewGraphOp::Blob(BlobOps::PrepareFetch),
-            ReviewGraphOp::Git(GitOps::ParseDiff),
-            ReviewGraphOp::Review(ReviewOps::HashFinding),
-            ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-            ReviewGraphOp::Llm(LlmOps::ResolveAuth),
-            ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ResolveConfig)),
-            ReviewGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(BlobOps::PrepareFetch),
+            DynOp::new(GitOps::ParseDiff),
+            DynOp::new(ReviewOps::HashFinding),
+            DynOp::new(LlmOps::PrepareSimpleRequest),
+            DynOp::new(LlmOps::ResolveAuth),
+            DynOp::new(CloudOps::ResolveConfig),
+            DynOp::new(TransportOps::Execute),
         ];
 
         for op in ops {
@@ -1272,7 +1083,7 @@ mod tests {
 
     #[test]
     fn test_diff_review_graph_boundaries() {
-        let dag = build_diff_review_graph();
+        let dag = build_diff_review_graph().unwrap();
         let boundaries = detect_boundaries(&dag);
 
         assert!(
@@ -1289,7 +1100,7 @@ mod tests {
 
     #[test]
     fn test_diff_review_graph_entrypoints() {
-        let dag = build_diff_review_graph();
+        let dag = build_diff_review_graph().unwrap();
         let entrypoints = detect_entrypoints(&dag);
 
         // diff SubDag has base_ref (optional) and repo_path (required) entrypoints
@@ -1318,7 +1129,7 @@ mod tests {
 
     #[test]
     fn test_diff_review_graph_has_two_transport_subdags() {
-        let dag = build_diff_review_graph();
+        let dag = build_diff_review_graph().unwrap();
         for node_id in ["diff", "llm"] {
             let node = dag
                 .get_node(&node_id.into())
@@ -1333,7 +1144,7 @@ mod tests {
 
     #[test]
     fn test_multi_source_review_graph_boundaries() {
-        let dag = build_multi_source_review_graph();
+        let dag = build_multi_source_review_graph().unwrap();
         let boundaries = detect_boundaries(&dag);
 
         assert!(
@@ -1344,7 +1155,7 @@ mod tests {
 
     #[test]
     fn test_multi_source_review_graph_entrypoints() {
-        let dag = build_multi_source_review_graph();
+        let dag = build_multi_source_review_graph().unwrap();
         let entrypoints = detect_entrypoints(&dag);
 
         // Only artifact on prepare_prompt is an entrypoint (criteria comes from config)

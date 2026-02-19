@@ -4,10 +4,10 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::build_pragma_graph;
+use gunbc_dag::pragma::build_pragma_graph;
+use gunbc_dag::{print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions};
 use gunbc_exec::{
-    execute_and_display, execute_and_display_with_result, print_attention, AttentionLevel,
-    BoundaryMocks, ExecutionMode,
+    execute_and_display_with_result, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
@@ -36,9 +36,9 @@ fn main() {
 
     // File paths for the three pragma outputs
     let file_paths: &[(&str, &str)] = &[
-        ("clippy", "clippy.toml"),
-        ("allowlist", "tools/disallowed-methods-allowlist.txt"),
-        ("policy", "tools/pragma-lint-policy.txt"),
+        ("pragma_3", "tools/pragma-lint-policy.txt"),
+        ("pragma_2", "tools/disallowed-methods-allowlist.txt"),
+        ("pragma", "clippy.toml"),
     ];
 
     // Set up entrypoint inputs
@@ -78,6 +78,9 @@ fn main() {
     let mode = if dry_run && resource_mode != ExecMode::Verify {
         let mut mocks = BoundaryMocks::new();
 
+        // Resource environment: filesystem handle used by file transports.
+        wire_fs_env_write_mock(&dag, &mut mocks);
+
         for (key, path) in file_paths {
             let read_node = format!("execute_read_{}", key);
             let write_node = format!("execute_{}_transport", key);
@@ -97,13 +100,9 @@ fn main() {
             );
 
             // Write transport mock
-            let response_key = format!("{}_response", key);
-            let path_key = format!("{}_written_path", key);
-            let content_key = format!("{}_content", key);
-
             mocks.set_value(
                 &write_node,
-                &response_key,
+                "response",
                 Value::Response(TransportResponse::File(FileResponse {
                     path: (*path).into(),
                     operation: FileOp::Write,
@@ -113,14 +112,6 @@ fn main() {
                     error: None,
                 })),
             );
-            mocks.set_value(&write_node, &path_key, Value::Str("<DRY-RUN>".to_string()));
-            mocks.set_value(
-                &write_node,
-                &content_key,
-                Value::Str("<DRY-RUN>".to_string()),
-            );
-            mocks.set_value(&write_node, "skip", Value::Bool(false));
-            mocks.set_value(&write_node, "skip_reason", Value::Str(String::new()));
         }
 
         ExecutionMode::DryRun(mocks)
@@ -193,14 +184,21 @@ fn main() {
             }
         }
     } else {
-        // Print header
-        println!("pragma");
-        println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
-        println!("  resource_mode: {}", resource_mode);
-        println!();
-
-        // Execute and display (progress or classic based on terminal)
-        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
+        print_tool_header(
+            "pragma",
+            &[
+                ("mode", if dry_run { "dry-run" } else { "real" }.to_string()),
+                ("resource_mode", resource_mode.to_string()),
+            ],
+        );
+        run_tool(
+            dag,
+            mode,
+            RunToolOptions {
+                input_mocks: Some(&input_mocks),
+                ..RunToolOptions::default()
+            },
+        );
     }
 }
 

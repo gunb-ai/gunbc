@@ -225,13 +225,6 @@ pub fn apply_window_inputs<T>(
     mocks: &mut BoundaryMocks,
 ) -> Result<(), WindowError> {
     let node_set = window.node_set();
-    let mixed = mixed_input_ports(dag, &node_set);
-    if let Some((node, port)) = mixed.first() {
-        return Err(WindowError::MixedInput {
-            node: node.0.clone(),
-            port: port.0.clone(),
-        });
-    }
 
     let mut list_ports: HashSet<(String, String)> = HashSet::new();
     for node in &dag.nodes {
@@ -241,6 +234,21 @@ pub fn apply_window_inputs<T>(
                     list_ports.insert((node.id.0.clone(), port.name.0.clone()));
                 }
             }
+        }
+    }
+
+    // Mixed input ports are only an error for scalar ports. List/collect
+    // ports (e.g. `__deps`) can receive values from both internal edges
+    // (handled by window subdag execution) and external edges (injected
+    // from the baseline).
+    let mixed = mixed_input_ports(dag, &node_set);
+    for (node, port) in &mixed {
+        let key = (node.0.clone(), port.0.clone());
+        if !list_ports.contains(&key) {
+            return Err(WindowError::MixedInput {
+                node: node.0.clone(),
+                port: port.0.clone(),
+            });
         }
     }
 
@@ -257,8 +265,8 @@ pub fn apply_window_inputs<T>(
                         node: edge.from_node.0.clone(),
                     })?;
             let output_port = dag
-                .get_node(&edge.from_node)
-                .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port));
+                .resolve_output_port(&edge.from_node, &edge.from_port)
+                .map(|port| port.port());
             let from_cardinality = output_port
                 .map(|p| p.cardinality)
                 .unwrap_or(gunbc_ir::Cardinality::ONE);
@@ -494,6 +502,7 @@ mod window_helper_tests {
             inputs: None,
             outputs: map,
             was_intercepted: false,
+            coercions_applied: vec![],
         }
     }
 
@@ -801,6 +810,7 @@ mod assert_chain_outputs_tests {
                         .map(|(p, v)| (p.to_string(), v))
                         .collect(),
                     was_intercepted: false,
+                    coercions_applied: vec![],
                 })
                 .collect(),
         }
@@ -960,6 +970,7 @@ mod tests {
                 inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
+                coercions_applied: vec![],
             }],
         };
         let window_log = ExecutionLog {
@@ -968,6 +979,7 @@ mod tests {
                 inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
+                coercions_applied: vec![],
             }],
         };
 
@@ -991,6 +1003,7 @@ mod tests {
                 inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
+                coercions_applied: vec![],
             }],
         };
         let window_log = ExecutionLog {
@@ -999,6 +1012,7 @@ mod tests {
                 inputs: None,
                 outputs: HashMap::new(),
                 was_intercepted: false,
+                coercions_applied: vec![],
             }],
         };
 

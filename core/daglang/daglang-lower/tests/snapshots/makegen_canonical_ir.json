@@ -41,7 +41,7 @@
           "cardinality": "1"
         },
         {
-          "name": "res:file:*",
+          "name": "res:file",
           "type_id": "FilesystemHandle",
           "cardinality": "1"
         },
@@ -53,7 +53,7 @@
       ],
       "outputs": [
         {
-          "name": "makegen_response",
+          "name": "response",
           "type_id": "TransportResponse",
           "cardinality": "1"
         }
@@ -68,6 +68,11 @@
         {
           "name": "request",
           "type_id": "TransportRequest",
+          "cardinality": "1"
+        },
+        {
+          "name": "skip",
+          "type_id": "Bool",
           "cardinality": "1"
         }
       ],
@@ -109,6 +114,26 @@
       "subdag": null
     },
     {
+      "id": "param_source_tools_makegen_makegen_path",
+      "kind": "pattern-expanded",
+      "label": "param_source_tools_makegen_makegen_path",
+      "inputs": [
+        {
+          "name": "path",
+          "type_id": "String",
+          "cardinality": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "path",
+          "type_id": "String",
+          "cardinality": "1"
+        }
+      ],
+      "subdag": null
+    },
+    {
       "id": "prepare_read_makegen",
       "kind": "pattern-expanded",
       "label": "prepare_read_makegen",
@@ -128,6 +153,11 @@
         {
           "name": "request",
           "type_id": "TransportRequest",
+          "cardinality": "1"
+        },
+        {
+          "name": "skip",
+          "type_id": "Bool",
           "cardinality": "1"
         }
       ],
@@ -167,6 +197,11 @@
           "name": "__deps",
           "type_id": "Any",
           "cardinality": "0..*"
+        },
+        {
+          "name": "path",
+          "type_id": "String",
+          "cardinality": "1"
         },
         {
           "name": "registry",
@@ -218,7 +253,7 @@
     },
     {
       "from_node": "execute_makegen_transport",
-      "from_port": "makegen_response",
+      "from_port": "response",
       "to_node": "tools.makegen::makegen",
       "to_port": "__deps"
     },
@@ -232,7 +267,7 @@
       "from_node": "fs_env",
       "from_port": "FilesystemHandle",
       "to_node": "execute_makegen_transport",
-      "to_port": "res:file:*"
+      "to_port": "res:file"
     },
     {
       "from_node": "fs_env",
@@ -253,10 +288,28 @@
       "to_port": "registry"
     },
     {
+      "from_node": "param_source_tools_makegen_makegen_path",
+      "from_port": "path",
+      "to_node": "prepare_read_makegen",
+      "to_port": "path"
+    },
+    {
+      "from_node": "param_source_tools_makegen_makegen_path",
+      "from_port": "path",
+      "to_node": "prepare_write_makegen",
+      "to_port": "path"
+    },
+    {
       "from_node": "prepare_read_makegen",
       "from_port": "request",
       "to_node": "execute_read_makegen",
       "to_port": "request"
+    },
+    {
+      "from_node": "prepare_read_makegen",
+      "from_port": "skip",
+      "to_node": "execute_read_makegen",
+      "to_port": "skip"
     },
     {
       "from_node": "prepare_write_makegen",
@@ -284,4 +337,3 @@
     }
   ]
 }
-

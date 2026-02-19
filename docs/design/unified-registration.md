@@ -1,5 +1,7 @@
 # Unified Registration Model
 
+> **Status**: Stream 1 (`all_tools()` elimination) DONE. Remaining unification tracked in [`TODO/tasks.md`](../../TODO/tasks.md).
+
 > **Goal**: All registrable units (tools, DAGs, testgen targets, resources,
 > transports) use the same auto-discovery pattern. Adding a new unit means
 > annotating it — not updating a manual list.

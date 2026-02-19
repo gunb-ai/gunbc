@@ -382,14 +382,16 @@ pub fn infer_cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
 /// Get the base type name from a type DAG.
 ///
 /// Delegates to [`crate::contract::base_type`].
-pub fn base_type_name(type_dag: &Dag<TypeOp>) -> Option<String> {
+#[cfg(test)]
+fn base_type_name(type_dag: &Dag<TypeOp>) -> Option<String> {
     crate::contract::base_type(type_dag)
 }
 
 /// Get all predicates from a type DAG.
 ///
 /// Delegates to [`crate::contract::predicates`].
-pub fn predicates(type_dag: &Dag<TypeOp>) -> Vec<Predicate> {
+#[cfg(test)]
+fn predicates(type_dag: &Dag<TypeOp>) -> Vec<Predicate> {
     crate::contract::predicates(type_dag)
 }
 

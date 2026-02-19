@@ -1,4 +1,5 @@
 mod context;
+mod mocks;
 mod render;
 mod triplets;
 
@@ -9,9 +10,10 @@ pub use context::{
 pub use daglang_driver::{
     CheckOutput, CodegenLayer, CodegenTarget, CompileError, CompileOptions, CompileOutput,
 };
-pub use daglang_exec_bridge::{
+pub use gunbc_dag::resolve::{resolve_lowered_dag, ResolveError};
+pub use gunbc_exec::DynOp;
+pub use mocks::{
     makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks, makegen_entrypoint_mocks,
-    resolve_lowered_dag, ResolveDagError, ResolvedOp,
 };
 pub use render::{render_expand, render_manifest, render_manifest_with_format, render_obligations};
 pub use triplets::render_triplets;

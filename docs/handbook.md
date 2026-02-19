@@ -596,7 +596,7 @@ pub fn openai_mock_spec() -> MockSpec { ... }
 | Registration Kind | Mechanism | Auto? |
 |---|---|---|
 | Testgen targets | `inventory` + proc macro | Yes |
-| Tool definitions | `all_tools()` hardcoded vec | **No** |
+| Tool definitions | `derive_tool_defs()` + `#[tool_target]` inventory | **Yes** |
 | Graph builders | `GraphBuilderId` enum | **No** |
 | Boundary mocks | Dual definition (registry + MockSpec) | **No** |
 | Resource defs | Hardcoded glob patterns | **No** |

@@ -291,7 +291,8 @@ fn n_witnesses(scalar: &Value, n: u32) -> Vec<Value> {
 }
 
 /// Check if a type DAG has any validation predicates.
-pub fn has_predicates(type_dag: &Dag<TypeOp>) -> bool {
+#[cfg(test)]
+fn has_predicates(type_dag: &Dag<TypeOp>) -> bool {
     type_dag
         .nodes
         .iter()
@@ -299,7 +300,7 @@ pub fn has_predicates(type_dag: &Dag<TypeOp>) -> bool {
 }
 
 /// Check if a type is a container type (Optional, List, NonEmptyList, Set, NonEmptySet).
-pub fn is_container(type_dag: &Dag<TypeOp>) -> bool {
+fn is_container(type_dag: &Dag<TypeOp>) -> bool {
     type_dag
         .nodes
         .iter()

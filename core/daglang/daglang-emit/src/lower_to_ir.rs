@@ -12,7 +12,7 @@ use crate::computation::{
     AggregateKind, CollectionOpKind, Computation, JsonOpKind, PureBody, StringOpKind, TransportKind,
 };
 use crate::plan::{EmitPlan, EmitStep, InputBinding};
-use gunbc_ir::code_ir::{Expr, FnDef, Item, SourceFile, Stmt};
+use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Item, SourceFile, Stmt};
 use gunbc_ir::ValueExpr;
 
 /// Lower an [`EmitPlan`] into AbstractIR (`SourceFile`) with a single `main`.
@@ -240,12 +240,23 @@ fn lower_pure_step(
                 sanitize_identifier(&metadata.service),
                 sanitize_identifier(&metadata.method)
             );
-            assign_outputs(
-                step_index,
-                step,
-                Expr::call(func, ordered_inputs.to_vec()),
-                output_vars,
-            )
+            let obligation = metadata.config.iter().find_map(|(key, value)| {
+                if key != "phase" {
+                    return None;
+                }
+                match value.as_str() {
+                    "prepare" => Some(CallObligation::ServiceTransportPrepare),
+                    "parse" => Some(CallObligation::ServiceTransportParse),
+                    _ => None,
+                }
+            });
+            let expr = obligation.map_or_else(
+                || Expr::call(func.clone(), ordered_inputs.to_vec()),
+                |obligation| {
+                    Expr::call_with_obligation(func.clone(), ordered_inputs.to_vec(), obligation)
+                },
+            );
+            assign_outputs(step_index, step, expr, output_vars)
         }
     }
 }
@@ -304,11 +315,19 @@ fn lower_transport_step(
     let mut statements = vec![
         Stmt::let_bind(
             prepare_var.clone(),
-            Expr::call(format!("prepare_{kind_name}"), ordered_inputs.to_vec()),
+            Expr::call_with_obligation(
+                format!("prepare_{kind_name}"),
+                ordered_inputs.to_vec(),
+                CallObligation::ServiceTransportPrepare,
+            ),
         ),
         Stmt::let_bind(
             execute_var.clone(),
-            Expr::call(format!("execute_{kind_name}"), vec![Expr::var(prepare_var)]),
+            Expr::call_with_obligation(
+                format!("execute_{kind_name}"),
+                vec![Expr::var(prepare_var)],
+                CallObligation::ServiceTransportExecute,
+            ),
         ),
     ];
 
@@ -319,9 +338,10 @@ fn lower_transport_step(
 
     for output in &step.output_bindings {
         let var_name = output_var_name(step_index, &output.port, output_vars);
-        let parse_call = Expr::call(
+        let parse_call = Expr::call_with_obligation(
             format!("parse_{}_{}", kind_name, sanitize_identifier(&output.port)),
             vec![Expr::var(execute_var.clone())],
+            CallObligation::ServiceTransportParse,
         );
         statements.push(Stmt::let_bind(var_name, parse_call));
     }
@@ -336,9 +356,10 @@ fn lower_resource_step(
     step: &EmitStep,
     output_vars: &HashMap<(usize, String), String>,
 ) -> Vec<Stmt> {
-    let acquire_call = Expr::call(
+    let acquire_call = Expr::call_with_obligation(
         "acquire_resource",
         vec![Expr::str_lit(handle_type), Expr::str_lit(handle_value)],
+        CallObligation::ResourceAcquire,
     );
     assign_outputs(step_index, step, acquire_call, output_vars)
 }
@@ -677,9 +698,10 @@ mod tests {
             matches!(
                 stmt,
                 Stmt::Let {
-                    expr: Expr::Call { func, .. },
+                    expr: Expr::Call { func, obligation, .. },
                     ..
                 } if matches!(func.as_ref(), Expr::Var(name) if name == "execute_file_read")
+                    && *obligation == Some(CallObligation::ServiceTransportExecute)
             )
         });
         assert!(has_transport_execute, "expected execute_file_read call");

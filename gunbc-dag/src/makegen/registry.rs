@@ -22,9 +22,9 @@ use gunbc_infra::ResourceId;
 use gunbc_ir::cargo::{BinaryArgs, CargoCommand, CodegenSubcommand, Subcommand, Warnings};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::ShellRequest;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // ============================================================================
 // Build Configuration - Single source of truth for build commands
@@ -509,6 +509,9 @@ pub struct ToolInfo {
     /// Whether this tool needs a generated CLI entrypoint (codegen dependency).
     /// False for hand-written binaries (ci, pragma, build-all).
     pub needs_generated_cli: bool,
+    /// Secret environment variables required for live execution.
+    /// Derived from `DagSpecTestgen` registrations. Empty if no secrets needed.
+    pub live_secrets: Vec<String>,
 }
 
 /// An extra target that combines the main tool with additional commands.
@@ -539,6 +542,7 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: true,
+            live_secrets: Vec::new(),
         }
     }
 
@@ -560,6 +564,7 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: true,
+            live_secrets: Vec::new(),
         }
     }
 
@@ -583,6 +588,7 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: true,
+            live_secrets: Vec::new(),
         }
     }
 
@@ -596,6 +602,7 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: true,
+            live_secrets: Vec::new(),
         }
     }
 
@@ -625,6 +632,7 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: true,
+            live_secrets: Vec::new(),
         }
     }
 
@@ -637,12 +645,13 @@ impl ToolInfo {
         let invocation = def.invocation.as_ref()?;
         let mut info = Self {
             invocation: invocation.clone(),
-            short_name: def.meta.tool_name.clone(),
-            description: def.meta.description.clone(),
+            short_name: def.meta.tool_name.to_string(),
+            description: def.meta.description.to_string(),
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
             has_declarative_dag: def.meta.tool_name == "makegen",
             needs_generated_cli: true,
+            live_secrets: Vec::new(),
         };
 
         // Convert entrypoints that have make_var set
@@ -690,6 +699,19 @@ impl ToolInfo {
     pub fn manual(mut self) -> Self {
         self.needs_generated_cli = false;
         self
+    }
+
+    /// Build a normalized workflow specification for this tool target.
+    pub fn workflow_spec(&self, config: &BuildConfig) -> WorkflowSpec {
+        WorkflowSpec {
+            name: self.short_name.clone(),
+            description: self.description.clone(),
+            kind: WorkflowKind::Tool,
+            entrypoints: self.entrypoints.clone(),
+            deps: tool_dependency_targets(self, config),
+            resources: Vec::new(),
+            live_secrets: self.live_secrets.clone(),
+        }
     }
 }
 
@@ -755,6 +777,70 @@ impl EntrypointParam {
     pub fn repeatable(mut self) -> Self {
         self.repeatable = true;
         self
+    }
+}
+
+/// Workflow category in the registry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkflowKind {
+    Core,
+    Tool,
+    Meta,
+}
+
+/// Normalized workflow descriptor used by workflow-level registries/renderers.
+///
+/// Captures the three pieces needed for orchestration:
+/// - `entrypoints`: externally configurable inputs
+/// - `deps`: target-level build dependencies
+/// - `resources`: logical resource requirements (for meta workflows)
+#[derive(Debug, Clone)]
+pub struct WorkflowSpec {
+    pub name: String,
+    pub description: String,
+    pub kind: WorkflowKind,
+    pub entrypoints: Vec<EntrypointParam>,
+    pub deps: Vec<String>,
+    pub resources: Vec<ResourceNeed>,
+    /// Secret environment variables required for live execution.
+    pub live_secrets: Vec<String>,
+}
+
+impl WorkflowSpec {
+    #[allow(dead_code)]
+    fn core(name: &str, description: &str, deps: &[&str]) -> Self {
+        Self {
+            name: name.to_string(),
+            description: description.to_string(),
+            kind: WorkflowKind::Core,
+            entrypoints: Vec::new(),
+            deps: deps.iter().map(|dep| (*dep).to_string()).collect(),
+            resources: Vec::new(),
+            live_secrets: Vec::new(),
+        }
+    }
+
+    #[allow(dead_code)]
+    fn with_resource(mut self, id: ResourceId, base_mode: ExecMode) -> Self {
+        self.resources.push(ResourceNeed { id, base_mode });
+        self
+    }
+}
+
+fn tool_dependency_targets(tool: &ToolInfo, config: &BuildConfig) -> Vec<String> {
+    if config.build_system == BuildSystem::Cargo {
+        let mut deps = Vec::new();
+        if !tool.needs_generated_cli {
+            deps.push("preflight-fix".to_string());
+        }
+        deps.push("ensure-codegen".to_string());
+        deps
+    } else if tool.short_name == "pragma" {
+        vec!["preflight-fix".to_string()]
+    } else if tool.needs_generated_cli {
+        vec!["ensure-codegen".to_string()]
+    } else {
+        vec!["preflight-fix".to_string()]
     }
 }
 
@@ -898,6 +984,10 @@ impl FixAlias {
 pub enum ConfigField {
     /// Use test_command
     Test,
+    /// Use test_command filtered to integration-oriented tests.
+    TestIntegration,
+    /// Use test_command filtered to external/live-flow tests.
+    TestExternal,
     /// Use lint_command
     Lint,
     /// Use fmt_command
@@ -911,10 +1001,19 @@ pub enum ConfigField {
 }
 
 impl ConfigField {
+    fn with_test_filter(cmd: String, filter: &str) -> String {
+        let base = cmd.strip_prefix('@').unwrap_or(&cmd);
+        format!("@{} {}", base, filter)
+    }
+
     /// Get the command from BuildConfig for this field.
     pub fn get_command(&self, config: &BuildConfig) -> String {
         match self {
             ConfigField::Test => config.test_shell(),
+            ConfigField::TestIntegration => {
+                Self::with_test_filter(config.test_shell(), "integration")
+            }
+            ConfigField::TestExternal => Self::with_test_filter(config.test_shell(), "live_flow"),
             ConfigField::Lint => config.lint_shell(),
             ConfigField::Fmt => config.fmt_shell(),
             ConfigField::Check => config.check_shell(),
@@ -1084,6 +1183,35 @@ impl MetaTarget {
             None => cmd,
         }
     }
+
+    /// Build a normalized workflow specification for this meta target.
+    pub fn workflow_spec(&self, res_map: &ResourceTargetMap) -> WorkflowSpec {
+        let deps = self
+            .resources
+            .iter()
+            .map(|need| {
+                res_map
+                    .resolve(&need.id, need.base_mode)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "missing resource target mapping for {:?} ({:?}) in meta target '{}'",
+                            need.id, need.base_mode, self.name
+                        )
+                    })
+                    .to_string()
+            })
+            .collect();
+
+        WorkflowSpec {
+            name: self.name.clone(),
+            description: self.description.clone(),
+            kind: WorkflowKind::Meta,
+            entrypoints: Vec::new(),
+            deps,
+            resources: self.resources.clone(),
+            live_secrets: Vec::new(),
+        }
+    }
 }
 
 /// Get the default meta targets.
@@ -1110,6 +1238,24 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
             .with_command_prefix("GUNBC_TEST_MAX_COST=XL")
             .needs(compiled_code_resource_id(), ExecMode::Ensure)
             .needs(verified_artifacts_resource_id(), ExecMode::Ensure),
+        // test-integration - run integration-oriented test subset.
+        MetaTarget::new(
+            "test-integration",
+            "Run integration-focused tests",
+            ConfigField::TestIntegration,
+        )
+        .with_command_prefix("GUNBC_TEST_MAX_COST=XL")
+        .needs(compiled_code_resource_id(), ExecMode::Ensure)
+        .needs(verified_artifacts_resource_id(), ExecMode::Ensure),
+        // test-external - run external/live-flow test subset.
+        MetaTarget::new(
+            "test-external",
+            "Run external/live-flow tests",
+            ConfigField::TestExternal,
+        )
+        .with_command_prefix("GUNBC_TEST_MAX_COST=XL")
+        .needs(compiled_code_resource_id(), ExecMode::Ensure)
+        .needs(verified_artifacts_resource_id(), ExecMode::Ensure),
         // check - type check without building (requires codegen + pragma)
         // check-fix: fmt-fix first, then check
         MetaTarget::new("check", "Type check all targets", ConfigField::Check)
@@ -1134,9 +1280,111 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
     ]
 }
 
+/// Get core workflow targets that are not tool entrypoints or meta targets.
+///
+/// These mirror the non-tool, non-meta targets currently rendered in
+/// `makegen::render` (build orchestration, verification, and fix aliases).
+pub fn default_core_workflows() -> Vec<WorkflowSpec> {
+    vec![
+        WorkflowSpec::core(
+            "preflight-fix",
+            "Preflight: auto-fix rustc warnings before running generators",
+            &[],
+        ),
+        WorkflowSpec::core(
+            "ensure-codegen",
+            "Ensure CLI entrypoints exist (bootstrap-safe)",
+            &[],
+        )
+        .with_resource(generated_cli_resource_id(), ExecMode::Ensure),
+        WorkflowSpec::core(
+            "build-release-bins",
+            "Build workspace binaries once for direct tool execution",
+            &["ensure-codegen"],
+        )
+        .with_resource(compiled_code_resource_id(), ExecMode::Ensure),
+        WorkflowSpec::core(
+            "lint-upsert",
+            "Lint upsert: fix if needed, then verify",
+            &["ensure-codegen", "preflight-fix"],
+        ),
+        WorkflowSpec::core(
+            "codegen",
+            "Generate CLI entrypoints (DAG upsert)",
+            &["lint-upsert"],
+        )
+        .with_resource(generated_cli_resource_id(), ExecMode::Ensure),
+        WorkflowSpec::core("build", "Full build transaction", &["codegen", "testgen"])
+            .with_resource(compiled_code_resource_id(), ExecMode::Ensure),
+        WorkflowSpec::core("clean", "Clean build artifacts", &[]),
+        WorkflowSpec::core(
+            "testgen",
+            "Regenerate tests from DAG structures and MockSpecs",
+            &["lint-upsert"],
+        )
+        .with_resource(generated_tests_resource_id(), ExecMode::Ensure),
+        WorkflowSpec::core(
+            "testgen-check",
+            "Check if generated tests are stale",
+            &["lint-upsert"],
+        )
+        .with_resource(generated_tests_resource_id(), ExecMode::Verify),
+        WorkflowSpec::core(
+            "deps-config",
+            "Ensure deps.toml matches canonical generated configuration",
+            &["build-release-bins"],
+        )
+        .with_resource(deps_config_resource_id(), ExecMode::Ensure),
+        WorkflowSpec::core(
+            "deps-config-check",
+            "Check if deps.toml is stale",
+            &["build-release-bins"],
+        )
+        .with_resource(deps_config_resource_id(), ExecMode::Verify),
+        WorkflowSpec::core(
+            "makegen-check",
+            "Check if generated Makefile is stale",
+            &["lint-upsert"],
+        )
+        .with_resource(makefile_resource_id(), ExecMode::Verify),
+        WorkflowSpec::core(
+            "bootstrap-check",
+            "Check if generated bootstrap artifacts are stale",
+            &["lint-upsert"],
+        )
+        .with_resource(gitignore_resource_id(), ExecMode::Verify),
+        WorkflowSpec::core(
+            "pragma-check",
+            "Check if pragma artifacts are stale",
+            &["lint-upsert"],
+        )
+        .with_resource(pragma_config_resource_id(), ExecMode::Verify),
+        WorkflowSpec::core(
+            "verify",
+            "Verify generated artifacts match their generators",
+            &["lint-upsert"],
+        )
+        .with_resource(verified_artifacts_resource_id(), ExecMode::Verify),
+        WorkflowSpec::core(
+            "verify-fix",
+            "Ensure generated artifacts are up to date",
+            &["lint-upsert"],
+        )
+        .with_resource(verified_artifacts_resource_id(), ExecMode::Ensure),
+        WorkflowSpec::core("fmt-fix", "fmt-fix: apply formatting (alias for fmt)", &[]),
+        WorkflowSpec::core(
+            "lint-fix",
+            "lint-fix: auto-fix lint issues where possible",
+            &["pragma"],
+        ),
+    ]
+}
+
 /// Registry of all gunbc tools and meta targets.
 #[derive(Debug)]
 pub struct ToolRegistry {
+    /// Core orchestration targets (non-tool, non-meta).
+    pub core_workflows: Vec<WorkflowSpec>,
     /// Individual tool targets (gist, deps, etc.)
     pub tools: Vec<ToolInfo>,
     /// Meta targets (test, check, fmt, clippy)
@@ -1146,6 +1394,7 @@ pub struct ToolRegistry {
 impl Default for ToolRegistry {
     fn default() -> Self {
         Self {
+            core_workflows: default_core_workflows(),
             tools: Vec::new(),
             meta_targets: default_meta_targets(),
         }
@@ -1156,6 +1405,7 @@ impl ToolRegistry {
     /// Create a new empty registry.
     pub fn new() -> Self {
         Self {
+            core_workflows: Vec::new(),
             tools: Vec::new(),
             meta_targets: Vec::new(),
         }
@@ -1181,6 +1431,31 @@ impl ToolRegistry {
     /// Add a meta target to the registry.
     pub fn register_meta(&mut self, target: MetaTarget) {
         self.meta_targets.push(target);
+    }
+
+    /// Add a core workflow to the registry.
+    pub fn register_core_workflow(&mut self, workflow: WorkflowSpec) {
+        self.core_workflows.push(workflow);
+    }
+
+    /// Build normalized workflow specifications for all registered targets.
+    ///
+    /// Output order is stable: meta targets first (dev workflow surface), then
+    /// concrete tool targets.
+    pub fn workflow_specs(&self, config: &BuildConfig) -> Vec<WorkflowSpec> {
+        let res_map = ResourceTargetMap::default_map(config);
+        let mut specs = Vec::with_capacity(
+            self.core_workflows.len() + self.meta_targets.len() + self.tools.len(),
+        );
+        specs.extend(self.core_workflows.iter().cloned());
+        specs.extend(
+            self.meta_targets
+                .iter()
+                .map(|meta| meta.workflow_spec(&res_map)),
+        );
+        specs.extend(self.tools.iter().map(|tool| tool.workflow_spec(config)));
+        propagate_workflow_live_secrets(&mut specs);
+        specs
     }
 
     // ========================================================================
@@ -1232,6 +1507,7 @@ impl ToolRegistry {
     /// which has a handwritten main.rs) are added manually here.
     pub fn default_registry() -> Self {
         let mut registry = Self {
+            core_workflows: default_core_workflows(),
             tools: Vec::new(),
             meta_targets: default_meta_targets(),
         };
@@ -1250,7 +1526,113 @@ impl ToolRegistry {
             registry.register_if_missing(tool);
         }
 
+        // Enrich tools with live-secret requirements from DagSpec registrations.
+        enrich_live_secrets(&mut registry.tools);
+
         registry
+    }
+}
+
+fn propagate_workflow_live_secrets(specs: &mut [WorkflowSpec]) {
+    let index_by_name: BTreeMap<String, usize> = specs
+        .iter()
+        .enumerate()
+        .map(|(index, workflow)| (workflow.name.clone(), index))
+        .collect();
+    let mut cache: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+    for index in 0..specs.len() {
+        let mut stack = BTreeSet::new();
+        let secrets =
+            resolve_workflow_live_secrets(index, specs, &index_by_name, &mut cache, &mut stack);
+        specs[index].live_secrets = secrets;
+    }
+}
+
+fn resolve_workflow_live_secrets(
+    index: usize,
+    specs: &[WorkflowSpec],
+    index_by_name: &BTreeMap<String, usize>,
+    cache: &mut BTreeMap<String, Vec<String>>,
+    stack: &mut BTreeSet<String>,
+) -> Vec<String> {
+    let workflow_name = specs[index].name.clone();
+    if let Some(cached) = cache.get(&workflow_name) {
+        return cached.clone();
+    }
+
+    if !stack.insert(workflow_name.clone()) {
+        return specs[index].live_secrets.clone();
+    }
+
+    let mut secrets = dedupe_live_secrets(specs[index].live_secrets.iter().cloned());
+    for dep_name in &specs[index].deps {
+        let Some(dep_index) = index_by_name.get(dep_name) else {
+            continue;
+        };
+        let dep_secrets =
+            resolve_workflow_live_secrets(*dep_index, specs, index_by_name, cache, stack);
+        extend_live_secrets_unique(&mut secrets, dep_secrets);
+    }
+
+    stack.remove(&workflow_name);
+    cache.insert(workflow_name, secrets.clone());
+    secrets
+}
+
+fn dedupe_live_secrets(secrets: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut deduped = Vec::new();
+    extend_live_secrets_unique(&mut deduped, secrets);
+    deduped
+}
+
+fn extend_live_secrets_unique(target: &mut Vec<String>, secrets: impl IntoIterator<Item = String>) {
+    for secret in secrets {
+        if !target.contains(&secret) {
+            target.push(secret);
+        }
+    }
+}
+
+/// Enrich tool entries with live-secret requirements from `DagSpecDef` registrations.
+///
+/// Looks up each tool by name in the testgen registry. If a matching `DagSpecDef`
+/// has `live_required` secrets, those are attached to the tool's `live_secrets` field.
+fn enrich_live_secrets(tools: &mut [ToolInfo]) {
+    use std::collections::BTreeMap;
+
+    // Build tool_name → live_secrets lookup from DagSpec registrations.
+    let mut secrets_by_tool: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for spec in gunbc_testgen_registry::iter_dag_specs() {
+        if let Some(tool_name) = spec.meta.tool_name {
+            let entry = secrets_by_tool.entry(tool_name).or_default();
+            if let Some(required) = spec.testgen.live_required {
+                for secret in required {
+                    let s = secret.to_string();
+                    if !entry.contains(&s) {
+                        entry.push(s);
+                    }
+                }
+            }
+            // Also include any-of groups (flattened for display purposes).
+            if let Some(groups) = spec.testgen.live_required_any_of {
+                for group in groups {
+                    for secret in *group {
+                        let s = secret.to_string();
+                        if !entry.contains(&s) {
+                            entry.push(s);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Apply to tools.
+    for tool in tools.iter_mut() {
+        if let Some(secrets) = secrets_by_tool.remove(tool.short_name.as_str()) {
+            tool.live_secrets = secrets;
+        }
     }
 }
 
@@ -1263,7 +1645,7 @@ fn dsl_pipelines_root() -> PathBuf {
 }
 
 #[allow(clippy::disallowed_methods)] // Build-time DSL module discovery (not runtime I/O)
-fn discover_dsl_modules(root: &PathBuf, module_kind: &str) -> BTreeSet<String> {
+fn discover_dsl_modules(root: &Path, module_kind: &str) -> BTreeSet<String> {
     let entries = fs::read_dir(root).unwrap_or_else(|error| {
         panic!(
             "failed to read DSL {module_kind} discovery root for makegen registry ({}): {error}",
@@ -1304,36 +1686,62 @@ fn discover_dsl_pipeline_modules() -> BTreeSet<String> {
     discover_dsl_modules(&dsl_pipelines_root(), "pipeline")
 }
 
+/// Manual tool definitions: tools that need Makefile targets but aren't in the
+/// tool registry (no `#[tool_target]` registration). Each entry declares its
+/// required DSL module — validation and registration are co-located.
+struct ManualToolDef {
+    /// DSL module name (file stem in `dsl/tools/` or `dsl/pipelines/`).
+    module: &'static str,
+    /// Whether this is a pipeline module (dsl/pipelines/) vs tool module (dsl/tools/).
+    is_pipeline: bool,
+}
+
+impl ManualToolDef {
+    const fn tool(module: &'static str) -> Self {
+        Self {
+            module,
+            is_pipeline: false,
+        }
+    }
+    const fn pipeline(module: &'static str) -> Self {
+        Self {
+            module,
+            is_pipeline: true,
+        }
+    }
+}
+
+/// All manual tool definitions. Adding a new manual tool here automatically
+/// validates its DSL module exists and registers its Makefile target.
+const MANUAL_TOOL_DEFS: &[ManualToolDef] = &[
+    ManualToolDef::pipeline("ci"),
+    ManualToolDef::tool("pragma"),
+    ManualToolDef::tool("build"),
+];
+
 fn validate_required_manual_tool_modules(
     tool_modules: &BTreeSet<String>,
     pipeline_modules: &BTreeSet<String>,
 ) {
-    const REQUIRED_TOOL_MODULES: &[&str] = &["build", "pragma"];
-    const REQUIRED_PIPELINE_MODULES: &[&str] = &["ci"];
-    let missing_tools: Vec<&str> = REQUIRED_TOOL_MODULES
+    let missing: Vec<&str> = MANUAL_TOOL_DEFS
         .iter()
-        .copied()
-        .filter(|module| !tool_modules.contains(*module))
+        .filter(|def| {
+            let modules = if def.is_pipeline {
+                pipeline_modules
+            } else {
+                tool_modules
+            };
+            !modules.contains(def.module)
+        })
+        .map(|def| def.module)
         .collect();
-    let missing_pipelines: Vec<&str> = REQUIRED_PIPELINE_MODULES
-        .iter()
-        .copied()
-        .filter(|module| !pipeline_modules.contains(*module))
-        .collect();
-    if missing_tools.is_empty() && missing_pipelines.is_empty() {
-        return;
-    }
 
-    let mut parts = Vec::new();
-    if !missing_tools.is_empty() {
-        parts.push(format!("tools: {}", missing_tools.join(", ")));
-    }
-    if !missing_pipelines.is_empty() {
-        parts.push(format!("pipelines: {}", missing_pipelines.join(", ")));
+    if missing.is_empty() {
+        return;
     }
     panic!(
         "missing required DSL modules for makegen manual targets: {}",
-        parts.join("; ")
+        missing.join(", ")
     );
 }
 
@@ -1366,6 +1774,7 @@ fn manual_workspace_tools_from_dsl_modules(
             extra_targets: Vec::new(),
             has_declarative_dag: false,
             needs_generated_cli: false,
+            live_secrets: Vec::new(),
         });
     }
     tools
@@ -1489,12 +1898,25 @@ mod tests {
     fn test_default_meta_targets() {
         let targets = default_meta_targets();
 
-        // Should have test, test-all, check, clippy, fmt
+        // Should have test, test-all, integration/external slices, check, clippy, fmt
         assert!(targets.iter().any(|t| t.name == "test"));
         assert!(targets.iter().any(|t| t.name == "test-all"));
+        assert!(targets.iter().any(|t| t.name == "test-integration"));
+        assert!(targets.iter().any(|t| t.name == "test-external"));
         assert!(targets.iter().any(|t| t.name == "check"));
         assert!(targets.iter().any(|t| t.name == "clippy"));
         assert!(targets.iter().any(|t| t.name == "fmt"));
+    }
+
+    #[test]
+    fn test_default_core_workflows_contains_key_targets() {
+        let workflows = default_core_workflows();
+        assert!(workflows.iter().any(|w| w.name == "build"));
+        assert!(workflows.iter().any(|w| w.name == "codegen"));
+        assert!(workflows.iter().any(|w| w.name == "testgen"));
+        assert!(workflows.iter().any(|w| w.name == "verify"));
+        assert!(workflows.iter().any(|w| w.name == "pragma-check"));
+        assert!(workflows.iter().all(|w| w.kind == WorkflowKind::Core));
     }
 
     #[test]
@@ -1509,10 +1931,45 @@ mod tests {
         let fmt = targets.iter().find(|t| t.name == "fmt").unwrap();
         assert!(fmt.resources.is_empty());
 
+        let integration = targets
+            .iter()
+            .find(|t| t.name == "test-integration")
+            .unwrap();
+        assert_eq!(integration.resources.len(), 2);
+        assert_eq!(integration.resources[0].id, compiled_code_resource_id());
+        assert_eq!(
+            integration.resources[1].id,
+            verified_artifacts_resource_id()
+        );
+
+        let external = targets.iter().find(|t| t.name == "test-external").unwrap();
+        assert_eq!(external.resources.len(), 2);
+        assert_eq!(external.resources[0].id, compiled_code_resource_id());
+        assert_eq!(external.resources[1].id, verified_artifacts_resource_id());
+
         let clippy = targets.iter().find(|t| t.name == "clippy").unwrap();
         assert_eq!(clippy.resources.len(), 2);
         assert_eq!(clippy.resources[0].id, generated_cli_resource_id());
         assert_eq!(clippy.resources[1].base_mode, ExecMode::Verify);
+    }
+
+    #[test]
+    fn test_filtered_test_targets_use_expected_filters() {
+        let targets = default_meta_targets();
+        let config = BuildConfig::cargo();
+
+        let integration = targets
+            .iter()
+            .find(|t| t.name == "test-integration")
+            .unwrap();
+        let integration_cmd = integration.get_command(&config);
+        assert!(integration_cmd.contains("GUNBC_TEST_MAX_COST=XL"));
+        assert!(integration_cmd.contains("cargo test integration"));
+
+        let external = targets.iter().find(|t| t.name == "test-external").unwrap();
+        let external_cmd = external.get_command(&config);
+        assert!(external_cmd.contains("GUNBC_TEST_MAX_COST=XL"));
+        assert!(external_cmd.contains("cargo test live_flow"));
     }
 
     #[test]
@@ -1532,6 +1989,92 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         assert!(!registry.meta_targets.is_empty());
         assert!(registry.meta_targets.iter().any(|t| t.name == "test"));
+    }
+
+    #[test]
+    fn test_tool_workflow_spec_contains_entrypoints_and_deps() {
+        let config = BuildConfig::cargo();
+        let mut tool = ToolInfo::workspace(WorkspaceBinary::Ci, "Run CI pipeline")
+            .manual()
+            .with_param(EntrypointParam::new("mode", "MODE", "--mode", "String"));
+        tool.live_secrets = vec!["CI_TOKEN".to_string()];
+
+        let spec = tool.workflow_spec(&config);
+        assert_eq!(spec.name, "ci");
+        assert_eq!(spec.kind, WorkflowKind::Tool);
+        assert_eq!(spec.entrypoints.len(), 1);
+        assert_eq!(spec.resources.len(), 0);
+        assert_eq!(spec.deps, vec!["preflight-fix", "ensure-codegen"]);
+        assert_eq!(spec.live_secrets, vec!["CI_TOKEN"]);
+    }
+
+    #[test]
+    fn test_meta_workflow_spec_contains_resources_and_deps() {
+        let config = BuildConfig::cargo();
+        let res_map = ResourceTargetMap::default_map(&config);
+        let meta = MetaTarget::new("clippy", "Run clippy", ConfigField::Lint)
+            .needs(generated_cli_resource_id(), ExecMode::Ensure)
+            .needs(pragma_config_resource_id(), ExecMode::Verify);
+
+        let spec = meta.workflow_spec(&res_map);
+        assert_eq!(spec.name, "clippy");
+        assert_eq!(spec.kind, WorkflowKind::Meta);
+        assert!(spec.entrypoints.is_empty());
+        assert_eq!(spec.resources.len(), 2);
+        assert_eq!(spec.deps, vec!["ensure-codegen", "pragma-check"]);
+    }
+
+    #[test]
+    fn test_registry_workflow_specs_covers_core_tools_and_meta_targets() {
+        let registry = ToolRegistry::default_registry();
+        let config = BuildConfig::cargo();
+        let specs = registry.workflow_specs(&config);
+        assert_eq!(
+            specs.len(),
+            registry.core_workflows.len() + registry.tools.len() + registry.meta_targets.len()
+        );
+        assert!(specs.iter().any(|spec| spec.kind == WorkflowKind::Core));
+        assert!(specs.iter().any(|spec| spec.kind == WorkflowKind::Tool));
+        assert!(specs.iter().any(|spec| spec.kind == WorkflowKind::Meta));
+    }
+
+    #[test]
+    fn test_registry_workflow_specs_propagates_live_secrets_through_dependencies() {
+        let config = BuildConfig::cargo();
+        let mut registry = ToolRegistry::new();
+        registry.register_core_workflow(WorkflowSpec::core("root", "Root workflow", &["middle"]));
+        registry.register_core_workflow(WorkflowSpec::core(
+            "middle",
+            "Middle workflow",
+            &["alpha", "beta"],
+        ));
+
+        let mut alpha = ToolInfo::new("gunbc-alpha", "alpha", "Alpha tool");
+        alpha.live_secrets = vec!["ALPHA_TOKEN".to_string(), "SHARED_TOKEN".to_string()];
+        registry.register(alpha);
+
+        let mut beta = ToolInfo::new("gunbc-beta", "beta", "Beta tool");
+        beta.live_secrets = vec!["BETA_TOKEN".to_string(), "SHARED_TOKEN".to_string()];
+        registry.register(beta);
+
+        let specs = registry.workflow_specs(&config);
+        let middle = specs
+            .iter()
+            .find(|spec| spec.name == "middle")
+            .expect("middle workflow should exist");
+        assert_eq!(
+            middle.live_secrets,
+            vec!["ALPHA_TOKEN", "SHARED_TOKEN", "BETA_TOKEN"]
+        );
+
+        let root = specs
+            .iter()
+            .find(|spec| spec.name == "root")
+            .expect("root workflow should exist");
+        assert_eq!(
+            root.live_secrets,
+            vec!["ALPHA_TOKEN", "SHARED_TOKEN", "BETA_TOKEN"]
+        );
     }
 
     // ========================================================================

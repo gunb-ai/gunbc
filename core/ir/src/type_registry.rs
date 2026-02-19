@@ -22,9 +22,9 @@
 use crate::contract::{self, TypeContract};
 use crate::dag::Dag;
 use crate::type_lib;
-use crate::type_op::{TypeOp, WrapperKind};
+use crate::type_op::{BaseType, Coercion, TypeOp, WrapperKind};
 use crate::types::{Cardinality, TypeId};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -238,6 +238,14 @@ fn parse_type_expr(raw: &str) -> Result<TypeExpr, TypeExprError> {
 pub struct TypeRegistry {
     /// Map from type name to type DAG.
     types: HashMap<TypeId, Dag<TypeOp>>,
+    /// Explicit coercion edges keyed by source type.
+    coercion_edges: HashMap<TypeId, Vec<CoercionEdge>>,
+}
+
+#[derive(Debug, Clone)]
+struct CoercionEdge {
+    to: TypeId,
+    transform: TypeOp,
 }
 
 /// Suggested explicit transformation strategy for an unsafe coercion.
@@ -262,6 +270,7 @@ impl TypeRegistry {
     pub fn new() -> Self {
         Self {
             types: HashMap::new(),
+            coercion_edges: HashMap::new(),
         }
     }
 
@@ -324,6 +333,24 @@ impl TypeRegistry {
     /// Register a type DAG with a name.
     pub fn register(&mut self, name: impl Into<TypeId>, type_dag: Dag<TypeOp>) {
         self.types.insert(name.into(), type_dag);
+    }
+
+    /// Register an explicit coercion edge between named types.
+    ///
+    /// This records a `TypeOp::Transform(Coercion)` edge in the registry-level
+    /// coercion graph so discovery can find paths that are not implied by base
+    /// ancestry alone.
+    pub fn register_coercion_edge(&mut self, from: impl Into<TypeId>, to: impl Into<TypeId>) {
+        let from = from.into();
+        let to = to.into();
+        let edge = CoercionEdge {
+            to: to.clone(),
+            transform: TypeOp::Transform(Coercion::new(
+                BaseType::named(from.0.clone()),
+                BaseType::named(to.0.clone()),
+            )),
+        };
+        self.coercion_edges.entry(from).or_default().push(edge);
     }
 
     /// Resolve a type DAG, honoring wrapper expressions like `Optional<T>`.
@@ -399,11 +426,6 @@ impl TypeRegistry {
         self.types.contains_key(name)
     }
 
-    /// Get all registered type names.
-    pub fn type_names(&self) -> impl Iterator<Item = &TypeId> {
-        self.types.keys()
-    }
-
     /// Get the number of registered types.
     pub fn len(&self) -> usize {
         self.types.len()
@@ -467,10 +489,20 @@ impl TypeRegistry {
             .is_ok()
     }
 
+    /// Check structural + strict semantic-carrier compatibility.
+    ///
+    /// This is stricter than [`Self::is_compatible`]:
+    /// - structural compatibility must hold
+    /// - semantic carrier kinds must be compatible (no semantic→structural fallback)
+    /// - unknown semantic carriers are rejected (fail-closed)
+    pub fn is_compatible_strict_semantic(&self, from: &TypeId, to: &TypeId) -> bool {
+        self.is_compatible(from, to) && crate::types::semantic_carrier_compatible(from, to)
+    }
+
     /// Check whether `from` is a structural refinement of `to`.
     ///
     /// A refinement can safely coerce to its base type (widening).
-    pub fn is_refinement_of(&self, from: &TypeId, to: &TypeId) -> bool {
+    fn is_refinement_of(&self, from: &TypeId, to: &TypeId) -> bool {
         self.is_compatible(from, to)
     }
 
@@ -491,33 +523,94 @@ impl TypeRegistry {
         None
     }
 
-    pub(crate) fn base_type_upcasts_to(&self, from: &str, to: &str) -> bool {
-        if from == to {
-            return true;
-        }
+    /// Discover a widening coercion path between two named types.
+    ///
+    /// Returns the shortest known upcast chain as type IDs, including source
+    /// and target, when `from` can safely widen into `to`.
+    pub fn coercion_path(&self, from: &TypeId, to: &TypeId) -> Option<Vec<TypeId>> {
+        let mut queue: VecDeque<Vec<TypeId>> = VecDeque::new();
+        let mut visited = std::collections::HashSet::new();
+        queue.push_back(vec![from.clone()]);
 
-        // Everything upcasts to Json (top of lattice)
-        if to == "Json" {
-            return true;
-        }
-
-        let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut current = from.to_string();
-
-        while visited.insert(current.clone()) {
-            let Some(dag) = self.get_by_name(&current) else {
-                break;
-            };
-            let Some(base) = crate::contract::base_type(dag) else {
-                break;
-            };
-            if base == to {
-                return true;
+        while let Some(path) = queue.pop_front() {
+            let current = path.last().cloned()?;
+            if current == *to {
+                return Some(path);
             }
-            current = base;
+            if !visited.insert(current.clone()) {
+                continue;
+            }
+
+            for next in self.coercion_neighbors(&current) {
+                if path.iter().any(|step| step == &next) {
+                    continue;
+                }
+                let mut next_path = path.clone();
+                next_path.push(next);
+                queue.push_back(next_path);
+            }
         }
 
-        false
+        None
+    }
+
+    fn coercion_neighbors(&self, current: &TypeId) -> Vec<TypeId> {
+        let mut neighbors = Vec::new();
+        let mut has_structural_parent = false;
+
+        // Explicit registry edges via TypeOp::Transform(Coercion).
+        if let Some(edges) = self.coercion_edges.get(current) {
+            neighbors.extend(edges.iter().filter_map(|edge| match &edge.transform {
+                TypeOp::Transform(_) => Some(edge.to.clone()),
+                _ => None,
+            }));
+        }
+
+        // Structural ancestry from type DAGs / generic expressions.
+        if let Some(parent) = self.expression_parent_type_id(current) {
+            has_structural_parent = true;
+            neighbors.push(parent);
+        }
+
+        // Json is the widening top type once no stronger ancestry edge remains.
+        if current.0 != "Json" && !has_structural_parent {
+            neighbors.push(TypeId::from("Json"));
+        }
+
+        neighbors
+    }
+
+    fn expression_parent_type_id(&self, type_id: &TypeId) -> Option<TypeId> {
+        let expr = parse_type_expr(&type_id.0).ok()?;
+        let parent_expr = self.expression_parent_expr(&expr)?;
+        Some(TypeId(render_type_expr(&parent_expr)))
+    }
+
+    fn expression_parent_expr(&self, expr: &TypeExpr) -> Option<TypeExpr> {
+        match expr {
+            TypeExpr::Named(name) => self.named_parent(name).map(TypeExpr::Named),
+            TypeExpr::Wrapper(kind, inner) => self
+                .expression_parent_expr(inner)
+                .map(|parent| TypeExpr::Wrapper(kind.clone(), Box::new(parent))),
+            TypeExpr::Map(key, value) => self
+                .expression_parent_expr(value)
+                .map(|parent| TypeExpr::Map(key.clone(), Box::new(parent))),
+        }
+    }
+
+    fn named_parent(&self, name: &str) -> Option<String> {
+        let dag = self.get_by_name(name)?;
+        let parent = crate::contract::base_type(dag)?;
+        if parent == name {
+            return None;
+        }
+        self.get_by_name(&parent)?;
+        Some(parent)
+    }
+
+    pub(crate) fn base_type_upcasts_to(&self, from: &str, to: &str) -> bool {
+        self.coercion_path(&TypeId::from(from), &TypeId::from(to))
+            .is_some()
     }
 }
 
@@ -621,6 +714,21 @@ mod tests {
     }
 
     #[test]
+    fn test_type_compatibility_strict_semantic_rejects_semantic_to_any() {
+        let registry = TypeRegistry::with_core_types();
+        // Structural compatibility allows Any as target.
+        assert!(registry.is_compatible(&TypeId::from("Credential"), &TypeId::from("Any")));
+        // Strict semantic mode rejects semantic -> structural fallback.
+        assert!(!registry
+            .is_compatible_strict_semantic(&TypeId::from("Credential"), &TypeId::from("Any")));
+        // Same semantic type remains allowed.
+        assert!(registry.is_compatible_strict_semantic(
+            &TypeId::from("TransportResponse"),
+            &TypeId::from("TransportResponse"),
+        ));
+    }
+
+    #[test]
     fn test_coercion_strategy_for_refinement() {
         let mut registry = TypeRegistry::with_primitives();
         registry.register("Url", type_lib::url());
@@ -634,6 +742,282 @@ mod tests {
         // Safe upcast returns no strategy.
         let strategy = registry.coercion_strategy(&TypeId::from("Url"), &TypeId::from("String"));
         assert!(strategy.is_none());
+    }
+
+    #[test]
+    fn test_coercion_path_finds_refinement_upcast_chain() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("Url", type_lib::url());
+        let path = registry
+            .coercion_path(&TypeId::from("Url"), &TypeId::from("String"))
+            .expect("Url should widen to String");
+        assert_eq!(path, vec![TypeId::from("Url"), TypeId::from("String")]);
+    }
+
+    #[test]
+    fn test_coercion_path_finds_json_top_widening() {
+        let registry = TypeRegistry::with_primitives();
+        let int_path = registry
+            .coercion_path(&TypeId::from("Int"), &TypeId::from("Json"))
+            .expect("Int should widen to Json");
+        assert_eq!(int_path, vec![TypeId::from("Int"), TypeId::from("Json")]);
+
+        let string_path = registry
+            .coercion_path(&TypeId::from("String"), &TypeId::from("Json"))
+            .expect("String should widen to Json");
+        assert_eq!(
+            string_path,
+            vec![TypeId::from("String"), TypeId::from("Json")]
+        );
+    }
+
+    #[test]
+    fn test_coercion_path_rejects_narrowing_chain() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("Url", type_lib::url());
+        assert!(
+            registry
+                .coercion_path(&TypeId::from("String"), &TypeId::from("Url"))
+                .is_none(),
+            "String -> Url is narrowing and must not be discovered as safe path"
+        );
+    }
+
+    #[test]
+    fn test_explicit_coercion_edge_registers_transform_and_is_discoverable() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register_coercion_edge("String", "Url");
+
+        let path = registry
+            .coercion_path(&TypeId::from("String"), &TypeId::from("Url"))
+            .expect("explicit String->Url transform edge should be discoverable");
+        assert_eq!(path, vec![TypeId::from("String"), TypeId::from("Url")]);
+
+        let edges = registry
+            .coercion_edges
+            .get(&TypeId::from("String"))
+            .expect("coercion edge should be stored");
+        assert!(edges.iter().any(|edge| {
+            edge.to == TypeId::from("Url") && matches!(edge.transform, TypeOp::Transform(_))
+        }));
+    }
+
+    #[test]
+    fn test_coercion_path_supports_multi_step_widening_chain() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("Url", type_lib::url());
+        registry.register(
+            "NonEmptyUrl",
+            type_lib::refined("Url", vec![crate::type_op::Predicate::NonEmpty]),
+        );
+
+        let path = registry
+            .coercion_path(&TypeId::from("NonEmptyUrl"), &TypeId::from("Json"))
+            .expect("multi-step widening path should be discoverable");
+        assert_eq!(
+            path,
+            vec![
+                TypeId::from("NonEmptyUrl"),
+                TypeId::from("Url"),
+                TypeId::from("String"),
+                TypeId::from("Json")
+            ]
+        );
+    }
+
+    #[test]
+    fn test_coercion_path_supports_list_covariance() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("Url", type_lib::url());
+
+        let path = registry
+            .coercion_path(&TypeId::from("List<Url>"), &TypeId::from("List<String>"))
+            .expect("List<Url> should widen to List<String>");
+        assert_eq!(
+            path,
+            vec![TypeId::from("List<Url>"), TypeId::from("List<String>")]
+        );
+    }
+
+    #[test]
+    fn test_coercion_path_supports_map_value_covariance() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("Url", type_lib::url());
+
+        let path = registry
+            .coercion_path(
+                &TypeId::from("Map<String,Url>"),
+                &TypeId::from("Map<String,String>"),
+            )
+            .expect("Map<String, Url> should widen to Map<String, String>");
+        assert_eq!(
+            path,
+            vec![
+                TypeId::from("Map<String,Url>"),
+                TypeId::from("Map<String,String>")
+            ]
+        );
+    }
+
+    #[test]
+    fn test_coercion_path_optional_unwrap_requires_explicit_transform() {
+        let mut registry = TypeRegistry::with_primitives();
+        let optional_string = TypeId::from("Optional<String>");
+        let string = TypeId::from("String");
+
+        assert!(
+            registry.coercion_path(&optional_string, &string).is_none(),
+            "Optional<String> -> String is narrowing and must require explicit transform"
+        );
+
+        registry.register_coercion_edge("Optional<String>", "String");
+        let path = registry
+            .coercion_path(&optional_string, &string)
+            .expect("explicit optional unwrap transform should be discoverable");
+        assert_eq!(path, vec![optional_string, string]);
+    }
+
+    #[test]
+    fn test_coercion_path_cross_provider_secret_payloads_widen_to_string_only() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register(
+            "GcpSecretPayload",
+            type_lib::refined(
+                "String",
+                vec![crate::type_op::Predicate::Matches("^gcp:.*$".to_string())],
+            ),
+        );
+        registry.register(
+            "AwsSecretValue",
+            type_lib::refined(
+                "String",
+                vec![crate::type_op::Predicate::Matches("^aws:.*$".to_string())],
+            ),
+        );
+
+        assert_eq!(
+            registry.coercion_path(&TypeId::from("GcpSecretPayload"), &TypeId::from("String")),
+            Some(vec![
+                TypeId::from("GcpSecretPayload"),
+                TypeId::from("String")
+            ])
+        );
+        assert_eq!(
+            registry.coercion_path(&TypeId::from("AwsSecretValue"), &TypeId::from("String")),
+            Some(vec![TypeId::from("AwsSecretValue"), TypeId::from("String")])
+        );
+        assert!(
+            registry
+                .coercion_path(
+                    &TypeId::from("GcpSecretPayload"),
+                    &TypeId::from("AwsSecretValue")
+                )
+                .is_none(),
+            "provider payload types should not coerce directly to each other"
+        );
+    }
+
+    #[test]
+    fn test_coercion_dag_walk_cross_provider_secret_payloads_are_isolated() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register(
+            "GcpSecretPayload",
+            type_lib::refined(
+                "String",
+                vec![crate::type_op::Predicate::Matches("^gcp:.*$".to_string())],
+            ),
+        );
+        registry.register(
+            "AwsSecretValue",
+            type_lib::refined(
+                "String",
+                vec![crate::type_op::Predicate::Matches("^aws:.*$".to_string())],
+            ),
+        );
+
+        // DAG-walk widening paths should each terminate at String.
+        let gcp_walk = registry
+            .coercion_path(&TypeId::from("GcpSecretPayload"), &TypeId::from("String"))
+            .expect("gcp payload should widen to String");
+        assert_eq!(
+            gcp_walk,
+            vec![TypeId::from("GcpSecretPayload"), TypeId::from("String")]
+        );
+        let aws_walk = registry
+            .coercion_path(&TypeId::from("AwsSecretValue"), &TypeId::from("String"))
+            .expect("aws value should widen to String");
+        assert_eq!(
+            aws_walk,
+            vec![TypeId::from("AwsSecretValue"), TypeId::from("String")]
+        );
+
+        // Cross-provider coercion must remain impossible in both directions.
+        assert!(registry
+            .coercion_path(
+                &TypeId::from("GcpSecretPayload"),
+                &TypeId::from("AwsSecretValue")
+            )
+            .is_none());
+        assert!(registry
+            .coercion_path(
+                &TypeId::from("AwsSecretValue"),
+                &TypeId::from("GcpSecretPayload")
+            )
+            .is_none());
+    }
+
+    #[test]
+    fn test_coercion_path_cross_provider_tokens_widen_to_credential_base_only() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register(
+            "Credential",
+            type_lib::refined("String", vec![crate::type_op::Predicate::NonEmpty]),
+        );
+        registry.register(
+            "GcpAccessToken",
+            type_lib::refined(
+                "Credential",
+                vec![crate::type_op::Predicate::Matches(
+                    "^ya29\\..+$".to_string(),
+                )],
+            ),
+        );
+        registry.register(
+            "AwsSessionToken",
+            type_lib::refined(
+                "Credential",
+                vec![crate::type_op::Predicate::Matches(
+                    "^ASIA[0-9A-Z]+$".to_string(),
+                )],
+            ),
+        );
+
+        assert_eq!(
+            registry.coercion_path(&TypeId::from("GcpAccessToken"), &TypeId::from("Credential")),
+            Some(vec![
+                TypeId::from("GcpAccessToken"),
+                TypeId::from("Credential")
+            ])
+        );
+        assert_eq!(
+            registry.coercion_path(
+                &TypeId::from("AwsSessionToken"),
+                &TypeId::from("Credential")
+            ),
+            Some(vec![
+                TypeId::from("AwsSessionToken"),
+                TypeId::from("Credential")
+            ])
+        );
+        assert!(
+            registry
+                .coercion_path(
+                    &TypeId::from("AwsSessionToken"),
+                    &TypeId::from("GcpAccessToken")
+                )
+                .is_none(),
+            "provider token types should not coerce directly to each other"
+        );
     }
 
     #[test]

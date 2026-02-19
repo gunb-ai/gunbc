@@ -50,8 +50,9 @@ pub mod topo;
 pub use box_draw::{error_box, info_box, preamble_box, BoxStyle, TermBox};
 pub use ci_context::CiContext;
 pub use display::{
-    execute_and_display, execute_and_display_with_result, print_attention, print_error_boxes,
-    print_preamble, print_preamble_auto, print_value, AttentionLevel, DisplayResult, Preamble,
+    execute_and_display, execute_and_display_with_result, execute_and_display_with_result_config,
+    print_attention, print_error_boxes, print_preamble, print_preamble_auto, print_value,
+    AttentionLevel, DisplayConfig, DisplayMode, DisplayResult, DisplayVerbosity, Preamble,
 };
 pub use env::{single_output as env_single_output, EnvNode};
 pub use error::{ExecError, IntoExecResult, ResultExt};
@@ -87,9 +88,44 @@ pub use gunbc_ir::LogDetailLevel;
 use gunbc_ir::Value;
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
 /// Trait that opaque node operations must implement.
 pub trait Executable: fmt::Debug {
     /// Execute the operation with the given inputs.
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError>;
+}
+
+/// Type-erased executable operation.
+///
+/// Wraps any `Executable` impl for use in `Dag<DynOp>`, eliminating the need
+/// for per-module union enums (e.g., `PragmaGraphOp`, `WorkspaceOp`).
+///
+/// Clone is cheap (Arc refcount bump). Satisfies `Executable + Clone + Send + 'static`.
+#[derive(Clone)]
+pub struct DynOp(Arc<dyn Executable + Send + Sync>);
+
+impl DynOp {
+    /// Wrap any `Executable` in a type-erased `DynOp`.
+    pub fn new(op: impl Executable + Send + Sync + 'static) -> Self {
+        Self(Arc::new(op))
+    }
+}
+
+impl fmt::Debug for DynOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl Executable for DynOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        self.0.execute(inputs)
+    }
+}
+
+impl From<gunbc_ir::patterns::PatternOp> for DynOp {
+    fn from(op: gunbc_ir::patterns::PatternOp) -> Self {
+        DynOp::new(op)
+    }
 }

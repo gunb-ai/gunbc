@@ -95,7 +95,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     let source = parse_dsl("std/types.dag");
     assert_eq!(
         source.items.len(),
-        37,
+        45,
         "std/types.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -141,6 +141,13 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type ServiceAccountEmail",
             "type CloudRuntime",
             "type Platform",
+            "type Arch",
+            "type Vendor",
+            "type Os",
+            "type AbiEnv",
+            "type ExecutionEnv",
+            "type TargetTriple",
+            "type RuntimePlatform",
             "type ContentEncoding",
             "type TextFilePath",
             "type BinaryFilePath",
@@ -160,6 +167,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type TopologyEdge",
             "type DagDiff",
             "type CodegenTarget",
+            "type CodegenBackend",
             "type PragmaDirective",
             "type DocSource",
         ]

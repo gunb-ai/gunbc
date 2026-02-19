@@ -12,45 +12,17 @@
 //! - LoadToolRegistry -> RenderDepsToml -> PrepareFileWrite -> ExecuteTransport
 
 use crate::env::PlatformEnv;
-use crate::manifest::DEFAULT_MANIFEST_FILENAME;
 use crate::ops::DepsOp;
-use gunbc_exec::{ExecError, Executable, OutputMap};
+use gunbc_exec::DynOp;
 use gunbc_ir::{
     add_transport_triplet_named_with_passthrough, build::*, BuilderError, Cardinality, Dag,
-    DagBuilder, Node, Value, WorkflowSignature,
+    DagBuilder, Node, WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv, PrepareFileWriteOp};
-use std::collections::HashMap;
 
-/// Union type for deps graph operations.
-///
-/// Following the gist pattern: all I/O through Transport(TransportOps::Execute) nodes.
-#[derive(Debug, Clone)]
-pub enum DepsGraphOp {
-    /// Deps-specific operations (all PURE)
-    Deps(DepsOp),
-    /// Environment ops (resource acquisition)
-    Env(PlatformEnv),
-    /// Filesystem environment (resource acquisition)
-    FsEnv(FsEnv),
-    /// Prepare file write (primitive - PURE)
-    PrepareFileWrite(PrepareFileWriteOp),
-    /// Transport operations (boundary - actual I/O)
-    Transport(TransportOps),
-}
-
-impl Executable for DepsGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            DepsGraphOp::Deps(op) => op.execute(inputs),
-            DepsGraphOp::Env(op) => op.execute(inputs),
-            DepsGraphOp::FsEnv(op) => op.execute(inputs),
-            DepsGraphOp::PrepareFileWrite(op) => op.execute(inputs),
-            DepsGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
-}
+/// Runtime op type for deps graphs.
+pub type DepsGraphOp = DynOp;
 
 /// Get the declared signature for the deps workflow.
 pub fn deps_signature() -> WorkflowSignature {
@@ -90,14 +62,14 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         "platform_env",
         vec![],
         vec![port("platform", "Platform")],
-        DepsGraphOp::Env(PlatformEnv),
+        DynOp::new(PlatformEnv),
     ))?;
 
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
         vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        DepsGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+        DynOp::new(FsEnv::new(filename::Scope::Write)),
     ))?;
 
     // ========================================================================
@@ -123,9 +95,9 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             scalar("manifest_path", "String"),
             scalar("manifest_content", "String"), // Pass content to GenerateScripts
         ],
-        DepsGraphOp::Deps(DepsOp::PrepareLoadManifest),
-        DepsGraphOp::Deps(DepsOp::ParseManifest),
-        DepsGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(DepsOp::PrepareLoadManifest),
+        DynOp::new(DepsOp::ParseManifest),
+        DynOp::new(TransportOps::Execute),
         Some(&fs_env),
     )?;
 
@@ -147,7 +119,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
                 list("needs_install", "StringList"),
                 scalar("platform", "String"),
             ],
-            DepsGraphOp::Deps(DepsOp::GenerateScripts),
+            DynOp::new(DepsOp::GenerateScripts),
         ),
         &load_manifest,
     )?;
@@ -173,9 +145,9 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             scalar("stdout", "String"),
             scalar("stderr", "String"),
         ],
-        DepsGraphOp::Deps(DepsOp::PrepareExecuteInstalls),
-        DepsGraphOp::Deps(DepsOp::ParseExecuteResult),
-        DepsGraphOp::Transport(TransportOps::Execute),
+        DynOp::new(DepsOp::PrepareExecuteInstalls),
+        DynOp::new(DepsOp::ParseExecuteResult),
+        DynOp::new(TransportOps::Execute),
         Some(&generate_scripts),
     )?;
 
@@ -259,7 +231,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         "fs_env",
         vec![],
         vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
-        DepsGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+        DynOp::new(FsEnv::new(filename::Scope::Write)),
     ))?;
 
     // Node: LoadToolRegistry (deps-specific) - generation 0
@@ -272,7 +244,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             scalar("tool_count", "Int"),
             non_empty_list("tool_names", "NonEmptyStringList"),
         ],
-        DepsGraphOp::Deps(DepsOp::LoadToolRegistry),
+        DynOp::new(DepsOp::LoadToolRegistry),
     ))?;
 
     // Node: RenderDepsToml (deps-specific) - generation 1
@@ -283,7 +255,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             "render_deps_toml",
             vec![],
             vec![scalar("deps_toml_content", "String")],
-            DepsGraphOp::Deps(DepsOp::RenderDepsToml),
+            DynOp::new(DepsOp::RenderDepsToml),
         ),
         &load_registry,
     )?;
@@ -295,7 +267,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             "prepare_file_write",
             vec![scalar("content", "String"), port("path", "String")],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            DepsGraphOp::PrepareFileWrite(PrepareFileWriteOp),
+            DynOp::new(PrepareFileWriteOp),
         ),
         &render_deps_toml,
     )?;
@@ -315,7 +287,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
                 port("written_path", "String"),
                 port("content", "String"),
             ],
-            DepsGraphOp::Transport(TransportOps::Execute),
+            DynOp::new(TransportOps::Execute),
         ),
         &prepare_write,
     )?;
@@ -350,46 +322,6 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         });
     }
     Ok(dag)
-}
-
-// Mockable implementation
-use gunbc_test::Mockable;
-
-impl Mockable for DepsGraphOp {
-    fn mock_outputs(&self) -> HashMap<String, Value> {
-        match self {
-            DepsGraphOp::Deps(op) => op.mock_outputs(),
-            DepsGraphOp::Env(op) => op.mock_outputs(),
-            DepsGraphOp::FsEnv(op) => op.mock_outputs(),
-            DepsGraphOp::PrepareFileWrite(_) => OutputMap::new()
-                .request(
-                    "request",
-                    gunbc_ir::transport::TransportRequest::File(
-                        gunbc_ir::transport::FileRequest::write(
-                            DEFAULT_MANIFEST_FILENAME,
-                            "# mock deps.toml",
-                        ),
-                    ),
-                )
-                .bool("skip", false)
-                .build(),
-            DepsGraphOp::Transport(_) => OutputMap::new()
-                .response(
-                    "response",
-                    gunbc_ir::transport::TransportResponse::File(
-                        gunbc_ir::transport::FileResponse {
-                            path: "deps.toml".to_string(),
-                            operation: gunbc_ir::transport::FileOp::Read,
-                            success: true,
-                            content: Some("[[dependency]]\nname = \"mock\"".to_string()),
-                            exists: Some(true),
-                            error: None,
-                        },
-                    ),
-                )
-                .build(),
-        }
-    }
 }
 
 #[cfg(test)]

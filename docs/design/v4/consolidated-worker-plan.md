@@ -1,12 +1,13 @@
 # Consolidated Worker Plan
 
-**Status**: Working Draft — February 2026
-**Companion**: [`dsl-roadmap.md`](./dsl-roadmap.md), [`dsl-codegen-roadmap.md`](./dsl-codegen-roadmap.md), [`TODO/README.md`](../../../TODO/README.md)
+**Status**: Architecture context — February 2026
+**Execution queue**: [`TODO/tasks.md`](../../../TODO/tasks.md) — the single source of truth for what to do next.
+**Companion**: [`dsl-roadmap.md`](./dsl-roadmap.md), [`dsl-codegen-roadmap.md`](./dsl-codegen-roadmap.md)
 **Track A (DSL Core)**: DONE — compiler produces real binaries across 4 targets (see dsl-codegen-roadmap.md)
 
-This document unifies all active TODO files into a single dependency-ordered execution plan.
-Original TODO files retain detailed rationale; this doc provides sequencing, dependencies, and
-task assignments.
+This document provides the dependency DAG, cross-track relationships, and wave decomposition
+that inform the execution order in `TODO/tasks.md`. The checkboxes below are a historical
+record; for current task status, see `TODO/tasks.md`.
 
 **Guiding principle**: All new modeling and infrastructure work must be properly typed from the
 ground up — types are DAGs, coercion is DAG comparison/transform, and external systems are
@@ -20,11 +21,11 @@ gated on having these foundations in place.
 | Track | Status | Summary |
 |-------|--------|---------|
 | **A — DSL Core** | DONE | Compiler pipeline complete: parse → resolve → typecheck → lower → derive → emit. 4 targets (Rust/Go/C/MIPS), exec-runtime fast path, cross-language parity tests. |
-| **B — Migration** | ~30% | Workflow audit Phases A-C done (~85%); Phase D pending. DSL migration backlog created but 0% implemented. |
-| **C — Modeling** | ~10% | Type DAG infrastructure exists (`Dag<TypeOp>`, contract tower L1-L3, `can_safely_coerce_to`). Coercion Phases 1-2 done, Phases 3-4 deferred. No understanding layer. No workspace model (45+ hardcoded path assumptions). Platform/browser/anemic/transport at 0%. |
-| **D — Runtime/Test** | ~40% | Logging consolidation ~44% (basics done, quality/safety/tests remain). Testgen seed policy ~50% (core fix done). Codegen quality ongoing. |
-| **E — Domain Parity** | ~5% | Credential lifecycle has some wiring. GCP infra at 0%. LLM review V0 complete. **Gated on C5+C6 foundations.** |
-| **F — Debt Ledger** | ~55% | Hacks: 20/35 resolved. Consolidation: ongoing. |
+| **B — Migration** | ~40% | Workflow audit Phases A-C done. DSL migration: pragma (B1.1a), transport triplets (B1.2), codegen (B1.3a), skip (B1.4) started. Phase D pending. |
+| **C — Modeling** | ~75% | Type DAG infra exists. WorkspaceLayout **DONE** (C7.1-C7.5). Coercion via DAG walk **DONE** (C5.1-C5.3). System model types + data exist (C6.1-C6.4), model data distributed to owning crates (C6.5f-g). Remaining: refactor to `Dag<TypeOp>` (C6.5a-e,h). Platform/toolchain done (C1). |
+| **D — Runtime/Test** | ~55% | Logging basics done, D1.1-D1.3 complete. Testgen seed policy core done, D2.1 done. D3.1 (triplet unification) done. Codegen quality ongoing. |
+| **E — Domain Parity** | ~45% | Credential lifecycle through E1.2 done. GCP IAM/WIF (E2.1-E2.2) done. Infra plan/apply, secret cache/rotation added. LLM review V0 complete. |
+| **F — Debt Ledger** | ~70% | F1.6 (mtime diagnostics), F1.10 (input mock validation), F1.23 (strict DryRun), F1.30 (List dual encoding), F1.31 (cardinality cap) done. |
 
 ---
 
@@ -35,9 +36,10 @@ WAVE 0 (type foundations)   WAVE 1 (model + migrate)   WAVE 2 (build-on)        
 ─────────────────────────   ────────────────────────   ──────────────────         ─────────────────
 C5.1 coerce via DAG walk ─▶ C5.3 stress tests ─────────────────────────────────▶ (validates all)
 C5.2 eliminate dual enc  ─▶ C5.3
-C6.1 understanding types ─▶ C6.2 GCP understandings ─▶ C6.3 contract tests ────▶ C6.4 multi-cloud
+C6.1 system model types ─▶ C6.2 GCP models ──────────▶ C6.3 contract tests ────▶ C6.4 multi-cloud
                      ├────▶ E2.1* SA/IAM (via C6)  ──▶ E2.2 WIF ──────────────▶ E2.3-E2.8
                      └────▶ C6.2b transport specs
+C5.1 + C6.4 ────────────▶ C6.5 refactor to Dag<TypeOp> (system models as typed DAGs)
 
 B1.1 pragma ──────────────────────────────────────────┐
 B1.2 transport triplets ──────────────────────────────┤
@@ -85,6 +87,7 @@ E1.0 cred diagnostics ────▶ E1.1 context/profile ─────▶ E1
 | B1.1-B1.4 | B2.1 | Migration experience informs workflow registry design |
 | **D3.1** | **D3.2** | Unified triplet data in derive enables obligation-based canonical kind |
 | **C5.1** | **D3.2** | DAG-based coercion matures obligation metadata used for canonical kind |
+| **C5.1 + C6.4** | **C6.5** | DAG coercion + all system model data must exist before refactoring to DAG types |
 | **C7.1** | **C7.2, C7.3, C7.4** | WorkspaceLayout enables all downstream path fixes |
 | **C7.4** | **C7.5** | parent() chain elimination enables pragma policy derivation |
 | DSL core (ext) | B1.5-B1.8 | Reactive/metaprog primitives not yet in DSL |
@@ -132,7 +135,7 @@ These hand-rolled Rust patterns have DSL equivalents now. Migrate them.
 `gunbc-dag/src/pragma/graph.rs` has 3 identical content upsert chains (clippy.toml,
 allowlist, lint policy). Express as DSL `pattern` invocations with service calls.
 
-- [ ] B1.1a — Write `pragma.dag` using `pattern content_upsert` for 3 chains
+- [x] B1.1a — Write `pragma.dag` using `pattern content_upsert` for 3 chains
 - [ ] B1.1b — Verify generated binary produces identical output to hand-built
 - [ ] B1.1c — Wire into build system (replace hand-built pragma binary)
 
@@ -142,9 +145,9 @@ allowlist, lint policy). Express as DSL `pattern` invocations with service calls
 prepare/execute/parse 3-node pattern appears in every binary. DSL already supports
 via service call lowering.
 
-- [ ] B1.2a — Audit all transport triplet instances across binaries
-- [ ] B1.2b — Verify DSL `service` call lowering produces equivalent triplet structure
-- [ ] B1.2c — Migrate at least one triplet to DSL and verify parity
+- [x] B1.2a — Audit all transport triplet instances across binaries
+- [x] B1.2b — Verify DSL `service` call lowering produces equivalent triplet structure
+- [x] B1.2c — Migrate at least one triplet to DSL and verify parity
 
 ##### B1.3 — Codegen graph DSL migration [M]
 **Deps**: None
@@ -152,7 +155,7 @@ via service call lowering.
 `gunbc-dag/src/codegen/graph.rs` — staged pipeline: exists check → conditional codegen
 → stamp. DSL `if` in `func` bodies.
 
-- [ ] B1.3a — Write `codegen.dag` expressing conditional pipeline
+- [x] B1.3a — Write `codegen.dag` expressing conditional pipeline
 - [ ] B1.3b — Verify generated binary matches hand-built codegen behavior
 
 ##### B1.4 — Conditional execution / skip semantics [S]
@@ -161,9 +164,9 @@ via service call lowering.
 Content upsert "compare" step skips write when content matches. May need `[skip_if]`
 or equivalent DSL annotation.
 
-- [ ] B1.4a — Determine whether existing DSL constructs handle skip semantics
-- [ ] B1.4b — If needed, add skip annotation to DSL syntax + lowering
-- [ ] B1.4c — Verify upsert pattern with skip produces correct generated code
+- [x] B1.4a — Determine whether existing DSL constructs handle skip semantics
+- [x] B1.4b — If needed, add skip annotation to DSL syntax + lowering *(not needed: existing `content_upsert` lowering already wires compare→execute skip semantics)*
+- [x] B1.4c — Verify upsert pattern with skip produces correct generated code
 
 #### Needs DSL Work First (Wave 3+)
 
@@ -227,17 +230,17 @@ migration work (B1.x) informs which workflows can be registry-driven.
 Add resource-conflict admission control to the executor so parallel DAG execution
 is safe.
 
-- [ ] B2.2a — Implement conflict detection from `ResourceAccess` declarations
-- [ ] B2.2b — Add admission gating in executor before node dispatch
-- [ ] B2.2c — Tests: conflicting Write/Write blocked, Read/Read allowed
+- [x] B2.2a — Implement conflict detection from `ResourceAccess` declarations
+- [x] B2.2b — Add admission gating in executor before node dispatch
+- [x] B2.2c — Tests: conflicting Write/Write blocked, Read/Read allowed
 
 ##### B2.3 — Fast-path freshness [M]
 **Deps**: B2.1
 
 Git HEAD + dirty state as fast-path freshness signal before full content hashing.
 
-- [ ] B2.3a — Design freshness signal (HEAD SHA + dirty files)
-- [ ] B2.3b — Integrate into workflow registry execution path
+- [x] B2.3a — Design freshness signal (HEAD SHA + dirty files)
+- [ ] B2.3b — Integrate into workflow registry execution path *(preflight path now uses signal cache; full workflow-registry integration pending B2.1)*
 
 #### Wave 4
 
@@ -246,20 +249,20 @@ Git HEAD + dirty state as fast-path freshness signal before full content hashing
 
 Design sandbox mode (no real I/O) and replay/durability for DAG execution.
 
-- [ ] B2.4a — Draft RFC for sandbox execution model
-- [ ] B2.4b — Draft RFC for durability/replay
+- [x] B2.4a — Draft RFC for sandbox execution model
+- [x] B2.4b — Draft RFC for durability/replay
 
 ---
 
 ## Track C — Modeling Foundation
 
-### C5 — Type DAG Coercion (Wave 0)
-**Source**: `TODO/TODONE/design-type-coercion.md` Phases 3-4 (deferred), `core/ir/src/type_op.rs`,
+### C5 — Type DAG Coercion (Wave 0) — DONE
+**Source**: `TODO/TODONE/design-type-coercion.md` Phases 1-4, `core/ir/src/type_op.rs`,
 `core/ir/src/contract.rs`, `core/ir/src/coerce.rs`
 
-Types are already DAGs (`Dag<TypeOp>`) with a contract tower (L1 cardinality, L2 base type,
-L3 predicates). Phases 1-2 done: contract extraction + `can_safely_coerce_to()`. But coercion
-currently uses hardcoded rules, not DAG comparison. This must work before we build on it.
+Types are DAGs (`Dag<TypeOp>`) with a contract tower (L1 cardinality, L2 base type,
+L3 predicates). All phases complete: contract extraction, `can_safely_coerce_to()`,
+DAG-walk coercion, dual encoding elimination, and stress tests.
 
 **Existing infrastructure**:
 - `TypeOp` enum: `Identity`, `Validate(Predicate)`, `Transform(Coercion)`, `Wrap(WrapperKind)`, `Unwrap`
@@ -276,12 +279,12 @@ currently uses hardcoded rules, not DAG comparison. This must work before we bui
 Given source type DAG and target type DAG, find a valid transform path by walking both
 DAGs, not by checking hardcoded rules.
 
-- [ ] C5.1a — Replace `base_type_upcasts_to()` with registry-driven DAG ancestry check
-- [ ] C5.1b — Coercion discovery: given `Dag<TypeOp>` for source and target, find the
+- [x] C5.1a — Replace `base_type_upcasts_to()` with registry-driven DAG ancestry check
+- [x] C5.1b — Coercion discovery: given `Dag<TypeOp>` for source and target, find the
       transform chain (e.g., Url→String = unwrap NonEmpty + unwrap Matches)
-- [ ] C5.1c — `TypeOp::Transform(Coercion)` used as explicit coercion edges in registry
-- [ ] C5.1d — Tests: Url→String, Int→Json, String→Json coercion found via DAG walk
-- [ ] C5.1e — Tests: String→Url coercion correctly rejected (narrowing = unsafe)
+- [x] C5.1c — `TypeOp::Transform(Coercion)` used as explicit coercion edges in registry
+- [x] C5.1d — Tests: Url→String, Int→Json, String→Json coercion found via DAG walk
+- [x] C5.1e — Tests: String→Url coercion correctly rejected (narrowing = unsafe)
 
 ##### C5.2 — Eliminate cardinality dual encoding [M]
 **Deps**: None
@@ -289,32 +292,38 @@ DAGs, not by checking hardcoded rules.
 Port cardinality and type DAG `Wrap` nodes encode the same information independently.
 Derive port cardinality from the type DAG so there's one source of truth.
 
-- [ ] C5.2a — `infer_cardinality()` from type DAG `Wrap`/`Unwrap` nodes
-- [ ] C5.2b — Audit ports that set cardinality independently of type DAG
-- [ ] C5.2c — Migrate to single source: type DAG drives cardinality, port just references type
-- [ ] C5.2d — Tests: `Optional<String>` type DAG → port cardinality [0,1] automatically
+- [x] C5.2a — `infer_cardinality()` from type DAG `Wrap`/`Unwrap` nodes
+- [x] C5.2b — Audit ports that set cardinality independently of type DAG
+- [x] C5.2c — Migrate to single source: type DAG drives cardinality, port just references type
+- [x] C5.2d — Tests: `Optional<String>` type DAG → port cardinality [0,1] automatically
 
 ##### C5.3 — Type system stress tests [M]
 **Deps**: C5.1, C5.2
 
 Validate that the DAG-based coercion handles real-world type relationships.
 
-- [ ] C5.3a — Multi-step coercion: `NonEmptyUrl` → `Url` → `String` → `Json`
-- [ ] C5.3b — Container coercion: `List<Url>` → `List<String>` (covariant)
-- [ ] C5.3c — Optional unwrap: `Optional<String>` → `String` (requires value present)
-- [ ] C5.3d — Map coercion: `Map<String, Url>` → `Map<String, String>`
-- [ ] C5.3e — Cross-provider type alignment: `GcpSecretPayload` refines `String`,
+- [x] C5.3a — Multi-step coercion: `NonEmptyUrl` → `Url` → `String` → `Json`
+- [x] C5.3b — Container coercion: `List<Url>` → `List<String>` (covariant)
+- [x] C5.3c — Optional unwrap: `Optional<String>` → `String` (requires value present)
+- [x] C5.3d — Map coercion: `Map<String, Url>` → `Map<String, String>`
+- [x] C5.3e — Cross-provider type alignment: `GcpSecretPayload` refines `String`,
       `AwsSecretValue` refines `String` — both coerce to `String` but not to each other
-- [ ] C5.3f — Credential coercion: `GcpAccessToken` and `AwsSessionToken` both refine
+- [x] C5.3f — Credential coercion: `GcpAccessToken` and `AwsSessionToken` both refine
       `Credential` but are not interchangeable
 
 ---
 
-### C6 — Understanding / Modeling Layer (Wave 0-1)
-**Source**: the-gunbai `understanding/` pattern
+### C6 — System Modeling Layer (Wave 0-1)
+**Source**: the-gunbai `understanding/` pattern, reused through `Dag<TypeOp>` + `TypeRegistry`
 
-External systems must be modeled as typed, versioned understandings — not ad-hoc code.
-This is the foundation for all GCP infra, credential, and transport work.
+External systems must be modeled through the DAG type system — not as a parallel type hierarchy.
+System behaviors are typed DAGs: inputs/outputs are `TypeId`s in the registry, properties are
+`Validate(Predicate)` nodes, coercion between providers is DAG comparison (C5). This is the
+foundation for all GCP infra, credential, and transport work.
+
+**Architecture correction (2026-02-18)**: Overnight work built `SystemModel`/`Behavior`/`Property`
+as a parallel type system in `core/ir/src/system_model.rs` disconnected from `Dag<TypeOp>`.
+This must be refactored — see C6.5 below.
 
 #### Wave 0
 
@@ -324,18 +333,18 @@ This is the foundation for all GCP infra, credential, and transport work.
 Port the core understanding types from the-gunbai. Create `core/understanding` crate
 (or module in `core/ir`).
 
-- [ ] C6.1a — Define `Understanding` struct: id, name, kind, version, docs, behaviors,
+- [x] C6.1a — Define `Understanding` struct: id, name, kind, version, docs, behaviors, *(implemented DAG-native as `SystemModel` in `core/ir` per user direction)*
       constraints, assumptions, unknowns, depends_on
-- [ ] C6.1b — Define `SystemKind` enum: Cli, RestApi, LlmApi, Sdk, SecretProvider,
+- [x] C6.1b — Define `SystemKind` enum: Cli, RestApi, LlmApi, Sdk, SecretProvider,
       Convention, Queue, Scheduler, Runner
-- [ ] C6.1c — Define `Behavior` struct: id, description, invocation, inputs, outputs,
+- [x] C6.1c — Define `Behavior` struct: id, description, invocation, inputs, outputs,
       observed_properties, requires, upsert_phase
-- [ ] C6.1d — Define `Invocation` enum: Cli (with docs), Rest (with docs), Sdk, Protocol
-- [ ] C6.1e — Define `Property` enum: ReadOnly, WritesWorld, Deterministic, Idempotent,
+- [x] C6.1d — Define `Invocation` enum: Cli (with docs), Rest (with docs), Sdk, Protocol
+- [x] C6.1e — Define `Property` enum: ReadOnly, WritesWorld, Deterministic, Idempotent,
       IdempotentWithKey, FailsWhen, EdgeCase, etc.
-- [ ] C6.1f — Define `InputType`/`OutputType` enums with mapping to `TypeId`/`Dag<TypeOp>`
-- [ ] C6.1g — `inventory`-based auto-registration: `submit_understanding!` macro
-- [ ] C6.1h — Tests: define a minimal understanding, verify registration + retrieval
+- [x] C6.1f — Define `InputType`/`OutputType` enums with mapping to `TypeId`/`Dag<TypeOp>`
+- [x] C6.1g — `inventory`-based auto-registration: `submit_understanding!` macro *(implemented as `submit_system_model!`)*
+- [x] C6.1h — Tests: define a minimal understanding, verify registration + retrieval
 
 #### Wave 1
 
@@ -345,15 +354,15 @@ Port the core understanding types from the-gunbai. Create `core/understanding` c
 Model the first real external systems as understandings. These validate the framework
 and provide the typed foundation for E2 (GCP infra) and C4 (transport).
 
-- [ ] C6.2a — GCP Secret Manager understanding (access_secret_version, list_secrets,
+- [x] C6.2a — GCP Secret Manager understanding (access_secret_version, list_secrets,
       create_secret, destroy_secret_version)
-- [ ] C6.2b — GCP IAM understanding (SA CRUD, IAM bindings, WIF pool/provider)
-- [ ] C6.2c — GCS understanding (get, put, list, delete + versioned CAS)
-- [ ] C6.2d — File transport understanding (read, write, exists, delete)
-- [ ] C6.2e — Shell transport understanding (exec with args, env, cwd, timeout)
-- [ ] C6.2f — HTTP/REST transport understanding (GET, POST, PUT, DELETE with status semantics)
-- [ ] C6.2g — Dependency graph: GCP Secret Manager depends_on secret:GOOGLE_APPLICATION_CREDENTIALS
-- [ ] C6.2h — Tests: all understandings parseable, dependency graph acyclic
+- [x] C6.2b — GCP IAM understanding (SA CRUD, IAM bindings, WIF pool/provider)
+- [x] C6.2c — GCS understanding (get, put, list, delete + versioned CAS)
+- [x] C6.2d — File transport understanding (read, write, exists, delete)
+- [x] C6.2e — Shell transport understanding (exec with args, env, cwd, timeout)
+- [x] C6.2f — HTTP/REST transport understanding (GET, POST, PUT, DELETE with status semantics)
+- [x] C6.2g — Dependency graph: GCP Secret Manager depends_on secret:GOOGLE_APPLICATION_CREDENTIALS
+- [x] C6.2h — Tests: all understandings parseable, dependency graph acyclic
 
 #### Wave 2
 
@@ -362,11 +371,11 @@ and provide the typed foundation for E2 (GCP infra) and C4 (transport).
 
 Auto-generate behavioral contract tests from understanding specs.
 
-- [ ] C6.3a — Define `ContractTestSpec` from Behavior + observed_properties
-- [ ] C6.3b — Upsert phase enforcement: Check=ReadOnly+Deterministic,
+- [x] C6.3a — Define `ContractTestSpec` from Behavior + observed_properties
+- [x] C6.3b — Upsert phase enforcement: Check=ReadOnly+Deterministic,
       Create=IdempotentWithKey, Resolve=ReadOnly+FailsWhen
-- [ ] C6.3c — Generate type-safe test harnesses from InputType/OutputType
-- [ ] C6.3d — Wire into testgen for understanding-driven test generation
+- [x] C6.3c — Generate type-safe test harnesses from InputType/OutputType
+- [x] C6.3d — Wire into testgen for understanding-driven test generation
 
 #### Wave 3
 
@@ -376,16 +385,49 @@ Auto-generate behavioral contract tests from understanding specs.
 Model a second cloud provider to validate that the understanding + type system
 handles cross-provider concerns correctly.
 
-- [ ] C6.4a — AWS Secrets Manager understanding (get_secret_value, create_secret,
+- [x] C6.4a — AWS Secrets Manager understanding (get_secret_value, create_secret,
       put_secret_value, describe_secret)
-- [ ] C6.4b — AWS IAM understanding (role CRUD, policy attachment, assume-role)
-- [ ] C6.4c — S3 understanding (get_object, put_object, list_objects + versioned CAS)
-- [ ] C6.4d — Type alignment test: GCP SecretPayload and AWS SecretValue both refine
+- [x] C6.4b — AWS IAM understanding (role CRUD, policy attachment, assume-role)
+- [x] C6.4c — S3 understanding (get_object, put_object, list_objects + versioned CAS)
+- [x] C6.4d — Type alignment test: GCP SecretPayload and AWS SecretValue both refine
       String but are not mutually coercible
-- [ ] C6.4e — Cross-provider credential test: `GcpAccessToken` vs `AwsSessionToken` —
+- [x] C6.4e — Cross-provider credential test: `GcpAccessToken` vs `AwsSessionToken` —
       both satisfy `Credential` interface but different provider strategies
-- [ ] C6.4f — Storage abstraction test: `Store` trait behaviors map to both GCS and S3
+- [x] C6.4f — Storage abstraction test: `Store` trait behaviors map to both GCS and S3
       understandings with correct property preservation (CAS atomicity, TTL semantics)
+
+#### Correction — Refactor to DAG type system
+
+##### C6.5 — Express system models through Dag\<TypeOp\> + TypeRegistry [L]
+**Deps**: C5.1 (DAG-based coercion), C6.1-C6.4 (data exists)
+
+`system_model.rs` built a parallel type system (`SystemModel`, `Behavior`, `Property`) that
+is disconnected from `Dag<TypeOp>`, `TypeRegistry`, and `TypeContract`. This means:
+- Cross-provider coercion (GCP vs AWS) can't use DAG comparison
+- Contract tests are derived from ad-hoc `Property` enums, not type predicates
+- Parity validation (`validate_store_behavior_mapping`) uses string-matched behavior IDs
+  instead of structural type equivalence
+- `rust_type_for_type_id()` is a hardcoded parallel mapping that drifts from `PortType`
+
+**Target**: System behaviors are `Dag<TypeOp>` entries in `TypeRegistry`. Properties become
+`Validate(Predicate)` nodes. Coercion and parity are DAG operations.
+
+- [ ] C6.5a — Design: map `SystemModel` fields to `Dag<TypeOp>` nodes (behavior = typed
+      sub-DAG with input/output ports; properties = `Validate(Predicate)` nodes)
+- [ ] C6.5b — Register system behavior type DAGs in `TypeRegistry` (e.g.,
+      `TypeId("gcp.secret_manager.access_secret_version")` → `Dag<TypeOp>`)
+- [ ] C6.5c — Replace `derive_contract_test_specs()` with predicate-driven derivation from
+      type DAG `Validate` nodes (ReadOnly, Deterministic, etc. become predicates)
+- [ ] C6.5d — Replace `validate_store_behavior_mapping()` with structural DAG equivalence
+      check (GCS.get_object and S3.get_object type DAGs structurally equivalent)
+- [ ] C6.5e — Replace `rust_type_for_type_id()` with `PortType`-based derivation
+- [x] C6.5f — Distribute model data: GCP models registered via `submit_system_model!` in
+      `lib/gcp-ops`, AWS in `lib/aws-ops`, transport in `lib/transport` (not centralized
+      in one 700-line function in core/ir)
+- [x] C6.5g — `default_system_models()` now delegates to `iter_registered_system_models()`;
+      model-specific tests moved to owning crates, cross-crate tests to gunbc-dag
+- [ ] C6.5h — Cross-provider coercion test: `GcpSecretPayload` and `AwsSecretValue` type
+      DAGs both coerce to `String` via DAG walk (not hardcoded lattice)
 
 ---
 
@@ -401,12 +443,12 @@ handles cross-provider concerns correctly.
 
 Add canonical types in `core/ir` as single source of truth.
 
-- [ ] C1.1a — Add `Arch`, `Vendor`, `Os`, `AbiEnv` enums
-- [ ] C1.1b — Add `TargetTriple { arch, vendor, os, env }` struct
-- [ ] C1.1c — Add `ExecutionEnv` enum (Native, WSL, Container, CI, Emulator)
-- [ ] C1.1d — Add `RuntimePlatform { host: TargetTriple, env: ExecutionEnv }`
-- [ ] C1.1e — Add parsing/formatting helpers for target triple strings
-- [ ] C1.1f — Add compatibility adapters from `deps::Platform`, DSL `Platform`, etc.
+- [x] C1.1a — Add `Arch`, `Vendor`, `Os`, `AbiEnv` enums
+- [x] C1.1b — Add `TargetTriple { arch, vendor, os, env }` struct
+- [x] C1.1c — Add `ExecutionEnv` enum (Native, WSL, Container, CI, Emulator)
+- [x] C1.1d — Add `RuntimePlatform { host: TargetTriple, env: ExecutionEnv }`
+- [x] C1.1e — Add parsing/formatting helpers for target triple strings
+- [x] C1.1f — Add compatibility adapters from `deps::Platform`, DSL `Platform`, etc.
 
 #### Wave 2
 
@@ -415,19 +457,19 @@ Add canonical types in `core/ir` as single source of truth.
 
 Replace the worst fragmentation points with canonical types.
 
-- [ ] C1.2a — Replace hardcoded MIPS assembler/linker/qemu strings with modeled toolchain resources
-- [ ] C1.2b — Replace inline browser-open platform branching with env-aware resolver
-- [ ] C1.2c — Switch deps install and GH install platform keys to typed platform IDs
-- [ ] C1.2d — Replace `PlatformDef` / `PlatformRegistry` stringly-typed keys
+- [x] C1.2a — Replace hardcoded MIPS assembler/linker/qemu strings with modeled toolchain resources
+- [x] C1.2b — Replace inline browser-open platform branching with env-aware resolver
+- [x] C1.2c — Switch deps install and GH install platform keys to typed platform IDs
+- [x] C1.2d — Replace `PlatformDef` / `PlatformRegistry` stringly-typed keys
 
 #### Wave 3
 
 ##### C1.3 — DSL + testgen alignment [M]
 **Deps**: C1.1, C1.2
 
-- [ ] C1.3a — Align DSL `Platform`/`CodegenTarget` vocabulary with canonical types
-- [ ] C1.3b — Remove linux-hardcoded mock defaults in testgen
-- [ ] C1.3c — Add conformance tests for linux-gnu vs other env/ABI variants
+- [x] C1.3a — Align DSL `Platform`/`CodegenTarget` vocabulary with canonical types
+- [x] C1.3b — Remove linux-hardcoded mock defaults in testgen
+- [x] C1.3c — Add conformance tests for linux-gnu vs other env/ABI variants
 
 ---
 
@@ -441,10 +483,10 @@ Replace the worst fragmentation points with canonical types.
 
 Extract inline `execute_open_browser` from `dag_viz/graph.rs` into shared utility.
 
-- [ ] C2.1a — Create browser-open utility in `lib/primitives` using `RuntimePlatform`
-- [ ] C2.1b — Resolution table: (Platform, Env) → command (`wslview`, `xdg-open`, `open`, etc.)
-- [ ] C2.1c — Migrate `dag_viz/graph.rs:451` to use shared utility
-- [ ] C2.1d — Handle no-browser environments (Docker, headless CI) gracefully
+- [x] C2.1a — Create browser-open utility in `lib/primitives` using `RuntimePlatform`
+- [x] C2.1b — Resolution table: (Platform, Env) → command (`wslview`, `xdg-open`, `open`, etc.)
+- [x] C2.1c — Migrate `dag_viz/graph.rs:451` to use shared utility
+- [x] C2.1d — Handle no-browser environments (Docker, headless CI) gracefully
 
 ---
 
@@ -460,10 +502,10 @@ Reduce O(tools x concerns) boilerplate to O(concerns).
 
 15+ graph files × ~200 lines of Executable/Mockable delegation boilerplate.
 
-- [ ] C3.1a — Create `#[derive(DelegateExecutable)]` proc macro
-- [ ] C3.1b — Create `#[derive(DelegateMockable)]` proc macro
-- [ ] C3.1c — Migrate 2-3 graph op enums to validate macro
-- [ ] C3.1d — Roll out to all remaining graph op enums
+- [x] C3.1a — Create `#[derive(DelegateExecutable)]` proc macro
+- [x] C3.1b — Create `#[derive(DelegateMockable)]` proc macro
+- [x] C3.1c — Migrate 2-3 graph op enums to validate macro
+- [x] C3.1d — Roll out to all remaining graph op enums *(rolled out across gunbc-dag + shared graph-op crates where variants are pure wrappers; custom-execution enums remain intentionally manual)* 
 
 ##### C3.1b — FsEnv auto-wiring extraction [M]
 **Deps**: None
@@ -471,9 +513,9 @@ Reduce O(tools x concerns) boilerplate to O(concerns).
 10+ graph builders duplicate identical FsEnv root node setup with ~20 manual
 edge-wiring calls each.
 
-- [ ] C3.1b-1 — Extract FsEnv auto-wiring as post-processing DAG builder step
-- [ ] C3.1b-2 — Migrate graph builders to use auto-wiring
-- [ ] C3.1b-3 — Remove duplicated FsEnv setup code
+- [x] C3.1b-1 — Extract FsEnv auto-wiring as post-processing DAG builder step
+- [x] C3.1b-2 — Migrate graph builders to use auto-wiring
+- [x] C3.1b-3 — Remove duplicated FsEnv setup code
 
 #### Wave 2
 
@@ -482,9 +524,9 @@ edge-wiring calls each.
 
 13+ binaries with ~20 lines identical skeleton (arg parsing, mode selection, display).
 
-- [ ] C3.2a — Create `run_tool()` abstraction encapsulating binary entry ceremony
-- [ ] C3.2b — Derive `WorkspaceBinary` from tool registry metadata
-- [ ] C3.2c — Migrate binaries to use `run_tool()`
+- [x] C3.2a — Create `run_tool()` abstraction encapsulating binary entry ceremony
+- [x] C3.2b — Derive `WorkspaceBinary` from tool registry metadata
+- [x] C3.2c — Migrate binaries to use `run_tool()`
 
 #### Wave 3
 
@@ -513,9 +555,9 @@ behavioral tests.
 
 ~200 lines of behavioral tests. This is the gap that allowed the TCP timeout swap bug.
 
-- [ ] C4.1a — TCP tests: connect success/refused, read timeout, write/roundtrip
-- [ ] C4.1b — Shell tests: nonexistent command, exit code, env vars, cwd, stdin
-- [ ] C4.1c — File tests: read/write/exists for edge cases
+- [x] C4.1a — TCP tests: connect success/refused, read timeout, write/roundtrip
+- [x] C4.1b — Shell tests: nonexistent command, exit code, env vars, cwd, stdin
+- [x] C4.1c — File tests: read/write/exists for edge cases
 
 #### Wave 2
 
@@ -524,9 +566,9 @@ behavioral tests.
 
 Make field routing explicit with transport-specific Prepare/Parse ops.
 
-- [ ] C4.2a — Define `PrepareTcp`, `ParseTcpResponse`, etc. ops
-- [ ] C4.2b — Rename `TcpRequest.connect_timeout_ms` → `write_timeout_ms`
-- [ ] C4.2c — Update triplet helpers to use typed ports
+- [x] C4.2a — Define `PrepareTcp`, `ParseTcpResponse`, etc. ops
+- [x] C4.2b — Rename `TcpRequest.connect_timeout_ms` → `write_timeout_ms`
+- [x] C4.2c — Update triplet helpers to use typed ports
 
 #### Wave 3
 
@@ -535,9 +577,9 @@ Make field routing explicit with transport-specific Prepare/Parse ops.
 
 Declarative specification for transport behavior.
 
-- [ ] C4.3a — Define `TransportBehavior` spec type
-- [ ] C4.3b — Write specs for TCP, HTTP, REST, File, Shell
-- [ ] C4.3c — Integrate with testgen for behavioral test generation
+- [x] C4.3a — Define `TransportBehavior` spec type
+- [x] C4.3b — Write specs for TCP, HTTP, REST, File, Shell
+- [x] C4.3c — Integrate with testgen for behavioral test generation
 
 #### Wave 4
 
@@ -546,12 +588,12 @@ Declarative specification for transport behavior.
 
 Only pursue if Phase 3 evaluation shows behavioral specs are insufficient.
 
-- [ ] C4.4a — Evaluate whether C4.3 coverage is sufficient
-- [ ] C4.4b — If needed, design Value model extensions for OS handles
+- [x] C4.4a — Evaluate whether C4.3 coverage is sufficient
+- [x] C4.4b — If needed, design Value model extensions for OS handles *(not needed after C4.4a: keep handle-bearing execution imperative; model behavior/routing at request-response/spec layer)* 
 
 ---
 
-### C7 — Workspace Model (Wave 0-1)
+### C7 — Workspace Model (Wave 0-1) — DONE
 **Source**: Code audit (2026-02-17) — 30+ sites hardcode repo-structure assumptions
 
 No workspace abstraction exists today. Every site that needs a crate location, a source glob,
@@ -582,13 +624,13 @@ calls `current_dir()` once), `resolve_workspace_packages()` (uses `cargo metadat
 Define a `WorkspaceLayout` struct that knows where things are, derived from `cargo metadata`
 or a workspace manifest — not hardcoded strings.
 
-- [ ] C7.1a — Define `WorkspaceLayout` type: workspace root, crate locations (name → path),
+- [x] C7.1a — Define `WorkspaceLayout` type: workspace root, crate locations (name → path),
   source roots, output directories
-- [ ] C7.1b — Constructor from `cargo metadata` (runtime) and from `env!("CARGO_MANIFEST_DIR")`
+- [x] C7.1b — Constructor from `cargo metadata` (runtime) and from `env!("CARGO_MANIFEST_DIR")`
   (compile-time, with depth parameter)
-- [ ] C7.1c — `relative_path(&self, from: &Path, to: &Path) -> PathBuf` — compute relative
+- [x] C7.1c — `relative_path(&self, from: &Path, to: &Path) -> PathBuf` — compute relative
   path between any two workspace locations
-- [ ] C7.1d — `source_globs(&self, crates: &[&str]) -> Vec<String>` — derive glob patterns
+- [x] C7.1d — `source_globs(&self, crates: &[&str]) -> Vec<String>` — derive glob patterns
   from crate locations instead of hardcoding them
 
 ##### C7.2 — Fix generated Cargo.toml path deps [S]
@@ -596,10 +638,10 @@ or a workspace manifest — not hardcoded strings.
 
 The immediate bug: `emit_cargo_toml()` in `rust_exec_runtime.rs` hardcodes `../../core/ir`.
 
-- [ ] C7.2a — `emit_cargo_toml()` takes output directory + workspace layout, computes
+- [x] C7.2a — `emit_cargo_toml()` takes output directory + workspace layout, computes
   relative deps from actual locations
-- [ ] C7.2b — Test: generate into arbitrary depth directory, `cargo check` succeeds
-- [ ] C7.2c — Remove the depth-2 assumption documented in `cli_commands.rs` e2e test
+- [x] C7.2b — Test: generate into arbitrary depth directory, `cargo check` succeeds
+- [x] C7.2c — Remove the depth-2 assumption documented in `cli_commands.rs` e2e test
 
 #### Wave 1
 
@@ -609,20 +651,20 @@ The immediate bug: `emit_cargo_toml()` in `rust_exec_runtime.rs` hardcodes `../.
 Eliminate `CODEGEN_INPUT_GLOBS`, `REPO_SOURCE_INPUT_GLOBS`, `TESTGEN_INPUT_GLOBS` etc.
 Derive them from `WorkspaceLayout` crate locations.
 
-- [ ] C7.3a — Replace `CODEGEN_INPUT_GLOBS` / `CODEGEN_INPUT_FILES` in `resource/defs.rs`
-- [ ] C7.3b — Replace `REPO_SOURCE_INPUT_GLOBS` / `REPO_CONFIG_INPUT_FILES` in `resources.rs`
-- [ ] C7.3c — Replace `TESTGEN_INPUT_GLOBS` / `TESTGEN_EXTRA_FILES` in `resources.rs`
-- [ ] C7.3d — Verify freshness hashing unchanged (same files discovered, different derivation)
+- [x] C7.3a — Replace `CODEGEN_INPUT_GLOBS` / `CODEGEN_INPUT_FILES` in `resource/defs.rs`
+- [x] C7.3b — Replace `REPO_SOURCE_INPUT_GLOBS` / `REPO_CONFIG_INPUT_FILES` in `resources.rs`
+- [x] C7.3c — Replace `TESTGEN_INPUT_GLOBS` / `TESTGEN_EXTRA_FILES` in `resources.rs`
+- [x] C7.3d — Verify freshness hashing unchanged (same files discovered, different derivation)
 
 ##### C7.4 — Replace parent() chains and hardcoded joins [M]
 **Deps**: C7.1
 
 Eliminate `CARGO_MANIFEST_DIR` + `join("../../..")` patterns and `parent().parent()` chains.
 
-- [ ] C7.4a — Replace `dsl_tools_root()` / `dsl_pipelines_root()` in `subdags/mod.rs`
-- [ ] C7.4b — Replace `workspace_root()` helpers in daglang-cli tests (7+ sites)
-- [ ] C7.4c — Replace `repo_root()` in `lib/transport/src/pragma_lint.rs`
-- [ ] C7.4d — Replace hardcoded `CODEGEN_OUT_DIR` / `CODEGEN_BIN_DIR` constants
+- [x] C7.4a — Replace `dsl_tools_root()` / `dsl_pipelines_root()` in `subdags/mod.rs`
+- [x] C7.4b — Replace `workspace_root()` helpers in daglang-cli tests (7+ sites)
+- [x] C7.4c — Replace `repo_root()` in `lib/transport/src/pragma_lint.rs`
+- [x] C7.4d — Replace hardcoded `CODEGEN_OUT_DIR` / `CODEGEN_BIN_DIR` constants
 
 #### Wave 2
 
@@ -632,9 +674,9 @@ Eliminate `CARGO_MANIFEST_DIR` + `join("../../..")` patterns and `parent().paren
 Pragma allowlist paths (`"core/daglang/"`, `"core/exec/src/freshness.rs"`) should derive from
 crate names, not path strings.
 
-- [ ] C7.5a — Allowlist entries keyed by crate name, resolved to paths via `WorkspaceLayout`
-- [ ] C7.5b — `PRAGMA_LINT_POLICY.allow_dead_code` paths derived from crate locations
-- [ ] C7.5c — If a crate moves, policy updates automatically (no manual path editing)
+- [x] C7.5a — Allowlist entries keyed by crate name, resolved to paths via `WorkspaceLayout`
+- [x] C7.5b — `PRAGMA_LINT_POLICY.allow_dead_code` paths derived from crate locations
+- [x] C7.5c — If a crate moves, policy updates automatically (no manual path editing)
 
 ---
 
@@ -655,23 +697,23 @@ separate logic. Remaining: formalize `DisplayConfig` struct, verbosity control.
 
 - [x] D1.1a — Unify `print_value` + `print_log_entry` *(DONE)*
 - [x] D1.1b — Non-TTY observer summaries *(DONE)*
-- [ ] D1.1c — Formalize `DisplayConfig` struct with mode/verbosity settings
-- [ ] D1.1d — All execution paths use `DisplayConfig`
+- [x] D1.1c — Formalize `DisplayConfig` struct with mode/verbosity settings
+- [x] D1.1d — All execution paths use `DisplayConfig`
 
 ##### D1.2 — Secret redaction chokepoint [S]
 **Deps**: None
 
 - [x] D1.2a — Add `Secret` arm to `print_value` *(DONE)*
-- [ ] D1.2b — Add `Value::display_redacted(&self) -> String` method
-- [ ] D1.2c — Route all human-visible rendering through redaction chokepoint
+- [x] D1.2b — Add `Value::display_redacted(&self) -> String` method
+- [x] D1.2c — Route all human-visible rendering through redaction chokepoint
 
 ##### D1.3 — Capture stdout+stderr all CI stages [S]
 **Deps**: None
 
-Build/Test/Lint capture both; Testgen/Bootstrap/Pragma/Guardrail/Verify missing stdout.
+All CI parse stages now capture both stdout and stderr, including Verify sub-checks.
 
-- [ ] D1.3a — Audit parse ops for missing stdout capture
-- [ ] D1.3b — Add stdout capture to Testgen, Bootstrap, Pragma, Guardrail, Verify stages
+- [x] D1.3a — Audit parse ops for missing stdout capture
+- [x] D1.3b — Add stdout capture to Testgen, Bootstrap, Pragma, Guardrail, Verify stages
 
 #### Wave 2
 
@@ -680,19 +722,19 @@ Build/Test/Lint capture both; Testgen/Bootstrap/Pragma/Guardrail/Verify missing 
 
 Report node currently gets raw unstructured text. Need per-stage error extractors.
 
-- [ ] D1.4a — Implement `extract_build_errors` extractor
-- [ ] D1.4b — Implement `extract_test_failures` extractor
-- [ ] D1.4c — Implement `extract_lint_warnings` extractor
-- [ ] D1.4d — Default rendering shows failures first, detail on expand
+- [x] D1.4a — Implement `extract_build_errors` extractor
+- [x] D1.4b — Implement `extract_test_failures` extractor
+- [x] D1.4c — Implement `extract_lint_warnings` extractor
+- [x] D1.4d — Default rendering shows failures first, detail on expand
 
 ##### D1.5 — Grouped progress model [M]
 **Deps**: D1.1
 
 Stage/task grouping for pipeline progress (CI stages, tool phases).
 
-- [ ] D1.5a — Design grouped progress model (stage → tasks → nodes)
-- [ ] D1.5b — Implement stage grouping in observer
-- [ ] D1.5c — Long-running/noisy groups have expansion path
+- [x] D1.5a — Design grouped progress model (stage → tasks → nodes)
+- [x] D1.5b — Implement stage grouping in observer
+- [x] D1.5c — Long-running/noisy groups have expansion path
 
 #### Wave 3
 
@@ -701,32 +743,32 @@ Stage/task grouping for pipeline progress (CI stages, tool phases).
 
 Preflight currently uses raw `println!/eprint!`, bypassing CI groups and progress.
 
-- [ ] D1.6a — Route preflight output through display/grouping infrastructure
-- [ ] D1.6b — Preflight failures produce structured error output
+- [x] D1.6a — Route preflight output through display/grouping infrastructure
+- [x] D1.6b — Preflight failures produce structured error output
 
 ##### D1.7 — Unified error field conventions [M]
 **Deps**: D1.4
 
 Different ops use `"report"`, `"message"`, `"stderr"`, `"error"`, `"success"`, etc.
 
-- [ ] D1.7a — Define convention: `success: bool`, `error_summary: String`, `detail: String`
-- [ ] D1.7b — Migrate existing ops to convention (incremental)
+- [x] D1.7a — Define convention: `success: bool`, `error_summary: String`, `detail: String`
+- [x] D1.7b — Migrate existing ops to convention (incremental)
 
 ##### D1.8 — Attention-level messaging shared format [S]
 **Deps**: D1.4
 
-- [ ] D1.8a — Shared formatting path for attention-level messaging
-- [ ] D1.8b — Consistent color semantics across all tools
+- [x] D1.8a — Shared formatting path for attention-level messaging
+- [x] D1.8b — Consistent color semantics across all tools
 
 #### Wave 4
 
 ##### D1.9 — Verification + regression tests [L]
 **Deps**: D1.6, D1.7
 
-- [ ] D1.9a — Unit tests for DisplayConfig modes + secret redaction
-- [ ] D1.9b — Golden/snapshot tests for TTY/non-TTY/CI text modes
-- [ ] D1.9c — Regression test for 2026-02-13 large-log failure
-- [ ] D1.9d — End-to-end smoke coverage for workflow UX parity
+- [x] D1.9a — Unit tests for DisplayConfig modes + secret redaction
+- [x] D1.9b — Golden/snapshot tests for TTY/non-TTY/CI text modes
+- [x] D1.9c — Regression test for 2026-02-13 large-log failure
+- [x] D1.9d — End-to-end smoke coverage for workflow UX parity
 
 ---
 
@@ -742,8 +784,8 @@ Core fix landed (semantic-carrier inputs seeded correctly). 4 follow-ups.
 
 Currently testgen-local. Move to `core/ir` so other consumers can use it.
 
-- [ ] D2.1a — Extract `SemanticCarrierClass` enum to `core/ir`
-- [ ] D2.1b — Move classification logic from testgen to shared module
+- [x] D2.1a — Extract `SemanticCarrierClass` enum to `core/ir`
+- [x] D2.1b — Move classification logic from testgen to shared module
 
 #### Wave 2
 
@@ -778,9 +820,9 @@ case studies as they arise during DSL migration work.
 Transport triplet detection currently lives in `daglang-cli` (`compile/triplets.rs`), duplicating
 analysis that should be part of `DerivedArtifacts` in `daglang-derive`. CLI should be a pure renderer.
 
-- [ ] D3.1a — Add `transport_triplets: Vec<TransportTriplet>` to `DerivedArtifacts`
-- [ ] D3.1b — Move `collect_transport_triplets` logic into `daglang-derive`
-- [ ] D3.1c — Update `daglang-cli` `show-triplets` to render from derived data
+- [x] D3.1a — Add `transport_triplets: Vec<TransportTriplet>` to `DerivedArtifacts`
+- [x] D3.1b — Move `collect_transport_triplets` logic into `daglang-derive`
+- [x] D3.1c — Update `daglang-cli` `show-triplets` to render from derived data
 
 ##### D3.2 — Obligation-based canonical kind classification [M] (Wave 2)
 **Deps**: C5.1 (coercion via DAG walk), D3.1
@@ -816,9 +858,9 @@ canonical kind should derive from structural obligation metadata instead.
 
 Establish what works today and identify gaps.
 
-- [ ] E1.0a — Run `make gist-recent` with diagnostic tracing
-- [ ] E1.0b — Document current credential resolution path
-- [ ] E1.0c — Identify where hidden defaults exist
+- [x] E1.0a — Run `make gist-recent` with diagnostic tracing
+- [x] E1.0b — Document current credential resolution path
+- [x] E1.0c — Identify where hidden defaults exist
 
 #### Wave 2
 
@@ -827,9 +869,9 @@ Establish what works today and identify gaps.
 
 Deterministic precedence rules for credential context resolution.
 
-- [ ] E1.1a — Define precedence: explicit > env > profile > default
-- [ ] E1.1b — Implement `ResolveContext` with file-backed profile
-- [ ] E1.1c — Tests: precedence correctly applied
+- [x] E1.1a — Define precedence: explicit > env > profile > default
+- [x] E1.1b — Implement `ResolveContext` with file-backed profile
+- [x] E1.1c — Tests: precedence correctly applied
 
 #### Wave 3
 
@@ -838,16 +880,16 @@ Deterministic precedence rules for credential context resolution.
 
 Central authentication pattern in `core/ir` that all credentialed flows consume.
 
-- [ ] E1.1.5a — Define `pattern/authenticate` module with canonical chain
-- [ ] E1.1.5b — Migrate gist flow to use pattern
-- [ ] E1.1.5c — Migrate LLM flow to use pattern
+- [x] E1.1.5a — Define `pattern/authenticate` module with canonical chain
+- [x] E1.1.5b — Migrate gist flow to use pattern
+- [x] E1.1.5c — Migrate LLM flow to use pattern
 
 ##### E1.2 — Credential policy binding [M]
 **Deps**: E1.1.5, E2.2 (GCP WIF)
 
-- [ ] E1.2a — Define credential-policy schema
-- [ ] E1.2b — Implement policy loader + binding logic
-- [ ] E1.2c — Tests: policy correctly selects provider strategy
+- [x] E1.2a — Define credential-policy schema
+- [x] E1.2b — Implement policy loader + binding logic
+- [x] E1.2c — Tests: policy correctly selects provider strategy
 
 #### Wave 4
 
@@ -856,7 +898,7 @@ Central authentication pattern in `core/ir` that all credentialed flows consume.
 
 Conditional impersonation, provider selection.
 
-- [ ] E1.3a — Wire `ShouldImpersonate` decision point
+- [x] E1.3a — Wire `ShouldImpersonate` decision point
 - [ ] E1.3b — Implement provider-granted scope verification
 
 ##### E1.4 — Secret lifecycle [L]
@@ -864,14 +906,14 @@ Conditional impersonation, provider selection.
 
 Reconcile/rotate/prune loops for secrets.
 
-- [ ] E1.4a — Implement secret rotation handlers (Manual, GitHubPat, None)
-- [ ] E1.4b — Secret provisioning DAG (provision all from spec)
+- [x] E1.4a — Implement secret rotation handlers (Manual, GitHubPat, None)
+- [x] E1.4b — Secret provisioning DAG (provision all from spec)
 
 ##### E1.5 — Credential hardening + cutover [M]
 **Deps**: E1.4
 
 - [ ] E1.5a — `make gist-recent` works without hidden hardcoded defaults
-- [ ] E1.5b — Missing scope declarations fail before outbound calls
+- [x] E1.5b — Missing scope declarations fail before outbound calls
 
 ---
 
@@ -889,43 +931,43 @@ then implemented against those specs.
 
 Implementation of SA/IAM operations against the typed understanding spec from C6.2b.
 
-- [ ] E2.1a — Service Account CRUD (create, update, delete) — impl against IAM understanding
-- [ ] E2.1b — SA IAM Bindings (who can impersonate)
-- [ ] E2.1c — Expand SA spec (display_name, self_roles, wif_bindings)
-- [ ] E2.1d — Expand SA Catalog (from 2 to ~8 SAs)
+- [x] E2.1a — Service Account CRUD (create, update, delete) — impl against IAM understanding
+- [x] E2.1b — SA IAM Bindings (who can impersonate)
+- [x] E2.1c — Expand SA spec (display_name, self_roles, wif_bindings)
+- [x] E2.1d — Expand SA Catalog (from 2 to ~8 SAs)
 
 #### Wave 2
 
 ##### E2.2 — WIF bootstrap [L]
 **Deps**: E2.1
 
-- [ ] E2.2a — WIF Pool/Provider CRUD
+- [x] E2.2a — WIF Pool/Provider CRUD
 - [ ] E2.2b — Bootstrap DAG (idempotent setup flow)
-- [ ] E2.2c — WIF Spec (OIDC issuer, attribute mapping, conditions)
+- [x] E2.2c — WIF Spec (OIDC issuer, attribute mapping, conditions)
 
 #### Wave 3
 
 ##### E2.3 — Secret Manager lifecycle [M]
 **Deps**: E2.2
 
-- [ ] E2.3a — Secret rotation handlers
-- [ ] E2.3b — Secret provisioning DAG
-- [ ] E2.3c — Secret fetch + direnv export integration
+- [x] E2.3a — Secret rotation handlers
+- [x] E2.3b — Secret provisioning DAG
+- [x] E2.3c — Secret fetch + direnv export integration
 
 ##### E2.4 — Environment modeling [M]
 **Deps**: E2.2
 
-- [ ] E2.4a — Environment config struct (project, region, zone, domain)
-- [ ] E2.4b — Additional environments (test, prod)
+- [x] E2.4a — Environment config struct (project, region, zone, domain)
+- [x] E2.4b — Additional environments (test, prod)
 
 #### Wave 4
 
 ##### E2.5 — InfraSpec + plan/apply [L]
 **Deps**: E2.3
 
-- [ ] E2.5a — Unified InfraSpec type
-- [ ] E2.5b — Plan/apply DAG builder
-- [ ] E2.5c — Infrastructure graph visualization
+- [x] E2.5a — Unified InfraSpec type
+- [x] E2.5b — Plan/apply DAG builder
+- [x] E2.5c — Infrastructure graph visualization
 
 ##### E2.6 — Compute stack [XL]
 **Deps**: E2.5
@@ -942,8 +984,8 @@ Compute Engine, Cloud Run, Load Balancer, GCS bucket service interfaces.
 ##### E2.8 — Multi-project support [L]
 **Deps**: E2.5
 
-- [ ] E2.8a — Project registry (multiple ProjectSpecs)
-- [ ] E2.8b — Cross-project access + WIF bindings
+- [x] E2.8a — Project registry (multiple ProjectSpecs)
+- [x] E2.8b — Cross-project access + WIF bindings
 
 ---
 
@@ -969,28 +1011,30 @@ V0 complete (Tracks 2-6). Track 1 (Resource abstraction trait) still in design.
 
 #### Type System / Modeling (Wave 1-2)
 
-- [ ] F1.10 — DAG typing dynamic escape hatch: add `input_mocks` type validation [M]
-- [ ] F1.30 — List dual-encoding cleanup: finish removing `"List"` as type_id [S] (~70%)
-- [ ] F1.31 — Cardinality test-case sampling strategy (replace hardcoded cap=64) [M]
-- [ ] F1.32 — Map type_id parametric specification [M]
+- [x] F1.10 — DAG typing dynamic escape hatch: add `input_mocks` type validation [M]
+- [x] F1.30 — List dual-encoding cleanup: finish removing `"List"` as type_id [S]
+- [x] F1.31 — Cardinality test-case sampling strategy (replace hardcoded cap=64) [M]
+- [x] F1.32 — Map type_id parametric specification [M]
 - [ ] F1.33 — Cardinality compositional modeling [L] (Wave 4)
+- [x] P3 — Replace hardcoded `map_backed_types` list in `mock_types_compatible()` with
+      `ValueBacking` enum + `value_backing_for_type_id()` in `core/ir/src/types.rs` [S]
 
 #### Runtime / Safety (Wave 1-2)
 
-- [ ] F1.6 — Mtime freshness fallback: improve diagnostic beyond eprintln [S]
-- [ ] F1.23 — Strict DryRun mode: fail on missing resource wiring [S]
-- [ ] F1.34 — Resource capability forgery prevention (TryFrom<Value> guard) [S]
+- [x] F1.6 — Mtime freshness fallback: improve diagnostic beyond eprintln [S]
+- [x] F1.23 — Strict DryRun mode: fail on missing resource wiring [S]
+- [x] F1.34 — Resource capability forgery prevention (TryFrom<Value> guard) [S]
 
 #### Testing (Wave 1-2)
 
 - [ ] F1.14 — Fermi guard live tests: blocked on GCP WIF + codegen for secret requirements [M]
-- [ ] F1.22 — Coercion coverage test assertions: design decision needed [S]
-- [ ] F1.21 — Transport executor test coverage (= C4.1) [S]
+- [x] F1.22 — Coercion coverage test assertions: design decision needed [S]
+- [x] F1.21 — Transport executor test coverage (= C4.1) [S]
 
 #### Code Quality (Wave 1-2)
 
-- [ ] F1.18 — Report node structured output: stage-specific extractors (= D1.4) [M]
-- [ ] F1.35 — Remove legacy batch shell helpers in gist [S] (~50%)
+- [x] F1.18 — Report node structured output: stage-specific extractors (= D1.4) [M]
+- [x] F1.35 — Remove legacy batch shell helpers in gist [S]
 
 ---
 

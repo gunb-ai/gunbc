@@ -21,7 +21,10 @@
 
 use crate::mock_spec::{BoundaryMock, MockSpec, NodeExample, TransportMock};
 use gunbc_ir::transport::TransportResponse;
-use gunbc_ir::{Cardinality, NodeId, PortName, TypeId, Value};
+use gunbc_ir::{
+    value_compatible_with_type_id, value_kind_name as ir_value_kind_name, Cardinality, NodeId,
+    PortName, TypeId, Value,
+};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
@@ -232,96 +235,14 @@ impl MockRequirements {
             })
     }
 
-    /// Get the type name from a Value.
-    fn value_type_name(value: &Value) -> &'static str {
-        match value {
-            Value::Unit => "Unit",
-            Value::Bool(_) => "Bool",
-            Value::Str(_) => "String",
-            Value::Int(_) => "Int",
-            Value::List(_) => "List",
-            Value::Set(_) => "Set",
-            Value::Map(_) => "Map",
-            Value::Json(_) => "Json",
-            Value::Request(_) => "TransportRequest",
-            Value::Response(_) => "TransportResponse",
-            Value::Secret(_) => "Secret",
-            Value::Skipped => "Skipped",
-        }
+    /// Returns the canonical type-name string for a Value's kind.
+    fn value_kind_name(value: &Value) -> &'static str {
+        ir_value_kind_name(value)
     }
 
     /// Check if a value type is compatible with an expected type.
     fn types_compatible(expected: &str, value: &Value) -> bool {
-        let actual = Self::value_type_name(value);
-
-        // Exact match
-        if expected == actual {
-            return true;
-        }
-
-        // Any matches anything
-        if expected == "Any" {
-            return true;
-        }
-
-        // Optional types accept the inner type or Unit (none)
-        if let Some(inner) = expected.strip_prefix("Optional") {
-            if actual == inner || actual == "Unit" {
-                return true;
-            }
-        }
-
-        // Skipped is compatible with any type
-        if actual == "Skipped" {
-            return true;
-        }
-
-        // Json is flexible
-        if expected == "Json" || actual == "Json" {
-            return true;
-        }
-
-        // List-backed types (StringList, NonEmptyStringList, etc.)
-        if actual == "List" && expected.ends_with("List") {
-            return true;
-        }
-
-        // Set-backed types (StringSet, etc.)
-        if actual == "Set" && expected.ends_with("Set") {
-            return true;
-        }
-
-        // Map-backed types (ToolHandle, Credential, FilesystemHandle, NetworkHandle, CliResult)
-        // NOTE: This must match types_compatible in codegen/testgen/codegen.rs
-        if actual == "Map" {
-            let map_backed = [
-                "ToolHandle",
-                "Credential",
-                "FilesystemHandle",
-                "NetworkHandle",
-                "CliResult",
-            ];
-            if map_backed.contains(&expected) {
-                return true;
-            }
-        }
-
-        // Map can also represent Platform (for structured platform info)
-        if actual == "Map" && expected == "Platform" {
-            return true;
-        }
-
-        // Int-backed types (Timestamp stores millis as Int)
-        if actual == "Int" && expected == "Timestamp" {
-            return true;
-        }
-
-        // String-backed types (Platform serializes as String)
-        if actual == "String" && expected == "Platform" {
-            return true;
-        }
-
-        false
+        value_compatible_with_type_id(expected, value)
     }
 
     /// Validate a value against a slot's type.
@@ -331,7 +252,7 @@ impl MockRequirements {
                 node: slot.node_id.0.clone(),
                 port: slot.port_name.0.clone(),
                 expected: slot.type_id.0.clone(),
-                actual: Self::value_type_name(value).to_string(),
+                actual: Self::value_kind_name(value).to_string(),
             });
         }
         Ok(())
@@ -870,6 +791,38 @@ mod tests {
         let result = reqs.boundary("env", "handle", Value::Map(map));
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parametric_map_types_compatible() {
+        let reqs = MockRequirements::new("test").add_slot(test_slot(
+            "render",
+            "meta",
+            "Map<String,String>",
+        ));
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("name".to_string(), Value::Str("gunbc".to_string()));
+
+        let result = reqs.boundary("render", "meta", Value::Map(map));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parametric_map_types_reject_wrong_value_type() {
+        let reqs = MockRequirements::new("test").add_slot(test_slot(
+            "render",
+            "meta",
+            "Map<String,String>",
+        ));
+        let mut map = std::collections::BTreeMap::new();
+        map.insert("count".to_string(), Value::Int(7));
+
+        let result = reqs.boundary("render", "meta", Value::Map(map));
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            MockTypeError::TypeMismatch { .. }
+        ));
     }
 
     #[test]

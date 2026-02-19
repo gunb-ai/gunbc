@@ -92,7 +92,7 @@ pub fn walk_expr(expr: &Expr, visitor: &mut impl FnMut(&Expr)) {
         Expr::UnaryOp(_, inner) | Expr::Lambda(_, inner) | Expr::After(inner, _) => {
             walk_expr(inner, visitor)
         }
-        Expr::For(_, iterable, body) => {
+        Expr::For(_, iterable, _, body) => {
             walk_expr(iterable, visitor);
             walk_expr(body, visitor);
         }

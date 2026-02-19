@@ -2,14 +2,23 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use daglang_resolve::ModuleGraph;
+use gunbc_ir::WorkspaceLayout;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::{Command, Output};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
+    static WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
+    WORKSPACE_ROOT
+        .get_or_init(|| {
+            WorkspaceLayout::from_env_manifest_dir()
+                .expect("resolve workspace layout")
+                .workspace_root
+        })
+        .clone()
 }
 
 fn daglang_bin() -> &'static str {
@@ -12981,7 +12990,7 @@ fn compile_family_commands_execute_real_pipeline_paths() {
 #[test]
 fn compile_family_commands_execute_real_pipeline_paths_with_absolute_target() {
     let absolute_target = workspace_root().join("dsl/tools/makegen.dag");
-    let absolute_target = absolute_target.to_string_lossy().into_owned();
+    let absolute_target = absolute_target.display().to_string();
     run_compile_family_smoke_for_target("absolute", &absolute_target);
 }
 
@@ -13166,6 +13175,53 @@ fn compile_layer_one_with_out_writes_exec_runtime_files() {
 }
 
 #[test]
+fn compile_layer_one_with_nested_out_allows_generated_cargo_check() {
+    let out_root = unique_temp_dir("compile_out_layer1_nested");
+    let out_dir = out_root.join("nested").join("deeper").join("tools-makegen");
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--layer")
+        .arg("1")
+        .arg("--out")
+        .arg(&out_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile --layer 1 --out nested path");
+    assert!(
+        output.status.success(),
+        "compile --layer 1 --out nested path should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        out_dir.join("Cargo.toml").is_file(),
+        "nested layer 1 output should include Cargo.toml"
+    );
+    std::fs::copy(
+        workspace_root().join("Cargo.lock"),
+        out_dir.join("Cargo.lock"),
+    )
+    .expect("failed to copy workspace Cargo.lock into nested generated crate");
+
+    let cargo_check = Command::new("cargo")
+        .arg("check")
+        .arg("--offline")
+        .arg("--manifest-path")
+        .arg(out_dir.join("Cargo.toml"))
+        .arg("--quiet")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run cargo check for nested generated crate");
+    assert!(
+        cargo_check.status.success(),
+        "cargo check should succeed for nested generated crate: {}",
+        String::from_utf8_lossy(&cargo_check.stderr)
+    );
+
+    std::fs::remove_dir_all(&out_root).expect("failed to cleanup nested layer 1 compile output");
+}
+
+#[test]
 fn compile_with_go_target_writes_native_go_files() {
     let out_dir = unique_temp_dir("compile_out_go");
     let output = Command::new(daglang_bin())
@@ -13259,7 +13315,7 @@ fn compile_layer_one_makegen_generated_binary_matches_run_output() {
     std::fs::create_dir_all(&output_dir).expect("failed to create makegen runtime output dir");
     let generated_path = output_dir.join("Makefile.generated");
     let reference_path = output_dir.join("Makefile.reference");
-    let generated_path_arg = generated_path.to_string_lossy().into_owned();
+    let generated_path_arg = generated_path.display().to_string();
 
     let mut generated_run_cmd = Command::new("cargo");
     std::fs::copy(
@@ -13341,10 +13397,8 @@ fn compile_layer_one_pragma_generated_binary_writes_expected_files() {
         "generated pragma binary should expose CLI bindings"
     );
     assert!(
-        bindings
-            .iter()
-            .all(|(_node, port)| port == "directives" || port == "path"),
-        "generated pragma bindings should only require directives/path: {bindings:?}"
+        bindings.iter().all(|(_node, port)| port == "directives"),
+        "generated pragma bindings should only require directives input: {bindings:?}"
     );
 
     let output_root = unique_temp_dir("pragma_layer1_runtime");
@@ -13366,15 +13420,6 @@ fn compile_layer_one_pragma_generated_binary_writes_expected_files() {
         .iter()
         .map(|(node_id, port_name)| match port_name.as_str() {
             "directives" => directives_json.clone(),
-            "path" => {
-                if node_id.contains("_3") {
-                    policy_path.to_string_lossy().into_owned()
-                } else if node_id.contains("_2") {
-                    allowlist_path.to_string_lossy().into_owned()
-                } else {
-                    clippy_path.to_string_lossy().into_owned()
-                }
-            }
             _ => panic!("unexpected generated pragma binding: ({node_id}, {port_name})"),
         })
         .collect();
@@ -13392,7 +13437,7 @@ fn compile_layer_one_pragma_generated_binary_writes_expected_files() {
         .arg("--manifest-path")
         .arg(out_dir.join("Cargo.toml"))
         .arg("--")
-        .current_dir(workspace_root());
+        .current_dir(&output_root);
     for arg in &args {
         generated_run_cmd.arg(arg);
     }
@@ -13491,11 +13536,11 @@ fn viz_with_mermaid_format_emits_compiled_mermaid_graph() {
 #[test]
 #[ignore]
 fn makegen_e2e_generated_binary_produces_correct_makefile() {
-    // 1. Compile makegen.dag → exec-runtime → write to workspace-relative dir.
-    //    The generated Cargo.toml uses `path = "../../core/ir"` etc., so the output
-    //    must be at exactly 2 levels below workspace root.
+    // 1. Compile makegen.dag → exec-runtime.
+    //    Cargo.toml workspace path dependencies should be derived from the actual
+    //    output directory (not fixed-depth assumptions).
     let ws_root = workspace_root();
-    let out_dir = ws_root.join("e2e_codegen_test/tools-makegen");
+    let out_dir = ws_root.join("e2e_codegen_test/nested/deeper/tools-makegen");
     // Clean up any leftover from a previous run.
     let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test"));
 
@@ -13649,7 +13694,7 @@ fn compile_pragma_layer_one_with_out_writes_exec_runtime_files() {
 #[ignore]
 fn pragma_e2e_generated_binary_produces_correct_config_files() {
     let ws_root = workspace_root();
-    let out_dir = ws_root.join("e2e_codegen_test_pragma/tools-pragma");
+    let out_dir = ws_root.join("e2e_codegen_test_pragma/nested/deeper/tools-pragma");
     let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test_pragma"));
 
     // 1. Compile pragma.dag → exec-runtime.

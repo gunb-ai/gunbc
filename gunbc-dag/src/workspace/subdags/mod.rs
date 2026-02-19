@@ -18,7 +18,8 @@ pub mod pragma;
 pub mod testgen;
 
 use crate::workspace::WorkspaceOp;
-use gunbc_ir::{BuilderError, Dag};
+use crate::WorkspaceBinary;
+use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
@@ -46,10 +47,12 @@ pub fn build_workspace_dag() -> Result<Dag<WorkspaceOp>, BuilderError> {
     // Hard-cut discovery: workspace composition is sourced directly from DSL.
     let tool_names = discover_dsl_tool_names()?;
     let pipeline_names = discover_dsl_pipeline_names()?;
-    validate_required_dsl_tools(&tool_names)?;
-    validate_required_dsl_pipelines(&pipeline_names)?;
-    validate_dsl_tool_coverage(&tool_names)?;
-    validate_dsl_pipeline_coverage(&pipeline_names)?;
+    let required_tools = required_dsl_tool_modules();
+    let required_pipelines = required_dsl_pipeline_modules();
+    validate_required("tool", &tool_names, &required_tools)?;
+    validate_required("pipeline", &pipeline_names, &required_pipelines)?;
+    validate_coverage("tool", &tool_names, &required_tools)?;
+    validate_coverage("pipeline", &pipeline_names, &required_pipelines)?;
     add_discovered_tool_subdags(&mut dag, &tool_names)?;
     add_discovered_pipeline_subdags(&mut dag, &pipeline_names)?;
 
@@ -59,11 +62,11 @@ pub fn build_workspace_dag() -> Result<Dag<WorkspaceOp>, BuilderError> {
 }
 
 fn discover_dsl_tool_names() -> Result<BTreeSet<String>, BuilderError> {
-    discover_dsl_module_names(dsl_tools_root(), "tool")
+    discover_dsl_module_names(dsl_tools_root()?, "tool")
 }
 
 fn discover_dsl_pipeline_names() -> Result<BTreeSet<String>, BuilderError> {
-    discover_dsl_module_names(dsl_pipelines_root(), "pipeline")
+    discover_dsl_module_names(dsl_pipelines_root()?, "pipeline")
 }
 
 #[allow(clippy::disallowed_methods)] // Build-time DSL module discovery (not runtime I/O)
@@ -106,108 +109,80 @@ fn discover_dsl_module_names(
     Ok(names)
 }
 
-fn dsl_tools_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl/tools")
+fn dsl_tools_root() -> Result<PathBuf, BuilderError> {
+    Ok(workspace_layout()?.dsl_tools_root())
 }
 
-fn dsl_pipelines_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl/pipelines")
+fn dsl_pipelines_root() -> Result<PathBuf, BuilderError> {
+    Ok(workspace_layout()?.dsl_pipelines_root())
 }
 
-fn validate_required_dsl_tools(tool_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    const REQUIRED: &[&str] = &[
-        "makegen",
-        "clippy",
-        "deps",
-        "bootstrap",
-        "gist",
-        "build",
-        "codegen",
-        "dag_viz",
-        "docgen",
-        "pragma",
-        "testgen",
-    ];
-    let missing: Vec<&str> = REQUIRED
-        .iter()
-        .copied()
-        .filter(|name| !tool_names.contains(*name))
-        .collect();
+fn workspace_layout() -> Result<WorkspaceLayout, BuilderError> {
+    WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .map_err(|error| {
+            BuilderError::InternalInvariant(format!(
+                "failed to resolve workspace layout for subdag DSL discovery: {error}"
+            ))
+        })
+}
+
+fn validate_required(
+    kind: &str,
+    actual: &BTreeSet<String>,
+    required: &BTreeSet<String>,
+) -> Result<(), BuilderError> {
+    let missing: Vec<&String> = required.difference(actual).collect();
     if missing.is_empty() {
         return Ok(());
     }
+    let names: Vec<&str> = missing.iter().map(|s| s.as_str()).collect();
     Err(BuilderError::InternalInvariant(format!(
-        "missing required DSL tool modules for workspace DAG: {}",
-        missing.join(", ")
+        "missing required DSL {kind} modules for workspace DAG: {}",
+        names.join(", ")
     )))
 }
 
-fn validate_required_dsl_pipelines(pipeline_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    const REQUIRED: &[&str] = &["ci"];
-    let missing: Vec<&str> = REQUIRED
+fn validate_coverage(
+    kind: &str,
+    actual: &BTreeSet<String>,
+    covered: &BTreeSet<String>,
+) -> Result<(), BuilderError> {
+    let unknown: Vec<&String> = actual.difference(covered).collect();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    let names: Vec<&str> = unknown.iter().map(|s| s.as_str()).collect();
+    Err(BuilderError::InternalInvariant(format!(
+        "unmapped DSL {kind} modules in workspace DAG discovery: {} (add mapping in workspace/subdags or explicit exclusion)",
+        names.join(", ")
+    )))
+}
+
+fn required_dsl_tool_modules() -> BTreeSet<String> {
+    // Keep this list colocated with add_discovered_tool_subdags().
+    // External tool crates with workspace DSL modules live here.
+    let mut required: BTreeSet<String> = ["clippy", "dag_viz", "deps", "gist"]
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect();
+    required.extend(
+        WorkspaceBinary::all()
+            .iter()
+            .copied()
+            .filter(|binary| binary.is_dsl_tool_module())
+            .map(|binary| binary.tool_name().to_string()),
+    );
+    required
+}
+
+fn required_dsl_pipeline_modules() -> BTreeSet<String> {
+    WorkspaceBinary::all()
         .iter()
         .copied()
-        .filter(|name| !pipeline_names.contains(*name))
-        .collect();
-    if missing.is_empty() {
-        return Ok(());
-    }
-    Err(BuilderError::InternalInvariant(format!(
-        "missing required DSL pipeline modules for workspace DAG: {}",
-        missing.join(", ")
-    )))
-}
-
-fn validate_dsl_tool_coverage(tool_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    const COVERED: &[&str] = &[
-        "makegen",
-        "clippy",
-        "deps",
-        "bootstrap",
-        "gist",
-        "build",
-        "codegen",
-        "dag_viz",
-        "docgen",
-        "pragma",
-        "testgen",
-    ];
-    const EXCLUDED: &[&str] = &[];
-
-    let unknown: Vec<String> = tool_names
-        .iter()
-        .filter(|name| !COVERED.contains(&name.as_str()) && !EXCLUDED.contains(&name.as_str()))
-        .cloned()
-        .collect();
-
-    if unknown.is_empty() {
-        return Ok(());
-    }
-
-    Err(BuilderError::InternalInvariant(format!(
-        "unmapped DSL tool modules in workspace DAG discovery: {} (add mapping in workspace/subdags or explicit exclusion)",
-        unknown.join(", ")
-    )))
-}
-
-fn validate_dsl_pipeline_coverage(pipeline_names: &BTreeSet<String>) -> Result<(), BuilderError> {
-    const COVERED: &[&str] = &["ci"];
-    const EXCLUDED: &[&str] = &[];
-
-    let unknown: Vec<String> = pipeline_names
-        .iter()
-        .filter(|name| !COVERED.contains(&name.as_str()) && !EXCLUDED.contains(&name.as_str()))
-        .cloned()
-        .collect();
-
-    if unknown.is_empty() {
-        return Ok(());
-    }
-
-    Err(BuilderError::InternalInvariant(format!(
-        "unmapped DSL pipeline modules in workspace DAG discovery: {} (add mapping in workspace/subdags or explicit exclusion)",
-        unknown.join(", ")
-    )))
+        .filter(|binary| binary.is_dsl_pipeline_module())
+        .map(|binary| binary.tool_name().to_string())
+        .collect()
 }
 
 fn add_discovered_tool_subdags(
@@ -256,7 +231,7 @@ fn add_discovered_pipeline_subdags(
     pipeline_names: &BTreeSet<String>,
 ) -> Result<(), BuilderError> {
     if pipeline_names.contains("ci") {
-        dag.add_node(ci::build_ci_subdag());
+        dag.add_node(ci::build_ci_subdag()?);
     }
     Ok(())
 }
@@ -299,23 +274,22 @@ mod tests {
 
     #[test]
     fn test_registered_tool_subdag_mapping() {
-        let tool_names: BTreeSet<String> =
-            [
-                "build",
-                "makegen",
-                "clippy",
-                "deps",
-                "bootstrap",
-                "codegen",
-                "dag_viz",
-                "docgen",
-                "gist",
-                "pragma",
-                "testgen",
-            ]
-                .into_iter()
-                .map(|name| name.to_string())
-                .collect();
+        let tool_names: BTreeSet<String> = [
+            "build",
+            "makegen",
+            "clippy",
+            "deps",
+            "bootstrap",
+            "codegen",
+            "dag_viz",
+            "docgen",
+            "gist",
+            "pragma",
+            "testgen",
+        ]
+        .into_iter()
+        .map(|name| name.to_string())
+        .collect();
         let mut dag = Dag::new();
         add_discovered_tool_subdags(&mut dag, &tool_names)
             .expect("registered mapping should build");
@@ -341,7 +315,8 @@ mod tests {
         tool_names.insert("makegen".to_string());
         tool_names.insert("deps".to_string());
 
-        let error = validate_required_dsl_tools(&tool_names)
+        let required = required_dsl_tool_modules();
+        let error = validate_required("tool", &tool_names, &required)
             .expect_err("missing required modules should fail");
         assert!(
             error
@@ -354,7 +329,8 @@ mod tests {
     #[test]
     fn test_required_registered_pipelines_validation() {
         let pipeline_names = BTreeSet::new();
-        let error = validate_required_dsl_pipelines(&pipeline_names)
+        let required = required_dsl_pipeline_modules();
+        let error = validate_required("pipeline", &pipeline_names, &required)
             .expect_err("missing required pipeline modules should fail");
         assert!(
             error
@@ -389,19 +365,21 @@ mod tests {
 
     #[test]
     fn test_dsl_tools_root_exists() {
+        let tools_root = dsl_tools_root().expect("dsl tools root should resolve");
         assert!(
-            dsl_tools_root().is_dir(),
+            tools_root.is_dir(),
             "dsl tools root should exist at {}",
-            dsl_tools_root().display()
+            tools_root.display()
         );
     }
 
     #[test]
     fn test_dsl_pipelines_root_exists() {
+        let pipelines_root = dsl_pipelines_root().expect("dsl pipelines root should resolve");
         assert!(
-            dsl_pipelines_root().is_dir(),
+            pipelines_root.is_dir(),
             "dsl pipelines root should exist at {}",
-            dsl_pipelines_root().display()
+            pipelines_root.display()
         );
     }
 
@@ -425,7 +403,8 @@ mod tests {
         .map(|name| name.to_string())
         .collect();
 
-        let error = validate_dsl_tool_coverage(&tool_names)
+        let covered = required_dsl_tool_modules();
+        let error = validate_coverage("tool", &tool_names, &covered)
             .expect_err("missing required registrations should fail");
         assert!(
             error.to_string().contains("unmapped DSL tool modules"),
@@ -440,7 +419,8 @@ mod tests {
             .map(|name| name.to_string())
             .collect();
 
-        let error = validate_dsl_pipeline_coverage(&pipeline_names)
+        let covered = required_dsl_pipeline_modules();
+        let error = validate_coverage("pipeline", &pipeline_names, &covered)
             .expect_err("unknown pipeline registrations should fail");
         assert!(
             error.to_string().contains("unmapped DSL pipeline modules"),

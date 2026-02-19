@@ -6,10 +6,14 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::resources::{GITIGNORE_OUTPUT_PATH, MAKEFILE_OUTPUT_PATH};
-use gunbc_dag::{build_bootstrap_graph, gitignore_resource_def, makefile_resource_def};
+use gunbc_dag::{
+    freshness_steps_planned, gitignore_resource_def,
+    makefile_resource_def, print_tool_header, run_tool, update_freshness_manifest_if_needed,
+    wire_fs_env_write_mock, RunToolOptions,
+};
 use gunbc_exec::{
-    compose_with_freshness, execute_and_display, execute_and_display_with_result, print_attention,
-    AttentionLevel, BoundaryMocks, ExecutionMode,
+    compose_with_freshness, execute_and_display_with_result, print_attention, AttentionLevel,
+    BoundaryMocks, ExecutionMode,
 };
 use gunbc_ir::resource::{
     update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
@@ -23,6 +27,17 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process;
 
+fn bootstrap_path_for_node(node_id: &str) -> Option<&'static str> {
+    // Support both legacy and DSL-lowered node naming.
+    if node_id.contains("gitignore") || node_id.contains("bootstrap_2") {
+        Some(".gitignore")
+    } else if node_id.contains("makefile") || node_id.contains("bootstrap") {
+        Some("Makefile")
+    } else {
+        None
+    }
+}
+
 fn main() {
     let parsed = BinaryArgs::new().with_mode().parse_env();
     if parsed.help {
@@ -35,7 +50,7 @@ fn main() {
     let animated = std::io::stdout().is_terminal();
 
     // Build the graph
-    let dag = match build_bootstrap_graph() {
+    let dag = match gunbc_dag::bootstrap::build_bootstrap_graph() {
         Ok(d) => d,
         Err(e) => {
             print_attention(AttentionLevel::Error, "Graph build failed", &e.to_string());
@@ -57,10 +72,10 @@ fn main() {
             }
             "path" => {
                 // Set read paths for the file upsert check
-                let path = if node_id.0.contains("makefile") {
-                    "Makefile"
-                } else if node_id.0.contains("gitignore") {
-                    ".gitignore"
+                let path = if node_id.0.contains("Find_ListDirs") {
+                    "crates"
+                } else if let Some(path) = bootstrap_path_for_node(&node_id.0) {
+                    path
                 } else {
                     continue;
                 };
@@ -69,6 +84,12 @@ fn main() {
                     port_name.0.clone(),
                     Value::Str(path.to_string()),
                 );
+            }
+            "max_depth" if node_id.0.contains("Find_ListDirs") => {
+                input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Int(1));
+            }
+            "min_depth" if node_id.0.contains("Find_ListDirs") => {
+                input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Int(1));
             }
             _ => {}
         }
@@ -81,6 +102,7 @@ fn main() {
     let mode = if dry_run && resource_mode != ExecMode::Verify {
         let mut mocks = BoundaryMocks::new();
         let ok_shell = || Value::Response(TransportResponse::Shell(ShellResponse::ok("")));
+        wire_fs_env_write_mock(&dag, &mut mocks);
 
         // Scan workspace
         mocks.set_value(
@@ -171,11 +193,13 @@ fn main() {
     };
 
     let steps = gunbc_lib_transport::check_and_plan_freshness();
+    let ran_freshness_steps = freshness_steps_planned(steps.as_deref());
     let dag = compose_with_freshness(dag, steps);
     if resource_mode == ExecMode::Verify {
         // Check mode: execute through shared display path and inspect log outputs.
         match execute_and_display_with_result(&dag, mode, animated, None, Some(&input_mocks)) {
             Ok(result) => {
+                update_freshness_manifest_if_needed(ran_freshness_steps);
                 let log = result.log;
                 // Scan log for compare_*_content.fresh
                 let makefile_fresh = log
@@ -246,21 +270,30 @@ fn main() {
             }
         }
     } else {
-        // Print header
-        println!("bootstrap");
-        println!(
-            "  mode: {}",
-            if dry_run && resource_mode != ExecMode::Verify {
-                "dry-run"
-            } else {
-                "real"
-            }
+        print_tool_header(
+            "bootstrap",
+            &[
+                (
+                    "mode",
+                    if dry_run && resource_mode != ExecMode::Verify {
+                        "dry-run"
+                    } else {
+                        "real"
+                    }
+                    .to_string(),
+                ),
+                ("resource_mode", resource_mode.to_string()),
+            ],
         );
-        println!("  resource_mode: {}", resource_mode);
-        println!();
-
-        // Execute and display (progress or classic based on terminal)
-        execute_and_display(&dag, mode, animated, None, Some(&input_mocks));
+        run_tool(
+            dag,
+            mode,
+            RunToolOptions {
+                input_mocks: Some(&input_mocks),
+                ..RunToolOptions::default()
+            },
+        );
+        update_freshness_manifest_if_needed(ran_freshness_steps);
 
         if !dry_run && resource_mode == ExecMode::Ensure {
             update_manifest_after_bootstrap();

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 gunbc-exec = { path = "../../core/exec" }
+gunbc-delegate-macros = { path = "../../core/delegate-macros" }
 gunbc-ir = { path = "../../core/ir" }
 gunbc-lib-transport = { path = "../transport" }
 gunbc-primitives = { path = "../primitives" }
