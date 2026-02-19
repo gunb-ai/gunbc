@@ -40,6 +40,9 @@ Use these lanes to assign workers with minimal overlap and clear stop conditions
 | C: Workflow cutover/perf | `WF6` -> `WF7` -> `WF8` -> `WF9` | Lane B complete | workflow entrypoints + `Makefile` wrappers + CI wiring | `make ci`/`make test-all` use planner path with SLO telemetry | `make ci`, `make test-all`, CI dry run |
 | D: Modeling hardening graph/runtime | `M8` -> `M9` -> `M16` and `M10` -> `M11` | corresponding `-D` tasks approved | IR type DAG/system-model/transport + runtime resource/dry-run paths | metadata inertness, typed dependency markers, strict dry-run enforced | targeted model tests + `cargo test --workspace` |
 | E: Security/install/process drift | `M7`, `M15`, `M13` -> `M14`, `M17` -> `M18` -> `M19` | corresponding `-D` tasks approved | value redaction, installer model, registry/make/CLI contracts, proof harness | no accidental secret leak path; typed PM policy; no projection drift; invariants testable | test suites for each module + planner invariant suite |
+| F: Tool binary dispatch | `WF14-D` -> `WF14` -> `WF15-D` -> `WF15` | `WF1-D`..`WF4-D` reviewed (design deps) | Makefile, binary dispatch, codegen keyed unit, planner integration | tool targets use pre-built binaries; codegen freshness resolved via ledger; no `cargo run` or `ensure-codegen` overhead on warm state | `make gist --dry-run` latency, `gunbc-workflow --plan gist-snapshot` |
+| G: Gist minimization | `WF16-D` -> `WF16` -> `WF17` -> `WF18` | Lane F complete | gist graph, gist_modes, credential chain, planner integration | all gist modes use planner path; warm invoke ≤ 3s; credential TTL caching works | `make gist`, `make gist-diff`, `make gist-recent` warm latency |
+| H: Remaining tools + cutover | `WF19-D` -> `WF19` -> `WF20` -> `WF21` -> `WF22` | Lane F complete | bootstrap/makegen/pragma/deps/dag-viz graphs, Makefile | all tool targets use planner path with SLO enforcement; Makefile is thin shims only | `make bootstrap`, `make makegen`, `make deps` warm latency, SLO budget assertions |
 
 Handoff rules:
 
@@ -428,6 +431,76 @@ Additional active open items:
 
 ---
 
+## Sprint 5b: Tool Workflow Minimization (Gist + All Targets)
+
+**Goal**: extend the planner/ledger model from Sprint 5 to cover all tool workflow
+targets, eliminating the three shared bottlenecks (`ensure-codegen` overhead,
+`cargo run` compilation check, full DAG re-execution) so that `make gist*` and
+all other tool targets complete in seconds on warm state.
+
+**Design reference**: `docs/design/workflow-minimal-execution-model.md` Sections 15.1-15.10.
+
+### Design Decision (Resolved 2026-02-19): Tool Workflows Use Same Planner
+
+Tool workflows reuse the same `WorkflowSpec`, `MaterializationKey`, and `RunLedger`
+infrastructure from Sprint 5. No separate tool-specific caching layer. The global
+ledger handles cross-workflow dedup (e.g., codegen freshness shared between `ci` and
+`gist`).
+
+### Design-First Gate (Required)
+
+Same gate as Sprint 5: each tool workflow design must include concrete DAG
+structure, keying inputs, resource claims, and SLO target before implementation.
+
+### Phase T-A: Binary Pre-build + `ensure-codegen` Elimination
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **WF14-D** | **Tool binary dispatch design spec**: define pre-built binary dispatch model replacing `cargo run` in Make targets. Specify binary freshness key inputs (source hashes via `cargo metadata`, binary output hash), ledger-based skip semantics, and Make target rewrite patterns. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 2). **Acceptance**: design doc includes concrete before/after Make target shapes, binary keying contract, and explains why `cargo run` overhead is eliminated; codegen-as-prerequisite is modeled as a typed dependency edge, not a Make ordering hack. | WF1-D | S |
+| **WF14** | **Pre-built binary dispatch**: implement `build-release-bins` integration so Make targets use `target/release/<bin>` instead of `cargo run`. Model binary freshness as a keyed unit in the planner. **Acceptance**: `make gist` no longer invokes `cargo run`; warm-state tool invocation skips compilation check entirely; binary staleness is detected by planner key, not by Cargo. | WF14-D, WF1 | M |
+| **WF15-D** | **Codegen-as-keyed-unit design spec**: define `ensure-codegen` as a `WorkflowUnit` with `MaterializationKey` based on DSL source hashes + binary hash. Specify how tool workflows declare codegen as a typed input dependency (not Make prerequisite). **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 3). **Acceptance**: design proves `ensure-codegen` Make target is eliminated for planner-managed targets; codegen freshness resolved via ledger lookup (no subprocess spawn); miss reason for stale codegen is explicit (`InputChanged` on DSL sources). | WF3-D, WF14-D | S |
+| **WF15** | **Codegen keyed unit implementation**: implement codegen as a planner-managed unit with ledger-backed freshness. Remove `ensure-codegen` as Make prerequisite for all tool targets that use planner path. **Acceptance**: `make gist` does not invoke codegen binary on warm state; codegen staleness triggers automatic re-run with explicit miss reason; global ledger shares codegen freshness across `ci`, `gist`, `bootstrap`, etc. | WF15-D, WF3 | M |
+
+### Phase T-B: Gist Family Minimization (Focus Target)
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **WF16-D** | **Gist workflow DAG design spec**: define `WorkflowSpec` for all three gist modes (snapshot, diff, recent). Include per-node keying inputs, resource claims, credential chain model, and volatile-node policy for `github.gist_create`. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 4). **Acceptance**: design includes concrete DAG skeletons for snapshot/diff/recent with typed edges; key inputs for each node are explicit (git tree hash, HEAD, file content hashes, credential TTL); warm-state plan shows zero functional units + one volatile upload; credential chain is a keyed unit with TTL-aware caching; `GUNBC_CLOUD_CONFIG_REQUIRED=1` is modeled as explicit env-mode input port, not ambient env probing. | WF1-D, WF3-D, WF15-D | M |
+| **WF16** | **Gist snapshot planner port**: implement `gunbc-workflow gist-snapshot` using planner/executor with per-node keying. **Acceptance**: warm no-op with unchanged repo executes zero functional nodes (only volatile upload if requested); `make gist` uses planner path; parity test validates output matches current `gunbc-gist` behavior; SLO: warm invoke ≤ 3s. | WF16-D, WF5, WF14, WF15 | M |
+| **WF17** | **Gist diff planner port**: implement `gunbc-workflow gist-diff` with keyed git-diff node. **Acceptance**: warm no-op with unchanged branch executes zero functional nodes; key miss when `base_ref` or `HEAD` changes triggers minimal dirty closure (diff + render + upload only); SLO: warm invoke ≤ 3s. | WF16-D, WF5, WF14, WF15 | S |
+| **WF18** | **Gist recent planner port + credential caching**: implement `gunbc-workflow gist-recent` with keyed credential chain and TTL-aware caching. **Acceptance**: warm no-op with no new commits executes zero functional nodes + zero credential units (cached within TTL); `GUNBC_CLOUD_CONFIG_REQUIRED=1` behavior expressed via typed env-mode input; SLO: warm invoke ≤ 3s; credential-stale invoke ≤ 5s + network. | WF16-D, WF5, WF14, WF15 | M |
+
+### Phase T-C: Remaining Tool Workflow Ports
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **WF19-D** | **Tool workflow design pack (non-gist)**: define `WorkflowSpec` for bootstrap, makegen, pragma, deps, dag-viz (3 modes), dag-snapshot. Include per-node keying, resource claims, content-upsert skip semantics. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Sections 5-9). **Acceptance**: design includes DAG skeletons, keying contracts, and warm-state plan for each tool; content-upsert pattern has explicit skip-on-match key semantics; all tools share codegen keyed-unit from WF15-D. | WF1-D, WF3-D, WF15-D | M |
+| **WF19** | **Bootstrap/makegen/pragma planner port**: implement `gunbc-workflow bootstrap`, `makegen`, `pragma` using planner with per-node keying and content-upsert skip semantics. **Acceptance**: warm no-op executes zero functional nodes for all three; content-upsert chains skip file write when content matches; SLO: warm invoke ≤ 3s each. | WF19-D, WF5, WF14, WF15 | M |
+| **WF20** | **Deps/dag-viz/dag-snapshot planner port**: implement planner path for remaining tool targets. **Acceptance**: warm no-op executes zero functional nodes; dag-viz modes share gist_modes credential/upload pattern from WF16-D; SLO: warm invoke ≤ 3s each. | WF19-D, WF5, WF14, WF15 | M |
+
+### Phase T-D: Cutover + SLO Enforcement
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **WF21** | **Makefile thinning for all tool targets**: convert all `make <tool>` targets to thin wrappers over `gunbc-workflow <tool>`; remove `ensure-codegen` as prerequisite; remove `cargo run` invocations for planner-managed tools. **Acceptance**: all tool Make targets are transport-only shims; no duplicate orchestration remains; `cargo run` appears only in non-planner targets (if any). | WF16, WF17, WF18, WF19, WF20 | S |
+| **WF22** | **Tool workflow SLO instrumentation**: extend WF9 latency SLO instrumentation to all tool targets. Add warm-path budget assertions and "top slow units" reporting for every tool workflow. **Acceptance**: `gunbc-workflow --plan gist-snapshot` (and all tools) emits total nodes, cache hits, executed nodes, critical path, miss reason histogram; SLO budget violations fail with actionable breakdown. | WF9, WF21 | S |
+
+### Lane Extension (Updated from Sprint 5)
+
+| Lane | Task IDs | Done When |
+|---|---|---|
+| B: Workflow planner core | (unchanged) `WF1`→`WF2`→`WF3`→`WF4`→`WF5` | planner ready for both ci/test-all and tool workflows |
+| C: Workflow cutover/perf | (unchanged) `WF6`→`WF7`→`WF8`→`WF9` | ci/test-all use planner path |
+| **F: Tool binary dispatch** | `WF14-D`→`WF14`→`WF15-D`→`WF15` | tool targets use pre-built binaries; codegen is keyed unit |
+| **G: Gist minimization** | `WF16-D`→`WF16`→`WF17`→`WF18` | all gist modes use planner path; warm ≤ 3s |
+| **H: Remaining tools** | `WF19-D`→`WF19`→`WF20`→`WF21`→`WF22` | all tool targets use planner path with SLO enforcement |
+
+Lanes F and G can start after WF1-D..WF4-D design review (design deps only).
+Lane G depends on Lane F completion.
+Lane H depends on Lane F and can parallelize with Lane G (different tool families).
+
+---
+
 ## Sprint 6: Modeling Hardening (Design-First)
 
 **Goal**: eliminate remaining semantic erasure across system-model metadata,
@@ -496,6 +569,15 @@ SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
          │
          └─ WF1-D→(WF2-D,WF3-D)→WF4-D→WF1→WF2→WF3→WF4→WF5→(WF6,WF7)→WF8→WF9
          │
+    ─────┤ (Sprint 5b: tool workflow minimization — gist + all targets)
+         │
+         ├─ Lane F: WF14-D→WF14→WF15-D→WF15
+         │                                 (binary dispatch + codegen keyed unit)
+         ├─ Lane G: WF16-D→WF16→WF17→WF18
+         │                                 (gist snapshot/diff/recent planner ports)
+         └─ Lane H: WF19-D→WF19→WF20→WF21→WF22
+                                           (remaining tools + cutover + SLO enforcement)
+         │
     ─────┤ (Sprint 6: modeling hardening, design-first)
          │
          ├─ M7-D→M7                (secret redaction by construction)
@@ -517,6 +599,12 @@ By end of sprint: `gunbc pipeline --pr 123` runs coherence + quality + requireme
 **Sprint 5**: WF track now gates implementation behind reviewed DAG-first design
 artifacts (`WF1-D`..`WF4-D`), then lands typed minimum units + exclusive claims +
 downstream coordination contracts before porting `ci`/`test-all`.
+**Sprint 5b**: Extends Sprint 5 planner/ledger to all tool workflows. Lane F
+eliminates `ensure-codegen` + `cargo run` overhead via pre-built binaries and
+codegen-as-keyed-unit. Lane G ports gist family (snapshot/diff/recent) to planner
+with ≤3s warm SLO, including credential TTL caching. Lane H covers bootstrap,
+makegen, pragma, deps, dag-viz, dag-snapshot, and finalizes Makefile thinning +
+SLO enforcement for all tool targets.
 **Sprint 6**: M track is now promoted with explicit paired design/implementation
 tasks (`M7-D`..`M19-D`) and checklist-based review gates from `TODO/modeling.md`.
 **Backlog**: XL features and migration work in `backlog.md`.

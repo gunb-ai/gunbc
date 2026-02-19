@@ -488,13 +488,371 @@ Must-pass checks:
 4. Safety: dependency/resource violations fail closed.
 5. UX parity: command outputs still map to existing user workflows.
 
-## 15. Immediate Next Design Artifacts
+## 15. Extended Scope: All Tool Workflows
 
-1. `workflow_spec.rs`: `WorkflowSpec { dag: Dag<WorkflowUnit> }` for `ci` and `test-all`.
+### 15.1 Motivation
+
+Sections 1-14 define the minimal execution model for `ci` and `test-all`. The same model
+must extend to **all** tool workflows in the workspace. The original scope was chosen
+because `ci`/`test-all` are the most complex orchestration targets; however, the same
+latency deficiencies affect every `make <tool>` target, and the shared bottleneck
+patterns are structurally identical.
+
+Current tool invocation latency (warm state, nothing changed):
+
+| Target Family | Observed | Expected | Bottleneck |
+|---|---|---|---|
+| `make gist` / `gist-diff` / `gist-recent` | ~3 min | seconds | `ensure-codegen` + `cargo run` check + full DAG re-execution |
+| `make dag-viz` / `dag-viz-diff` / `dag-viz-recent` | ~2-3 min | seconds | same |
+| `make deps` | ~1-2 min | seconds | same |
+| `make bootstrap` / `makegen` / `pragma` | ~1-2 min | seconds | same |
+| `make build-all` | ~2-3 min | varies | `preflight-fix` + `ensure-codegen` + full build DAG |
+| `make ci` / `test-all` | ~5-10 min | ≤5s / ≤10s | already scoped in Sections 1-14 |
+
+All tool targets suffer from the same structural deficiency: Make target composition
+performs imperative prerequisite chaining with no key/ledger memoization, and each
+`cargo run` invocation pays the full Cargo dependency-tree freshness check cost
+even when nothing has changed.
+
+### 15.2 Shared Bottleneck Analysis
+
+Three structural bottlenecks affect every tool target:
+
+#### Bottleneck 1: `ensure-codegen` Prerequisite
+
+Every tool target depends on `ensure-codegen`:
+
+```makefile
+gist: ensure-codegen
+    @RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist -- ...
+```
+
+`ensure-codegen` runs `cargo run -p gunbc-dag --bin gunbc-codegen -- codegen`, which:
+
+1. checks compilation freshness of the `gunbc-dag` crate and all transitive dependencies,
+2. runs the codegen binary (which itself checks if generated files are fresh), and
+3. returns only after both complete.
+
+On warm state, this is pure overhead — codegen output hasn't changed, but there is no
+materialization key to prove that and skip the invocation.
+
+#### Bottleneck 2: `cargo run` Compilation Check
+
+Each `cargo run -p <package> --bin <binary>` invocation:
+
+1. resolves and checks the entire crate dependency graph for compilation freshness,
+2. links the binary if any upstream crate metadata changed (even if source didn't), and
+3. only then executes the binary.
+
+For a medium-sized Rust workspace, step 1 alone costs 5-15s on warm state. Stacking
+`ensure-codegen` (one `cargo run`) + the tool itself (another `cargo run`) doubles
+this to 10-30s of pure compilation-check overhead before any actual work begins.
+
+#### Bottleneck 3: Full DAG Re-execution
+
+Each tool binary re-runs its entire DAG from scratch. For gist, this means:
+
+1. git operations (ls-files, current-branch, remote-branches) — all re-run,
+2. file reads (snapshot mode) — all re-read,
+3. markdown rendering — re-rendered,
+4. credential chain resolution — re-resolved,
+5. HTTP upload — re-executed.
+
+There is no per-node key/ledger check to determine which nodes actually need to run.
+For `gist-recent`, the credential chain alone involves WIF token exchange, OIDC
+resolution, and GCP Secret Manager calls — all on the critical path.
+
+### 15.3 Full Tool Workflow Inventory
+
+The planner model must cover all 12 workflow families from the DAG audit
+(`docs/dag-workflow-audit.md`). Each family maps to one or more Make targets:
+
+| # | Workflow Family | Make Targets | DAG Source | Nodes | Mode Variants |
+|---|---|---|---|---|---|
+| 1 | Codegen | `codegen`, `ensure-codegen` | `gunbc-dag/src/codegen/graph.rs` | 8 | — |
+| 2 | Bootstrap | `bootstrap`, `bootstrap-dry` | `gunbc-dag/src/bootstrap/graph.rs` | 15 | — |
+| 3 | Build | `build-all`, `build-all-dry` | `gunbc-dag/src/build/graph.rs` | 10 | — |
+| 4 | Makegen | `makegen`, `makegen-dry` | `gunbc-dag/src/makegen/graph.rs` | 7 | — |
+| 5 | CI | `ci`, `ci-dry` | `gunbc-dag/src/ci/graph.rs` | many | — |
+| 6 | Pragma | `pragma`, `pragma-dry` | `gunbc-dag/src/pragma/graph.rs` | 18 | — |
+| 7 | Testgen | `testgen`, `testgen-check` | `gunbc-dag/src/testgen_dag/graph.rs` | Nx6 | — |
+| 8 | **Gist** | `gist`, `gist-diff`, `gist-recent` (+dry) | `lib/tools/gist/src/graph.rs` | 17 | snapshot, diff, recent |
+| 9 | Deps | `deps`, `deps-dry` | `lib/tools/deps/src/graph.rs` | 8 | install, generate |
+| 10 | Clippy | `clippy`, `clippy-fix` | `lib/tools/clippy/src/graph.rs` | 3 | — |
+| 11 | Review | (via `gunbc review`) | `lib/review/src/graph.rs` | 10-12 | phase, inline, diff, multi |
+| 12 | LLM Chat | (embedded in review) | `lib/llm-ops/src/graph.rs` | 5 | — |
+| 13 | DAG Viz | `dag-viz`, `dag-viz-diff`, `dag-viz-recent` (+dry) | shared gist_modes pattern | varies | snapshot, diff, recent |
+| 14 | DAG Snapshot | `dag-snapshot`, `dag-snapshot-dry` | snapshot mode | varies | — |
+
+### 15.4 Gist Family: Detailed Deficiency Decomposition
+
+The gist family (snapshot, diff, recent) is the exemplar for the extended scope because
+it combines all three bottlenecks and has the clearest user-facing latency gap
+(~3 min observed vs. seconds expected).
+
+#### Current Execution Flow: `make gist` (Snapshot)
+
+```
+make gist
+  └── ensure-codegen                            # Bottleneck 1
+  │     └── cargo run gunbc-codegen -- codegen  # Bottleneck 2 (first cargo-run)
+  └── cargo run gunbc-gist --bin gunbc-gist     # Bottleneck 2 (second cargo-run)
+        └── build_gist_graph(Snapshot)           # Bottleneck 3 (full DAG)
+              ├── PrepareLsFiles → ExecuteListFiles → ParseLsFiles
+              ├── LoopBuilder(ReadFileBody) per file
+              ├── CollectFileContents → RenderMarkdown
+              ├── PrepareCurrentBranch → ExecuteCurrentBranch → ParseCurrentBranch
+              ├── PrepareRemoteBranches → ExecuteRemoteBranches → ParseRemoteBranches
+              └── credential_chain() → PrepareGistRequest → ExecuteGist → ParseGistResponse
+```
+
+#### Current Execution Flow: `make gist-recent`
+
+```
+make gist-recent
+  └── ensure-codegen                                # Bottleneck 1
+  │     └── cargo run gunbc-codegen -- codegen      # Bottleneck 2
+  └── GUNBC_CLOUD_CONFIG_REQUIRED=1                 # Forces cloud credential init
+      cargo run gunbc-gist --bin gunbc-gist-recent  # Bottleneck 2
+        └── build_gist_graph(Recent)                # Bottleneck 3
+              ├── resolve_recent_base(since)
+              │     ├── branch_context()
+              │     └── git.Core.RevList(since)
+              ├── for commit in commits:
+              │     └── git.Core.Diff(base, head)
+              ├── render_recent(diffs)
+              └── share_content()
+                    └── gist_upload()
+                          ├── clock.now()
+                          ├── credential_chain()    # WIF + OIDC + Secret Manager
+                          │     ├── detect_runtime()
+                          │     ├── GCP STS token exchange
+                          │     ├── IAM impersonation
+                          │     └── Secret Manager access
+                          └── github.Gist.Create()
+```
+
+#### Deficiency-to-Fix Mapping (Gist)
+
+| Deficiency | Symptom | Fix via Minimal Execution Model |
+|---|---|---|
+| No codegen freshness key | `ensure-codegen` always runs | Codegen is a keyed workflow unit; planner skips on `CachedHit` |
+| `cargo run` compilation check | 10-30s overhead per invocation | Pre-built binaries (`build-release-bins`) or planner-dispatched execution |
+| No per-node keying in gist DAG | All 17 nodes re-execute | Each node gets `MaterializationKey`; git ops skip when repo state unchanged |
+| Credential chain re-resolution | WIF/OIDC/SecretManager on every call | Credential result is a keyed output; cached until token expiry input changes |
+| Full DAG re-execution | Markdown re-rendered, upload re-attempted | Planner computes dirty closure; warm state = zero functional nodes |
+| `GUNBC_CLOUD_CONFIG_REQUIRED=1` | Forces cloud init even locally | Runtime detection moves into typed op with explicit env-mode input port |
+
+### 15.5 Minimal Execution Model for Tool Workflows
+
+Every tool workflow is modeled as a `WorkflowSpec` (same core type from Section 6)
+and participates in the same global planner/ledger infrastructure.
+
+#### Tool Workflow Unit Structure
+
+```rust
+// Each tool workflow becomes a WorkflowSpec with its own units.
+// Example: gist-snapshot
+WorkflowSpec {
+    id: WorkflowId("gist-snapshot"),
+    dag: Dag<WorkflowUnit> {
+        // Phase 1: content acquisition
+        nodes: [
+            WorkflowUnit { op: InvokeProcessUnit(git.ls_files) },
+            WorkflowUnit { op: InvokeProcessUnit(git.current_branch) },
+            WorkflowUnit { op: InvokeProcessUnit(fs.read_files) },
+            // Phase 2: rendering (pure)
+            WorkflowUnit { op: InvokeProcessUnit(gist.render_snapshot) },
+            // Phase 3: upload
+            WorkflowUnit { op: InvokeProcessUnit(credential.resolve) },
+            WorkflowUnit { op: InvokeProcessUnit(github.gist_create) },
+        ],
+    },
+    policy_version: 1,
+}
+```
+
+#### Key Inputs for Gist Nodes
+
+| Node | Key Inputs | Volatile? | Cache Policy |
+|---|---|---|---|
+| `git.ls_files` | workspace tree hash (from `.git/index`) | no | cache until index changes |
+| `git.current_branch` | `.git/HEAD` content | no | cache until HEAD changes |
+| `fs.read_files` | file content hashes (from ls_files output) | no | cache until file contents change |
+| `gist.render_snapshot` | upstream file contents hash | no | pure function, always cacheable |
+| `credential.resolve` | runtime mode + token expiry + env vars | yes (time-bounded) | cache until token expiry or env change |
+| `github.gist_create` | rendered markdown hash + credential hash | yes (side-effect) | **volatile by default** (creates new gist) |
+
+Key insight: for a gist command, only `github.gist_create` is inherently volatile.
+All upstream nodes are deterministic functions of repo state and should be cached.
+On warm state with unchanged repo, the planner should execute exactly one node
+(the upload) — or zero if the user opts into idempotent-upload policy.
+
+#### Eliminating `ensure-codegen` Overhead
+
+The `ensure-codegen` prerequisite is eliminated by modeling codegen as a first-class
+workflow unit in the planner:
+
+1. codegen output freshness is tracked by the global ledger,
+2. tool workflows that require codegen outputs declare them as typed input dependencies,
+3. planner resolves codegen freshness via key lookup (no subprocess spawn),
+4. if codegen is stale, planner includes it in the execute set before the tool workflow,
+5. if codegen is fresh (CachedHit), tool workflow starts immediately.
+
+This eliminates the `cargo run gunbc-codegen` subprocess entirely on warm state.
+
+#### Eliminating `cargo run` Compilation Check Overhead
+
+Two strategies, applied in phases:
+
+**Phase 1 (immediate)**: Use pre-built binaries via `build-release-bins`.
+Make targets become:
+
+```makefile
+gist: build-release-bins
+    @target/release/gunbc-gist ...
+```
+
+This is still suboptimal (one `cargo build` check) but eliminates the double-check.
+
+**Phase 2 (planner path)**: Planner dispatches tool execution directly via
+`InvokeProcessUnit`, bypassing Make and `cargo run` entirely. Binary freshness
+is a keyed unit in the planner:
+
+1. binary output hash tracked in ledger,
+2. source changes detected via cargo metadata + source hashes,
+3. rebuild only when source actually changed,
+4. tool execution uses the already-built binary path.
+
+### 15.6 Tool Workflow SLOs
+
+Extend the SLO framework from Section 12 to all tool targets:
+
+| Target | Warm No-Op SLO | Single-Change SLO | Notes |
+|---|---|---|---|
+| `make gist` | ≤ 3s | ≤ 5s + upload time | Upload is network-bound |
+| `make gist-diff` | ≤ 3s | ≤ 5s + upload time | |
+| `make gist-recent` | ≤ 3s | ≤ 5s + upload time | Credential caching eliminates WIF chain |
+| `make dag-viz` | ≤ 3s | ≤ 5s | Local output only |
+| `make deps` | ≤ 3s | ≤ 5s | |
+| `make bootstrap` | ≤ 3s | ≤ 5s | Content upsert skips write |
+| `make makegen` | ≤ 3s | ≤ 5s | Content upsert skips write |
+| `make pragma` | ≤ 3s | ≤ 5s | Three parallel upsert chains |
+| `make build-all` | ≤ 5s | varies (cargo build) | Build time is cargo-bound |
+| `make ci` | ≤ 5s | varies | Already scoped in Section 12 |
+| `make test-all` | ≤ 10s | varies | Already scoped in Section 12 |
+
+Warm no-op SLO for all tool workflows: **≤ 3s** (planner key check + ledger
+read + zero functional nodes).
+
+### 15.7 Credential Chain Optimization
+
+The credential chain is a major latency contributor for gist, review, and any
+cloud-connected workflow. The minimal execution model addresses this:
+
+1. **Credential as keyed unit**: `credential.resolve` becomes a `WorkflowUnit` with
+   explicit input ports (`runtime_mode`, `audience`, `project`, `secret_name`,
+   `required_scopes`).
+
+2. **Token caching with expiry key**: Resolved credentials are cached in the ledger
+   with a time-bounded key. Key inputs include:
+   - `runtime_mode` (local-dev vs. cloud)
+   - env vars (e.g., `GITHUB_TOKEN` hash if present)
+   - token expiry timestamp (if cloud-resolved)
+
+3. **Local-dev fast path**: When `detect_runtime()` returns `LocalDev` and
+   `GITHUB_TOKEN` is set in env, the credential chain is a single env-var read.
+   No WIF/OIDC/Secret Manager calls. This path must be the keyed default for
+   local tool invocations.
+
+4. **Cloud credential reuse**: When `gist-recent` forces cloud credentials
+   (`GUNBC_CLOUD_CONFIG_REQUIRED=1`), the resolved credential is cached with
+   a TTL-aware key. Subsequent invocations within the TTL window skip the full
+   WIF chain.
+
+### 15.8 Cross-Workflow Dedup for Tool Targets
+
+Tool workflows share process units with `ci` and `test-all`. The global
+ledger (Section 7.1) prevents redundant execution:
+
+```
+make ci       → includes codegen, testgen, build, test, clippy, pragma
+make gist     → requires codegen (for entrypoint existence)
+make bootstrap → requires codegen
+```
+
+If `make ci` has already run and codegen is fresh in the ledger, `make gist`
+skips codegen entirely via `CachedHit`. This is the same `WorkIdentity`-based
+dedup defined in Section 6.2, extended to tool workflows.
+
+### 15.9 Gist-Specific DAG Minimization
+
+For each gist mode, the minimal execution plan on warm state:
+
+**Snapshot (warm, repo unchanged)**:
+```
+Plan: 0 functional units (all CachedHit)
+      1 volatile unit (gist_create) — only if user wants a new gist
+Miss reason if stale: InputChanged on git.ls_files (tree hash changed)
+```
+
+**Diff (warm, branch unchanged)**:
+```
+Plan: 0 functional units (all CachedHit)
+      1 volatile unit (gist_create)
+Miss reason if stale: InputChanged on git.diff (base_ref or HEAD changed)
+```
+
+**Recent (warm, no new commits in window)**:
+```
+Plan: 0 functional units (all CachedHit)
+      1 volatile unit (gist_create)
+      0 credential units (cached within TTL)
+Miss reason if stale: InputChanged on git.rev_list (new commits in window)
+```
+
+### 15.10 Migration Phases for Tool Workflows
+
+#### Phase T-A: Tool Binary Pre-build (eliminates Bottleneck 2)
+
+1. `build-release-bins` produces all tool binaries in one `cargo build`.
+2. Make targets switch from `cargo run -p <pkg> --bin <bin>` to `target/release/<bin>`.
+3. `ensure-codegen` remains as prerequisite but uses pre-built binary.
+4. Net saving: ~10-30s per tool invocation (one compilation check instead of two).
+
+#### Phase T-B: Codegen as Keyed Unit (eliminates Bottleneck 1)
+
+1. Codegen freshness tracked in global ledger via `MaterializationKey`.
+2. Key inputs: DSL source hashes + codegen binary hash.
+3. Tool targets no longer call `ensure-codegen` as Make prerequisite.
+4. Planner resolves codegen freshness via ledger lookup (no subprocess).
+5. Net saving: ~10-15s per tool invocation on warm state.
+
+#### Phase T-C: Per-Node Keying for Tool DAGs (eliminates Bottleneck 3)
+
+1. Each tool DAG's nodes get `MaterializationKey` computation.
+2. Planner computes dirty closure per tool invocation.
+3. Warm state = zero functional node execution.
+4. Net saving: all remaining overhead down to planner startup + ledger read.
+
+#### Phase T-D: Planner-Direct Execution (full model)
+
+1. `make <tool>` becomes thin shell over `gunbc-workflow <tool>`.
+2. Planner resolves binary freshness, codegen freshness, and tool DAG freshness
+   in one pass.
+3. Execution dispatches only dirty closure.
+4. SLO telemetry and guardrails from WF9 apply to all tool targets.
+
+## 16. Immediate Next Design Artifacts
+
+1. `workflow_spec.rs`: `WorkflowSpec { dag: Dag<WorkflowUnit> }` for `ci`, `test-all`,
+   and all tool workflows.
 2. `workflow_key.rs`: canonical key payload normalization and hashing.
 3. `workflow_planner.rs`: dirty-closure + scheduling plan with typed miss reasons.
 4. `workflow_ledger.rs`: stable on-disk format, versioning policy, atomic persistence.
 5. `docs/design/workflow-key-schema.md`: concrete key fields and miss reasons.
+6. `docs/design/workflow/tool-workflow-design-pack.md`: concrete DAG views for gist,
+   deps, bootstrap, makegen, pragma, dag-viz (analogous to `wf1-wf4-dag-design-pack.md`).
 
 ---
 
