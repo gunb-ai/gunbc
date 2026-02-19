@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use daglang_lower::LoweredOp;
+use daglang_lower::{LoweredOp, PrimitiveLiteral, PrimitiveOpKind};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::Dag;
 use gunbc_ir::{Cardinality, WorkspaceLayout};
@@ -128,7 +128,6 @@ enum HandlerKind {
     CompareContent,
     ExecuteTransport,
     Collection,
-    DeferredCallable,
 }
 
 impl HandlerKind {
@@ -150,7 +149,6 @@ impl HandlerKind {
             Self::CompareContent => "CompareContent",
             Self::ExecuteTransport => "ExecuteTransport",
             Self::Collection => "Collection",
-            Self::DeferredCallable => "DeferredCallable",
         }
     }
 }
@@ -220,24 +218,44 @@ fn collect_handler_kinds(classified: &[ClassifiedNode]) -> BTreeSet<HandlerKind>
 fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
     match op {
         LoweredOp::Collection { .. } => return Some(HandlerKind::Collection),
-        LoweredOp::Callable { name, .. } if name.starts_with("call_param_source::") => {
-            return Some(HandlerKind::ParamSource);
-        }
-        LoweredOp::Callable { name, .. } if name.starts_with("call_literal_source::") => {
-            return Some(HandlerKind::LiteralSource);
-        }
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::CallParamSource { .. },
+            ..
+        } => return Some(HandlerKind::ParamSource),
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::CallLiteralSource { .. },
+            ..
+        } => return Some(HandlerKind::LiteralSource),
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::FsEnv,
+            ..
+        } => return Some(HandlerKind::FsEnv),
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::ContentUpsertPrepareRead,
+            ..
+        } => return Some(HandlerKind::PrepareReadContent),
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::ContentUpsertExecuteRead,
+            ..
+        } => return Some(HandlerKind::ExecuteReadContent),
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::ContentUpsertPrepareWrite,
+            ..
+        } => return Some(HandlerKind::PrepareWriteContent),
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::ContentUpsertCompareContent,
+            ..
+        } => return Some(HandlerKind::CompareContent),
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::ContentUpsertExecuteTransport,
+            ..
+        } => return Some(HandlerKind::ExecuteTransport),
         LoweredOp::Pipeline { .. } => {}
         LoweredOp::Callable { module, name, .. } if module == "tools.makegen" => {
             return match name.as_str() {
                 "load_registry" => Some(HandlerKind::LoadRegistry),
-                "fs_env" => Some(HandlerKind::FsEnv),
                 "render_makefile" => Some(HandlerKind::RenderMakefile),
                 "makegen" => Some(HandlerKind::Entrypoint),
-                "content_upsert::prepare_read_makegen" => Some(HandlerKind::PrepareReadContent),
-                "content_upsert::execute_read_makegen" => Some(HandlerKind::ExecuteReadContent),
-                "content_upsert::prepare_write_makegen" => Some(HandlerKind::PrepareWriteContent),
-                "content_upsert::compare_makegen_content" => Some(HandlerKind::CompareContent),
-                "content_upsert::execute_makegen_transport" => Some(HandlerKind::ExecuteTransport),
                 _ => None,
             };
         }
@@ -257,22 +275,6 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
         }
         ("tools.pragma", "render_pragma_lint_policy") => Some(HandlerKind::RenderPragmaLintPolicy),
         ("tools.pragma", "pragma") => Some(HandlerKind::PragmaEntrypoint),
-        _ if name.starts_with("content_upsert::prepare_read_") => {
-            Some(HandlerKind::PrepareReadContent)
-        }
-        _ if name.starts_with("content_upsert::execute_read_") => {
-            Some(HandlerKind::ExecuteReadContent)
-        }
-        _ if name.starts_with("content_upsert::prepare_write_") => {
-            Some(HandlerKind::PrepareWriteContent)
-        }
-        _ if name.starts_with("content_upsert::compare_") && name.ends_with("_content") => {
-            Some(HandlerKind::CompareContent)
-        }
-        _ if name.starts_with("content_upsert::execute_") && name.ends_with("_transport") => {
-            Some(HandlerKind::ExecuteTransport)
-        }
-        _ if is_deferred_callable_module(module) => Some(HandlerKind::DeferredCallable),
         _ => None,
     }
 }
@@ -286,42 +288,42 @@ fn classify_op_ctor(
         return Ok(format!("Op::{}", handler.variant_name()));
     }
 
-    let LoweredOp::Callable { name, .. } = op else {
-        return Err("literal source classification requires callable op".to_string());
+    let literal_spec = match op {
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::CallLiteralSource { literal },
+            ..
+        } => encode_primitive_literal_spec(literal),
+        LoweredOp::Callable { name, .. } => name
+            .strip_prefix("call_literal_source::")
+            .ok_or_else(|| format!("literal source callable `{name}` missing prefix"))?
+            .to_string(),
+        _ => return Err("literal source classification requires literal-source op".to_string()),
     };
-    let literal_spec = name
-        .strip_prefix("call_literal_source::")
-        .ok_or_else(|| format!("literal source callable `{name}` missing prefix"))?;
     let output_port = outputs
         .first()
         .map(|port| port.name.0.as_str())
-        .ok_or_else(|| format!("literal source callable `{name}` has no output ports"))?;
+        .ok_or_else(|| "literal source callable has no output ports".to_string())?;
     Ok(format!(
         "Op::LiteralSource {{ output_port: {}, literal_spec: {} }}",
         rust_string_literal(output_port),
-        rust_string_literal(literal_spec)
+        rust_string_literal(literal_spec.as_str())
     ))
 }
 
-fn is_deferred_callable_module(module: &str) -> bool {
-    matches!(
-        module,
-        "tools.build"
-            | "tools.codegen"
-            | "tools.bootstrap"
-            | "tools.docgen"
-            | "tools.testgen"
-            | "tools.clippy"
-            | "tools.deps"
-            | "pipelines.ci"
-            | "shared.dag_util"
-            | "std.patterns"
-            | "std.resources"
-            | "services.shell"
-            | "services.cargo"
-            | "services.gcp.secret_manager"
-            | "services.gcp.sts"
-    )
+fn encode_primitive_literal_spec(literal: &PrimitiveLiteral) -> String {
+    match literal {
+        PrimitiveLiteral::String(value) => {
+            let mut encoded = String::with_capacity(value.len() * 2);
+            for byte in value.as_bytes() {
+                use std::fmt::Write;
+                let _ = write!(encoded, "{byte:02x}");
+            }
+            format!("strhex:{encoded}")
+        }
+        PrimitiveLiteral::Int(value) => format!("int:{value}"),
+        PrimitiveLiteral::Bool(value) => format!("bool:{value}"),
+        PrimitiveLiteral::None => "none".to_string(),
+    }
 }
 
 // ===========================================================================
@@ -633,12 +635,6 @@ fn handler_body(kind: HandlerKind) -> &'static str {
             r##"    let items = inputs.get("items").cloned()
         .ok_or_else(|| ExecError::new("missing required input `items`"))?;
     OutputMap::new().value("items", items).ok()
-"##
-        }
-        HandlerKind::DeferredCallable => {
-            r##"    Err(ExecError::new(
-        "deferred callable is not runtime-mapped yet for exec-runtime generation",
-    ))
 "##
         }
     }
@@ -1137,7 +1133,9 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, LoweredOp, ObligationCategory};
+    use daglang_lower::{
+        CallableKind, LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind,
+    };
     use gunbc_ir::{Edge, Node, Port};
 
     fn sample_makegen_dag() -> Dag<LoweredOp> {
@@ -1349,14 +1347,13 @@ mod tests {
             "literal_path",
             vec![],
             vec![Port::scalar("path", "String")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.pragma".to_string(),
-                kind: CallableKind::Pattern,
                 name: "call_literal_source::strhex:636c697070792e746f6d6c".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::String("clippy.toml".to_string()),
+                },
                 obligation: ObligationCategory::ServiceParamSource,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
             },
         ));
 
@@ -1379,7 +1376,7 @@ mod tests {
     }
 
     #[test]
-    fn emit_exec_runtime_defers_supported_unmapped_modules() {
+    fn emit_exec_runtime_rejects_unmapped_known_module() {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
             "tools.build::build_all",
@@ -1396,15 +1393,11 @@ mod tests {
             },
         ));
 
-        let files = emit_exec_runtime(&dag, "tools.build").expect("deferred emit should succeed");
-        let main_rs = &files[0].content;
+        let error =
+            emit_exec_runtime(&dag, "tools.build").expect_err("unmapped module should fail");
         assert!(
-            main_rs.contains("DeferredCallable"),
-            "generated runtime should include DeferredCallable handler"
-        );
-        assert!(
-            main_rs.contains("deferred callable is not runtime-mapped yet"),
-            "deferred handler should emit explicit runtime error message"
+            matches!(error, ExecRuntimeError::UnresolvableNode { .. }),
+            "expected unresolvable node error, got {error:?}"
         );
     }
 
@@ -1461,28 +1454,22 @@ mod tests {
             "prepare_read_makegen",
             vec![Port::scalar("path", "String")],
             vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::prepare_read_makegen".into(),
+                kind: PrimitiveOpKind::ContentUpsertPrepareRead,
                 obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
             "execute_read_makegen",
             vec![Port::scalar("request", "TransportRequest")],
             vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::execute_read_makegen".into(),
+                kind: PrimitiveOpKind::ContentUpsertExecuteRead,
                 obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1492,14 +1479,11 @@ mod tests {
                 Port::scalar("response", "TransportResponse"),
             ],
             vec![Port::scalar("fresh", "Bool"), Port::scalar("skip", "Bool")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::compare_makegen_content".into(),
+                kind: PrimitiveOpKind::ContentUpsertCompareContent,
                 obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1509,14 +1493,11 @@ mod tests {
                 Port::scalar("path", "String"),
             ],
             vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::prepare_write_makegen".into(),
+                kind: PrimitiveOpKind::ContentUpsertPrepareWrite,
                 obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1526,14 +1507,11 @@ mod tests {
                 Port::scalar("skip", "Bool"),
             ],
             vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::execute_makegen_transport".into(),
+                kind: PrimitiveOpKind::ContentUpsertExecuteTransport,
                 obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
             },
         ));
 
@@ -1663,14 +1641,11 @@ mod tests {
             "prepare_read_pragma",
             vec![Port::scalar("path", "String")],
             vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.pragma".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::prepare_read_pragma".into(),
+                kind: PrimitiveOpKind::ContentUpsertPrepareRead,
                 obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(

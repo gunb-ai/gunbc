@@ -19,6 +19,11 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
             }) => {
                 format!("callable::{kind:?} {module}.{name}")
             }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
+                module, name, kind, ..
+            }) => {
+                format!("primitive::{kind:?} {module}.{name}")
+            }
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection {
                 module,
                 callable,

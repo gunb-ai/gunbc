@@ -265,7 +265,9 @@ pub enum CollectionOpKind {
 // Classification (A1.3)
 // ===========================================================================
 
-use daglang_lower::{LoweredOp, ObligationCategory, ServiceTransportClass};
+use daglang_lower::{
+    LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind, ServiceTransportClass,
+};
 use gunbc_ir::node::{Node, NodeBody};
 use gunbc_ir::Port;
 
@@ -316,6 +318,12 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
                 strategy: AggregateKind::Concat,
             },
         }),
+        LoweredOp::Primitive {
+            module,
+            name,
+            kind,
+            obligation,
+        } => classify_primitive(module, name, kind, *obligation, inputs, outputs),
         LoweredOp::Callable {
             module,
             name,
@@ -330,6 +338,96 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
             inputs,
             outputs,
         ),
+    }
+}
+
+fn classify_primitive(
+    _module: &str,
+    name: &str,
+    kind: &PrimitiveOpKind,
+    obligation: ObligationCategory,
+    inputs: Vec<TypedPort>,
+    outputs: Vec<TypedPort>,
+) -> Result<Computation, ClassifyError> {
+    match kind {
+        PrimitiveOpKind::FsEnv
+            if matches!(
+                obligation,
+                ObligationCategory::ResourceProvide | ObligationCategory::ResourceAcquire
+            ) =>
+        {
+            let handle_type = outputs
+                .first()
+                .map(|p| p.abstract_type.clone())
+                .unwrap_or_else(|| "Unknown".to_string());
+            Ok(Computation::ResourceAcquire {
+                handle_type,
+                handle_value: name.to_string(),
+            })
+        }
+        PrimitiveOpKind::CallLiteralSource { literal } => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Literal(primitive_literal_to_json(literal)),
+        }),
+        PrimitiveOpKind::ContentUpsertPrepareRead => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Literal(serde_json::Value::String("prepare_file_read".to_string())),
+        }),
+        PrimitiveOpKind::ContentUpsertExecuteRead => Ok(Computation::Transport {
+            prepare: RequestSpec {
+                input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
+                kind: RequestKind::FilePath {
+                    path_port: "request".to_string(),
+                },
+            },
+            execute: TransportKind::FileRead,
+            parse: ResponseSpec {
+                output_ports: outputs.iter().map(|p| p.name.clone()).collect(),
+                kind: ResponseKind::RawContent,
+            },
+        }),
+        PrimitiveOpKind::ContentUpsertCompareContent => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Compare {
+                left: "expected_content".to_string(),
+                right: "response".to_string(),
+            },
+        }),
+        PrimitiveOpKind::ContentUpsertPrepareWrite => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Literal(serde_json::Value::String("prepare_file_write".to_string())),
+        }),
+        PrimitiveOpKind::ContentUpsertExecuteTransport => Ok(Computation::Transport {
+            prepare: RequestSpec {
+                input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
+                kind: RequestKind::FilePath {
+                    path_port: "request".to_string(),
+                },
+            },
+            execute: TransportKind::FileWrite,
+            parse: ResponseSpec {
+                output_ports: outputs.iter().map(|p| p.name.clone()).collect(),
+                kind: ResponseKind::ExitStatus,
+            },
+        }),
+        PrimitiveOpKind::CallParamSource { .. } | PrimitiveOpKind::FsEnv => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Literal(serde_json::Value::Null),
+        }),
+    }
+}
+
+fn primitive_literal_to_json(literal: &PrimitiveLiteral) -> serde_json::Value {
+    match literal {
+        PrimitiveLiteral::String(value) => serde_json::Value::String(value.clone()),
+        PrimitiveLiteral::Int(value) => serde_json::Value::Number((*value).into()),
+        PrimitiveLiteral::Bool(value) => serde_json::Value::Bool(*value),
+        PrimitiveLiteral::None => serde_json::Value::Null,
     }
 }
 

@@ -204,6 +204,11 @@ pub fn emit_rust_bundle(
                 };
                 emitted_functions.push(rendered);
             }
+            LoweredOp::Primitive { module, name, .. } => {
+                callable_count += 1;
+                let fn_name = sanitize_identifier(&format!("{module}_{name}"));
+                emitted_functions.push(backend.emit_func(&fn_name));
+            }
             LoweredOp::Collection {
                 module,
                 callable,
@@ -477,6 +482,10 @@ fn collect_callable_symbols(
 
         match op {
             LoweredOp::Callable { module, name, .. } => {
+                callable_count += 1;
+                symbols.push(sanitize_identifier(&format!("{module}_{name}")));
+            }
+            LoweredOp::Primitive { module, name, .. } => {
                 callable_count += 1;
                 symbols.push(sanitize_identifier(&format!("{module}_{name}")));
             }
