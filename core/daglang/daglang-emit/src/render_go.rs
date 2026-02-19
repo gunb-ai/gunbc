@@ -567,9 +567,12 @@ mod tests {
             params: vec![("filePath".to_string(), "string".to_string())],
             return_type: Some("error".to_string()),
             body: vec![
-                Stmt::Let {
-                    name: "resp, err".to_string(),
-                    mutable: false,
+                Stmt::Bind {
+                    targets: vec![
+                        BindTarget::Name("resp".to_string()),
+                        BindTarget::Name("err".to_string()),
+                    ],
+                    intent: BindIntent::Declare,
                     expr: Expr::call("transport.Execute", vec![Expr::var("req")]),
                 },
                 Stmt::Return(Expr::var("nil")),
@@ -627,6 +630,20 @@ mod tests {
         let rendered = render_stmt(&stmt, 0);
         assert!(rendered.contains("if err != nil {"), "condition");
         assert!(rendered.contains("return err"), "return err");
+    }
+
+    #[test]
+    fn render_multi_target_assignment_bind() {
+        let stmt = Stmt::Bind {
+            targets: vec![
+                BindTarget::Name("resp".to_string()),
+                BindTarget::Name("err".to_string()),
+            ],
+            intent: BindIntent::Assign,
+            expr: Expr::call("transport.Execute", vec![Expr::var("req")]),
+        };
+        let rendered = render_stmt(&stmt, 0);
+        assert_eq!(rendered, "resp, err = transport.Execute(req)\n");
     }
 
     // -- C2.4: Import rendering --
@@ -712,9 +729,12 @@ mod tests {
                     params: vec![("filePath".to_string(), "string".to_string())],
                     return_type: Some("error".to_string()),
                     body: vec![
-                        Stmt::Let {
-                            name: "req, err".to_string(),
-                            mutable: false,
+                        Stmt::Bind {
+                            targets: vec![
+                                BindTarget::Name("req".to_string()),
+                                BindTarget::Name("err".to_string()),
+                            ],
+                            intent: BindIntent::Declare,
                             expr: Expr::call(
                                 "transport.NewFileReadRequest",
                                 vec![Expr::var("filePath")],

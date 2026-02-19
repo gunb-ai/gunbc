@@ -19,7 +19,9 @@
 use crate::transport_analysis::{body_has_transport_calls, expr_is_transport_call};
 use gunbc_ir::code_ir::c_ir::*;
 use gunbc_ir::code_ir::lower::LowerError;
-use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Item, SourceFile, Stmt};
+use gunbc_ir::code_ir::{
+    BindIntent, BindTarget, CallObligation, Expr, FnDef, Item, SourceFile, Stmt,
+};
 
 /// Configuration for C lowering.
 #[derive(Debug, Clone)]
@@ -255,6 +257,32 @@ fn lower_stmt_into(out: &mut Vec<CStmt>, stmt: &Stmt, in_fallible_fn: bool, conf
                 ]));
             } else {
                 out.push(CStmt::Expr(c_expr));
+            }
+        }
+        Stmt::Bind {
+            targets,
+            intent,
+            expr,
+        } => {
+            let c_expr = lower_expr(expr, config);
+            match (intent, targets.as_slice()) {
+                (BindIntent::Declare, [BindTarget::Name(name)]) => {
+                    out.push(CStmt::Decl {
+                        name: name.clone(),
+                        ty: infer_c_type(expr),
+                        init: Some(c_expr),
+                    });
+                }
+                (BindIntent::Assign, [BindTarget::Name(name)]) => {
+                    out.push(CStmt::Assign {
+                        lhs: CExpr::Var(name.clone()),
+                        rhs: c_expr,
+                    });
+                }
+                _ => {
+                    // CStyleIR has no tuple/discard bind semantics; preserve side effects.
+                    out.push(CStmt::Expr(c_expr));
+                }
             }
         }
         Stmt::Assign { dest, value } => {
