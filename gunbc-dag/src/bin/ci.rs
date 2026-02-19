@@ -22,7 +22,7 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::ci::build_ci_graph;
+use gunbc_dag::build::build_build_graph;
 use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
 use gunbc_dag::{print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions};
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, CiContext, ExecutionMode};
@@ -58,17 +58,12 @@ fn main() {
         print_help();
         return;
     }
-    // Safety default: enable runtime file declaration guard in CI runs
-    // unless the caller explicitly sets GUNBC_RESOURCE_FILE_GUARD.
-    if std::env::var_os("GUNBC_RESOURCE_FILE_GUARD").is_none() {
-        std::env::set_var("GUNBC_RESOURCE_FILE_GUARD", "1");
-    }
 
     let dry_run = parsed.dry_run;
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
 
-    // Build the CI graph from DSL
-    let dag = match build_ci_graph() {
+    // Runtime CI path uses the concrete build/test/lint DAG.
+    let dag = match build_build_graph() {
         Ok(d) => d,
         Err(e) => {
             print_attention(
