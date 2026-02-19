@@ -506,6 +506,8 @@ mod tests {
                 name: "execute".to_string(),
                 obligation: ObligationCategory::ServiceTransportExecute,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag
@@ -523,6 +525,8 @@ mod tests {
                 name: "render_makefile".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag

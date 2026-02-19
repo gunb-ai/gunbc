@@ -482,24 +482,44 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
         .collect()
 }
 
-// TODO(Phase 3): Derive capture mode from node kind (transport → Captured,
-// @interactive → Passthrough, streaming → Streamed) via structural classification
-// in daglang-lower, matching the pattern used for obligations.
 fn derive_capture_modes(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, CaptureMode> {
     nodes
         .iter()
-        .map(|node| (node.id.0.clone(), CaptureMode::Captured))
+        .map(|node| {
+            let capture_mode = match node.body.as_opaque() {
+                Some(LoweredOp::Callable {
+                    obligation,
+                    is_interactive,
+                    ..
+                }) => {
+                    if matches!(
+                        obligation,
+                        ObligationCategory::ServiceTransportPrepare
+                            | ObligationCategory::ServiceTransportExecute
+                            | ObligationCategory::ServiceTransportParse
+                    ) {
+                        CaptureMode::Captured
+                    } else if *is_interactive {
+                        CaptureMode::Passthrough
+                    } else {
+                        CaptureMode::Captured
+                    }
+                }
+                _ => CaptureMode::Captured,
+            };
+            (node.id.0.clone(), capture_mode)
+        })
         .collect()
 }
 
-// TODO(Phase 3): Replace substring matching with a structural `is_interactive`
-// field on LoweredOp (parsed from a DSL attribute, propagated through lowering),
-// matching the pattern used for obligation classification.
 fn derive_interactive_nodes(nodes: &[Node<LoweredOp>]) -> Vec<String> {
     let mut interactive = nodes
         .iter()
         .filter_map(|node| match node.body.as_opaque() {
-            Some(LoweredOp::Callable { name, .. }) if name.contains("@interactive") => {
+            Some(LoweredOp::Callable {
+                is_interactive: true,
+                ..
+            }) => {
                 Some(node.id.0.clone())
             }
             _ => None,
@@ -509,31 +529,34 @@ fn derive_interactive_nodes(nodes: &[Node<LoweredOp>]) -> Vec<String> {
     interactive
 }
 
-// TODO(Phase 3): Replace string-prefix matching with a structural classification
-// function in daglang-lower (e.g. LoweredOpKind::ResourceAcquire { resource }),
-// matching the pattern used for obligation classification.
 fn derive_resources(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, Vec<ResourceUsage>> {
     let mut resources = BTreeMap::<String, Vec<ResourceUsage>>::new();
     for node in nodes {
-        let Some(LoweredOp::Callable { name, .. }) = node.body.as_opaque() else {
+        let Some(LoweredOp::Callable {
+            obligation,
+            resource_target,
+            ..
+        }) = node.body.as_opaque()
+        else {
             continue;
         };
-        let usage = if let Some(resource) = name.strip_prefix("resource_lifecycle::acquire::") {
-            Some(ResourceUsage {
-                resource: resource.to_string(),
+        let Some(resource) = resource_target.as_ref() else {
+            continue;
+        };
+        let usage = match obligation {
+            ObligationCategory::ResourceAcquire => Some(ResourceUsage {
+                resource: resource.clone(),
                 usage: "acquire".to_string(),
-            })
-        } else if let Some(resource) = name.strip_prefix("resource_lifecycle::release::") {
-            Some(ResourceUsage {
-                resource: resource.to_string(),
+            }),
+            ObligationCategory::ResourceRelease => Some(ResourceUsage {
+                resource: resource.clone(),
                 usage: "release".to_string(),
-            })
-        } else {
-            name.strip_prefix("resource_provide::")
-                .map(|binding| ResourceUsage {
-                    resource: binding.to_string(),
-                    usage: "provide".to_string(),
-                })
+            }),
+            ObligationCategory::ResourceProvide => Some(ResourceUsage {
+                resource: resource.clone(),
+                usage: "provide".to_string(),
+            }),
+            _ => None,
         };
         if let Some(usage) = usage {
             resources.entry(node.id.0.clone()).or_default().push(usage);
@@ -708,6 +731,8 @@ mod tests {
                 name: name.to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         )
     }
@@ -870,6 +895,8 @@ mod tests {
                 name: "call_param_source::run::path".to_string(),
                 obligation: ObligationCategory::ServiceParamSource,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -882,6 +909,8 @@ mod tests {
                 name: "service_transport::prepare::FsStorage::read".to_string(),
                 obligation: ObligationCategory::ServiceTransportPrepare,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -894,6 +923,8 @@ mod tests {
                 name: "service_transport::execute::FsStorage::read".to_string(),
                 obligation: ObligationCategory::ServiceTransportExecute,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -906,6 +937,8 @@ mod tests {
                 name: "service_transport::parse::FsStorage::read".to_string(),
                 obligation: ObligationCategory::ServiceTransportParse,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -918,6 +951,8 @@ mod tests {
                 name: "resource_provide::run::out".to_string(),
                 obligation: ObligationCategory::ResourceProvide,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: Some("out".to_string()),
             },
         ));
         dag.add_node(Node::opaque(
@@ -930,6 +965,8 @@ mod tests {
                 name: "resource_lifecycle::acquire::TempFile".to_string(),
                 obligation: ObligationCategory::ResourceAcquire,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: Some("TempFile".to_string()),
             },
         ));
         dag.add_node(Node::opaque(
@@ -942,6 +979,8 @@ mod tests {
                 name: "resource_lifecycle::release::TempFile".to_string(),
                 obligation: ObligationCategory::ResourceRelease,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: Some("TempFile".to_string()),
             },
         ));
         dag.add_edge(Edge::new(
@@ -1062,6 +1101,8 @@ mod tests {
                     readonly: true,
                     permissions: vec![],
                 }),
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1081,6 +1122,8 @@ mod tests {
                     readonly: false,
                     permissions: vec!["gist.write".to_string()],
                 }),
+                is_interactive: false,
+                resource_target: None,
             },
         ));
 
@@ -1120,6 +1163,8 @@ mod tests {
                 name: "service_transport::prepare::Fake::op".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1132,6 +1177,8 @@ mod tests {
                 name: "not_a_transport_name".to_string(),
                 obligation: ObligationCategory::ServiceTransportPrepare,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
 
@@ -1139,6 +1186,57 @@ mod tests {
         assert_eq!(
             artifacts.obligations.service_transport_prepare_targets, 1,
             "classification should follow structural obligation category"
+        );
+    }
+
+    #[test]
+    fn derive_manifest_uses_structural_interactive_metadata() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "interactive_node",
+            vec![Port::scalar("input", "String")],
+            vec![Port::scalar("output", "String")],
+            LoweredOp::Callable {
+                module: "sample.app".to_string(),
+                kind: CallableKind::Func,
+                name: "prompt_user".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: true,
+                resource_target: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "transport_node",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "sample.app".to_string(),
+                kind: CallableKind::Pattern,
+                name: "service_transport::execute::FsStorage::read".to_string(),
+                obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+
+        let artifacts = derive_artifacts(&dag).expect("derivation should succeed");
+        assert_eq!(
+            artifacts.manifest.interactive_nodes,
+            vec!["interactive_node".to_string()]
+        );
+        assert_eq!(
+            artifacts
+                .manifest
+                .capture_modes
+                .get("interactive_node")
+                .cloned(),
+            Some(CaptureMode::Passthrough)
+        );
+        assert_eq!(
+            artifacts.manifest.capture_modes.get("transport_node").cloned(),
+            Some(CaptureMode::Captured)
         );
     }
 }

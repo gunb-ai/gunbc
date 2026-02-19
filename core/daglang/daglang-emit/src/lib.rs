@@ -648,6 +648,8 @@ mod tests {
                 name: "render_makefile".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -660,6 +662,8 @@ mod tests {
                 name: "makegen".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_edge(Edge::new(

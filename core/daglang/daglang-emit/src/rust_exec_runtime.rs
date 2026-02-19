@@ -1152,6 +1152,8 @@ mod tests {
                 name: "load_registry".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1164,6 +1166,8 @@ mod tests {
                 name: "render_makefile".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_edge(Edge::new(
@@ -1327,6 +1331,8 @@ mod tests {
                 name: "something".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         let err = emit_exec_runtime(&dag, "tools.unknown").expect_err("should fail");
@@ -1349,6 +1355,8 @@ mod tests {
                 name: "call_literal_source::strhex:636c697070792e746f6d6c".to_string(),
                 obligation: ObligationCategory::ServiceParamSource,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
 
@@ -1383,6 +1391,8 @@ mod tests {
                 name: "build_all".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
 
@@ -1412,6 +1422,8 @@ mod tests {
                 name: "load_registry".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1424,6 +1436,8 @@ mod tests {
                 name: "render_makefile".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1439,6 +1453,8 @@ mod tests {
                 name: "makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1451,6 +1467,8 @@ mod tests {
                 name: "content_upsert::prepare_read_makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1463,6 +1481,8 @@ mod tests {
                 name: "content_upsert::execute_read_makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1478,6 +1498,8 @@ mod tests {
                 name: "content_upsert::compare_makegen_content".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1493,6 +1515,8 @@ mod tests {
                 name: "content_upsert::prepare_write_makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1508,6 +1532,8 @@ mod tests {
                 name: "content_upsert::execute_makegen_transport".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
 
@@ -1629,6 +1655,8 @@ mod tests {
                 name: "render_clippy_toml".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1641,6 +1669,8 @@ mod tests {
                 name: "content_upsert::prepare_read_pragma".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1660,6 +1690,8 @@ mod tests {
                 name: "pragma".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
 

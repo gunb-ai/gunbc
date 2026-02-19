@@ -460,6 +460,8 @@ fn resolve_lowered_dag_defers_unknown_callable_module() {
             name: "unknown".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
 
@@ -502,21 +504,18 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
         },
     ));
 
-    // Pipeline nodes resolve to DeferredCallableOp (passthrough for dry-run compat).
-    let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve as deferred");
+    // Pipeline nodes resolve to typed UnsupportedOp placeholders.
+    let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
-    assert!(debug.contains("DeferredCallableOp"));
+    assert!(debug.contains("UnsupportedOp"), "unexpected op debug: {debug}");
     let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
         panic!("pipeline fixture should not contain subdag nodes")
     };
-    let outputs = op
+    let error = op
         .execute(HashMap::new())
-        .expect("deferred pipeline callable should pass through");
-    assert!(
-        outputs.contains_key("out"),
-        "deferred callable should populate declared output ports"
-    );
+        .expect_err("unsupported pipeline callable should fail at execution");
+    assert!(error.to_string().contains("unsupported operation"));
 }
 
 #[test]
@@ -686,6 +685,8 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
             }),
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -705,6 +706,8 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
             }),
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -724,6 +727,8 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
             }),
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_edge(Edge::new(
@@ -924,6 +929,8 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             name: "prepare".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -936,6 +943,8 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             name: "execute".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -948,6 +957,8 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             name: "parse_z".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -960,6 +971,8 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             name: "parse_a".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -972,6 +985,8 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             name: "sink".to_string(),
             obligation: ObligationCategory::None,
             service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
         },
     ));
 

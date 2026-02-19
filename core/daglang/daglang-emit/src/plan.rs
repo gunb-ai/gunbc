@@ -561,6 +561,8 @@ mod tests {
                 name: "load_registry".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -573,6 +575,8 @@ mod tests {
                 name: "render_makefile".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -588,6 +592,8 @@ mod tests {
                 name: "makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -600,6 +606,8 @@ mod tests {
                 name: "content_upsert::prepare_read_makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -612,6 +620,8 @@ mod tests {
                 name: "content_upsert::execute_read_makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -627,6 +637,8 @@ mod tests {
                 name: "content_upsert::compare_makegen_content".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -642,6 +654,8 @@ mod tests {
                 name: "content_upsert::prepare_write_makegen".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -657,6 +671,8 @@ mod tests {
                 name: "content_upsert::execute_makegen_transport".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
 
@@ -842,6 +858,8 @@ mod tests {
                 name: "load_registry".into(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
             },
         ));
 
@@ -863,6 +881,8 @@ mod tests {
                     name: render_id.clone(),
                     obligation: ObligationCategory::None,
                     service_metadata: None,
+                    is_interactive: false,
+                    resource_target: None,
                 },
             ));
             dag.add_node(Node::opaque(
@@ -875,6 +895,8 @@ mod tests {
                     name: format!("content_upsert::{prep_read_id}"),
                     obligation: ObligationCategory::None,
                     service_metadata: None,
+                    is_interactive: false,
+                    resource_target: None,
                 },
             ));
             dag.add_node(Node::opaque(
@@ -887,6 +909,8 @@ mod tests {
                     name: format!("content_upsert::{exec_read_id}"),
                     obligation: ObligationCategory::None,
                     service_metadata: None,
+                    is_interactive: false,
+                    resource_target: None,
                 },
             ));
             dag.add_node(Node::opaque(
@@ -902,6 +926,8 @@ mod tests {
                     name: format!("content_upsert::{compare_id}"),
                     obligation: ObligationCategory::None,
                     service_metadata: None,
+                    is_interactive: false,
+                    resource_target: None,
                 },
             ));
             dag.add_node(Node::opaque(
@@ -917,6 +943,8 @@ mod tests {
                     name: format!("content_upsert::{prep_write_id}"),
                     obligation: ObligationCategory::None,
                     service_metadata: None,
+                    is_interactive: false,
+                    resource_target: None,
                 },
             ));
             dag.add_node(Node::opaque(
@@ -932,6 +960,8 @@ mod tests {
                     name: format!("content_upsert::{exec_transport_id}"),
                     obligation: ObligationCategory::None,
                     service_metadata: None,
+                    is_interactive: false,
+                    resource_target: None,
                 },
             ));
 
