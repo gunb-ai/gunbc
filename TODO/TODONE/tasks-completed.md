@@ -21,6 +21,8 @@
 | ID | Task | Status |
 |----|------|--------|
 | R1 | Makegen transport port naming alignment (`response` across lowerer parity filter, exec runtime emitter, and makegen mocks). | Done 2026-02-19 |
+| R5 | MIPS lowering now routes returns through `JumpEpilogue`, temp allocation is fail-closed with explicit `LowerError` on exhaustion, and C block-scope locals are tracked with enter/exit visibility scopes to prevent leakage/aliasing across blocks. | Done 2026-02-19 |
+| R8 | `MethodMeta` request wiring centralized through shared `request_from_meta(_at)` helpers; GCP service methods migrated off duplicated endpoint strings and parity tests added to catch metadata/request drift. | Done 2026-02-19 |
 | R9 | Infra CLI `parse_input_value` fail-closed parsing now type-driven via `ValueBacking` + compatibility checks; structured JSON/list/map/set parsing and incompatibility/unsupported tests added. | Done 2026-02-19 |
 | R10 | `SystemModel` REST invocation paths now use named placeholders and validation enforces wildcard ban + placeholder↔required-input binding (with invalid-path regression tests). | Done 2026-02-19 |
 | R11 | Strict parsing APIs (`try_parse`/`FromStr`) landed for `Arch`/`Vendor`/`Os`/`AbiEnv`/`ExecutionEnv` with tolerant `parse` retained for host detection paths; strict-vs-tolerant tests added. | Done 2026-02-19 |

@@ -42,6 +42,8 @@ pub enum CStmt {
     Goto(String),
     /// `label:`
     Label(String),
+    /// `{ stmt... }` block scope
+    BlockScope(Vec<CStmt>),
     /// `free(expr);`
     Free(CExpr),
     /// C comment: `/* text */` or `// text`

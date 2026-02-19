@@ -100,8 +100,11 @@ fn render_function(func: &AsmFunction) -> String {
 
     // Body instructions.
     for instr in &func.body {
-        out.push_str(&render_instruction(instr));
+        out.push_str(&render_instruction_impl(instr, &func.label));
     }
+
+    // Epilogue label for JumpEpilogue to target.
+    writeln!(out, "{}_epilogue:", func.label).unwrap();
 
     // Epilogue (C4.4).
     if func.frame.size > 0 {
@@ -168,7 +171,7 @@ fn render_epilogue(frame: &StackFrame) -> String {
 // C4.3: Instruction rendering
 // ===========================================================================
 
-fn render_instruction(instr: &Instruction) -> String {
+fn render_instruction_impl(instr: &Instruction, func_name: &str) -> String {
     match instr {
         // Arithmetic.
         Instruction::Add { rd, rs, rt } => {
@@ -237,6 +240,7 @@ fn render_instruction(instr: &Instruction) -> String {
         Instruction::Comment(text) => format!("\t# {}\n", text),
         Instruction::Blank => "\n".to_string(),
         Instruction::Nop => "\tnop\n".to_string(),
+        Instruction::JumpEpilogue => format!("\tj {}_epilogue\n", func_name),
     }
 }
 
@@ -247,6 +251,10 @@ fn render_instruction(instr: &Instruction) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn render_instruction(instr: &Instruction) -> String {
+        super::render_instruction_impl(instr, "test_func")
+    }
 
     fn empty_frame() -> StackFrame {
         StackFrame {

@@ -3,6 +3,7 @@
 Status: Draft
 Owner: `gunbc` workflow/runtime
 Scope: `make ci`, `make test-all`, and shared generation/lint/build/test orchestration
+Detailed design pack: `docs/design/workflow/wf1-wf4-dag-design-pack.md`
 
 ## 1. Problem Statement
 
@@ -66,55 +67,102 @@ Adaptation for `gunbc`:
 
 ## 6. Core Model
 
-Introduce a typed workflow spec and execution ledger.
+Introduce a typed workflow spec and execution ledger while reusing the existing
+`Dag<T>` model (no parallel graph abstraction).
 
 ```rust
 pub struct WorkflowSpec {
-    pub id: String,                    // e.g. "ci", "test-all"
-    pub nodes: Vec<WorkflowNode>,      // topologically sortable
-    pub edges: Vec<WorkflowEdge>,
+    pub id: WorkflowId,                // e.g. "ci", "test-all"
+    pub dag: Dag<WorkflowUnit>,        // canonical graph semantics
+    pub policy_version: u32,
 }
 
-pub struct WorkflowNode {
-    pub id: String,                    // stable ID, no dynamic string synthesis
-    pub op: WorkflowOp,                // typed operation enum
-    pub effect: Effect,                // PURE/READ/WRITE_DETERMINISTIC/WRITE
-    pub claims: Vec<ResourceClaim>,    // resource concurrency constraints
-    pub inputs: Vec<NodeInput>,        // typed dependency set for keying
-    pub outputs: Vec<NodeOutput>,      // declared artifacts
+pub struct WorkflowUnit {
+    pub op: WorkflowOp,                // typed, closed operation enum
+    // Effect/resource claims are derived from op + declared resource ports.
+    // They are not independently authored fields.
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
+pub struct CanonicalKeyPayload {
+    pub op_version: u32,
+    pub input_hashes: BTreeMap<PortName, ContentHash>,
+    pub upstream_keys: BTreeMap<NodeId, MaterializationDigest>,
+    pub policy_version: u32,
 }
 
 pub struct MaterializationKey {
-    pub node_id: String,
-    pub digest: String,                // sha256 of normalized key payload
+    pub node_id: NodeId,
+    pub payload: CanonicalKeyPayload,
+    pub digest: MaterializationDigest, // sha256(payload)
+}
+
+pub enum MissReason {
+    NoPriorRun,
+    InputChanged {
+        port: PortName,
+        old: ContentHash,
+        new: ContentHash,
+    },
+    UpstreamKeyChanged {
+        upstream: NodeId,
+        old: MaterializationDigest,
+        new: MaterializationDigest,
+    },
+    OpVersionChanged { old: u32, new: u32 },
+    PolicyVersionChanged { old: u32, new: u32 },
+    OutputMissing { port: PortName },
+    OutputTampered {
+        port: PortName,
+        expected: ContentHash,
+        actual: ContentHash,
+    },
+    VolatileEffect { effect: Effect },
+}
+
+pub enum LedgerStatus {
+    CachedHit { previous_run: RunId },
+    Executed { reason: MissReason },
+    Failed { reason: MissReason, error: String },
+    Skipped { blocked_by: NodeId },
 }
 
 pub struct RunLedgerEntry {
-    pub node_id: String,
-    pub key: String,
-    pub status: NodeStatus,            // hit/miss/executed/failed/skipped
-    pub reason: Option<MissReason>,    // why work executed
+    pub node_id: NodeId,
+    pub key: MaterializationKey,
+    pub status: LedgerStatus,
+    pub output_hashes: BTreeMap<PortName, ContentHash>,
     pub duration_ms: u64,
 }
 ```
 
-`WorkflowOp` must be typed and closed. No generic shell-string fallback operation in the steady-state model.
+Model invariants:
+
+1. `WorkflowSpec` wraps `Dag<WorkflowUnit>` and therefore reuses cycle checks,
+   typed ports, and `EdgeKind`.
+2. Downstream commit/readiness ordering is represented with `EdgeKind::Control`,
+   not side tables or Make ordering.
+3. `WorkflowOp` remains typed and closed. No shell-string fallback op in the
+   steady-state model.
+4. Effect/resource behavior is structural: derive from op + resource ports (for
+   example via `derive_resource_accesses()`), not manually duplicated fields.
 
 ## 7. Materialization Key Contract
 
 For each node:
 
-`key = H(op_version, declared_inputs, upstream_output_keys, env_projection, toolchain_fingerprint, policy_version)`
+`key = H(op_version, canonical_inputs, upstream_output_keys, policy_version)`
 
 Where:
 
-1. `declared_inputs`: content hashes from `ResourceDef`/file sets/type-stable params.
-2. `upstream_output_keys`: keys of producing nodes, not timestamps.
-3. `env_projection`: explicit allowlist (`RUSTFLAGS`, selected auth/runtime flags, etc.).
-4. `toolchain_fingerprint`: `rustc --version`, cargo lock digest, relevant build profile.
-5. `policy_version`: workflow policy and planner version hash.
+1. `canonical_inputs`: hashes from declared, wired input ports only.
+2. Variability from env/toolchain must enter via explicit input resources/ports,
+   not ambient OS probing inside key computation.
+3. `upstream_output_keys`: keys of producing nodes, not timestamps.
+4. `policy_version`: workflow policy/planner version hash.
 
-No mtime-only keys in the planner core.
+No mtime-only or ambient-probe keying in planner core.
+Explainability comes from diffing `CanonicalKeyPayload` into typed `MissReason`.
 
 ## 8. Planner Algorithm
 
@@ -123,11 +171,13 @@ No mtime-only keys in the planner core.
 3. Compute current `MaterializationKey` for every node.
 4. Mark node dirty if:
    1. no prior entry,
-   2. key differs,
-   3. any declared output missing,
-   4. prior run failed.
+   2. key payload diff yields typed `MissReason`,
+   3. any declared output missing (`OutputMissing`),
+   4. any declared output hash mismatches ledger (`OutputTampered`),
+   5. node effect is non-cacheable (`VolatileEffect`),
+   6. prior run failed.
 5. Compute transitive dirty closure over dependents.
-6. Schedule only dirty closure, preserving resource claims and concurrency limits.
+6. Schedule only dirty closure, preserving derived resource claims and concurrency limits.
 7. Persist full `RunLedger` with hit/miss reasons and timings.
 
 Result:
@@ -140,8 +190,15 @@ Result:
 Executor must satisfy all before starting a node:
 
 1. Dependencies succeeded.
-2. Required resources available by capacity/claim.
+2. Required resources available by capacity/claim derived from resource ports.
 3. Node admitted by max concurrency budget.
+
+Execution/reporting semantic split:
+
+1. Domain failures (tests failed, lint findings) are data payloads on `result`
+   and still commit, so downstream report/summary nodes run.
+2. Execution failures (cannot spawn process, transport crash) are runtime failures
+   that fail closed with explicit diagnostics.
 
 Resource behavior reuses existing `AccessMode` and lock semantics in `gunbc`.
 
@@ -191,9 +248,10 @@ Planner must emit:
 
 ### Phase A: Model Introduction
 
-1. Add `WorkflowSpec` and `RunLedger` types.
-2. Add deterministic key computation library.
-3. Add planner-only dry-run command to show execute set and reasons.
+1. Add `WorkflowSpec` (wrapping `Dag<WorkflowUnit>`) and ADT `RunLedger` types.
+2. Add deterministic key payload computation + digest library.
+3. Add atomic ledger persistence contract (temp file + fsync + rename).
+4. Add planner-only dry-run command to show execute set and typed reasons.
 
 ### Phase B: CI/Test-All Port
 
@@ -225,10 +283,10 @@ Must-pass checks:
 
 ## 15. Immediate Next Design Artifacts
 
-1. `workflow_spec.rs`: first-class schema for `ci` and `test-all`.
+1. `workflow_spec.rs`: `WorkflowSpec { dag: Dag<WorkflowUnit> }` for `ci` and `test-all`.
 2. `workflow_key.rs`: canonical key payload normalization and hashing.
-3. `workflow_planner.rs`: dirty-closure + scheduling plan.
-4. `workflow_ledger.rs`: stable on-disk format and versioning policy.
+3. `workflow_planner.rs`: dirty-closure + scheduling plan with typed miss reasons.
+4. `workflow_ledger.rs`: stable on-disk format, versioning policy, atomic persistence.
 5. `docs/design/workflow-key-schema.md`: concrete key fields and miss reasons.
 
 ---

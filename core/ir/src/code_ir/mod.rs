@@ -110,6 +110,18 @@ pub enum Stmt {
         mutable: bool,
         expr: Expr,
     },
+    /// **Tier 2 (ManagedIR).** Managed-language binding with explicit intent:
+    /// multi-target declaration/assignment (e.g., Go `a, err := call()`).
+    Bind {
+        targets: Vec<BindTarget>,
+        intent: BindIntent,
+        expr: Expr,
+    },
+    /// **Tier 0.** Assignment to an existing variable/path: `dest = value;`
+    Assign {
+        dest: Expr,
+        value: Expr,
+    },
     /// **Tier 0.** Expression as statement (for side effects like `map.insert(...)`).
     Expr(Expr),
     /// **Tier 0.** An assertion.
@@ -130,6 +142,26 @@ pub enum Stmt {
     },
     /// **Tier 0.** Nested item (e.g., inner function).
     Item(Item),
+    /// **Tier 0.** Lexical block statement `{ stmts }` for isolating variable scope without returning a value.
+    BlockScope(Vec<Stmt>),
+}
+
+/// Binding target for managed-language multi-target bindings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BindTarget {
+    /// A named variable target.
+    Name(String),
+    /// Discard target (e.g., Go `_`).
+    Discard,
+}
+
+/// Binding intent for managed-language bindings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BindIntent {
+    /// Declare new variables (e.g., Go `:=`).
+    Declare,
+    /// Assign to existing variables (e.g., Go `=`).
+    Assign,
 }
 
 // ===========================================================================
@@ -401,10 +433,13 @@ pub struct SourceFile {
 pub fn is_abstract(stmt: &Stmt) -> bool {
     match stmt {
         Stmt::Let { expr, .. } | Stmt::Expr(expr) | Stmt::Return(expr) => is_abstract_expr(expr),
+        Stmt::Bind { .. } => false,
+        Stmt::Assign { dest, value } => is_abstract_expr(dest) && is_abstract_expr(value),
         Stmt::Assert(assertion) => is_abstract_assert(assertion),
         Stmt::Comment(_) | Stmt::Blank => true,
         Stmt::TailExpr(_) => false,
         Stmt::For { iter, body, .. } => is_abstract_expr(iter) && body.iter().all(is_abstract),
+        Stmt::BlockScope(stmts) => stmts.iter().all(is_abstract),
         Stmt::Item(item) => is_abstract_item(item),
     }
 }
@@ -601,6 +636,24 @@ impl Stmt {
         }
     }
 
+    /// Managed binding declaration (e.g., Go `a, err := expr`).
+    pub fn bind_declare(targets: Vec<BindTarget>, expr: Expr) -> Self {
+        Stmt::Bind {
+            targets,
+            intent: BindIntent::Declare,
+            expr,
+        }
+    }
+
+    /// Managed binding assignment (e.g., Go `a, err = expr`).
+    pub fn bind_assign(targets: Vec<BindTarget>, expr: Expr) -> Self {
+        Stmt::Bind {
+            targets,
+            intent: BindIntent::Assign,
+            expr,
+        }
+    }
+
     /// A comment line.
     pub fn comment(text: impl Into<String>) -> Self {
         Stmt::Comment(text.into())
@@ -614,6 +667,16 @@ impl Stmt {
     /// Implicit return: `expr` (no semicolon, no return keyword).
     pub fn tail(expr: Expr) -> Self {
         Stmt::TailExpr(expr)
+    }
+
+    /// Assignment: `dest = value;`
+    pub fn assign(dest: Expr, value: Expr) -> Self {
+        Stmt::Assign { dest, value }
+    }
+
+    /// Lexical block scope: `{ stmts }`
+    pub fn block_scope(stmts: Vec<Stmt>) -> Self {
+        Stmt::BlockScope(stmts)
     }
 }
 
@@ -630,6 +693,18 @@ mod tests {
     #[test]
     fn systems_stmt_tail_expr_is_false() {
         let stmt = Stmt::tail(Expr::int(1));
+        assert!(!is_abstract(&stmt));
+    }
+
+    #[test]
+    fn managed_stmt_bind_is_false_for_abstract_tier() {
+        let stmt = Stmt::bind_declare(
+            vec![
+                BindTarget::Name("value".to_string()),
+                BindTarget::Name("err".to_string()),
+            ],
+            Expr::call("fetch", vec![]),
+        );
         assert!(!is_abstract(&stmt));
     }
 

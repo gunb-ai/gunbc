@@ -67,7 +67,12 @@ pub struct MethodMeta {
 impl MethodMeta {
     /// Expands the endpoint template with the provided path parameters and appends
     /// the optional query parameters.
-    pub fn build_url(&self, base_url: &str, path_params: &[(&str, &str)], query_params: &[(&str, &str)]) -> String {
+    pub fn build_url(
+        &self,
+        base_url: &str,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) -> String {
         let mut path = self.endpoint.to_string();
         for (k, v) in path_params {
             path = path.replace(&format!("{{{}}}", k), v);
@@ -94,7 +99,7 @@ impl MethodMeta {
         query_params: &[(&str, &str)],
     ) -> RestRequest {
         let url = self.build_url(base_url, path_params, query_params);
-        let mut req = match self.http_method {
+        let req = match self.http_method {
             HttpMethod::Get => RestRequest::get(url),
             HttpMethod::Post => RestRequest::post(url),
             HttpMethod::Put => RestRequest::put(url),
@@ -120,6 +125,31 @@ pub trait GcpRestClient {
 
     /// Optional credential for authentication.
     fn credential(&self) -> Option<&Credential>;
+
+    /// Build an authenticated request from `MethodMeta` at an explicit base URL.
+    fn request_from_meta_at(
+        &self,
+        base_url: &str,
+        meta: &MethodMeta,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) -> RestRequest {
+        let mut req = meta.build_request(base_url, path_params, query_params);
+        if let Some(auth) = self.credential() {
+            req = req.credential(auth.clone());
+        }
+        req
+    }
+
+    /// Build an authenticated request from `MethodMeta` at this service's base URL.
+    fn request_from_meta(
+        &self,
+        meta: &MethodMeta,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) -> RestRequest {
+        self.request_from_meta_at(self.base_url(), meta, path_params, query_params)
+    }
 
     /// Build an authenticated request at a specific base URL.
     fn authed_request_at(&self, base_url: &str, method: HttpMethod, path: &str) -> RestRequest {

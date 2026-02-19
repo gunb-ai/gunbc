@@ -313,7 +313,7 @@ impl<'a> LowerCtx<'a> {
                     });
                     state.free_temp(reg);
                 }
-                state.emit(Instruction::JumpReg(Register::Ra));
+                state.emit(Instruction::JumpEpilogue);
             }
 
             CStmt::Goto(label) => {
@@ -321,6 +321,13 @@ impl<'a> LowerCtx<'a> {
             }
             CStmt::Label(label) => {
                 state.emit(Instruction::Label(label.clone()));
+            }
+            CStmt::BlockScope(body) => {
+                state.enter_scope();
+                for s in body {
+                    self.lower_stmt(state, s)?;
+                }
+                state.exit_scope();
             }
             CStmt::Free(_) => {
                 state.emit(Instruction::Comment("free (no-op in MIPS)".to_string()));
@@ -364,7 +371,7 @@ impl<'a> LowerCtx<'a> {
             CExpr::Index { expr, index } => {
                 let base_reg = self.lower_expr(state, expr)?;
                 let idx_reg = self.lower_expr(state, index)?;
-                let addr_reg = self.emit_array_addr(state, base_reg, idx_reg);
+                let addr_reg = self.emit_array_addr(state, base_reg, idx_reg)?;
                 state.emit(Instruction::StoreWord {
                     rt: src_reg,
                     offset: 0,
@@ -390,7 +397,7 @@ impl<'a> LowerCtx<'a> {
     fn lower_expr(&mut self, state: &mut FnState, expr: &CExpr) -> Result<Register, LowerError> {
         match expr {
             CExpr::IntLit(n) => {
-                let reg = state.alloc_temp();
+                let reg = state.alloc_temp()?;
                 state.emit(Instruction::LoadImm {
                     rt: reg,
                     imm: *n as i32,
@@ -398,7 +405,7 @@ impl<'a> LowerCtx<'a> {
                 Ok(reg)
             }
             CExpr::BoolLit(b) => {
-                let reg = state.alloc_temp();
+                let reg = state.alloc_temp()?;
                 state.emit(Instruction::LoadImm {
                     rt: reg,
                     imm: i32::from(*b),
@@ -407,12 +414,12 @@ impl<'a> LowerCtx<'a> {
             }
             CExpr::StrLit(s) => {
                 let label = self.intern_string(s);
-                let reg = state.alloc_temp();
+                let reg = state.alloc_temp()?;
                 state.emit(Instruction::LoadAddr { rt: reg, label });
                 Ok(reg)
             }
             CExpr::CharLit(c) => {
-                let reg = state.alloc_temp();
+                let reg = state.alloc_temp()?;
                 state.emit(Instruction::LoadImm {
                     rt: reg,
                     imm: *c as i32,
@@ -420,7 +427,7 @@ impl<'a> LowerCtx<'a> {
                 Ok(reg)
             }
             CExpr::Null => {
-                let reg = state.alloc_temp();
+                let reg = state.alloc_temp()?;
                 state.emit(Instruction::Move {
                     rd: reg,
                     rs: Register::Zero,
@@ -428,7 +435,7 @@ impl<'a> LowerCtx<'a> {
                 Ok(reg)
             }
             CExpr::Var(name) => {
-                let reg = state.alloc_temp();
+                let reg = state.alloc_temp()?;
                 if let Some(offset) = state.find_var(name) {
                     state.emit(Instruction::LoadWord {
                         rt: reg,
@@ -460,7 +467,7 @@ impl<'a> LowerCtx<'a> {
             CExpr::Arrow(base_expr, field) => {
                 let base_reg = self.lower_expr(state, base_expr)?;
                 state.emit(Instruction::Comment(format!("arrow ->{field}")));
-                let result = state.alloc_temp();
+                let result = state.alloc_temp()?;
                 state.emit(Instruction::LoadWord {
                     rt: result,
                     offset: 0,
@@ -472,8 +479,8 @@ impl<'a> LowerCtx<'a> {
             CExpr::Index { expr, index } => {
                 let base_reg = self.lower_expr(state, expr)?;
                 let idx_reg = self.lower_expr(state, index)?;
-                let addr_reg = self.emit_array_addr(state, base_reg, idx_reg);
-                let result = state.alloc_temp();
+                let addr_reg = self.emit_array_addr(state, base_reg, idx_reg)?;
+                let result = state.alloc_temp()?;
                 state.emit(Instruction::LoadWord {
                     rt: result,
                     offset: 0,
@@ -487,7 +494,7 @@ impl<'a> LowerCtx<'a> {
             CExpr::AddressOf(inner) => {
                 if let CExpr::Var(name) = inner.as_ref() {
                     if let Some(offset) = state.find_var(name) {
-                        let reg = state.alloc_temp();
+                        let reg = state.alloc_temp()?;
                         state.emit(Instruction::AddImm {
                             rt: reg,
                             rs: Register::Sp,
@@ -500,7 +507,7 @@ impl<'a> LowerCtx<'a> {
             }
             CExpr::Deref(inner) => {
                 let addr_reg = self.lower_expr(state, inner)?;
-                let result = state.alloc_temp();
+                let result = state.alloc_temp()?;
                 state.emit(Instruction::LoadWord {
                     rt: result,
                     offset: 0,
@@ -514,7 +521,7 @@ impl<'a> LowerCtx<'a> {
                 self.lower_expr(state, expr)
             }
             CExpr::SizeOf(ty) => {
-                let reg = state.alloc_temp();
+                let reg = state.alloc_temp()?;
                 state.emit(Instruction::LoadImm {
                     rt: reg,
                     imm: type_size_aligned(ty) as i32,
@@ -535,7 +542,7 @@ impl<'a> LowerCtx<'a> {
                     imm: syscall::SBRK,
                 });
                 state.emit(Instruction::Syscall);
-                let result = state.alloc_temp();
+                let result = state.alloc_temp()?;
                 state.emit(Instruction::Move {
                     rd: result,
                     rs: Register::V(0),
@@ -548,7 +555,7 @@ impl<'a> LowerCtx<'a> {
                 else_expr,
             } => {
                 let cond_reg = self.lower_expr(state, cond)?;
-                let result = state.alloc_temp();
+                let result = state.alloc_temp()?;
                 let else_label = self.fresh_label("tern_else");
                 let end_label = self.fresh_label("tern_end");
 
@@ -594,7 +601,7 @@ impl<'a> LowerCtx<'a> {
     ) -> Result<Register, LowerError> {
         let left_reg = self.lower_expr(state, left)?;
         let right_reg = self.lower_expr(state, right)?;
-        let result = state.alloc_temp();
+        let result = state.alloc_temp()?;
 
         match op {
             "+" => {
@@ -710,7 +717,7 @@ impl<'a> LowerCtx<'a> {
         let inner = self.lower_expr(state, expr)?;
         match op {
             "-" => {
-                let result = state.alloc_temp();
+                let result = state.alloc_temp()?;
                 state.emit(Instruction::Sub {
                     rd: result,
                     rs: Register::Zero,
@@ -720,7 +727,7 @@ impl<'a> LowerCtx<'a> {
                 Ok(result)
             }
             "!" => {
-                let result = state.alloc_temp();
+                let result = state.alloc_temp()?;
                 let set_one = self.fresh_label("not_true");
                 let end = self.fresh_label("not_end");
                 state.emit(Instruction::BranchEq {
@@ -813,7 +820,7 @@ impl<'a> LowerCtx<'a> {
         }
 
         // Result is in $v0.
-        let result = state.alloc_temp();
+        let result = state.alloc_temp()?;
         state.emit(Instruction::Move {
             rd: result,
             rs: Register::V(0),
@@ -848,7 +855,7 @@ impl<'a> LowerCtx<'a> {
         state.emit(Instruction::Syscall);
 
         // Syscall result (if any) is in $v0.
-        let result = state.alloc_temp();
+        let result = state.alloc_temp()?;
         state.emit(Instruction::Move {
             rd: result,
             rs: Register::V(0),
@@ -864,14 +871,20 @@ impl<'a> LowerCtx<'a> {
     /// Returns register with 1 (equal) or 0 (not equal).
     #[cfg(test)]
     fn emit_strcmp(&mut self, state: &mut FnState, a_reg: Register, b_reg: Register) -> Register {
-        let result = state.alloc_temp();
+        let result = state
+            .alloc_temp()
+            .expect("test helper should not exhaust temporary registers");
         let loop_label = self.fresh_label("strcmp_loop");
         let ne_label = self.fresh_label("strcmp_ne");
         let eq_label = self.fresh_label("strcmp_eq");
         let end_label = self.fresh_label("strcmp_end");
 
-        let byte_a = state.alloc_temp();
-        let byte_b = state.alloc_temp();
+        let byte_a = state
+            .alloc_temp()
+            .expect("test helper should not exhaust temporary registers");
+        let byte_b = state
+            .alloc_temp()
+            .expect("test helper should not exhaust temporary registers");
 
         state.emit(Instruction::Label(loop_label.clone()));
 
@@ -934,7 +947,9 @@ impl<'a> LowerCtx<'a> {
     fn emit_strcpy(&mut self, state: &mut FnState, dst_reg: Register, src_reg: Register) {
         let loop_label = self.fresh_label("strcpy_loop");
         let end_label = self.fresh_label("strcpy_end");
-        let byte = state.alloc_temp();
+        let byte = state
+            .alloc_temp()
+            .expect("test helper should not exhaust temporary registers");
 
         state.emit(Instruction::Label(loop_label.clone()));
         state.emit(Instruction::LoadByte {
@@ -978,27 +993,27 @@ impl<'a> LowerCtx<'a> {
         state: &mut FnState,
         base_reg: Register,
         idx_reg: Register,
-    ) -> Register {
-        let four_reg = state.alloc_temp();
+    ) -> Result<Register, LowerError> {
+        let four_reg = state.alloc_temp()?;
         state.emit(Instruction::LoadImm {
             rt: four_reg,
             imm: 4,
         });
-        let scaled = state.alloc_temp();
+        let scaled = state.alloc_temp()?;
         state.emit(Instruction::Mul {
             rd: scaled,
             rs: idx_reg,
             rt: four_reg,
         });
         state.free_temp(four_reg);
-        let addr = state.alloc_temp();
+        let addr = state.alloc_temp()?;
         state.emit(Instruction::Add {
             rd: addr,
             rs: base_reg,
             rt: scaled,
         });
         state.free_temp(scaled);
-        addr
+        Ok(addr)
     }
 
     /// Emit `result = (a == b)` or `result = (a != b)` using branch sequence.
@@ -1055,8 +1070,12 @@ impl<'a> LowerCtx<'a> {
 // ===========================================================================
 
 struct FnState {
-    /// Local variables: (name, offset from $sp, size in bytes).
+    /// All local variables seen during lowering (for frame metadata).
     locals: Vec<(String, u32, u32)>,
+    /// Lexically-visible local variables (for name lookup).
+    visible_locals: Vec<(String, u32, u32)>,
+    /// Visibility stack markers into `visible_locals`.
+    scope_markers: Vec<usize>,
     /// Next available stack offset for locals.
     next_offset: u32,
     /// Whether function makes any calls (needs $ra save).
@@ -1071,6 +1090,8 @@ impl FnState {
     fn new() -> Self {
         Self {
             locals: Vec::new(),
+            visible_locals: Vec::new(),
+            scope_markers: Vec::new(),
             next_offset: 0,
             has_calls: false,
             body: Vec::new(),
@@ -1081,30 +1102,45 @@ impl FnState {
     /// Allocate a local variable on the stack. Returns offset from $sp.
     fn alloc_local(&mut self, name: &str, size: u32) -> u32 {
         let offset = self.next_offset;
-        self.locals.push((name.to_string(), offset, size));
+        let entry = (name.to_string(), offset, size);
+        self.locals.push(entry.clone());
+        self.visible_locals.push(entry);
         self.next_offset += size;
         offset
     }
 
     /// Find a variable's stack offset by name (most recent binding wins).
     fn find_var(&self, name: &str) -> Option<u32> {
-        self.locals
+        self.visible_locals
             .iter()
             .rev()
             .find(|(n, _, _)| n == name)
             .map(|(_, off, _)| *off)
     }
 
+    /// Enter a lexical scope for local-visibility tracking.
+    fn enter_scope(&mut self) {
+        self.scope_markers.push(self.visible_locals.len());
+    }
+
+    /// Exit the innermost lexical scope.
+    fn exit_scope(&mut self) {
+        if let Some(marker) = self.scope_markers.pop() {
+            self.visible_locals.truncate(marker);
+        }
+    }
+
     /// Allocate a temporary register ($t0-$t9).
-    fn alloc_temp(&mut self) -> Register {
+    fn alloc_temp(&mut self) -> Result<Register, LowerError> {
         for i in 0..10u8 {
             if self.temps_in_use & (1 << i) == 0 {
                 self.temps_in_use |= 1 << i;
-                return Register::T(i);
+                return Ok(Register::T(i));
             }
         }
-        // All temps exhausted — wrap to $t0 (clobbers, but shouldn't happen in practice).
-        Register::T(0)
+        Err(LowerError::InternalError(
+            "MIPS temporary register exhaustion ($t0-$t9)".to_string(),
+        ))
     }
 
     /// Release a temporary register.
@@ -1271,6 +1307,18 @@ mod tests {
         make_c_main(vec![], body)
     }
 
+    fn nested_add_expr(depth: usize) -> CExpr {
+        let mut expr = CExpr::IntLit(depth as i64);
+        for i in (0..depth).rev() {
+            expr = CExpr::BinOp {
+                left: Box::new(CExpr::IntLit(i as i64)),
+                op: "+".to_string(),
+                right: Box::new(expr),
+            };
+        }
+        expr
+    }
+
     // -- B5.1: AsmProgram structure --
 
     #[test]
@@ -1291,17 +1339,49 @@ mod tests {
     fn temp_registers_allocated_and_freed() {
         let mut state = FnState::new();
 
-        let r0 = state.alloc_temp();
-        let r1 = state.alloc_temp();
+        let r0 = state.alloc_temp().expect("should allocate $t0");
+        let r1 = state.alloc_temp().expect("should allocate $t1");
         assert_eq!(r0, Register::T(0));
         assert_eq!(r1, Register::T(1));
 
         state.free_temp(r0);
-        let r2 = state.alloc_temp();
+        let r2 = state.alloc_temp().expect("should reuse freed $t0");
         assert_eq!(r2, Register::T(0), "freed $t0 should be reused");
 
         state.free_temp(r1);
         state.free_temp(r2);
+    }
+
+    #[test]
+    fn temp_register_exhaustion_fails_closed() {
+        let mut state = FnState::new();
+        let mut regs = Vec::new();
+        for _ in 0..10 {
+            regs.push(state.alloc_temp().expect("should allocate temp register"));
+        }
+
+        let err = state
+            .alloc_temp()
+            .expect_err("11th temporary register should fail closed");
+        assert!(
+            matches!(err, LowerError::InternalError(ref msg) if msg.contains("temporary register exhaustion")),
+            "expected explicit register exhaustion error, got: {err:?}"
+        );
+
+        for reg in regs {
+            state.free_temp(reg);
+        }
+    }
+
+    #[test]
+    fn scope_exit_restores_previous_binding() {
+        let mut state = FnState::new();
+        let outer = state.alloc_local("x", 4);
+        state.enter_scope();
+        let inner = state.alloc_local("x", 4);
+        assert_eq!(state.find_var("x"), Some(inner));
+        state.exit_scope();
+        assert_eq!(state.find_var("x"), Some(outer));
     }
 
     #[test]
@@ -1341,6 +1421,39 @@ mod tests {
         });
         assert!(has_load, "should have li for init value");
         assert!(has_store, "should have sw to stack slot");
+    }
+
+    #[test]
+    fn return_lowers_to_epilogue_jump_not_direct_jr_ra() {
+        let source = simple_main(vec![CStmt::Return(Some(CExpr::IntLit(7)))]);
+        let config = MipsConfig::default();
+        let program = lower_to_mips(&source, &config).expect("lowering should succeed");
+        let main = &program.functions[0];
+
+        assert!(
+            main.body
+                .iter()
+                .any(|i| matches!(i, Instruction::JumpEpilogue)),
+            "return should route to epilogue"
+        );
+        assert!(
+            !main
+                .body
+                .iter()
+                .any(|i| matches!(i, Instruction::JumpReg(Register::Ra))),
+            "lowerer should not emit direct jr $ra for returns"
+        );
+    }
+
+    #[test]
+    fn deep_expression_register_pressure_fails_closed() {
+        let source = simple_main(vec![CStmt::Return(Some(nested_add_expr(16)))]);
+        let config = MipsConfig::default();
+        let err = lower_to_mips(&source, &config).expect_err("should fail on temp exhaustion");
+        assert!(
+            matches!(err, LowerError::InternalError(ref msg) if msg.contains("temporary register exhaustion")),
+            "expected explicit register exhaustion error, got: {err:?}"
+        );
     }
 
     // -- B5.3: Stack frame layout --
@@ -1549,8 +1662,8 @@ mod tests {
         let mut ctx = LowerCtx::new(&config);
         let mut state = FnState::new();
 
-        let a = state.alloc_temp();
-        let b = state.alloc_temp();
+        let a = state.alloc_temp().expect("should allocate temp");
+        let b = state.alloc_temp().expect("should allocate temp");
         let result = ctx.emit_strcmp(&mut state, a, b);
 
         assert!(matches!(result, Register::T(_)));
@@ -1575,8 +1688,8 @@ mod tests {
         let mut ctx = LowerCtx::new(&config);
         let mut state = FnState::new();
 
-        let dst = state.alloc_temp();
-        let src = state.alloc_temp();
+        let dst = state.alloc_temp().expect("should allocate temp");
+        let src = state.alloc_temp().expect("should allocate temp");
         ctx.emit_strcpy(&mut state, dst, src);
 
         let has_lb = state

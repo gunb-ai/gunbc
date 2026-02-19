@@ -165,6 +165,8 @@ pub enum Instruction {
     JumpAndLink(String),
     /// `jr $rs`
     JumpReg(Register),
+    /// Explicit routing to the function's single-exit epilogue.
+    JumpEpilogue,
 
     // -- Data movement --
     /// `move $rd, $rs` (pseudo-instruction)

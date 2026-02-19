@@ -226,6 +226,17 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             let mut_kw = if *mutable { "mut " } else { "" };
             format!("{}let {}{} = {};\n", pad, mut_kw, name, render_expr(expr))
         }
+        Stmt::Assign { dest, value } => {
+            format!("{}{} = {};\n", pad, render_expr(dest), render_expr(value))
+        }
+        Stmt::BlockScope(body) => {
+            let mut out = format!("{} {{\n", pad);
+            for s in body {
+                out.push_str(&render_stmt(s, indent + 1));
+            }
+            writeln!(out, "{}}}\n", pad).unwrap();
+            out
+        }
         Stmt::Expr(expr) => {
             format!("{}{};\n", pad, render_expr(expr))
         }

@@ -1400,6 +1400,15 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
             Stmt::Item(Item::Raw(code)) => Self::collect_idents_from_type(code, used),
             Stmt::Item(_) => {}
+            Stmt::Assign { dest, value } => {
+                Self::collect_idents_from_expr(dest, used);
+                Self::collect_idents_from_expr(value, used);
+            }
+            Stmt::BlockScope(stmts) => {
+                for s in stmts {
+                    Self::collect_idents_from_stmt(s, used);
+                }
+            }
         }
     }
 

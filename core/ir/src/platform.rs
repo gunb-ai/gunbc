@@ -26,7 +26,7 @@ pub enum Arch {
 }
 
 impl Arch {
-    pub fn try_parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, String> {
         match value.trim().to_ascii_lowercase().as_str() {
             "x86_64" | "amd64" => Ok(Self::X86_64),
             "x86" | "i686" | "i586" => Ok(Self::X86),
@@ -41,10 +41,6 @@ impl Arch {
             "wasm32" => Ok(Self::Wasm32),
             other => Err(format!("unknown arch: {other}")),
         }
-    }
-
-    pub fn parse(value: &str) -> Self {
-        Self::try_parse(value).unwrap_or_else(|_| Self::Other(value.trim().to_string()))
     }
 
     pub fn as_token(&self) -> &str {
@@ -75,7 +71,7 @@ impl FromStr for Arch {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::try_parse(s)
+        Self::parse(s)
     }
 }
 
@@ -91,7 +87,7 @@ pub enum Vendor {
 }
 
 impl Vendor {
-    pub fn try_parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, String> {
         match value.trim().to_ascii_lowercase().as_str() {
             "unknown" => Ok(Self::Unknown),
             "pc" => Ok(Self::Pc),
@@ -99,10 +95,6 @@ impl Vendor {
             "w64" => Ok(Self::W64),
             other => Err(format!("unknown vendor: {other}")),
         }
-    }
-
-    pub fn parse(value: &str) -> Self {
-        Self::try_parse(value).unwrap_or_else(|_| Self::Other(value.trim().to_string()))
     }
 
     pub fn as_token(&self) -> &str {
@@ -126,7 +118,7 @@ impl FromStr for Vendor {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::try_parse(s)
+        Self::parse(s)
     }
 }
 
@@ -145,7 +137,7 @@ pub enum Os {
 }
 
 impl Os {
-    pub fn try_parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, String> {
         match value.trim().to_ascii_lowercase().as_str() {
             "linux" => Ok(Self::Linux),
             "darwin" | "macos" | "osx" => Ok(Self::Macos),
@@ -156,10 +148,6 @@ impl Os {
             "wasi" => Ok(Self::Wasi),
             other => Err(format!("unknown os: {other}")),
         }
-    }
-
-    pub fn parse(value: &str) -> Self {
-        Self::try_parse(value).unwrap_or_else(|_| Self::Other(value.trim().to_string()))
     }
 
     pub fn as_token(&self) -> &str {
@@ -179,11 +167,11 @@ impl Os {
     ///
     /// Supports both the current spelling (`Macos`) and legacy spelling
     /// (`MacOS`) used in older DSL/docs snapshots.
-    pub fn parse_dsl_platform(value: &str) -> Self {
+    pub fn parse_dsl_platform(value: &str) -> Result<Self, String> {
         match value.trim() {
-            "Linux" => Self::Linux,
-            "Macos" | "MacOS" => Self::Macos,
-            "Windows" => Self::Windows,
+            "Linux" => Ok(Self::Linux),
+            "Macos" | "MacOS" => Ok(Self::Macos),
+            "Windows" => Ok(Self::Windows),
             other => Self::parse(other),
         }
     }
@@ -209,7 +197,7 @@ impl FromStr for Os {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::try_parse(s)
+        Self::parse(s)
     }
 }
 
@@ -230,7 +218,7 @@ pub enum AbiEnv {
 }
 
 impl AbiEnv {
-    pub fn try_parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, String> {
         match value.trim().to_ascii_lowercase().as_str() {
             "" | "none" => Ok(Self::None),
             "gnu" => Ok(Self::Gnu),
@@ -243,10 +231,6 @@ impl AbiEnv {
             "eabihf" => Ok(Self::Eabihf),
             other => Err(format!("unknown abi/env: {other}")),
         }
-    }
-
-    pub fn parse(value: &str) -> Self {
-        Self::try_parse(value).unwrap_or_else(|_| Self::Other(value.trim().to_string()))
     }
 
     pub fn as_token(&self) -> Option<&str> {
@@ -278,7 +262,7 @@ impl FromStr for AbiEnv {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::try_parse(s)
+        Self::parse(s)
     }
 }
 
@@ -303,8 +287,8 @@ impl TargetTriple {
 
     /// Detect a best-effort host triple for the current process.
     pub fn detect_host() -> Self {
-        let arch = Arch::parse(std::env::consts::ARCH);
-        let os = Os::parse(std::env::consts::OS);
+        let arch = Arch::parse(std::env::consts::ARCH).unwrap_or_else(|_| Arch::Other(std::env::consts::ARCH.to_string()));
+        let os = Os::parse(std::env::consts::OS).unwrap_or_else(|_| Os::Other(std::env::consts::OS.to_string()));
         let vendor = detect_vendor();
         let env = detect_abi_env();
         Self {
@@ -327,11 +311,11 @@ impl TargetTriple {
             ));
         }
 
-        let arch = Arch::try_parse(segments[0])?;
-        let vendor = Vendor::try_parse(segments[1])?;
-        let os = Os::try_parse(segments[2])?;
+        let arch = Arch::parse(segments[0])?;
+        let vendor = Vendor::parse(segments[1])?;
+        let os = Os::parse(segments[2])?;
         let env = if segments.len() > 3 {
-            AbiEnv::try_parse(&segments[3..].join("-"))?
+            AbiEnv::parse(&segments[3..].join("-"))?
         } else {
             AbiEnv::None
         };
@@ -380,7 +364,7 @@ pub enum ExecutionEnv {
 }
 
 impl ExecutionEnv {
-    pub fn try_parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, String> {
         match value.trim().to_ascii_lowercase().as_str() {
             "native" => Ok(Self::Native),
             "wsl" => Ok(Self::Wsl),
@@ -389,10 +373,6 @@ impl ExecutionEnv {
             "emulator" | "qemu" => Ok(Self::Emulator),
             other => Err(format!("unknown execution env: {other}")),
         }
-    }
-
-    pub fn parse(value: &str) -> Self {
-        Self::try_parse(value).unwrap_or(Self::Native)
     }
 
     pub fn as_token(&self) -> &'static str {
@@ -416,7 +396,7 @@ impl FromStr for ExecutionEnv {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::try_parse(s)
+        Self::parse(s)
     }
 }
 
@@ -461,7 +441,7 @@ impl ToolchainCommands {
 
 fn detect_execution_env() -> ExecutionEnv {
     if std::env::var("GUNBC_EXEC_ENV").is_ok() {
-        return ExecutionEnv::parse(&std::env::var("GUNBC_EXEC_ENV").unwrap_or_default());
+        return ExecutionEnv::parse(&std::env::var("GUNBC_EXEC_ENV").unwrap_or_default()).unwrap_or(ExecutionEnv::Native);
     }
 
     if std::env::var_os("WSL_DISTRO_NAME").is_some() || std::env::var_os("WSL_INTEROP").is_some() {
@@ -567,10 +547,10 @@ mod tests {
 
     #[test]
     fn os_dsl_platform_adapter_accepts_legacy_and_current_spellings() {
-        assert_eq!(Os::parse_dsl_platform("Linux"), Os::Linux);
-        assert_eq!(Os::parse_dsl_platform("Macos"), Os::Macos);
-        assert_eq!(Os::parse_dsl_platform("MacOS"), Os::Macos);
-        assert_eq!(Os::parse_dsl_platform("Windows"), Os::Windows);
+        assert_eq!(Os::parse_dsl_platform("Linux").unwrap(), Os::Linux);
+        assert_eq!(Os::parse_dsl_platform("Macos").unwrap(), Os::Macos);
+        assert_eq!(Os::parse_dsl_platform("MacOS").unwrap(), Os::Macos);
+        assert_eq!(Os::parse_dsl_platform("Windows").unwrap(), Os::Windows);
     }
 
     #[test]
@@ -581,37 +561,21 @@ mod tests {
     }
     #[test]
     fn strict_parse_fails_on_unknown() {
-        assert!(Arch::try_parse("unknown_arch").is_err());
+        assert!(Arch::parse("unknown_arch").is_err());
         assert!("unknown_arch".parse::<Arch>().is_err());
 
-        assert!(Vendor::try_parse("unknown_vendor").is_err());
+        assert!(Vendor::parse("unknown_vendor").is_err());
         assert!("unknown_vendor".parse::<Vendor>().is_err());
 
-        assert!(Os::try_parse("unknown_os").is_err());
+        assert!(Os::parse("unknown_os").is_err());
         assert!("unknown_os".parse::<Os>().is_err());
 
-        assert!(AbiEnv::try_parse("unknown_env").is_err());
+        assert!(AbiEnv::parse("unknown_env").is_err());
         assert!("unknown_env".parse::<AbiEnv>().is_err());
 
-        assert!(ExecutionEnv::try_parse("unknown_exec").is_err());
+        assert!(ExecutionEnv::parse("unknown_exec").is_err());
         assert!("unknown_exec".parse::<ExecutionEnv>().is_err());
     }
 
-    #[test]
-    fn tolerant_parse_falls_back() {
-        assert_eq!(
-            Arch::parse("unknown_arch"),
-            Arch::Other("unknown_arch".to_string())
-        );
-        assert_eq!(
-            Vendor::parse("unknown_vendor"),
-            Vendor::Other("unknown_vendor".to_string())
-        );
-        assert_eq!(Os::parse("unknown_os"), Os::Other("unknown_os".to_string()));
-        assert_eq!(
-            AbiEnv::parse("unknown_env"),
-            AbiEnv::Other("unknown_env".to_string())
-        );
-        assert_eq!(ExecutionEnv::parse("unknown_exec"), ExecutionEnv::Native);
-    }
+
 }

@@ -15,9 +15,11 @@
 //!
 //! **Owned by**: Task 10 (dsl-codegen-tasks.md)
 
-use gunbc_ir::code_ir::lower::LowerError;
 use crate::transport_analysis::{body_has_transport_calls, expr_is_transport_call};
-use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Import, Item, SourceFile, Stmt};
+use gunbc_ir::code_ir::lower::LowerError;
+use gunbc_ir::code_ir::{
+    BindIntent, BindTarget, CallObligation, Expr, FnDef, Import, Item, SourceFile, Stmt,
+};
 
 /// Configuration for Go lowering.
 #[derive(Debug, Clone)]
@@ -188,10 +190,12 @@ fn lower_stmt_into(out: &mut Vec<Stmt>, stmt: &Stmt, in_fallible_fn: bool, confi
             if is_transport && in_fallible_fn {
                 // B3.2: Multi-return error handling.
                 // `result, err := transport_call(args...)`
-                let err_name = format!("{}, err", to_camel_case(name));
-                out.push(Stmt::Let {
-                    name: err_name,
-                    mutable: false,
+                out.push(Stmt::Bind {
+                    targets: vec![
+                        BindTarget::Name(to_camel_case(name)),
+                        BindTarget::Name("err".to_string()),
+                    ],
+                    intent: BindIntent::Declare,
                     expr: lowered_expr,
                 });
                 // `if err != nil { return err }`
@@ -217,27 +221,40 @@ fn lower_stmt_into(out: &mut Vec<Stmt>, stmt: &Stmt, in_fallible_fn: bool, confi
             let is_transport = expr_is_transport_call(expr);
 
             if is_transport && in_fallible_fn {
-                // Transport as expression statement → `_, err := call()`
-                out.push(Stmt::Let {
-                    name: "_, err".to_string(),
-                    mutable: false,
-                    expr: lowered,
-                });
-                out.push(Stmt::Expr(Expr::If {
-                    cond: Box::new(Expr::BinOp {
-                        left: Box::new(Expr::var("err")),
-                        op: "!=".to_string(),
-                        right: Box::new(Expr::var("nil")),
+                // Transport as expression statement → isolate `err` in a lexical block.
+                out.push(Stmt::BlockScope(vec![
+                    Stmt::Bind {
+                        targets: vec![BindTarget::Discard, BindTarget::Name("err".to_string())],
+                        intent: BindIntent::Declare,
+                        expr: lowered,
+                    },
+                    Stmt::Expr(Expr::If {
+                        cond: Box::new(Expr::BinOp {
+                            left: Box::new(Expr::var("err")),
+                            op: "!=".to_string(),
+                            right: Box::new(Expr::var("nil")),
+                        }),
+                        then_body: vec![Stmt::Return(Expr::var("err"))],
+                        else_body: None,
                     }),
-                    then_body: vec![Stmt::Return(Expr::var("err"))],
-                    else_body: None,
-                }));
+                ]));
             } else {
                 out.push(Stmt::Expr(lowered));
             }
         }
         Stmt::Return(expr) => {
             out.push(Stmt::Return(lower_expr(expr, config)));
+        }
+        Stmt::Bind {
+            targets,
+            intent,
+            expr,
+        } => {
+            out.push(Stmt::Bind {
+                targets: targets.clone(),
+                intent: *intent,
+                expr: lower_expr(expr, config),
+            });
         }
         Stmt::For {
             binding,
@@ -435,6 +452,7 @@ fn collect_go_imports(source: &SourceFile, config: &GoConfig) -> Vec<String> {
 fn body_has_format(stmts: &[Stmt]) -> bool {
     stmts.iter().any(|stmt| match stmt {
         Stmt::Let { expr, .. } => expr_has_format(expr),
+        Stmt::Bind { expr, .. } => expr_has_format(expr),
         Stmt::Expr(expr) | Stmt::Return(expr) | Stmt::TailExpr(expr) => expr_has_format(expr),
         Stmt::For { body, .. } => body_has_format(body),
         _ => false,
@@ -466,6 +484,7 @@ fn expr_has_format(expr: &Expr) -> bool {
 fn body_uses_json(stmts: &[Stmt]) -> bool {
     stmts.iter().any(|stmt| match stmt {
         Stmt::Let { expr, .. } => expr_uses_json(expr),
+        Stmt::Bind { expr, .. } => expr_uses_json(expr),
         Stmt::Expr(expr) | Stmt::Return(expr) | Stmt::TailExpr(expr) => expr_uses_json(expr),
         Stmt::For { body, .. } => body_uses_json(body),
         _ => false,
@@ -681,15 +700,94 @@ mod tests {
             })
             .unwrap();
 
-        // Should have: let "response, err" = ..., if err != nil, return nil.
-        let body_debug = format!("{:?}", main_fn.body);
+        // Should have: typed multi-target bind + `if err != nil { return err }`.
+        let has_typed_bind = main_fn.body.iter().any(|stmt| {
+            matches!(
+                stmt,
+                Stmt::Bind {
+                    targets,
+                    intent: BindIntent::Declare,
+                    ..
+                } if matches!(
+                    targets.as_slice(),
+                    [BindTarget::Name(result), BindTarget::Name(err)]
+                        if result == "response" && err == "err"
+                )
+            )
+        });
         assert!(
-            body_debug.contains("response, err"),
-            "should have multi-return binding, body: {body_debug}"
+            has_typed_bind,
+            "should have typed multi-target bind for response/err"
         );
-        assert!(
-            body_debug.contains("err"),
-            "should have error check, body: {body_debug}"
+
+        let has_err_check = main_fn.body.iter().any(|stmt| {
+            matches!(
+                stmt,
+                Stmt::Expr(Expr::If { cond, .. })
+                    if matches!(
+                        cond.as_ref(),
+                        Expr::BinOp { left, op, right }
+                            if matches!(
+                                (&**left, op.as_str(), &**right),
+                                (Expr::Var(lhs), "!=", Expr::Var(rhs)) if lhs == "err" && rhs == "nil"
+                            )
+                    )
+            )
+        });
+        assert!(has_err_check, "should have explicit err != nil check");
+    }
+
+    #[test]
+    fn repeated_transport_expression_statements_are_block_scoped() {
+        let source = make_abstract_main(vec![
+            Stmt::Expr(Expr::call_with_obligation(
+                "execute_file_read",
+                vec![Expr::var("req_a")],
+                CallObligation::ServiceTransportExecute,
+            )),
+            Stmt::Expr(Expr::call_with_obligation(
+                "execute_file_read",
+                vec![Expr::var("req_b")],
+                CallObligation::ServiceTransportExecute,
+            )),
+        ]);
+
+        let config = GoConfig::default();
+        let lowered = lower_to_go(&source, &config).unwrap();
+
+        let main_fn = lowered
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Item::Fn(f) if f.name == "Main" => Some(f),
+                _ => None,
+            })
+            .expect("should have fn Main");
+
+        let scoped_err_blocks = main_fn
+            .body
+            .iter()
+            .filter(|stmt| {
+                matches!(
+                    stmt,
+                    Stmt::BlockScope(inner)
+                        if matches!(
+                            inner.first(),
+                            Some(Stmt::Bind {
+                                targets,
+                                intent: BindIntent::Declare,
+                                ..
+                            }) if matches!(
+                                targets.as_slice(),
+                                [BindTarget::Discard, BindTarget::Name(err)] if err == "err"
+                            )
+                        )
+                )
+            })
+            .count();
+        assert_eq!(
+            scoped_err_blocks, 2,
+            "each transport expression statement should isolate err declaration in its own block"
         );
     }
 

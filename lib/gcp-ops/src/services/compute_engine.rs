@@ -157,27 +157,15 @@ super::impl_gcp_rest_client!(ComputeEngineRest, COMPUTE);
 
 impl ComputeEngineService for ComputeEngineRest {
     fn list_instance_templates(&self, project: &str) -> RestRequest {
-        let mut req = LIST_INSTANCE_TEMPLATES_META.build_request(
-            self.base_url(),
-            &[("project", project)],
-            &[],
-        );
-        if let Some(auth) = self.credential() {
-            req = req.credential(auth.clone());
-        }
-        req
+        self.request_from_meta(&LIST_INSTANCE_TEMPLATES_META, &[("project", project)], &[])
     }
 
     fn get_instance_template(&self, project: &str, template: &str) -> RestRequest {
-        let mut req = GET_INSTANCE_TEMPLATE_META.build_request(
-            self.base_url(),
+        self.request_from_meta(
+            &GET_INSTANCE_TEMPLATE_META,
             &[("project", project), ("template", template)],
             &[],
-        );
-        if let Some(auth) = self.credential() {
-            req = req.credential(auth.clone());
-        }
-        req
+        )
     }
 
     fn create_instance_template(
@@ -188,45 +176,30 @@ impl ComputeEngineService for ComputeEngineRest {
         source_image: &str,
         service_account_email: &str,
     ) -> RestRequest {
-        let mut req = CREATE_INSTANCE_TEMPLATE_META.build_request(
-            self.base_url(),
-            &[("project", project)],
-            &[],
-        );
-        if let Some(auth) = self.credential() {
-            req = req.credential(auth.clone());
-        }
-        req.json(serde_json::json!({
-            "name": template,
-            "properties": {
-                "machineType": machine_type,
-                "disks": [{
-                    "boot": true,
-                    "autoDelete": true,
-                    "initializeParams": { "sourceImage": source_image }
-                }],
-                "serviceAccounts": [{
-                    "email": service_account_email,
-                    "scopes": ["https://www.googleapis.com/auth/cloud-platform"]
-                }]
-            }
-        }))
+        self.request_from_meta(&CREATE_INSTANCE_TEMPLATE_META, &[("project", project)], &[])
+            .json(serde_json::json!({
+                "name": template,
+                "properties": {
+                    "machineType": machine_type,
+                    "disks": [{
+                        "boot": true,
+                        "autoDelete": true,
+                        "initializeParams": { "sourceImage": source_image }
+                    }],
+                    "serviceAccounts": [{
+                        "email": service_account_email,
+                        "scopes": ["https://www.googleapis.com/auth/cloud-platform"]
+                    }]
+                }
+            }))
     }
 
     fn get_instance_group_manager(&self, project: &str, zone: &str, manager: &str) -> RestRequest {
-        let mut req = GET_INSTANCE_GROUP_MANAGER_META.build_request(
-            self.base_url(),
-            &[
-                ("project", project),
-                ("zone", zone),
-                ("manager", manager),
-            ],
+        self.request_from_meta(
+            &GET_INSTANCE_GROUP_MANAGER_META,
+            &[("project", project), ("zone", zone), ("manager", manager)],
             &[],
-        );
-        if let Some(auth) = self.credential() {
-            req = req.credential(auth.clone());
-        }
-        req
+        )
     }
 
     fn create_instance_group_manager(
@@ -238,15 +211,12 @@ impl ComputeEngineService for ComputeEngineRest {
         target_size: i64,
     ) -> RestRequest {
         let template_ref = format!("projects/{project}/global/instanceTemplates/{template}");
-        let mut req = CREATE_INSTANCE_GROUP_MANAGER_META.build_request(
-            self.base_url(),
+        self.request_from_meta(
+            &CREATE_INSTANCE_GROUP_MANAGER_META,
             &[("project", project), ("zone", zone)],
             &[],
-        );
-        if let Some(auth) = self.credential() {
-            req = req.credential(auth.clone());
-        }
-        req.json(serde_json::json!({
+        )
+        .json(serde_json::json!({
             "name": manager,
             "baseInstanceName": manager,
             "instanceTemplate": template_ref,
@@ -262,31 +232,19 @@ impl ComputeEngineService for ComputeEngineRest {
         target_size: i64,
     ) -> RestRequest {
         let target_size_str = target_size.to_string();
-        let mut req = RESIZE_INSTANCE_GROUP_MANAGER_META.build_request(
-            self.base_url(),
-            &[
-                ("project", project),
-                ("zone", zone),
-                ("manager", manager),
-            ],
+        self.request_from_meta(
+            &RESIZE_INSTANCE_GROUP_MANAGER_META,
+            &[("project", project), ("zone", zone), ("manager", manager)],
             &[("size", &target_size_str)],
-        );
-        if let Some(auth) = self.credential() {
-            req = req.credential(auth.clone());
-        }
-        req
+        )
     }
 
     fn get_health_check(&self, project: &str, health_check: &str) -> RestRequest {
-        let mut req = GET_HEALTH_CHECK_META.build_request(
-            self.base_url(),
+        self.request_from_meta(
+            &GET_HEALTH_CHECK_META,
             &[("project", project), ("health_check", health_check)],
             &[],
-        );
-        if let Some(auth) = self.credential() {
-            req = req.credential(auth.clone());
-        }
-        req
+        )
     }
 
     fn create_health_check(
@@ -296,22 +254,15 @@ impl ComputeEngineService for ComputeEngineRest {
         port: i64,
         request_path: &str,
     ) -> RestRequest {
-        let mut req = CREATE_HEALTH_CHECK_META.build_request(
-            self.base_url(),
-            &[("project", project)],
-            &[],
-        );
-        if let Some(auth) = self.credential() {
-            req = req.credential(auth.clone());
-        }
-        req.json(serde_json::json!({
-            "name": health_check,
-            "type": "HTTP",
-            "httpHealthCheck": {
-                "port": port,
-                "requestPath": request_path
-            }
-        }))
+        self.request_from_meta(&CREATE_HEALTH_CHECK_META, &[("project", project)], &[])
+            .json(serde_json::json!({
+                "name": health_check,
+                "type": "HTTP",
+                "httpHealthCheck": {
+                    "port": port,
+                    "requestPath": request_path
+                }
+            }))
     }
 }
 
@@ -322,6 +273,17 @@ impl ComputeEngineService for ComputeEngineRest {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_request_matches_meta(
+        req: &RestRequest,
+        meta: &MethodMeta,
+        path_params: &[(&str, &str)],
+        query_params: &[(&str, &str)],
+    ) {
+        let expected = meta.build_request(COMPUTE, path_params, query_params);
+        assert_eq!(req.method, expected.method);
+        assert_eq!(req.url, expected.url);
+    }
 
     #[test]
     fn create_instance_template_builds_expected_request() {
@@ -337,9 +299,15 @@ mod tests {
         assert!(req
             .url
             .contains("/compute/v1/projects/proj/global/instanceTemplates"));
-        let body = req.body.expect("request should include json body");
+        let body = req.body.as_ref().expect("request should include json body");
         assert_eq!(body["name"], "tmpl-a");
         assert_eq!(body["properties"]["machineType"], "e2-small");
+        assert_request_matches_meta(
+            &req,
+            &CREATE_INSTANCE_TEMPLATE_META,
+            &[("project", "proj")],
+            &[],
+        );
     }
 
     #[test]
@@ -348,12 +316,18 @@ mod tests {
         let req =
             svc.create_instance_group_manager("proj", "us-central1-a", "web-mig", "tmpl-a", 2);
         assert_eq!(req.method, HttpMethod::Post);
-        let body = req.body.expect("request should include json body");
+        let body = req.body.as_ref().expect("request should include json body");
         assert_eq!(
             body["instanceTemplate"],
             "projects/proj/global/instanceTemplates/tmpl-a"
         );
         assert_eq!(body["targetSize"], 2);
+        assert_request_matches_meta(
+            &req,
+            &CREATE_INSTANCE_GROUP_MANAGER_META,
+            &[("project", "proj"), ("zone", "us-central1-a")],
+            &[],
+        );
     }
 
     #[test]
@@ -363,6 +337,16 @@ mod tests {
         assert!(req.url.contains("/instanceGroupManagers/web-mig/resize"));
         // `build_request` appends query params to the URL instead of the `RestRequest.query` map.
         assert!(req.url.ends_with("?size=5") || req.url.contains("?size=5&"));
+        assert_request_matches_meta(
+            &req,
+            &RESIZE_INSTANCE_GROUP_MANAGER_META,
+            &[
+                ("project", "proj"),
+                ("zone", "us-central1-a"),
+                ("manager", "web-mig"),
+            ],
+            &[("size", "5")],
+        );
     }
 
     #[test]
@@ -372,6 +356,47 @@ mod tests {
         assert_eq!(
             CREATE_HEALTH_CHECK_META.permissions,
             &["compute.healthChecks.create"]
+        );
+    }
+
+    #[test]
+    fn read_requests_match_method_metadata_paths() {
+        let svc = ComputeEngineRest::unauthenticated();
+
+        let list = svc.list_instance_templates("proj");
+        assert_request_matches_meta(
+            &list,
+            &LIST_INSTANCE_TEMPLATES_META,
+            &[("project", "proj")],
+            &[],
+        );
+
+        let get_template = svc.get_instance_template("proj", "tmpl-a");
+        assert_request_matches_meta(
+            &get_template,
+            &GET_INSTANCE_TEMPLATE_META,
+            &[("project", "proj"), ("template", "tmpl-a")],
+            &[],
+        );
+
+        let get_mig = svc.get_instance_group_manager("proj", "us-central1-a", "web-mig");
+        assert_request_matches_meta(
+            &get_mig,
+            &GET_INSTANCE_GROUP_MANAGER_META,
+            &[
+                ("project", "proj"),
+                ("zone", "us-central1-a"),
+                ("manager", "web-mig"),
+            ],
+            &[],
+        );
+
+        let get_hc = svc.get_health_check("proj", "web-hc");
+        assert_request_matches_meta(
+            &get_hc,
+            &GET_HEALTH_CHECK_META,
+            &[("project", "proj"), ("health_check", "web-hc")],
+            &[],
         );
     }
 }

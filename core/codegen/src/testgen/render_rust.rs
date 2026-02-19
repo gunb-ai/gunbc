@@ -296,6 +296,17 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
                 writeln!(out, "{}}}", pad).unwrap();
                 out
             }
+            Stmt::Assign { dest, value } => {
+                format!("{}{} = {};\n", pad, self.render_expr(dest), self.render_expr(value))
+            }
+            Stmt::BlockScope(stmts) => {
+                let mut out = format!("{}{{\n", pad);
+                for stmt in stmts {
+                    out.push_str(&self.render_stmt(stmt, indent + 1));
+                }
+                writeln!(out, "{}}}", pad).unwrap();
+                out
+            }
             Stmt::Item(item) => self.render_item(item, indent),
         }
     }
