@@ -41,7 +41,7 @@ Use these lanes to assign workers with minimal overlap and clear stop conditions
 | D: Modeling hardening graph/runtime | `M8` -> `M9` -> `M16` and `M10` -> `M11` | corresponding `-D` tasks approved | IR type DAG/system-model/transport + runtime resource/dry-run paths | metadata inertness, typed dependency markers, strict dry-run enforced | targeted model tests + `cargo test --workspace` |
 | E: Security/install/process drift | `M7`, `M15`, `M13` -> `M14`, `M17` -> `M18` -> `M19` | corresponding `-D` tasks approved | value redaction, installer model, registry/make/CLI contracts, proof harness | no accidental secret leak path; typed PM policy; no projection drift; invariants testable | test suites for each module + planner invariant suite |
 | F: Universal capabilities | `WF14-D` -> `WF14` -> `WF15-D` -> `WF15` | `WF1-D`..`WF4-D` reviewed (design deps) | binary dispatch, codegen keyed unit, planner integration | compilation + codegen capabilities keyed and shared across all workflows | `gunbc-workflow --plan gist-snapshot` shows codegen CachedHit |
-| G: Gist capability stack | `WF16-D` -> `WF16` -> `WF17` -> `WF18` | Lane F complete | gist graph, gist_modes, credential chain, git state units | git state + credential + transport capabilities minimized; gist modes use planner path | `make gist` warm path, credential sharing across gist/dag-viz |
+| G: Gist capability stack | `WF16-D` -> `WF16` -> (`WF17`, `WF18`) | Lane F complete | gist graph, gist_modes, credential chain, git state units | base gist workflow built; diff + recent augment base; all modes use planner path | `make gist` warm path, credential sharing across gist/dag-viz |
 | H: Remaining capabilities | `WF19-D` -> `WF19` -> `WF20` -> `WF21` -> `WF22` | Lane F complete | bootstrap/makegen/pragma/deps/dag-viz, Makefile | FS write + generator capabilities minimized; all tools on planner path with verification | per-capability hit/miss reporting, cross-workflow sharing observable |
 
 Handoff rules:
@@ -472,14 +472,18 @@ invalidation signals, and cross-workflow sharing semantics before implementation
 | **WF15-D** | **Codegen capability design spec**: define codegen freshness as a keyed unit — key inputs are DSL source hashes (`dsl/**/*.dag`) + codegen binary semantic version. Specify how tool workflows declare codegen as a typed input dependency (not Make prerequisite). **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 3). **Acceptance**: design proves `ensure-codegen` Make target is eliminated; codegen freshness resolved via ledger lookup (no subprocess); miss reason for stale codegen is explicit; codegen unit is shared across all workflows that depend on generated artifacts. | WF3-D, WF14-D | S |
 | **WF15** | **Codegen capability implementation**: implement codegen as a planner-managed keyed unit with ledger-backed freshness. Remove `ensure-codegen` as Make prerequisite for planner-managed targets. **Acceptance**: warm-state tool invocation does not spawn codegen subprocess; codegen staleness triggers re-run with typed miss reason; global ledger shares codegen freshness across `ci`, `gist`, `bootstrap`, etc. | WF15-D, WF3 | M |
 
-### Phase T-B: Gist Capability Stack (Credentialing + Git State + Network)
+### Phase T-B: Gist Capability Stack (Base Workflow + Mode Augmentations)
+
+The gist family has a shared base workflow (branch context, credentialing, upload)
+and three mode-specific content acquisition augmentations. The base is built first;
+modes compose on top. See design doc Section 15.4.
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **WF16-D** | **Gist capability decomposition design spec**: decompose all three gist modes into capability units (git state, filesystem, credentialing, pure computation, network transport). For each unit: define key inputs, invalidation signals, volatility, and cross-workflow sharing. Special focus on credential capability: local-dev path (env var hash), cloud path (WIF sub-chain with per-step TTL keying), and replacement of `GUNBC_CLOUD_CONFIG_REQUIRED=1` with explicit `runtime_mode` input port. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 4). **Acceptance**: each capability unit has explicit keying contract; credential chain decomposes into independently-keyed sub-units; warm-state plan for each mode shows only volatile transport in execute set; git state and credential units are marked as shared with dag-viz family. | WF1-D, WF3-D, WF15-D | M |
-| **WF16** | **Gist snapshot capability port**: implement `gunbc-workflow gist-snapshot` with keyed capability units for git state (`current_branch`, `ls_files`), filesystem (`read_files`), pure (`render_snapshot`), credential (`resolve`), and volatile transport (`gist_create`). **Acceptance**: warm no-op with unchanged repo: all capability units resolve from ledger, only transport executes; parity test validates output matches current behavior. | WF16-D, WF5, WF14, WF15 | M |
-| **WF17** | **Gist diff capability port**: implement `gunbc-workflow gist-diff` with keyed git diff unit. **Acceptance**: key miss on `base_ref` or `HEAD` change triggers minimal dirty closure (diff + render + transport); credential unit shared with snapshot mode via global ledger. | WF16-D, WF5, WF14, WF15 | S |
-| **WF18** | **Gist recent capability port + credential sub-chain**: implement `gunbc-workflow gist-recent` with full credential sub-chain keying (WIF exchange, IAM impersonation, Secret Manager access — each independently keyed with TTL). **Acceptance**: warm no-op with no new commits + valid credential TTL: zero capability units execute except transport; `runtime_mode` is an explicit typed input, not an ambient env probe. | WF16-D, WF5, WF14, WF15 | M |
+| **WF16-D** | **Gist base + mode capability design spec**: define the base gist workflow (branch context, credential resolution, gist upload) as shared capability units, then define each mode's content acquisition augmentation (snapshot: ls-files + file read; diff: git diff; recent: rev-list + per-commit diff + cloud credential override). For each unit: key inputs, invalidation signals, volatility, cross-workflow sharing (base units shared with dag-viz). Credential capability: local-dev path (env var hash), cloud path (WIF sub-chain with per-step TTL keying), and replacement of `GUNBC_CLOUD_CONFIG_REQUIRED=1` with explicit `runtime_mode` input port. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 4). **Acceptance**: base units are factored and reusable; each mode is base + mode-specific units; credential chain decomposes into independently-keyed sub-units; warm-state plan shows only volatile transport in execute set; base units shared with dag-viz family. | WF1-D, WF3-D, WF15-D | M |
+| **WF16** | **Base gist workflow + snapshot mode**: implement the shared base gist capability units (codegen, compilation, `git.current_branch`, `credential.resolve`, `github.gist_create`) and the snapshot augmentation (`git.ls_files`, `fs.read_files`, `render_snapshot`). `gunbc-workflow gist-snapshot` composes base + snapshot. **Acceptance**: warm no-op: base + snapshot capability units resolve from ledger, only transport executes; base units are reusable by diff/recent modes; parity test validates output matches current `gunbc-gist` behavior. | WF16-D, WF5, WF14, WF15 | M |
+| **WF17** | **Gist diff mode (augments base)**: implement `gunbc-workflow gist-diff` as base gist + diff-specific content acquisition (`git.diff`, `render_diff`). **Acceptance**: base units (branch context, credential, upload) shared with snapshot via global ledger — not re-implemented; key miss on `base_ref` or `HEAD` triggers minimal dirty closure (diff + render + transport only). | WF16, WF16-D | S |
+| **WF18** | **Gist recent mode (augments base + cloud credential)**: implement `gunbc-workflow gist-recent` as base gist + recent-specific content acquisition (`git.rev_list`, per-commit `git.diff`, `render_recent`) + credential cloud override (`runtime_mode: Cloud` triggers WIF sub-chain). **Acceptance**: base units shared with snapshot/diff; credential sub-chain (STS exchange, IAM impersonation, Secret Manager) independently keyed with TTL; warm no-op with valid TTL + no new commits: zero capability units except transport; `runtime_mode` is typed input, not ambient env probe. | WF16, WF16-D | M |
 
 ### Phase T-C: Remaining Capability Ports (FS Write + Generator Workflows)
 
@@ -503,7 +507,7 @@ invalidation signals, and cross-workflow sharing semantics before implementation
 | B: Workflow planner core | (unchanged) `WF1`→`WF2`→`WF3`→`WF4`→`WF5` | planner ready for both ci/test-all and tool workflows |
 | C: Workflow cutover/perf | (unchanged) `WF6`→`WF7`→`WF8`→`WF9` | ci/test-all use planner path |
 | **F: Universal capabilities** | `WF14-D`→`WF14`→`WF15-D`→`WF15` | compilation + codegen capabilities keyed and shared across all workflows |
-| **G: Gist capability stack** | `WF16-D`→`WF16`→`WF17`→`WF18` | git state + credential + transport capabilities minimized; gist modes use planner path |
+| **G: Gist capability stack** | `WF16-D`→`WF16`→(`WF17`,`WF18`) | base gist workflow built; diff + recent augment base; all modes use planner path |
 | **H: Remaining capabilities** | `WF19-D`→`WF19`→`WF20`→`WF21`→`WF22` | FS write + generator capabilities minimized; all tools on planner path with verification |
 
 Lanes F and G can start after WF1-D..WF4-D design review (design deps only).
@@ -584,8 +588,8 @@ SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
          │
          ├─ Lane F: WF14-D→WF14→WF15-D→WF15
          │                                 (universal: compilation + codegen capabilities)
-         ├─ Lane G: WF16-D→WF16→WF17→WF18
-         │                                 (gist: credential + git state + transport)
+         ├─ Lane G: WF16-D→WF16→(WF17,WF18)
+         │                                 (gist: base workflow → diff + recent augment)
          └─ Lane H: WF19-D→WF19→WF20→WF21→WF22
                                            (remaining: FS write + generators + cutover)
          │

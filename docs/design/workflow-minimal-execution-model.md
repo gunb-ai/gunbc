@@ -712,9 +712,37 @@ Key observations:
 ### 15.4 Per-Capability Minimization Applied to Gist
 
 The gist family exercises five of the seven capabilities and is the primary focus
-target. Here is how minimizing each capability composes into a minimal gist workflow.
+target. The three modes (snapshot, diff, recent) share a **base gist workflow** — the
+DSL already factors this via `shared.gist_modes`. The design must preserve and
+formalize this structure: a base workflow that handles credentialing, branch context,
+and upload, composed with mode-specific content acquisition.
 
-#### Gist Snapshot: Capability Decomposition
+#### Base Gist Workflow (shared by all modes)
+
+The base workflow is the invariant core. Every gist mode flows through it:
+
+```
+content acquisition (mode-specific)
+        │
+        ▼ markdown: String
+┌──────────────────────────────────────────────┐
+│  Base Gist Workflow                          │
+│                                              │
+│  branch_context()  ──────────┐               │
+│                               ▼               │
+│  credential.resolve  ───→  gist_upload()     │
+│                               │               │
+│                               ▼               │
+│                        github.Gist.Create    │
+└──────────────────────────────────────────────┘
+        │
+        ▼ url: Url
+```
+
+DSL source: `shared.gist_modes.share_content` → `gist_upload` → `credential_chain`
+→ `github.Gist.Create`.
+
+Base capability units (shared across all modes):
 
 ```
 Capability        Unit                    Key Inputs                     Skip When
@@ -722,39 +750,75 @@ Capability        Unit                    Key Inputs                     Skip Wh
 Codegen           codegen.ensure          DSL hashes + binary version    DSL unchanged
 Compilation       binary.ensure           source hashes + cargo meta     source unchanged
 Git State         git.current_branch      .git/HEAD                      HEAD unchanged
-Git State         git.ls_files            .git/index hash                index unchanged
-FS Read           fs.read_files           file content hashes            files unchanged
-Pure              gist.render_snapshot    upstream content hashes        inputs unchanged
 Credential        credential.resolve      runtime_mode + source hash     within validity
 Network           github.gist_create      markdown hash + credential     never (volatile)
 ```
 
-On warm state with unchanged repo: codegen skips, compilation skips, git queries skip,
-file reads skip, rendering skips, credential resolves from cache. Only the gist upload
-executes — and it receives the cached outputs from all upstream capabilities.
+These five units are identical across snapshot, diff, and recent. The global ledger
+means running `make gist` and then `make gist-diff` reuses the base units (codegen,
+compilation, branch context, credential) from the first invocation.
 
-#### Gist Recent: Capability Decomposition
+#### Mode-Specific Content Acquisition (augments base)
+
+Each mode adds its own content acquisition capabilities upstream of the base workflow's
+`markdown` input:
+
+**Snapshot** — augments base with filesystem scan:
 
 ```
 Capability        Unit                    Key Inputs                     Skip When
 ─────────────────────────────────────────────────────────────────────────────────────
-Codegen           codegen.ensure          DSL hashes + binary version    DSL unchanged
-Compilation       binary.ensure           source hashes + cargo meta     source unchanged
-Git State         git.current_branch      .git/HEAD                      HEAD unchanged
-Git State         git.rev_list(since)     object store + since boundary  no new commits
-Git State         git.diff(per commit)    base hash + head hash          refs unchanged
-Pure              gist.render_recent      upstream diff hashes           inputs unchanged
-Credential        credential.resolve      runtime_mode + WIF config      within TTL
-  (cloud path)      ├── gcp.sts_exchange  WIF provider + OIDC token      within token TTL
-                    ├── gcp.iam_impersonate  SA + STS token              within token TTL
-                    └── gcp.secret_access  project + secret + IAM token  within token TTL
-Network           github.gist_create      markdown hash + credential     never (volatile)
+Git State         git.ls_files            .git/index hash                index unchanged
+FS Read           fs.read_files           file content hashes            files unchanged
+Pure              gist.render_snapshot    upstream content hashes        inputs unchanged
 ```
 
-The credential chain for `gist-recent` decomposes into sub-capabilities, each
-independently keyed. If WIF token is still valid, the entire cloud chain resolves
-from ledger. The `GUNBC_CLOUD_CONFIG_REQUIRED=1` env var is replaced by an explicit
-`runtime_mode: Cloud` input to the credential unit.
+DSL source: `gist_snapshot` → `git.LsFiles` → `read_text_files` → `render_snapshot`.
+
+**Diff** — augments base with git diff:
+
+```
+Capability        Unit                    Key Inputs                     Skip When
+─────────────────────────────────────────────────────────────────────────────────────
+Git State         git.diff(base, HEAD)    base ref hash + HEAD hash      neither ref moved
+Pure              gist.render_diff        upstream diff hash             inputs unchanged
+```
+
+DSL source: `gist_diff` → `git.Diff(base_ref)` → `render_diff`.
+
+**Recent** — augments base with rev-list + per-commit diffs + cloud credential path:
+
+```
+Capability        Unit                    Key Inputs                     Skip When
+─────────────────────────────────────────────────────────────────────────────────────
+Git State         git.rev_list(since)     object store + since boundary  no new commits
+Git State         git.diff(per commit)    commit hash + parent hash      refs unchanged
+Pure              gist.render_recent      upstream diff hashes           inputs unchanged
+Credential        credential.resolve      runtime_mode: Cloud + WIF cfg within TTL
+  (cloud override)  ├── gcp.sts_exchange  WIF provider + OIDC token      within token TTL
+                    ├── gcp.iam_impersonate  SA + STS token              within token TTL
+                    └── gcp.secret_access  project + secret + IAM token  within token TTL
+```
+
+DSL source: `gist_recent` → `resolve_recent_base` → `git.RevList` → per-commit
+`git.Diff` → `render_recent`. The credential unit is the same base unit but with
+`runtime_mode: Cloud` input (replacing `GUNBC_CLOUD_CONFIG_REQUIRED=1`), which
+triggers the WIF sub-chain.
+
+#### Composition Summary
+
+```
+gist-snapshot = base gist + [git.ls_files, fs.read_files, render_snapshot]
+gist-diff     = base gist + [git.diff, render_diff]
+gist-recent   = base gist + [git.rev_list, git.diff×N, render_recent]
+                           + credential.resolve(Cloud) override
+```
+
+The base workflow is not a separate `WorkflowSpec` — it's the shared set of capability
+units that appear identically in all three modes. The global ledger's `WorkIdentity`-based
+dedup (Section 6.2) means these shared units are executed once and reused across modes
+without explicit cross-workflow wiring. dag-viz modes share the same base via
+`shared.gist_modes`.
 
 ### 15.5 Full Tool Workflow Inventory
 
