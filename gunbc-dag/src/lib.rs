@@ -40,6 +40,7 @@ pub mod testgen_dag;
 pub mod tool_runner;
 pub mod tool_testgen;
 pub mod viewer;
+pub mod workflow;
 pub mod workspace;
 
 // Re-exports for convenience
@@ -75,6 +76,15 @@ pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{
     freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,
     RunToolOptions,
+};
+pub use workflow::{
+    ci_workflow_spec, ci_workflow_spec_with_registry, default_process_unit_registry,
+    has_required_unit_contract, required_input_contract, required_output_contract,
+    test_all_workflow_spec, test_all_workflow_spec_with_registry, validate_conflicting_claims,
+    validate_required_claims, validate_workflow_admission, AggregateSpec, ClaimId, ProcessId,
+    ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec, ReportSpec, UnitClaim,
+    WorkflowAdmissionError, WorkflowId, WorkflowOp, WorkflowSpec as PlannerWorkflowSpec,
+    WorkflowUnit, PORT_AFTER, PORT_COMMIT, PORT_RESULT, TYPE_WORKFLOW_RESULT,
 };
 pub use workspace::{
     build_bootstrap_subdag, build_build_subdag, build_ci_subdag, build_clippy_lint_all_subdag,

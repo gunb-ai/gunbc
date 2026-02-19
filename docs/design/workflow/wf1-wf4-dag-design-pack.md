@@ -5,6 +5,24 @@ Date: 2026-02-19
 Scope: `WF1-D`, `WF2-D`, `WF3-D`, `WF4-D` for planner-first `ci` and `test-all`  
 Canonical normative model: `docs/design/workflow-minimal-execution-model.md`
 
+## Implementation Status
+
+WF1/WF2 planner foundations now have an initial typed implementation in
+`gunbc-dag::workflow`:
+
+1. WF1 schema types and deterministic `ci` / `test-all` spec builders:
+   - `workflow/schema.rs`
+   - `workflow/process_registry.rs`
+   - `workflow/spec_builders.rs`
+2. WF2 fail-closed admission validation:
+   - `workflow/admission.rs`
+   - `workflow/errors.rs`
+3. Contract coverage:
+   - `gunbc-dag/tests/workflow_schema_contracts.rs`
+   - `gunbc-dag/tests/workflow_admission_contracts.rs`
+
+WF3+ remains staged in subsequent implementation tasks.
+
 ## 1. Read This First
 
 This pack is consolidated with the canonical model:
