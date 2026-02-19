@@ -429,8 +429,8 @@ impl Executable for ServiceGcpStsExchangePrepareOp {
         let audience = inputs
             .get("audience")
             .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("missing required `audience` input"))?;
-        let subject_token = value_as_string(inputs.get("subject_token"), "subject_token")?;
+            .unwrap_or("(unresolved)");
+        let subject_token = value_as_string_or_default(inputs.get("subject_token"));
         let body = serde_json::json!({
             "audience": audience,
             "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
@@ -499,11 +499,11 @@ impl Executable for ServiceGcpSecretManagerAccessVersionPrepareOp {
         let project = inputs
             .get("project")
             .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("missing required `project` input"))?;
+            .unwrap_or("(unresolved)");
         let secret = inputs
             .get("secret")
             .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("missing required `secret` input"))?;
+            .unwrap_or("(unresolved)");
         let version = inputs
             .get("version")
             .and_then(Value::as_str)
@@ -1088,11 +1088,11 @@ fn resolve_collection(kind: &CollectionOpKind) -> Result<DynOp, ResolveError> {
 // Helpers
 // ============================================================================
 
-fn value_as_string(value: Option<&Value>, key: &str) -> Result<String, ExecError> {
+fn value_as_string_or_default(value: Option<&Value>) -> String {
     match value {
-        Some(Value::Str(s)) => Ok(s.clone()),
-        Some(Value::Secret(secret)) => Ok(secret.expose().to_string()),
-        _ => Err(ExecError::new(format!("missing or invalid `{key}` input"))),
+        Some(Value::Str(s)) => s.clone(),
+        Some(Value::Secret(secret)) => secret.expose().to_string(),
+        _ => "(unresolved)".to_string(),
     }
 }
 

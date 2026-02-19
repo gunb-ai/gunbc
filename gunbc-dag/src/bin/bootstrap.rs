@@ -7,7 +7,7 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::resources::{GITIGNORE_OUTPUT_PATH, MAKEFILE_OUTPUT_PATH};
 use gunbc_dag::{
-    build_bootstrap_graph_dsl, freshness_steps_planned, gitignore_resource_def,
+    freshness_steps_planned, gitignore_resource_def,
     makefile_resource_def, print_tool_header, run_tool, update_freshness_manifest_if_needed,
     wire_fs_env_write_mock, RunToolOptions,
 };
@@ -50,7 +50,7 @@ fn main() {
     let animated = std::io::stdout().is_terminal();
 
     // Build the graph
-    let dag = match build_bootstrap_graph_dsl() {
+    let dag = match gunbc_dag::bootstrap::build_bootstrap_graph() {
         Ok(d) => d,
         Err(e) => {
             print_attention(AttentionLevel::Error, "Graph build failed", &e.to_string());

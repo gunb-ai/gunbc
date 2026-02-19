@@ -12,7 +12,6 @@ pub mod render;
 
 pub mod graph_mock;
 
-pub use crate::dsl_builder::build_makegen_graph_dsl;
 pub use ci_render::{
     render_github_actions_from_workflow_specs, render_gitlab_ci_from_workflow_specs,
     workflow_specs_to_dag,

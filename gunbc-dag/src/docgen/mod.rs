@@ -5,6 +5,5 @@
 pub mod graph;
 pub mod ops;
 
-pub use crate::dsl_builder::build_docgen_graph_dsl;
 pub use graph::{build_docgen_graph, DocgenGraphOp, DocgenReadTarget, DOCGEN_READ_TARGETS};
 pub use ops::DocgenOp;

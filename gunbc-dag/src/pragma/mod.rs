@@ -7,7 +7,6 @@ pub mod ops;
 
 pub mod graph_mock;
 
-pub use crate::dsl_builder::build_pragma_graph_dsl;
 pub use graph::{build_pragma_graph, pragma_signature, PragmaGraphOp};
 pub use ops::PragmaOp;
 

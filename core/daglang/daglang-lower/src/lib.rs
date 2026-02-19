@@ -6626,6 +6626,12 @@ func run() -> { ok: Bool } provides auth: AuthContext {
             vec![Port::scalar("makegen_response", "TransportResponse")],
             (),
         ));
+        dag.add_node(Node::opaque(
+            "param_source_tools_makegen_makegen_path",
+            vec![Port::scalar("path", "String")],
+            vec![Port::scalar("path", "String")],
+            (),
+        ));
 
         dag.add_edge(Edge::new(
             "load_registry",
@@ -6668,6 +6674,18 @@ func run() -> { ok: Bool } provides auth: AuthContext {
             "skip",
             "execute_makegen_transport",
             "skip",
+        ));
+        dag.add_edge(Edge::new(
+            "param_source_tools_makegen_makegen_path",
+            "path",
+            "prepare_read_makegen",
+            "path",
+        ));
+        dag.add_edge(Edge::new(
+            "param_source_tools_makegen_makegen_path",
+            "path",
+            "prepare_write_makegen",
+            "path",
         ));
         dag
     }

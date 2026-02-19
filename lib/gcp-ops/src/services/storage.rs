@@ -123,15 +123,7 @@ impl StorageRest {
     }
 }
 
-impl GcpRestClient for StorageRest {
-    fn base_url(&self) -> &str {
-        STORAGE
-    }
-
-    fn credential(&self) -> Option<&Credential> {
-        self.auth.as_ref()
-    }
-}
+super::impl_gcp_rest_client!(StorageRest, STORAGE);
 
 impl StorageService for StorageRest {
     fn list_buckets(&self, project: &str) -> RestRequest {

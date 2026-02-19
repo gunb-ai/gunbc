@@ -199,15 +199,7 @@ impl IamRest {
     }
 }
 
-impl GcpRestClient for IamRest {
-    fn base_url(&self) -> &str {
-        IAM
-    }
-
-    fn credential(&self) -> Option<&Credential> {
-        self.auth.as_ref()
-    }
-}
+super::impl_gcp_rest_client!(IamRest, IAM);
 
 impl IamService for IamRest {
     fn list_service_accounts(&self, project: &str) -> RestRequest {

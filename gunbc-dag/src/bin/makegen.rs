@@ -6,10 +6,10 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
+use gunbc_dag::makegen::build_makegen_graph;
 use gunbc_dag::{
-    build_makegen_graph_dsl, freshness_steps_planned, makefile_resource_def, print_tool_header,
-    render_justfile, run_tool, update_freshness_manifest_if_needed, wire_fs_env_write_mock,
-    RunToolOptions,
+    freshness_steps_planned, makefile_resource_def, print_tool_header, render_justfile, run_tool,
+    update_freshness_manifest_if_needed, wire_fs_env_write_mock, RunToolOptions,
 };
 use gunbc_exec::{
     compose_with_freshness, execute_and_display_with_result, print_attention, AttentionLevel,
@@ -89,7 +89,7 @@ fn main() {
     }
 
     // Build the graph
-    let dag = match build_makegen_graph_dsl() {
+    let dag = match build_makegen_graph() {
         Ok(d) => d,
         Err(e) => {
             print_attention(AttentionLevel::Error, "Graph build failed", &e.to_string());

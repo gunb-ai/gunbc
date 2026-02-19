@@ -114,6 +114,26 @@
       "subdag": null
     },
     {
+      "id": "param_source_tools_makegen_makegen_path",
+      "kind": "pattern-expanded",
+      "label": "param_source_tools_makegen_makegen_path",
+      "inputs": [
+        {
+          "name": "path",
+          "type_id": "String",
+          "cardinality": "1"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "path",
+          "type_id": "String",
+          "cardinality": "1"
+        }
+      ],
+      "subdag": null
+    },
+    {
       "id": "prepare_read_makegen",
       "kind": "pattern-expanded",
       "label": "prepare_read_makegen",
@@ -177,6 +197,11 @@
           "name": "__deps",
           "type_id": "Any",
           "cardinality": "0..*"
+        },
+        {
+          "name": "path",
+          "type_id": "String",
+          "cardinality": "1"
         },
         {
           "name": "registry",
@@ -261,6 +286,18 @@
       "from_port": "registry",
       "to_node": "tools.makegen::render_makefile",
       "to_port": "registry"
+    },
+    {
+      "from_node": "param_source_tools_makegen_makegen_path",
+      "from_port": "path",
+      "to_node": "prepare_read_makegen",
+      "to_port": "path"
+    },
+    {
+      "from_node": "param_source_tools_makegen_makegen_path",
+      "from_port": "path",
+      "to_node": "prepare_write_makegen",
+      "to_port": "path"
     },
     {
       "from_node": "prepare_read_makegen",

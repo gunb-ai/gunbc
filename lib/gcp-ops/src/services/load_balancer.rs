@@ -161,15 +161,7 @@ impl LoadBalancerRest {
     }
 }
 
-impl GcpRestClient for LoadBalancerRest {
-    fn base_url(&self) -> &str {
-        COMPUTE
-    }
-
-    fn credential(&self) -> Option<&Credential> {
-        self.auth.as_ref()
-    }
-}
+super::impl_gcp_rest_client!(LoadBalancerRest, COMPUTE);
 
 impl LoadBalancerService for LoadBalancerRest {
     fn get_backend_service(&self, project: &str, backend_service: &str) -> RestRequest {

@@ -1,6 +1,6 @@
 # Task Sheet — Dependency-Ordered, Parallelizable
 
-**Last updated**: 2026-02-18
+**Last updated**: 2026-02-19
 **Verification**: `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
 **Archive**: Completed items in `TODONE/`. Original TODO details preserved in git history.
 
@@ -9,274 +9,242 @@
 ### Conventions
 
 - **Definition of Done**: each task is done when code compiles, tests pass, and clippy is clean.
-- **Cutover tasks** (M1-M3) additionally require: golden/snapshot test, failure-path test,
-  build/Makefile target updated, CI job proves the new binary executes.
-- **Deletion tasks** (T4, T5, T7) additionally require: `rg` search for straggler references,
-  at least one end-to-end `--dry-run` per migrated tool.
-- **Cross-backend tasks** (B1, B2) additionally require: non-Rust renderer compiles after change.
-- **Code TODO/HACK comments** must reference a task ID (e.g., `TODO(SD1): ...`) so orphans
+- **Code TODO/HACK comments** must reference a task ID (e.g., `TODO(F1): ...`) so orphans
   are discoverable via grep.
 - **Active Docs invariant**: every path in the task sheet must exist; no doc under
   `TODO/TODONE/` may appear in active sections.
 
 ---
 
-## Active Cleanup (Thread Follow-up)
+## Sprint 1: Get to Green
 
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **C1** | Resolver hardening: fail fast for unknown modules and unknown service prepare/parse callables; remove silent literal decode fallback | — | S | 2026-02-18 | 2026-02-18 |
-| **C2** | Lowering hardening: wire `content_upsert(path: ...)` literal/source args into prepare nodes and shrink CI node-id path mapping accordingly | C1 | S | 2026-02-18 | 2026-02-18 |
-| **C3** | Exec-runtime hardening: support lowering-generated `call_literal_source::*` and `call_param_source::*` nodes in layer-1 codegen/runtime classification (no unresolved node fallback) | C1, C2 | M | 2026-02-18 | 2026-02-18 |
-| **C4** | Makegen path regression cleanup: restore real-mode/custom-output behavior in daglang compile-run tests and remove temporary literal-node override workaround | C2, C3 | S | 2026-02-18 | 2026-02-18 |
-| **C5** | Makegen mock cleanup: remove legacy prepare-node path mock fallbacks and require callable/param-source path wiring | C2, C3, C4 | S | 2026-02-19 | 2026-02-19 |
-| **C6** | Consolidation sweep: centralize transport-call analysis in emit backends and shared authenticated REST request helpers across GCP services | — | M | 2026-02-19 | 2026-02-19 |
+**Goal**: CI-green workspace. All test failures are generated-test structural drift
+from the DSL roadmap sprint — the underlying code changes (resolver, lowering, CI binary)
+are already committed and working.
 
----
+### Phase 1: Regenerate (single root cause, ~30 failures)
 
-## Critical Blocker: DynOp Type-Dispatch Elimination
+All remaining failures are `ci::generated_tests::test_coercion_*` in gunbc-dag.
+The CI DAG shape changed (literal_source nodes, GCP transport ops, CI binary simplification)
+but the generated test harnesses still reference the old topology.
 
-**Why first**: 1,350 lines of zero-logic boilerplate. Adding a new tool costs ~60 lines across 4-5 files.
-DSL-compiled `.dag` files exist but can't replace hand-built Rust graph builders without `DynOp`.
-Every "wire DSL binary into build system" task (B1.1b/c, B1.3b) is blocked on this.
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **F1** | Regenerate CI testgen: `make testgen` to rebuild generated coercion + dryrun tests for current CI DAG shape | — | S |
+| **F2** | Verify `cargo test -p gunbc-dag ci::generated_tests` passes after regeneration | F1 | S |
 
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **T1** | Add `DynOp` to `core/exec` (~20 lines: `Arc<dyn Executable + Send + Sync>`, Clone via Arc) | — | S | 2026-02-18 | 2026-02-18 |
-| **T2** | Central resolver `gunbc-dag/src/resolve.rs`: `LoweredOp` → existing domain ops via `DynOp::new()` | T1 | M | 2026-02-18 | 2026-02-18 |
-| **T3** | DSL builder per module (~15 lines each): compile `.dag` → `resolve_lowered_dag()` → `Dag<DynOp>` | T2 | M | 2026-02-18 | 2026-02-18 |
-| **T4** | Delete manual `graph.rs` builders (pragma, codegen, makegen, ci, bootstrap, build, docgen — ~4,000 lines) | T3 | L | 2026-02-18 | 2026-02-18 |
-| **T5** | Delete boilerplate layer: `WorkspaceOp` enum + 16 `From` impls + 10 converter fns + `FileOpsGraph<T>` (~600 lines) | T4 | M | 2026-02-18 | 2026-02-18 |
-| **T6** | Delete/simplify `daglang-exec-bridge`: `ResolvedOp` + `RuntimeOpId` + duplicated handlers (~300 lines) | T2 | M | 2026-02-18 | 2026-02-18 |
-| **T7** | Update callers: bin/*.rs, graph_mock.rs, parity tests, integration tests, resource registry tests | T4, T5 | L | 2026-02-18 | 2026-02-18 |
-| **T8** | Lib crate cleanup: DynOp for DepsGraphOp, ClippyGraphOp, GistGraphOp, GcpGraphOps, ReviewGraphOp, LlmGraphOp (~300 lines) | T5 | M | 2026-02-18 | 2026-02-18 |
+### Phase 2: Acceptance & Guardrails
 
-**Net**: ~5,950 lines deleted, ~300 added.
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **F3** | Update `workflow_acceptance.rs` tests to match restructured `ci.rs` (auto-mocked spec, simplified path dispatch) | — | M |
+| **F4** | Update `engine_execution_guardrails` allowlist for new execution helper surfaces | — | S |
+| **F5** | Register new public graph builders in `resource_registry_coverage` test | — | S |
 
----
+### Phase 3: Snapshot Refresh
 
-## Wave 1 — Ready Now (no blocker dependency)
-
-These can start immediately, in parallel with the DynOp work above.
-
-### 1A: DSL Migration Cutover
-
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **M1** | Pragma: verify generated binary produces identical output to hand-built | T3 | S | 2026-02-18 | 2026-02-18 |
-| **M2** | Pragma: wire DSL binary into build system (replace hand-built pragma binary) | M1, T4 | M | 2026-02-18 | 2026-02-18 |
-| **M3** | Codegen: verify generated binary matches hand-built codegen behavior | T3 | S | 2026-02-18 | 2026-02-18 |
-
-### 1B: Bridge & Codegen Hygiene
-
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **B1** | `codegen_bridge` optional handling: replace Rust-specific `Option<T>` wrapping (line 170) with abstract `Optional<T>` prefix so non-Rust renderers don't get leaked Rust types | — | S | 2026-02-18 | 2026-02-18 |
-| **B2** | Bridge naming invariant: add test asserting `BridgeModule` names pass through as canonical identifiers and renderers apply per-language casing (not bridge) | — | S | 2026-02-18 | 2026-02-18 |
-| **B3** | Remove `body.contains("inputs.get(")` string inspection in `rust_exec_runtime.rs:831` — always name param `inputs` (fragile heuristic for unused-var warning) | — | S | 2026-02-18 | 2026-02-18 |
-| **B4** | Add inline `// Raw because: ...` comments at each `Item::Raw` site in `rust_exec_runtime.rs` (5 sites — comments exist at call sites but not at definitions) | — | S | 2026-02-18 | 2026-02-18 |
-
-### 1C: Code Quality
-
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **Q1** | Replace `panic!()` with `Err()` in `lib/transport/src/cli.rs` Result-returning fns (§17.6) | — | S | 2026-02-18 | 2026-02-18 |
-| **Q2** | Replace `.expect()` with `?` in graph builders (~70 sites) (§17.2) | — | M | 2026-02-18 | 2026-02-18 |
-| **Q3** | Replace `.is_none()`+`.unwrap()` with `ok_or_else` in `core/ir/src/builder.rs` (§17.3) | — | S | 2026-02-18 | 2026-02-18 |
-| **Q4** | Introduce `ParamType` enum for CLI param types (§17.4) | — | S | 2026-02-18 | 2026-02-18 |
-| **Q5** | `HashSet` for set operations in `lib/primitives/src/collection.rs` + `core/ir/src/value.rs` (§17.5) | — | S | 2026-02-18 | 2026-02-18 |
-| **Q6** | `&PathBuf` → `&Path` in function signatures (§17.7) | — | S | 2026-02-18 | 2026-02-18 |
-| **Q7** | `push_str(&format!())` → `write!()` (~100 sites) (§17.8) | — | L | 2026-02-18 | 2026-02-18 |
-| **Q8** | `Cow<'static, str>` for struct fields with literal values (~80 allocs) (§17.9) | — | M | 2026-02-18 | 2026-02-18 |
-| **Q9** | `BlobHandleError::new(&str)` → `impl Into<String>` (§17.10) | — | S | 2026-02-18 | 2026-02-18 |
-| **Q10** | Minor nits: `.to_string_lossy().into_owned()`, `BTreeSet` for dedup, O(n^2) GitLab stages, dead statement, char_indices, `/root` fallback, execute_run dedup, MapToGcp dedup, lossy gist placeholder (§17.11-17.19) | — | M | 2026-02-18 | 2026-02-18 |
-
-### 1D: Seed Policy Follow-ups
-
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **S1** | Extend seed matrix: define matrix for scenario context | — | S | 2026-02-18 | 2026-02-18 |
-| **S2** | Extend seed matrix: define matrix for live-flow context | — | S | 2026-02-18 | 2026-02-18 |
-| **S3** | Seed matrix enforcement tests | S1, S2 | S | 2026-02-18 | 2026-02-18 |
-| **S4** | Unknown semantic carriers fail closed (strict, no silent fallback) | — | S | 2026-02-18 | 2026-02-18 |
-
-### 1E: Debt & Consolidation
-
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **D1** | Extract `StableHashOp` to `lib/primitives`, add `DeduplicateOp` | — | M | 2026-02-18 | 2026-02-18 |
-| **D2** | Review hand-written tests for redundancy with testgen (Pattern 1, 5 from §7) | — | M | 2026-02-18 | 2026-02-18 |
-| **D3** | Design hermeticity annotation for `Shell` transport (producer-level, not variant-level) | — | S | 2026-02-18 | 2026-02-18 |
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **F6** | Regenerate `daglang-cli` snapshots if any compile/manifest/run golden files are stale after lowering changes | F1 | S |
 
 ---
 
-## Wave 2 — After DynOp or Wave 1 Deps
+## Near-Term: Code TODOs & DSL Compiler Polish
 
-### 2A: System Model Refactor (Dag<TypeOp>)
+5 actionable TODO comments + 5 PR-review items. Zero HACK/FIXME.
 
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **R1** | Design: map `SystemModel` fields to `Dag<TypeOp>` nodes (behaviors as typed sub-DAGs) | — | M | 2026-02-18 | 2026-02-18 |
-| **R2** | Register system behavior type DAGs in `TypeRegistry` | R1 | L | 2026-02-18 | 2026-02-18 |
-| **R3** | Replace `derive_contract_test_specs()` with predicate-driven derivation from type DAG `Validate` nodes | R2 | M | 2026-02-18 | 2026-02-18 |
-| **R4** | Replace `validate_store_behavior_mapping()` with structural DAG equivalence check | R2 | M | 2026-02-18 | 2026-02-18 |
-| **R5** | Replace `rust_type_for_type_id()` with `PortType`-based derivation | R2 | S | 2026-02-18 | 2026-02-18 |
-| **R6** | Cross-provider coercion test: GcpSecretPayload / AwsSecretValue via DAG walk | R2 | S | 2026-02-18 | 2026-02-18 |
+### Design Decision: Node Metadata Classification (blocks P1-P3)
 
-### 2B: Structural Derivation
+P1-P3 all replace string heuristics in `daglang-derive/src/lib.rs` with structural
+classification on `LoweredOp`. The shared design question is: **what fields on
+`LoweredOp::Callable` carry the metadata that `daglang-derive` currently extracts
+from name strings?**
 
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **SD1** | Replace hardcoded tool/binary lists (5+ files) with inventory-derived registries | T8 | M | 2026-02-18 | 2026-02-18 |
-| **SD2** | Consider `Box<dyn Executable>` for workspace DAG dispatch | T5 | S | 2026-02-18 | 2026-02-18 |
-| **SD3** | Eliminate manual `From` impls for `WorkspaceOp` (9 impls + ~15 match arms) | T5 | M | 2026-02-18 | 2026-02-18 |
+Current heuristics and their structural replacements:
 
-### 2C: Workflow Registry
+| Derive function | Current heuristic | Available structural data | Missing |
+|----------------|-------------------|--------------------------|---------|
+| `derive_capture_modes()` (line 485) | Hardcoded `CaptureMode::Captured` for all nodes | `obligation: ObligationCategory` distinguishes transport (`ServiceTransport*`) from pure | `is_interactive` flag (for `Passthrough` mode); streaming marker (for `Streamed` mode) |
+| `derive_interactive_nodes()` (line 495) | `name.contains("@interactive")` | Nothing — interactivity only exists as a name substring | `is_interactive: bool` on `LoweredOp::Callable` |
+| `derive_resources()` (line 512) | Three `strip_prefix()` calls: `resource_lifecycle::acquire::`, `resource_lifecycle::release::`, `resource_provide::` | `obligation` already has `ResourceAcquire`, `ResourceRelease`, `ResourceProvide` variants | Resource name / binding name as a dedicated field (currently encoded in `name` string suffix) |
 
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **W1** | Define `WorkflowSpec` type with entry points, deps, resources | T4 | M | 2026-02-18 | 2026-02-18 |
-| **W2** | Register all existing workflows (build, test, codegen, testgen, pragma, etc.) | W1 | M | 2026-02-18 | 2026-02-18 |
-| **W3** | Generate Makefile targets from registry | W2 | M | 2026-02-18 | 2026-02-18 |
-| **W4** | Fast-path freshness: integrate git HEAD + dirty state into workflow execution | W1 | S | 2026-02-18 | 2026-02-18 |
+**Approach**: Extend `LoweredOp::Callable` with two fields during lowering:
 
-### 2D: Codegen Quality
+```rust
+Callable {
+    module: String,
+    kind: String,
+    name: String,
+    obligation: ObligationCategory,
+    service_metadata: Option<ServiceMetadata>,
+    is_interactive: bool,          // NEW — parsed from DSL `@interactive` attr
+    resource_target: Option<String>, // NEW — resource name for lifecycle/provide nodes
+}
+```
 
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **CQ1** | Map `ObligationCategory` variants to canonical kind strings | — | S | 2026-02-18 | 2026-02-18 |
-| **CQ2** | Replace prefix-heuristic branches in `canonical_kind_from_shape` with obligation lookups | CQ1 | M | 2026-02-18 | 2026-02-18 |
-| **CQ3** | Verify parity snapshots unchanged | CQ2 | S | 2026-02-18 | 2026-02-18 |
-| **CQ4** | Propagate obligation lookups to lower_go.rs, lower_c.rs, lower_rust.rs, dag_mermaid.rs (residual prefix heuristics). **Note**: requires plumbing obligation metadata through CodeIR `Expr::Call` — obligation is on `LoweredOp` but lost when emitted to CodeIR. dag_mermaid needs it on `NodeTopology`. | CQ2 | L | 2026-02-18 | 2026-02-18 |
+Then all three derive functions become enum matches on `obligation` + field reads,
+following the established `classify_obligation()` pattern in `daglang-lower:179`.
+No string parsing in the derive phase.
 
-### 2E: Contract / CLI Guardrails
+### Design Decision: DeferredCallableOp Elimination Strategy (blocks P6)
 
-Design: `docs/design/integration-testgen.md`. Tier 0 (Makefile contract) done in `gunbc-dag/tests/cli_contract.rs`.
+P6 replaces `DeferredCallableOp` (identity passthrough) with per-tool domain ops.
+The design question is: **what concrete `Executable` impl replaces each deferred
+callable, and how should dry-run mode work without a passthrough fallback?**
 
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **CT1** | Tier 1: per-tool `--dry-run` contract tests (validate parsed inputs match CLI args) | — | M | 2026-02-18 | 2026-02-18 |
-| **CT2** | Add `--print-inputs json` flag to generated CLIs for machine-readable input echo | CT1 | S | 2026-02-18 | 2026-02-18 |
-| **CT3** | Generated per-tool contract test harness via testgen obligation | CT1 | M | 2026-02-18 | 2026-02-18 |
+Current deferred callables (from `resolve.rs` + `rust_exec_runtime.rs:306`):
 
----
+| Module | Callables | What they actually do |
+|--------|-----------|----------------------|
+| `tools.build` | `build_all` | Orchestrates `cargo build` — prepare shell request, parse result |
+| `tools.docgen` | `docgen`, `render_ab_workflows_doc` | Generate markdown docs from registry data |
+| `tools.testgen` | `generate_tests`, `testgen` | Generate test harnesses from DagSpecDef |
+| `tools.clippy` | `clippy_lint` | Prepare `cargo clippy` invocation, parse diagnostics |
+| `tools.deps` | `render_deps_toml`, `select_platform_deps`, `deps_install`, `deps_generate` | Dependency resolution and rendering |
+| `pipelines.ci` | all | CI stage orchestration (entrypoint + stage dispatch) |
+| `shared.dag_util` | all | DAG construction helpers (pure combinators) |
+| `shared.gist_modes` | all | Gist mode selection logic |
+| `std.patterns` | all | Standard patterns (content_upsert, while, etc.) |
 
-## Wave 3 — Build-On
+**Contrast with properly resolved examples** (PragmaOp, MakegenOp, BootstrapOp):
+each has a domain enum with per-variant `execute()` containing real business logic,
+and unknown callables return `Err(unknown_callable(...))`.
 
-### 3A: Domain Completion
+**Approach**: implement per-module `*Op` enums following the PragmaOp pattern.
+For dry-run: resolved ops should check `ExecutionMode::DryRun` internally and
+short-circuit with typed empty outputs (not generic identity passthrough). The
+catch-all `_ => Ok(deferred_callable(...))` on line 872 becomes
+`_ => Err(unknown_callable(...))` once all modules have resolution arms.
 
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **E1** | Provider-granted scope verification (E1.3b) | — | M | 2026-02-18 | 2026-02-18 |
-| **E2** | `make gist-recent` works without hidden hardcoded defaults (E1.5a) | E1 | M | 2026-02-18 | 2026-02-18 |
-| **E3** | WIF Bootstrap DAG — idempotent setup flow (E2.2b) | — | L | 2026-02-18 | 2026-02-18 |
-| **E4** | Unified infra CLI: bootstrap, plan, apply, spec, graph (E2.7a) | E3 | M | 2026-02-18 | 2026-02-18 |
-| **E5** | Enhanced login flow: verify ADC, SA impersonate, direnv (E2.7b) | E3 | M | 2026-02-18 | 2026-02-18 |
-| **E6** | Status/health check: auth, projects, SA, secrets (E2.7c) | E3 | S | 2026-02-18 | 2026-02-18 |
-
-### 3B: Cross-Language & Test
-
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **CL1** | Audit generated Rust for remaining clippy issues (D3.3a) | T3 | M | 2026-02-18 | 2026-02-18 |
-| **CL2** | Audit generated Go for golint/govet issues (D3.3b) | — | M | 2026-02-18 | 2026-02-18 |
-| **CL3** | Document IR modeling gaps discovered and fix (D3.3c) | CL1, CL2 | M | 2026-02-18 | 2026-02-18 |
-
-### 3C: Consolidation
-
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **CO1** | `ToolGraphOp<D>` generic wrapper or GraphOp wrapper enum unification (moot: DynOp migration solved this) | SD3 | M | 2026-02-18 | 2026-02-18 |
-| **CO2** | Split `MergeOutputs` dedup from cardinality handling | — | M | 2026-02-18 | 2026-02-18 |
-| **CO3** | Probe-observer analysis single-source bundle (consolidation §17.A) | — | M | 2026-02-18 | 2026-02-18 |
-| **CO4** | Seed policy ownership in IR types, not testgen whitelist (consolidation §17.B) | — | M | 2026-02-18 | 2026-02-18 |
-| **CO5** | Live-secret requirements as generated workflow metadata (consolidation §17.C) | — | M | 2026-02-18 | 2026-02-18 |
-| **CO6** | Execution trace inputs for coercion/assertion observability (consolidation §17.D) | — | M | 2026-02-18 | 2026-02-18 |
-| **CO7** | Add `ValueKind` enum on `Value` so `types_compatible` becomes `TypeId backing accepts ValueKind` without manufacturing type-name strings (eliminates `mock_value_type_name` smell) | — | M | 2026-02-18 | 2026-02-18 |
+| ID | Task | Deps | Size | Source |
+|----|------|------|------|--------|
+| **P1** | `daglang-derive:485` — Derive capture mode from `obligation` + `is_interactive` field on `LoweredOp::Callable`, not hardcoded. Three modes: `ServiceTransport*` → `Captured`, `is_interactive` → `Passthrough`, streaming TBD. | — | M | `TODO(Phase 3)` |
+| **P2** | `daglang-derive:495` — Replace `name.contains("@interactive")` with `is_interactive: bool` field on `LoweredOp::Callable`, parsed from DSL `@interactive` attribute during lowering in `daglang-lower`. | P1 | S | `TODO(Phase 3)` |
+| **P3** | `daglang-derive:512` — Replace three `strip_prefix()` calls (`resource_lifecycle::acquire/release::`, `resource_provide::`) with `obligation` enum match + `resource_target: Option<String>` field. The `ObligationCategory::Resource*` variants already exist. | P1 | S | `TODO(Phase 3)` |
+| **P4** | `daglang-cli/commands.rs:147` — Deduplicate `check_from_context` re-discovery/re-parse/re-typecheck with cached pipeline state | — | M | `TODO` |
+| **P5** | `lib/gcp-ops/src/ops.rs:568` — Wire token expiry into output if callers need it | — | S | `TODO` |
+| **P6** | `DeferredCallableOp` → per-module domain ops: implement `*Op` enums for each deferred module (see table above), replace catch-all passthrough with `Err(unknown_callable(...))`. Dry-run via `ExecutionMode` check inside each op, not via identity passthrough. ~15 modules, ~25 callables total. (`resolve.rs`, `rust_exec_runtime.rs:306`) | F1 | L | PR review |
+| **P7** | Remove `dedupe_release_resource_edges` (resolve.rs:1281): duplicate edges arise when a callable both `uses` and `provides` the same resource — `add_used_resource_edges()` (lower:3550) and `add_provided_resource_nodes()` (lower:3622) both independently wire to the same `release_resource_*` node. Fix: track already-wired release targets in the lowerer's `ResourceLifecycleRegistry` and skip if `(release_node, "resource_handle")` pair already has an inbound edge. | — | S | PR review |
+| **P8** | Consolidate repeated GCP service client constructors (`new`/`unauthenticated`) into a shared helper/macro across `lib/gcp-ops/src/services/*`. | — | S | PR review |
+| **P9** | Deduplicate `content_upsert` source wiring in `core/daglang/daglang-lower/src/lib.rs` (content/path branches share nearly identical param/source edge logic). | — | M | PR review |
+| **P10** | Consolidate makegen compile test setup/cleanup in `core/daglang/daglang-cli/src/compile/tests.rs` (temp output creation + teardown helpers) to reduce repetition and cleanup leaks. | — | S | PR review |
 
 ---
 
-## Wave 4+ — Horizon / Deferred
+## Medium-Term: Horizon Features (Ready for Implementation)
 
-These require DSL language features that don't exist yet, or are low priority.
-Design drafts: `docs/design/horizon/README.md`.
+Design docs in `docs/design/horizon/`. These are unblocked or have soft prerequisites.
 
-### Needs DSL Reactive/Metaprogramming
+### Typing & Resource Hardening
 
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **H1** | Display orchestration DSL migration (channel-driven event loop, timer ticks) | DSL reactive primitives | XL | 2026-02-18 | |
-| **H2** | Testgen dynamic targets (N upsert chains per DagSpecDef via inventory) | DSL metaprogramming | L | 2026-02-18 | 2026-02-18 |
-| **H3** | Makegen tool registry (procedural target gen from #[tool_target]) | DSL metaprogramming | L | 2026-02-18 | 2026-02-18 |
-| **H4** | Loop extra inputs passthrough (for body needs non-element context) | DSL for-loop enhancement | M | 2026-02-18 | 2026-02-18 |
+| ID | Task | Deps | Size | Design |
+|----|------|------|------|--------|
+| **HR1** | Typed node I/O wrappers (`TypedInput<T>`, `TypedOutput<T>`, `TypedPort<T>`) + fail-closed semantic carriers | — | L | `h11-dag-typing-hardening.md` |
+| **HR2** | `Resource` trait: capability-oriented contract for acquisition, probing, release across ops | — | L | `h7-resource-abstraction-trait.md` |
 
-### Low Priority / Design-Gated
+### DSL Language Extensions
 
-| ID | Task | Deps | Size | Started | Done |
-|----|------|------|------|---------|------|
-| **H5** | Fermi guard live tests (blocked on GCP WIF + codegen for secrets) | E3 | M | 2026-02-18 | 2026-02-18 |
-| **H6** | Cardinality compositional modeling (non-blocking) | — | L | 2026-02-18 | 2026-02-18 |
-| **H7** | Resource abstraction trait for DAG-native resource management | design decision | L | 2026-02-18 | 2026-02-18 |
-| **H8** | Rendering workflows as DAGs: Makefile generation (when adding Justfile) | second format consumer | L | 2026-02-18 | 2026-02-18 |
-| **H9** | Rendering workflows as DAGs: CI workflow generation (when adding second provider) | second CI provider | L | 2026-02-18 | 2026-02-18 |
-| **H10** | Compute stack service interfaces (GCE, Cloud Run, LB, GCS bucket) | E3 | XL | 2026-02-18 | 2026-02-18 |
-| **H11** | DAG typing hardening: typed node I/O wrappers + semantic carrier refinements | — | L | 2026-02-18 | 2026-02-18 |
-| **H12** | `make test-integration` / `make test-external` Makefile targets | — | S | 2026-02-18 | 2026-02-18 |
+| ID | Task | Deps | Size | Design |
+|----|------|------|------|--------|
+| **HL1** | Loop extra inputs passthrough: body receives non-element context (repo, branch, policy) | — | M | `h4-loop-extra-inputs-passthrough.md` |
+| **HL2** | Testgen dynamic targets: N upsert chains per DagSpecDef via inventory at codegen time | — | L | `h2-testgen-dynamic-targets.md` |
+| **HL3** | Makegen tool registry: procedural target gen from `#[tool_target]` attributes | — | L | `h3-makegen-tool-registry.md` |
+
+### Workflow Rendering
+
+| ID | Task | Deps | Size | Design |
+|----|------|------|------|--------|
+| **HW1** | Justfile renderer: second format consumer for `WorkflowSpec`, validate portability | — | M | `h8-workflow-rendering-justfile.md` |
+| **HW2** | GitHub Actions YAML renderer: jobs from targets, `needs` from deps, permissions from resources | HW1 | L | `h9-workflow-rendering-github-actions.md` |
+
+---
+
+## Long-Term: Design-Gated / Large Scope
+
+These require significant new DSL primitives or infrastructure that doesn't exist yet.
+
+| ID | Task | Deps | Size | Design |
+|----|------|------|------|--------|
+| **H1** | Display orchestration DSL migration: channel-driven event loop, timer ticks, reactive `on`/`tick` triggers | DSL reactive primitives (parser + IR + runtime scheduler) | XL | `h1-display-reactive-dsl.md` |
+| **H10** | Compute stack service interfaces: Cloud Run, GCS, LB (MVP), GCE (phase 2) | Provider-neutral trait defs + GCP adapters | XL | `h10-compute-stack-services.md` |
 
 ---
 
 ## Parallelization Guide
 
 ```
-         ┌─ T1→T2→T3→T4→T5→T7 (DynOp critical path)
-         │       └→T6          (exec-bridge cleanup, parallel with T3+)
-         │       └→T8          (lib crate cleanup, after T5)
+         ┌─ F1→F2,F6              (testgen regen → verify + snapshots)
+SPRINT 1 ├─ F3                     (CI acceptance, independent)
+         ├─ F4, F5                 (guardrail fixes, independent)
          │
-SESSION  ├─ B1-B4              (bridge hygiene, fully independent)
+    ─────┤ (Sprint 2: polish, after green CI)
          │
-         ├─ Q1-Q10             (code quality, fully independent)
+         ├─ P7, P8, P10           (mechanical: edge dedup, GCP macro, test helpers)
+         ├─ P9                     (lowerer source wiring dedup)
+         ├─ P1→P2,P3              (LoweredOp metadata fields → structural classify)
+         ├─ P4                     (CLI pipeline caching)
+         ├─ P5                     (GCP token expiry)
          │
-         ├─ S1-S4              (seed policy, fully independent)
+    ─────┤ (Sprint 3: DeferredCallableOp elimination)
          │
-         ├─ D1-D3              (debt, fully independent)
+         ├─ P6                     (per-module domain ops, L — blocks on design)
          │
-    ─────┤ (Wave 2 starts when T4+ complete)
+    ─────┤ (Horizon features, pick based on need)
          │
-         ├─ R1→R2→R3,R4,R5,R6 (system model refactor)
-         │
-         ├─ SD1-SD3            (structural derivation, after T5/T8)
-         │
-         ├─ W1→W2→W3,W4       (workflow registry)
-         │
-         ├─ CQ1→CQ2→CQ3       (codegen quality)
-         │
-    ─────┤ (Wave 3)
-         │
-         ├─ E1→E2              (credential completion)
-         ├─ E3→E4,E5,E6        (GCP CLI/UX)
-         ├─ CL1,CL2→CL3       (cross-language audit)
-         └─ CO1-CO7            (consolidation, mostly independent)
+         ├─ HR1                    (typing hardening)
+         ├─ HR2                    (resource trait)
+         ├─ HL1, HL2, HL3         (DSL extensions, all independent)
+         └─ HW1→HW2               (workflow rendering)
 ```
 
-**Maximum parallelism at any point**: 5+ independent swimlanes.
-**Critical path**: T1 → T2 → T3 → T4 → T5 → T7 (DynOp, ~2 weeks).
-**Highest-ROI quick wins**: B1, B3, Q1, Q3, Q4, Q6 (all S-sized, zero deps).
+**Sprint 1 priority**: F1 (testgen regen) unblocks ~30 test failures in one step.
+**Sprint 2 highest ROI**: P7, P8, P10 (mechanical, zero design risk).
+**Sprint 3 design dependency**: P6 requires deciding dry-run strategy per-module.
+**Horizon pick order**: HR1 or HL1 have highest leverage (typing safety / loop ergonomics).
 
 ---
 
-## Completed Work Summary
+## Completed Work Summary (2026-02-18)
 
-All completed items are archived in `TODONE/` with dates. Key milestones:
+All completed items are archived in `TODONE/` with dates. The following waves were
+fully completed on 2026-02-18 as part of the DSL roadmap sprint:
 
-- **Track A (DSL Core)**: DONE — 4-target codegen (Rust/Go/C/MIPS), exec-runtime, cross-language parity
-- **Track C5 (Type Coercion)**: DONE — DAG-walk coercion, dual encoding elimination, stress tests
-- **Track C7 (Workspace Model)**: DONE — WorkspaceLayout, glob derivation, parent() elimination
-- **Track C1 (Platform)**: DONE — Arch/Vendor/Os/AbiEnv/TargetTriple/ExecutionEnv
-- **Track C2 (Browser)**: DONE — cross-platform browser utility
-- **Track C4 (Transport DAG)**: DONE — typed ports, behavioral specs, tests
-- **Track D1 (Logging)**: DONE — unified DisplayConfig, secret redaction, stderr capture, failure-first, grouped progress
-- **Track C6.1-C6.4**: DONE — system model types, GCP/AWS/transport models, contract tests
-- **Track C6.5f-g**: DONE — model data distributed to owning crates via inventory
-- **Track B workflow audit A-C**: DONE — purity, resource declarations, test registry
-- **P3 (ValueBacking)**: DONE — centralized type→Value backing in core/ir
-- **25/35 hacks resolved**, **18/18 consolidation items §9-15 resolved**
+### DynOp Type-Dispatch Elimination (T1-T8)
+~5,950 lines deleted, ~300 added. `WorkspaceOp` enum, 16 `From` impls, 10 converter fns,
+`FileOpsGraph<T>`, `ResolvedOp`, `RuntimeOpId` — all removed. Central `resolve.rs` replaces
+hand-built graph builders for all 7 tool modules.
+
+### Active Cleanup (C1-C6)
+Resolver hardening, lowering hardening, exec-runtime literal/param source support,
+makegen path regression fix, mock cleanup, transport-call consolidation.
+
+### Wave 1 — DSL Migration & Quality
+- **1A (M1-M3)**: Pragma and codegen DSL parity verified, pragma binary wired into build system
+- **1B (B1-B4)**: Bridge hygiene — `Optional<T>` prefix, naming invariant test, string inspection removal
+- **1C (Q1-Q10)**: 10 code quality items — panic→Err, expect→?, `ParamType` enum, `HashSet`, `&Path`, `write!()`, `Cow<'static, str>`, etc.
+- **1D (S1-S4)**: Seed policy — scenario/live-flow matrices, enforcement tests, fail-closed carriers
+- **1E (D1-D3)**: `StableHashOp` extraction, test redundancy review, hermeticity annotation design
+
+### Wave 2 — System Model & Structure
+- **2A (R1-R6)**: System model refactor — `Dag<TypeOp>`, TypeRegistry, contract derivation, store mapping, `PortType`, cross-provider coercion
+- **2B (SD1-SD3)**: Structural derivation — inventory registries, `Box<dyn Executable>`, `From` impl elimination
+- **2C (W1-W4)**: Workflow registry — `WorkflowSpec`, registration, Makefile generation, git freshness
+- **2D (CQ1-CQ4)**: Codegen quality — obligation mapping, prefix-heuristic elimination, parity snapshots, CodeIR plumbing
+- **2E (CT1-CT3)**: CLI contracts — `--dry-run` tests, `--print-inputs json`, testgen obligations
+
+### Wave 3 — Domain & Consolidation
+- **3A (E1-E6)**: Domain completion — scope verification, gist defaults, WIF bootstrap, infra CLI, login flow, health check
+- **3B (CL1-CL3)**: Cross-language audit — generated Rust clippy clean, generated Go vet clean, IR gaps fixed
+- **3C (CO1-CO7)**: Consolidation — DynOp made CO1 moot, MergeOutputs split, probe-observer bundle, seed policy IR, live-secret metadata, execution trace, ValueKind
+
+### Wave 4+ Horizon (Completed)
+- **H2-H12**: Testgen dynamic targets, makegen tool registry, loop extra inputs, Fermi guards, cardinality modeling, resource abstraction, workflow rendering (Makefile/CI), compute stack, DAG typing, integration test targets
+
+### Pre-Sprint Tracks
+- **Track A (DSL Core)**: 4-target codegen (Rust/Go/C/MIPS), exec-runtime, cross-language parity
+- **Track C (Modeling)**: Type coercion, workspace model, platform, browser, transport DAG, system model
+- **Track D (Logging)**: DisplayConfig, secret redaction, stderr capture, failure-first, grouped progress
+- **Track B (Workflow Audit)**: Purity, resource declarations, test registry
+- **P3 (ValueBacking)**: Centralized type→Value backing in core/ir
+- **Architecture Debt A-C**: Infra extraction, mtime fast path, design fixes
+- **25/35 hacks resolved, 18/18 consolidation items §9-15 resolved**

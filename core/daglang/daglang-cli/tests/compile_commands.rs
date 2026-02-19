@@ -7070,7 +7070,9 @@ func run() -> { body: String } {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("service_param_source_targets: 0"));
+    // Literal args (e.g., path: "README.md") now lower to call_literal_source
+    // nodes with ServiceParamSource obligation, so the count is 1.
+    assert!(stdout.contains("service_param_source_targets: 1"));
 
     std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }

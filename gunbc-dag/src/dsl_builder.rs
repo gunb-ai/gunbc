@@ -35,7 +35,7 @@ fn compile_lowered(relative_module: &str) -> Result<Dag<daglang_lower::LoweredOp
 }
 
 /// Compile a DSL module and resolve lowered ops into `Dag<DynOp>`.
-pub fn build_dsl_graph(relative_module: &str) -> Result<Dag<DynOp>, BuilderError> {
+pub(crate) fn build_dsl_graph(relative_module: &str) -> Result<Dag<DynOp>, BuilderError> {
     let lowered = compile_lowered(relative_module)?;
     resolve_lowered_dag(&lowered).map_err(|error| {
         BuilderError::InternalInvariant(format!(
@@ -44,31 +44,31 @@ pub fn build_dsl_graph(relative_module: &str) -> Result<Dag<DynOp>, BuilderError
     })
 }
 
-pub fn build_bootstrap_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+pub(crate) fn build_bootstrap_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/bootstrap.dag")
 }
 
-pub fn build_build_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+pub(crate) fn build_build_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/build.dag")
 }
 
-pub fn build_ci_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+pub(crate) fn build_ci_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("pipelines/ci.dag")
 }
 
-pub fn build_codegen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+pub(crate) fn build_codegen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/codegen.dag")
 }
 
-pub fn build_docgen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+pub(crate) fn build_docgen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/docgen.dag")
 }
 
-pub fn build_makegen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+pub(crate) fn build_makegen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/makegen.dag")
 }
 
-pub fn build_pragma_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+pub(crate) fn build_pragma_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/pragma.dag")
 }
 

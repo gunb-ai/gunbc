@@ -124,6 +124,22 @@ pub trait GcpRestClient {
     }
 }
 
+macro_rules! impl_gcp_rest_client {
+    ($ty:ty, $base_url:expr) => {
+        impl GcpRestClient for $ty {
+            fn base_url(&self) -> &str {
+                $base_url
+            }
+
+            fn credential(&self) -> Option<&Credential> {
+                self.auth.as_ref()
+            }
+        }
+    };
+}
+
+pub(crate) use impl_gcp_rest_client;
+
 /// GCP API base URLs.
 pub mod base_urls {
     /// Secret Manager API.

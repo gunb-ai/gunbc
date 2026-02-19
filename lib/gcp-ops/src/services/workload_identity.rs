@@ -187,15 +187,7 @@ impl WorkloadIdentityRest {
     }
 }
 
-impl GcpRestClient for WorkloadIdentityRest {
-    fn base_url(&self) -> &str {
-        IAM
-    }
-
-    fn credential(&self) -> Option<&Credential> {
-        self.auth.as_ref()
-    }
-}
+super::impl_gcp_rest_client!(WorkloadIdentityRest, IAM);
 
 impl WorkloadIdentityService for WorkloadIdentityRest {
     fn list_pools(&self, project: &str) -> RestRequest {

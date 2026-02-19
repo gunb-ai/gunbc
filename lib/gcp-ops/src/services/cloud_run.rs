@@ -156,15 +156,7 @@ impl CloudRunRest {
     }
 }
 
-impl GcpRestClient for CloudRunRest {
-    fn base_url(&self) -> &str {
-        RUN
-    }
-
-    fn credential(&self) -> Option<&Credential> {
-        self.auth.as_ref()
-    }
-}
+super::impl_gcp_rest_client!(CloudRunRest, RUN);
 
 impl CloudRunService for CloudRunRest {
     fn list_services(&self, project: &str, region: &str) -> RestRequest {

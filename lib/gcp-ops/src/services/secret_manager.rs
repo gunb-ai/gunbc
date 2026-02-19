@@ -122,15 +122,7 @@ impl SecretManagerRest {
     }
 }
 
-impl GcpRestClient for SecretManagerRest {
-    fn base_url(&self) -> &str {
-        SECRET_MANAGER
-    }
-
-    fn credential(&self) -> Option<&Credential> {
-        self.auth.as_ref()
-    }
-}
+super::impl_gcp_rest_client!(SecretManagerRest, SECRET_MANAGER);
 
 impl SecretManagerService for SecretManagerRest {
     fn access_secret_version(&self, project: &str, secret: &str, version: &str) -> RestRequest {

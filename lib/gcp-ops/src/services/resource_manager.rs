@@ -102,15 +102,7 @@ impl ResourceManagerRest {
     }
 }
 
-impl GcpRestClient for ResourceManagerRest {
-    fn base_url(&self) -> &str {
-        RESOURCE_MANAGER
-    }
-
-    fn credential(&self) -> Option<&Credential> {
-        self.auth.as_ref()
-    }
-}
+super::impl_gcp_rest_client!(ResourceManagerRest, RESOURCE_MANAGER);
 
 impl ResourceManagerService for ResourceManagerRest {
     fn list_projects(&self) -> RestRequest {

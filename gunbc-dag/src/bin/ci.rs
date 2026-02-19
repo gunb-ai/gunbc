@@ -22,9 +22,8 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::{
-    build_ci_graph_dsl, print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions,
-};
+use gunbc_dag::ci::build_ci_graph;
+use gunbc_dag::{print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions};
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, CiContext, ExecutionMode};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::{detect_entrypoints, Value};
@@ -66,7 +65,7 @@ fn main() {
     let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
 
     // Build the CI graph from DSL
-    let dag = match build_ci_graph_dsl() {
+    let dag = match build_ci_graph() {
         Ok(d) => d,
         Err(e) => {
             print_attention(

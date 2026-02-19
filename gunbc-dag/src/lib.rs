@@ -28,7 +28,7 @@ pub mod dag_viz;
 #[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
 pub mod docgen;
 pub mod dry_run;
-pub mod dsl_builder;
+pub(crate) mod dsl_builder;
 pub mod fs_env;
 pub mod makegen;
 pub mod mock_defaults;
@@ -58,10 +58,6 @@ pub use docgen::{
     build_docgen_graph, DocgenGraphOp, DocgenOp, DocgenReadTarget, DOCGEN_READ_TARGETS,
 };
 pub use dry_run::wire_fs_env_write_mock;
-pub use dsl_builder::{
-    build_bootstrap_graph_dsl, build_build_graph_dsl, build_ci_graph_dsl, build_codegen_graph_dsl,
-    build_docgen_graph_dsl, build_makegen_graph_dsl, build_pragma_graph_dsl,
-};
 pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
 pub use makegen::{

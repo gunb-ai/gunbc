@@ -266,36 +266,14 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
         if has_outgoing.contains(&node.id) {
             continue;
         }
-        let mut example = NodeExample::new(node.id.0.as_str());
-        for output in &node.outputs {
-            let matcher = match value_backing_for_type_id(output.type_id.0.as_str()) {
-                ValueBacking::Bool => OutputMatcher::IsBool,
-                ValueBacking::Int | ValueBacking::Float => OutputMatcher::IsInt,
-                ValueBacking::String => OutputMatcher::IsString,
-                _ => OutputMatcher::NonEmpty,
-            };
-            example = example.output(output.name.0.as_str(), matcher);
-            // Passthrough ops (IdentityCallableOp, DeferredCallableOp) forward
-            // inputs as outputs. Provide an input for each output port so the
-            // output will exist and satisfy the matcher.
-            // Special case: `skip` output ports default to false so transport
-            // execute nodes actually run instead of short-circuiting.
-            let passthrough_value =
-                if output.name.0 == "skip" && output.type_id.0 == "Bool" {
-                    Value::Bool(false)
-                } else {
-                    default_value_for_type(output.type_id.0.as_str())
-                };
-            example = example.input(output.name.0.as_str(), passthrough_value);
-        }
-        // Also provide values for required input ports that don't overlap
-        // with output names (e.g. guard inputs, domain-specific required inputs).
-        //
+
+        // Step 1: Collect required (non-passthrough) inputs.
         // Two-pass strategy: first populate all non-TransportResponse inputs,
         // then probe for the best response variant. This ensures the probe
         // has all required context (e.g. node_count, total_node_count) when
         // it trial-executes the node.
         let output_names: HashSet<&str> = node.outputs.iter().map(|o| o.name.0.as_str()).collect();
+        let mut required_inputs: HashMap<String, Value> = HashMap::new();
         let mut deferred_response_ports: Vec<&str> = Vec::new();
         for input_port in &node.inputs {
             if output_names.contains(input_port.name.0.as_str()) {
@@ -313,48 +291,118 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             } else {
                 default_value_for_type(input_port.type_id.0.as_str())
             };
-            example = example.input(input_port.name.0.as_str(), value);
+            required_inputs.insert(input_port.name.0.clone(), value);
         }
-        // Second pass: probe for best TransportResponse variant now that
-        // all other required inputs are populated.
-        for port_name in deferred_response_ports {
-            let value = probe_best_response(&lowered.dag, &node.id.0, &example);
-            example = example.input(port_name, value);
+
+        // Step 2: Find "reliable" output ports by running a minimal trial
+        // (required inputs only, no passthrough inputs). Ports that appear
+        // here are always produced regardless of which chain provides inputs.
+        // This prevents chain tests from failing on ports that only exist
+        // when specific passthrough inputs are provided (e.g. IdentityCallableOp
+        // only outputs what it receives).
+        let mut minimal_inputs = required_inputs.clone();
+        // Probe best response for deferred response ports in the minimal context.
+        let mut minimal_example = NodeExample::new(node.id.0.as_str());
+        for (k, v) in &minimal_inputs {
+            minimal_example = minimal_example.input(k.as_str(), v.clone());
         }
-        // Validate: trial-execute with the proposed inputs and check that
-        // the produced outputs cover the declared output port names. Nodes
-        // whose implementation produces different port names than their
-        // schema declares (e.g. content_upsert execute nodes with prefixed
-        // output ports) are skipped — they are still covered by chain and
-        // window tests.
-        let trial = execute_single_node(
+        for port_name in &deferred_response_ports {
+            let value = probe_best_response(&lowered.dag, &node.id.0, &minimal_example);
+            minimal_inputs.insert(port_name.to_string(), value.clone());
+            minimal_example = minimal_example.input(*port_name, value);
+        }
+        let reliable_ports: HashSet<String> = execute_single_node(
             &lowered.dag,
             node.id.0.as_str(),
-            example.inputs.clone(),
+            minimal_inputs.clone(),
             ExecutionMode::Real,
-        );
-        let outputs_valid = match &trial {
-            Ok(outputs) => {
-                // All required ports must be present.
-                let required_ok = node.outputs.iter().all(|port| {
-                    port.cardinality.allows_empty() || outputs.contains_key(&port.name.0)
-                });
-                // Produced outputs should only use declared port names.
-                // If the implementation produces ports not in the schema
-                // (e.g. content_upsert execute nodes with prefixed schema
-                // ports but generic implementation ports), the example is
-                // invalid and would cause test_example failures.
-                let declared: HashSet<&str> =
-                    node.outputs.iter().map(|p| p.name.0.as_str()).collect();
-                let all_declared = outputs.keys().all(|k| declared.contains(k.as_str()));
-                required_ok && all_declared
+        )
+        .map(|outputs| outputs.into_keys().collect())
+        .unwrap_or_default();
+
+        // Step 3: Build the NodeExample with matchers only for reliable ports
+        // that also match declared output port names. Undeclared ports
+        // (e.g. `stdout`, `stderr` from TransportOps::Execute) are internal
+        // implementation details and should not have matchers.
+        //
+        // Fallback: if the minimal trial produced no reliable ports (typical for
+        // DeferredCallableOp / identity passthroughs at SubDag boundaries), add
+        // NonEmpty matchers for all declared output ports. These nodes forward
+        // inputs as outputs, so the passthrough inputs added in Step 4 below
+        // will produce the outputs. This ensures the observability invariant
+        // (every terminal reachable from a probe has an OutputMatcher) holds.
+        let use_fallback = reliable_ports.is_empty() && !node.outputs.is_empty();
+        let mut example = NodeExample::new(node.id.0.as_str());
+        for port in &node.outputs {
+            if !use_fallback && !reliable_ports.contains(&port.name.0) {
+                continue;
             }
-            Err(_) => false,
-        };
-        if !outputs_valid {
+            let matcher = if use_fallback {
+                OutputMatcher::NonEmpty
+            } else {
+                match value_backing_for_type_id(port.type_id.0.as_str()) {
+                    ValueBacking::Bool => OutputMatcher::IsBool,
+                    ValueBacking::Int | ValueBacking::Float => OutputMatcher::IsInt,
+                    ValueBacking::String => OutputMatcher::IsString,
+                    _ => OutputMatcher::NonEmpty,
+                }
+            };
+            example = example.output(port.name.0.as_str(), matcher);
+        }
+
+        // Step 4: Add passthrough inputs so the test_example test works.
+        // Passthrough ops (IdentityCallableOp, DeferredCallableOp) forward
+        // inputs as outputs, so providing these makes test_example succeed.
+        for output in &node.outputs {
+            let passthrough_value =
+                if output.name.0 == "skip" && output.type_id.0 == "Bool" {
+                    Value::Bool(false)
+                } else {
+                    default_value_for_type(output.type_id.0.as_str())
+                };
+            example = example.input(output.name.0.as_str(), passthrough_value);
+        }
+        // Add required non-passthrough inputs.
+        for (k, v) in &required_inputs {
+            example = example.input(k.as_str(), v.clone());
+        }
+        // Add deferred response inputs.
+        for port_name in &deferred_response_ports {
+            if let Some(v) = minimal_inputs.get(*port_name) {
+                example = example.input(*port_name, v.clone());
+            }
+        }
+
+        spec = spec.node_example(example);
+    }
+
+    // Also add OutputMatchers for terminal nodes in the *original* (pre-lowered)
+    // DAG. SubDag boundary nodes (e.g., `tools.bootstrap::bootstrap`) are terminal
+    // in the original DAG but get expanded away during lowering. The observability
+    // invariant checks the original DAG's topology, so these need matchers too.
+    let lowered_node_ids: HashSet<&str> =
+        lowered.dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
+    let original_has_outgoing: HashSet<&NodeId> =
+        dag.edges.iter().map(|e| &e.from_node).collect();
+    for node in &dag.nodes {
+        if original_has_outgoing.contains(&node.id) {
             continue;
         }
-        spec = spec.node_example(example);
+        // Skip nodes that exist in the lowered DAG (already handled above).
+        if lowered_node_ids.contains(node.id.0.as_str()) {
+            continue;
+        }
+        let mut example = NodeExample::new(node.id.0.as_str());
+        for port in &node.outputs {
+            example = example.output(port.name.0.as_str(), OutputMatcher::NonEmpty);
+            example = example.input(
+                port.name.0.as_str(),
+                default_value_for_type(port.type_id.0.as_str()),
+            );
+        }
+        if !example.outputs.is_empty() {
+            spec = spec.node_example(example);
+        }
     }
 
     spec

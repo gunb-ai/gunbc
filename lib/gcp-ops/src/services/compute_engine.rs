@@ -164,15 +164,7 @@ impl ComputeEngineRest {
     }
 }
 
-impl GcpRestClient for ComputeEngineRest {
-    fn base_url(&self) -> &str {
-        COMPUTE
-    }
-
-    fn credential(&self) -> Option<&Credential> {
-        self.auth.as_ref()
-    }
-}
+super::impl_gcp_rest_client!(ComputeEngineRest, COMPUTE);
 
 impl ComputeEngineService for ComputeEngineRest {
     fn list_instance_templates(&self, project: &str) -> RestRequest {
