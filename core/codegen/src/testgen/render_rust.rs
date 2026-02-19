@@ -261,6 +261,18 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
                 let expr_str = self.render_expr(expr);
                 format!("{}let {}{} = {};\n", pad, mut_kw, name, expr_str)
             }
+            Stmt::Bind {
+                targets,
+                intent,
+                expr,
+            } => {
+                let lhs = render_rust_bind_targets(targets);
+                let expr_str = self.render_expr(expr);
+                match intent {
+                    BindIntent::Declare => format!("{}let {} = {};\n", pad, lhs, expr_str),
+                    BindIntent::Assign => format!("{}{} = {};\n", pad, lhs, expr_str),
+                }
+            }
             Stmt::Expr(expr) => {
                 format!("{}{};\n", pad, self.render_expr(expr))
             }
@@ -297,7 +309,12 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
                 out
             }
             Stmt::Assign { dest, value } => {
-                format!("{}{} = {};\n", pad, self.render_expr(dest), self.render_expr(value))
+                format!(
+                    "{}{} = {};\n",
+                    pad,
+                    self.render_expr(dest),
+                    self.render_expr(value)
+                )
             }
             Stmt::BlockScope(stmts) => {
                 let mut out = format!("{}{{\n", pad);
@@ -381,6 +398,25 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
             Item::Struct(s) => self.render_struct_def(s, indent),
             Item::Raw(code) => format!("{}{}\n", pad, code),
         }
+    }
+}
+
+fn render_rust_bind_targets(targets: &[BindTarget]) -> String {
+    if targets.len() == 1 {
+        return render_rust_bind_target(&targets[0]);
+    }
+    let rendered = targets
+        .iter()
+        .map(render_rust_bind_target)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("({rendered})")
+}
+
+fn render_rust_bind_target(target: &BindTarget) -> String {
+    match target {
+        BindTarget::Name(name) => name.clone(),
+        BindTarget::Discard => "_".to_string(),
     }
 }
 

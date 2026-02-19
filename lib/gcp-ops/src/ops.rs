@@ -1166,7 +1166,7 @@ impl Executable for GcpOps {
                     },
                 };
 
-                let changed = policy.ensure_member(role, &member);
+                let changed = policy.ensure_member(role, member);
 
                 if !changed {
                     return OutputMap::new()

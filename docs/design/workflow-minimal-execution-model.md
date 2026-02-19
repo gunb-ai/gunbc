@@ -5,6 +5,17 @@ Owner: `gunbc` workflow/runtime
 Scope: `make ci`, `make test-all`, and shared generation/lint/build/test orchestration
 Detailed design pack: `docs/design/workflow/wf1-wf4-dag-design-pack.md`
 
+## 0. Document Contract
+
+This document is the normative source for workflow execution semantics.
+
+1. Canonical model authority lives here: typing, flattening, key/ledger, admission,
+   execution semantics, no-fallback policy, and proof obligations.
+2. `docs/design/workflow/wf1-wf4-dag-design-pack.md` is a derived WF1-WF4 review
+   pack with workflow DAG visuals and ownership evidence.
+3. If the two documents disagree, this document is authoritative.
+4. Derived documents must not introduce alternate dependency/effect/claim semantics.
+
 ## 1. Problem Statement
 
 `gunbc` has the right low-level primitives (typed DAGs, resource manifests, effect metadata), but top-level workflow execution is still modeled as imperative target chaining.
@@ -15,12 +26,39 @@ Current consequences:
 2. Repeated freshness checks and repeated tool startup overhead in one command.
 3. Runtime behavior encoded in Make target composition instead of a typed execution model.
 4. Slow no-op and warm-path commands despite a medium-sized repo.
+5. Semantic drift risk: workflow meaning is split across multiple surfaces (Make
+   composition + per-tool glue + freshness policy), so equivalence is not mechanically provable.
 
 User-facing requirement:
 
 1. Commands should usually return in seconds on warm state.
 2. No hidden fallback/deprecated path behavior.
 3. Workflows should naturally avoid redundant work by construction.
+
+### 1.1 Missing Formal Object
+
+What is missing is a canonical function:
+
+`Plan(workflow_spec, declared_inputs, workspace_state, prior_global_ledger) -> (execution_plan, explanation)`
+
+Without this function, we cannot prove determinism, minimality, or at-most-once
+properties over end-to-end workflows.
+
+### 1.2 Symptom vs Deficiency Mapping
+
+1. Symptom: redundant compile/generator work across targets.
+   Deficiency: no global flattening + dedup over a canonical resolved graph.
+2. Symptom: repeated freshness checks and tool startup overhead.
+   Deficiency: planning/execution happens per target chain, not once per resolved graph.
+3. Symptom: hidden fallback/deprecated behavior.
+   Deficiency: orchestration is not constrained by a closed typed fail-closed model.
+4. Symptom: warm/no-op latency drift.
+   Deficiency: no canonical key/ledger function to prove zero functional work.
+
+### 1.3 Trust Boundary
+
+Correctness/minimality guarantees are relative to declared inputs/outputs/effects.
+Undeclared dependencies are model violations and must fail validation.
 
 ## 2. Existing Signals In This Repo
 
@@ -49,7 +87,8 @@ Adaptation for `gunbc`:
 
 1. Keep typed DAG + resource semantics.
 2. Replace stamp-file orchestration with a typed key ledger.
-3. Add changed-input routing as a first-class planner input, not ad-hoc Make glue.
+3. Treat changed-input routing as an optimization hint unless proven complete; it
+   must never reduce soundness of the computed execute set.
 
 ## 4. Design Goals
 
@@ -58,6 +97,25 @@ Adaptation for `gunbc`:
 3. Explicit invalidation causes (input/content/env/toolchain/policy) recorded in run ledger.
 4. Zero implicit fallback paths.
 5. Stable latency targets with observable SLOs.
+
+### 4.1 Formal Predicates
+
+Define `Warm(S, L, W)` as:
+
+1. every required node for workflow `W` has a ledger-consistent key,
+2. all declared outputs exist, and
+3. all declared outputs match expected content hashes.
+
+Design target:
+
+1. if `Warm(S, L, W)`, planner executes zero functional units (report/aggregate
+   units may still run if policy marks them always-run).
+
+### 4.2 Target Theorems
+
+1. Deterministic planning: identical declared inputs/state/ledger produce identical plan.
+2. Minimal execute set: execute set is the least sound set satisfying required outputs.
+3. At-most-once execution: each `(WorkIdentity, MaterializationDigest)` executes at most once per run.
 
 ## 5. Non-Goals
 
@@ -77,22 +135,39 @@ pub struct WorkflowSpec {
     pub policy_version: u32,
 }
 
+pub struct ProcessUnitRef {
+    pub process_id: ProcessId,
+    pub unit_id: NodeId,
+}
+
 pub struct WorkflowUnit {
     pub op: WorkflowOp,                // typed, closed operation enum
     // Effect/resource claims are derived from op + declared resource ports.
     // They are not independently authored fields.
 }
 
+pub enum WorkflowOp {
+    InvokeProcessUnit(ProcessUnitRef),
+    Aggregate(AggregateSpec),
+    Report(ReportSpec),
+}
+
+pub struct WorkIdentity {
+    pub process_id: ProcessId,
+    pub unit_id: NodeId,
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
 pub struct CanonicalKeyPayload {
+    pub key_format_version: u32, // canonical encoding schema version
     pub op_version: u32,
-    pub input_hashes: BTreeMap<PortName, ContentHash>,
-    pub upstream_keys: BTreeMap<NodeId, MaterializationDigest>,
+    pub input_hashes: BTreeMap<PortName, Vec<ContentHash>>,
+    pub upstream_keys: BTreeMap<PortName, Vec<MaterializationDigest>>,
     pub policy_version: u32,
 }
 
 pub struct MaterializationKey {
-    pub node_id: NodeId,
+    pub work_id: WorkIdentity,         // context-free identity (no workflow node name)
     pub payload: CanonicalKeyPayload,
     pub digest: MaterializationDigest, // sha256(payload)
 }
@@ -101,13 +176,13 @@ pub enum MissReason {
     NoPriorRun,
     InputChanged {
         port: PortName,
-        old: ContentHash,
-        new: ContentHash,
+        old: Vec<ContentHash>,
+        new: Vec<ContentHash>,
     },
     UpstreamKeyChanged {
-        upstream: NodeId,
-        old: MaterializationDigest,
-        new: MaterializationDigest,
+        port: PortName,
+        old: Vec<MaterializationDigest>,
+        new: Vec<MaterializationDigest>,
     },
     OpVersionChanged { old: u32, new: u32 },
     PolicyVersionChanged { old: u32, new: u32 },
@@ -128,10 +203,11 @@ pub enum LedgerStatus {
 }
 
 pub struct RunLedgerEntry {
-    pub node_id: NodeId,
+    pub exec_node_id: NodeId,          // run-local explainability only
+    pub work_id: WorkIdentity,         // global memoization identity
     pub key: MaterializationKey,
     pub status: LedgerStatus,
-    pub output_hashes: BTreeMap<PortName, ContentHash>,
+    pub output_hashes: BTreeMap<PortName, ContentHash>, // includes "result" when dataflow consumers exist
     pub duration_ms: u64,
 }
 ```
@@ -146,6 +222,58 @@ Model invariants:
    steady-state model.
 4. Effect/resource behavior is structural: derive from op + resource ports (for
    example via `derive_resource_accesses()`), not manually duplicated fields.
+5. Key payload must preserve fan-in cardinality for multi-producer ports.
+
+### 6.1 Global Canonicality (No Parallel Models)
+
+To avoid modeling the same semantics in multiple forms, enforce one authority per
+semantic fact:
+
+1. graph topology and ordering live only in `Dag<WorkflowUnit>`,
+2. executable unit meaning lives only in typed `WorkflowOp` + referenced process units,
+3. resource/effect behavior is derived from typed ports/op class (not side tables),
+4. cache causality lives only in `CanonicalKeyPayload` + `MissReason` ADTs,
+5. orchestration node names are explainability labels, not cache identity.
+
+Derived surfaces (`Makefile`, CLI wrappers, reports, dashboards) are projections.
+They cannot author new dependencies, fallback semantics, or alternate claims.
+
+### 6.2 Cross-Level Composition (Inter + Intra Process)
+
+Three levels are modeled, but only one canonical execution graph is used at run
+time:
+
+1. level A: process-local DAG units (owned by process specs),
+2. level B: workflow orchestration DAG units (`ci`, `test-all`),
+3. level C: planner-resolved global DAG (A and B flattened with typed IDs).
+
+Flattening contract:
+
+1. every `InvokeProcessUnit(ProcessUnitRef)` resolves to typed process-owned units,
+2. resolved nodes are normalized to stable typed IDs,
+3. nodes with the same context-free `WorkIdentity` and equivalent key payload are
+   executed once, regardless of whether they were reached from `ci` or `test-all`,
+4. fan-out dependents consume the same committed output/key.
+
+### 6.3 Proof Obligations (Mathematical Guarantees)
+
+Planner validation/proof checks must hold before execution:
+
+1. global DAG acyclicity (`Dag` check over resolved graph),
+2. single-writer invariant for each declared output identity:
+   concurrent writers are valid only if there is an ordering path between them,
+3. at-most-once execution per `(WorkIdentity, MaterializationDigest)` in one run,
+4. minimal dirty closure: execute set equals transitive closure of dirty roots,
+5. no-ambient-dependency invariant for key computation,
+6. projection equivalence: generated wrappers/projected views cannot change planner
+   execute-set semantics.
+
+Proof boundary:
+
+1. guarantees are relative to declared resources/inputs/effects,
+2. undeclared effectful behavior is a model violation and must fail validation.
+3. opaque sub-process execution nodes are not allowed in planner execution DAG;
+   flattening is required before scheduling.
 
 ## 7. Materialization Key Contract
 
@@ -158,27 +286,66 @@ Where:
 1. `canonical_inputs`: hashes from declared, wired input ports only.
 2. Variability from env/toolchain must enter via explicit input resources/ports,
    not ambient OS probing inside key computation.
-3. `upstream_output_keys`: keys of producing nodes, not timestamps.
-4. `policy_version`: workflow policy/planner version hash.
+3. `upstream_output_keys`: keyed by consuming input `PortName` (not upstream node
+   names), so cross-workflow orchestration naming does not change cache identity.
+4. Multi-producer fan-in ports must preserve full contributor sets per port (no
+   map overwrite). Contributor vectors are deterministically ordered.
+5. `policy_version`: workflow policy/planner version hash.
+6. `key_format_version`: canonical payload encoding version.
+7. Key serialization is canonical + versioned (stable map ordering, deterministic
+   vector ordering, and fixed encoder config).
+8. Planning-time key computation is DAG-functional only: declared inputs +
+   upstream digests. Planner must not read mutable produced artifacts while
+   computing keys.
 
 No mtime-only or ambient-probe keying in planner core.
 Explainability comes from diffing `CanonicalKeyPayload` into typed `MissReason`.
 
+### 7.1 Global Ledger Scope (Cross-Workflow Memoization)
+
+Ledger storage is global for the workspace, not partitioned by workflow name:
+
+1. canonical path: `.gunbc/workflow-ledger/global.ndjson` (or versioned equivalent),
+2. index key: `(WorkIdentity, MaterializationDigest)`,
+3. per-run metadata still records `exec_node_id` for explainability.
+
+This prevents inter-workflow redundancy (`ci` and `test-all`) when the resolved
+work identity and inputs are equivalent.
+
+### 7.2 Output Store Contract (For Cached Rehydration)
+
+`RunLedgerEntry.output_hashes` identifies output payloads in a content-addressed
+store (CAS). Cached nodes are treated as committed only after output rehydration:
+
+1. on `CachedHit`, planner/executor loads output payloads by hash from CAS,
+2. rehydrated outputs are injected on outgoing dataflow edges exactly as if the
+   node executed in this run,
+3. missing CAS payload for expected hash is a hard miss/failure path, not silent skip.
+4. when a node exposes `result` on dataflow edges, the typed `result` payload must
+   also be materialized/re-hydratable via `output_hashes["result"]`.
+5. if full result payload persistence is undesirable, store a typed bounded
+   summary/reference as the canonical `result` payload and keep that stable.
+
 ## 8. Planner Algorithm
 
 1. Load `WorkflowSpec`.
-2. Load previous `RunLedger`.
-3. Compute current `MaterializationKey` for every node.
-4. Mark node dirty if:
+2. Resolve/flatten process-unit references into the global typed DAG and deduplicate
+   equivalent `WorkIdentity` nodes.
+3. Validate single-writer ordering constraints on declared write claims.
+4. Load previous global `RunLedger`.
+5. Compute current `MaterializationKey` for every node from declared inputs and
+   upstream digests only.
+6. Mark node dirty if:
    1. no prior entry,
    2. key payload diff yields typed `MissReason`,
    3. any declared output missing (`OutputMissing`),
    4. any declared output hash mismatches ledger (`OutputTampered`),
    5. node effect is non-cacheable (`VolatileEffect`),
    6. prior run failed.
-5. Compute transitive dirty closure over dependents.
-6. Schedule only dirty closure, preserving derived resource claims and concurrency limits.
-7. Persist full `RunLedger` with hit/miss reasons and timings.
+7. Rehydrate cached-hit node outputs from CAS before downstream readiness/dataflow.
+8. Compute transitive dirty closure over dependents.
+9. Schedule only dirty closure, preserving derived resource claims and concurrency limits.
+10. Persist full global `RunLedger` with hit/miss reasons and timings.
 
 Result:
 
@@ -189,7 +356,7 @@ Result:
 
 Executor must satisfy all before starting a node:
 
-1. Dependencies succeeded.
+1. Dependencies committed (execution completed and required outputs/results are available).
 2. Required resources available by capacity/claim derived from resource ports.
 3. Node admitted by max concurrency budget.
 
@@ -199,6 +366,19 @@ Execution/reporting semantic split:
    and still commit, so downstream report/summary nodes run.
 2. Execution failures (cannot spawn process, transport crash) are runtime failures
    that fail closed with explicit diagnostics.
+3. Domain failures may be cacheable by policy. Default policy is explicit:
+   replay cached domain failure or force rerun for selected ops.
+
+### 9.1 Cached Domain Failure Policy
+
+Because domain failures are modeled as committed results, they can be replayed
+from cache when inputs are unchanged.
+
+Policy surface:
+
+1. default: `replay-domain-failure` (fast deterministic reruns),
+2. override: `--force-run` (disable cache-read for selected/all workflow units),
+3. op-level alternative: mark selected units `VolatileEffect` to always execute.
 
 Resource behavior reuses existing `AccessMode` and lock semantics in `gunbc`.
 

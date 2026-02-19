@@ -259,7 +259,7 @@ fn execute_generate_scripts(
 
     // Use platform from DAG input (acquired at boundary)
     let platform_str = require_str(&inputs, "res:platform")?;
-    let platform = Platform::parse(platform_str).map_err(|e| ExecError::new(e))?;
+    let platform = Platform::parse(platform_str).map_err(ExecError::new)?;
     if strict_dry_run_enabled() && platform == Platform::Unknown {
         return Err(ExecError::new(
             "strict dry-run requires explicit platform wiring/mocks; refusing Platform::Unknown",

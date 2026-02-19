@@ -44,6 +44,9 @@ Promotion rule:
 | **M14** | **Single inventory authority for tools/binaries/resource providers**: remove duplicated hardcoded lists. | Inventory-backed canonical registration model for binaries + provides/consumes metadata. | Downstream consumers (Make/CI/resource maps) derive from one source; additions/renames propagate atomically. | Adding a tool requires one registration point; generated lists replace manual per-file edits; drift tests validate parity outputs. | M13 | M |
 | **M15** | **Typed install planning**: remove stringly/lossy installer bridging. | `PackageManagerId` typed parse + explicit `InstallPlan` policy model. | Install selection policy is explicit and testable; adapter does not silently drop required fields. | Unknown package manager IDs fail closed; selection policy is deterministic and documented; adapter preserves/validates script/url requirements instead of default-dropping. | — | M |
 | **M16** | **Unify SystemModel invocation contracts with TransportBehavior specs**. | Shared invocation spec model reused by SystemModel and transport behavior definitions. | Request construction, validation, and testgen consume one objective contract; no parallel spec drift. | `Invocation::Rest`-style behavior is represented via shared transport spec types; contract tests prove parity between system model routing and transport behavior routing. | R8, R10, M8 | M |
+| **M17** | **Global flattening + context-free work identity**: guarantee dedup across intra/inter workflow boundaries. | Flattening pass from orchestration refs to one global typed execution DAG + `WorkIdentity` model independent of orchestration node names. | Equivalent work from different workflow entrypoints unifies into one execution vertex; dependents fan out from one commit/result. | Planner resolves/merges equivalent work identities before scheduling; key payload does not depend on workflow node names; tests prove `ci` and `test-all` share hits for same work/data. | WF1-D, WF3-D, WF4-D | L |
+| **M18** | **Single semantic authority / projection-only surfaces**: eliminate parallel truths across DAG, Make, CLI, and reports. | Canonical semantic model with generated projections (wrappers/views), plus drift validators. | Projections cannot author new dependencies/effects/claims; only canonical graph/contracts can. | Make/CLI/report definitions are generated or validated against canonical model; drift fails CI; no duplicate authored dependency graphs remain. | M17 | M |
+| **M19** | **Formal non-redundancy proof harness**: encode planner invariants as executable property tests. | Invariant suite over resolved global DAG + ledger/key behavior. | Preflight/CI must prove at-most-once execution, minimal dirty closure, and single-writer ordering constraints. | Property/integration tests fail on duplicate execution opportunities, non-minimal execute sets, or concurrent unordered writers; planner emits proof diagnostics. | M17, M18 | M |
 
 ## Execution Checklists (Review Gate)
 
@@ -109,6 +112,30 @@ until its checklist is reviewed, and not complete until all checklist items are 
 - [ ] Add parity tests proving SystemModel-derived behavior and TransportBehavior-derived behavior are structurally equivalent.
 - [ ] Remove duplicate spec surfaces or add strict consistency checks where temporary dual definitions remain.
 
+### M17 Checklist — Global Flattening + Context-Free Work Identity
+
+- [ ] Define `WorkIdentity` so equivalent work is independent of orchestration node naming (`ci.*` vs `test_all.*`).
+- [ ] Define flattening contract: all process-invocation references are expanded/resolved before scheduling.
+- [ ] Ensure key payload upstream contribution is keyed by consuming input ports, not upstream node labels.
+- [ ] Add dedup merge rule for equivalent `(WorkIdentity, key payload)` vertices with fan-out edge rewiring.
+- [ ] Add cross-workflow tests proving shared cache hits and single execution for equivalent work.
+
+### M18 Checklist — Single Semantic Authority / Projection-Only
+
+- [ ] Declare one canonical semantic source for workflow dependencies/effects/claims.
+- [ ] Ensure Make/CLI/report surfaces are generated projections or strict validated views.
+- [ ] Add drift checks that fail when projection semantics diverge from canonical model.
+- [ ] Remove or deprecate manually maintained duplicate dependency graphs.
+- [ ] Add migration notes and tooling for cutover from authored projections.
+
+### M19 Checklist — Formal Non-Redundancy Proof Harness
+
+- [ ] Add preflight invariant checker for single-writer ordering: unordered concurrent writers are rejected.
+- [ ] Add at-most-once execution invariant checks over `(WorkIdentity, MaterializationDigest)`.
+- [ ] Add minimal-dirty-closure checks comparing executed set vs computed transitive dirty closure.
+- [ ] Add projection-equivalence tests proving generated wrappers cannot alter execute set.
+- [ ] Emit actionable diagnostics (which invariant failed, nodes/resources involved) on proof failure.
+
 ## Suggested Dependency Lanes
 
 ```
@@ -116,4 +143,5 @@ Lane A (graph semantics):            M8 -> M9 -> M16
 Lane B (workflow execution safety):  M10 -> M11 -> M12
 Lane C (process contract drift):     M13 -> M14
 Lane D (security/install typing):    M7, M15
+Lane E (global minimality proof):    M17 -> M18 -> M19
 ```

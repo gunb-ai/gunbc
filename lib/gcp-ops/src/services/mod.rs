@@ -99,7 +99,7 @@ impl MethodMeta {
         query_params: &[(&str, &str)],
     ) -> RestRequest {
         let url = self.build_url(base_url, path_params, query_params);
-        let req = match self.http_method {
+        match self.http_method {
             HttpMethod::Get => RestRequest::get(url),
             HttpMethod::Post => RestRequest::post(url),
             HttpMethod::Put => RestRequest::put(url),
@@ -110,8 +110,7 @@ impl MethodMeta {
                 r.method = self.http_method;
                 r
             }
-        };
-        req
+        }
     }
 }
 

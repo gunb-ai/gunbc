@@ -52,6 +52,9 @@ pub mod render_rust;
 // Wave 5 (Task E3): test generation.
 pub mod test_gen;
 
+#[cfg(test)]
+mod backend_harness;
+
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
 use daglang_lower::{CallableKind, LoweredOp};
 use gunbc_ir::Dag;

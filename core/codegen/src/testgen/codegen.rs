@@ -33,7 +33,7 @@ use gunbc_cli::ParamType;
 use gunbc_infra::hash::ContentHash;
 use gunbc_ir::boundary_label;
 use gunbc_ir::code_ir::{
-    Assert, Expr, HelperFn, Import, Item, Stmt, TestFile, TestFn, TestSection,
+    Assert, BindTarget, Expr, HelperFn, Import, Item, Stmt, TestFile, TestFn, TestSection,
 };
 use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
@@ -1388,6 +1388,14 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     fn collect_idents_from_stmt(stmt: &Stmt, used: &mut HashSet<String>) {
         match stmt {
             Stmt::Let { expr, .. } => Self::collect_idents_from_expr(expr, used),
+            Stmt::Bind { targets, expr, .. } => {
+                for target in targets {
+                    if let BindTarget::Name(name) = target {
+                        used.insert(name.clone());
+                    }
+                }
+                Self::collect_idents_from_expr(expr, used);
+            }
             Stmt::Expr(expr) => Self::collect_idents_from_expr(expr, used),
             Stmt::Assert(assert) => Self::collect_idents_from_assert(assert, used),
             Stmt::Comment(_) | Stmt::Blank => {}

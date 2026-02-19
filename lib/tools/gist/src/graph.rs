@@ -297,7 +297,9 @@ pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
         .with_input("repo_path", "String", Cardinality::ONE)
         .with_output("url", "String", Cardinality::ONE)
         // cloud_credential subdag exposes ok from IAM ensure chain (LocalDev only)
-        .with_output("ok", "Bool", Cardinality::ONE);
+        .with_output("ok", "Bool", Cardinality::ONE)
+        // cloud_credential subdag also surfaces lease metadata.
+        .with_output("expires_at", "String", Cardinality::ONE);
 
     // base_ref is an entrypoint from gist_upload SubDag in snapshot and diff modes
     // (in recent mode it's wired from rev_list, so it's not an entrypoint)

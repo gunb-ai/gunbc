@@ -14,8 +14,8 @@
 //!
 //! **Owned by**: Task 9 (dsl-codegen-tasks.md)
 
-use gunbc_ir::code_ir::lower::LowerError;
 use crate::transport_analysis::{body_has_transport_calls, expr_is_transport_call};
+use gunbc_ir::code_ir::lower::LowerError;
 use gunbc_ir::code_ir::{CallObligation, Expr, FnDef, Import, Item, SourceFile, Stmt};
 
 /// Configuration for Rust lowering.

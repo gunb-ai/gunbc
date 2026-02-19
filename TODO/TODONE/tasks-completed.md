@@ -21,7 +21,10 @@
 | ID | Task | Status |
 |----|------|--------|
 | R1 | Makegen transport port naming alignment (`response` across lowerer parity filter, exec runtime emitter, and makegen mocks). | Done 2026-02-19 |
+| R3 | IR schema enriched with typed managed bindings (`Stmt::Bind` with explicit `BindIntent` and `BindTarget`), Go lowering/rendering migrated off string-encoded multi-bind syntax, and backend migration notes encoded in updated lowerers/renderers/tests across Go/C/MIPS. | Done 2026-02-19 |
+| R4 | Go/C transport-statement lowering now isolates synthetic error-code/error bindings in lexical block scope, with structural regressions for repeated transport expressions and verified Go/C toolchain smoke compilation for the scoped outputs. | Done 2026-02-19 |
 | R5 | MIPS lowering now routes returns through `JumpEpilogue`, temp allocation is fail-closed with explicit `LowerError` on exhaustion, and C block-scope locals are tracked with enter/exit visibility scopes to prevent leakage/aliasing across blocks. | Done 2026-02-19 |
+| R6 | Cross-backend adversarial harness added in `daglang-emit`: shared fixture lowered across Go/C/MIPS, structural invariants asserted (Go/C scoped transport bindings, MIPS epilogue routing/no direct body `jr $ra`), and Go/C smoke compilation executed with hermetic temp caches; CI-oriented `make test*` commands now require backend toolchains (`GUNBC_REQUIRE_BACKEND_TOOLCHAINS=1`). | Done 2026-02-19 |
 | R8 | `MethodMeta` request wiring centralized through shared `request_from_meta(_at)` helpers; GCP service methods migrated off duplicated endpoint strings and parity tests added to catch metadata/request drift. | Done 2026-02-19 |
 | R9 | Infra CLI `parse_input_value` fail-closed parsing now type-driven via `ValueBacking` + compatibility checks; structured JSON/list/map/set parsing and incompatibility/unsupported tests added. | Done 2026-02-19 |
 | R10 | `SystemModel` REST invocation paths now use named placeholders and validation enforces wildcard ban + placeholder↔required-input binding (with invalid-path regression tests). | Done 2026-02-19 |

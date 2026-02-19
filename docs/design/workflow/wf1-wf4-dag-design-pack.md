@@ -1,17 +1,21 @@
-# WF1-D to WF4-D Design Pack (Workflow Planner)
+# WF1-D to WF4-D Design Pack (Workflow Views)
 
 Status: Draft for review  
 Date: 2026-02-19  
-Scope: `WF1-D`, `WF2-D`, `WF3-D`, `WF4-D` for planner-first `ci` and `test-all`
+Scope: `WF1-D`, `WF2-D`, `WF3-D`, `WF4-D` for planner-first `ci` and `test-all`  
+Canonical normative model: `docs/design/workflow-minimal-execution-model.md`
 
 ## 1. Read This First
 
-This doc is DAG-centric and orchestration-centric:
+This pack is consolidated with the canonical model:
 
-1. It defines only the orchestration DAG for `ci` and `test-all`.
-2. It does not redefine domain process semantics (codegen/testgen/pragma/build/etc).
-3. Each orchestration node delegates to an existing process owner.
-4. Minimality means no duplicated process units and no redundant orchestration edges.
+1. `docs/design/workflow-minimal-execution-model.md` is the normative source for
+   workflow semantics, keys/ledger, flattening, and proof obligations.
+2. This document is the WF1-WF4 review pack: concrete DAG views, ownership maps,
+   workflow-specific constraints, and acceptance checklist.
+3. If this document conflicts with the canonical model, canonical model wins.
+4. Hierarchical diagrams here are authoring/review views; runtime execution still
+   uses the flattened global DAG contract from the canonical model.
 
 ## 2. Orchestration Unit Contract (WF1-D)
 
@@ -29,9 +33,9 @@ pub struct WorkflowUnit {
 }
 ```
 
-Planner/orchestration units are limited to:
+Planner/orchestration units:
 
-1. `InvokeProcess(process_id)` for existing process definitions.
+1. `InvokeProcessUnit(ProcessUnitRef)` for existing process definitions.
 2. `Aggregate*` units for reduction/summary.
 3. `Report` unit for terminal output.
 
@@ -46,11 +50,20 @@ Edge semantics:
 1. `EdgeKind::Control`: ordering/readiness only.
 2. `EdgeKind::DataFlow`: typed result payload flow.
 
-No inlined process internals are allowed inside orchestration DAG units.
+### 2.1 Consolidation Map (WF Tasks -> Canonical Sections)
+
+| WF Task | This Pack (review view) | Canonical Source |
+|---|---|---|
+| `WF1-D` | Sections 2-4 | `workflow-minimal-execution-model.md` Sections 6, 6.1, 6.2 |
+| `WF2-D` | Section 5 | `workflow-minimal-execution-model.md` Sections 6.3, 9 |
+| `WF3-D` | Section 6 | `workflow-minimal-execution-model.md` Sections 7, 7.1, 8 |
+| `WF4-D` | Section 7 | `workflow-minimal-execution-model.md` Sections 8, 9, 10 |
+
+No inlined process internals are authored inside orchestration DAG units.
 
 ## 3. CI Orchestration DAG (WF1-D + WF4-D)
 
-### 3.1 Visual DAG (Mermaid)
+### 3.1 Flat Orchestration DAG (Mermaid)
 
 ```mermaid
 flowchart LR
@@ -85,7 +98,65 @@ flowchart LR
   verify --> report
 ```
 
-### 3.2 Process Ownership Map
+### 3.2 Hierarchical DAG View (Mermaid)
+
+```mermaid
+flowchart TB
+  subgraph orch_ci["Level B: Workflow Orchestration (`ci`)"]
+    ci_lint["ci.lint_upsert"]
+    ci_codegen["ci.codegen"]
+    ci_bootstrap["ci.bootstrap"]
+    ci_pragma["ci.pragma"]
+    ci_testgen["ci.testgen"]
+    ci_build["ci.build_compile"]
+    ci_test["ci.test_run"]
+    ci_clippy["ci.clippy_run"]
+    ci_guard["ci.guardrails"]
+    ci_verify["ci.verify"]
+    ci_report["ci.report"]
+  end
+
+  ci_lint --> ci_codegen
+  ci_codegen --> ci_bootstrap
+  ci_codegen --> ci_pragma
+  ci_codegen --> ci_testgen
+  ci_codegen --> ci_build
+  ci_testgen --> ci_build
+  ci_pragma --> ci_guard
+  ci_testgen --> ci_guard
+  ci_pragma --> ci_verify
+  ci_testgen --> ci_verify
+  ci_bootstrap --> ci_verify
+  ci_build --> ci_test
+  ci_build --> ci_clippy
+  ci_test --> ci_report
+  ci_clippy --> ci_report
+  ci_guard --> ci_report
+  ci_verify --> ci_report
+
+  subgraph proc_codegen["Level A: Process DAG (`codegen`, illustrative)"]
+    cg_parse["codegen.parse"]
+    cg_lower["codegen.lower"]
+    cg_emit["codegen.emit"]
+    cg_verify["codegen.verify"]
+    cg_parse --> cg_lower --> cg_emit --> cg_verify
+  end
+
+  subgraph proc_build["Level A: Process DAG (`build`, illustrative)"]
+    b_resolve["build.resolve"]
+    b_compile["build.compile"]
+    b_link["build.link"]
+    b_resolve --> b_compile --> b_link
+  end
+
+  ci_codegen -.-> cg_parse
+  cg_verify -.-> ci_build
+  ci_build -.-> b_resolve
+  b_link -.-> ci_test
+  b_link -.-> ci_clippy
+```
+
+### 3.3 Process Ownership Map
 
 | Orchestration Node | Delegates To | Source Of Truth |
 |---|---|---|
@@ -101,17 +172,18 @@ flowchart LR
 | `ci.verify` | verify process | `Makefile` verify target + generated checks |
 | `ci.report` | planner report | workflow planner runtime |
 
-### 3.3 Why This DAG Is Minimal / Non-Redundant
+### 3.4 Why This DAG Is Minimal / Non-Redundant
 
 1. Each process concept appears exactly once as an orchestration node.
 2. No node duplicates another node's process responsibility.
 3. Edges are only immediate prerequisites; transitive edges are intentionally omitted.
 4. Verify fan-in happens once (`ci.verify`), report fan-in happens once (`ci.report`).
-5. Process internals stay in their own process definitions; orchestration DAG only composes them.
+5. Process internals stay owned by process specs; runtime flattening handles
+   inter/intra process dedup in one global graph.
 
 ## 4. `test-all` Orchestration DAG (WF1-D + WF4-D)
 
-### 4.1 Visual DAG (Mermaid)
+### 4.1 Flat Orchestration DAG (Mermaid)
 
 ```mermaid
 flowchart LR
@@ -135,133 +207,157 @@ flowchart LR
   verifyfix --> report
 ```
 
-### 4.2 Why This DAG Is Minimal / Non-Redundant
+### 4.2 Hierarchical DAG View (Mermaid)
+
+```mermaid
+flowchart TB
+  subgraph orch_testall["Level B: Workflow Orchestration (`test-all`)"]
+    ta_lint["test_all.lint_upsert"]
+    ta_codegen["test_all.codegen"]
+    ta_testgen["test_all.testgen"]
+    ta_build["test_all.build_compile"]
+    ta_verifyfix["test_all.verify_fix"]
+    ta_testxl["test_all.cargo_test_xl"]
+    ta_report["test_all.report"]
+  end
+
+  ta_lint --> ta_codegen
+  ta_lint --> ta_testgen
+  ta_codegen --> ta_build
+  ta_testgen --> ta_build
+  ta_codegen --> ta_verifyfix
+  ta_testgen --> ta_verifyfix
+  ta_build --> ta_testxl
+  ta_verifyfix --> ta_testxl
+  ta_testxl --> ta_report
+  ta_verifyfix --> ta_report
+
+  subgraph proc_testgen["Level A: Process DAG (`testgen`, illustrative)"]
+    tg_parse["testgen.parse"]
+    tg_expand["testgen.expand"]
+    tg_emit["testgen.emit"]
+    tg_parse --> tg_expand --> tg_emit
+  end
+
+  subgraph proc_verifyfix["Level A: Process DAG (`verify-fix`, illustrative)"]
+    vf_scan["verify_fix.scan"]
+    vf_repair["verify_fix.repair"]
+    vf_validate["verify_fix.validate"]
+    vf_scan --> vf_repair --> vf_validate
+  end
+
+  ta_testgen -.-> tg_parse
+  tg_emit -.-> ta_build
+  ta_verifyfix -.-> vf_scan
+  vf_validate -.-> ta_testxl
+```
+
+### 4.3 Why This DAG Is Minimal / Non-Redundant
 
 1. Generation steps (`codegen`, `testgen`) are single-producer units.
 2. `build_compile` and `verify_fix` consume those producers; they do not re-declare them.
 3. `cargo_test_xl` waits for exactly the two required readiness gates: build + verified artifacts.
 4. No duplicate `testgen` or duplicate build producer nodes exist in orchestration space.
-5. Warm-path skipping comes from key/ledger hits, not redundant orchestration branches.
+5. Warm-path skipping comes from key/ledger hits and global flatten+dedup, not
+   redundant orchestration branches.
 
 ## 5. Admission and Mutual Exclusion Model (WF2-D)
 
-### 5.1 Resource Claims (Derived, Not Parallel Truth)
-
-Claims are derived from declared resource ports + op class, using canonical
-resource IDs and `AccessMode`:
+Normative semantics are in canonical model Sections 6.3 and 9. Workflow-specific
+resource surface for `ci`/`test-all`:
 
 1. `file:workspace`
 2. `file:generated`
 3. `file:manifest`
 4. `file:target`
 5. `ledger:workflow`
-6. tool/resource handles (`tool:*`, `credential:*`, `api:*`) as read capabilities
+6. `tool:*`, `credential:*`, `api:*` read capabilities
 
-### 5.2 Admission Rules
+Admission rules:
 
-1. Conflict check uses canonicalized resource IDs + `AccessMode::conflicts_with`.
-2. No side-table claim overrides are allowed.
-3. Missing required claims on effectful ops fail at build/validation time.
-4. Deterministic tie-break for equal-priority ready nodes: lexical `NodeId`.
+1. claims derive from op + declared resource ports (no side tables),
+2. conflicts use canonicalized resource IDs + `AccessMode::conflicts_with`,
+3. missing required claims on effectful ops fail validation,
+4. unordered concurrent writers to same resource fail preflight.
 
 ## 6. Key/Ledger Causality Model (WF3-D)
 
-### 6.1 No Ambient Inputs
+Normative semantics are in canonical model Sections 7, 7.1, and 8.
 
-Key computation is DAG-functional only:
+Workflow-specific requirements:
 
-```text
-key = H(op_version, input_hashes, upstream_keys, policy_version)
+1. `upstream_keys` are keyed by consuming input `PortName`, not upstream node label,
+2. workflow labels (`ci.*`, `test_all.*`) are explainability-only,
+3. ledger is workspace-global and shared across entrypoints,
+4. fan-in cardinality is preserved in key payloads for multi-producer ports,
+5. canonical key payload encoding is versioned and deterministic (`key_format_version`).
+
+### 6.1 Cross-Workflow WorkIdentity Unification (Mermaid)
+
+```mermaid
+flowchart LR
+  ci_codegen["ci.codegen (orchestration label)"]
+  ta_codegen["test_all.codegen (orchestration label)"]
+  wid_codegen["WorkIdentity(process=codegen, unit=ensure)"]
+  digest_codegen["MaterializationDigest(payload)"]
+  ledger_global[".gunbc/workflow-ledger/global.ndjson"]
+
+  ci_codegen -.resolve.-> wid_codegen
+  ta_codegen -.resolve.-> wid_codegen
+  wid_codegen --> digest_codegen --> ledger_global
 ```
 
-Rules:
+This view is the key anti-redundancy guarantee for cross-workflow reuse.
 
-1. Inputs come from declared/wired ports only.
-2. Env/toolchain variance must arrive via explicit input resources/ports.
-3. Planner must not probe ambient OS state during key computation.
+### 6.2 Fan-In Keying + Rehydration Notes
 
-### 6.2 Canonical Structures
-
-```rust
-pub struct CanonicalKeyPayload {
-    pub op_version: u32,
-    pub input_hashes: BTreeMap<PortName, ContentHash>,
-    pub upstream_keys: BTreeMap<NodeId, MaterializationDigest>,
-    pub policy_version: u32,
-}
-
-pub struct RunLedgerEntry {
-    pub node_id: NodeId,
-    pub key: MaterializationKey,
-    pub status: LedgerStatus,
-    pub output_hashes: BTreeMap<PortName, ContentHash>,
-    pub duration_ms: u64,
-}
-
-pub enum MissReason {
-    NoPriorRun,
-    InputChanged { port: PortName, old: ContentHash, new: ContentHash },
-    UpstreamKeyChanged { upstream: NodeId, old: MaterializationDigest, new: MaterializationDigest },
-    OpVersionChanged { old: u32, new: u32 },
-    PolicyVersionChanged { old: u32, new: u32 },
-    OutputMissing { port: PortName },
-    OutputTampered { port: PortName, expected: ContentHash, actual: ContentHash },
-    VolatileEffect { effect: Effect },
-}
-```
-
-### 6.3 Atomic Ledger Persistence
-
-1. write to temp path (`*.tmp.<pid>.<nonce>`)
-2. flush + `fsync` temp file
-3. atomic rename temp -> target
-4. `fsync` parent directory
-
-Corrupt/missing ledger behavior:
-
-1. default fail-closed with actionable parse error
-2. explicit recovery mode (`--rebuild-ledger`) required for reset
+1. Key payloads preserve multi-producer contributors per input port (vector/set
+   semantics with deterministic ordering), not a single overwritten map value.
+2. Cached-hit nodes must rehydrate output payloads from CAS before downstream
+   dataflow/commit readiness is satisfied.
+3. Missing CAS payload for an expected ledger hash is fail-closed.
+4. If `result` is consumed via dataflow, cached hits must rehydrate the typed
+   `result` payload (or typed summary/reference) from CAS/ledger-backed materialization.
 
 ## 7. Downstream Coordination and Failure Semantics (WF4-D)
 
-### 7.1 Commit/Result Separation
+Normative semantics are in canonical model Sections 8, 9, and 10.
 
-To avoid the report-finally trap:
+WF-specific coordination requirements:
 
-1. process-invocation units must emit typed `WorkflowResult` payloads for both pass/fail outcomes of the invoked domain process,
-2. those outcomes are modeled as data (`DomainSuccess` / `DomainFailure` / `ExecutionFailure`) on `result`,
-3. units still emit `commit` once invocation is complete (even if domain outcome is failure),
-4. `report` depends on completion commits and reads all result payloads.
+1. `commit` controls readiness; `result` carries domain outcomes,
+2. domain failures still flow to `report` (no report-finally trap),
+3. unresolved opaque process invocations are rejected before scheduling,
+4. flattened global DAG preserves dependency and claim contracts before execution,
+5. dependency gate is "committed with required outputs available," not
+   "domain succeeded."
 
-### 7.2 Failure Propagation
+### 7.1 Domain-Failure Caching Policy
 
-1. `Skipped { blocked_by }` is used only when a unit never ran due to unmet prerequisite commits.
-2. Domain failures do not skip report; they flow into report as typed results.
-3. True execution-layer crashes still fail closed and are surfaced explicitly.
-
-### 7.3 Validation Invariants
-
-Reject a workflow spec if:
-
-1. cycle exists in combined control/data edge graph
-2. required control ports (`after`/`commit`) are missing
-3. effectful ops lack declared resource dependencies
-4. unknown/fallback op variant appears in executable graph
+1. Domain-failure results are cacheable by policy because they are committed data.
+2. Planner surface must include explicit policy/flag for rerun behavior (`--force-run`
+   or op-level volatile policy).
 
 ## 8. Markdown Visualization Guidance
 
 For natural review in Markdown:
 
-1. keep Mermaid DAGs (GitHub renders ` ```mermaid ` blocks natively),
-2. keep node ownership map next to each DAG,
-3. include minimality bullets under each DAG,
-4. keep ADT snippets for miss/failure semantics adjacent to the DAG sections.
+1. keep both flat and hierarchical Mermaid blocks,
+2. keep ownership map next to each workflow DAG,
+3. keep key/ledger unification diagram near WF3-D section,
+4. keep canonical references visible in each WF section.
 
 ## 9. Review Checklist (Approval Gate)
 
-1. DAGs are orchestration-only and do not inline process internals.
-2. Each process concept appears exactly once per workflow DAG.
-3. Report node runs for domain failures and receives typed result payloads.
-4. Key computation is explicit-input only (no ambient probes).
-5. Output tamper detection and volatile-effect miss reasons are modeled.
-6. Admission derives from declared resource claims with fail-closed validation.
+1. Canonical-vs-derived boundary is explicit and conflict-free.
+2. DAGs are orchestration-only and do not inline authored process internals.
+3. Each process concept appears exactly once per workflow DAG.
+4. Hierarchical views are present and consistent with flat orchestration DAGs.
+5. Key computation is explicit-input only (no ambient probes).
+6. Upstream keying is context-free (`PortName` keyed), not orchestration-name keyed.
+7. Ledger scope is global across workflows for cross-workflow reuse.
+8. Admission derives from declared resource claims with fail-closed validation.
+9. Flattening removes opaque process boundaries before scheduling/dedup.
+10. Multi-producer fan-in is represented in key payload without contributor loss.
+11. Cached-hit nodes rehydrate outputs from CAS before downstream dataflow.
+12. Key encoding is canonical and versioned for deterministic hashing behavior.
