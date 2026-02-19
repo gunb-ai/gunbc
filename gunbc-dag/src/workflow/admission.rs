@@ -17,6 +17,7 @@ pub fn validate_workflow_admission(
 ) -> Result<(), Vec<WorkflowAdmissionError>> {
     let mut errors = Vec::new();
     errors.extend(validate_required_claims(spec, registry));
+    errors.extend(validate_effectful_claim_declarations(spec, registry));
     errors.extend(validate_conflicting_claims(spec));
 
     if errors.is_empty() {
@@ -24,6 +25,66 @@ pub fn validate_workflow_admission(
     } else {
         Err(errors)
     }
+}
+
+/// Validate fail-closed effectful claim declarations.
+///
+/// Nodes with write/exclusive required claims must declare matching resource
+/// claim ports so admission derives from graph structure instead of side tables.
+pub fn validate_effectful_claim_declarations(
+    spec: &WorkflowSpec,
+    registry: &ProcessUnitRegistry,
+) -> Vec<WorkflowAdmissionError> {
+    let mut errors = Vec::new();
+    let declared_claims = match derive_declared_claims(spec) {
+        Ok(claims) => claims,
+        Err(mut claim_errors) => {
+            errors.append(&mut claim_errors);
+            BTreeMap::new()
+        }
+    };
+
+    for node in &spec.dag.nodes {
+        let NodeBody::Opaque(WorkflowUnit { op }) = &node.body else {
+            continue;
+        };
+        let WorkflowOp::InvokeProcessUnit(process_unit) = op else {
+            continue;
+        };
+        let Some(process_spec) = registry.get(process_unit) else {
+            continue;
+        };
+
+        let effectful_required = process_spec
+            .required_claims
+            .iter()
+            .filter(|claim| claim.access_mode != gunbc_ir::AccessMode::Read)
+            .collect::<Vec<_>>();
+        if effectful_required.is_empty() {
+            continue;
+        }
+
+        let node_claims = declared_claims.get(&node.id).cloned().unwrap_or_default();
+        let missing_claim_ports = effectful_required
+            .into_iter()
+            .filter(|required| {
+                !node_claims.iter().any(|declared| {
+                    declared.claim_id == required.claim_id
+                        && declared.access_mode == required.access_mode
+                })
+            })
+            .map(|required| required.claim_id.clone())
+            .collect::<Vec<_>>();
+        if !missing_claim_ports.is_empty() {
+            errors.push(WorkflowAdmissionError::UndeclaredEffectfulIo {
+                node_id: node.id.clone(),
+                process_unit: process_unit.clone(),
+                missing_claim_ports,
+            });
+        }
+    }
+
+    errors
 }
 
 /// Validate that invoke units declare all required claims.
@@ -369,6 +430,22 @@ mod tests {
         assert!(errors.iter().any(|error| matches!(
             error,
             WorkflowAdmissionError::MissingRequiredClaims { node_id, .. } if node_id.0 == "wf.a"
+        )));
+    }
+
+    #[test]
+    fn effectful_claim_without_declared_resource_port_fails_closed() {
+        let mut dag = Dag::new();
+        dag.add_node(invoke_node("wf.a", "wf", "a", &[]));
+        let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
+        let registry = registry_for_two_nodes(
+            vec![UnitClaim::write("file:workspace")],
+            vec![UnitClaim::read("file:workspace")],
+        );
+        let errors = validate_effectful_claim_declarations(&spec, &registry);
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            WorkflowAdmissionError::UndeclaredEffectfulIo { node_id, .. } if node_id.0 == "wf.a"
         )));
     }
 }

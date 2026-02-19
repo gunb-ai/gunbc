@@ -2,7 +2,9 @@
 
 use gunbc_ir::{Dag, Edge, Node, Port};
 
-use super::process_registry::{default_process_unit_registry, ProcessUnitRef, ProcessUnitRegistry};
+use super::process_registry::{
+    claim_handle_type_id, default_process_unit_registry, ProcessUnitRef, ProcessUnitRegistry,
+};
 use super::schema::{
     required_input_contract, required_output_contract, ReportSpec, WorkflowOp, WorkflowSpec,
     WorkflowUnit,
@@ -24,7 +26,7 @@ fn invoke_node(
     for claim in &spec.required_claims {
         inputs.push(Port::resource(
             claim.claim_id.as_resource_name(),
-            "ResourceHandle",
+            claim_handle_type_id(&claim.claim_id),
             claim.access_mode,
         ));
     }

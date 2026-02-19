@@ -277,6 +277,21 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     registry
 }
 
+/// Canonical handle type auto-wiring policy for resource claims.
+pub fn claim_handle_type_id(claim_id: &ClaimId) -> &'static str {
+    if claim_id.0.starts_with("file:") {
+        "FilesystemHandle"
+    } else if claim_id.0.starts_with("tool:") {
+        "ToolHandle"
+    } else if claim_id.0.starts_with("ledger:") {
+        "WorkflowLedgerHandle"
+    } else if claim_id.0.starts_with("network:") {
+        "NetworkHandle"
+    } else {
+        "ResourceHandle"
+    }
+}
+
 fn canonicalize_unit_id(unit_id: &NodeId) -> NodeId {
     if let Some((_, suffix)) = unit_id.0.split_once('.') {
         NodeId::from(suffix)
@@ -319,6 +334,22 @@ mod tests {
         assert_eq!(
             ci.canonical_work_identity(),
             test_all.canonical_work_identity()
+        );
+    }
+
+    #[test]
+    fn claim_handle_type_policy_maps_common_prefixes() {
+        assert_eq!(
+            claim_handle_type_id(&ClaimId::new("file:workspace")),
+            "FilesystemHandle"
+        );
+        assert_eq!(
+            claim_handle_type_id(&ClaimId::new("tool:cargo")),
+            "ToolHandle"
+        );
+        assert_eq!(
+            claim_handle_type_id(&ClaimId::new("ledger:workflow")),
+            "WorkflowLedgerHandle"
         );
     }
 }

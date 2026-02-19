@@ -22,6 +22,11 @@ pub enum WorkflowAdmissionError {
         process_unit: ProcessUnitRef,
         missing_claims: Vec<UnitClaim>,
     },
+    UndeclaredEffectfulIo {
+        node_id: NodeId,
+        process_unit: ProcessUnitRef,
+        missing_claim_ports: Vec<ClaimId>,
+    },
     ConflictingClaims {
         left_node: NodeId,
         right_node: NodeId,
@@ -65,6 +70,22 @@ impl fmt::Display for WorkflowAdmissionError {
                 write!(
                     f,
                     "node '{}' missing required claims for process unit '{}::{}': {}",
+                    node_id.0, process_unit.process_id.0, process_unit.unit_id.0, claims
+                )
+            }
+            WorkflowAdmissionError::UndeclaredEffectfulIo {
+                node_id,
+                process_unit,
+                missing_claim_ports,
+            } => {
+                let claims = missing_claim_ports
+                    .iter()
+                    .map(|claim| claim.0.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(
+                    f,
+                    "node '{}' missing declared resource claim ports for effectful process unit '{}::{}': {}",
                     node_id.0, process_unit.process_id.0, process_unit.unit_id.0, claims
                 )
             }

@@ -14,7 +14,8 @@ pub mod schema;
 pub mod spec_builders;
 
 pub use admission::{
-    validate_conflicting_claims, validate_required_claims, validate_workflow_admission,
+    validate_conflicting_claims, validate_effectful_claim_declarations, validate_required_claims,
+    validate_workflow_admission,
 };
 pub use coordination::{coordination_status, BlockedReason, CoordinationStatus};
 pub use errors::WorkflowAdmissionError;
@@ -36,8 +37,8 @@ pub use planner::{
     WorkflowPlannerError,
 };
 pub use process_registry::{
-    default_process_unit_registry, ClaimId, ProcessId, ProcessUnitRef, ProcessUnitRegistry,
-    ProcessUnitSpec, UnitClaim,
+    claim_handle_type_id, default_process_unit_registry, ClaimId, ProcessId, ProcessUnitRef,
+    ProcessUnitRegistry, ProcessUnitSpec, UnitClaim,
 };
 pub use projection::{
     project_execute_set, validate_projection_equivalence, ExecuteProjection, ProjectionDrift,

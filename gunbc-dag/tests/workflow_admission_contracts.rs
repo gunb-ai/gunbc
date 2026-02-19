@@ -151,4 +151,8 @@ fn missing_required_claims_fail_closed() {
         error,
         WorkflowAdmissionError::MissingRequiredClaims { node_id, .. } if node_id.0 == "wf.a"
     )));
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        WorkflowAdmissionError::UndeclaredEffectfulIo { node_id, .. } if node_id.0 == "wf.a"
+    )));
 }
