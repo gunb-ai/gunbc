@@ -3,14 +3,15 @@
 use std::path::PathBuf;
 
 use gunbc_dag::{
-    ci_workflow_spec, default_process_unit_registry, explain_plan, plan_workflow,
-    test_all_workflow_spec, MissReason, PlannerInputs,
+    ci_workflow_spec, default_process_unit_registry, explain_plan, plan_workflow_with_mode,
+    test_all_workflow_spec, DryRunMode, MissReason, PlannerInputs,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Args {
     workflow: String,
     workspace_root: PathBuf,
+    dry_run_mode: DryRunMode,
 }
 
 fn main() {
@@ -41,7 +42,13 @@ fn main() {
 
     let registry = default_process_unit_registry();
     let inputs = PlannerInputs::new();
-    let plan = match plan_workflow(&spec, &registry, &inputs, &args.workspace_root) {
+    let plan = match plan_workflow_with_mode(
+        &spec,
+        &registry,
+        &inputs,
+        &args.workspace_root,
+        args.dry_run_mode,
+    ) {
         Ok(plan) => plan,
         Err(error) => {
             eprintln!("error: failed to compute workflow plan: {error}");
@@ -55,6 +62,7 @@ fn main() {
 fn parse_args(argv: Vec<String>) -> Result<Args, String> {
     let mut workflow: Option<String> = None;
     let mut workspace_root: Option<PathBuf> = None;
+    let mut dry_run_mode = DryRunMode::Strict;
 
     let mut i = 1usize;
     while i < argv.len() {
@@ -75,11 +83,21 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
                     .ok_or_else(|| "--workspace-root requires a path".to_string())?;
                 workspace_root = Some(PathBuf::from(value));
             }
+            "--dry-run" => {
+                i += 1;
+                let value = argv
+                    .get(i)
+                    .ok_or_else(|| "--dry-run requires <strict|lenient>".to_string())?;
+                dry_run_mode = parse_dry_run_mode(value)?;
+            }
             _ if arg.starts_with("--plan=") => {
                 workflow = Some(arg["--plan=".len()..].to_string());
             }
             _ if arg.starts_with("--workspace-root=") => {
                 workspace_root = Some(PathBuf::from(arg["--workspace-root=".len()..].to_string()));
+            }
+            _ if arg.starts_with("--dry-run=") => {
+                dry_run_mode = parse_dry_run_mode(&arg["--dry-run=".len()..])?;
             }
             other => {
                 return Err(format!("unknown argument '{other}'"));
@@ -94,7 +112,19 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
     Ok(Args {
         workflow,
         workspace_root,
+        dry_run_mode,
     })
+}
+
+fn parse_dry_run_mode(raw: &str) -> Result<DryRunMode, String> {
+    match raw.to_ascii_lowercase().as_str() {
+        "strict" => Ok(DryRunMode::Strict),
+        "lenient" => Ok(DryRunMode::Lenient),
+        other => Err(format!(
+            "unknown --dry-run mode '{}': expected strict or lenient",
+            other
+        )),
+    }
 }
 
 fn render_plan_output(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> String {
@@ -164,11 +194,14 @@ fn print_help() {
     println!("gunbc-workflow - workflow planner/explainability");
     println!();
     println!("USAGE:");
-    println!("  gunbc-workflow --plan <ci|test-all> [--workspace-root <path>]");
+    println!(
+        "  gunbc-workflow --plan <ci|test-all> [--workspace-root <path>] [--dry-run <strict|lenient>]"
+    );
     println!();
     println!("FLAGS:");
     println!("  --plan <name>           Workflow to plan (ci or test-all)");
     println!("  --workspace-root <dir>  Workspace root for ledger/CAS paths");
+    println!("  --dry-run <mode>        Dry-run strictness (default: strict)");
     println!("  -h, --help              Show this help");
 }
 
@@ -187,6 +220,7 @@ mod tests {
         .expect("parse should succeed");
         assert_eq!(args.workflow, "ci");
         assert_eq!(args.workspace_root, PathBuf::from("/tmp/x"));
+        assert_eq!(args.dry_run_mode, DryRunMode::Strict);
     }
 
     #[test]
@@ -194,6 +228,19 @@ mod tests {
         let error = parse_args(vec!["gunbc-workflow".to_string(), "--plan".to_string()])
             .expect_err("missing plan value should fail");
         assert!(error.contains("--plan requires"));
+    }
+
+    #[test]
+    fn parse_args_supports_dry_run_mode() {
+        let args = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "--plan".to_string(),
+            "ci".to_string(),
+            "--dry-run".to_string(),
+            "lenient".to_string(),
+        ])
+        .expect("parse should succeed");
+        assert_eq!(args.dry_run_mode, DryRunMode::Lenient);
     }
 
     #[test]

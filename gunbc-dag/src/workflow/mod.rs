@@ -33,8 +33,8 @@ pub use ledger::{
     RunLedgerEntry, WorkflowLedgerError, WorkflowLedgerPaths,
 };
 pub use planner::{
-    explain_plan, plan_workflow, NodePlan, PlanAction, PlanExplain, PlannerInputs, WorkflowPlan,
-    WorkflowPlannerError,
+    explain_plan, plan_workflow, plan_workflow_with_mode, DryRunMode, NodePlan, PlanAction,
+    PlanExplain, PlannerInputs, WorkflowPlan, WorkflowPlannerError,
 };
 pub use process_registry::{
     claim_handle_type_id, default_process_unit_registry, ClaimId, ProcessId, ProcessUnitRef,

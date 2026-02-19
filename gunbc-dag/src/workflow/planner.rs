@@ -1,6 +1,6 @@
 //! Workflow planner key/ledger integration (WF3).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
 use gunbc_exec::topo_sort;
@@ -16,7 +16,7 @@ use super::ledger::{
     WorkflowLedgerError,
 };
 use super::process_registry::{ProcessId, ProcessUnitRegistry};
-use super::schema::{WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_RESULT};
+use super::schema::{WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_AFTER, PORT_RESULT};
 
 /// Per-node planner action.
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +46,13 @@ pub struct WorkflowPlan {
     pub coordination: CoordinationStatus,
 }
 
+/// Planner dry-run strictness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DryRunMode {
+    Lenient,
+    Strict,
+}
+
 /// Explainability projection for `--plan` output.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlanExplain {
@@ -63,6 +70,11 @@ pub enum WorkflowPlannerError {
     Key(String),
     Ledger(WorkflowLedgerError),
     UnknownNode(NodeId),
+    StrictDryRunMissingInput {
+        node_id: NodeId,
+        port: PortName,
+        trace: String,
+    },
 }
 
 impl std::fmt::Display for WorkflowPlannerError {
@@ -75,6 +87,15 @@ impl std::fmt::Display for WorkflowPlannerError {
             WorkflowPlannerError::UnknownNode(node_id) => {
                 write!(f, "workflow planner: unknown node '{}'", node_id.0)
             }
+            WorkflowPlannerError::StrictDryRunMissingInput {
+                node_id,
+                port,
+                trace,
+            } => write!(
+                f,
+                "strict dry-run missing required input: node='{}' port='{}' trace='{}'",
+                node_id.0, port.0, trace
+            ),
         }
     }
 }
@@ -99,6 +120,27 @@ pub fn plan_workflow(
     planner_inputs: &PlannerInputs,
     workspace_root: &Path,
 ) -> Result<WorkflowPlan, WorkflowPlannerError> {
+    plan_workflow_with_mode(
+        spec,
+        registry,
+        planner_inputs,
+        workspace_root,
+        DryRunMode::Lenient,
+    )
+}
+
+/// Plan workflow nodes with explicit dry-run strictness mode.
+pub fn plan_workflow_with_mode(
+    spec: &WorkflowSpec,
+    registry: &ProcessUnitRegistry,
+    planner_inputs: &PlannerInputs,
+    workspace_root: &Path,
+    dry_run_mode: DryRunMode,
+) -> Result<WorkflowPlan, WorkflowPlannerError> {
+    if matches!(dry_run_mode, DryRunMode::Strict) {
+        validate_strict_dry_run_inputs(spec, planner_inputs)?;
+    }
+
     let previous_entries = load_global_ledger(workspace_root)?;
     let mut previous_by_work_id: HashMap<WorkIdentity, RunLedgerEntry> = HashMap::new();
     for entry in previous_entries {
@@ -218,6 +260,49 @@ pub fn plan_workflow(
         nodes: plans,
         coordination,
     })
+}
+
+fn validate_strict_dry_run_inputs(
+    spec: &WorkflowSpec,
+    planner_inputs: &PlannerInputs,
+) -> Result<(), WorkflowPlannerError> {
+    for node in &spec.dag.nodes {
+        let incoming_data_ports = spec
+            .dag
+            .edges
+            .iter()
+            .filter(|edge| edge.to_node == node.id && edge.kind.carries_data())
+            .map(|edge| edge.to_port.clone())
+            .collect::<BTreeSet<_>>();
+
+        let provided = planner_inputs
+            .get(&node.id)
+            .map(|ports| ports.keys().cloned().collect::<BTreeSet<_>>())
+            .unwrap_or_default();
+
+        for input in &node.inputs {
+            if input.name.0 == PORT_AFTER
+                || input.name.0.starts_with(gunbc_ir::RESOURCE_PORT_PREFIX)
+            {
+                continue;
+            }
+            if !input.cardinality.requires_one() {
+                continue;
+            }
+
+            if !incoming_data_ports.contains(&input.name) && !provided.contains(&input.name) {
+                return Err(WorkflowPlannerError::StrictDryRunMissingInput {
+                    node_id: node.id.clone(),
+                    port: input.name.clone(),
+                    trace: format!(
+                        "no incoming data edge and no planner input for '{}.{}'",
+                        node.id.0, input.name.0
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 fn previous_run_id(entry: &RunLedgerEntry) -> String {
@@ -372,7 +457,7 @@ fn critical_path(spec: &WorkflowSpec) -> Vec<NodeId> {
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use gunbc_ir::{Edge, Port};
+    use gunbc_ir::{Edge, Node, Port};
 
     use super::*;
     use crate::workflow::ledger::{
@@ -549,6 +634,65 @@ mod tests {
             rehydrated_outputs.get(&PortName::from("result")),
             Some(&payload)
         );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn strict_dry_run_fails_on_missing_required_input() {
+        let root = temp_root();
+        let mut dag = gunbc_ir::Dag::new();
+        let mut inputs = required_input_contract();
+        inputs.push(Port::scalar("payload", "String"));
+        dag.add_node(Node::opaque(
+            "wf.a",
+            inputs,
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+                "wf", "wf.a",
+            ))),
+        ));
+        let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
+        let registry = two_node_registry();
+
+        let err = plan_workflow_with_mode(
+            &spec,
+            &registry,
+            &PlannerInputs::new(),
+            &root,
+            DryRunMode::Strict,
+        )
+        .expect_err("strict dry-run should reject unset required input");
+        assert!(matches!(
+            err,
+            WorkflowPlannerError::StrictDryRunMissingInput { .. }
+        ));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn strict_dry_run_accepts_provided_required_input() {
+        let root = temp_root();
+        let mut dag = gunbc_ir::Dag::new();
+        let mut inputs = required_input_contract();
+        inputs.push(Port::scalar("payload", "String"));
+        dag.add_node(Node::opaque(
+            "wf.a",
+            inputs,
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+                "wf", "wf.a",
+            ))),
+        ));
+        let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
+        let registry = two_node_registry();
+
+        let mut planner_inputs = PlannerInputs::new();
+        planner_inputs.insert(
+            NodeId::from("wf.a"),
+            BTreeMap::from([(PortName::from("payload"), Value::Str("x".to_string()))]),
+        );
+        plan_workflow_with_mode(&spec, &registry, &planner_inputs, &root, DryRunMode::Strict)
+            .expect("strict mode should pass when required input is provided");
         let _ = std::fs::remove_dir_all(root);
     }
 }
