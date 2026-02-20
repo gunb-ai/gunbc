@@ -24,14 +24,16 @@
 
 use std::collections::HashMap;
 
-use daglang_lower::{CollectionOpKind, LoweredOp, ObligationCategory};
+use daglang_lower::{
+    CollectionOpKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceOperationSpec,
+};
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::resource::AccessMode;
 use gunbc_ir::transport::{
-    FileOp, FileRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
+    FileOp, FileRequest, TransportRequest, TransportResponse,
 };
-use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, SecretString, Value};
+use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
@@ -39,6 +41,9 @@ use gunbc_primitives::{filename, FsEnv};
 use crate::bootstrap::ops::BootstrapOp;
 use crate::makegen::ops::MakegenOp;
 use crate::pragma::ops::PragmaOp;
+use crate::resolve_service::{
+    GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
+};
 
 // ============================================================================
 // Error type
@@ -260,391 +265,6 @@ impl Executable for PragmaEntrypointOp {
     }
 }
 
-/// services.shell.Codegen.Check prepare adapter.
-#[derive(Debug, Clone)]
-struct ServiceShellCodegenCheckPrepareOp;
-
-impl Executable for ServiceShellCodegenCheckPrepareOp {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        OutputMap::new()
-            .request(
-                "request",
-                TransportRequest::Shell(
-                    ShellRequest::new("test").args(["-f", "target/codegen/.stamp"]),
-                ),
-            )
-            .bool("skip", false)
-            .ok()
-    }
-}
-
-/// services.shell.Codegen.Check parse adapter.
-#[derive(Debug, Clone)]
-struct ServiceShellCodegenCheckParseOp;
-
-impl Executable for ServiceShellCodegenCheckParseOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let needed = match inputs.get("response") {
-            Some(Value::Response(TransportResponse::Shell(shell))) => shell.success(),
-            Some(Value::Skipped) | None => false,
-            Some(other) => {
-                return Err(ExecError::new(format!(
-                    "expected Shell response for Codegen.Check parse, got {:?}",
-                    std::mem::discriminant(other)
-                )))
-            }
-        };
-        OutputMap::new().bool("needed", needed).ok()
-    }
-}
-
-/// services.shell.Codegen.Run prepare adapter.
-#[derive(Debug, Clone)]
-struct ServiceShellCodegenRunPrepareOp;
-
-impl Executable for ServiceShellCodegenRunPrepareOp {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        OutputMap::new()
-            .request(
-                "request",
-                TransportRequest::Shell(ShellRequest::new("cargo").args([
-                    "run",
-                    "-p",
-                    "gunbc-dag",
-                    "--bin",
-                    "gunbc-codegen",
-                    "--",
-                    "codegen",
-                ])),
-            )
-            .bool("skip", false)
-            .ok()
-    }
-}
-
-/// services.shell.Codegen.Run parse adapter.
-#[derive(Debug, Clone)]
-struct ServiceShellCodegenRunParseOp;
-
-impl Executable for ServiceShellCodegenRunParseOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match inputs.get("response") {
-            Some(Value::Response(TransportResponse::Shell(shell))) => OutputMap::new()
-                .bool("success", shell.success())
-                .str("stdout", shell.stdout.clone())
-                .str("stderr", shell.stderr.clone())
-                .ok(),
-            Some(Value::Skipped) | None => OutputMap::new()
-                .bool("success", false)
-                .str("stdout", String::new())
-                .str("stderr", String::new())
-                .ok(),
-            Some(other) => Err(ExecError::new(format!(
-                "expected Shell response for Codegen.Run parse, got {:?}",
-                std::mem::discriminant(other)
-            ))),
-        }
-    }
-}
-
-/// services.cargo.Build.Build prepare adapter.
-#[derive(Debug, Clone)]
-struct ServiceCargoBuildPrepareOp;
-
-impl Executable for ServiceCargoBuildPrepareOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let all_targets = inputs
-            .get("all_targets")
-            .and_then(Value::as_bool)
-            .unwrap_or(true);
-        let mut args = vec!["build".to_string()];
-        if all_targets {
-            args.push("--all-targets".to_string());
-        }
-        OutputMap::new()
-            .request(
-                "request",
-                TransportRequest::Shell(ShellRequest::new("cargo").args(args)),
-            )
-            .ok()
-    }
-}
-
-/// services.cargo.Build.Test prepare adapter.
-#[derive(Debug, Clone)]
-struct ServiceCargoTestPrepareOp;
-
-impl Executable for ServiceCargoTestPrepareOp {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        OutputMap::new()
-            .request(
-                "request",
-                TransportRequest::Shell(ShellRequest::new("cargo").arg("test")),
-            )
-            .ok()
-    }
-}
-
-/// services.cargo.Build.Clippy prepare adapter.
-#[derive(Debug, Clone)]
-struct ServiceCargoClippyPrepareOp;
-
-impl Executable for ServiceCargoClippyPrepareOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let all_targets = inputs
-            .get("all_targets")
-            .and_then(Value::as_bool)
-            .unwrap_or(true);
-        let mut args = vec!["clippy".to_string()];
-        if all_targets {
-            args.push("--all-targets".to_string());
-        }
-        args.extend(["--".to_string(), "-D".to_string(), "warnings".to_string()]);
-        OutputMap::new()
-            .request(
-                "request",
-                TransportRequest::Shell(ShellRequest::new("cargo").args(args)),
-            )
-            .ok()
-    }
-}
-
-/// services.cargo parse adapter for Build/Test/Clippy operations.
-#[derive(Debug, Clone)]
-struct ServiceCargoParseOp;
-
-impl Executable for ServiceCargoParseOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match inputs.get("response") {
-            Some(Value::Response(TransportResponse::Shell(shell))) => OutputMap::new()
-                .bool("success", shell.success())
-                .str("stdout", shell.stdout.clone())
-                .str("stderr", shell.stderr.clone())
-                .ok(),
-            Some(Value::Skipped) | None => OutputMap::new()
-                .bool("success", false)
-                .str("stdout", String::new())
-                .str("stderr", String::new())
-                .ok(),
-            Some(other) => Err(ExecError::new(format!(
-                "expected Shell response for cargo parse, got {:?}",
-                std::mem::discriminant(other)
-            ))),
-        }
-    }
-}
-
-/// services.gcp.STS.Exchange prepare adapter.
-#[derive(Debug, Clone)]
-struct ServiceGcpStsExchangePrepareOp;
-
-impl Executable for ServiceGcpStsExchangePrepareOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let audience = inputs
-            .get("audience")
-            .and_then(Value::as_str)
-            .unwrap_or("(unresolved)");
-        let subject_token = value_as_string_or_default(inputs.get("subject_token"));
-        let body = serde_json::json!({
-            "audience": audience,
-            "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-            "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
-            "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
-            "subject_token": subject_token,
-        });
-        OutputMap::new()
-            .request(
-                "request",
-                TransportRequest::Rest(
-                    RestRequest::post("https://sts.googleapis.com/v1/token").json(body),
-                ),
-            )
-            .ok()
-    }
-}
-
-/// services.gcp.STS.Exchange parse adapter.
-#[derive(Debug, Clone)]
-struct ServiceGcpStsExchangeParseOp;
-
-impl Executable for ServiceGcpStsExchangeParseOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match inputs.get("response") {
-            Some(Value::Response(TransportResponse::Rest(rest))) => {
-                if !rest.is_success() {
-                    return Err(ExecError::new(format!(
-                        "STS exchange failed (status {})",
-                        rest.status
-                    )));
-                }
-                let access_token = rest
-                    .body
-                    .get("access_token")
-                    .and_then(|value| value.as_str())
-                    .ok_or_else(|| ExecError::new("missing access_token in STS response"))?;
-                let expires_in = rest
-                    .body
-                    .get("expires_in")
-                    .and_then(|value| value.as_i64())
-                    .unwrap_or(0);
-                OutputMap::new()
-                    .secret("access_token", SecretString::new(access_token))
-                    .int("expires_in", expires_in)
-                    .ok()
-            }
-            Some(Value::Skipped) | None => OutputMap::new()
-                .secret("access_token", SecretString::new(""))
-                .int("expires_in", 0)
-                .ok(),
-            Some(other) => Err(ExecError::new(format!(
-                "expected REST response for STS parse, got {:?}",
-                std::mem::discriminant(other)
-            ))),
-        }
-    }
-}
-
-/// services.gcp.SecretManager.AccessVersion prepare adapter.
-#[derive(Debug, Clone)]
-struct ServiceGcpSecretManagerAccessVersionPrepareOp;
-
-impl Executable for ServiceGcpSecretManagerAccessVersionPrepareOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let project = inputs
-            .get("project")
-            .and_then(Value::as_str)
-            .unwrap_or("(unresolved)");
-        let secret = inputs
-            .get("secret")
-            .and_then(Value::as_str)
-            .unwrap_or("(unresolved)");
-        let version = inputs
-            .get("version")
-            .and_then(Value::as_str)
-            .unwrap_or("latest");
-        let url = format!(
-            "https://secretmanager.googleapis.com/v1/projects/{project}/secrets/{secret}/versions/{version}:access"
-        );
-        OutputMap::new()
-            .request("request", TransportRequest::Rest(RestRequest::get(url)))
-            .ok()
-    }
-}
-
-/// services.gcp.SecretManager.AccessVersion parse adapter.
-#[derive(Debug, Clone)]
-struct ServiceGcpSecretManagerAccessVersionParseOp;
-
-impl Executable for ServiceGcpSecretManagerAccessVersionParseOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match inputs.get("response") {
-            Some(Value::Response(TransportResponse::Rest(rest))) => {
-                if !rest.is_success() {
-                    return Err(ExecError::new(format!(
-                        "Secret Manager access failed (status {})",
-                        rest.status
-                    )));
-                }
-                let name = rest
-                    .body
-                    .get("name")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or("");
-                let payload_b64 = rest
-                    .body
-                    .get("payload")
-                    .and_then(|payload| payload.get("data"))
-                    .and_then(|value| value.as_str())
-                    .ok_or_else(|| ExecError::new("missing payload.data in secret response"))?;
-                let bytes = base64_decode(payload_b64)
-                    .map_err(|error| ExecError::new(format!("base64 decode failed: {error}")))?;
-                let payload = Value::List(
-                    bytes
-                        .into_iter()
-                        .map(|byte| Value::Int(byte as i64))
-                        .collect(),
-                );
-                OutputMap::new()
-                    .value("payload", payload)
-                    .str("name", name)
-                    .ok()
-            }
-            Some(Value::Skipped) | None => OutputMap::new()
-                .value("payload", Value::List(Vec::new()))
-                .str("name", String::new())
-                .ok(),
-            Some(other) => Err(ExecError::new(format!(
-                "expected REST response for SecretManager parse, got {:?}",
-                std::mem::discriminant(other)
-            ))),
-        }
-    }
-}
-
-/// services.shell.Find.ListDirs prepare adapter.
-#[derive(Debug, Clone)]
-struct ServiceShellFindListDirsPrepareOp;
-
-impl Executable for ServiceShellFindListDirsPrepareOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
-            ExecError::new(
-                "PrepareShellFindListDirs: missing required `path` input (String/FilePath)",
-            )
-        })?;
-
-        let max_depth = inputs.get("max_depth").and_then(Value::as_int).unwrap_or(1);
-        let min_depth = inputs.get("min_depth").and_then(Value::as_int).unwrap_or(1);
-
-        let request = TransportRequest::Shell(ShellRequest::new("find").args(vec![
-            path.to_string(),
-            "-maxdepth".to_string(),
-            max_depth.to_string(),
-            "-mindepth".to_string(),
-            min_depth.to_string(),
-            "-type".to_string(),
-            "d".to_string(),
-        ]));
-
-        OutputMap::new()
-            .request("request", request)
-            .bool("skip", false)
-            .ok()
-    }
-}
-
-/// services.shell.Find.ListDirs parse adapter.
-#[derive(Debug, Clone)]
-struct ServiceShellFindListDirsParseOp;
-
-impl Executable for ServiceShellFindListDirsParseOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut dirs = Vec::new();
-
-        if let Some(Value::Response(TransportResponse::Shell(shell))) = inputs.get("response") {
-            if shell.success() {
-                dirs = shell
-                    .stdout
-                    .lines()
-                    .map(str::trim)
-                    .filter(|line| !line.is_empty())
-                    .map(|line| line.to_string())
-                    .collect();
-            }
-        }
-
-        OutputMap::new().str_list("dirs", dirs).ok()
-    }
-}
 
 /// File-read prepare adapter for DSL content-upsert chains.
 ///
@@ -780,6 +400,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             module,
             name,
             obligation,
+            service_metadata,
             ..
         } => {
             // Infrastructure patterns first (cross-module)
@@ -787,7 +408,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
                 return Ok(dyn_op);
             }
             // Module-specific domain ops
-            resolve_domain(node_id, module, name, outputs)
+            resolve_domain(node_id, module, name, outputs, service_metadata.as_ref())
         }
     }
 }
@@ -900,6 +521,7 @@ fn resolve_domain(
     module: &str,
     name: &str,
     outputs: &[Port],
+    service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
     match module {
         "tools.pragma" => resolve_pragma(node_id, name),
@@ -916,7 +538,7 @@ fn resolve_domain(
             Ok(deferred_callable(module, name, outputs))
         }
         _ if module.starts_with("services.") || module.starts_with("workspace.") => {
-            resolve_service_transport(node_id, module, name)
+            resolve_service_transport(node_id, module, name, service_metadata)
         }
         _ => Ok(deferred_callable(module, name, outputs)),
     }
@@ -1037,79 +659,45 @@ fn resolve_service_transport(
     node_id: &str,
     module: &str,
     name: &str,
+    service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
-    if module == "services.gcp.sts" {
-        match name {
-            "service_transport::prepare::gcp.STS::Exchange" => {
-                return Ok(DynOp::new(ServiceGcpStsExchangePrepareOp));
-            }
-            "service_transport::parse::gcp.STS::Exchange" => {
-                return Ok(DynOp::new(ServiceGcpStsExchangeParseOp));
-            }
-            _ => {}
-        }
-    }
-
-    if module == "services.gcp.secret_manager" {
-        match name {
-            "service_transport::prepare::gcp.SecretManager::AccessVersion" => {
-                return Ok(DynOp::new(ServiceGcpSecretManagerAccessVersionPrepareOp));
-            }
-            "service_transport::parse::gcp.SecretManager::AccessVersion" => {
-                return Ok(DynOp::new(ServiceGcpSecretManagerAccessVersionParseOp));
-            }
-            _ => {}
-        }
-    }
-
-    if module == "services.cargo" {
-        match name {
-            "service_transport::prepare::cargo.Build::Build" => {
-                return Ok(DynOp::new(ServiceCargoBuildPrepareOp));
-            }
-            "service_transport::prepare::cargo.Build::Test" => {
-                return Ok(DynOp::new(ServiceCargoTestPrepareOp));
-            }
-            "service_transport::prepare::cargo.Build::Clippy" => {
-                return Ok(DynOp::new(ServiceCargoClippyPrepareOp));
-            }
-            "service_transport::parse::cargo.Build::Build"
-            | "service_transport::parse::cargo.Build::Test"
-            | "service_transport::parse::cargo.Build::Clippy" => {
-                return Ok(DynOp::new(ServiceCargoParseOp));
-            }
-            _ => {}
-        }
-    }
-
-    if module == "services.shell" {
-        match name {
-            "service_transport::prepare::shell.Find::ListDirs" => {
-                return Ok(DynOp::new(ServiceShellFindListDirsPrepareOp));
-            }
-            "service_transport::parse::shell.Find::ListDirs" => {
-                return Ok(DynOp::new(ServiceShellFindListDirsParseOp));
-            }
-            // tools.codegen service transport adapters → existing domain ops
-            "service_transport::prepare::shell.Codegen::Check" => {
-                return Ok(DynOp::new(ServiceShellCodegenCheckPrepareOp));
-            }
-            "service_transport::parse::shell.Codegen::Check" => {
-                return Ok(DynOp::new(ServiceShellCodegenCheckParseOp));
-            }
-            "service_transport::prepare::shell.Codegen::Run" => {
-                return Ok(DynOp::new(ServiceShellCodegenRunPrepareOp));
-            }
-            "service_transport::parse::shell.Codegen::Run" => {
-                return Ok(DynOp::new(ServiceShellCodegenRunParseOp));
-            }
-            _ => {}
-        }
-    }
-
+    // Execute nodes are always the same transport executor.
     if name.starts_with("service_transport::execute::") {
         return Ok(DynOp::new(TransportOps::Execute));
     }
+
+    // Generic dispatch: use the spec from service_metadata to select interpreter.
+    if let Some(metadata) = service_metadata {
+        if let Some(spec) = &metadata.spec {
+            let is_prepare = name.starts_with("service_transport::prepare::");
+            let is_parse = name.starts_with("service_transport::parse::");
+
+            match (spec, is_prepare, is_parse) {
+                (ServiceOperationSpec::Rest(rest_spec), true, _) => {
+                    return Ok(DynOp::new(GenericRestPrepareOp {
+                        spec: rest_spec.clone(),
+                    }));
+                }
+                (ServiceOperationSpec::Rest(rest_spec), _, true) => {
+                    return Ok(DynOp::new(GenericRestParseOp {
+                        spec: rest_spec.clone(),
+                    }));
+                }
+                (ServiceOperationSpec::Shell(shell_spec), true, _) => {
+                    return Ok(DynOp::new(GenericShellPrepareOp {
+                        spec: shell_spec.clone(),
+                    }));
+                }
+                (ServiceOperationSpec::Shell(shell_spec), _, true) => {
+                    return Ok(DynOp::new(GenericShellParseOp {
+                        spec: shell_spec.clone(),
+                    }));
+                }
+                _ => {}
+            }
+        }
+    }
+
     Err(unknown_callable(node_id, module, name))
 }
 
@@ -1140,14 +728,6 @@ fn resolve_collection(kind: &CollectionOpKind) -> Result<DynOp, ResolveError> {
 // Helpers
 // ============================================================================
 
-fn value_as_string_or_default(value: Option<&Value>) -> String {
-    match value {
-        Some(Value::Str(s)) => s.clone(),
-        Some(Value::Secret(secret)) => secret.expose().to_string(),
-        _ => "(unresolved)".to_string(),
-    }
-}
-
 fn hex_decode(input: &str) -> Result<Vec<u8>, String> {
     if !input.len().is_multiple_of(2) {
         return Err("invalid hex length".to_string());
@@ -1157,61 +737,6 @@ fn hex_decode(input: &str) -> Result<Vec<u8>, String> {
         let byte = u8::from_str_radix(&input[idx..idx + 2], 16)
             .map_err(|_| format!("invalid hex at offset {idx}"))?;
         out.push(byte);
-    }
-    Ok(out)
-}
-
-fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
-    let mut sextets: Vec<u8> = Vec::with_capacity(input.len());
-    for &byte in input.as_bytes() {
-        match byte {
-            b'A'..=b'Z' => sextets.push(byte - b'A'),
-            b'a'..=b'z' => sextets.push(byte - b'a' + 26),
-            b'0'..=b'9' => sextets.push(byte - b'0' + 52),
-            b'+' => sextets.push(62),
-            b'/' => sextets.push(63),
-            b'=' => sextets.push(64),
-            b' ' | b'\n' | b'\r' | b'\t' => {}
-            other => {
-                return Err(format!("invalid base64 char 0x{other:02x}"));
-            }
-        }
-    }
-
-    if !sextets.len().is_multiple_of(4) {
-        return Err("invalid base64 length".to_string());
-    }
-
-    let chunks = sextets.len() / 4;
-    let mut out = Vec::with_capacity(chunks * 3);
-    for (idx, chunk) in sextets.chunks(4).enumerate() {
-        let v0 = chunk[0];
-        let v1 = chunk[1];
-        let v2 = chunk[2];
-        let v3 = chunk[3];
-        if v0 == 64 || v1 == 64 {
-            return Err("invalid base64 padding".to_string());
-        }
-        if v2 == 64 && v3 != 64 {
-            return Err("invalid base64 padding".to_string());
-        }
-        let pad = if v2 == 64 {
-            2
-        } else if v3 == 64 {
-            1
-        } else {
-            0
-        };
-        if pad > 0 && idx != chunks.saturating_sub(1) {
-            return Err("invalid base64 padding".to_string());
-        }
-        out.push((v0 << 2) | (v1 >> 4));
-        if v2 != 64 {
-            out.push(((v1 & 0x0f) << 4) | (v2 >> 2));
-        }
-        if v3 != 64 {
-            out.push(((v2 & 0x03) << 6) | v3);
-        }
     }
     Ok(out)
 }
@@ -1419,29 +944,141 @@ mod tests {
         assert!(format!("{:?}", result).contains("RenderMakefile"));
     }
 
+    /// Build a service transport node with metadata and spec for generic dispatch.
+    fn service_callable_node(
+        id: &str,
+        module: &str,
+        name: &str,
+        obligation: ObligationCategory,
+        metadata: ServiceCallMetadata,
+    ) -> Node<LoweredOp> {
+        Node::opaque(
+            id,
+            vec![],
+            vec![Port::new("out", "String")],
+            LoweredOp::Callable {
+                module: module.to_string(),
+                kind: CallableKind::Fn,
+                name: name.to_string(),
+                obligation,
+                service_metadata: Some(metadata),
+                is_interactive: false,
+                resource_target: None,
+            },
+        )
+    }
+
+    fn codegen_check_metadata() -> ServiceCallMetadata {
+        use daglang_lower::*;
+        ServiceCallMetadata {
+            service: "shell.Codegen".to_string(),
+            operation: "Check".to_string(),
+            transport: ServiceTransportClass::ShellLocal,
+            idempotent: false,
+            readonly: true,
+            permissions: vec![],
+            spec: Some(ServiceOperationSpec::Shell(ShellOperationSpec {
+                argv_template: vec![
+                    ArgvSegment::Literal("test".to_string()),
+                    ArgvSegment::Literal("-f".to_string()),
+                    ArgvSegment::Literal("target/codegen/.stamp".to_string()),
+                ],
+                input_fields: vec![],
+                output_fields: vec![OutputFieldSpec {
+                    name: "needed".to_string(),
+                    type_id: "Bool".to_string(),
+                    json_path: "needed".to_string(),
+                    is_secret: false,
+                    is_raw_body: false,
+                }],
+                output_parsing: ShellOutputParsing::ExitCodeBool,
+            })),
+        }
+    }
+
+    fn codegen_run_metadata() -> ServiceCallMetadata {
+        use daglang_lower::*;
+        ServiceCallMetadata {
+            service: "shell.Codegen".to_string(),
+            operation: "Run".to_string(),
+            transport: ServiceTransportClass::ShellLocal,
+            idempotent: false,
+            readonly: false,
+            permissions: vec![],
+            spec: Some(ServiceOperationSpec::Shell(ShellOperationSpec {
+                argv_template: vec![
+                    ArgvSegment::Literal("cargo".to_string()),
+                    ArgvSegment::Literal("run".to_string()),
+                    ArgvSegment::Literal("-p".to_string()),
+                    ArgvSegment::Literal("gunbc-dag".to_string()),
+                    ArgvSegment::Literal("--bin".to_string()),
+                    ArgvSegment::Literal("gunbc-codegen".to_string()),
+                    ArgvSegment::Literal("--".to_string()),
+                    ArgvSegment::Literal("codegen".to_string()),
+                ],
+                input_fields: vec![],
+                output_fields: vec![
+                    OutputFieldSpec {
+                        name: "success".to_string(),
+                        type_id: "Bool".to_string(),
+                        json_path: "success".to_string(),
+                        is_secret: false,
+                        is_raw_body: false,
+                    },
+                    OutputFieldSpec {
+                        name: "stdout".to_string(),
+                        type_id: "String".to_string(),
+                        json_path: "stdout".to_string(),
+                        is_secret: false,
+                        is_raw_body: false,
+                    },
+                    OutputFieldSpec {
+                        name: "stderr".to_string(),
+                        type_id: "String".to_string(),
+                        json_path: "stderr".to_string(),
+                        is_secret: false,
+                        is_raw_body: false,
+                    },
+                ],
+                output_parsing: ShellOutputParsing::SuccessStdoutStderr,
+            })),
+        }
+    }
+
     #[test]
     fn resolve_services_shell_codegen_transport_ops() {
+        // Prepare nodes use generic shell prepare/parse with spec from metadata.
         let cases = [
             (
                 "service_transport::prepare::shell.Codegen::Check",
-                "ServiceShellCodegenCheckPrepareOp",
+                codegen_check_metadata(),
+                "GenericShellPrepareOp",
             ),
             (
                 "service_transport::parse::shell.Codegen::Check",
-                "ServiceShellCodegenCheckParseOp",
+                codegen_check_metadata(),
+                "GenericShellParseOp",
             ),
             (
                 "service_transport::prepare::shell.Codegen::Run",
-                "ServiceShellCodegenRunPrepareOp",
+                codegen_run_metadata(),
+                "GenericShellPrepareOp",
             ),
             (
                 "service_transport::parse::shell.Codegen::Run",
-                "ServiceShellCodegenRunParseOp",
+                codegen_run_metadata(),
+                "GenericShellParseOp",
             ),
         ];
 
-        for (name, expected_debug) in cases {
-            let node = callable_node(name, "services.shell", name, ObligationCategory::None);
+        for (name, metadata, expected_debug) in cases {
+            let node = service_callable_node(
+                name,
+                "services.shell",
+                name,
+                ObligationCategory::None,
+                metadata,
+            );
             let result = resolve_node(&node).expect(name);
             assert!(
                 format!("{:?}", result).contains(expected_debug),
@@ -1616,32 +1253,153 @@ mod tests {
         );
     }
 
+    fn sts_exchange_metadata() -> ServiceCallMetadata {
+        use daglang_lower::*;
+        ServiceCallMetadata {
+            service: "gcp.STS".to_string(),
+            operation: "Exchange".to_string(),
+            transport: ServiceTransportClass::RestNetwork,
+            idempotent: true,
+            readonly: false,
+            permissions: vec![],
+            spec: Some(ServiceOperationSpec::Rest(RestOperationSpec {
+                endpoint: "https://sts.googleapis.com".to_string(),
+                method: "POST".to_string(),
+                path_template: "/v1/token".to_string(),
+                input_fields: vec![
+                    FieldSpec {
+                        name: "subject_token".to_string(),
+                        type_id: "Secret".to_string(),
+                        default: None,
+                        is_secret: true,
+                        is_path_param: false,
+                    },
+                    FieldSpec {
+                        name: "audience".to_string(),
+                        type_id: "NonEmptyStr".to_string(),
+                        default: None,
+                        is_secret: false,
+                        is_path_param: false,
+                    },
+                ],
+                output_fields: vec![
+                    OutputFieldSpec {
+                        name: "access_token".to_string(),
+                        type_id: "Secret".to_string(),
+                        json_path: "access_token".to_string(),
+                        is_secret: true,
+                        is_raw_body: false,
+                    },
+                    OutputFieldSpec {
+                        name: "expires_in".to_string(),
+                        type_id: "Int".to_string(),
+                        json_path: "expires_in".to_string(),
+                        is_secret: false,
+                        is_raw_body: false,
+                    },
+                ],
+                body_template: None,
+                headers: vec![],
+            })),
+        }
+    }
+
+    fn secret_manager_metadata() -> ServiceCallMetadata {
+        use daglang_lower::*;
+        ServiceCallMetadata {
+            service: "gcp.SecretManager".to_string(),
+            operation: "AccessVersion".to_string(),
+            transport: ServiceTransportClass::RestNetwork,
+            idempotent: true,
+            readonly: true,
+            permissions: vec!["secretmanager.versions.access".to_string()],
+            spec: Some(ServiceOperationSpec::Rest(RestOperationSpec {
+                endpoint: "https://secretmanager.googleapis.com".to_string(),
+                method: "GET".to_string(),
+                path_template:
+                    "/v1/projects/{project}/secrets/{secret}/versions/{version}:access"
+                        .to_string(),
+                input_fields: vec![
+                    FieldSpec {
+                        name: "project".to_string(),
+                        type_id: "ProjectId".to_string(),
+                        default: None,
+                        is_secret: false,
+                        is_path_param: true,
+                    },
+                    FieldSpec {
+                        name: "secret".to_string(),
+                        type_id: "NonEmptyStr".to_string(),
+                        default: None,
+                        is_secret: false,
+                        is_path_param: true,
+                    },
+                    FieldSpec {
+                        name: "version".to_string(),
+                        type_id: "NonEmptyStr".to_string(),
+                        default: Some("latest".to_string()),
+                        is_secret: false,
+                        is_path_param: true,
+                    },
+                ],
+                output_fields: vec![
+                    OutputFieldSpec {
+                        name: "payload".to_string(),
+                        type_id: "Bytes".to_string(),
+                        json_path: "payload".to_string(),
+                        is_secret: false,
+                        is_raw_body: false,
+                    },
+                    OutputFieldSpec {
+                        name: "name".to_string(),
+                        type_id: "String".to_string(),
+                        json_path: "name".to_string(),
+                        is_secret: false,
+                        is_raw_body: false,
+                    },
+                ],
+                body_template: None,
+                headers: vec![],
+            })),
+        }
+    }
+
     #[test]
     fn resolve_services_gcp_transport_ops() {
         let cases = [
             (
                 "services.gcp.sts",
                 "service_transport::prepare::gcp.STS::Exchange",
-                "ServiceGcpStsExchangePrepareOp",
+                sts_exchange_metadata(),
+                "GenericRestPrepareOp",
             ),
             (
                 "services.gcp.sts",
                 "service_transport::parse::gcp.STS::Exchange",
-                "ServiceGcpStsExchangeParseOp",
+                sts_exchange_metadata(),
+                "GenericRestParseOp",
             ),
             (
                 "services.gcp.secret_manager",
                 "service_transport::prepare::gcp.SecretManager::AccessVersion",
-                "ServiceGcpSecretManagerAccessVersionPrepareOp",
+                secret_manager_metadata(),
+                "GenericRestPrepareOp",
             ),
             (
                 "services.gcp.secret_manager",
                 "service_transport::parse::gcp.SecretManager::AccessVersion",
-                "ServiceGcpSecretManagerAccessVersionParseOp",
+                secret_manager_metadata(),
+                "GenericRestParseOp",
             ),
         ];
-        for (module, name, expected_debug) in cases {
-            let node = callable_node(name, module, name, ObligationCategory::None);
+        for (module, name, metadata, expected_debug) in cases {
+            let node = service_callable_node(
+                name,
+                module,
+                name,
+                ObligationCategory::None,
+                metadata,
+            );
             let result = resolve_node(&node).expect(name);
             assert!(
                 format!("{:?}", result).contains(expected_debug),

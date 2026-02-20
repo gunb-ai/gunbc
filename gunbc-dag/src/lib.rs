@@ -35,6 +35,7 @@ pub mod mock_defaults;
 pub mod policy;
 pub mod pragma;
 pub mod resolve;
+pub mod resolve_service;
 pub mod resources;
 pub mod testgen_dag;
 pub mod tool_runner;

@@ -1154,6 +1154,7 @@ mod tests {
             idempotent: true,
             readonly: false,
             permissions: vec![],
+            spec: None,
         };
         let node = make_node(
             "execute_cmd",
@@ -1191,6 +1192,7 @@ mod tests {
             idempotent: true,
             readonly: true,
             permissions: vec!["repo:read".into()],
+            spec: None,
         };
         let node = make_node(
             "execute_list_repos",
@@ -1225,6 +1227,7 @@ mod tests {
             idempotent: true,
             readonly: true,
             permissions: vec![],
+            spec: None,
         };
         let node = make_node(
             "prepare_list_repos",
