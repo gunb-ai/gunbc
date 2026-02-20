@@ -264,7 +264,7 @@ gunbc_ir::submit_system_model!(build_gcp_gcs_model);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::system_model::{validate_system_model, DependencyKind};
+    use gunbc_ir::system_model::{validate_system_model, DependencyKind, SecretDependencyId};
     use std::collections::BTreeSet;
 
     #[test]
@@ -277,7 +277,10 @@ mod tests {
     fn gcp_secret_manager_model_declares_adc_secret_dependency() {
         let model = build_gcp_secret_manager_model();
         assert!(model.dependencies.iter().any(|dep| {
-            dep.kind == DependencyKind::Secret("secret:GOOGLE_APPLICATION_CREDENTIALS".to_string())
+            dep.kind
+                == DependencyKind::Secret(SecretDependencyId::new(
+                    "secret:GOOGLE_APPLICATION_CREDENTIALS",
+                ))
         }));
     }
 

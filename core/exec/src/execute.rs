@@ -851,7 +851,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         // This happens inside the CI group (before on_node_complete closes it).
         for value in outputs.values() {
             if let Value::Secret(s) = value {
-                observer.on_secret_output(node_id, s.expose());
+                observer.on_secret_output(node_id, s.expose_plaintext_for_transport());
             }
         }
 

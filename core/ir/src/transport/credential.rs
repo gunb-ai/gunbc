@@ -52,7 +52,9 @@ impl fmt::Debug for SecretSource {
 
 /// A secret value with optional expiry and provenance tracking.
 ///
-/// The inner value is private — use [`expose()`](Secret::expose) to access it.
+/// The inner value is private — use
+/// [`expose_plaintext_for_transport()`](Secret::expose_plaintext_for_transport)
+/// at transport boundaries.
 /// Debug and Display both redact the value.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Secret {
@@ -121,9 +123,15 @@ impl Secret {
         }
     }
 
-    /// Expose the raw secret value.
-    pub fn expose(&self) -> &str {
+    /// Expose plaintext secret value for transport boundaries.
+    pub fn expose_plaintext_for_transport(&self) -> &str {
         &self.value
+    }
+
+    /// Backward-compatible alias; prefer `expose_plaintext_for_transport`.
+    #[deprecated(note = "use expose_plaintext_for_transport instead")]
+    pub fn expose(&self) -> &str {
+        self.expose_plaintext_for_transport()
     }
 
     /// When this secret expires, if ever.
@@ -260,7 +268,7 @@ impl Credential {
     /// Sets the appropriate header(s) and clears `request.auth` since
     /// the credential is now directly embedded.
     pub fn apply(&self, req: &mut RestRequest) {
-        let token = self.secret.expose();
+        let token = self.secret.expose_plaintext_for_transport();
         match &self.scheme {
             AuthScheme::Bearer => {
                 req.headers
@@ -410,7 +418,7 @@ impl TryFrom<&Value> for Credential {
 
         // Token
         let token = match map.get("token") {
-            Some(Value::Secret(s)) => s.expose().to_string(),
+            Some(Value::Secret(s)) => s.expose_plaintext_for_transport().to_string(),
             _ => return Err("Credential missing 'token' secret".to_string()),
         };
 
@@ -501,7 +509,10 @@ mod tests {
         let secret = Secret::static_value("super-secret-token");
         assert_eq!(format!("{secret:?}"), "Secret(***)");
         assert_eq!(format!("{secret}"), "***");
-        assert_eq!(secret.expose(), "super-secret-token");
+        assert_eq!(
+            secret.expose_plaintext_for_transport(),
+            "super-secret-token"
+        );
     }
 
     #[test]
@@ -580,7 +591,10 @@ mod tests {
         );
         let value: Value = cred.into();
         let restored = Credential::try_from(&value).expect("round-trip should succeed");
-        assert_eq!(restored.secret.expose(), "ghp_abc123");
+        assert_eq!(
+            restored.secret.expose_plaintext_for_transport(),
+            "ghp_abc123"
+        );
         assert!(matches!(restored.scheme, AuthScheme::Bearer));
         assert!(matches!(
             restored.secret.source,
@@ -621,7 +635,7 @@ mod tests {
         );
         let value: Value = cred.into();
         let restored = Credential::try_from(&value).expect("round-trip should succeed");
-        assert_eq!(restored.secret.expose(), "pass");
+        assert_eq!(restored.secret.expose_plaintext_for_transport(), "pass");
         assert!(matches!(
             restored.scheme,
             AuthScheme::Basic { ref username } if username == "admin"

@@ -41,6 +41,7 @@ pub mod testgen_dag;
 pub mod tool_runner;
 pub mod tool_testgen;
 pub mod viewer;
+pub mod workflow;
 pub mod workspace;
 
 // Re-exports for convenience
@@ -76,6 +77,25 @@ pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{
     freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,
     RunToolOptions,
+};
+pub use workflow::{
+    append_global_ledger_entry, ci_workflow_spec, ci_workflow_spec_with_registry,
+    claim_handle_type_id, coordination_status, default_process_unit_registry, derive_miss_reason,
+    explain_plan, has_required_unit_contract, load_global_ledger, plan_global_workflows,
+    plan_workflow, plan_workflow_with_mode, project_execute_set, prove_non_redundancy,
+    rehydrate_outputs_for_entry, required_input_contract, required_output_contract,
+    save_global_ledger, store_output_payload, test_all_workflow_spec,
+    test_all_workflow_spec_with_registry, validate_conflicting_claims,
+    validate_effectful_claim_declarations, validate_projection_equivalence,
+    validate_required_claims, validate_workflow_admission, workflow_ledger_paths, AggregateSpec,
+    BlockedReason, CanonicalKeyPayload, ClaimId, CoordinationStatus, DryRunMode, ExecuteProjection,
+    GlobalExecutionVertex, GlobalWorkflowPlan, InvariantViolation, LedgerStatus,
+    MaterializationDigest, MaterializationKey, MissReason, NodePlan, PlanAction, PlanExplain,
+    PlannerInputs, PlannerInputsByWorkflow, ProcessId, ProcessUnitRef, ProcessUnitRegistry,
+    ProcessUnitSpec, ProjectionDrift, ReportSpec, RunId, RunLedgerEntry, UnitClaim, WorkIdentity,
+    WorkflowAdmissionError, WorkflowId, WorkflowLedgerError, WorkflowLedgerPaths, WorkflowNodeRef,
+    WorkflowOp, WorkflowPlan, WorkflowPlannerError, WorkflowSpec as PlannerWorkflowSpec,
+    WorkflowUnit, PORT_AFTER, PORT_COMMIT, PORT_RESULT, TYPE_WORKFLOW_RESULT,
 };
 pub use workspace::{
     build_bootstrap_subdag, build_build_subdag, build_ci_subdag, build_clippy_lint_all_subdag,

@@ -7,6 +7,7 @@ use crate::dag::{Edge, Port};
 use crate::node::Node;
 use crate::port_type::PortType;
 use crate::type_registry::TypeExprError;
+use crate::InvocationContract;
 use crate::Predicate;
 use crate::{Dag, TypeId, TypeOp, TypeRegistry, WrapperKind};
 use serde::{Deserialize, Serialize};
@@ -28,26 +29,7 @@ pub enum SystemKind {
 }
 
 /// Invocation style for a behavior.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Invocation {
-    Cli {
-        command: String,
-        docs: String,
-    },
-    Rest {
-        method: String,
-        path: String,
-        docs: String,
-    },
-    Sdk {
-        function: String,
-        docs: String,
-    },
-    Protocol {
-        protocol: String,
-        docs: String,
-    },
-}
+pub type Invocation = InvocationContract;
 
 /// Behavior properties relevant to contract/test generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -193,9 +175,53 @@ impl Behavior {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DependencyKind {
     /// Depends on another system model id.
-    System(String),
+    System(SystemDependencyId),
     /// Depends on an external secret/resource.
-    Secret(String),
+    Secret(SecretDependencyId),
+}
+
+/// Typed system-dependency identity.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SystemDependencyId(pub String);
+
+impl SystemDependencyId {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<&str> for SystemDependencyId {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for SystemDependencyId {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+/// Typed secret-dependency identity.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SecretDependencyId(pub String);
+
+impl SecretDependencyId {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<&str> for SecretDependencyId {
+    fn from(value: &str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<String> for SecretDependencyId {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
 }
 
 /// A dependency edge from one system model to another system/resource.
@@ -205,13 +231,13 @@ pub struct Dependency {
 }
 
 impl Dependency {
-    pub fn system(id: impl Into<String>) -> Self {
+    pub fn system(id: impl Into<SystemDependencyId>) -> Self {
         Self {
             kind: DependencyKind::System(id.into()),
         }
     }
 
-    pub fn secret(id: impl Into<String>) -> Self {
+    pub fn secret(id: impl Into<SecretDependencyId>) -> Self {
         Self {
             kind: DependencyKind::Secret(id.into()),
         }
@@ -439,12 +465,12 @@ pub fn validate_dependency_graph_acyclic(models: &[SystemModel]) -> Result<(), S
     for model in models {
         for dep in &model.dependencies {
             if let DependencyKind::System(target) = &dep.kind {
-                if indegree.contains_key(target) {
-                    *indegree.get_mut(target).expect("target indegree exists") += 1;
+                if indegree.contains_key(&target.0) {
+                    *indegree.get_mut(&target.0).expect("target indegree exists") += 1;
                     outgoing
                         .get_mut(&model.id)
                         .expect("source entry exists")
-                        .push(target.clone());
+                        .push(target.0.clone());
                 }
             }
         }
@@ -546,10 +572,14 @@ fn behavior_properties_from_type_dag(
     let dag = registry.get(type_id)?;
     let mut properties = Vec::new();
     for node in &dag.nodes {
-        if let crate::node::NodeBody::Opaque(TypeOp::Validate(Predicate::Custom(marker))) =
-            &node.body
-        {
-            if let Some(raw) = marker.strip_prefix("property:") {
+        if let crate::node::NodeBody::Opaque(op) = &node.body {
+            let marker = match op {
+                TypeOp::Meta(crate::MetadataPayload::Property(raw)) => Some(raw.as_str()),
+                // Legacy compatibility path during migration.
+                TypeOp::Validate(Predicate::Custom(marker)) => marker.strip_prefix("property:"),
+                _ => None,
+            };
+            if let Some(raw) = marker {
                 if let Some(property) = parse_property_marker(raw) {
                     if !properties.contains(&property) {
                         properties.push(property);
@@ -594,9 +624,9 @@ pub fn system_behavior_type_id(system_id: &str, behavior_id: &str) -> TypeId {
 /// and registered into `TypeRegistry` under [`system_behavior_type_id`].
 ///
 /// The descriptor encodes:
-/// - system + behavior metadata as `Validate(Custom(...))` nodes
-/// - behavior properties as `Validate(Custom("property:<...>"))` nodes
-/// - input/output contracts as `Validate(Custom(...))` nodes
+/// - system + behavior metadata as `TypeOp::Meta(...)` nodes
+/// - behavior properties as `TypeOp::Meta(MetadataPayload::Property(...))` nodes
+/// - input/output contracts as `TypeOp::Meta(...)` nodes
 /// - optional inputs as explicit `TypeOp::Wrap(WrapperKind::Optional)` nodes
 ///
 /// All referenced input/output `TypeId`s are validated against the current
@@ -638,52 +668,51 @@ fn build_behavior_contract_dag(
     let mut prev = "behavior_input".to_string();
     let mut idx = 0usize;
 
-    append_validate_step(
+    append_meta_step(
         &mut dag,
         &mut prev,
         &mut idx,
-        format!("meta:system_id={}", model.id),
+        crate::MetadataPayload::SystemId(model.id.clone()),
     );
-    append_validate_step(
+    append_meta_step(
         &mut dag,
         &mut prev,
         &mut idx,
-        format!("meta:system_kind={:?}", model.kind),
+        crate::MetadataPayload::SystemKind(format!("{:?}", model.kind)),
     );
-    append_validate_step(
+    append_meta_step(
         &mut dag,
         &mut prev,
         &mut idx,
-        format!("meta:behavior_id={}", behavior.id),
+        crate::MetadataPayload::BehaviorId(behavior.id.clone()),
     );
-    append_validate_step(
+    append_meta_step(
         &mut dag,
         &mut prev,
         &mut idx,
-        format!("meta:invocation={}", invocation_tag(&behavior.invocation)),
+        crate::MetadataPayload::Invocation(invocation_tag(&behavior.invocation)),
     );
 
     for property in &behavior.properties {
-        append_validate_step(
+        append_meta_step(
             &mut dag,
             &mut prev,
             &mut idx,
-            format!("property:{property:?}"),
+            crate::MetadataPayload::Property(format!("{property:?}")),
         );
     }
 
     for input in &behavior.inputs {
         validate_type_ref("input", &input.name, input.input_type.type_id(), registry)?;
-        append_validate_step(
+        append_meta_step(
             &mut dag,
             &mut prev,
             &mut idx,
-            format!(
-                "input:{}:{}:required={}",
-                sanitize_ident(&input.name),
-                input.input_type.type_id().0,
-                input.required
-            ),
+            crate::MetadataPayload::InputContract {
+                name: sanitize_ident(&input.name),
+                type_id: input.input_type.type_id().0.clone(),
+                required: input.required,
+            },
         );
         if !input.required {
             let wrap_node_id = format!("step_{idx}_optional_wrap");
@@ -706,15 +735,14 @@ fn build_behavior_contract_dag(
             output.output_type.type_id(),
             registry,
         )?;
-        append_validate_step(
+        append_meta_step(
             &mut dag,
             &mut prev,
             &mut idx,
-            format!(
-                "output:{}:{}",
-                sanitize_ident(&output.name),
-                output.output_type.type_id().0
-            ),
+            crate::MetadataPayload::OutputContract {
+                name: sanitize_ident(&output.name),
+                type_id: output.output_type.type_id().0.clone(),
+            },
         );
     }
 
@@ -725,20 +753,65 @@ fn build_behavior_contract_dag(
         TypeOp::Identity,
     ));
     dag.add_edge(Edge::new(prev.as_str(), "out", "behavior_output", "in"));
+    validate_no_metadata_validate_custom(&dag)?;
     Ok(dag)
 }
 
-fn append_validate_step(dag: &mut Dag<TypeOp>, prev: &mut String, idx: &mut usize, marker: String) {
+fn append_meta_step(
+    dag: &mut Dag<TypeOp>,
+    prev: &mut String,
+    idx: &mut usize,
+    payload: crate::MetadataPayload,
+) {
+    let marker = match &payload {
+        crate::MetadataPayload::SystemId(value) => format!("system_id_{}", sanitize_ident(value)),
+        crate::MetadataPayload::SystemKind(value) => {
+            format!("system_kind_{}", sanitize_ident(value))
+        }
+        crate::MetadataPayload::BehaviorId(value) => {
+            format!("behavior_id_{}", sanitize_ident(value))
+        }
+        crate::MetadataPayload::Invocation(value) => {
+            format!("invocation_{}", sanitize_ident(value))
+        }
+        crate::MetadataPayload::Property(value) => format!("property_{}", sanitize_ident(value)),
+        crate::MetadataPayload::InputContract { name, type_id, .. } => {
+            format!("input_{}_{}", sanitize_ident(name), sanitize_ident(type_id))
+        }
+        crate::MetadataPayload::OutputContract { name, type_id } => {
+            format!(
+                "output_{}_{}",
+                sanitize_ident(name),
+                sanitize_ident(type_id)
+            )
+        }
+    };
     let node_id = format!("step_{}_{}", idx, sanitize_ident(&marker));
     dag.add_node(Node::opaque(
         node_id.as_str(),
         vec![Port::scalar("in", "Json")],
         vec![Port::scalar("out", "Json")],
-        TypeOp::Validate(Predicate::Custom(marker)),
+        TypeOp::Meta(payload),
     ));
     dag.add_edge(Edge::new(prev.as_str(), "out", node_id.as_str(), "in"));
     *prev = node_id;
     *idx += 1;
+}
+
+fn validate_no_metadata_validate_custom(dag: &Dag<TypeOp>) -> Result<(), String> {
+    for node in &dag.nodes {
+        if let crate::node::NodeBody::Opaque(TypeOp::Validate(Predicate::Custom(marker))) =
+            &node.body
+        {
+            if marker.starts_with("meta:") || marker.starts_with("property:") {
+                return Err(format!(
+                    "metadata marker encoded in Validate(Custom(...)) is forbidden in strict mode: node='{}', marker='{}'",
+                    node.id.0, marker
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_type_ref(
@@ -948,12 +1021,26 @@ fn behavior_contract_shape(
     for node in &dag.nodes {
         if let crate::node::NodeBody::Opaque(op) = &node.body {
             match op {
+                TypeOp::Meta(crate::MetadataPayload::Property(raw)) => {
+                    properties.push(raw.to_string());
+                }
+                TypeOp::Meta(crate::MetadataPayload::InputContract {
+                    name,
+                    type_id,
+                    required,
+                }) => {
+                    inputs.push((name.clone(), type_id.clone(), *required));
+                }
+                TypeOp::Meta(crate::MetadataPayload::OutputContract { name, type_id }) => {
+                    outputs.push((name.clone(), type_id.clone()));
+                }
+                // Legacy compatibility markers during migration.
                 TypeOp::Validate(Predicate::Custom(marker)) => {
                     if let Some(raw) = marker.strip_prefix("property:") {
                         properties.push(raw.to_string());
-                    } else if let Some(parsed) = parse_input_marker(marker) {
+                    } else if let Some(parsed) = parse_input_marker_legacy(marker) {
                         inputs.push(parsed);
-                    } else if let Some(parsed) = parse_output_marker(marker) {
+                    } else if let Some(parsed) = parse_output_marker_legacy(marker) {
                         outputs.push(parsed);
                     }
                 }
@@ -980,7 +1067,7 @@ fn behavior_contract_shape(
     })
 }
 
-fn parse_input_marker(marker: &str) -> Option<(String, String, bool)> {
+fn parse_input_marker_legacy(marker: &str) -> Option<(String, String, bool)> {
     let marker = marker.strip_prefix("input:")?;
     let (left, required_raw) = marker.rsplit_once(":required=")?;
     let required = match required_raw {
@@ -992,7 +1079,7 @@ fn parse_input_marker(marker: &str) -> Option<(String, String, bool)> {
     Some((name.to_string(), type_id.to_string(), required))
 }
 
-fn parse_output_marker(marker: &str) -> Option<(String, String)> {
+fn parse_output_marker_legacy(marker: &str) -> Option<(String, String)> {
     let marker = marker.strip_prefix("output:")?;
     let (name, type_id) = marker.split_once(':')?;
     Some((name.to_string(), type_id.to_string()))

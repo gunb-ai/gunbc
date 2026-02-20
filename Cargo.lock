@@ -387,6 +387,7 @@ dependencies = [
  "gunbc-testgen-registry-macros",
  "gunbc-tool-registry",
  "gunbc-tool-registry-macros",
+ "serde",
  "serde_json",
  "toml_edit",
 ]

@@ -337,7 +337,7 @@ fn mask_secrets_in_log(ci: &mut crate::CiContext, log: &crate::ExecutionLog) {
     for entry in &log.entries {
         for value in entry.outputs.values() {
             if let Value::Secret(s) = value {
-                ci.mask(s.expose());
+                ci.mask(s.expose_plaintext_for_transport());
             }
         }
     }

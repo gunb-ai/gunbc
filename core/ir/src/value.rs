@@ -69,10 +69,18 @@ impl SecretString {
         }
     }
 
-    /// Expose the secret value. Use sparingly — only at I/O boundaries
-    /// where the actual value is needed (e.g., setting an HTTP header).
-    pub fn expose(&self) -> &str {
+    /// Expose plaintext secret value for transport boundaries only.
+    ///
+    /// This API exists specifically for boundary adapters that must materialize
+    /// plaintext for outbound requests.
+    pub fn expose_plaintext_for_transport(&self) -> &str {
         &self.inner
+    }
+
+    /// Backward-compatible alias; prefer `expose_plaintext_for_transport`.
+    #[deprecated(note = "use expose_plaintext_for_transport instead")]
+    pub fn expose(&self) -> &str {
+        self.expose_plaintext_for_transport()
     }
 
     /// Length of the secret (safe to expose for diagnostics).
@@ -756,5 +764,13 @@ mod tests {
     fn display_redacted_truncated_non_str() {
         let v = Value::Int(42);
         assert_eq!(v.display_redacted_truncated(10, 500), "42");
+    }
+
+    #[test]
+    fn secret_string_format_paths_are_always_redacted() {
+        let secret = SecretString::new("top-secret");
+        assert_eq!(format!("{secret}"), "***");
+        assert_eq!(format!("{secret:?}"), "SecretString(***)");
+        assert_eq!(secret.to_string(), "***");
     }
 }

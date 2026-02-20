@@ -62,7 +62,7 @@ impl From<&Value> for ValueExpr {
             Value::Json(j) => ValueExpr::Json(j.clone()),
             Value::Request(r) => request_to_value_expr(r),
             Value::Response(r) => response_to_value_expr(r),
-            Value::Secret(s) => ValueExpr::Secret(s.expose().to_string()),
+            Value::Secret(s) => ValueExpr::Secret(s.expose_plaintext_for_transport().to_string()),
             Value::Skipped => ValueExpr::Skipped,
         }
     }

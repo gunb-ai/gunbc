@@ -5,6 +5,41 @@ Date: 2026-02-19
 Scope: `WF1-D`, `WF2-D`, `WF3-D`, `WF4-D` for planner-first `ci` and `test-all`  
 Canonical normative model: `docs/design/workflow-minimal-execution-model.md`
 
+## Implementation Status
+
+WF1/WF2/WF3/WF4/WF5 planner foundations now have an initial typed implementation in
+`gunbc-dag::workflow`:
+
+1. WF1 schema types and deterministic `ci` / `test-all` spec builders:
+   - `workflow/schema.rs`
+   - `workflow/process_registry.rs`
+   - `workflow/spec_builders.rs`
+2. WF2 fail-closed admission validation:
+   - `workflow/admission.rs`
+   - `workflow/errors.rs`
+3. WF3 deterministic key/ledger + cached-hit rehydration:
+   - `workflow/key.rs`
+   - `workflow/ledger.rs`
+   - `workflow/planner.rs`
+4. WF4 downstream coordination/readiness modeling:
+   - `workflow/coordination.rs`
+   - planner integration via `WorkflowPlan.coordination`
+5. WF5 plan explainability surface:
+   - `src/bin/workflow.rs` (`gunbc-workflow --plan ...`)
+   - `workflow/planner.rs` explain projection (`explain_plan`)
+6. Contract coverage:
+   - `gunbc-dag/tests/workflow_schema_contracts.rs`
+   - `gunbc-dag/tests/workflow_admission_contracts.rs`
+   - `gunbc-dag/tests/workflow_key_ledger_contracts.rs`
+   - `gunbc-dag/tests/workflow_plan_cli_contracts.rs`
+
+Related modeling hardening follow-ups landed with the planner:
+
+- M17: global flattening and context-free work identity via
+  `workflow/global_plan.rs` + canonicalized `ProcessUnitSpec::canonical_work_identity`.
+- M18: projection drift enforcement via `workflow/projection.rs`.
+- M19: non-redundancy invariant harness via `workflow/proof.rs`.
+
 ## 1. Read This First
 
 This pack is consolidated with the canonical model:

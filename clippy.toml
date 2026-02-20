@@ -68,6 +68,9 @@ disallowed-methods = [
     { path = "git2::Repository::open_bare", reason = "I6: No escape hatches. Git I/O must be in transport layer" },
     { path = "git2::Repository::discover", reason = "I6: No escape hatches. Git I/O must be in transport layer" },
     { path = "git2::Repository::init", reason = "I6: No escape hatches. Git I/O must be in transport layer" },
+    # Secret plaintext extraction aliases — force transport-boundary-only naming.
+    { path = "gunbc_ir::value::SecretString::expose", reason = "M7: Use expose_plaintext_for_transport at approved transport boundaries only" },
+    { path = "gunbc_ir::transport::credential::Secret::expose", reason = "M7: Use expose_plaintext_for_transport at approved transport boundaries only" },
 ]
 
 disallowed-types = [
