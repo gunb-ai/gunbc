@@ -312,6 +312,124 @@ type PragmaDirective {
   scope: String?
 }
 
+// --- SDLC lifecycle types (Level 4+3: Coproduct + Product) ---------------
+//
+// The issue lifecycle model is PROVIDER-AGNOSTIC. These types define
+// the abstract state machine; concrete bindings (GitHub Issues, Linear,
+// local blob store) implement the transport layer.
+//
+// Design principle: the pipeline works against TrackedIssue and
+// DesignOutput, never against provider-specific response shapes.
+// Switching from GitHub Issues to a local DB is a transport swap,
+// not a pipeline rewrite.
+//
+// This mirrors the LLM pattern:
+//   ChatRequest/ChatResponse = abstract (std.types)
+//   openai.dag, anthropic.dag = concrete service bindings
+//   LlmOps = works against abstract types
+//
+// Similarly:
+//   TrackedIssue/DesignOutput = abstract (std.types)
+//   github/issues.dag        = concrete service binding
+//   pipelines/sdlc.dag       = works against abstract types
+
+// Lifecycle stages. Each maps to a label (GitHub), status (Linear),
+// or row state (local DB). The pipeline doesn't care which.
+type IssueLifecycleStage
+  = Idea                        // Initial: raw idea, no design yet
+  | Design                      // Design document generated
+  | DesignReview                // Design under review
+  | Accepted                    // Design approved, ready for implementation
+  | Implementing                // Implementation in progress
+  | CodeReview                  // Code under review
+  | Testing                     // Acceptance tests running
+  | Done                        // Completed and verified
+
+// Abstract tracked issue. Provider bindings convert their native
+// response into this shape.
+type TrackedIssue {
+  id: String                    // Provider-specific ID (issue number, UUID, etc.)
+  title: String
+  body: String
+  stage: IssueLifecycleStage
+  url: Url?                     // Web URL if the provider has one
+  author: String?
+  labels: List<String>          // Provider labels/tags
+  created_at: String?
+  updated_at: String?
+}
+
+// Abstract design output. The content blob is markdown.
+// Analogous to ReviewOutput: structured metadata + raw content.
+type DesignOutput {
+  content: String               // Markdown document
+  summary: String               // One-line summary
+  source: String                // "llm" | "human"
+  sections: DesignSections?     // Structured section breakdown (optional)
+}
+
+// Optional structured sections for programmatic access.
+// The pipeline can work with just the markdown blob, but structured
+// sections enable richer automation (e.g., extracting interfaces
+// for codegen, extracting risks for review criteria).
+type DesignSections {
+  problem: String?
+  approach: String?
+  interfaces: String?
+  risks: List<String>?
+  test_plan: String?
+  scope: String?                // "S" | "M" | "L" | "XL"
+}
+
+// Design review output. Mirrors ReviewOutput but for designs.
+type DesignReviewOutput {
+  findings: List<DesignFinding>
+  approved: Bool
+  summary: String
+  source: String                // "llm" | "human" | "policy"
+}
+
+type DesignFinding {
+  check_id: String              // Which criteria check
+  issue_key: String             // Stable content-based key
+  observation: String
+  severity: String              // "blocking" | "suggestion" | "info"
+  suggestion: String?
+}
+
+// Implementation plan: the bridge between design and code.
+type ImplementationPlan {
+  tasks: List<ImplementationTask>
+  estimated_scope: String       // "S" | "M" | "L" | "XL"
+  summary: String
+}
+
+type ImplementationTask {
+  title: String
+  description: String
+  file_paths: List<FilePath>?   // Expected files to create/modify
+  dependencies: List<String>?   // Task IDs this depends on
+  done: Bool = false
+}
+
+// Pipeline run record: tracks a single issue's journey through stages.
+// Persisted in the workflow ledger for caching and audit.
+type PipelineRun {
+  issue_id: String
+  stages_completed: List<IssueLifecycleStage>
+  current_stage: IssueLifecycleStage
+  started_at: String
+  updated_at: String
+  artifacts: List<PipelineArtifact>
+}
+
+type PipelineArtifact {
+  stage: IssueLifecycleStage
+  kind: String                  // "design" | "review" | "plan" | "ci-report"
+  content: String               // The artifact content (markdown)
+  url: Url?                     // Link to where it was posted
+}
+
 // --- Docgen (product with refinement) ----------------------------------
 
 type DocSource {
